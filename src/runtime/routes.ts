@@ -3,7 +3,7 @@ import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
-import { loadApp, loadPage, loadUserRoles, type App, type Page } from '../metadata.ts';
+import { accountRoles, loadApp, loadPage, type App, type Page } from '../metadata.ts';
 import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden } from './authz.ts';
@@ -31,6 +31,44 @@ function simplePage(reply: FastifyReply, code: number, title: string, message: s
         'login-body',
       ),
     );
+}
+
+export const safeNext = (app: App, next: string | undefined) =>
+  next && next.startsWith(`/a/${app.alias}/`) && !/[\\\r\n]/.test(next) && !next.includes('//') ? next : `/a/${app.alias}/${app.home_page}`;
+
+/**
+ * Finish a successful sign-in (password or SSO): replace the session (no
+ * session fixation), resolve the user's roles for this app (plus roles from
+ * identity-provider groups), log it and run the "after login" processes.
+ */
+export async function completeLogin(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  a: App,
+  oldSession: Session,
+  username: string,
+  { extraRoles = [], next, detail }: { extraRoles?: string[]; next?: string; detail?: string } = {},
+) {
+  const base = `/a/${a.alias}`;
+  const roles = [...new Set([...(await accountRoles(a.id, username)), ...extraRoles.map((r) => r.toLowerCase())])].sort();
+  await destroySession(reply, oldSession, base);
+  const s = await createSession(reply, a.id, base, username, roles);
+  logActivity({ appId: a.id, username, event: 'login', ip: clientIp(req), detail });
+
+  if (a.app_processes.some((p) => p.point === 'after_login')) {
+    const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [] } as unknown as Page);
+    const ctx: PageContext = {
+      app: a, page: home, session: s, base, params: new URLSearchParams(), request: '', user: username,
+      roles, ip: clientIp(req), errors: { page: [], items: {} }, messages: [],
+      dialog: false, authzCache: new Map(), detached: [],
+    };
+    await appTx(txContext(ctx), async (c) => {
+      ctx.client = c;
+      await runAppProcesses(ctx, 'after_login');
+    });
+    await saveState(s);
+  }
+  return reply.redirect(safeNext(a, next), 303);
 }
 
 const txContext = (ctx: PageContext) => ({
@@ -65,7 +103,7 @@ async function loadContext(req: Req, reply: FastifyReply, { json = false } = {})
     params: new URLSearchParams(req.url.split('?')[1] ?? ''),
     request: '',
     user,
-    roles: app.authentication === 'none' ? [] : await loadUserRoles(app.id, session.username),
+    roles: app.authentication === 'none' ? [] : (session.roles ?? []),
     ip: clientIp(req),
     errors: { page: [], items: {} },
     messages: [],
@@ -335,9 +373,6 @@ export async function runtimeRoutes(app: FastifyInstance) {
       'login-body',
     );
 
-  const safeNext = (app: App, next: string | undefined) =>
-    next && next.startsWith(`/a/${app.alias}/`) && !/[\\\r\n]/.test(next) && !next.includes('//') ? next : `/a/${app.alias}/${app.home_page}`;
-
   app.get<{ Params: Params; Querystring: { next?: string } }>('/a/:alias/login', async (req, reply) => {
     const a = await loadApp(req.params.alias);
     if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
@@ -368,26 +403,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       return fail('Invalid username or password.');
     }
 
-    // New session id on login (prevents session fixation).
-    await destroySession(reply, session, base);
-    const s = await createSession(reply, a.id, base, r.username);
-    logActivity({ appId: a.id, username: r.username, event: 'login', ip });
-
-    // Application processes "after login" (e.g. set application items).
-    if (a.app_processes.some((p) => p.point === 'after_login')) {
-      const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [] } as unknown as Page);
-      const ctx: PageContext = {
-        app: a, page: home, session: s, base, params: new URLSearchParams(), request: '', user: r.username,
-        roles: await loadUserRoles(a.id, r.username), ip, errors: { page: [], items: {} }, messages: [],
-        dialog: false, authzCache: new Map(), detached: [],
-      };
-      await appTx(txContext(ctx), async (c) => {
-        ctx.client = c;
-        await runAppProcesses(ctx, 'after_login');
-      });
-      await saveState(s);
-    }
-    return reply.redirect(safeNext(a, next), 303);
+    return completeLogin(req, reply, a, session, r.username, { next });
   });
 
   // Sign-out is a POST with a CSRF token (a GET could be triggered by any site).

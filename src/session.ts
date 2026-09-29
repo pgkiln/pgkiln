@@ -8,6 +8,8 @@ export interface Session {
   username: string | null;
   csrf_token: string;
   state: Record<string, string | null>;
+  /** Roles resolved at sign-in (lower case); see meta.has_role(). */
+  roles: string[];
   isNew?: boolean;
 }
 
@@ -24,7 +26,7 @@ async function find(token: string | undefined, appId: number | null) {
       where token_hash = $1 and app_id is not distinct from $2
         and last_seen > now() - make_interval(mins => $3)
         and created_at > now() - make_interval(hours => $4)
-     returning id, app_id, username, csrf_token, state`,
+     returning id, app_id, username, csrf_token, state, roles`,
     [hashToken(token), appId, IDLE_MINUTES, MAX_HOURS],
   );
 }
@@ -33,12 +35,12 @@ async function find(token: string | undefined, appId: number | null) {
  * The cookie holds a random token; the database only stores its sha256.
  * Expired sessions are purged opportunistically.
  */
-export async function createSession(reply: FastifyReply, appId: number | null, path: string, username: string | null = null) {
+export async function createSession(reply: FastifyReply, appId: number | null, path: string, username: string | null = null, roles: string[] = []) {
   const token = newToken();
   const s = (await runtime.one<Session>(
-    `insert into meta.session (token_hash, app_id, username) values ($1, $2, $3)
-     returning id, app_id, username, csrf_token, state`,
-    [hashToken(token), appId, username],
+    `insert into meta.session (token_hash, app_id, username, roles) values ($1, $2, $3, $4)
+     returning id, app_id, username, csrf_token, state, roles`,
+    [hashToken(token), appId, username, roles.map((r) => r.toLowerCase())],
   ))!;
   if (Math.random() < 0.05)
     runtime
