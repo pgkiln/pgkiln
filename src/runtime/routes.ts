@@ -5,6 +5,7 @@ import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
 import { accountRoles, loadApp, loadPage, type App, type Page } from '../metadata.ts';
 import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
+import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn } from '../sso.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
@@ -356,29 +357,41 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- login / logout
-  const loginPage = (app: App, session: Session, next: string, error?: string) =>
-    documentShell(
+  const loginPage = async (app: App, session: Session, next: string, error?: string) => {
+    const providers = await enabledProviders(app.sso_providers ?? []);
+    const nextQs = next ? `?next=${encodeURIComponent(next)}` : '';
+    return documentShell(
       `Sign in · ${app.name}`,
       html`<main class="login">
-        <form method="post" class="card login-card">
+        <div class="card login-card">
           <h1>${app.name}</h1>
           ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
-          <input type="hidden" name="__csrf" value="${session.csrf_token}">
-          <input type="hidden" name="next" value="${next}">
-          <div class="field"><label class="label" for="username">Username</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
-          <div class="field"><label class="label" for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
-          <button class="btn btn-hot">Sign in</button>
-        </form>
+          ${providers.length
+            ? html`<div class="sso-buttons">${providers.map(
+                (pr) => html`<a class="btn${app.local_login ? '' : ' btn-hot'}" href="/a/${app.alias}/sso/${pr.name}${nextQs}">Sign in with ${pr.display_name}</a>`,
+              )}</div>${app.local_login ? html`<div class="or" role="separator"><span>or</span></div>` : ''}`
+            : ''}
+          ${app.local_login
+            ? html`<form method="post" class="login-form">
+                <input type="hidden" name="__csrf" value="${session.csrf_token}">
+                <input type="hidden" name="next" value="${next}">
+                <div class="field"><label class="label" for="username">Username</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
+                <div class="field"><label class="label" for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
+                <button class="btn btn-hot">Sign in</button>
+              </form>`
+            : providers.length ? '' : html`<p>No sign-in method is configured for this application.</p>`}
+        </div>
       </main>`,
       'login-body',
     );
+  };
 
   app.get<{ Params: Params; Querystring: { next?: string } }>('/a/:alias/login', async (req, reply) => {
     const a = await loadApp(req.params.alias);
     if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
     if (a.authentication === 'none') return reply.redirect(`/a/${a.alias}`);
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
-    return reply.type('text/html').send(loginPage(a, session, safeNext(a, req.query.next)));
+    return reply.type('text/html').send(await loginPage(a, session, safeNext(a, req.query.next)));
   });
 
   app.post('/a/:alias/login', async (req: Req, reply) => {
@@ -388,9 +401,10 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const session = await getSession(req, reply, a.id, base);
     const { username = '', password = '', next } = req.body ?? {};
     const ip = clientIp(req);
-    const fail = (msg: string, code = 401) => reply.code(code).type('text/html').send(loginPage(a, session, safeNext(a, next), msg));
+    const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, session, safeNext(a, next), msg));
 
     if (req.body?.__csrf !== session.csrf_token) return fail('Your session expired. Please try again.', 403);
+    if (!a.local_login) return fail('Password sign-in is not enabled for this application.', 403);
 
     if (await loginThrottled(a.id, username, ip)) {
       logActivity({ appId: a.id, username, event: 'login_locked', ip });
@@ -404,6 +418,51 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
 
     return completeLogin(req, reply, a, session, r.username, { next });
+  });
+
+  // ---------------------------------------------------------------- single sign-on (OpenID Connect)
+  const SSO_COOKIE = 'pgapex_sso';
+
+  app.get<{ Params: { alias: string; provider: string }; Querystring: { next?: string } }>('/a/:alias/sso/:provider', async (req, reply) => {
+    const a = await loadApp(req.params.alias);
+    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
+    const p = a.sso_providers.includes(req.params.provider) ? await loadProvider(req.params.provider) : undefined;
+    if (!p) return simplePage(reply, 404, 'Not found', 'This sign-in method is not available.', `/a/${a.alias}/login`);
+    try {
+      const { url, browserKey } = await startSignIn(p, a.id, safeNext(a, req.query.next));
+      reply.setCookie(SSO_COOKIE, browserKey, { path: '/sso', httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 600 });
+      return reply.redirect(url);
+    } catch (e) {
+      req.log.warn({ err: e }, 'sso start failed');
+      return simplePage(reply, 502, 'Sign-in unavailable', `Could not reach ${p.display_name}. Please try again later.`, `/a/${a.alias}/login`);
+    }
+  });
+
+  app.get<{ Params: { provider: string } }>('/sso/callback/:provider', async (req, reply) => {
+    const ip = clientIp(req);
+    const p = await loadProvider(req.params.provider);
+    if (!p) return simplePage(reply, 404, 'Not found', 'Unknown identity provider.');
+    const browserKey = req.cookies[SSO_COOKIE];
+    reply.clearCookie(SSO_COOKIE, { path: '/sso' });
+    let result;
+    try {
+      result = await finishSignIn(p, new URLSearchParams(req.url.split('?')[1] ?? ''), browserKey);
+    } catch (e) {
+      const msg = e instanceof SsoError ? e.message : 'The sign-in could not be completed.';
+      if (!(e instanceof SsoError)) req.log.warn({ err: e }, 'sso callback failed');
+      logActivity({ event: 'login_failed', ip, detail: `sso:${p.name}: ${msg}` });
+      return simplePage(reply, 403, 'Sign-in failed', msg);
+    }
+    const alias = (await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [result.appId]))?.alias;
+    const a = alias ? await loadApp(alias) : undefined;
+    if (!a || !a.sso_providers.includes(p.name)) return simplePage(reply, 403, 'Sign-in failed', 'This sign-in method is not available.');
+    const access = await ssoAccess(a.id, result.username, result.groups);
+    if (!access.allowed) {
+      logActivity({ appId: a.id, username: result.username, event: 'login_failed', ip, detail: `sso:${p.name}: no access` });
+      return simplePage(reply, 403, 'No access', `Your account (${result.username}) has no access to ${a.name}. Ask an administrator.`, `/a/${a.alias}/login`);
+    }
+    const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
+    return completeLogin(req, reply, a, session, result.username, { extraRoles: access.roles, next: result.next ?? undefined, detail: `sso:${p.name}` });
   });
 
   // Sign-out is a POST with a CSRF token (a GET could be triggered by any site).

@@ -44,6 +44,7 @@
     "@fastify/formbody": "^9.0.0",
     "@fastify/static": "^10.1.5",
     "fastify": "^5.12.5",
+    "jose": "^6.2.12",
     "pg": "^8.23.0"
   },
   "devDependencies": {

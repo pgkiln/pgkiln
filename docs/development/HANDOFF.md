@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-29. Step A (user directory) is **done**; next is step B (single sign-on).
+Last updated: 2026-09-29. Step A (user directory) is **done**; step B (single sign-on) is **in progress**.
 
 ## Project in one paragraph
 
@@ -76,7 +76,28 @@ Status: **done** (commit "feat(users): …" on `sprint-4`). Migration 003, runti
 existing accounts, 4 new tests (37 total), e2e covers `/builder/users` and an account page, docs
 (chapters 3, 8, 9, 10, 11), parity matrix and CHANGELOG updated. `npm run db:reset && npm test && npm run test:e2e` green.
 
-### B: single sign-on (OpenID Connect): design, not started
+### B: single sign-on (OpenID Connect): in progress
+
+Done (WIP commit on `sprint-4`):
+- [x] `db/migrations/004_sso.sql`: `meta.auth_provider`, `meta.account_identity` (link by provider + `sub`),
+      `app.sso_providers` / `app.local_login`, `meta.app_group_role`, `meta.sso_pending`; export/import include group roles
+- [x] `src/sso.ts` (uses `jose`): discovery + JWKS cache, `startSignIn` (state, nonce, PKCE, browser cookie hash),
+      `finishSignIn` (token exchange with client_secret_basic/post, ID token verification, nonce, claims),
+      `resolveAccount` (link by sub; link existing account by username only if it has no identity at
+      that provider; `auto_create`), `ssoAccess` (access row / any_user / mapped groups → roles)
+- [x] Routes in `src/runtime/routes.ts`: `GET /a/:alias/sso/:provider`, `GET /sso/callback/:provider`
+      (cookie `pgapex_sso`, path /sso); the login page shows provider buttons; password form only if `local_login`
+- [x] `PUBLIC_URL` env var (redirect URI = PUBLIC_URL + /sso/callback/<name>)
+
+To do:
+- [ ] Builder: identity providers page (instance level, e.g. `/builder/users/providers`: CRUD, secret
+      write-only, show the redirect URI, "test discovery"); per app: sign-in methods (local password
+      on/off, providers) in Settings, and group → role mapping in Access control
+- [ ] Tests `test/sso.test.ts` with a mock OIDC provider (see the design below)
+- [ ] Optional: `docker compose --profile sso` Keycloak + realm import for a manual demo
+- [ ] Docs (chapters 1 config PUBLIC_URL, 3, 8, 9, 11), parity matrix, CHANGELOG, .env.example
+
+Original design notes:
 
 - Table `meta.auth_provider`: `name` (unique), `display_name`, `issuer`, `client_id`,
   `client_secret` (owner-only; the runtime must not read it, so load providers through the
