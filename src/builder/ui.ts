@@ -28,7 +28,7 @@ export async function send(reply: FastifyReply, s: Session, body: string) {
   return reply.type('text/html').send(body);
 }
 
-export type Section = 'apps' | 'users' | 'sql' | 'developers';
+export type Section = 'apps' | 'users' | 'sql' | 'mail' | 'developers';
 
 export function shell(s: Session, title: string, crumbs: [string, string?][], main: Raw, section: Section = 'apps') {
   const ok = takeFlash(s, '__FLASH');
@@ -43,6 +43,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${navLink('apps', BASE, 'grid', 'App Builder')}
         ${navLink('users', `${BASE}/users`, 'user', 'Users')}
         ${navLink('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
+        ${navLink('mail', `${BASE}/mail`, 'inbox', 'Mail')}
         ${navLink('developers', `${BASE}/developers`, 'users', 'Developers')}
       </nav>
       <div class="user"><span>${s.username}</span>

@@ -104,7 +104,7 @@ export async function loginThrottled(appId: number | null, username: string, ip:
   const counts = await runtime.one<{ user_fails: number; ip_fails: number }>(
     `select count(*) filter (where lower(l.username) = lower($2)
                                and l.at > coalesce((select max(s.at) from meta.activity_log s
-                                                     where s.app_id is not distinct from $1 and s.event = 'login'
+                                                     where ((s.app_id is not distinct from $1 and s.event = 'login') or s.event = 'login_unlocked')
                                                        and lower(s.username) = lower($2)), '-infinity'))::int as user_fails,
             count(*) filter (where l.ip = $3)::int as ip_fails
        from meta.activity_log l

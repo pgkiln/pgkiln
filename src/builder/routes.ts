@@ -4,7 +4,7 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
-import { passwordProblem } from '../security.ts';
+import { passwordProblem } from '../accounts.ts';
 import {
   clientIp,
   createSession,
@@ -245,7 +245,7 @@ export async function builderRoutes(app: FastifyInstance) {
       if (b.authentication !== 'none') {
         if (!b.admin_user?.trim()) throw new Error('Apps with a login page need a first user.');
         const known = await owner.one('select 1 from meta.account where lower(username) = lower($1)', [b.admin_user.trim()]);
-        const problem = known ? null : passwordProblem(b.admin_password);
+        const problem = known ? null : await passwordProblem(b.admin_password);
         if (problem) throw new Error(problem);
       }
       const id = await owner.tx(async (c) => {
@@ -446,6 +446,8 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <h3>Sign-in methods</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
+            <div class="field"><label class="check"><input type="checkbox" name="password_reset" value="true"${a.password_reset ? raw(' checked') : ''}> "Forgot password?" link (reset by e-mail)</label>
+              <small class="help">Sends a one-time link, valid 30 minutes, to the account's e-mail address. Needs e-mail (Builder → Mail). APEX has no built-in end-user reset; this is optional.</small></div>
             ${providers.length
               ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
               : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
@@ -454,6 +456,17 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('accent', 'Accent colour', a.theme?.accent ?? '#0b63c5', { type: 'color' })}
               ${input('header', 'Header colour', a.theme?.header ?? '#13294b', { type: 'color' })}
               ${select('nav', 'Navigation menu', a.theme?.nav ?? 'side', [['side', 'Side (collapsible)'], ['top', 'Top bar']], 'On tablets and phones the menu is always a drawer.')}
+              ${select('mode', 'Theme style', a.theme?.mode ?? 'auto', [['auto', 'Automatic (light or dark, following the device)'], ['light', 'Light'], ['dark', 'Dark']])}
+            </div>
+            <div class="field"><label class="check"><input type="checkbox" name="user_choice" value="true"${a.theme?.user_choice !== false ? raw(' checked') : ''}> Users may choose light or dark</label>
+              <small class="help">Adds a switch to the user menu and My account; the choice is saved on the account (APEX: "Enable End Users to Choose Theme Style").</small></div>
+            <h3>Globalization</h3>
+            <div class="form-grid">
+              ${input('language', 'Primary language', a.language, { help: 'The language the app is built in, e.g. en, nl, de, en-GB.' })}
+              ${input('languages', 'Translated languages', (a.languages ?? []).join(', '), { placeholder: 'e.g. nl, de', help: 'Comma separated. Translate texts under Shared Components → Globalization.' })}
+              ${select('language_from', 'Language derived from', a.language_from, [['browser', 'Browser (Accept-Language)'], ['user', 'User preference, then browser'], ['primary', 'Always the primary language']], 'Users can also switch with ?lang=xx or the picker on the login page.')}
+              ${input('date_format', 'Date format', a.date_format, { placeholder: 'e.g. DD-MM-YYYY (empty: per language)', help: 'Masks: YYYY YY MM MON MONTH DD DY DAY HH24 HH MI SS AM' })}
+              ${input('timestamp_format', 'Date and time format', a.timestamp_format, { placeholder: 'e.g. DD-MM-YYYY HH24:MI' })}
             </div>
             <div class="buttons"><button class="btn btn-hot">Save settings</button></div>
           </form>
@@ -479,15 +492,24 @@ export async function builderRoutes(app: FastifyInstance) {
     try {
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
-                local_login = $9, sso_providers = $10, updated_at = now() where id = $1`,
+                local_login = $9, sso_providers = $10, password_reset = $11, language = $12, languages = $13, language_from = $14,
+                date_format = $15, timestamp_format = $16, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
            header: /^#[0-9a-f]{6}$/i.test(b.header ?? '') ? b.header : undefined,
            nav: b.nav === 'top' ? 'top' : 'side',
+           mode: ['light', 'dark'].includes(b.mode ?? '') ? b.mode : 'auto',
+           user_choice: b.user_choice === 'true',
          }),
          b.local_login === 'true',
-         ([] as string[]).concat((b.sso_providers as unknown as string | string[] | undefined) ?? []).filter(Boolean)],
+         ([] as string[]).concat((b.sso_providers as unknown as string | string[] | undefined) ?? []).filter(Boolean),
+         b.password_reset === 'true',
+         b.language?.trim().toLowerCase() || 'en',
+         [...new Set((b.languages ?? '').split(',').map((l) => l.trim().toLowerCase()).filter((l) => /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(l) && l !== (b.language?.trim().toLowerCase() || 'en')))],
+         ['primary', 'user'].includes(b.language_from ?? '') ? b.language_from : 'browser',
+         b.date_format?.trim() || null,
+         b.timestamp_format?.trim() || null],
       );
       flash(s, 'Settings saved.');
     } catch (e) {
@@ -505,7 +527,7 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'email_template'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -1015,7 +1037,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     try {
-      const problem = passwordProblem(req.body?.password);
+      const problem = await passwordProblem(req.body?.password);
       if (problem) throw new Error(problem);
       await owner.query('insert into meta.developer (username, password_hash) values ($1, meta.hash_password($2))', [req.body?.username?.trim(), req.body?.password]);
       flash(s, 'Developer added.');
@@ -1029,7 +1051,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     try {
-      const problem = passwordProblem(req.body?.password);
+      const problem = await passwordProblem(req.body?.password);
       if (problem) throw new Error(problem);
       const r = await owner.query(
         `update meta.developer set password_hash = meta.hash_password($3)

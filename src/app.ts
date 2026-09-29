@@ -5,8 +5,10 @@ import formbody from '@fastify/formbody';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { apiRoutes } from './builder/api.ts';
+import { mailRoutes } from './builder/mail.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
+import { accountRoutes } from './runtime/account.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 
@@ -22,9 +24,11 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(formbody, { bodyLimit: 5 * 1024 * 1024 });
   await app.register(fastifyStatic, { root: join(root, 'public'), prefix: '/static/' });
   await app.register(runtimeRoutes);
+  await app.register(accountRoutes);
   await app.register(builderRoutes);
   await app.register(usersRoutes);
   await app.register(apiRoutes);
+  await app.register(mailRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));
   return app;
 }

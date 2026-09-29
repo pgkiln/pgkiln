@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
-import { passwordProblem } from '../security.ts';
+import { accountSettings, clearAccountSettings, passwordProblem } from '../accounts.ts';
+import { LOGIN_MAX_FAILURES_PER_USER, LOGIN_WINDOW_MINUTES } from '../security.ts';
 import { discover, redirectUri } from '../sso.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
@@ -49,6 +50,7 @@ export async function usersRoutes(app: FastifyInstance) {
         [q],
       )
     ).rows;
+    const cfg = await accountSettings();
     const main = html`
       <div class="title-row"><h1>Users</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">Identity providers (single sign-on)</a></div></div>
       <p class="muted" style="margin-top:0">One account per person. Give accounts access to applications, with roles per application, here or under an application's <b>Shared Components → Access control</b>.</p>
@@ -75,7 +77,18 @@ export async function usersRoutes(app: FastifyInstance) {
             ${input('display_name', 'Name', '')}
             ${input('email', 'E-mail', '', { type: 'email' })}
             ${input('password', 'Password', '', { type: 'password', auto: 'new-password', help: 'At least 8 characters. Leave empty for accounts that only sign in through single sign-on.' })}
+            <div class="field"><label class="check"><input type="checkbox" name="must_change" value="true" checked> Require change of password on first use</label></div>
             <div class="buttons"><button class="btn btn-hot">Create account</button></div>
+          </form>`)}
+        ${region('Account settings', html`
+          <form method="post" action="${BASE}/users/settings">${csrf(s)}
+            <div class="form-grid">
+              ${input('password_min_length', 'Minimum password length', cfg.minLength, { type: 'number' })}
+              ${input('password_lifetime_days', 'Password lifetime (days)', cfg.lifetimeDays, { type: 'number', help: 'After this many days users must choose a new password at sign-in. 0 = never.' })}
+            </div>
+            <div class="field"><label class="check"><input type="checkbox" name="password_require_mixed" value="true"${cfg.requireMixed ? raw(' checked') : ''}> Passwords need letters and digits</label></div>
+            <p class="muted">Passwords may never contain the username. Sign-in is locked for ${LOGIN_WINDOW_MINUTES} minutes after ${LOGIN_MAX_FAILURES_PER_USER} failed attempts (LOGIN_* settings); Unlock on an account lifts it.</p>
+            <div class="buttons"><button class="btn">Save settings</button></div>
           </form>`)}
       </div>`;
     return send(reply, s, shell(s, 'Users', [['Users']], main, 'users'));
@@ -86,11 +99,12 @@ export async function usersRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     try {
-      if (b.password && passwordProblem(b.password)) throw new Error(passwordProblem(b.password)!);
+      const problem = b.password ? await passwordProblem(b.password, { username: b.username }) : null;
+      if (problem) throw new Error(problem);
       const r = await owner.one(
-        `insert into meta.account (username, display_name, email, password_hash)
-         values ($1, $2, $3, case when $4::text is null then null else meta.hash_password($4) end) returning id`,
-        [b.username?.trim(), b.display_name?.trim() || null, b.email?.trim() || null, b.password || null],
+        `insert into meta.account (username, display_name, email, password_hash, must_change_password)
+         values ($1, $2, $3, case when $4::text is null then null else meta.hash_password($4) end, $5 and $4::text is not null) returning id`,
+        [b.username?.trim(), b.display_name?.trim() || null, b.email?.trim() || null, b.password || null, b.must_change === 'true'],
       );
       flash(s, 'Account created. Now give it access to applications.');
       return back(reply, s, `${BASE}/users/${r.id}`);
@@ -100,12 +114,32 @@ export async function usersRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post(`${BASE}/users/settings`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = req.body ?? {};
+    const n = (v: string | undefined, min: number, max: number) => String(Math.min(max, Math.max(min, Math.round(Number(v) || 0))));
+    await owner.query(
+      `insert into meta.setting (name, value) values ('password_min_length', $1), ('password_lifetime_days', $2), ('password_require_mixed', $3)
+       on conflict (name) do update set value = excluded.value`,
+      [n(b.password_min_length, 6, 128), n(b.password_lifetime_days, 0, 3650), b.password_require_mixed === 'true' ? 'true' : 'false'],
+    );
+    clearAccountSettings();
+    flash(s, 'Account settings saved.');
+    return back(reply, s, `${BASE}/users`);
+  });
+
   // ---------------------------------------------------------------- one account
   app.get(`${BASE}/users/:id`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const u = await owner.one('select * from meta.account where id = $1', [req.params.id]);
+    const u = await owner.one('select *, meta.password_days_left(username) as days_left from meta.account where id = $1', [req.params.id]);
     if (!u) return reply.code(404).send('Not found');
+    const fails = (await owner.one(
+      `select count(*)::int as n from meta.activity_log l
+        where l.event = 'login_failed' and lower(l.username) = lower($1) and l.at > now() - interval '1 hour'
+          and l.at > coalesce((select max(x.at) from meta.activity_log x where x.event in ('login', 'login_unlocked') and lower(x.username) = lower($1)), '-infinity')`,
+      [u.username])).n;
     const [access, apps] = await Promise.all([
       owner.query(
         `select aa.app_id, aa.roles, p.alias, p.name from meta.app_access aa join meta.app p on p.id = aa.app_id
@@ -127,8 +161,19 @@ export async function usersRoutes(app: FastifyInstance) {
               <small class="help">Inactive accounts can't sign in to any application; deactivating ends their sessions.</small></div>
             <div class="buttons"><button class="btn btn-hot">Save</button></div>
           </form>
+          <h3>Password</h3>
+          <ul class="checklist">
+            <li>${u.password_hash ? html`Set ${u.password_changed_at ? html`on ${String(u.password_changed_at).slice(0, 10)}` : ''}` : 'No password (single sign-on only)'}</li>
+            ${u.must_change_password ? html`<li><b>Must be changed at the next sign-in</b></li>` : u.days_left !== null ? html`<li>Expires in ${u.days_left} day(s)</li>` : ''}
+            ${fails ? html`<li>${fails} failed sign-in(s) in the last hour</li>` : ''}
+          </ul>
+          <div class="buttons">
+            ${u.password_hash ? html`<form method="post" action="${BASE}/users/${u.id}/expire">${csrf(s)}<input type="hidden" name="expire" value="${u.must_change_password ? '0' : '1'}"><button class="btn">${u.must_change_password ? 'Unexpire password' : 'Expire password'}</button></form>` : ''}
+            <form method="post" action="${BASE}/users/${u.id}/unlock">${csrf(s)}<button class="btn"${fails ? '' : raw(' disabled')}>Unlock sign-in</button></form>
+          </div>
           <form method="post" action="${BASE}/users/${u.id}/password" class="danger-zone">${csrf(s)}
-            <div class="form-grid">${input('password', u.password_hash ? 'New password' : 'Set a password', '', { type: 'password', auto: 'new-password', help: 'At least 8 characters. Ends the account’s sessions.' })}</div>
+            <div class="form-grid">${input('password', u.password_hash ? 'New password' : 'Set a password', '', { type: 'password', auto: 'new-password', help: 'Ends the account’s sessions.' })}</div>
+            <div class="field"><label class="check"><input type="checkbox" name="must_change" value="true" checked> Require change of password on first use</label></div>
             <div class="buttons"><button class="btn">Set password</button>
               ${u.password_hash ? html`<button class="btn" name="remove" value="1" data-confirm="Remove the password? The account can then only sign in through single sign-on.">Remove password</button>` : ''}</div>
           </form>
@@ -179,15 +224,34 @@ export async function usersRoutes(app: FastifyInstance) {
     try {
       if (b.remove === '1') await owner.query('update meta.account set password_hash = null where id = $1', [req.params.id]);
       else {
-        const problem = passwordProblem(b.password);
+        const acc = await owner.one('select username from meta.account where id = $1', [req.params.id]);
+        const problem = await passwordProblem(b.password, { username: acc?.username });
         if (problem) throw new Error(problem);
-        await owner.query('update meta.account set password_hash = meta.hash_password($2) where id = $1', [req.params.id, b.password]);
+        await owner.query('select meta.set_password($1, $2, $3)', [acc?.username, b.password, b.must_change === 'true']);
       }
       await endSessions(req.params.id);
       flash(s, b.remove === '1' ? 'Password removed.' : 'Password set.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
+    return back(reply, s, `${BASE}/users/${req.params.id}`);
+  });
+
+  app.post(`${BASE}/users/:id/expire`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const acc = await owner.one('select username from meta.account where id = $1', [req.params.id]);
+    if (acc) await owner.query(req.body?.expire === '1' ? 'select meta.expire_password($1)' : 'select meta.unexpire_password($1)', [acc.username]);
+    flash(s, req.body?.expire === '1' ? 'Password expired: it must be changed at the next sign-in.' : 'Password no longer expired.');
+    return back(reply, s, `${BASE}/users/${req.params.id}`);
+  });
+
+  app.post(`${BASE}/users/:id/unlock`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const acc = await owner.one('select username from meta.account where id = $1', [req.params.id]);
+    if (acc) await owner.query(`insert into meta.activity_log (username, event, detail) values ($1, 'login_unlocked', $2)`, [acc.username, `by ${s.username}`]);
+    flash(s, 'Sign-in unlocked.');
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 

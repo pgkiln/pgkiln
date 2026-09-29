@@ -3,6 +3,7 @@ import type { BindValues } from '../binds.ts';
 import type { Client } from '../db.ts';
 import type { Raw } from '../html.ts';
 import type { App, Button, Page } from '../metadata.ts';
+import type { Locale } from './locale.ts';
 import { logActivity, type Session } from '../session.ts';
 
 export interface Errors {
@@ -41,6 +42,8 @@ export interface PageContext {
   detached: Raw[];
   /** The submitted form (POST), e.g. for grid rows. */
   body?: Record<string, unknown>;
+  /** language, texts and theme of this request */
+  locale: Locale;
 }
 
 /** Session state plus the built-in substitution strings. */
@@ -53,14 +56,20 @@ export function bindValues(ctx: PageContext): BindValues {
     APP_PAGE_ID: String(ctx.page.page_no),
     APP_SESSION: ctx.session.id,
     REQUEST: ctx.request,
+    APP_LANGUAGE: ctx.locale.lang,
   };
 }
 
 /** Replace &NAME. substitution strings (APEX syntax); `encode` escapes each value. */
 export function substitute(text: string, ctx: PageContext, encode: (v: string) => string) {
   const values = bindValues(ctx);
-  return text.replace(/&([A-Za-z][A-Za-z0-9_]*)\./g, (m, name: string) => {
-    const v = values[name.toUpperCase()];
+  return text.replace(/&([A-Za-z][A-Za-z0-9_]*(?:\$[A-Za-z0-9_.-]+?)?)\./g, (m, name: string) => {
+    const upper = name.toUpperCase();
+    if (upper.startsWith('APP_TEXT$')) {
+      const msg = ctx.locale.messages[upper.slice(9)];
+      return msg === undefined ? m : encode(msg);
+    }
+    const v = values[upper];
     return v === undefined ? m : encode(v ?? '');
   });
 }
