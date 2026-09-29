@@ -19,6 +19,7 @@ cp .env.example .env
 npm run setup        # Postgres 17 on localhost:5434, migrations + HR sample
 npm run dev          # http://127.0.0.1:3100
 npm test             # unit + security regression tests (needs the database)
+npm run test:e2e     # browser tests on phone/tablet/desktop (npx playwright install chromium first)
 ```
 
 | URL | Login | What |
@@ -34,34 +35,36 @@ authorization schemes and row level security at work.
 `npm run db:reset` recreates the database. Schema changes go in a new
 `db/migrations/NNN_*.sql` file; `npm run db:migrate` applies pending ones.
 
-## What's in the box (APEX → pgapex)
+## What's in the box
 
-**Runtime (Universal Theme-style UI)**
-- Side navigation menu (hierarchical, icons, per-entry authorization), breadcrumbs, user menu, collapsible nav, mobile layout, dark mode
+For a full comparison with Oracle APEX 26.1, including what's missing, see
+**[docs/apex-feature-parity.md](docs/apex-feature-parity.md)**.
+
+**Runtime (Universal Theme-style UI, responsive on phone, tablet and desktop)**
+- Side or top navigation (a drawer on tablets and phones), breadcrumbs, user menu, dark mode, theme colours
 - 12-column region grid; region templates *standard*, *plain*, *collapsible*
 - Regions:
-  - **Interactive report**: search, column filters, sort, rows per page, CSV download, and an Actions menu
-  - **Form**: automatic row fetch and DML
-  - **Cards**, including KPI "metric" cards
-  - **Bar chart**
-  - **Static HTML**
-- **Modal dialog pages**: forms open over the report; they close and refresh the report on success
-- **Items**: text, textarea, number, date, datetime, select, radio, checkbox, switch, display, hidden, password. Lists of values come from SQL or `STATIC:`; items can be required or read-only (by condition), and select lists can cascade.
-- **Dynamic actions** (client events: change, click, load):
+  - **Interactive report**: search, column filters, sort, rows per page, CSV download, reflow on phones
+  - **Interactive grid**: inline edit, add and delete rows
+  - **Form**: automatic row fetch and DML, in a page or a **modal dialog**
+  - **Charts**: bar, column, line, area and donut
+  - **Cards and metric cards**, **calendar**, **faceted search**
+  - **Static and dynamic content**
+- **Items**: text, textarea, number, date, datetime, select, popup LOV (searchable), radio, checkbox, switch, checkbox group, multi-select, email, phone, URL, colour, display, hidden, password. Lists of values come from SQL, `STATIC:` or shared lists; items can be required or read-only (by condition), and select lists can cascade.
+- **Dynamic actions**:
   - Client-side: show, hide, enable, disable, alert, submit
   - Server-side: set value from SQL, execute SQL, refresh a region, refresh an item
-- Validations (not-null, SQL expression, regex), processes (automatic form DML, or any SQL/PL/pgSQL), branches, success messages
-- Application items, application processes (after login, before every page), and `&ITEM.` substitutions
+- Validations, processes (form DML, grid DML, any SQL/PL/pgSQL), branches, application items and processes
 
 **Builder**
-- App Builder home, app dashboard, and a "Create pages from a table" wizard (interactive report plus a modal form)
-- A **page designer** with a component tree (regions → items and buttons, dynamic actions, validations, processes) and a grouped property editor
-- **Shared components**: navigation menu, authorization schemes, application items, application processes, users
-- Per-app settings with a security checklist, and an **activity monitor** (page views, timings, sign-ins, denials, errors)
-- **SQL Workshop**: SQL commands, plus an object browser showing columns, **RLS policies**, grants, data and function source
+- App Builder home, app dashboard, and wizards: *Report and form* and *Interactive grid* from any table
+- A **page designer** with a component tree and a grouped property editor
+- **Shared components**: navigation menu, authorization schemes, lists of values, application items and processes, users
+- Settings with theme and a security checklist, and an **activity monitor**
+- **SQL Workshop**: SQL commands, plus an object browser with RLS policies and grants
 - Export and import of apps as JSON, and developer accounts
 
-**Security** is covered in [SECURITY.md](SECURITY.md): least-privilege runtime role, per-app database roles, authorization schemes, checksummed URLs, CSRF protection, login throttling, CSP, and 23 security regression tests.
+**Security** is covered in [SECURITY.md](SECURITY.md): least-privilege runtime role, per-app database roles, authorization schemes, checksummed URLs and grid rows, CSRF protection, login throttling, a strict CSP, and 28 security regression tests.
 
 ## PL/pgSQL examples in the HR app
 
@@ -125,22 +128,16 @@ Inside functions and `DO` blocks, use `meta.v('P1_X')`.
 ```
 db/migrations/     versioned schema (metadata repository, roles, SQL API)
 db/seed/hr.sql     HR sample: schema, PL/pgSQL, RLS, and the app definition
-src/runtime/       context, authz, items, report, regions, render, engine, routes
+src/runtime/       context, authz, items, report, grid, charts, calendar, facets, regions, render, engine, routes
 src/builder/       builder UI; components.ts is the spec the property editor is generated from
 src/security.ts    checksums, headers, password policy
 public/            theme (CSS), app.js, icon sprite
-test/              bind scanner unit tests, security regression tests
+test/              bind scanner unit tests, security regression tests, e2e/ browser tests
 ```
 
 ## Roadmap
 
-- Interactive grid (inline editable report)
-- More charts (line, pie), plus "control break" and aggregates in reports
-- Shared lists of values, templates/theme roller, a drag-and-drop layout editor
-- File upload items (bytea / object storage) and rich text
-- Automations (scheduled PL/pgSQL through `pg_cron`), email, REST data sources
-- Authentication schemes: OpenID Connect / SAML, LDAP
-- MFA for developers, and an audit trail of builder changes
+See the prioritised roadmap at the end of [docs/apex-feature-parity.md](docs/apex-feature-parity.md#roadmap-proposed-priority).
 
 ## Contributing
 

@@ -22,6 +22,7 @@ npm run test:e2e  # browser tests on phone/tablet/desktop (run `npx playwright i
 - `db/migrations/` holds the metadata repository (`meta` schema) and the SQL API. **Never edit a
   migration that has been released**; add `NNN_description.sql` instead.
 - `src/runtime/` renders and processes application pages; `src/builder/` is the builder UI.
+- `docs/` holds the [APEX feature parity matrix](docs/apex-feature-parity.md); update it when you close a gap.
 - `src/builder/components.ts` describes the editable properties of every component. Adding a column
   to a meta table usually means adding a field here.
 - `public/` holds the theme (CSS), the client runtime (`app.js`, progressive enhancement only) and icons.

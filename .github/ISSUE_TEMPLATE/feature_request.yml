@@ -14,3 +14,9 @@ body:
     attributes:
       label: Proposed solution
       description: How could it look in the metadata (meta.* tables), runtime and builder?
+  - type: checkboxes
+    id: parity
+    attributes:
+      label: Parity
+      options:
+        - label: I checked docs/apex-feature-parity.md
