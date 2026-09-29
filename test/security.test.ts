@@ -465,3 +465,21 @@ describe('user directory', () => {
     }
   });
 });
+
+describe('HR sample', () => {
+  test('read notifications keep their message after "Mark all read"', async () => {
+    const b = await as('king');
+    const before = await owner.query(`select id, read_at from hr.notification where username = 'king'`);
+    try {
+      await owner.query(`update hr.notification set read_at = null where username = 'king'`);
+      await b.get('/a/hr/1');
+      assert.equal((await b.post('/a/hr/1', { __csrf: b.lastCsrf, __request: 'MARK_READ' })).statusCode, 303);
+      const page = (await b.get('/a/hr/1')).body;
+      assert.equal((await owner.one(`select count(*)::int as n from hr.notification where username = 'king' and read_at is null`)).n, 0);
+      assert.match(page, /requested \d+ day\(s\) of leave/, 'messages still shown (NULL || text is NULL in Postgres)');
+      assert.doesNotMatch(page, /●/);
+    } finally {
+      for (const r of before.rows) await owner.query('update hr.notification set read_at = $2 where id = $1', [r.id, r.read_at]);
+    }
+  });
+});

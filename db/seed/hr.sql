@@ -419,7 +419,7 @@ select p.id, r.seq, r.title, r.type, r.cols, r.template, r.source, r.config::jso
    E'select job, sum(sal) from hr.emp group by job order by 2 desc',
    '{}'),
   (50, 'My notifications', 'report', 7, 'standard',
-   E'select case when read_at is null then ''● '' end || message as message, created_at as received\n  from hr.notification\n order by created_at desc\n limit 8',
+   E'select concat(case when read_at is null then ''● '' end, message) as message, created_at as received\n  from hr.notification\n order by created_at desc\n limit 8',
    '{"searchable": false, "sortable": false, "page_size": 8, "empty": "No notifications."}'),
   (60, 'Most recent hires', 'report', 5, 'standard',
    E'select e.ename as name, d.dname as department, e.hiredate\n  from hr.emp e left join hr.dept d using (deptno)\n order by e.hiredate desc\n limit 5',

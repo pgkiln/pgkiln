@@ -106,6 +106,7 @@ tokens and an endpoint overview under **Builder → REST API**. The recommended 
 | autonomous transactions | not supported; use a separate connection or `dblink` if you really need it |
 | `v('APP_USER')`, `:APP_USER` | `meta.app_user()`, `:APP_USER` |
 | empty string is NULL | Postgres distinguishes them, but pgapex stores empty items as NULL, as APEX does |
+| `'a' \|\| null` is `'a'` | `'a' \|\| null` is **NULL**: use `concat(a, b)` or `concat_ws(sep, …)`, which skip NULLs, or `coalesce(b, '')` |
 
 Tips:
 
