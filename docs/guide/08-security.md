@@ -9,38 +9,64 @@ Each application chooses its **authentication** in **Settings**:
 
 | Authentication | Behaviour |
 |---|---|
-| **App users** | A login page at `/a/<alias>/login`, checked against the application's user list |
+| **App users** | A login page at `/a/<alias>/login`, checked against the **user directory** |
 | **None** | A public application. Everybody is `nobody` |
 
 In an app with a login, pages require sign-in unless *Requires authentication* is unchecked on
 the page (for a public start page, for example).
 
-### Application users
+### The user directory
 
-Users are managed per application under **Shared Components → Application users** (or in the
-table `meta.app_user`):
+Like APEX's workspace accounts, pgapex has **one account per person** for the whole installation
+(**Builder → Users**, table `meta.account`):
 
 | Field | Meaning |
 |---|---|
-| Username | Case-insensitive, unique within the app |
-| Password | Stored as a bcrypt hash; at least 8 characters when set in the builder |
-| Roles | Free-form role names, e.g. `admin, manager`, used by authorization schemes and `meta.has_role()` |
-| Active | Inactive users can't sign in; deactivating ends their sessions |
+| Username | Unique, not case-sensitive; no spaces or colons |
+| Name, e-mail | For display |
+| Password | bcrypt hash; at least 8 characters when set in the builder. May be empty for accounts that only sign in through single sign-on |
+| Active | Inactive accounts can't sign in anywhere; deactivating ends their sessions |
+
+### Access control per application
+
+Each application decides who may use it (**Shared Components → Access control**, like APEX's
+*Application Access Control*):
+
+| Setting | Who may sign in |
+|---|---|
+| **Only accounts listed** (default) | Accounts that have been granted access to this application |
+| **Any active account** | Every active account in the directory |
+
+Granting access assigns **roles for that application** (`admin, manager`, …), which authorization
+schemes and `meta.has_role()` check. The same person can be an administrator in one app and a
+plain user in another. Grant access from the application (Access control) or from the account
+(**Users → account → Application access**).
+
+Roles are resolved **at sign-in** and kept with the session. When you change someone's roles or
+revoke access, their sessions in that app end, so the change applies at their next sign-in.
+
+An account without access to an app gets the same "Invalid username or password" as a wrong
+password, so the login page doesn't reveal which accounts exist or which apps they use.
 
 In SQL (for scripts and migrations):
 
 ```sql
-insert into meta.app_user (app_id, username, password_hash, roles)
-select id, 'alice', meta.hash_password('a-strong-password'), '{manager}'
-  from meta.app where alias = 'hr';
+insert into meta.account (username, display_name, password_hash)
+values ('alice', 'Alice Example', meta.hash_password('a-strong-password'));
+
+insert into meta.app_access (app_id, account_id, roles)
+select a.id, u.id, '{manager}'
+  from meta.app a, meta.account u
+ where a.alias = 'hr' and u.username = 'alice';
 ```
 
-> **pgapex vs Oracle APEX.** In APEX, "APEX accounts" belong to the **workspace**, and every
-> application in the workspace can use them. Access per app is then limited with roles
-> (Application Access Control) and authorization schemes. In pgapex, users belong to **one
-> application**, which is simpler and isolates apps completely, but means a person who uses
-> three apps needs three accounts. A shared user directory with per-app role assignments, plus
-> single sign-on (OpenID Connect), is on the roadmap. See [chapter 11](11-from-apex.md#users-per-application).
+Scripts written for older versions keep working: `meta.app_user` is now a view, and inserting into
+it creates the account (if needed) and grants access:
+
+```sql
+insert into meta.app_user (app_id, username, password_hash, roles)
+select id, 'alice', meta.hash_password('a-strong-password'), '{manager}' from meta.app where alias = 'hr';
+```
 
 ### What sign-in protects against
 

@@ -9,7 +9,7 @@ triggers, your own functions).
 |---|---|---|
 | `meta.app_user()` | text | The signed-in application user, or `nobody` |
 | `meta.app_id()` | int | The current application's id |
-| `meta.has_role(role)` | boolean | Whether the current user has the role (case-insensitive) and is active |
+| `meta.has_role(role)` | boolean | Whether the current user has the role in this application (roles are resolved at sign-in) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
@@ -29,7 +29,8 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 | `meta.export_app(alias)` | The application as JSON (`pgapex/2` format) |
 | `meta.import_app(json, alias default null)` | Import an export, optionally under a new alias; returns the new app id |
 | `meta.hash_password(text)` | A bcrypt hash for `meta.app_user.password_hash` / `meta.developer.password_hash` |
-| `meta.authenticate(app_id, username, password)` | Username on success, NULL otherwise (used by the login page) |
+| `meta.authenticate(app_id, username, password)` | Username on success, NULL otherwise, including when the account has no access to the app (used by the login page) |
+| `meta.account_roles(app_id, username)` | The account's roles in an application |
 
 ## Metadata tables
 
@@ -45,11 +46,19 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `name` | text | Display name |
 | `home_page` | int | Page opened by `/a/<alias>` |
 | `authentication` | text | `app_users` or `none` |
+| `access_control` | text | `assigned` (only accounts with access) or `any_user` |
 | `db_role` | text | Database role every request runs as |
 | `debug` | boolean | Show database error details to users |
 | `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top"}` |
 
-**`app_user`**: `app_id`, `username`, `password_hash` (bcrypt), `roles` (text[]), `active`, `last_login_at`.
+**`account`** (the user directory): `username` (unique, case-insensitive), `display_name`, `email`,
+`password_hash` (bcrypt; NULL = no password), `active`, `created_at`, `last_login_at`.
+
+**`app_access`**: `app_id`, `account_id`, `roles` (text[]); who may use which application.
+
+**`app_user`**: a *view* over `account` + `app_access` (`id`, `app_id`, `username`, `password_hash`,
+`roles`, `active`, `last_login_at`), kept for compatibility. Inserting creates the account if
+needed and grants access; deleting revokes access.
 
 **`authz_scheme`**: `app_id`, `name` (uppercase), `type` (`role` / `sql`), `value`, `error_message`.
 
@@ -109,7 +118,7 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 
 | Table | Contents | Readable by the runtime role |
 |---|---|---|
-| `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
+| `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
 | `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `logout`, `error`, `forbidden`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
 | `developer` | Builder accounts | no |
 | `instance_setting` | Secrets, e.g. the URL checksum key | no |

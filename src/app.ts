@@ -5,6 +5,7 @@ import formbody from '@fastify/formbody';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { builderRoutes } from './builder/routes.ts';
+import { usersRoutes } from './builder/users.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 
@@ -21,6 +22,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(fastifyStatic, { root: join(root, 'public'), prefix: '/static/' });
   await app.register(runtimeRoutes);
   await app.register(builderRoutes);
+  await app.register(usersRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));
   return app;
 }

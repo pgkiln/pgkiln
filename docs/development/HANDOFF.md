@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-29, during sprint 4 step A (user directory).
+Last updated: 2026-09-29. Step A (user directory) is **done**; next is step B (single sign-on).
 
 ## Project in one paragraph
 
@@ -70,37 +70,11 @@ Design (implemented in `db/migrations/003_user_directory.sql`, applied to the de
   password; bcrypt always runs). `meta.account_roles(app, user)`: roles from app_access.
 - The runtime role may read `meta.account` **without** `password_hash`, and `meta.app_access`.
 
-Done so far (uncommitted work is in the WIP commit on `sprint-4`):
-
-- [x] Migration 003 (applied to the dev DB; `npm run db:reset` also works from scratch, not yet re-verified)
-- [x] `src/session.ts`: `Session.roles`; `createSession(..., username, roles)`
-- [x] `src/metadata.ts`: `App.access_control`; `accountRoles()` replaces `loadUserRoles()`
-- [x] `src/runtime/routes.ts`: `ctx.roles` from the session; **`completeLogin()`** (exported) does
-      the session swap + roles + activity log + after-login processes; step B reuses it. `safeNext` is module level.
-- [x] `src/builder/ui.ts`: builder helpers extracted from `builder/routes.ts` (shell with the new **Users** nav entry)
-- [x] `src/builder/users.ts`: directory pages `/builder/users` (list, search, create) and
-      `/builder/users/:id` (details, password set/remove, delete, per-app access grant/roles/revoke);
-      `endSessions()` and `grantAccess()` helpers. **Not registered yet.**
-
-To do for A:
-
-- [ ] Register `usersRoutes` in `src/app.ts` (next to `builderRoutes`).
-- [ ] `src/builder/routes.ts`, shared components: replace the "Application users" editor and the
-      routes `POST /builder/apps/:id/users…` with **Access control**: the `access_control` setting,
-      the accounts with access (roles editable, revoke), and grant by username (with a datalist of
-      accounts); link to `/builder/users`. Use `grantAccess`/`endSessions` from `users.ts`.
-- [ ] Create-app form ("First user"): if the account exists, grant it `{admin}` (ignore the
-      password and say so); otherwise create the account and grant it.
-- [ ] Settings page: show `access_control` there too, or only in Access control (pick one).
-- [ ] Tests (`test/security.test.ts`): one account signs in to two apps with different roles; no
-      access → generic failure; `any_user` apps; deactivation ends sessions and blocks sign-in;
-      a role in app A doesn't count in app B; the runtime can't read `meta.account.password_hash`.
-      Existing tests use `meta.app_user` inserts (via the view) and should still pass.
-- [ ] `npm run db:reset && npm test && npm run test:e2e` all green.
-- [ ] Docs: `docs/guide/08-security.md` (users section), `03-builder.md` (Users page, Access
-      control), `09-reference.md` (tables/functions), `11-from-apex.md` (it's now like APEX),
-      parity matrix, CHANGELOG (note the migration's username splitting).
-- [ ] Commit "feat: workspace user directory with per-application access".
+Status: **done** (commit "feat(users): …" on `sprint-4`). Migration 003, runtime
+(`completeLogin()`, session roles), builder **Users** pages (`src/builder/users.ts`) and
+**Access control** in Shared Components (`src/builder/routes.ts`), create-app first user reuses
+existing accounts, 4 new tests (37 total), e2e covers `/builder/users` and an account page, docs
+(chapters 3, 8, 9, 10, 11), parity matrix and CHANGELOG updated. `npm run db:reset && npm test && npm run test:e2e` green.
 
 ### B: single sign-on (OpenID Connect): design, not started
 

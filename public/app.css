@@ -591,3 +591,8 @@ input[type=color] { width: 4rem; min-height: 2.4rem; padding: 0.15rem; }
   .grid-table th.grid-sel, .grid-table td.grid-sel { width: 100%; text-align: left; }
   .grid-table td input:not([type=checkbox]), .grid-table td select { min-width: 0; width: 100%; }
 }
+
+/* two-thirds / one-third columns on desktops (builder Users page) */
+@media (min-width: 1024px) {
+  .columns.wide-left { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+}

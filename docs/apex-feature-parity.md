@@ -100,7 +100,8 @@ Last reviewed: 2026-09-29 (pgapex 0.3.0).
 
 | APEX | pgapex | Notes |
 |---|---|---|
-| APEX accounts authentication | ✅ | bcrypt, lockout, session rotation, idle and absolute timeouts |
+| APEX accounts authentication | ✅ | Workspace user directory, bcrypt, lockout, session rotation, idle and absolute timeouts |
+| Application Access Control (roles per app, any-user switch) | ✅ | Access control per application |
 | Database accounts, LDAP, SAML, social sign-in / OpenID Connect, HTTP header | ❌ | OIDC is the top authentication priority |
 | Custom authentication | ❌ | |
 | Multi-factor authentication | ❌ | |

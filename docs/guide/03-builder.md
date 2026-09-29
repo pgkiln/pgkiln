@@ -27,7 +27,7 @@ forms to **create** and **import** applications.
 | Alias | Lowercase URL name: `inventory` gives `/a/inventory` |
 | Parsing schema | The database schema the app works with. Choose an existing schema, or leave it on "new schema" to create one named after the alias |
 | Authentication | *App users* (a login page and a user list) or *None* (a public app) |
-| First user / Password | The first application user; they get the `admin` role |
+| First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
 
 Creating the app also:
 
@@ -99,12 +99,20 @@ Components used by the whole application:
 
 | Component | Purpose |
 |---|---|
-| **Application users** | Create users, set roles (comma separated), reset passwords, deactivate. Changing a password or deactivating a user ends their sessions |
+| **Access control** | Who may sign in (only listed accounts, or any active account), and which accounts have access with which roles |
 | **Navigation menu** | Menu entries: label, icon, target page, parent (for sub-menus), authorization |
 | **Authorization schemes** | Named access rules, used by pages, regions, items, buttons, processes, dynamic actions and menu entries ([chapter 8](08-security.md)) |
 | **Lists of values** | Reusable queries for select lists, referenced as `LOV:NAME` |
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
+
+## Users (the user directory)
+
+**Builder → Users** lists every account with the applications (and roles) it can use. Create
+accounts here (a password is optional for single sign-on-only accounts). Open an account to edit
+its name and e-mail, set or remove its password, deactivate or delete it, and grant, change or
+revoke access per application. Password changes, deactivation and access changes end the
+affected sessions. See [chapter 8](08-security.md#the-user-directory).
 
 ## Settings
 

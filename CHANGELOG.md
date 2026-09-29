@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- User directory (Builder → Users): one account per person for all applications, with per-application access control ("only listed accounts" or "any active account") and roles per application, like APEX workspace accounts with Application Access Control.
+
+### Changed
+- Roles are resolved at sign-in and stored with the session; `meta.has_role()` reads them.
+- `meta.app_user` is now a compatibility view over `meta.account` and `meta.app_access`.
+- **Upgrade note:** migration 003 moves existing per-application users into the directory. A username that existed in several applications is kept for the first application and renamed `username@alias` for the others (they can't be assumed to be the same person). Existing application sessions end.
+
 ## [0.3.0] - 2026-09-29
 
 ### Added

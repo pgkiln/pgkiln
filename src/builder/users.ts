@@ -51,7 +51,7 @@ export async function usersRoutes(app: FastifyInstance) {
     const main = html`
       <div class="title-row"><h1>Users</h1></div>
       <p class="muted" style="margin-top:0">One account per person. Give accounts access to applications, with roles per application, here or under an application's <b>Shared Components → Access control</b>.</p>
-      <div class="columns" style="grid-template-columns: minmax(0, 2fr) minmax(0, 1fr)">
+      <div class="columns wide-left">
         ${region('Accounts', html`
           <form method="get" class="search" role="search" style="margin-bottom:.75rem;max-width:none">
             <input type="search" name="q" value="${q}" placeholder="Search name, username or e-mail…" aria-label="Search accounts"><button class="btn">Search</button>

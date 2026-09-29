@@ -17,6 +17,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
 | `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
 | `APEX_ACL` / `apex_acl.has_user_role` | `meta.has_role('role')` |
+| Workspace users (APEX accounts), Application Access Control | `meta.account` (Builder → Users), `meta.app_access` (Access control) |
 | Page access protection "Arguments must have checksum" | `protection = 'checksum'` (the default) |
 | Automatic row processing (DML) | Process type `form_dml` |
 | Interactive grid DML | Process type `grid_dml` |
@@ -47,21 +48,13 @@ Many organisations don't use APEX accounts at all. They choose another authentic
 the identity provider's groups to APEX roles. Applications in the same workspace can also share
 a session, so signing in to one signs you in to the others.
 
-**How pgapex does it today.** Users belong to **one application** (`meta.app_user.app_id`),
-with roles per user. That's the Application Access Control model without the shared workspace
-directory: simple, and apps are fully isolated, but one person using three apps needs three
-accounts, and there is no single sign-on yet.
+**How pgapex does it.** The same model: a **user directory** with one account per person
+(**Builder → Users**), and per application an **Access control** setting (only listed accounts, or
+any active account) plus role assignments per account. Roles feed authorization schemes and
+`meta.has_role()`. See [chapter 8](08-security.md#the-user-directory).
 
-**Direction.** The roadmap moves closer to APEX:
-
-1. A **workspace-level user directory** (one account per person) with **per-application role
-   assignments** and an "only users with a role may use this app" switch, which is exactly APEX's
-   Application Access Control.
-2. **OpenID Connect** sign-in (Microsoft Entra ID, Google, Keycloak, …) with group → role mapping,
-   and optionally sessions shared between apps.
-
-Until then, for users who need several apps, create their account in each app. A script against
-`meta.app_user` makes that easy.
+Single sign-on with OpenID Connect (with identity-provider groups mapped to roles) is being
+added next; with it, signing in to a second app is silent via the identity provider's session.
 
 ## ORDS and PostgREST
 
