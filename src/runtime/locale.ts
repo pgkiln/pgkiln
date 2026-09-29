@@ -3,6 +3,7 @@ import { runtime } from '../db.ts';
 import { baseLanguage, fromAcceptLanguage, RTL, translator, type Translate } from '../i18n.ts';
 import type { App, Page } from '../metadata.ts';
 import type { Session } from '../session.ts';
+import { dateFormatter, type Formatter } from './format.ts';
 
 // The language, texts and theme of a request (APEX: globalization and
 // theme styles). Language: ?lang= for the session, then the user's choice,
@@ -24,8 +25,9 @@ export interface Locale {
   theme: ThemeMode;
   /** whether users may pick light/dark themselves */
   themeChoice: boolean;
-  dateFormat: string | null;
-  timestampFormat: string | null;
+  /** dates and timestamps for display (undefined: not a date) */
+  format: Formatter;
+  number: Intl.NumberFormat;
 }
 
 export const THEME_COOKIE = 'pgapex_theme';
@@ -103,17 +105,27 @@ export async function resolveLocale(req: FastifyRequest, app: App, session?: Ses
   }
   lang ??= app.language;
   const { messages, dict } = await texts(app, lang);
+  const t = translator(lang, Object.fromEntries(Object.entries(messages).map(([k, v]) => [k.toLowerCase(), v])));
+  // masks: a text message for this language, else the app's, else pgapex's default for the language
+  const mask = (key: 'format.date' | 'format.timestamp', appMask: string | null) =>
+    messages[key.toUpperCase()] ?? (appMask || t(key) || null);
+  let number: Intl.NumberFormat;
+  try {
+    number = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
+  } catch {
+    number = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
+  }
   return {
     lang,
     dir: RTL.has(baseLanguage(lang)) ? 'rtl' : 'ltr',
-    t: translator(lang, Object.fromEntries(Object.entries(messages).map(([k, v]) => [k.toLowerCase(), v]))),
+    t,
     tr: (text) => dict.get(text) ?? text,
     messages,
     languages,
     theme: themeFor(app, session, req),
     themeChoice: app.theme?.user_choice !== false,
-    dateFormat: app.date_format,
-    timestampFormat: app.timestamp_format,
+    format: dateFormatter(lang, mask('format.date', app.date_format), mask('format.timestamp', app.timestamp_format)),
+    number,
   };
 }
 

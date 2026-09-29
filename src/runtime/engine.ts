@@ -66,7 +66,7 @@ export async function fetchForms(ctx: PageContext) {
       );
       if (!res.rows.length) {
         // Not found, or hidden by row level security: behave identically.
-        ctx.errors.page.push(`${r.title ?? 'Record'}: record not found.`);
+        ctx.errors.page.push(ctx.locale.t('form.not_found', { region: r.title ?? ctx.locale.t('form.record') }));
         clearPageItems(ctx);
         continue;
       }
@@ -90,7 +90,7 @@ export async function validate(ctx: PageContext) {
   };
 
   for (const i of ctx.page.items)
-    if (i.required && vis.editable.has(i.name) && (state[i.name] ?? null) === null) fail(i.name, `${i.label ?? i.name} is required.`);
+    if (i.required && vis.editable.has(i.name) && (state[i.name] ?? null) === null) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
 
   for (const v of ctx.page.validations) {
     if (v.when_button && v.when_button !== ctx.request) continue;
@@ -149,24 +149,24 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       : `insert into ${table} default values returning ${pkCol}`;
     const res = await c.query({ text: sql, rowMode: 'array' });
     state[r.pk_item] = toState(res.rows[0][0]);
-    return p.success_message ?? 'Record created.';
+    return p.success_message ?? ctx.locale.t('form.created');
   }
 
-  if (pk === null) throw new Error('No record selected.');
+  if (pk === null) throw new Error(ctx.locale.t('form.no_record'));
   if (op === 'update') {
     if (columns.length) {
       const res = await c.query(
         `update ${table} set ${columns.map((i) => `${ident(i.source_column!)} = ${literal(state[i.name])}`).join(', ')} where ${pkCol} = ${literal(pk)}`,
       );
-      if (res.rowCount !== 1) throw new Error('Record not found; it may have been changed or deleted by someone else.');
+      if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
     }
-    return p.success_message ?? 'Changes saved.';
+    return p.success_message ?? ctx.locale.t('form.saved');
   }
 
   const res = await c.query(`delete from ${table} where ${pkCol} = ${literal(pk)}`);
-  if (res.rowCount !== 1) throw new Error('Record not found; it may have been changed or deleted by someone else.');
+  if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
   clearPageItems(ctx);
-  return p.success_message ?? 'Record deleted.';
+  return p.success_message ?? ctx.locale.t('form.deleted');
 }
 
 export class ProcessFailed extends Error {

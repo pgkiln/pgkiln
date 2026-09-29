@@ -124,7 +124,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   };
 
   const header = cols.map(
-    (col) => html`<th scope="col" class="${NUMERIC.has(col.typeOid) ? 'num' : null}">${headingOf(r, col.name)}${col.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}</th>`,
+    (col) => html`<th scope="col" class="${NUMERIC.has(col.typeOid) ? 'num' : null}">${headingOf(r, col.name, ctx.locale.tr)}${col.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}</th>`,
   );
 
   const rows = res.rows.map((row, i) => {
@@ -134,15 +134,15 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     const cells = cols.map((col, ci) => {
       const dbValue = toState(row[col.idx]) ?? '';
       orig[ci] = dbValue;
-      const label = headingOf(r, col.name);
-      if (!col.editable) return html`<td class="${NUMERIC.has(col.typeOid) ? 'num' : null}" data-label="${label}">${cell(row[col.idx], col.typeOid)}</td>`;
+      const label = headingOf(r, col.name, ctx.locale.tr);
+      if (!col.editable) return html`<td class="${NUMERIC.has(col.typeOid) ? 'num' : null}" data-label="${label}">${cell(row[col.idx], col.typeOid, ctx.locale.format)}</td>`;
       const name = `${g}_${i}_c${ci}`;
       const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${ci}`) ?? dbValue)) : dbValue;
       return html`<td data-label="${label}">${control(col, name, value, `${label}, row ${i + 1}`)}</td>`;
     });
     const deleted = pi !== undefined && pv(`${g}_${pi}_del`) === 'true';
     return html`<tr class="${deleted ? 'deleted' : null}">
-      ${deletable ? html`<td class="grid-sel" data-label="Delete"><label class="check"><input type="checkbox" name="${g}_${i}_del" value="true"${deleted ? raw(' checked') : ''}><span class="sr-only">Delete row ${i + 1}</span></label></td>` : ''}
+      ${deletable ? html`<td class="grid-sel" data-label="${ctx.locale.t('grid.delete')}"><label class="check"><input type="checkbox" name="${g}_${i}_del" value="true"${deleted ? raw(' checked') : ''}><span class="sr-only">${ctx.locale.t('grid.delete_row', { row: i + 1 })}</span></label></td>` : ''}
       ${cells}
       ${savable ? html`<td hidden><input type="hidden" name="${g}_${i}_pk" value="${pk}"><input type="hidden" name="${g}_${i}_cs" value="${rowToken(ctx, r, pk)}"><input type="hidden" name="${g}_${i}_orig" value="${JSON.stringify(orig)}"></td>` : ''}
     </tr>`;
@@ -151,9 +151,9 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   // New rows: re-show posted ones after a failed save, plus a blank template.
   const newRow = (j: number, values: Record<number, string> = {}) =>
     html`<tr class="grid-new" data-new-row="${j}">
-      ${deletable ? html`<td class="grid-sel" data-label="New"><span class="badge-pill">new</span></td>` : ''}
+      ${deletable ? html`<td class="grid-sel" data-label="${ctx.locale.t('grid.new')}"><span class="badge-pill">${ctx.locale.t('grid.new')}</span></td>` : ''}
       ${cols.map((col, ci) => {
-        const label = headingOf(r, col.name);
+        const label = headingOf(r, col.name, ctx.locale.tr);
         return writable.has(col.name)
           ? html`<td data-label="${label}">${control({ ...col, editable: true }, `${g}_n${j}_c${ci}`, values[ci] ?? '', `${label}, new row`)}</td>`
           : html`<td data-label="${label}"></td>`;
@@ -179,24 +179,24 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   return html`<div class="grid" data-grid="${g}">
     <div class="report-toolbar grid-toolbar">
       <div class="search" role="search">
-        <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="Search…" form="${searchForm}" aria-label="Search ${r.title ?? 'grid'}">
-        <button class="btn" form="${searchForm}">Go</button>
+        <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${ctx.locale.t('report.search_placeholder')}" form="${searchForm}" aria-label="${ctx.locale.t('report.search')} ${r.title ?? ''}">
+        <button class="btn" form="${searchForm}">${ctx.locale.t('report.go')}</button>
       </div>
       <div class="buttons">
-        ${insertable ? html`<button type="button" class="btn" data-grid-add="${g}">${icon('plus')} Add row</button>` : ''}
-        ${savable ? html`<button type="submit" class="btn btn-hot" name="__request" value="${saveRequest(r)}">Save</button>` : ''}
+        ${insertable ? html`<button type="button" class="btn" data-grid-add="${g}">${icon('plus')} ${ctx.locale.t('grid.add_row')}</button>` : ''}
+        ${savable ? html`<button type="submit" class="btn btn-hot" name="__request" value="${saveRequest(r)}">${ctx.locale.t('grid.save')}</button>` : ''}
       </div>
     </div>
     <div class="table-wrap"><table class="report report-reflow grid-table">
-      <thead><tr>${deletable ? html`<th scope="col" class="grid-sel"><span class="sr-only">Delete</span>${icon('close')}</th>` : ''}${header}</tr></thead>
+      <thead><tr>${deletable ? html`<th scope="col" class="grid-sel"><span class="sr-only">${ctx.locale.t('grid.delete')}</span>${icon('close')}</th>` : ''}${header}</tr></thead>
       <tbody>${rows}${postedNew}</tbody>
       ${insertable ? html`<tbody class="grid-template">${newRow(postedNew.length ? Math.max(...newRowIndexes(posted!, g)) + 1 : 0)}</tbody>` : ''}
     </table></div>
     ${total > st.size || pageNo > 1
-      ? html`<nav class="pager" aria-label="Pagination"><span>${(pageNo - 1) * st.size + 1}–${to} of ${total}</span>
-          ${pageNo > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo - 1)))}" data-grid-leave>‹ Previous</a>` : ''}
-          ${to < total ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo + 1)))}" data-grid-leave>Next ›</a>` : ''}</nav>`
-      : html`<div class="pager"><span>${total} row${total === 1 ? '' : 's'}</span></div>`}
+      ? html`<nav class="pager" aria-label="${ctx.locale.t('report.pagination')}"><span>${ctx.locale.t('report.range', { from: (pageNo - 1) * st.size + 1, to, total })}</span>
+          ${pageNo > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo - 1)))}" data-grid-leave>‹ ${ctx.locale.t('report.previous')}</a>` : ''}
+          ${to < total ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo + 1)))}" data-grid-leave>${ctx.locale.t('report.next')} ›</a>` : ''}</nav>`
+      : html`<div class="pager"><span>${ctx.locale.t('report.rows')}: ${total}</span></div>`}
   </div>`;
 }
 
@@ -249,14 +249,14 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
     const i = m[1];
     const pk = one(k) ?? '';
     if (!checksumValid(rowToken(ctx, r, pk), one(`${g}_${i}_cs`))) {
-      errors.push(`Row ${Number(i) + 1}: this row was changed outside the grid; reload the page.`);
+      errors.push(ctx.locale.t('grid.row_changed', { row: Number(i) + 1 }));
       continue;
     }
     if (one(`${g}_${i}_del`) === 'true') {
       if (!allow(r, 'delete')) continue;
-      await attempt(`Row ${Number(i) + 1}`, async () => {
+      await attempt(ctx.locale.t('grid.row', { row: Number(i) + 1 }), async () => {
         const res = await c.query(`delete from ${table} where ${pkCol} = ${literal(pk)}`);
-        if (res.rowCount !== 1) throw new Error('record not found (changed or deleted by someone else)');
+        if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
         deleted++;
       });
       continue;
@@ -273,13 +273,13 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
       if (!writable.has(col.name)) return;
       const v = norm(ci, one(`${g}_${i}_c${ci}`));
       if (v === (orig[ci] ?? null)) return;
-      if (required(col.name) && v === '') errors.push(`Row ${Number(i) + 1}: ${headingOf(r, col.name)} is required.`);
+      if (required(col.name) && v === '') errors.push(ctx.locale.t('grid.required', { row: Number(i) + 1, label: headingOf(r, col.name, ctx.locale.tr) }));
       sets.push(`${ident(col.name)} = ${literal(v === '' ? null : v)}`);
     });
     if (!sets.length) continue;
-    await attempt(`Row ${Number(i) + 1}`, async () => {
+    await attempt(ctx.locale.t('grid.row', { row: Number(i) + 1 }), async () => {
       const res = await c.query(`update ${table} set ${sets.join(', ')} where ${pkCol} = ${literal(pk)}`);
-      if (res.rowCount !== 1) throw new Error('record not found (changed or deleted by someone else)');
+      if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
       updated++;
     });
   }
@@ -296,16 +296,17 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
       if (!values.length) continue; // blank template row
       const missing = cols.filter((col) => required(col.name) && !values.some(([n]) => n === col.name));
       if (missing.length) {
-        errors.push(`New row: ${missing.map((col) => headingOf(r, col.name)).join(', ')} required.`);
+        errors.push(ctx.locale.t('grid.new_required', { labels: missing.map((col) => headingOf(r, col.name, ctx.locale.tr)).join(', ') }));
         continue;
       }
-      await attempt('New row', async () => {
+      await attempt(ctx.locale.t('grid.new_row'), async () => {
         await c.query(`insert into ${table} (${values.map(([n]) => ident(n)).join(', ')}) values (${values.map(([, v]) => literal(v)).join(', ')})`);
         inserted++;
       });
     }
 
   if (errors.length) throw new Error(errors.join(' '));
-  const parts = [inserted && `${inserted} added`, updated && `${updated} updated`, deleted && `${deleted} deleted`].filter(Boolean);
-  return p.success_message ?? (parts.length ? `Changes saved: ${parts.join(', ')}.` : 'No changes to save.');
+  const t = ctx.locale.t;
+  const parts = [inserted && t('grid.added', { n: inserted }), updated && t('grid.updated', { n: updated }), deleted && t('grid.deleted', { n: deleted })].filter(Boolean);
+  return p.success_message ?? (parts.length ? t('grid.saved_parts', { parts: parts.join(', ') }) : t('grid.no_changes'));
 }

@@ -610,6 +610,8 @@ export async function builderRoutes(app: FastifyInstance) {
     const tree = html`<ul class="tree">
       <li class="group">Security</li>
       <li><a href="${BASE}/apps/${a.id}/shared"${!selKind && !newKind ? raw(' aria-current="page"') : ''}>${icon('users')}<span>Access control</span><span class="kind">${users.length}</span></a></li>
+      <li class="group">Globalization</li>
+      <li><a href="${BASE}/apps/${a.id}/globalization">${icon('file')}<span>Translations and text messages</span><span class="kind">${[a.language, ...(a.languages ?? [])].join(', ')}</span></a></li>
       ${SHARED.map((kind) => {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>

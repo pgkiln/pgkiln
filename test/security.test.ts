@@ -483,3 +483,35 @@ describe('HR sample', () => {
     }
   });
 });
+
+describe('sprint 5: accounts, e-mail, globalization', () => {
+  test('the runtime role cannot read reset tokens or mail, nor change accounts beyond preferences', async () => {
+    for (const sql of [
+      'select * from meta.password_reset',
+      'select * from meta.mail_queue',
+      'select content from meta.mail_attachment',
+      'select password_hash from meta.account',
+      `update meta.account set active = true where username = 'king'`,
+      `update meta.account set must_change_password = false where username = 'king'`,
+      `update meta.account set email = 'x@evil.example' where username = 'king'`,
+      `select meta.set_password('king', 'hijack-hijack')`,
+      `select meta.expire_password('king')`,
+    ])
+      await assert.rejects(runtime.query(sql), /permission denied/, sql);
+    await runtime.query(`update meta.account set theme_pref = theme_pref where username = 'king'`);
+  });
+
+  test('reset links are single-use hashes bound to one app; a token for one app fails in another', async () => {
+    const other = (await owner.one(`insert into meta.app (alias, name, password_reset) values ('reset_test_app', 'Reset test', true) returning id`)).id;
+    try {
+      const t = (await runtime.one(`select token from meta.start_password_reset($1, 'king')`, [appId]))?.token;
+      assert.ok(t);
+      assert.equal((await runtime.one('select meta.check_password_reset($1, $2) as u', [other, t])).u, null, 'wrong app');
+      assert.equal((await runtime.one('select meta.check_password_reset($1, $2) as u', [appId, t])).u, 'king');
+      assert.equal((await runtime.query('select * from meta.start_password_reset($1, $2)', [other, 'king'])).rows.length, 0, 'no access to the other app');
+    } finally {
+      await owner.query(`delete from meta.password_reset where account_id = (select id from meta.account where username = 'king')`);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+});

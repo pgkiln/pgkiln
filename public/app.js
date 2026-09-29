@@ -184,6 +184,13 @@ document.documentElement.classList.add('js');
     }
   }
 
+  // ------------------------------------------------------------ file → textarea (imports)
+  document.addEventListener('change', async (e) => {
+    const input = e.target.closest('input[type=file][data-fill]');
+    const target = input && document.getElementById(input.dataset.fill);
+    if (target && input.files[0]) target.value = await input.files[0].text();
+  });
+
   // ------------------------------------------------------------ confirmations, menus, alerts
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-confirm]');

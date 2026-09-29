@@ -150,13 +150,14 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
 
 async function forbidden(ctx: PageContext, reply: FastifyReply, message: string, detail: string) {
   logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail });
-  const main = html`<div class="t-titlebar"><h1>Access denied</h1></div>
+  const t = ctx.locale.t;
+  const main = html`<div class="t-titlebar"><h1>${t('error.access_denied')}</h1></div>
     <div class="t-content"><div class="alert alert-error" role="alert">${message}</div>
-    <p><a class="btn" href="${ctx.base}/${ctx.app.home_page}">Go to the home page</a></p></div>`;
+    <p><a class="btn" href="${ctx.base}/${ctx.app.home_page}">${t('common.home')}</a></p></div>`;
   ctx.vis = { regions: new Set(), items: new Set(), editable: new Set(), buttons: new Map(), dynamicActions: new Set() };
   const body = await appTx(txContext(ctx), async (c) => {
     ctx.client = c;
-    return chrome(ctx, main, 'Access denied');
+    return chrome(ctx, main, t('error.access_denied'));
   });
   return reply.code(403).type('text/html').send(body);
 }
@@ -211,7 +212,7 @@ async function renderResponse(ctx: PageContext, reply: FastifyReply, code = 200)
 export async function runtimeRoutes(app: FastifyInstance) {
   app.get<{ Params: Params }>('/a/:alias', async (req, reply) => {
     const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
+    if (!a) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
     return reply.redirect(`/a/${a.alias}/${a.home_page}`);
   });
 
@@ -225,7 +226,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const normalised = normaliseReportParams(ctx.params);
     if (normalised !== null) return reply.redirect(`${ctx.base}/${ctx.page.page_no}${normalised ? `?${normalised}` : ''}`);
 
-    if (!applyUrlItems(ctx)) return forbidden(ctx, reply, 'This link is invalid or has been tampered with (checksum error).', `checksum error: ${req.url}`);
+    if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
     const flash = takeFlash(ctx.session);
     if (flash) ctx.messages.push(flash);
     const csvKey = [...ctx.params.keys()].find((k) => /^r\d+_csv$/.test(k));
@@ -245,7 +246,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await computeVisibility(ctx);
         if (csvKey) {
           const region = ctx.page.regions.find((r) => `r${r.id}_csv` === csvKey && r.type === 'report' && ctx.vis!.regions.has(r.id));
-          if (!region) throw new Forbidden('That report is not available.');
+          if (!region) throw new Forbidden(ctx.locale.t('error.report_unavailable'));
           return { csv: await reportCsv(ctx, region), name: `${(region.title ?? 'report').replace(/[^\w-]+/g, '_')}.csv` };
         }
         return { html: await renderPage(ctx) };
@@ -270,7 +271,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     ctx.dialog = body.__dialog === '1';
     const self = `${ctx.base}/${ctx.page.page_no}${ctx.dialog ? '?dialog=1' : ''}`;
     if (body.__csrf !== ctx.session.csrf_token)
-      return simplePage(reply, 403, 'Session expired', 'Your session changed or expired. Reload the page and try again.', self);
+      return simplePage(reply, 403, ctx.locale.t('error.session_changed_title'), ctx.locale.t('error.session_changed'), self, ctx.locale);
 
     let messages: string[] = [];
     let button;
@@ -285,7 +286,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const vis = await computeVisibility(ctx);
         const requested = body.__request ?? '';
         const pressed = requested ? vis.buttons.get(requested) : undefined;
-        if (requested && pressed?.action !== 'submit') throw new Forbidden('That action is not available to you.');
+        if (requested && pressed?.action !== 'submit') throw new Forbidden(ctx.locale.t('error.action_unavailable'));
         applyPostedItems(ctx, body);
         if (!pressed) return undefined;
         ctx.request = pressed.name;
@@ -321,7 +322,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ctx = await loadContext(req, reply, { json: true });
     if (!ctx) return;
     const body = req.body ?? {};
-    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: 'Session expired; reload the page.' });
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
     ctx.params = new URLSearchParams(body.__url_params ?? '');
     try {
       const result = await appTx(txContext(ctx), async (c) => {
@@ -329,7 +330,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await checkPageAccess(ctx);
         let vis = await computeVisibility(ctx);
         const da = ctx.page.dynamic_actions.find((d) => d.id === Number(req.params.id));
-        if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden('Unknown dynamic action.');
+        if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         applyPostedItems(ctx, body, list(da.items_to_submit));
         const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string> } = { items: {}, itemsHtml: {}, regions: {} };
         const affected = list(da.affected_items).filter((n) => vis.items.has(n));
@@ -370,14 +371,14 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ctx = await loadContext(req, reply, { json: true });
     if (!ctx) return;
     const body = req.body ?? {};
-    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: 'Session expired; reload the page.' });
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
     try {
       const out = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
         await checkPageAccess(ctx);
         const vis = await computeVisibility(ctx);
         const item = ctx.page.items.find((i) => i.name === req.params.item && i.config?.cascade_parents);
-        if (!item || !vis.editable.has(item.name)) throw new Forbidden('Unknown item.');
+        if (!item || !vis.editable.has(item.name)) throw new Forbidden(ctx.locale.t('error.unknown_item'));
         applyPostedItems(ctx, body, list(item.config.cascade_parents));
         ctx.session.state[item.name] = null; // the old value may not be in the new list
         return { html: (await renderItem(ctx, item)).toString() };
@@ -528,42 +529,44 @@ export async function runtimeRoutes(app: FastifyInstance) {
   const SSO_COOKIE = 'pgapex_sso';
 
   app.get<{ Params: { alias: string; provider: string }; Querystring: { next?: string } }>('/a/:alias/sso/:provider', async (req, reply) => {
-    const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
+    const loaded = await appWithLocale(req, req.params.alias);
+    if (!loaded) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
+    const { app: a, locale } = loaded;
     const p = a.sso_providers.includes(req.params.provider) ? await loadProvider(req.params.provider) : undefined;
-    if (!p) return simplePage(reply, 404, 'Not found', 'This sign-in method is not available.', `/a/${a.alias}/login`);
+    if (!p) return simplePage(reply, 404, locale.t('error.not_found'), locale.t('login.method_unavailable'), `/a/${a.alias}/login`, locale);
     try {
       const { url, browserKey } = await startSignIn(p, a.id, safeNext(a, req.query.next));
       reply.setCookie(SSO_COOKIE, browserKey, { path: '/sso', httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 600 });
       return reply.redirect(url);
     } catch (e) {
       req.log.warn({ err: e }, 'sso start failed');
-      return simplePage(reply, 502, 'Sign-in unavailable', `Could not reach ${p.display_name}. Please try again later.`, `/a/${a.alias}/login`);
+      return simplePage(reply, 502, locale.t('login.unavailable_title'), locale.t('login.sso_unavailable', { provider: p.display_name }), `/a/${a.alias}/login`, locale);
     }
   });
 
   app.get<{ Params: { provider: string } }>('/sso/callback/:provider', async (req, reply) => {
     const ip = clientIp(req);
     const p = await loadProvider(req.params.provider);
-    if (!p) return simplePage(reply, 404, 'Not found', 'Unknown identity provider.');
+    if (!p) return simplePage(reply, 404, english('error.not_found'), english('login.unknown_provider'));
     const browserKey = req.cookies[SSO_COOKIE];
     reply.clearCookie(SSO_COOKIE, { path: '/sso' });
     let result;
     try {
       result = await finishSignIn(p, new URLSearchParams(req.url.split('?')[1] ?? ''), browserKey);
     } catch (e) {
-      const msg = e instanceof SsoError ? e.message : 'The sign-in could not be completed.';
+      const msg = e instanceof SsoError ? e.message : english('login.sso_incomplete');
       if (!(e instanceof SsoError)) req.log.warn({ err: e }, 'sso callback failed');
       logActivity({ event: 'login_failed', ip, detail: `sso:${p.name}: ${msg}` });
-      return simplePage(reply, 403, 'Sign-in failed', msg);
+      return simplePage(reply, 403, english('login.sso_failed'), msg);
     }
     const alias = (await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [result.appId]))?.alias;
-    const a = alias ? await loadApp(alias) : undefined;
-    if (!a || !a.sso_providers.includes(p.name)) return simplePage(reply, 403, 'Sign-in failed', 'This sign-in method is not available.');
+    const loaded = alias ? await appWithLocale(req, alias) : undefined;
+    if (!loaded || !loaded.app.sso_providers.includes(p.name)) return simplePage(reply, 403, english('login.sso_failed'), english('login.method_unavailable'));
+    const { app: a, locale } = loaded;
     const access = await ssoAccess(a.id, result.username, result.groups);
     if (!access.allowed) {
       logActivity({ appId: a.id, username: result.username, event: 'login_failed', ip, detail: `sso:${p.name}: no access` });
-      return simplePage(reply, 403, 'No access', `Your account (${result.username}) has no access to ${a.name}. Ask an administrator.`, `/a/${a.alias}/login`);
+      return simplePage(reply, 403, locale.t('login.no_access_title'), locale.t('login.no_access', { user: result.username, app: a.name }), `/a/${a.alias}/login`, locale);
     }
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
     return completeLogin(req, reply, a, session, result.username, { extraRoles: access.roles, next: result.next ?? undefined, detail: `sso:${p.name}` });
@@ -572,7 +575,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // Sign-out is a POST with a CSRF token (a GET could be triggered by any site).
   app.post('/a/:alias/logout', async (req: Req, reply) => {
     const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
+    if (!a) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
     const base = `/a/${a.alias}`;
     const session = await getSession(req, reply, a.id, base);
     if (req.body?.__csrf !== session.csrf_token) return reply.redirect(`${base}/${a.home_page}`, 303);

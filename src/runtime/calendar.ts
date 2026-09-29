@@ -14,9 +14,19 @@ import { regionUrl } from './report.ts';
 // Month view on tablets and desktops; an agenda list on phones.
 // The month is ?r<id>_m=YYYY-MM.
 
-const MONTHS = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-const DAY = new Intl.DateTimeFormat('en', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function formats(lang: string) {
+  const make = (l: string) => ({
+    MONTHS: new Intl.DateTimeFormat(l, { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+    DAY: new Intl.DateTimeFormat(l, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }),
+    // Monday first: 1–7 Feb 2021 is Monday to Sunday
+    WEEKDAYS: Array.from({ length: 7 }, (_, i) => new Intl.DateTimeFormat(l, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2021, 1, 1 + i)))),
+  });
+  try {
+    return make(lang);
+  } catch {
+    return make('en');
+  }
+}
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const addDays = (d: Date, n: number) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n));
@@ -29,6 +39,8 @@ interface CalEvent {
 }
 
 export async function renderCalendar(ctx: PageContext, r: Region): Promise<Raw> {
+  const { MONTHS, DAY, WEEKDAYS } = formats(ctx.locale.lang);
+  const t = ctx.locale.t;
   const param = `r${r.id}_m`;
   const m = /^(\d{4})-(\d{2})$/.exec(ctx.params.get(param) ?? '');
   const today = new Date();
@@ -101,7 +113,7 @@ export async function renderCalendar(ctx: PageContext, r: Region): Promise<Raw> 
     html`<a class="${cls}" href="${regionUrl(ctx, r, (p) => (to ? p.set(param, iso(to).slice(0, 7)) : p.delete(param)))}">${label}</a>`;
   return html`<div class="calendar">
     <div class="cal-toolbar">
-      <div class="buttons">${nav('‹', prev)}${nav('Today', null)}${nav('›', next)}</div>
+      <div class="buttons">${nav('‹', prev)}${nav(t('calendar.today'), null)}${nav('›', next)}</div>
       <h3 class="cal-title" aria-live="polite">${MONTHS.format(first)}</h3>
     </div>
     <table class="cal-month">
@@ -109,6 +121,6 @@ export async function renderCalendar(ctx: PageContext, r: Region): Promise<Raw> 
       <thead><tr>${WEEKDAYS.map((w) => html`<th scope="col">${w}</th>`)}</tr></thead>
       <tbody>${weeks}</tbody>
     </table>
-    <ol class="cal-agenda">${agenda.length ? agenda : html`<li class="empty">${raw('No events this month.')}</li>`}</ol>
+    <ol class="cal-agenda">${agenda.length ? agenda : html`<li class="empty">${t('calendar.no_events')}</li>`}</ol>
   </div>`;
 }

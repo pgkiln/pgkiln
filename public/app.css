@@ -645,3 +645,7 @@ input[type=color] { width: 4rem; min-height: 2.4rem; padding: 0.15rem; }
 dl.details { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; margin: 0; }
 dl.details dt { color: var(--muted); }
 dl.details dd { margin: 0; overflow-wrap: anywhere; }
+.translate-table td { vertical-align: top; }
+.translate-table input, .translate-table textarea { width: 100%; }
+.translate-table .source-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.t-header .menu-panel a { color: var(--accent); display: inline-flex; align-items: center; gap: 0.4rem; }
