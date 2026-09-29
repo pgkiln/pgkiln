@@ -437,6 +437,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
+    const providers = (await owner.query('select name, display_name, enabled from meta.auth_provider order by display_name')).rows;
     const main = html`${appHeader(a, 'settings')}
       <div class="columns">
         ${region('Application settings', html`
@@ -453,6 +454,11 @@ export async function builderRoutes(app: FastifyInstance) {
               <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
                 <small class="help">Shows database error details to end users. Development only.</small></div>
             </div>
+            <h3>Sign-in methods</h3>
+            <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
+            ${providers.length
+              ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
+              : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
             <h3>Theme</h3>
             <div class="form-grid">
               ${input('accent', 'Accent colour', a.theme?.accent ?? '#0b63c5', { type: 'color' })}
@@ -467,6 +473,7 @@ export async function builderRoutes(app: FastifyInstance) {
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
+          ${a.authentication !== 'none' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
           <li>Public pages: ${(await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n}</li>
@@ -481,13 +488,16 @@ export async function builderRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       await owner.query(
-        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8, updated_at = now() where id = $1`,
+        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
+                local_login = $9, sso_providers = $10, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
            header: /^#[0-9a-f]{6}$/i.test(b.header ?? '') ? b.header : undefined,
            nav: b.nav === 'top' ? 'top' : 'side',
-         })],
+         }),
+         b.local_login === 'true',
+         ([] as string[]).concat((b.sso_providers as unknown as string | string[] | undefined) ?? []).filter(Boolean)],
       );
       flash(s, 'Settings saved.');
     } catch (e) {
@@ -540,6 +550,17 @@ export async function builderRoutes(app: FastifyInstance) {
         : html`<p>Not found.</p>`;
     } else {
       const accounts = (await owner.query('select username from meta.account where active order by lower(username) limit 2000')).rows;
+      const groupRoles = (await owner.query('select group_name, role from meta.app_group_role where app_id = $1 order by 1, 2', [a.id])).rows;
+      const groupMap = html`<h3>Identity-provider groups → roles</h3>
+        <p class="muted" style="margin-top:0">With single sign-on, members of these groups get the role in this app, and may sign in even without being listed above.</p>
+        ${groupRoles.length
+          ? html`<div class="chips">${groupRoles.map((g) => html`<span class="chip">${g.group_name} → <b>${g.role}</b>
+              <form method="post" action="${BASE}/apps/${a.id}/groups/delete" style="display:inline">${csrf(s)}<input type="hidden" name="group_name" value="${g.group_name}"><input type="hidden" name="role" value="${g.role}"><button class="link-button" aria-label="Remove mapping ${g.group_name} to ${g.role}">×</button></form></span>`)}</div>`
+          : html`<p class="muted">No group mappings.</p>`}
+        <form method="post" action="${BASE}/apps/${a.id}/groups">${csrf(s)}
+          <div class="form-grid">${input('group_name', 'Group (as in the token)', '', { required: true, placeholder: 'e.g. hr-managers' })}${input('role', 'Role in this app', '', { required: true, placeholder: 'e.g. manager' })}</div>
+          <div class="buttons"><button class="btn">Add mapping</button></div>
+        </form>`;
       editor = region('Access control', html`
         <form method="post" action="${BASE}/apps/${a.id}/access" class="search" style="max-width:none;margin-bottom:1rem">${csrf(s)}
           ${select('access_control', 'Who may sign in', a.access_control, [
@@ -560,6 +581,7 @@ export async function builderRoutes(app: FastifyInstance) {
               </tr>`)
             : html`<tr><td colspan="4" class="empty">No accounts have access yet.</td></tr>`}
         </tbody></table></div>
+        ${groupMap}
         <h3>Grant access</h3>
         <form method="post" action="${BASE}/apps/${a.id}/access">${csrf(s)}
           <div class="form-grid">
@@ -633,6 +655,25 @@ export async function builderRoutes(app: FastifyInstance) {
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
+    return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
+  });
+
+  app.post(`${BASE}/apps/:id/groups`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = req.body ?? {};
+    await owner.query('insert into meta.app_group_role (app_id, group_name, role) values ($1, $2, $3) on conflict do nothing', [
+      req.params.id, b.group_name?.trim(), b.role?.trim().toLowerCase(),
+    ]);
+    flash(s, 'Group mapping added. It applies at the next sign-in.');
+    return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
+  });
+
+  app.post(`${BASE}/apps/:id/groups/delete`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    await owner.query('delete from meta.app_group_role where app_id = $1 and group_name = $2 and role = $3', [req.params.id, req.body?.group_name, req.body?.role]);
+    flash(s, 'Group mapping removed. It applies at the next sign-in.');
     return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
   });
 

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { passwordProblem } from '../security.ts';
+import { discover, redirectUri } from '../sso.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // The workspace user directory (like APEX's workspace users with
@@ -49,7 +50,7 @@ export async function usersRoutes(app: FastifyInstance) {
       )
     ).rows;
     const main = html`
-      <div class="title-row"><h1>Users</h1></div>
+      <div class="title-row"><h1>Users</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">Identity providers (single sign-on)</a></div></div>
       <p class="muted" style="margin-top:0">One account per person. Give accounts access to applications, with roles per application, here or under an application's <b>Shared Components → Access control</b>.</p>
       <div class="columns wide-left">
         ${region('Accounts', html`
@@ -222,5 +223,136 @@ export async function usersRoutes(app: FastifyInstance) {
     await endSessions(req.params.id, req.params.appId);
     flash(s, 'Access revoked.');
     return back(reply, s, `${BASE}/users/${req.params.id}`);
+  });
+
+  // ---------------------------------------------------------------- identity providers (OpenID Connect)
+  const providerForm = (pr: any, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) => html`
+    <form method="post" action="${action}">${csrfField}
+      <div class="form-grid">
+        ${isNew ? input('name', 'Name (in URLs)', '', { required: true, help: 'lowercase, e.g. entra, google, keycloak' }) : ''}
+        ${input('display_name', 'Button label', pr.display_name, { required: true, help: 'Shown as "Sign in with …"' })}
+        ${input('issuer', 'Issuer URL', pr.issuer, { required: true, type: 'url', help: 'e.g. https://login.microsoftonline.com/<tenant>/v2.0 or https://keycloak.example.com/realms/acme' })}
+        ${input('client_id', 'Client ID', pr.client_id, { required: true })}
+        ${input('client_secret', 'Client secret', '', { type: 'password', auto: 'new-password', help: pr.has_secret ? 'A secret is stored. Leave empty to keep it.' : 'Leave empty for a public client (PKCE only).' })}
+        ${input('scopes', 'Scopes', pr.scopes ?? 'openid profile email')}
+        ${input('username_claim', 'Username claim', pr.username_claim ?? 'preferred_username', { help: 'Use a claim users cannot change themselves (e.g. preferred_username, upn, email).' })}
+        ${input('groups_claim', 'Groups claim', pr.groups_claim ?? 'groups', { help: 'Dot paths work, e.g. realm_access.roles' })}
+      </div>
+      <div class="field" style="margin-top:.75rem"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> Create accounts automatically on first sign-in</label>
+        <small class="help">Otherwise only people with an existing account (same username) can sign in.</small></div>
+      <div class="field"><label class="check"><input type="checkbox" name="enabled" value="true"${pr.enabled !== false ? raw(' checked') : ''}> Enabled</label></div>
+      ${!isNew && pr.has_secret ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_secret" value="true"> Remove the stored client secret</label></div>` : ''}
+      <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add provider' : 'Save'}</button></div>
+    </form>`;
+
+  const providerValues = (b: Record<string, string | undefined>) => [
+    b.display_name?.trim(), b.issuer?.trim().replace(/\/+$/, ''), b.client_id?.trim(),
+    b.scopes?.trim() || 'openid profile email', b.username_claim?.trim() || 'preferred_username', b.groups_claim?.trim() || 'groups',
+    b.auto_create === 'true', b.enabled === 'true',
+  ];
+
+  app.get(`${BASE}/users/providers`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create,
+        (select count(*) from meta.account_identity i where i.provider_id = p.id)::int as linked,
+        (select string_agg(a.alias, ', ' order by a.alias) from meta.app a where p.name = any(a.sso_providers)) as apps
+      from meta.auth_provider p order by display_name`)).rows;
+    const main = html`
+      <div class="title-row"><h1>Identity providers</h1></div>
+      <p class="muted" style="margin-top:0">OpenID Connect providers for single sign-on (Microsoft Entra ID, Google, Okta, Keycloak, Auth0, …). Register pgapex at the provider as a web application with the redirect URI shown, then enable the provider per application under <b>Settings → Sign-in methods</b>.</p>
+      <div class="columns wide-left">
+        ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>Provider</th><th>Issuer</th><th>Used by</th><th>Linked accounts</th><th>Status</th></tr></thead>
+          <tbody>${rows.length ? rows.map((r) => html`<tr>
+            <td data-label="Provider"><a href="${BASE}/users/providers/${r.id}">${r.display_name}</a> <span class="muted">${r.name}</span></td>
+            <td data-label="Issuer">${r.issuer}</td>
+            <td data-label="Used by">${r.apps ?? html`<span class="muted">no apps</span>`}</td>
+            <td data-label="Linked accounts">${r.linked}</td>
+            <td data-label="Status">${r.enabled ? 'enabled' : html`<b>disabled</b>`}${r.auto_create ? ' · auto-create' : ''}</td>
+          </tr>`) : html`<tr><td colspan="5" class="empty">No identity providers yet.</td></tr>`}</tbody></table></div>`)}
+        ${region('Add provider', providerForm({}, `${BASE}/users/providers`, csrf(s), true))}
+      </div>`;
+    return send(reply, s, shell(s, 'Identity providers', [['Users', `${BASE}/users`], ['Identity providers']], main, 'users'));
+  });
+
+  app.post(`${BASE}/users/providers`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = req.body ?? {};
+    try {
+      const r = await owner.one(
+        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, client_secret)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+        [b.name?.trim().toLowerCase(), ...providerValues(b), b.client_secret || null],
+      );
+      flash(s, 'Provider added. Register the redirect URI at the provider, then test the connection.');
+      return back(reply, s, `${BASE}/users/providers/${r.id}`);
+    } catch (e) {
+      flash(s, (e as Error).message, 'error');
+      return back(reply, s, `${BASE}/users/providers`);
+    }
+  });
+
+  app.get(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const pr = await owner.one('select *, client_secret is not null as has_secret from meta.auth_provider where id = $1', [req.params.id]);
+    if (!pr) return reply.code(404).send('Not found');
+    delete pr.client_secret; // never sent to the browser
+    const main = html`
+      <div class="title-row"><h1>${pr.display_name}</h1></div>
+      <div class="columns wide-left">
+        ${region('Settings', html`${providerForm(pr, `${BASE}/users/providers/${pr.id}`, csrf(s), false)}
+          <form method="post" action="${BASE}/users/providers/${pr.id}/delete" class="danger-zone">${csrf(s)}
+            <button class="btn btn-danger" data-confirm="Delete ${pr.display_name}? Linked identities are removed; accounts stay.">Delete provider</button></form>`)}
+        ${region('Register at the provider', html`
+          <p>Redirect URI (callback):</p>
+          <p><code>${redirectUri(pr)}</code></p>
+          <p class="muted">Based on <code>PUBLIC_URL</code>; set it to the address users see (e.g. https://apps.example.com).</p>
+          <p>Grant type: <b>authorization code</b> with PKCE. Scopes: <code>${pr.scopes}</code>. Include a <code>${pr.groups_claim}</code> claim in the ID token to map groups to roles.</p>
+          <form method="post" action="${BASE}/users/providers/${pr.id}/test">${csrf(s)}<button class="btn">Test discovery</button></form>`)}
+      </div>`;
+    return send(reply, s, shell(s, pr.display_name, [['Users', `${BASE}/users`], ['Identity providers', `${BASE}/users/providers`], [pr.display_name]], main, 'users'));
+  });
+
+  app.post(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = req.body ?? {};
+    try {
+      await owner.query(
+        `update meta.auth_provider set display_name = $2, issuer = $3, client_id = $4, scopes = $5, username_claim = $6,
+                groups_claim = $7, auto_create = $8, enabled = $9,
+                client_secret = case when $11 then null when $10::text is null then client_secret else $10 end
+          where id = $1`,
+        [req.params.id, ...providerValues(b), b.client_secret || null, b.remove_secret === 'true'],
+      );
+      flash(s, 'Provider saved.');
+    } catch (e) {
+      flash(s, (e as Error).message, 'error');
+    }
+    return back(reply, s, `${BASE}/users/providers/${req.params.id}`);
+  });
+
+  app.post(`${BASE}/users/providers/:id/test`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const pr = await owner.one('select issuer from meta.auth_provider where id = $1', [req.params.id]);
+    try {
+      const doc = await discover(pr.issuer);
+      flash(s, `Discovery works. Authorization endpoint: ${doc.authorization_endpoint}`);
+    } catch (e) {
+      flash(s, `Discovery failed: ${(e as Error).message}`, 'error');
+    }
+    return back(reply, s, `${BASE}/users/providers/${req.params.id}`);
+  });
+
+  app.post(`${BASE}/users/providers/:id/delete`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    await owner.query('delete from meta.auth_provider where id = $1', [req.params.id]);
+    flash(s, 'Provider deleted.');
+    return back(reply, s, `${BASE}/users/providers`);
   });
 }

@@ -90,10 +90,9 @@ Done (WIP commit on `sprint-4`):
 - [x] `PUBLIC_URL` env var (redirect URI = PUBLIC_URL + /sso/callback/<name>)
 
 To do:
-- [ ] Builder: identity providers page (instance level, e.g. `/builder/users/providers`: CRUD, secret
-      write-only, show the redirect URI, "test discovery"); per app: sign-in methods (local password
-      on/off, providers) in Settings, and group → role mapping in Access control
-- [ ] Tests `test/sso.test.ts` with a mock OIDC provider (see the design below)
+- [x] Builder: `/builder/users/providers` (CRUD, write-only secret, redirect URI, "Test discovery");
+      per app: sign-in methods in Settings, group → role mapping in Access control
+- [x] `test/sso.test.ts`: 9 tests with an in-process mock IdP (tests now run with `--test-concurrency=1`; 46 total, green)
 - [ ] Optional: `docker compose --profile sso` Keycloak + realm import for a manual demo
 - [ ] Docs (chapters 1 config PUBLIC_URL, 3, 8, 9, 11), parity matrix, CHANGELOG, .env.example
 

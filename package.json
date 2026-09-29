@@ -33,7 +33,7 @@
     "db:up": "docker compose up -d db",
     "db:reset": "docker compose down -v && docker compose up -d db && tsx scripts/migrate.ts --seed",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 test/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/migrate.ts --seed",
     "setup": "docker compose up -d db && tsx scripts/migrate.ts --seed",
