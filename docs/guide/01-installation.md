@@ -68,6 +68,7 @@ which is read at startup; real environment variables take precedence.
 | `RUNTIME_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | Least-privilege connection that runs applications |
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |
+| `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgapex at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy, so client IPs (used by login throttling) come from `X-Forwarded-For` |
 | `SESSION_IDLE_MINUTES` | `60` | A session ends after this long without requests |
@@ -131,6 +132,7 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgapex (nod
    RUNTIME_DATABASE_URL=postgres://pgapex_runtime:...@db:5432/pgapex
    COOKIE_SECURE=true
    TRUST_PROXY=true
+   PUBLIC_URL=https://apps.example.com
    ```
 3. **Process manager.** Run `npm start` under systemd, a container orchestrator or `pm2`.
    Example systemd unit:

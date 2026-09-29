@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 - User directory (Builder → Users): one account per person for all applications, with per-application access control ("only listed accounts" or "any active account") and roles per application, like APEX workspace accounts with Application Access Control.
+- Single sign-on with OpenID Connect: identity providers (Builder → Users → Identity providers), sign-in methods per application, identity-provider groups mapped to application roles, account linking by subject, optional automatic account creation. A Keycloak demo is included (`docker compose --profile sso`, `examples/keycloak-sso.sql`).
+- `PUBLIC_URL` setting.
 
 ### Changed
 - Roles are resolved at sign-in and stored with the session; `meta.has_role()` reads them.

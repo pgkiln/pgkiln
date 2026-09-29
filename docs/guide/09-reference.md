@@ -47,6 +47,8 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `home_page` | int | Page opened by `/a/<alias>` |
 | `authentication` | text | `app_users` or `none` |
 | `access_control` | text | `assigned` (only accounts with access) or `any_user` |
+| `local_login` | boolean | Offer username and password sign-in |
+| `sso_providers` | text[] | Names of identity providers offered on the login page |
 | `db_role` | text | Database role every request runs as |
 | `debug` | boolean | Show database error details to users |
 | `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top"}` |
@@ -59,6 +61,8 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 **`app_user`**: a *view* over `account` + `app_access` (`id`, `app_id`, `username`, `password_hash`,
 `roles`, `active`, `last_login_at`), kept for compatibility. Inserting creates the account if
 needed and grants access; deleting revokes access.
+
+**`app_group_role`**: `app_id`, `group_name`, `role`; identity-provider group → application role.
 
 **`authz_scheme`**: `app_id`, `name` (uppercase), `type` (`role` / `sql`), `value`, `error_message`.
 
@@ -121,6 +125,9 @@ needed and grants access; deleting revokes access.
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
 | `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `logout`, `error`, `forbidden`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
 | `developer` | Builder accounts | no |
+| `auth_provider` | OpenID Connect providers: `name`, `display_name`, `issuer`, `client_id`, `client_secret`, `scopes`, `username_claim`, `groups_claim`, `auto_create`, `enabled` | no |
+| `account_identity` | Links an account to a provider's subject (`provider_id`, `subject`, `account_id`) | no |
+| `sso_pending` | Sign-ins in progress (state, PKCE verifier, nonce; kept for 10 minutes) | no |
 | `instance_setting` | Secrets, e.g. the URL checksum key | no |
 
 Retention: expired sessions are purged automatically. The activity log is kept until you delete
@@ -161,5 +168,7 @@ Usable in navigation entries and cards (`icon` column):
 | `POST /a/:alias/:page/da/:id` | Run a server-side dynamic action (JSON) |
 | `POST /a/:alias/:page/lov/:item` | Re-render a cascading list (JSON) |
 | `GET/POST /a/:alias/login`, `POST /a/:alias/logout` | Sign in and out |
+| `GET /a/:alias/sso/:provider` | Start single sign-on with a provider |
+| `GET /sso/callback/:provider` | OpenID Connect redirect URI |
 | `/builder/...` | Builder |
 | `/static/...` | CSS, JavaScript, icons |

@@ -53,8 +53,10 @@ a session, so signing in to one signs you in to the others.
 any active account) plus role assignments per account. Roles feed authorization schemes and
 `meta.has_role()`. See [chapter 8](08-security.md#the-user-directory).
 
-Single sign-on with OpenID Connect (with identity-provider groups mapped to roles) is being
-added next; with it, signing in to a second app is silent via the identity provider's session.
+Instead of (or next to) passwords, applications can use **single sign-on with OpenID Connect**,
+APEX's "Social Sign-In" scheme, with identity-provider groups mapped to application roles. Signing
+in to a second app is then silent via the identity provider's session. See
+[chapter 8](08-security.md#single-sign-on-openid-connect). LDAP and SAML are not supported yet.
 
 ## ORDS and PostgREST
 

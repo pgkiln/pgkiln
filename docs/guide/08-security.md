@@ -68,6 +68,65 @@ insert into meta.app_user (app_id, username, password_hash, roles)
 select id, 'alice', meta.hash_password('a-strong-password'), '{manager}' from meta.app where alias = 'hr';
 ```
 
+### Single sign-on (OpenID Connect)
+
+Applications can let people sign in with your organisation's identity provider: Microsoft Entra
+ID, Google Workspace, Okta, Keycloak, Auth0 or any other OpenID Connect provider.
+
+**1. Register pgapex at the provider** as a *web application* (confidential client) using the
+authorization code flow. The redirect URI is `<PUBLIC_URL>/sso/callback/<name>`, for example
+`https://apps.example.com/sso/callback/entra`. Note the client ID and secret, and ask for a
+**groups** claim in the ID token if you want to map groups to roles.
+
+**2. Add the provider** under **Builder → Users → Identity providers**:
+
+| Field | Meaning |
+|---|---|
+| Name | Used in URLs (`entra`, `google`, `keycloak`) |
+| Button label | "Sign in with …" |
+| Issuer URL | e.g. `https://login.microsoftonline.com/<tenant>/v2.0`, `https://accounts.google.com`, `https://keycloak.example.com/realms/acme`. pgapex reads `<issuer>/.well-known/openid-configuration` |
+| Client ID / secret | From the registration. The secret is write-only in the builder and readable only by the owner connection |
+| Scopes | Default `openid profile email` |
+| Username claim | The claim that becomes the pgapex username. Choose one users **cannot change themselves**: `preferred_username` (Keycloak), `upn` or `email` (Entra), `email` (Google) |
+| Groups claim | Default `groups`; dot paths work (`realm_access.roles`) |
+| Create accounts automatically | Create a directory account on first sign-in; otherwise only people with an existing account can sign in |
+
+Use **Test discovery** to check the issuer URL.
+
+**3. Enable it per application** under **Settings → Sign-in methods** (tick the provider; untick
+*Username and password* for SSO-only apps).
+
+**4. Map groups to roles** (optional) under **Shared Components → Access control → Identity-provider
+groups → roles**, e.g. `hr-managers → manager`. Members of a mapped group get the role in that app
+for their session, and may sign in even when they aren't listed individually.
+
+How accounts are matched:
+
+- The first sign-in links the identity (the provider's stable subject id, `sub`) to the account
+  with the same username, or creates the account when *Create accounts automatically* is on.
+- Later sign-ins use the link, so a user renaming themselves at the provider can't take over
+  another account. An account can be linked to only one identity per provider.
+- Access follows the same rules as passwords: the app's access control, the account's roles in the
+  app, plus roles from mapped groups. Inactive accounts can't sign in.
+
+Protections built in: PKCE (S256), a one-time `state` bound to the browser that started the sign-in
+(stops login CSRF and replay), a `nonce` in the ID token, and signature verification against the
+provider's published keys with issuer, audience and expiry checks.
+
+Signing in to a second application with the same provider is silent: the provider's own session
+answers without asking for a password again.
+
+**Try it locally** with the bundled Keycloak:
+
+```bash
+docker compose --profile sso up -d keycloak      # http://127.0.0.1:8180 (admin / admin)
+psql "$DATABASE_URL" -f examples/keycloak-sso.sql
+```
+
+The HR sample's login page then shows *Sign in with Keycloak*. Keycloak users: `king` / `king-sso`
+(groups hr-admins and hr-managers), `allen` / `allen-sso`, and `carol` / `carol-sso` (hr-managers;
+she has no pgapex account yet and is created on first sign-in).
+
 ### What sign-in protects against
 
 - **Brute force**: after 5 failed attempts for a username (or 50 from one IP address) within 15

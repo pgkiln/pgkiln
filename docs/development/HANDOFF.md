@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-29. Step A (user directory) is **done**; step B (single sign-on) is **in progress**.
+Last updated: 2026-09-29. Steps A (user directory) and B (single sign-on) are **done**; next is step C (PostgREST).
 
 ## Project in one paragraph
 
@@ -76,7 +76,7 @@ Status: **done** (commit "feat(users): …" on `sprint-4`). Migration 003, runti
 existing accounts, 4 new tests (37 total), e2e covers `/builder/users` and an account page, docs
 (chapters 3, 8, 9, 10, 11), parity matrix and CHANGELOG updated. `npm run db:reset && npm test && npm run test:e2e` green.
 
-### B: single sign-on (OpenID Connect): in progress
+### B: single sign-on (OpenID Connect): done
 
 Done (WIP commit on `sprint-4`):
 - [x] `db/migrations/004_sso.sql`: `meta.auth_provider`, `meta.account_identity` (link by provider + `sub`),
@@ -93,8 +93,10 @@ To do:
 - [x] Builder: `/builder/users/providers` (CRUD, write-only secret, redirect URI, "Test discovery");
       per app: sign-in methods in Settings, group → role mapping in Access control
 - [x] `test/sso.test.ts`: 9 tests with an in-process mock IdP (tests now run with `--test-concurrency=1`; 46 total, green)
-- [ ] Optional: `docker compose --profile sso` Keycloak + realm import for a manual demo
-- [ ] Docs (chapters 1 config PUBLIC_URL, 3, 8, 9, 11), parity matrix, CHANGELOG, .env.example
+- [x] Keycloak demo: `docker compose --profile sso up -d keycloak` (port 8180, realm import in
+      `docker/keycloak/`), `examples/keycloak-sso.sql`; verified in a real browser (carol auto-created
+      with the manager role via the hr-managers group; king linked, admin)
+- [x] Docs (chapters 1, 3, 8, 9, 11), SECURITY.md, parity matrix, CHANGELOG, .env.example (`PUBLIC_URL`)
 
 Original design notes:
 

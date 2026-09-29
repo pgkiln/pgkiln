@@ -23,7 +23,7 @@ first version (MVP). Every finding below has a regression test in
 | Database role | The runtime connects as `pgapex_runtime` (NOINHERIT). It can read metadata and manage sessions, but cannot read `meta.developer`, password hashes or `meta.instance_setting`. It can reach an application's data only through `SET LOCAL ROLE <app db_role>`. |
 | Application role ("parsing schema") | Every request runs in a transaction as the app's `db_role`. Postgres grants decide what the app can touch at all. |
 | Row level security | `meta.app_user()` and `meta.has_role()` expose the signed-in application user to SQL, so RLS policies (and triggers, audit logs) know *who* is acting, not just which database role. |
-| Authentication | bcrypt (pgcrypto) behind the `meta.authenticate()` SECURITY DEFINER function. Constant work for unknown users, throttling per user and per IP, session rotation on login. |
+| Authentication | Local accounts: bcrypt (pgcrypto) behind the `meta.authenticate()` SECURITY DEFINER function, constant work for unknown users, throttling per user and per IP. Single sign-on: OpenID Connect with PKCE, browser-bound one-time state, nonce, JWKS signature, issuer/audience/expiry checks and linking by subject. Session rotation on every sign-in. |
 | Authorization schemes | On pages, regions, items, buttons, processes, dynamic actions and navigation entries. They are role based or SQL based and fail closed when unknown. |
 | Session state protection | Item values in URLs, and the row keys of interactive grids, carry an HMAC checksum bound to app, page and user. Hidden, display, read-only and unauthorized items cannot be set by a form post. |
 | Request integrity | A CSRF token on every POST (pages, AJAX, login, logout). Buttons are re-validated on submit. |

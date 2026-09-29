@@ -99,7 +99,7 @@ Components used by the whole application:
 
 | Component | Purpose |
 |---|---|
-| **Access control** | Who may sign in (only listed accounts, or any active account), and which accounts have access with which roles |
+| **Access control** | Who may sign in (only listed accounts, or any active account), which accounts have access with which roles, and which identity-provider groups map to which roles |
 | **Navigation menu** | Menu entries: label, icon, target page, parent (for sub-menus), authorization |
 | **Authorization schemes** | Named access rules, used by pages, regions, items, buttons, processes, dynamic actions and menu entries ([chapter 8](08-security.md)) |
 | **Lists of values** | Reusable queries for select lists, referenced as `LOV:NAME` |
@@ -114,11 +114,17 @@ its name and e-mail, set or remove its password, deactivate or delete it, and gr
 revoke access per application. Password changes, deactivation and access changes end the
 affected sessions. See [chapter 8](08-security.md#the-user-directory).
 
+**Users → Identity providers** configures OpenID Connect providers for single sign-on: issuer,
+client ID and secret, claims, automatic account creation. The page shows the redirect URI to
+register at the provider, and has a *Test discovery* button. See
+[chapter 8](08-security.md#single-sign-on-openid-connect).
+
 ## Settings
 
 - **Application**: name, alias, home page.
 - **Security**: authentication (*App users* / *None*), the database role, and **debug mode**
   (shows full database errors to users; development only).
+- **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
 - **Theme**: accent colour, header colour, and *side* or *top* navigation (on tablets and phones the
   menu is always a drawer).
 - **Security checklist**: whether the app has its own role, debug mode, and pages without

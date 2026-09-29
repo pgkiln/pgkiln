@@ -10,5 +10,21 @@ services:
       - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+  # Optional identity provider for trying single sign-on locally:
+  #   docker compose --profile sso up -d keycloak
+  #   psql "$DATABASE_URL" -f examples/keycloak-sso.sql
+  # Keycloak admin console: http://127.0.0.1:8180 (admin / admin)
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    container_name: pgapex-keycloak
+    profiles: [sso]
+    command: start-dev --import-realm --http-port 8180
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8180:8180"
+    volumes:
+      - ./docker/keycloak:/opt/keycloak/data/import:ro
 volumes:
   pgdata:
