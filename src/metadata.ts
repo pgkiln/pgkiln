@@ -41,6 +41,11 @@ export interface App {
   name: string;
   home_page: number;
   authentication: 'none' | 'app_users';
+  /** 'assigned': only accounts granted access; 'any_user': any active account */
+  access_control: 'assigned' | 'any_user';
+  /** identity providers offered on the login page, and whether passwords are allowed */
+  sso_providers: string[];
+  local_login: boolean;
   db_role: string | null;
   debug: boolean;
   pages: PageSummary[];
@@ -162,7 +167,7 @@ const agg = (table: string, fk: string, parent: string, order = 'x.seq, x.id') =
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.db_role, a.debug, a.theme,
+    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.db_role, a.debug, a.theme,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
                        'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth))
@@ -194,11 +199,8 @@ export async function loadPage(appId: number, pageNo: number) {
   );
 }
 
-export async function loadUserRoles(appId: number, username: string | null) {
-  if (!username) return [];
-  const r = await runtime.one<{ roles: string[] }>(
-    'select roles from meta.app_user where app_id = $1 and lower(username) = lower($2) and active',
-    [appId, username],
-  );
-  return (r?.roles ?? []).map((x) => x.toLowerCase());
+/** The roles an account has in an application (resolved once, at sign-in). */
+export async function accountRoles(appId: number, username: string) {
+  const r = await runtime.one<{ roles: string[] }>('select meta.account_roles($1, $2) as roles', [appId, username]);
+  return r?.roles ?? [];
 }

@@ -64,7 +64,7 @@ On the **App Builder** home, fill in *Create application*:
 | First user / Password | `ann` / `ann-password` |
 
 This creates the role `app_tasks` with access to schema `tasks` (including the function), page 1,
-and the user `ann`. Add `bob` under **Shared Components → Application users**.
+and the account `ann` with access to the app. Create `bob` under **Users** and give him access to *Tasks* (on his account page, or under **Shared Components → Access control**).
 
 > The SQL script creates the role itself instead: `create role app_tasks nologin; grant app_tasks to pgapex_runtime; grant …`.
 

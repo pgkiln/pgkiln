@@ -27,7 +27,7 @@ forms to **create** and **import** applications.
 | Alias | Lowercase URL name: `inventory` gives `/a/inventory` |
 | Parsing schema | The database schema the app works with. Choose an existing schema, or leave it on "new schema" to create one named after the alias |
 | Authentication | *App users* (a login page and a user list) or *None* (a public app) |
-| First user / Password | The first application user; they get the `admin` role |
+| First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
 
 Creating the app also:
 
@@ -45,7 +45,7 @@ of the export; check it under **Settings**, and create users under **Shared Comp
 
 Open an application to see its pages, with region/item/dynamic-action/process counts,
 authorization and protection. The buttons at the top lead to **Shared Components**, **Activity**,
-**Settings**, **Export** and **Run**.
+**REST API**, **Settings**, **Export** and **Run**.
 
 ### Create pages from a table (wizards)
 
@@ -99,18 +99,32 @@ Components used by the whole application:
 
 | Component | Purpose |
 |---|---|
-| **Application users** | Create users, set roles (comma separated), reset passwords, deactivate. Changing a password or deactivating a user ends their sessions |
+| **Access control** | Who may sign in (only listed accounts, or any active account), which accounts have access with which roles, and which identity-provider groups map to which roles |
 | **Navigation menu** | Menu entries: label, icon, target page, parent (for sub-menus), authorization |
 | **Authorization schemes** | Named access rules, used by pages, regions, items, buttons, processes, dynamic actions and menu entries ([chapter 8](08-security.md)) |
 | **Lists of values** | Reusable queries for select lists, referenced as `LOV:NAME` |
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
 
+## Users (the user directory)
+
+**Builder → Users** lists every account with the applications (and roles) it can use. Create
+accounts here (a password is optional for single sign-on-only accounts). Open an account to edit
+its name and e-mail, set or remove its password, deactivate or delete it, and grant, change or
+revoke access per application. Password changes, deactivation and access changes end the
+affected sessions. See [chapter 8](08-security.md#the-user-directory).
+
+**Users → Identity providers** configures OpenID Connect providers for single sign-on: issuer,
+client ID and secret, claims, automatic account creation. The page shows the redirect URI to
+register at the provider, and has a *Test discovery* button. See
+[chapter 8](08-security.md#single-sign-on-openid-connect).
+
 ## Settings
 
 - **Application**: name, alias, home page.
 - **Security**: authentication (*App users* / *None*), the database role, and **debug mode**
   (shows full database errors to users; development only).
+- **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
 - **Theme**: accent colour, header colour, and *side* or *top* navigation (on tablets and phones the
   menu is always a drawer).
 - **Security checklist**: whether the app has its own role, debug mode, and pages without
@@ -123,6 +137,13 @@ Per application: page views, distinct users and average page time over the last 
 failed and locked sign-ins; errors and access denials; views and timings per page over 7 days;
 and a list of recent events (with *Include page views*). The "reference #123" numbers users see
 on errors are the event ids here.
+
+## REST API
+
+Per application: the **API database role** that REST API tokens use, whether PostgREST answers
+at `API_URL`, the endpoints (views and functions in the `api` schema, with the methods the role
+may use), a form to **issue a token** for an account, and `curl` examples. See
+[chapter 13](13-rest-api.md).
 
 ## SQL Workshop
 

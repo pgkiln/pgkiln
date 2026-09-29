@@ -85,7 +85,7 @@ describe('authentication', () => {
       assert.match(locked.body, /Too many failed sign-in attempts/);
     } finally {
       await owner.query('delete from meta.activity_log where lower(username) = lower($1)', [user]);
-      await owner.query('delete from meta.app_user where app_id = $1 and username = $2', [appId, user]);
+      await owner.query('delete from meta.account where username = $1', [user]);
     }
   });
 
@@ -297,6 +297,7 @@ describe('database privileges', () => {
     await assert.rejects(runtime.query('select * from meta.developer'), /permission denied/);
     await assert.rejects(runtime.query('select password_hash from meta.app_user'), /permission denied/);
     await assert.rejects(runtime.query('select * from meta.instance_setting'), /permission denied/);
+    await assert.rejects(runtime.query('select password_hash from meta.account'), /permission denied/);
   });
 
   test('application SQL runs as the app role, not the runtime role', async () => {
@@ -388,6 +389,97 @@ describe('sprint 3 features', () => {
       assert.match(body, /--header:#123456/);
     } finally {
       await owner.query(`update meta.app set theme = '{}' where id = $1`, [appId]);
+    }
+  });
+});
+
+describe('user directory', () => {
+  // A second app sharing the directory; cleaned up afterwards.
+  let otherId: number;
+  const user = `dir_${Date.now()}`;
+  before(async () => {
+    otherId = (await owner.one(`insert into meta.app (alias, name, db_role) values ($1, 'Directory test', 'hr_app') returning id`, [`dirtest${Date.now()}`])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [otherId]);
+    const acc = (await owner.one(`insert into meta.account (username, password_hash) values ($1, meta.hash_password('correct-horse')) returning id`, [user])).id;
+    await owner.query(`insert into meta.app_access (app_id, account_id, roles) values ($1, $2, '{admin}'), ($3, $2, '{}')`, [appId, acc, otherId]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.activity_log where lower(username) = lower($1)', [user]);
+    await owner.query('delete from meta.account where username = $1', [user]);
+    await owner.query('delete from meta.app where id = $1', [otherId]);
+  });
+  const alias = async () => (await owner.one('select alias from meta.app where id = $1', [otherId])).alias as string;
+
+  test('one account signs in to several apps, with roles per app', async () => {
+    const b = new Browser();
+    assert.equal((await b.login(user, 'correct-horse')).statusCode, 303);
+    assert.equal((await b.get('/a/hr/9')).statusCode, 200, 'admin in hr');
+    const other = new Browser();
+    assert.equal((await other.login(user, 'correct-horse', await alias())).statusCode, 303);
+    const roles = await runtime.one(`select roles from meta.session where app_id = $1 and username = $2 order by created_at desc limit 1`, [otherId, user]);
+    assert.deepEqual(roles.roles, [], 'no admin role in the other app');
+  });
+
+  test('accounts without access cannot sign in; "any user" apps let them in', async () => {
+    const stranger = `stranger_${Date.now()}`;
+    await owner.query(`insert into meta.account (username, password_hash) values ($1, meta.hash_password('correct-horse'))`, [stranger]);
+    try {
+      const res = await new Browser().login(stranger, 'correct-horse', await alias());
+      assert.equal(res.statusCode, 401);
+      assert.match(res.body, /Invalid username or password/, 'same answer as a wrong password');
+      await owner.query(`update meta.app set access_control = 'any_user' where id = $1`, [otherId]);
+      assert.equal((await new Browser().login(stranger, 'correct-horse', await alias())).statusCode, 303);
+    } finally {
+      await owner.query(`update meta.app set access_control = 'assigned' where id = $1`, [otherId]);
+      await owner.query('delete from meta.activity_log where lower(username) = lower($1)', [stranger]);
+      await owner.query('delete from meta.account where username = $1', [stranger]);
+    }
+  });
+
+  test('deactivating an account ends its sessions and blocks sign-in', async () => {
+    const b = new Browser();
+    await b.login(user, 'correct-horse');
+    assert.equal((await b.get('/a/hr/1')).statusCode, 200);
+    const { endSessions } = await import('../src/builder/users.ts');
+    const acc = (await owner.one('select id from meta.account where username = $1', [user])).id;
+    await owner.query('update meta.account set active = false where id = $1', [acc]);
+    await endSessions(acc);
+    try {
+      assert.equal((await b.get('/a/hr/1')).statusCode, 302, 'signed out');
+      assert.equal((await new Browser().login(user, 'correct-horse')).statusCode, 401);
+    } finally {
+      await owner.query('update meta.account set active = true where id = $1', [acc]);
+    }
+  });
+
+  test('the compatibility view meta.app_user still creates accounts with access', async () => {
+    const legacy = `legacy_${Date.now()}`;
+    await owner.query(`insert into meta.app_user (app_id, username, password_hash, roles) values ($1, $2, meta.hash_password('correct-horse'), '{manager}')`, [appId, legacy]);
+    try {
+      const b = new Browser();
+      assert.equal((await b.login(legacy, 'correct-horse')).statusCode, 303);
+      assert.equal((await b.get(link(legacy, 3, { P3_EMPNO: '7839' }))).statusCode, 200, 'manager role works');
+    } finally {
+      await owner.query('delete from meta.activity_log where lower(username) = lower($1)', [legacy]);
+      await owner.query('delete from meta.account where username = $1', [legacy]);
+    }
+  });
+});
+
+describe('HR sample', () => {
+  test('read notifications keep their message after "Mark all read"', async () => {
+    const b = await as('king');
+    const before = await owner.query(`select id, read_at from hr.notification where username = 'king'`);
+    try {
+      await owner.query(`update hr.notification set read_at = null where username = 'king'`);
+      await b.get('/a/hr/1');
+      assert.equal((await b.post('/a/hr/1', { __csrf: b.lastCsrf, __request: 'MARK_READ' })).statusCode, 303);
+      const page = (await b.get('/a/hr/1')).body;
+      assert.equal((await owner.one(`select count(*)::int as n from hr.notification where username = 'king' and read_at is null`)).n, 0);
+      assert.match(page, /requested \d+ day\(s\) of leave/, 'messages still shown (NULL || text is NULL in Postgres)');
+      assert.doesNotMatch(page, /●/);
+    } finally {
+      for (const r of before.rows) await owner.query('update hr.notification set read_at = $2 where id = $1', [r.id, r.read_at]);
     }
   });
 });

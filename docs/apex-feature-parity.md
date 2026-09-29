@@ -6,7 +6,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ out of scope (use the PostgreSQL ecosystem instead)
 
-Last reviewed: 2026-09-29 (pgapex 0.3.0).
+Last reviewed: 2026-09-29 (pgapex 0.4.0).
 
 ## Summary
 
@@ -14,10 +14,10 @@ Last reviewed: 2026-09-29 (pgapex 0.3.0).
 |---|---|
 | Core runtime (pages, regions, items, session state, processes) | ✅ solid |
 | Reports, forms, grids, charts, cards, calendar, faceted search | ✅ / 🟡 core features in place, power-user features missing |
-| Security (authn, authz, session state protection, CSP) | ✅ for local accounts; 🟡 no SSO yet |
+| Security (authn, authz, session state protection, CSP) | ✅ user directory, OpenID Connect SSO; 🟡 no LDAP/SAML/MFA |
 | Builder (page designer, shared components, SQL Workshop) | 🟡 property editor, no drag-and-drop |
 | Responsive UI, dark mode, theming | ✅ / 🟡 basic theme roller |
-| Integration (REST, email, printing, data loading) | ❌ next priorities |
+| Integration (REST, email, printing, data loading) | 🟡 REST APIs with PostgREST; ❌ email, printing, data loading |
 | Workflow, approvals, automations | ❌ (hand-built in PL/pgSQL for now, see the HR sample) |
 | AI features (assistant, NL2IR, AI agents) | ❌ |
 | Globalization (translations, formats) | ❌ |
@@ -100,8 +100,10 @@ Last reviewed: 2026-09-29 (pgapex 0.3.0).
 
 | APEX | pgapex | Notes |
 |---|---|---|
-| APEX accounts authentication | ✅ | bcrypt, lockout, session rotation, idle and absolute timeouts |
-| Database accounts, LDAP, SAML, social sign-in / OpenID Connect, HTTP header | ❌ | OIDC is the top authentication priority |
+| APEX accounts authentication | ✅ | Workspace user directory, bcrypt, lockout, session rotation, idle and absolute timeouts |
+| Application Access Control (roles per app, any-user switch) | ✅ | Access control per application |
+| Social sign-in / OpenID Connect | ✅ | Any OIDC provider (Entra ID, Google, Okta, Keycloak, …): PKCE, group → role mapping, account linking, auto-create |
+| Database accounts, LDAP, SAML, HTTP header | ❌ | |
 | Custom authentication | ❌ | |
 | Multi-factor authentication | ❌ | |
 | Authorization schemes | ✅ | Role or SQL based, negation, fail closed |
@@ -133,7 +135,7 @@ Last reviewed: 2026-09-29 (pgapex 0.3.0).
 | SQL Workshop: SQL commands, object browser | ✅ | Object browser shows columns, RLS policies, grants, data, function source |
 | SQL scripts, query builder, Quick SQL | ❌ | |
 | Data Workshop (load CSV/XLSX/JSON) | ❌ | |
-| RESTful services (ORDS) | ➖ | Use [PostgREST](https://postgrest.org) next to pgapex |
+| RESTful services (ORDS) | 🟡 | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, JWT-aware `meta.app_user()`/`has_role()` (same RLS as the UI), per-app API role, tokens and endpoint overview in the builder. No REST handler editor or REST-enabled SQL |
 | REST data sources, remote servers, web credentials | ❌ | |
 | Sending e-mail (`APEX_MAIL`) | ❌ | |
 | Printing / document generator (PDF) | ❌ | |
@@ -160,7 +162,7 @@ Last reviewed: 2026-09-29 (pgapex 0.3.0).
 ## Roadmap (proposed priority)
 
 1. **File upload items** (bytea or object storage) and download links.
-2. **Authentication schemes:** OpenID Connect (Microsoft Entra, Google, Keycloak), then LDAP.
+2. ~~OpenID Connect~~ (done); **LDAP and SAML** authentication, and MFA for local accounts.
 3. **E-mail and automations:** a mail queue and scheduled PL/pgSQL on `pg_cron`.
 4. **Interactive report power features:** saved reports, control break, aggregates, highlight, XLSX download.
 5. **Globalization:** translatable text, date/number formats per user.

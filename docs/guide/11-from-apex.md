@@ -17,6 +17,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
 | `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
 | `APEX_ACL` / `apex_acl.has_user_role` | `meta.has_role('role')` |
+| Workspace users (APEX accounts), Application Access Control | `meta.account` (Builder → Users), `meta.app_access` (Access control) |
 | Page access protection "Arguments must have checksum" | `protection = 'checksum'` (the default) |
 | Automatic row processing (DML) | Process type `form_dml` |
 | Interactive grid DML | Process type `grid_dml` |
@@ -26,7 +27,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Application computation / process on new session | Application process (`after_login`, `before_page`) |
 | VPD | PostgreSQL row level security |
 | APEX collections | Temporary or unlogged tables, or `jsonb` |
-| ORDS | Not needed to serve apps; for REST APIs see [below](#ords-and-postgrest) |
+| ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
 
 ## Users per application
@@ -47,21 +48,15 @@ Many organisations don't use APEX accounts at all. They choose another authentic
 the identity provider's groups to APEX roles. Applications in the same workspace can also share
 a session, so signing in to one signs you in to the others.
 
-**How pgapex does it today.** Users belong to **one application** (`meta.app_user.app_id`),
-with roles per user. That's the Application Access Control model without the shared workspace
-directory: simple, and apps are fully isolated, but one person using three apps needs three
-accounts, and there is no single sign-on yet.
+**How pgapex does it.** The same model: a **user directory** with one account per person
+(**Builder → Users**), and per application an **Access control** setting (only listed accounts, or
+any active account) plus role assignments per account. Roles feed authorization schemes and
+`meta.has_role()`. See [chapter 8](08-security.md#the-user-directory).
 
-**Direction.** The roadmap moves closer to APEX:
-
-1. A **workspace-level user directory** (one account per person) with **per-application role
-   assignments** and an "only users with a role may use this app" switch, which is exactly APEX's
-   Application Access Control.
-2. **OpenID Connect** sign-in (Microsoft Entra ID, Google, Keycloak, …) with group → role mapping,
-   and optionally sessions shared between apps.
-
-Until then, for users who need several apps, create their account in each app. A script against
-`meta.app_user` makes that easy.
+Instead of (or next to) passwords, applications can use **single sign-on with OpenID Connect**,
+APEX's "Social Sign-In" scheme, with identity-provider groups mapped to application roles. Signing
+in to a second app is then silent via the identity provider's session. See
+[chapter 8](08-security.md#single-sign-on-openid-connect). LDAP and SAML are not supported yet.
 
 ## ORDS and PostgREST
 
@@ -84,14 +79,15 @@ a replacement:
 |---|---|
 | AutoREST for tables and views | PostgREST (automatic for an exposed schema) |
 | Hand-written handlers (GET/POST with SQL or PL/SQL) | PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
-| OAuth2 client credentials | JWTs issued by your identity provider (e.g. Keycloak, Entra ID) |
+| OAuth2 client credentials | Tokens issued by pgapex (Builder → REST API) or by your identity provider (e.g. Keycloak, Entra ID) |
 | REST-enabled SQL | Not provided by PostgREST (and rarely desirable) |
 | OpenAPI/Swagger | Built into PostgREST |
 
-Recommended setup: expose a dedicated `api` schema containing **views and functions** (not your
-base tables), with its own role, and reuse the same RLS policies as the app. Direct integration
-(for example, `meta.app_user()` recognising a PostgREST JWT so one policy serves both the UI and
-the API) is on the roadmap.
+pgapex integrates with it: `meta.app_user()` and `meta.has_role()` understand PostgREST's JWT
+claims, so **one set of RLS policies** protects the UI and the API, and each app has an API role,
+tokens and an endpoint overview under **Builder → REST API**. The recommended setup is a dedicated
+`api` schema with **views and functions** (not your base tables). See
+[chapter 13](13-rest-api.md).
 
 ## Porting PL/SQL to PL/pgSQL
 
@@ -110,6 +106,7 @@ the API) is on the roadmap.
 | autonomous transactions | not supported; use a separate connection or `dblink` if you really need it |
 | `v('APP_USER')`, `:APP_USER` | `meta.app_user()`, `:APP_USER` |
 | empty string is NULL | Postgres distinguishes them, but pgapex stores empty items as NULL, as APEX does |
+| `'a' \|\| null` is `'a'` | `'a' \|\| null` is **NULL**: use `concat(a, b)` or `concat_ws(sep, …)`, which skip NULLs, or `coalesce(b, '')` |
 
 Tips:
 

@@ -16,6 +16,8 @@ src/
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings), savepoints
   security.ts              URL checksums, password policy, security headers, throttling limits
   session.ts               sessions (hashed tokens), activity log, login throttling
+  sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
+  api.ts                   REST API tokens for PostgREST, API role checks
   binds.ts                 :BIND scanner → escaped literals (unit tested)
   html.ts                  auto-escaping html`` templates
   metadata.ts              types + loaders for apps and pages
@@ -30,13 +32,18 @@ src/
     report.ts, grid.ts, charts.ts, calendar.ts, facets.ts, items.ts, links.ts
   builder/
     components.ts          property spec of every component (drives the property editor)
+    ui.ts                  shell, form helpers, CSRF check, app tab bar
     routes.ts              builder pages
+    users.ts               user directory and identity providers
+    api.ts                 per-app REST API page (API role, tokens)
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
 test/
   binds.test.ts            unit tests
   security.test.ts         security regression tests (in-process, against the database)
+  sso.test.ts              single sign-on against an in-process mock identity provider
+  api.test.ts              REST API: SQL as the API role; HTTP tests skip without PostgREST
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
 ```
 

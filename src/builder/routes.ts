@@ -18,95 +18,8 @@ import {
 } from '../session.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
 
-const BASE = '/builder';
-
-type Body = Record<string, string | undefined>;
-type Req = FastifyRequest<{ Params: Record<string, string>; Body: Body; Querystring: Record<string, string> }>;
-
-// ------------------------------------------------------------------ helpers
-
-function flash(s: Session, message: string, kind: 'ok' | 'error' = 'ok') {
-  s.state[kind === 'ok' ? '__FLASH' : '__ERROR'] = message;
-}
-
-async function back(reply: FastifyReply, s: Session, to: string) {
-  await saveState(s);
-  return reply.redirect(to, 303);
-}
-
-/** Send a builder page; persists the session because shell() consumed its flash messages. */
-async function send(reply: FastifyReply, s: Session, body: string) {
-  await saveState(s);
-  return reply.type('text/html').send(body);
-}
-
-type Section = 'apps' | 'sql' | 'developers';
-
-function shell(s: Session, title: string, crumbs: [string, string?][], main: Raw, section: Section = 'apps') {
-  const ok = takeFlash(s, '__FLASH');
-  const err = takeFlash(s, '__ERROR');
-  const navLink = (key: Section, href: string, ic: string, label: string) =>
-    html`<a href="${href}"${section === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
-  return documentShell(
-    `${title} · Builder`,
-    html`<header class="topbar builder">
-      <a class="brand" href="${BASE}">pgapex <span class="badge">Builder</span></a>
-      <nav class="nav" aria-label="Builder">
-        ${navLink('apps', BASE, 'grid', 'App Builder')}
-        ${navLink('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
-        ${navLink('developers', `${BASE}/developers`, 'users', 'Developers')}
-      </nav>
-      <div class="user"><span>${s.username}</span>
-        <form method="post" action="${BASE}/logout">${csrf(s)}<button class="link-button plain" style="color:inherit">${icon('logout')}<span class="sr-only">Sign out</span></button></form>
-      </div>
-    </header>
-    <main class="page" id="main">
-      ${crumbs.length > 1 ? html`<nav class="crumbs-bar" aria-label="Breadcrumb">${crumbs.map(([label, href], i) =>
-        html`${i ? ' / ' : ''}${href ? html`<a href="${href}">${label}</a>` : html`<span>${label}</span>`}`)}</nav>` : ''}
-      ${s.state.__WEAK ? html`<div class="alert alert-error" role="alert">You signed in with the default password. <a href="${BASE}/developers">Change it now.</a></div>` : ''}
-      ${ok ? html`<div class="alert alert-success" role="status">${ok}</div>` : ''}
-      ${err ? html`<div class="alert alert-error" role="alert">${err}</div>` : ''}
-      ${main}
-    </main>`,
-    'builder-body',
-  );
-}
-
-const csrf = (s: Session) => html`<input type="hidden" name="__csrf" value="${s.csrf_token}">`;
-
-function input(name: string, label: string, value: unknown, opts: { type?: string; help?: string; required?: boolean; placeholder?: string; auto?: string } = {}) {
-  return html`<div class="field"><label class="label" for="f_${name}">${label}</label>
-    <input id="f_${name}" name="${name}" type="${opts.type ?? 'text'}" value="${value ?? ''}"${opts.required ? raw(' required') : ''} placeholder="${opts.placeholder}"${opts.auto ? raw(` autocomplete="${opts.auto}"`) : ''}>
-    ${opts.help ? html`<small class="help">${opts.help}</small>` : ''}</div>`;
-}
-
-function select(name: string, label: string, value: unknown, options: (string | [string, string])[], help?: string) {
-  return html`<div class="field"><label class="label" for="f_${name}">${label}</label>
-    <select id="f_${name}" name="${name}">${options.map((o) => {
-      const [v, l] = Array.isArray(o) ? o : [o, o];
-      return html`<option value="${v}"${String(value ?? '') === v ? raw(' selected') : ''}>${l}</option>`;
-    })}</select>${help ? html`<small class="help">${help}</small>` : ''}</div>`;
-}
-
-const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '') =>
-  html`<section class="region region-standard"><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
-
-const APP_COLORS = ['#0b63c5', '#17794a', '#b3261e', '#7a4cc2', '#b86e00', '#00796b', '#5c6bc0', '#8d6e63'];
-
-// ------------------------------------------------------------------ auth
-
-async function developer(req: Req, reply: FastifyReply) {
-  const s = await getSession(req, reply, null, BASE);
-  if (!s.username) {
-    reply.redirect(`${BASE}/login`);
-    return null;
-  }
-  if (req.method === 'POST' && req.body?.__csrf !== s.csrf_token) {
-    reply.code(403).send('Invalid CSRF token; reload the page and try again.');
-    return null;
-  }
-  return s;
-}
+import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
+import { endSessions, grantAccess, splitRoles } from './users.ts';
 
 interface Lookups {
   regions: { id: number; title: string | null; type: string }[];
@@ -306,8 +219,8 @@ export async function builderRoutes(app: FastifyInstance) {
               ${select('schema', 'Parsing schema', '', [['', '- new schema named after the alias -'], ...schemas.rows.map((r): [string, string] => [r.nspname, r.nspname])],
                 'A database role app_<alias> is created with access to this schema only; the app runs as that role.')}
               ${select('authentication', 'Authentication', 'app_users', [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
-              ${input('admin_user', 'First user', '', { placeholder: 'e.g. your name', help: 'Gets the admin role.' })}
-              ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password' })}
+              ${input('admin_user', 'First user', '', { placeholder: 'e.g. your name', help: 'Gets the admin role. An existing account in Users is reused.' })}
+              ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password', help: 'For a new account; at least 8 characters.' })}
             </div>
             <div class="buttons"><button class="btn btn-hot">Create application</button></div>
           </form></div></section>
@@ -328,9 +241,11 @@ export async function builderRoutes(app: FastifyInstance) {
     try {
       const alias = (b.alias ?? '').trim().toLowerCase();
       if (!/^[a-z][a-z0-9_-]*$/.test(alias)) throw new Error('The alias must start with a letter and contain only a-z, 0-9, _ and -.');
+      let existingAccount = false;
       if (b.authentication !== 'none') {
         if (!b.admin_user?.trim()) throw new Error('Apps with a login page need a first user.');
-        const problem = passwordProblem(b.admin_password);
+        const known = await owner.one('select 1 from meta.account where lower(username) = lower($1)', [b.admin_user.trim()]);
+        const problem = known ? null : passwordProblem(b.admin_password);
         if (problem) throw new Error(problem);
       }
       const id = await owner.tx(async (c) => {
@@ -356,11 +271,19 @@ export async function builderRoutes(app: FastifyInstance) {
         await c.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Welcome', 'static', '<p>Hello, &APP_USER.! Edit this page in the builder.</p>')`, [p.rows[0].id]);
         await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page) values ($1, 1, 'Home', 'home', 1)`, [appId]);
         await c.query(`insert into meta.authz_scheme (app_id, name, type, value, error_message) values ($1, 'ADMIN', 'role', 'admin', 'Only administrators can access this page.')`, [appId]);
-        if (b.authentication !== 'none')
-          await c.query(`insert into meta.app_user (app_id, username, password_hash, roles) values ($1, $2, meta.hash_password($3), '{admin}')`, [appId, b.admin_user!.trim(), b.admin_password]);
+        if (b.authentication !== 'none') {
+          // an existing account just gets access; otherwise create it
+          const existing = await c.query('select id from meta.account where lower(username) = lower($1)', [b.admin_user!.trim()]);
+          const accountId = existing.rows[0]?.id
+            ?? (await c.query('insert into meta.account (username, password_hash) values ($1, meta.hash_password($2)) returning id', [b.admin_user!.trim(), b.admin_password])).rows[0].id;
+          await c.query(`insert into meta.app_access (app_id, account_id, roles) values ($1, $2, '{admin}')`, [appId, accountId]);
+          existingAccount = !!existing.rowCount;
+        }
         return appId;
       });
-      flash(s, 'Application created.');
+      flash(s, existingAccount
+        ? `Application created. The existing account ${b.admin_user!.trim()} got the admin role (its password was not changed).`
+        : 'Application created.');
       return back(reply, s, `${BASE}/apps/${id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -385,16 +308,6 @@ export async function builderRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- app home
   const appOr404 = async (id: string) => owner.one('select * from meta.app where id = $1', [id]);
 
-  const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity') => html`
-    <div class="title-row"><h1>${a.name}</h1>
-      <div class="buttons">
-        <a class="btn${active === 'pages' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}">${icon('file')} Pages</a>
-        <a class="btn${active === 'shared' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/shared">${icon('layers')} Shared Components</a>
-        <a class="btn${active === 'activity' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/activity">${icon('activity')} Activity</a>
-        <a class="btn${active === 'settings' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/settings">${icon('settings')} Settings</a>
-        <a class="btn" href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a>
-        <a class="btn" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
-      </div></div>`;
 
   app.get(`${BASE}/apps/:id`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -514,6 +427,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
+    const providers = (await owner.query('select name, display_name, enabled from meta.auth_provider order by display_name')).rows;
     const main = html`${appHeader(a, 'settings')}
       <div class="columns">
         ${region('Application settings', html`
@@ -530,6 +444,11 @@ export async function builderRoutes(app: FastifyInstance) {
               <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
                 <small class="help">Shows database error details to end users. Development only.</small></div>
             </div>
+            <h3>Sign-in methods</h3>
+            <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
+            ${providers.length
+              ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
+              : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
             <h3>Theme</h3>
             <div class="form-grid">
               ${input('accent', 'Accent colour', a.theme?.accent ?? '#0b63c5', { type: 'color' })}
@@ -544,6 +463,7 @@ export async function builderRoutes(app: FastifyInstance) {
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
+          ${a.authentication !== 'none' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
           <li>Public pages: ${(await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n}</li>
@@ -558,13 +478,16 @@ export async function builderRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       await owner.query(
-        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8, updated_at = now() where id = $1`,
+        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
+                local_login = $9, sso_providers = $10, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
            header: /^#[0-9a-f]{6}$/i.test(b.header ?? '') ? b.header : undefined,
            nav: b.nav === 'top' ? 'top' : 'side',
-         })],
+         }),
+         b.local_login === 'true',
+         ([] as string[]).concat((b.sso_providers as unknown as string | string[] | undefined) ?? []).filter(Boolean)],
       );
       flash(s, 'Settings saved.');
     } catch (e) {
@@ -593,7 +516,14 @@ export async function builderRoutes(app: FastifyInstance) {
     const rows: Record<string, any[]> = {};
     for (const kind of SHARED)
       rows[kind] = (await owner.query(`select * from ${COMPONENTS[kind].table} where app_id = $1 order by ${kind === 'nav_entry' ? 'parent_id nulls first, seq, id' : kind === 'app_process' ? 'seq, id' : 'name'}`, [a.id])).rows;
-    const users = (await owner.query('select id, username, roles, active, last_login_at from meta.app_user where app_id = $1 order by username', [a.id])).rows;
+    const users = (
+      await owner.query(
+        `select ac.id, ac.username, ac.display_name, ac.active, ac.last_login_at, aa.roles
+           from meta.app_access aa join meta.account ac on ac.id = aa.account_id
+          where aa.app_id = $1 order by lower(ac.username)`,
+        [a.id],
+      )
+    ).rows;
 
     const [selKind, selId] = (req.query.c ?? '').split('-');
     const newKind = req.query.new;
@@ -609,33 +539,55 @@ export async function builderRoutes(app: FastifyInstance) {
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
     } else {
-      editor = region('Application users', html`
-        <div class="table-wrap"><table class="report"><thead><tr><th>Username</th><th>Roles</th><th>Active</th><th>Last sign-in</th><th></th></tr></thead><tbody>
-          ${users.map((u) => html`<tr><td>${u.username}</td><td>${u.roles.join(', ')}</td><td>${u.active ? '✓' : '✗'}</td><td>${u.last_login_at?.slice(0, 16) ?? '—'}</td><td>
-            <details class="menu"><summary class="btn">Manage ▾</summary><div class="menu-panel align-right">
-              <form method="post" action="${BASE}/apps/${a.id}/users/${u.id}" class="menu-section">${csrf(s)}
-                ${input(`roles`, 'Roles (comma separated)', u.roles.join(', '))}
-                ${input(`password`, 'New password (optional)', '', { type: 'password', auto: 'new-password' })}
-                <label class="check"><input type="checkbox" name="active" value="true"${u.active ? raw(' checked') : ''}> Active</label>
-                <button class="btn btn-hot">Save user</button>
-              </form>
-              <form method="post" action="${BASE}/apps/${a.id}/users/${u.id}/delete" class="menu-section">${csrf(s)}<button class="link-button" data-confirm="Remove ${u.username}?">Remove user</button></form>
-            </div></details></td></tr>`)}
+      const accounts = (await owner.query('select username from meta.account where active order by lower(username) limit 2000')).rows;
+      const groupRoles = (await owner.query('select group_name, role from meta.app_group_role where app_id = $1 order by 1, 2', [a.id])).rows;
+      const groupMap = html`<h3>Identity-provider groups → roles</h3>
+        <p class="muted" style="margin-top:0">With single sign-on, members of these groups get the role in this app, and may sign in even without being listed above.</p>
+        ${groupRoles.length
+          ? html`<div class="chips">${groupRoles.map((g) => html`<span class="chip">${g.group_name} → <b>${g.role}</b>
+              <form method="post" action="${BASE}/apps/${a.id}/groups/delete" style="display:inline">${csrf(s)}<input type="hidden" name="group_name" value="${g.group_name}"><input type="hidden" name="role" value="${g.role}"><button class="link-button" aria-label="Remove mapping ${g.group_name} to ${g.role}">×</button></form></span>`)}</div>`
+          : html`<p class="muted">No group mappings.</p>`}
+        <form method="post" action="${BASE}/apps/${a.id}/groups">${csrf(s)}
+          <div class="form-grid">${input('group_name', 'Group (as in the token)', '', { required: true, placeholder: 'e.g. hr-managers' })}${input('role', 'Role in this app', '', { required: true, placeholder: 'e.g. manager' })}</div>
+          <div class="buttons"><button class="btn">Add mapping</button></div>
+        </form>`;
+      editor = region('Access control', html`
+        <form method="post" action="${BASE}/apps/${a.id}/access" class="search" style="max-width:none;margin-bottom:1rem">${csrf(s)}
+          ${select('access_control', 'Who may sign in', a.access_control, [
+            ['assigned', 'Only accounts listed below (role-based access)'],
+            ['any_user', 'Any active account in the directory'],
+          ])}
+          <button class="btn" style="align-self:end">Save</button>
+        </form>
+        <p class="muted">Accounts live in the <a href="${BASE}/users">user directory</a>; here you grant them access to <b>${a.name}</b> and assign roles, which authorization schemes and <code>meta.has_role()</code> check. Role changes apply at the user's next sign-in (their sessions in this app end).</p>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Account</th><th>Roles in this app</th><th>Last sign-in</th><th></th></tr></thead><tbody>
+          ${users.length
+            ? users.map((u) => html`<tr>
+                <td data-label="Account"><a href="${BASE}/users/${u.id}">${u.username}</a>${u.display_name ? html` <span class="muted">${u.display_name}</span>` : ''}${u.active ? '' : html` <b>(inactive)</b>`}</td>
+                <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search" style="margin:0;max-width:none">${csrf(s)}
+                  <input name="roles" value="${u.roles.join(', ')}" aria-label="Roles of ${u.username}" placeholder="no roles"><button class="btn">Save</button></form></td>
+                <td data-label="Last sign-in">${u.last_login_at ? String(u.last_login_at).slice(0, 16) : '—'}</td>
+                <td data-label=""><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}/revoke">${csrf(s)}<button class="link-button" data-confirm="Revoke ${u.username}'s access to ${a.name}?">Revoke</button></form></td>
+              </tr>`)
+            : html`<tr><td colspan="4" class="empty">No accounts have access yet.</td></tr>`}
         </tbody></table></div>
-        <h3>Add user</h3>
-        <form method="post" action="${BASE}/apps/${a.id}/users">${csrf(s)}
+        ${groupMap}
+        <h3>Grant access</h3>
+        <form method="post" action="${BASE}/apps/${a.id}/access">${csrf(s)}
           <div class="form-grid">
-            ${input('username', 'Username', '', { required: true })}
-            ${input('password', 'Password', '', { type: 'password', required: true, auto: 'new-password', help: 'At least 8 characters.' })}
+            <div class="field"><label class="label" for="f_grant_user">Account</label>
+              <input id="f_grant_user" name="username" list="accounts-list" required autocomplete="off" placeholder="username">
+              <datalist id="accounts-list">${accounts.map((x) => html`<option value="${x.username}"></option>`)}</datalist>
+              <small class="help">An existing account. <a href="${BASE}/users">Create accounts in Users.</a></small></div>
             ${input('roles', 'Roles', '', { placeholder: 'comma separated, e.g. admin, manager' })}
           </div>
-          <div class="buttons"><button class="btn btn-hot">Add user</button></div>
+          <div class="buttons"><button class="btn btn-hot">Grant access</button></div>
         </form>`);
     }
 
     const tree = html`<ul class="tree">
       <li class="group">Security</li>
-      <li><a href="${BASE}/apps/${a.id}/shared"${!selKind && !newKind ? raw(' aria-current="page"') : ''}>${icon('users')}<span>Application users</span><span class="kind">${users.length}</span></a></li>
+      <li><a href="${BASE}/apps/${a.id}/shared"${!selKind && !newKind ? raw(' aria-current="page"') : ''}>${icon('users')}<span>Access control</span><span class="kind">${users.length}</span></a></li>
       ${SHARED.map((kind) => {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>
@@ -675,56 +627,60 @@ export async function builderRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/apps/${id}/shared`);
   });
 
-  const splitRoles = (v: string | undefined) => (v ?? '').split(',').map((r) => r.trim().toLowerCase()).filter(Boolean);
-
-  app.post(`${BASE}/apps/:id/users`, async (req: Req, reply) => {
+  // ---------------------------------------------------------------- access control
+  app.post(`${BASE}/apps/:id/access`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const b = req.body ?? {};
     try {
-      const problem = passwordProblem(b.password);
-      if (problem) throw new Error(problem);
-      await owner.query('insert into meta.app_user (app_id, username, password_hash, roles) values ($1, $2, meta.hash_password($3), $4)', [
-        req.params.id, b.username?.trim(), b.password, splitRoles(b.roles),
-      ]);
-      flash(s, 'User added.');
-    } catch (e) {
-      flash(s, (e as Error).message, 'error');
-    }
-    return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
-  });
-
-  app.post(`${BASE}/apps/:id/users/:uid`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const b = req.body ?? {};
-    try {
-      if (b.password) {
-        const problem = passwordProblem(b.password);
-        if (problem) throw new Error(problem);
+      if (b.access_control) {
+        await owner.query('update meta.app set access_control = $2 where id = $1', [req.params.id, b.access_control === 'any_user' ? 'any_user' : 'assigned']);
+        flash(s, 'Access control saved.');
+      } else {
+        const acc = await owner.one('select id from meta.account where lower(username) = lower($1)', [b.username?.trim() ?? '']);
+        if (!acc) throw new Error(`There is no account "${b.username}". Create it under Users first.`);
+        await grantAccess(req.params.id, acc.id, splitRoles(b.roles));
+        flash(s, `Access granted to ${b.username}.`);
       }
-      await owner.query(
-        `update meta.app_user set roles = $3, active = $4,
-                password_hash = case when $5::text is null then password_hash else meta.hash_password($5) end
-          where id = $1 and app_id = $2`,
-        [req.params.uid, req.params.id, splitRoles(b.roles), b.active === 'true', b.password || null],
-      );
-      // Changing a user's password or deactivating them ends their sessions.
-      if (b.password || b.active !== 'true')
-        await owner.query('delete from meta.session s using meta.app_user u where u.id = $1 and s.app_id = u.app_id and lower(s.username) = lower(u.username)', [req.params.uid]);
-      flash(s, 'User saved.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
     return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
   });
 
-  app.post(`${BASE}/apps/:id/users/:uid/delete`, async (req: Req, reply) => {
+  app.post(`${BASE}/apps/:id/groups`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    await owner.query('delete from meta.session s using meta.app_user u where u.id = $1 and u.app_id = $2 and s.app_id = u.app_id and lower(s.username) = lower(u.username)', [req.params.uid, req.params.id]);
-    await owner.query('delete from meta.app_user where id = $1 and app_id = $2', [req.params.uid, req.params.id]);
-    flash(s, 'User removed.');
+    const b = req.body ?? {};
+    await owner.query('insert into meta.app_group_role (app_id, group_name, role) values ($1, $2, $3) on conflict do nothing', [
+      req.params.id, b.group_name?.trim(), b.role?.trim().toLowerCase(),
+    ]);
+    flash(s, 'Group mapping added. It applies at the next sign-in.');
+    return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
+  });
+
+  app.post(`${BASE}/apps/:id/groups/delete`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    await owner.query('delete from meta.app_group_role where app_id = $1 and group_name = $2 and role = $3', [req.params.id, req.body?.group_name, req.body?.role]);
+    flash(s, 'Group mapping removed. It applies at the next sign-in.');
+    return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
+  });
+
+  app.post(`${BASE}/apps/:id/access/:accountId`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    await grantAccess(req.params.id, req.params.accountId, splitRoles(req.body?.roles));
+    flash(s, 'Roles saved. They apply at the next sign-in.');
+    return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
+  });
+
+  app.post(`${BASE}/apps/:id/access/:accountId/revoke`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    await owner.query('delete from meta.app_access where app_id = $1 and account_id = $2', [req.params.id, req.params.accountId]);
+    await endSessions(req.params.accountId, req.params.id);
+    flash(s, 'Access revoked.');
     return back(reply, s, `${BASE}/apps/${req.params.id}/shared`);
   });
 

@@ -1,0 +1,54 @@
+{
+  "realm": "pgapex",
+  "enabled": true,
+  "displayName": "pgapex demo",
+  "groups": [{ "name": "hr-admins" }, { "name": "hr-managers" }],
+  "users": [
+    {
+      "username": "king", "enabled": true, "email": "king@example.com", "emailVerified": true,
+      "firstName": "King", "lastName": "President",
+      "credentials": [{ "type": "password", "value": "king-sso", "temporary": false }],
+      "groups": ["hr-admins", "hr-managers"]
+    },
+    {
+      "username": "allen", "enabled": true, "email": "allen@example.com", "emailVerified": true,
+      "firstName": "Allen", "lastName": "Sales",
+      "credentials": [{ "type": "password", "value": "allen-sso", "temporary": false }],
+      "groups": []
+    },
+    {
+      "username": "carol", "enabled": true, "email": "carol@example.com", "emailVerified": true,
+      "firstName": "Carol", "lastName": "Manager",
+      "credentials": [{ "type": "password", "value": "carol-sso", "temporary": false }],
+      "groups": ["hr-managers"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "pgapex",
+      "name": "pgapex (development)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "pgapex-dev-secret",
+      "redirectUris": ["http://127.0.0.1:3100/sso/callback/keycloak"],
+      "webOrigins": ["http://127.0.0.1:3100"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        }
+      ]
+    }
+  ]
+}

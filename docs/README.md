@@ -20,6 +20,7 @@ deploying applications, and how to extend pgapex itself.
 | 10 | [Tutorial: build a Tasks app](guide/10-tutorial.md) | A complete app with RLS, PL/pgSQL, validations and dynamic actions, step by step |
 | 11 | [Coming from Oracle APEX](guide/11-from-apex.md) | Concept mapping, porting PL/SQL to PL/pgSQL, users per app vs workspace, ORDS vs PostgREST |
 | 12 | [Developing pgapex](guide/12-development.md) | Code structure, tests, adding a region or item type, release process |
+| 13 | [REST APIs with PostgREST](guide/13-rest-api.md) | PostgREST next to pgapex, the `api` schema pattern, tokens, one set of RLS policies for UI and API |
 
 ## Other documents
 
