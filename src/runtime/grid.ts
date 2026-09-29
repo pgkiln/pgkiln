@@ -96,19 +96,21 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const pkIdx = fields.findIndex((f) => f.name === r.pk_column);
   if (pkIdx === -1) return html`<div class="alert alert-error">The grid query must select the primary key column ${r.pk_column}.</div>`;
 
+  // Without a grid_dml process the grid is read-only (no Save/Add/Delete).
+  const savable = ctx.vis!.buttons.has(saveRequest(r));
   const cfg = r.config.columns ?? {};
   const cols: (GridColumn & { idx: number })[] = [];
   for (const { f, i } of visibleColumns(r, fields)) {
     const col: GridColumn & { idx: number } = {
       name: f.name, typeOid: f.dataTypeID, idx: i,
-      editable: writable.has(f.name) && allow(r, 'update'),
+      editable: savable && writable.has(f.name) && allow(r, 'update'),
       required: !!cfg[f.name]?.required,
     };
     if (cfg[f.name]?.lov) col.options = await lovOptions(ctx, cfg[f.name].lov).catch(() => []);
     cols.push(col);
   }
-  const insertable = allow(r, 'insert') && cols.some((x) => writable.has(x.name));
-  const deletable = allow(r, 'delete');
+  const insertable = savable && allow(r, 'insert') && cols.some((x) => writable.has(x.name));
+  const deletable = savable && allow(r, 'delete');
   const g = `g${r.id}`;
   const posted = ctx.body && Object.keys(ctx.body).some((k) => k.startsWith(`${g}_`)) ? ctx.body : null;
   const postedByPk = new Map<string, number>();
@@ -142,7 +144,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     return html`<tr class="${deleted ? 'deleted' : null}">
       ${deletable ? html`<td class="grid-sel" data-label="Delete"><label class="check"><input type="checkbox" name="${g}_${i}_del" value="true"${deleted ? raw(' checked') : ''}><span class="sr-only">Delete row ${i + 1}</span></label></td>` : ''}
       ${cells}
-      <td hidden><input type="hidden" name="${g}_${i}_pk" value="${pk}"><input type="hidden" name="${g}_${i}_cs" value="${rowToken(ctx, r, pk)}"><input type="hidden" name="${g}_${i}_orig" value="${JSON.stringify(orig)}"></td>
+      ${savable ? html`<td hidden><input type="hidden" name="${g}_${i}_pk" value="${pk}"><input type="hidden" name="${g}_${i}_cs" value="${rowToken(ctx, r, pk)}"><input type="hidden" name="${g}_${i}_orig" value="${JSON.stringify(orig)}"></td>` : ''}
     </tr>`;
   });
 
@@ -182,7 +184,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       </div>
       <div class="buttons">
         ${insertable ? html`<button type="button" class="btn" data-grid-add="${g}">${icon('plus')} Add row</button>` : ''}
-        <button type="submit" class="btn btn-hot" name="__request" value="${saveRequest(r)}">Save</button>
+        ${savable ? html`<button type="submit" class="btn btn-hot" name="__request" value="${saveRequest(r)}">Save</button>` : ''}
       </div>
     </div>
     <div class="table-wrap"><table class="report report-reflow grid-table">
