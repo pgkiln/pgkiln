@@ -35,6 +35,13 @@ authorization schemes and row level security at work.
 `npm run db:reset` recreates the database. Schema changes go in a new
 `db/migrations/NNN_*.sql` file; `npm run db:migrate` applies pending ones.
 
+## Documentation
+
+The **[user guide](docs/README.md)** explains how everything works: installation and
+configuration, concepts, the builder, every region and item type, processing, dynamic actions,
+security, the SQL reference, a step-by-step tutorial, a guide for Oracle APEX developers, and
+developing pgapex itself.
+
 ## What's in the box
 
 For a full comparison with Oracle APEX 26.1, including what's missing, see
