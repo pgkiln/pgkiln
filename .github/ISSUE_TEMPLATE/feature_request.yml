@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest a feature (for example something Oracle APEX has that pgapex lacks)
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to build?
+      description: Describe the use case. If it exists in Oracle APEX, name the APEX feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How could it look in the metadata (meta.* tables), runtime and builder?

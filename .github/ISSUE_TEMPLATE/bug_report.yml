@@ -1,0 +1,33 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Do not report security vulnerabilities here**; see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: If possible, attach an app export (Builder → Export) or the SQL of the region/process involved.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versions
+      description: pgapex version or commit, PostgreSQL version, Node.js version, browser
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error references
+      description: Server log lines or "reference #…" numbers from the activity monitor
+      render: text
