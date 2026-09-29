@@ -1,0 +1,200 @@
+import { runtime } from './db.ts';
+
+export interface AuthzScheme {
+  name: string;
+  type: 'role' | 'sql';
+  value: string;
+  error_message: string;
+}
+
+export interface NavEntry {
+  id: number;
+  parent_id: number | null;
+  seq: number;
+  label: string;
+  icon: string | null;
+  target_page: number | null;
+  authz: string | null;
+}
+
+export interface PageSummary {
+  page_no: number;
+  name: string;
+  title: string | null;
+  parent_page: number | null;
+  mode: 'normal' | 'modal';
+  authz: string | null;
+  requires_auth: boolean;
+}
+
+export interface AppProcess {
+  id: number;
+  name: string;
+  point: 'after_login' | 'before_page';
+  code: string;
+  authz: string | null;
+}
+
+export interface App {
+  id: number;
+  alias: string;
+  name: string;
+  home_page: number;
+  authentication: 'none' | 'app_users';
+  db_role: string | null;
+  debug: boolean;
+  pages: PageSummary[];
+  nav: NavEntry[];
+  authz_schemes: AuthzScheme[];
+  app_items: string[];
+  app_processes: AppProcess[];
+}
+
+export interface Region {
+  id: number;
+  seq: number;
+  title: string | null;
+  type: 'report' | 'form' | 'chart' | 'cards' | 'static';
+  source: string | null;
+  table_name: string | null;
+  pk_column: string | null;
+  pk_item: string | null;
+  columns: number;
+  template: 'standard' | 'plain' | 'collapsible';
+  condition: string | null;
+  authz: string | null;
+  config: Record<string, any>;
+}
+
+export type ItemType =
+  | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'radio'
+  | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password';
+
+export interface Item {
+  id: number;
+  region_id: number | null;
+  seq: number;
+  name: string;
+  label: string | null;
+  type: ItemType;
+  lov: string | null;
+  source_column: string | null;
+  default_value: string | null;
+  required: boolean;
+  help: string | null;
+  readonly_condition: string | null;
+  authz: string | null;
+  config: Record<string, any>;
+}
+
+export interface Button {
+  id: number;
+  region_id: number | null;
+  seq: number;
+  name: string;
+  label: string;
+  action: 'submit' | 'redirect' | 'da';
+  target_page: number | null;
+  target_items: Record<string, string>;
+  condition: string | null;
+  authz: string | null;
+  hot: boolean;
+  confirm: string | null;
+}
+
+export interface DynamicAction {
+  id: number;
+  seq: number;
+  name: string;
+  event: 'change' | 'click' | 'load';
+  trigger_element: string | null;
+  condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
+  condition_value: string | null;
+  action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit';
+  affected_items: string | null;
+  affected_region_id: number | null;
+  code: string | null;
+  items_to_submit: string | null;
+  message: string | null;
+  authz: string | null;
+}
+
+export interface Validation {
+  id: number;
+  name: string;
+  item_name: string | null;
+  type: 'not_null' | 'sql' | 'regex';
+  expression: string | null;
+  message: string;
+  when_button: string | null;
+}
+
+export interface Process {
+  id: number;
+  name: string;
+  type: 'form_dml' | 'sql';
+  region_id: number | null;
+  code: string | null;
+  point: 'submit' | 'load';
+  when_button: string | null;
+  authz: string | null;
+  success_message: string | null;
+}
+
+export interface Page extends PageSummary {
+  id: number;
+  app_id: number;
+  protection: 'unrestricted' | 'checksum';
+  regions: Region[];
+  items: Item[];
+  buttons: Button[];
+  dynamic_actions: DynamicAction[];
+  validations: Validation[];
+  processes: Process[];
+}
+
+const agg = (table: string, fk: string, parent: string, order = 'x.seq, x.id') =>
+  `coalesce((select jsonb_agg(to_jsonb(x) order by ${order}) from ${table} x where x.${fk} = ${parent}.id), '[]')`;
+
+// No caching on purpose: edits made in the builder show up on the next request.
+export async function loadApp(alias: string) {
+  return runtime.one<App>(
+    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.db_role, a.debug,
+            coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
+                       'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth))
+                        from meta.page p where p.app_id = a.id), '[]') as pages,
+            ${agg('meta.nav_entry', 'app_id', 'a')} as nav,
+            coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message))
+                        from meta.authz_scheme s where s.app_id = a.id), '[]') as authz_schemes,
+            coalesce((select jsonb_agg(i.name) from meta.app_item i where i.app_id = a.id), '[]') as app_items,
+            ${agg('meta.app_process', 'app_id', 'a')} as app_processes
+       from meta.app a
+      where a.alias = $1`,
+    [alias],
+  );
+}
+
+export async function loadPage(appId: number, pageNo: number) {
+  return runtime.one<Page>(
+    `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
+            p.protection, p.authz,
+            ${agg('meta.region', 'page_id', 'p')} as regions,
+            ${agg('meta.item', 'page_id', 'p')} as items,
+            ${agg('meta.button', 'page_id', 'p')} as buttons,
+            ${agg('meta.dynamic_action', 'page_id', 'p')} as dynamic_actions,
+            ${agg('meta.validation', 'page_id', 'p')} as validations,
+            ${agg('meta.process', 'page_id', 'p')} as processes
+       from meta.page p
+      where p.app_id = $1 and p.page_no = $2`,
+    [appId, pageNo],
+  );
+}
+
+export async function loadUserRoles(appId: number, username: string | null) {
+  if (!username) return [];
+  const r = await runtime.one<{ roles: string[] }>(
+    'select roles from meta.app_user where app_id = $1 and lower(username) = lower($2) and active',
+    [appId, username],
+  );
+  return (r?.roles ?? []).map((x) => x.toLowerCase());
+}

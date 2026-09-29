@@ -1,0 +1,197 @@
+import { html, raw, type Raw } from '../html.ts';
+import { icon } from '../icons.ts';
+import { documentShell } from '../layout.ts';
+import type { NavEntry } from '../metadata.ts';
+import { isAuthorized, pageAllowed } from './authz.ts';
+import { substitute, type PageContext } from './context.ts';
+import { renderItems } from './items.ts';
+import { buttonsFor, renderRegion } from './regions.ts';
+
+// ---------------------------------------------------------------- dynamic actions
+
+const list = (s: string | null) => (s ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+
+/** Client-side definition of the page's dynamic actions (never includes SQL). */
+function dynamicActionsJson(ctx: PageContext) {
+  return ctx.page.dynamic_actions
+    .filter((d) => ctx.vis!.dynamicActions.has(d.id))
+    .map((d) => ({
+      id: d.id,
+      event: d.event,
+      trigger: list(d.trigger_element),
+      cond: d.condition_type ? { type: d.condition_type, value: d.condition_value ?? '' } : null,
+      action: d.action,
+      items: list(d.affected_items),
+      region: d.affected_region_id,
+      submit: list(d.items_to_submit),
+      message: d.message,
+    }));
+}
+
+function conditionHolds(type: string | null, expected: string | null, value: string) {
+  switch (type) {
+    case 'equals': return value === (expected ?? '');
+    case 'not_equals': return value !== (expected ?? '');
+    case 'in_list': return (expected ?? '').split(',').map((x) => x.trim()).includes(value);
+    case 'is_null': return value === '';
+    case 'is_not_null': return value !== '';
+    default: return true;
+  }
+}
+
+/**
+ * Apply show/hide dynamic actions on the server too, so the first paint is
+ * already right (the browser re-applies them on every change).
+ */
+function initiallyHidden(ctx: PageContext) {
+  const hidden = new Set<string>();
+  for (const d of ctx.page.dynamic_actions) {
+    if (!ctx.vis!.dynamicActions.has(d.id) || (d.action !== 'show' && d.action !== 'hide')) continue;
+    const trigger = list(d.trigger_element)[0];
+    const value = trigger ? (ctx.session.state[trigger] ?? '') : '';
+    const holds = conditionHolds(d.condition_type, d.condition_value, value);
+    const show = (d.action === 'show') === holds;
+    const targets = [...list(d.affected_items), ...(d.affected_region_id ? [`R${d.affected_region_id}`] : [])];
+    for (const t of targets) show ? hidden.delete(t) : hidden.add(t);
+  }
+  return hidden;
+}
+
+// ---------------------------------------------------------------- navigation
+
+async function navTree(ctx: PageContext) {
+  const current = new Set<number>();
+  for (let p: number | null | undefined = ctx.page.page_no, guard = 0; p && guard < 10; guard++) {
+    current.add(p);
+    p = ctx.app.pages.find((x) => x.page_no === p)?.parent_page;
+  }
+  const visible = async (e: NavEntry) => (await isAuthorized(ctx, e.authz)) && (!e.target_page || (await pageAllowed(ctx, e.target_page)));
+  const render = async (parent: number | null): Promise<Raw[]> => {
+    const out: Raw[] = [];
+    for (const e of ctx.app.nav.filter((n) => n.parent_id === parent).sort((a, b) => a.seq - b.seq)) {
+      if (!(await visible(e))) continue;
+      const children = await render(e.id);
+      if (!e.target_page && !children.length) continue;
+      const active = e.target_page !== null && e.target_page === ctx.page.page_no;
+      const inTrail = (e.target_page !== null && current.has(e.target_page)) || children.some((c) => c.value.includes('aria-current'));
+      const label = html`${icon(e.icon ?? 'chevron')}<span>${e.label}</span>`;
+      out.push(
+        children.length
+          ? html`<li><details${inTrail ? raw(' open') : ''}><summary class="${inTrail ? 'in-trail' : null}">${label}</summary><ul>${children}</ul></details></li>`
+          : html`<li><a href="${ctx.base}/${e.target_page}"${active ? raw(' aria-current="page"') : inTrail ? raw(' class="in-trail"') : ''}>${label}</a></li>`,
+      );
+    }
+    return out;
+  };
+  return render(null);
+}
+
+async function breadcrumb(ctx: PageContext) {
+  const trail: { page_no: number; name: string }[] = [];
+  let p = ctx.app.pages.find((x) => x.page_no === ctx.page.parent_page);
+  for (let guard = 0; p && guard < 6; guard++) {
+    trail.unshift(p);
+    p = ctx.app.pages.find((x) => x.page_no === p!.parent_page);
+  }
+  if (!trail.length && ctx.page.page_no !== ctx.app.home_page) {
+    const home = ctx.app.pages.find((x) => x.page_no === ctx.app.home_page);
+    if (home) trail.push(home);
+  }
+  const links = [];
+  for (const t of trail) if (await pageAllowed(ctx, t.page_no)) links.push(html`<li><a href="${ctx.base}/${t.page_no}">${t.name}</a></li>`);
+  return links;
+}
+
+// ---------------------------------------------------------------- page
+
+export async function chrome(ctx: PageContext, main: Raw, title: string) {
+  if (ctx.dialog)
+    return documentShell(`${title} · ${ctx.app.name}`, html`<main class="t-dialog-main" id="main">${main}</main>`, 't-dialog-page', {
+      'data-base': ctx.base,
+      'data-page': String(ctx.page.page_no),
+      'data-dialog': '1',
+    });
+
+  const signedIn = ctx.user !== 'nobody';
+  const nav = await navTree(ctx);
+  return documentShell(
+    `${title} · ${ctx.app.name}`,
+    html`<a class="skip-link" href="#main">Skip to content</a>
+    <header class="t-header">
+      <button type="button" class="t-nav-toggle icon-button" aria-label="Toggle navigation" aria-controls="t-nav" aria-expanded="true">${icon('menu')}</button>
+      <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
+      <span class="t-spacer"></span>
+      ${ctx.app.authentication !== 'none'
+        ? signedIn
+          ? html`<details class="menu t-user">
+              <summary>${icon('user')}<span>${ctx.user}</span></summary>
+              <div class="menu-panel align-right">
+                <div class="menu-section"><strong>${ctx.user}</strong>${ctx.roles.length ? html`<div class="muted">Roles: ${ctx.roles.join(', ')}</div>` : ''}</div>
+                <form method="post" action="${ctx.base}/logout" class="menu-section">
+                  <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
+                  <button class="link-button plain">${icon('logout')} Sign out</button>
+                </form>
+              </div>
+            </details>`
+          : html`<a href="${ctx.base}/login">Sign in</a>`
+        : ''}
+    </header>
+    <div class="t-body">
+      <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
+      <main class="t-main" id="main">${main}</main>
+    </div>`,
+    't-app',
+    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no) },
+  );
+}
+
+export async function renderPage(ctx: PageContext) {
+  const hidden = initiallyHidden(ctx);
+  const defaultButton = [...ctx.vis!.buttons.values()].find((b) => b.hot && b.action === 'submit');
+  const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);
+  const regions = [];
+  for (const r of ctx.page.regions) regions.push(await renderRegion(ctx, r, hidden));
+  const title = substitute(ctx.page.title ?? ctx.page.name, ctx, (v) => v);
+  const crumbs = ctx.dialog ? [] : await breadcrumb(ctx);
+  const das = dynamicActionsJson(ctx);
+
+  const main = html`
+    ${ctx.dialog
+      ? ''
+      : html`<div class="t-titlebar">
+          ${crumbs.length ? html`<nav aria-label="Breadcrumb"><ol class="crumbs">${crumbs}</ol></nav>` : ''}
+          <h1>${title}</h1>
+        </div>`}
+    <div class="t-content">
+      <div class="messages" aria-live="polite">
+        ${ctx.messages.map((m) => html`<div class="alert alert-success" role="status">${m}<button type="button" class="alert-close" aria-label="Dismiss">×</button></div>`)}
+        ${ctx.errors.page.map((m) => html`<div class="alert alert-error" role="alert">${m}</div>`)}
+        ${Object.keys(ctx.errors.items).length && !ctx.errors.page.length
+          ? html`<div class="alert alert-error" role="alert">Please correct the errors below.</div>`
+          : ''}
+      </div>
+      <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}" novalidate>
+        <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
+        ${ctx.dialog ? html`<input type="hidden" name="__dialog" value="1">` : ''}
+        ${defaultButton ? html`<button type="submit" name="__request" value="${defaultButton.name}" class="default-submit" tabindex="-1" aria-hidden="true"></button>` : ''}
+        ${pageItems.length ? html`<div class="page-items form-grid">${pageItems}</div>` : ''}
+        <div class="t-regions">${regions}</div>
+        ${await buttonsFor(ctx, null)}
+      </form>
+      ${ctx.detached}
+    </div>
+    <script type="application/json" id="pgapex-meta">${raw(
+      JSON.stringify({ csrf: ctx.session.csrf_token, das }).replace(/</g, '\\u003c'),
+    )}</script>`;
+  return chrome(ctx, main, title);
+}
+
+/** Response to a successful submit inside a dialog: tells the opener to close it. */
+export function dialogClosePage(ctx: PageContext) {
+  return documentShell(
+    ctx.app.name,
+    html`<main class="t-dialog-main"><p>Done. <a href="${ctx.base}/${ctx.app.home_page}">Continue</a></p></main>`,
+    't-dialog-page',
+    { 'data-dialog-close': '1' },
+  );
+}
