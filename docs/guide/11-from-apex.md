@@ -27,7 +27,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Application computation / process on new session | Application process (`after_login`, `before_page`) |
 | VPD | PostgreSQL row level security |
 | APEX collections | Temporary or unlogged tables, or `jsonb` |
-| ORDS | Not needed to serve apps; for REST APIs see [below](#ords-and-postgrest) |
+| ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
 
 ## Users per application
@@ -79,14 +79,15 @@ a replacement:
 |---|---|
 | AutoREST for tables and views | PostgREST (automatic for an exposed schema) |
 | Hand-written handlers (GET/POST with SQL or PL/SQL) | PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
-| OAuth2 client credentials | JWTs issued by your identity provider (e.g. Keycloak, Entra ID) |
+| OAuth2 client credentials | Tokens issued by pgapex (Builder → REST API) or by your identity provider (e.g. Keycloak, Entra ID) |
 | REST-enabled SQL | Not provided by PostgREST (and rarely desirable) |
 | OpenAPI/Swagger | Built into PostgREST |
 
-Recommended setup: expose a dedicated `api` schema containing **views and functions** (not your
-base tables), with its own role, and reuse the same RLS policies as the app. Direct integration
-(for example, `meta.app_user()` recognising a PostgREST JWT so one policy serves both the UI and
-the API) is on the roadmap.
+pgapex integrates with it: `meta.app_user()` and `meta.has_role()` understand PostgREST's JWT
+claims, so **one set of RLS policies** protects the UI and the API, and each app has an API role,
+tokens and an endpoint overview under **Builder → REST API**. The recommended setup is a dedicated
+`api` schema with **views and functions** (not your base tables). See
+[chapter 13](13-rest-api.md).
 
 ## Porting PL/SQL to PL/pgSQL
 

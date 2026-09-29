@@ -18,7 +18,7 @@ import {
 } from '../session.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
 
-import { APP_COLORS, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 import { endSessions, grantAccess, splitRoles } from './users.ts';
 
 interface Lookups {
@@ -308,16 +308,6 @@ export async function builderRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- app home
   const appOr404 = async (id: string) => owner.one('select * from meta.app where id = $1', [id]);
 
-  const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity') => html`
-    <div class="title-row"><h1>${a.name}</h1>
-      <div class="buttons">
-        <a class="btn${active === 'pages' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}">${icon('file')} Pages</a>
-        <a class="btn${active === 'shared' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/shared">${icon('layers')} Shared Components</a>
-        <a class="btn${active === 'activity' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/activity">${icon('activity')} Activity</a>
-        <a class="btn${active === 'settings' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/settings">${icon('settings')} Settings</a>
-        <a class="btn" href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a>
-        <a class="btn" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
-      </div></div>`;
 
   app.get(`${BASE}/apps/:id`, async (req: Req, reply) => {
     const s = await developer(req, reply);

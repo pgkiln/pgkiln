@@ -7,9 +7,10 @@ triggers, your own functions).
 
 | Function | Returns | Description |
 |---|---|---|
-| `meta.app_user()` | text | The signed-in application user, or `nobody` |
-| `meta.app_id()` | int | The current application's id |
-| `meta.has_role(role)` | boolean | Whether the current user has the role in this application (roles are resolved at sign-in) |
+| `meta.app_user()` | text | The signed-in application user, or `nobody`. In PostgREST requests: the token's user ([chapter 13](13-rest-api.md)) |
+| `meta.app_id()` | int | The current application's id (in PostgREST: the app named in the token) |
+| `meta.has_role(role)` | boolean | Whether the current user has the role in this application (roles are resolved at sign-in; in PostgREST: the token's `roles` claim or the account's roles in the token's app) |
+| `meta.jwt_claims()` | jsonb | The verified JWT claims of a PostgREST request, or NULL |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
@@ -31,6 +32,7 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 | `meta.hash_password(text)` | A bcrypt hash for `meta.app_user.password_hash` / `meta.developer.password_hash` |
 | `meta.authenticate(app_id, username, password)` | Username on success, NULL otherwise, including when the account has no access to the app (used by the login page) |
 | `meta.account_roles(app_id, username)` | The account's roles in an application |
+| `meta.api_check()` | PostgREST's pre-request function (`db-pre-request`): rejects tokens whose app doesn't use the current role as its API role, or whose account is inactive or has no access |
 
 ## Metadata tables
 
@@ -50,6 +52,7 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `local_login` | boolean | Offer username and password sign-in |
 | `sso_providers` | text[] | Names of identity providers offered on the login page |
 | `db_role` | text | Database role every request runs as |
+| `api_role` | text | Database role of REST API tokens for this app (PostgREST switches to it) |
 | `debug` | boolean | Show database error details to users |
 | `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top"}` |
 
@@ -123,7 +126,7 @@ needed and grants access; deleting revokes access.
 | Table | Contents | Readable by the runtime role |
 |---|---|---|
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
-| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `logout`, `error`, `forbidden`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
+| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `logout`, `error`, `forbidden`, `api_token`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
 | `developer` | Builder accounts | no |
 | `auth_provider` | OpenID Connect providers: `name`, `display_name`, `issuer`, `client_id`, `client_secret`, `scopes`, `username_claim`, `groups_claim`, `auto_create`, `enabled` | no |
 | `account_identity` | Links an account to a provider's subject (`provider_id`, `subject`, `account_id`) | no |
@@ -171,4 +174,5 @@ Usable in navigation entries and cards (`icon` column):
 | `GET /a/:alias/sso/:provider` | Start single sign-on with a provider |
 | `GET /sso/callback/:provider` | OpenID Connect redirect URI |
 | `/builder/...` | Builder |
+| PostgREST (separate service, `API_URL`) | REST API of each app's `api` schema, see [chapter 13](13-rest-api.md) |
 | `/static/...` | CSS, JavaScript, icons |

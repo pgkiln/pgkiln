@@ -45,7 +45,7 @@ of the export; check it under **Settings**, and create users under **Shared Comp
 
 Open an application to see its pages, with region/item/dynamic-action/process counts,
 authorization and protection. The buttons at the top lead to **Shared Components**, **Activity**,
-**Settings**, **Export** and **Run**.
+**REST API**, **Settings**, **Export** and **Run**.
 
 ### Create pages from a table (wizards)
 
@@ -137,6 +137,13 @@ Per application: page views, distinct users and average page time over the last 
 failed and locked sign-ins; errors and access denials; views and timings per page over 7 days;
 and a list of recent events (with *Include page views*). The "reference #123" numbers users see
 on errors are the event ids here.
+
+## REST API
+
+Per application: the **API database role** that REST API tokens use, whether PostgREST answers
+at `API_URL`, the endpoints (views and functions in the `api` schema, with the methods the role
+may use), a form to **issue a token** for an account, and `curl` examples. See
+[chapter 13](13-rest-api.md).
 
 ## SQL Workshop
 

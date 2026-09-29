@@ -9,6 +9,7 @@
 | Docker (optional) | any recent | For the bundled development database |
 
 pgapex does not need any other services; there is no separate web listener (like ORDS for APEX).
+For REST APIs you can run [PostgREST](https://postgrest.org) next to it ([chapter 13](13-rest-api.md)).
 
 ## Quick start (development)
 
@@ -69,6 +70,8 @@ which is read at startup; real environment variables take precedence.
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |
 | `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgapex at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it |
+| `API_URL` | `http://127.0.0.1:3000` | Where PostgREST serves the REST API ([chapter 13](13-rest-api.md)) |
+| `API_JWT_SECRET` | *(none)* | Signs REST API tokens; at least 32 characters, the same as PostgREST's `jwt-secret`. Without it, tokens can't be issued |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy, so client IPs (used by login throttling) come from `X-Forwarded-For` |
 | `SESSION_IDLE_MINUTES` | `60` | A session ends after this long without requests |
@@ -133,6 +136,9 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgapex (nod
    COOKIE_SECURE=true
    TRUST_PROXY=true
    PUBLIC_URL=https://apps.example.com
+   # only with a REST API (PostgREST):
+   API_URL=https://api.example.com
+   API_JWT_SECRET=<48+ random characters, same as PostgREST's jwt-secret>
    ```
 3. **Process manager.** Run `npm start` under systemd, a container orchestrator or `pm2`.
    Example systemd unit:

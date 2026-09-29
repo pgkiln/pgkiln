@@ -80,6 +80,19 @@ export function select(name: string, label: string, value: unknown, options: (st
 export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '') =>
   html`<section class="region region-standard"><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
 
+/** Title and tab buttons of an application's builder pages. */
+export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api') => html`
+    <div class="title-row"><h1>${a.name}</h1>
+      <div class="buttons">
+        <a class="btn${active === 'pages' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}">${icon('file')} Pages</a>
+        <a class="btn${active === 'shared' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/shared">${icon('layers')} Shared Components</a>
+        <a class="btn${active === 'activity' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/activity">${icon('activity')} Activity</a>
+        <a class="btn${active === 'api' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/api">${icon('code')} REST API</a>
+        <a class="btn${active === 'settings' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/settings">${icon('settings')} Settings</a>
+        <a class="btn" href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a>
+        <a class="btn" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
+      </div></div>`;
+
 export const APP_COLORS = ['#0b63c5', '#17794a', '#b3261e', '#7a4cc2', '#b86e00', '#00796b', '#5c6bc0', '#8d6e63'];
 
 // ------------------------------------------------------------------ auth

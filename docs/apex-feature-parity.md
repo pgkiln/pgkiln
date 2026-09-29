@@ -6,7 +6,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ out of scope (use the PostgreSQL ecosystem instead)
 
-Last reviewed: 2026-09-29 (pgapex 0.3.0).
+Last reviewed: 2026-09-29 (pgapex 0.4.0).
 
 ## Summary
 
@@ -17,7 +17,7 @@ Last reviewed: 2026-09-29 (pgapex 0.3.0).
 | Security (authn, authz, session state protection, CSP) | ✅ user directory, OpenID Connect SSO; 🟡 no LDAP/SAML/MFA |
 | Builder (page designer, shared components, SQL Workshop) | 🟡 property editor, no drag-and-drop |
 | Responsive UI, dark mode, theming | ✅ / 🟡 basic theme roller |
-| Integration (REST, email, printing, data loading) | ❌ next priorities |
+| Integration (REST, email, printing, data loading) | 🟡 REST APIs with PostgREST; ❌ email, printing, data loading |
 | Workflow, approvals, automations | ❌ (hand-built in PL/pgSQL for now, see the HR sample) |
 | AI features (assistant, NL2IR, AI agents) | ❌ |
 | Globalization (translations, formats) | ❌ |
@@ -135,7 +135,7 @@ Last reviewed: 2026-09-29 (pgapex 0.3.0).
 | SQL Workshop: SQL commands, object browser | ✅ | Object browser shows columns, RLS policies, grants, data, function source |
 | SQL scripts, query builder, Quick SQL | ❌ | |
 | Data Workshop (load CSV/XLSX/JSON) | ❌ | |
-| RESTful services (ORDS) | ➖ | Use [PostgREST](https://postgrest.org) next to pgapex |
+| RESTful services (ORDS) | 🟡 | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, JWT-aware `meta.app_user()`/`has_role()` (same RLS as the UI), per-app API role, tokens and endpoint overview in the builder. No REST handler editor or REST-enabled SQL |
 | REST data sources, remote servers, web credentials | ❌ | |
 | Sending e-mail (`APEX_MAIL`) | ❌ | |
 | Printing / document generator (PDF) | ❌ | |

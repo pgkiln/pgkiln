@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-29. Steps A and B are **done**; step C (PostgREST) is **in progress** (core works, verified with curl).
+Last updated: 2026-09-29. Steps A, B and C are **done**; version bumped to **0.4.0**. Waiting for the owner to merge `sprint-4`.
 
 ## Project in one paragraph
 
@@ -41,9 +41,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | v0.2.0 (tagged) |
-| `sprint-3` | v0.3.0: responsive UI, grid, charts, calendar, facets, docs. Pushed, **not merged yet** |
-| `sprint-4` | **this sprint**, branched from `sprint-3` |
+| `main` | v0.3.0 (`sprint-3` merged via PR #1) |
+| `sprint-4` | v0.4.0: user directory, OpenID Connect SSO, PostgREST REST APIs. Pushed, **not merged yet** |
 
 ## Sprint 4 goal (owner's order)
 
@@ -120,7 +119,7 @@ Original design notes:
   Optionally a `docker compose --profile sso` Keycloak with a realm import for manual demos.
 - Cross-app SSO comes from the identity provider's own session (signing in to app B through the IdP is silent).
 
-### C: PostgREST alongside pgapex: in progress
+### C: PostgREST alongside pgapex: done
 
 Done (WIP commit on `sprint-4`, verified manually with curl against a running PostgREST):
 - [x] `db/migrations/005_api.sql`: roles `pgapex_authenticator` (login) and `pgapex_anon`; `meta.app.api_role`;
@@ -130,20 +129,29 @@ Done (WIP commit on `sprint-4`, verified manually with curl against a running Po
       `leave_requests`, `my_notifications`; RPC `request_leave`, `decide_leave`)
 - [x] `docker-compose.yml`: `postgrest` service (profile `api`, port 3000, `PGRST_JWT_SECRET=${API_JWT_SECRET}`);
       `.env.example`: `API_URL`, `API_JWT_SECRET`
-- [x] `src/api.ts`: `issueApiToken(appId, username, hours)` (HS256 via jose; checks active + access; includes roles)
+- [x] `src/api.ts`: `issueApiToken(appId, username, hours)` (HS256 via jose; checks active + access). Tokens carry **no roles**
+      claim: `has_role()` reads them live. `apiRoleProblem()` refuses superuser/BYPASSRLS/pgapex roles as API roles
+- [x] `meta.api_check()` (in 005) = PostgREST `db-pre-request`: token's `app` must use the switched role as api_role; account
+      must exist, be active and have access (PT401/PT403). Deactivation/revocation stops tokens immediately
+- [x] `hr_api` gets column grants on `hr.emp` (no `sal`/`comm`)
 - Verified: Allen's token sees only his own leave; Blake sees his team; Allen can't approve his own request (P0001);
   Blake approves (204) → trigger notifies Allen; the audit log records the API user; base tables and salary are not
   exposed; forged tokens are rejected.
 
-To do:
-- [ ] Builder: per-app "REST API" page (api_role, API_URL, issue a token for an account with a TTL, curl examples)
-- [ ] Tests: always-on SQL tests (as `hr_api` with `set_config('request.jwt.claims', …)`: app_user, has_role, RLS), plus
+Also done:
+- [x] Builder: per-app "REST API" page (api_role, API_URL, issue a token for an account with a TTL, curl examples)
+- [x] Tests (`test/api.test.ts`, 12): always-on SQL tests (as `hr_api` with `set_config('request.jwt.claims', …)`: app_user, has_role, RLS), plus
       HTTP tests that skip when PostgREST at API_URL isn't reachable (send `notify pgrst, 'reload schema'` first);
       optionally a PostgREST service container in CI
-- [ ] Docs: new chapter `docs/guide/13-rest-api.md` (setup, the api-schema pattern, tokens: pgapex-issued vs identity
+- [x] Docs: new chapter `docs/guide/13-rest-api.md` (setup, the api-schema pattern, tokens: pgapex-issued vs identity
       provider JWKS + role claim, security notes, change the authenticator password); update chapter 11
       (ORDS vs PostgREST, "on the roadmap" → done), chapter 1 config, the docs index, parity matrix ("RESTful services"), CHANGELOG
-- [ ] Full verification: `npm run db:reset && npm test && npm run test:e2e`, then bump the version to 0.4.0 and give the owner the compare URL
+- [x] Full verification: `npm run db:reset && npm test` (58 green, HTTP tests ran) `&& npm run test:e2e` (16 green); version 0.4.0
+
+Open / next sprint candidates:
+- Identity-provider tokens straight into PostgREST (JWKS + `role`/`app` claim mappers) are documented but not tested.
+- CI: no PostgREST service container yet, so the HTTP tests skip there.
+- Tag `v0.4.0` after the owner merges.
 
 Original design notes:
 

@@ -11,7 +11,11 @@
 --   role      database role PostgREST switches to (the app's api_role)
 --   app_user  the application user (falls back to preferred_username, email, sub)
 --   app       the application alias (for roles from meta.app_access)
---   roles     application roles (e.g. from an identity provider)
+--   roles     extra application roles (e.g. from an identity provider);
+--             pgapex's own tokens leave it out, so role changes apply at once
+--
+-- meta.api_check() is PostgREST's pre-request function: it rejects tokens of
+-- inactive accounts or accounts without access, at every request.
 -- =====================================================================
 
 do $$
@@ -76,4 +80,39 @@ begin
 end
 $$;
 
-grant execute on function meta.jwt_claims(), meta.app_user(), meta.app_id(), meta.has_role(text) to public;
+-- PostgREST pre-request check (PGRST_DB_PRE_REQUEST = meta.api_check).
+-- Runs before every API request, after PostgREST switched to the token's role.
+-- A token is signed until it expires, so this is where deactivating an
+-- account or revoking its access takes effect immediately:
+--   * the token must name an application (claim "app") whose api_role is the
+--     role PostgREST switched to;
+--   * the user must be an active account with access to that application.
+-- Anonymous requests (no token) pass; pgapex_anon has no privileges.
+create function meta.api_check() returns void
+language plpgsql stable security definer set search_path = meta, pg_catalog as $$
+declare
+  v_claims jsonb := meta.jwt_claims();
+  v_role   text := current_setting('role', true);   -- the SET ROLE PostgREST did
+  v_app    meta.app;
+  v_acc    meta.account;
+begin
+  if v_claims is null or v_role is null or v_role in ('none', 'pgapex_anon') then
+    return;
+  end if;
+  select * into v_app from meta.app a where a.alias = v_claims->>'app';
+  if not found or v_app.api_role is distinct from v_role then
+    raise exception 'This token is not valid for an application with API role %.', v_role
+      using errcode = 'PT401';
+  end if;
+  select * into v_acc from meta.account ac where lower(ac.username) = lower(meta.app_user());
+  if not found or not v_acc.active then
+    raise exception 'The account of this token does not exist or is inactive.' using errcode = 'PT403';
+  end if;
+  if v_app.access_control <> 'any_user'
+     and not exists (select 1 from meta.app_access aa where aa.app_id = v_app.id and aa.account_id = v_acc.id) then
+    raise exception 'The account of this token has no access to the application.' using errcode = 'PT403';
+  end if;
+end
+$$;
+
+grant execute on function meta.jwt_claims(), meta.app_user(), meta.app_id(), meta.has_role(text), meta.api_check() to public;

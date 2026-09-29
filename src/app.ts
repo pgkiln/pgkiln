@@ -4,6 +4,7 @@ import cookie from '@fastify/cookie';
 import formbody from '@fastify/formbody';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
+import { apiRoutes } from './builder/api.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
@@ -23,6 +24,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(runtimeRoutes);
   await app.register(builderRoutes);
   await app.register(usersRoutes);
+  await app.register(apiRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));
   return app;
 }

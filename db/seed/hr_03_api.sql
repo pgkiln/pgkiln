@@ -17,7 +17,10 @@ grant usage on schema api to hr_api;
 
 -- Base privileges the invoker-rights views and functions need.
 grant usage on schema hr to hr_api;
-grant select on hr.emp, hr.dept, hr.leave_request, hr.notification to hr_api;
+-- Column privileges on hr.emp: no salary or commission, even if another
+-- schema were exposed by mistake.
+grant select (empno, ename, job, mgr, hiredate, deptno, active, username) on hr.emp to hr_api;
+grant select on hr.dept, hr.leave_request, hr.notification to hr_api;
 grant insert, update on hr.leave_request to hr_api;
 grant update (read_at) on hr.notification to hr_api;
 grant execute on all functions in schema hr to hr_api;

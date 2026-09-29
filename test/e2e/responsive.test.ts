@@ -127,6 +127,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         shared: `/builder/apps/${appId}/shared`,
         settings: `/builder/apps/${appId}/settings`,
         activity: `/builder/apps/${appId}/activity`,
+        api: `/builder/apps/${appId}/api`,
         designer: `/builder/pages/${pageId}`,
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
