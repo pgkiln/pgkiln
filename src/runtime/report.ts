@@ -204,9 +204,10 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       html`<tr>${cols.map(({ f, i }) => {
         const text = cell(row[i], f.dataTypeID);
         const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
+        const label = headingOf(r, f.name);
         return i === linkIdx
-          ? html`<td class="${cls}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || 'Edit'}</a></td>`
-          : html`<td class="${cls}">${text}</td>`;
+          ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || 'Edit'}</a></td>`
+          : html`<td class="${cls}" data-label="${label}">${text}</td>`;
       })}</tr>`,
   );
 
@@ -254,6 +255,21 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
               <button class="btn btn-hot" form="${filterForm}">Apply</button>
             </div>
           </div>
+          ${r.config.sortable === false
+            ? ''
+            : html`<div class="menu-section"><strong>Sort</strong>
+                <div class="seg">${cols.map(({ f, i }) => {
+                  const pos = i + 1;
+                  const active = st.sort === pos;
+                  const href = regionUrl(ctx, r, (p) => {
+                    p.set(key(r, 's'), String(pos));
+                    if (active && !st.desc) p.set(key(r, 'd'), 'desc');
+                    else p.delete(key(r, 'd'));
+                    p.delete(key(r, 'p'));
+                  });
+                  return html`<a href="${href}"${active ? raw(' aria-current="true"') : ''}>${headingOf(r, f.name)}${active ? (st.desc ? ' ▼' : ' ▲') : ''}</a>`;
+                })}</div>
+              </div>`}
           <div class="menu-section"><strong>Rows per page</strong>
             <div class="seg">${PAGE_SIZES.map((n) =>
               html`<a href="${regionUrl(ctx, r, (p) => { p.set(key(r, 'n'), String(n)); p.delete(key(r, 'p')); })}"${n === st.size ? raw(' aria-current="true"') : ''}>${n}</a>`)}</div>
@@ -288,7 +304,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const to = Math.min(total, pageNo * st.size);
   const empty = r.config.empty ?? 'No data found';
   return html`${toolbar}
-    <div class="table-wrap"><table class="report">
+    <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
       <thead><tr>${header}</tr></thead>
       <tbody>${body.length ? body : html`<tr><td colspan="${cols.length || 1}" class="empty">${empty}</td></tr>`}</tbody>
     </table></div>

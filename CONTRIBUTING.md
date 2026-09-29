@@ -14,6 +14,7 @@ cp .env.example .env
 npm run setup     # starts Postgres on :5434, applies migrations and the HR sample
 npm run dev       # http://127.0.0.1:3100 (auto-restarts on changes)
 npm test          # unit + security tests (need the database)
+npm run test:e2e  # browser tests on phone/tablet/desktop (run `npx playwright install chromium` once)
 ```
 
 ## How the code is organised
@@ -35,7 +36,8 @@ npm test          # unit + security tests (need the database)
   the builder, exportable with `meta.export_app()`, and scriptable in SQL.
 - **Works without JavaScript and without inline scripts** (the CSP forbids them). Put behaviour in
   `public/app.js` with event delegation.
-- **Responsive.** Check phone (390px), tablet (768–1024px) and desktop widths.
+- **Responsive.** Check phone (390px), tablet (768–1024px) and desktop widths; `npm run test:e2e`
+  fails on horizontal overflow and checks navigation and dialogs at each size.
 - **Accessible.** Labels on every control, keyboard operability, visible focus, and no information
   conveyed by colour alone.
 - Match the surrounding code style; keep comments for *why*, not *what*.

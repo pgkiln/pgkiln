@@ -108,8 +108,10 @@ details.menu > summary::-webkit-details-marker { display: none; }
 
 /* ---------- body + side navigation ---------- */
 .t-body { display: grid; grid-template-columns: var(--nav-width) minmax(0, 1fr); min-height: calc(100vh - 52px); }
-body.nav-collapsed .t-body { grid-template-columns: 0 minmax(0, 1fr); }
-body.nav-collapsed .t-nav { visibility: hidden; }
+@media (min-width: 1024px) {
+  body.nav-collapsed .t-body { grid-template-columns: 0 minmax(0, 1fr); }
+  body.nav-collapsed .t-nav { visibility: hidden; }
+}
 .t-nav { background: var(--nav-bg); border-right: 1px solid var(--border); overflow: hidden auto; }
 .t-nav ul { list-style: none; margin: 0; padding: 0.5rem; }
 .t-nav ul ul { padding: 0 0 0 1.4rem; }
@@ -141,7 +143,6 @@ body.nav-collapsed .t-nav { visibility: hidden; }
 .t-regions > .col-4 { grid-column: span 4; } .t-regions > .col-5 { grid-column: span 5; } .t-regions > .col-6 { grid-column: span 6; }
 .t-regions > .col-7 { grid-column: span 7; } .t-regions > .col-8 { grid-column: span 8; } .t-regions > .col-9 { grid-column: span 9; }
 .t-regions > .col-10 { grid-column: span 10; } .t-regions > .col-11 { grid-column: span 11; }
-@media (max-width: 1000px) { .t-regions > .region { grid-column: span 12 !important; } }
 
 /* ---------- regions ---------- */
 .region { min-width: 0; }
@@ -324,7 +325,6 @@ body.t-dialog-page { background: var(--surface); }
 .app-card .buttons { margin-top: auto; }
 .designer { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 1rem; align-items: start; }
 .designer > aside { position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; }
-@media (max-width: 900px) { .designer { grid-template-columns: 1fr; } .designer > aside { position: static; max-height: none; } }
 .tree { list-style: none; margin: 0; padding: 0.4rem; font-size: 0.9rem; }
 .tree ul { list-style: none; margin: 0; padding-left: 1rem; border-left: 1px dotted var(--border); margin-left: 0.6rem; }
 .tree li { margin: 1px 0; }
@@ -348,21 +348,88 @@ body.t-dialog-page { background: var(--surface); }
 .ev-login_failed, .ev-login_locked, .ev-forbidden, .ev-error { background: var(--danger-soft); color: var(--danger); }
 .ev-login { background: var(--success-soft); color: var(--success); }
 .split { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 1rem; align-items: start; }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
 pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 0.8rem; overflow: auto; max-height: 460px; margin: 0; }
 
-/* ---------- small screens ---------- */
-@media (max-width: 800px) {
+/* ---------- responsive ----------
+   desktop  >= 1024px : side navigation docked, 12-column grid
+   tablet   641-1023px: navigation becomes a drawer, regions pair up (<= 6 columns)
+   phone    <= 640px  : single column, reports reflow into cards, full-screen dialogs */
+.designer > *, .split > *, .columns > *, .t-regions > * { min-width: 0; }
+.t-nav-backdrop { display: none; }
+
+@media (max-width: 1023px) {
   .t-body { grid-template-columns: minmax(0, 1fr); }
-  .t-nav { position: fixed; z-index: 15; top: 52px; bottom: 0; left: 0; width: min(280px, 85vw); box-shadow: 8px 0 24px rgb(0 0 0 / 20%); }
-  body.nav-collapsed .t-body { grid-template-columns: minmax(0, 1fr); }
-  .t-titlebar { padding: 0.8rem 1rem; }
-  .t-content { padding: 1rem 1rem 3rem; }
-  .search { margin-left: 0; max-width: none; }
+  /* Drawer: opened by JS (body.nav-open) or, without JS, by the #t-nav link (:target). */
+  .t-nav {
+    position: fixed; z-index: 25; top: 52px; bottom: 0; left: 0; width: min(300px, 85vw);
+    box-shadow: 8px 0 24px rgb(0 0 0 / 20%); transition: transform 0.2s ease, visibility 0.2s;
+    transform: translateX(-100%); visibility: hidden;
+  }
+  body.nav-open .t-nav, .t-nav:target { transform: none; visibility: visible; }
+  body.nav-open .t-nav-backdrop { display: block; position: fixed; inset: 52px 0 0 0; z-index: 24; background: rgb(15 20 30 / 40%); }
+  .t-regions > .region { grid-column: span 12 !important; }
+  .t-regions > :is(.col-1, .col-2, .col-3, .col-4, .col-5, .col-6) { grid-column: span 6 !important; }
+  .designer, .split { grid-template-columns: minmax(0, 1fr); }
+  .designer > aside { position: static; max-height: 45vh; }
   .t-user > summary span { display: none; }
+}
+
+@media (max-width: 640px) {
+  .t-regions > .region { grid-column: span 12 !important; }
+  .t-titlebar { padding: 0.75rem 1rem; }
+  h1 { font-size: 1.25rem; }
+  .t-content { padding: 1rem 0.75rem 3rem; }
+  .region-body { padding: 0.85rem; }
+  .region-header { padding: 0.5rem 0.85rem; }
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .search { margin-left: 0; max-width: none; flex-basis: 100%; }
+  .report-toolbar .field { flex: 1 1 100%; }
   .filter-row { min-width: 0; grid-template-columns: 1fr; }
-  .menu-panel { min-width: min(300px, 90vw); }
-  .topbar .nav a span { display: none; }
+  .topbar .nav a span, .topbar .brand .badge { display: none; }
+  .topbar { gap: 0.25rem; }
+  .cards-metric { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card.metric { grid-template-columns: 1fr; row-gap: 0.25rem; }
+  .metric-icon { grid-row: auto; width: 36px; height: 36px; }
+  .metric-value { font-size: 1.35rem; }
+  .bar-row { grid-template-columns: minmax(60px, 35%) 1fr auto; gap: 0.5rem; }
+  .title-row .buttons { width: 100%; }
+  .title-row .buttons .btn { flex: 1 1 auto; }
+
+  /* Menus open as a bottom sheet. */
+  details.menu[open] > .menu-panel {
+    position: fixed; left: 0.5rem; right: 0.5rem; top: auto; bottom: 0.5rem; min-width: 0;
+    max-height: 75vh; overflow: auto; border-radius: 12px;
+  }
+
+  /* Report reflow: every row becomes a card with labelled values. */
+  .report-reflow thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .report-reflow, .report-reflow tbody, .report-reflow tr, .report-reflow td { display: block; width: 100%; }
+  .table-wrap:has(.report-reflow) { border: 0; overflow: visible; }
+  .report-reflow tr { border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0; margin-bottom: 0.6rem; background: var(--surface); }
+  .report-reflow tbody tr:hover { background: var(--surface); }
+  .report-reflow td {
+    display: grid; grid-template-columns: minmax(90px, 38%) minmax(0, 1fr); gap: 0.75rem;
+    border: 0; padding: 0.3rem 0.8rem; white-space: normal; max-width: none; text-align: left !important; overflow-wrap: anywhere;
+  }
+  .report-reflow td::before { content: attr(data-label); font-size: 0.78rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+  .report-reflow td.empty { display: block; }
+  .report-reflow td.empty::before { content: none; }
+  .report-reflow td.pre { white-space: pre-wrap; }
+
+  /* Dialogs use the whole screen. */
+  dialog.t-dialog { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; }
+  .t-dialog-main { padding: 1rem 1rem 0; }
+  .t-dialog-page .region-footer { margin: 1rem -1rem 0; padding: 0.75rem 1rem; }
+}
+
+/* Touch screens: comfortable targets, and no zoom-on-focus in iOS. */
+@media (pointer: coarse) {
+  .btn, .icon-button { min-height: 44px; }
+  .icon-button { min-width: 44px; }
+  input:not([type=checkbox]):not([type=radio]), select, textarea { min-height: 44px; font-size: 16px; }
+  .t-nav a, .t-nav summary, .tree a { min-height: 44px; }
+  .seg a { padding: 0.45rem 0.8rem; }
+  .chip a { padding: 0.25rem 0.5rem; }
 }
 
 /* property editor groups (builder) */
@@ -370,3 +437,7 @@ fieldset.prop-group { border: 0; border-top: 1px solid var(--border); margin: 0 
 fieldset.prop-group:first-of-type { border-top: 0; padding-top: 0; }
 fieldset.prop-group > legend { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--muted); padding: 0 0.4rem 0 0; }
 .checklist { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.4rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

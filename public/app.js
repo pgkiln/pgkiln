@@ -205,22 +205,40 @@
     }
   });
 
-  // ------------------------------------------------------------ navigation toggle
+  // ------------------------------------------------------------ navigation
+  // Desktop: docked menu that can be collapsed (remembered). Tablet/phone: a
+  // drawer over the content, closed by the backdrop, Escape or navigating.
   const toggle = document.querySelector('.t-nav-toggle');
-  const narrow = () => window.matchMedia('(max-width: 800px)').matches;
+  const drawer = window.matchMedia('(max-width: 1023px)');
+  const navOpen = () => (drawer.matches ? body.classList.contains('nav-open') : !body.classList.contains('nav-collapsed'));
   const setNav = (open) => {
-    body.classList.toggle('nav-collapsed', !open);
+    if (drawer.matches) body.classList.toggle('nav-open', open);
+    else body.classList.toggle('nav-collapsed', !open);
     toggle?.setAttribute('aria-expanded', String(open));
   };
   if (toggle) {
     let stored = null;
     try { stored = localStorage.getItem('pgapex.nav'); } catch {}
-    setNav(narrow() ? false : stored !== 'closed');
-    toggle.addEventListener('click', () => {
-      const open = body.classList.contains('nav-collapsed');
+    if (stored === 'closed') body.classList.add('nav-collapsed');
+    toggle.setAttribute('aria-expanded', String(navOpen()));
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      const open = !navOpen();
       setNav(open);
-      if (!narrow()) try { localStorage.setItem('pgapex.nav', open ? 'open' : 'closed'); } catch {}
+      if (!drawer.matches) try { localStorage.setItem('pgapex.nav', open ? 'open' : 'closed'); } catch {}
+      if (open && drawer.matches) document.querySelector('#t-nav a, #t-nav summary')?.focus();
     });
+    document.querySelector('.t-nav-backdrop')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      setNav(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && drawer.matches && navOpen()) {
+        setNav(false);
+        toggle.focus();
+      }
+    });
+    drawer.addEventListener('change', () => toggle.setAttribute('aria-expanded', String(navOpen())));
   }
 
   // ------------------------------------------------------------ modal dialogs

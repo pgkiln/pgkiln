@@ -118,7 +118,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     `${title} · ${ctx.app.name}`,
     html`<a class="skip-link" href="#main">Skip to content</a>
     <header class="t-header">
-      <button type="button" class="t-nav-toggle icon-button" aria-label="Toggle navigation" aria-controls="t-nav" aria-expanded="true">${icon('menu')}</button>
+      <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="Toggle navigation" aria-controls="t-nav">${icon('menu')}</a>
       <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
       <span class="t-spacer"></span>
       ${ctx.app.authentication !== 'none'
@@ -138,6 +138,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     </header>
     <div class="t-body">
       <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
+      <a href="#" class="t-nav-backdrop" tabindex="-1" aria-hidden="true"></a>
       <main class="t-main" id="main">${main}</main>
     </div>`,
     't-app',
