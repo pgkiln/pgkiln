@@ -27,6 +27,12 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Application computation / process on new session | Application process (`after_login`, `before_page`) |
 | VPD | PostgreSQL row level security |
 | APEX collections | Temporary or unlogged tables, or `jsonb` |
+| `APEX_UTIL.CHANGE_CURRENT_USER_PW`, `RESET_PASSWORD`, `EXPIRE_END_USER_ACCOUNT` | My account page; `meta.set_password()`, `meta.expire_password()` ([chapter 8](08-security.md#passwords-and-my-account)) |
+| `APEX_MAIL.SEND`, `ADD_ATTACHMENT`, `PUSH_QUEUE`, e-mail templates | `meta.send_mail()`, `meta.add_attachment()`, Builder → Mail, Shared Components → E-mail templates ([chapter 14](14-globalization-and-email.md#e-mail)) |
+| Send E-Mail process | Process type `send_email` |
+| Translated applications (XLIFF), `APEX_LANG.MESSAGE`, `&APP_TEXT$NAME.` | Translations in the app (XLIFF/CSV import and export), `meta.message()`, `&APP_TEXT$NAME.` ([chapter 14](14-globalization-and-email.md)) |
+| Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
+| Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark* |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
 

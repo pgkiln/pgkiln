@@ -72,6 +72,9 @@ which is read at startup; real environment variables take precedence.
 | `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgapex at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it |
 | `API_URL` | `http://127.0.0.1:3000` | Where PostgREST serves the REST API ([chapter 13](13-rest-api.md)) |
 | `API_JWT_SECRET` | *(none)* | Signs REST API tokens; at least 32 characters, the same as PostgREST's `jwt-secret`. Without it, tokens can't be issued |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` | *(none)*, `587`, `false` | SMTP server for e-mail; without `SMTP_HOST` mail stays queued ([chapter 14](14-globalization-and-email.md#delivery)) |
+| `MAIL_FROM` | *(none)* | Default sender, e.g. `HR <hr@example.com>` |
+| `MAIL_POLL_SECONDS`, `MAIL_MAX_ATTEMPTS` | `30`, `5` | Mail queue check interval and attempts before a mail fails |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy, so client IPs (used by login throttling) come from `X-Forwarded-For` |
 | `SESSION_IDLE_MINUTES` | `60` | A session ends after this long without requests |

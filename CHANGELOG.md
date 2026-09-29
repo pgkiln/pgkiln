@@ -5,6 +5,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-29
+
+### Added
+- **My account** in every application: change your own password, choose light or dark and the language.
+- Password policy and APEX-style account controls:
+  - change of password on first use;
+  - password lifetime (expiry);
+  - expire/unexpire and admin reset (also as `meta.set_password()`, `meta.expire_password()`);
+  - minimum length, letters and digits;
+  - unlock after failed sign-ins (Builder → Users).
+- **Forgot password** (opt-in per application): one-time reset links by e-mail, valid 30 minutes.
+- **Light/dark switch**: an app theme style (automatic, light, dark) and "users may choose", saved on the account.
+- **Globalization**:
+  - a primary language and translated languages per app, chosen from the browser, the user's preference or `?lang=`;
+  - translations of all app texts in the builder, with XLIFF 1.2 and CSV export/import;
+  - text messages (`meta.message()`, `&APP_TEXT$NAME.`);
+  - pgapex's own texts in English and Dutch;
+  - date and timestamp masks;
+  - right-to-left languages.
+- **E-mail**:
+  - `meta.send_mail()`, `meta.send_mail_template()` and `meta.add_attachment()`;
+  - e-mail templates (Shared Components);
+  - a *Send e-mail* page process;
+  - SMTP delivery with retries;
+  - Builder → Mail (queue, log, test mail, send now);
+  - a Mailpit container for development (`docker compose --profile mail`).
+- The HR sample in Dutch, with e-mail when leave is decided.
+- New chapter 14, *Globalization and e-mail*.
+
+### Changed
+- Settings: `SMTP_*`, `MAIL_FROM`, `MAIL_POLL_SECONDS`, `MAIL_MAX_ATTEMPTS`.
+- Page processes have a `config` column; process type `send_email`.
+- Upgrade note: migrations 006–008 add the new tables. Existing passwords count as changed at upgrade time for the password lifetime.
+
 ## [0.4.0] - 2026-09-29
 
 ### Added

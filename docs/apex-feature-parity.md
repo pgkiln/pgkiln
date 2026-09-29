@@ -6,7 +6,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ out of scope (use the PostgreSQL ecosystem instead)
 
-Last reviewed: 2026-09-29 (pgapex 0.4.0).
+Last reviewed: 2026-09-29 (pgapex 0.5.0).
 
 ## Summary
 
@@ -14,13 +14,13 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 |---|---|
 | Core runtime (pages, regions, items, session state, processes) | ✅ solid |
 | Reports, forms, grids, charts, cards, calendar, faceted search | ✅ / 🟡 core features in place, power-user features missing |
-| Security (authn, authz, session state protection, CSP) | ✅ user directory, OpenID Connect SSO; 🟡 no self-service password change, LDAP/SAML/MFA |
+| Security (authn, authz, session state protection, CSP) | ✅ user directory, OpenID Connect SSO, password self-service; 🟡 no LDAP/SAML/MFA |
 | Builder (page designer, shared components, SQL Workshop) | 🟡 property editor, no drag-and-drop |
 | Responsive UI, dark mode, theming | ✅ / 🟡 basic theme roller |
-| Integration (REST, email, printing, data loading) | 🟡 REST APIs with PostgREST; ❌ email, printing, data loading |
+| Integration (REST, email, printing, data loading) | ✅ e-mail; 🟡 REST APIs with PostgREST; ❌ printing, data loading |
 | Workflow, approvals, automations | ❌ (hand-built in PL/pgSQL for now, see the HR sample) |
 | AI features (assistant, NL2IR, AI agents) | ❌ |
-| Globalization (translations, formats) | ❌ |
+| Globalization (translations, formats) | ✅ / 🟡 translations in the app, text messages, date masks; no number masks or time zones |
 
 ## App Builder and development
 
@@ -106,9 +106,9 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 | Database accounts, LDAP, SAML, HTTP header | ❌ | |
 | Custom authentication | ❌ | |
 | Multi-factor authentication | ❌ | Not built into APEX either (MFA comes from the identity provider); with pgapex, use OpenID Connect |
-| Change own password (end users) | ❌ | APEX: no page pattern, but `APEX_UTIL.CHANGE_CURRENT_USER_PW` to build one |
-| Forgot / reset password (end users) | ❌ | APEX has **no** built-in end-user flow either (developers get a "Reset Password" e-mail link); needs e-mail sending |
-| Password expiry, "change on first use", admin reset | ❌ | APEX: per-user *Require change of password on first use*, expiry after N days, `APEX_UTIL.RESET_PASSWORD` |
+| Change own password (end users) | ✅ | Built-in *My account* page (APEX only has the API, `CHANGE_CURRENT_USER_PW`) |
+| Forgot / reset password (end users) | ✅ | Opt-in per app: one-time e-mailed link, 30 minutes, hashed, rate-limited. APEX has no built-in end-user flow |
+| Password expiry, "change on first use", admin reset | ✅ | Change on first use, lifetime in days, expire/unexpire, admin reset, complexity rules, unlock |
 | Lockout after failed sign-ins | ✅ | Per user and per IP, time based (APEX: per workspace, until an admin unlocks) |
 | Persistent authentication ("remember me") | ❌ | APEX 22.1+: instance setting, persistent cookie |
 | Session sharing between applications | 🟡 | Each app has its own session and sign-in; with OpenID Connect the second sign-in is silent. APEX: *No sharing* / *Workspace sharing* / *Custom cookie* |
@@ -128,16 +128,16 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 | Universal Theme look and layout | ✅ | Header, side/top navigation, breadcrumbs, 12-column grid, region templates |
 | Responsive (phone, tablet, desktop) | ✅ | Tested at 390/768/1024/1440px in CI (`npm run test:e2e`) |
 | Modal dialogs, drawers | ✅ / ❌ | Modal dialog pages (full screen on phones); no drawer pages |
-| Dark mode | ✅ / 🟡 | Follows the OS setting automatically (APEX apps don't); no switch for users. APEX: *Vita - Dark* etc., and users may pick a theme style per app (*Customize* link) |
+| Dark mode, user-chosen theme style | ✅ | Automatic (follows the OS, which APEX apps don't), light or dark per app; users may switch, saved on the account for all apps (APEX: per app) |
 | Theme Roller | 🟡 | Accent and header colours, navigation position; no style variants or template options |
 | Icons (Font APEX) | 🟡 | 31 line icons |
 | Accessibility | 🟡 | Labels, keyboard, focus rings, reduced motion, table alternatives for charts; no formal audit yet |
 | Progressive Web App | ❌ | |
-| Translated applications (XLIFF, one copy per language; 26.1: text-message-based translation of one app) | ❌ | pgapex's own texts are English only; `<html lang="en">` |
-| Text messages (`APEX_LANG.MESSAGE`, `&APP_TEXT$…`) | ❌ | |
-| Built-in runtime messages in ~34 languages | ❌ | |
-| Application language from browser / preference / session | ❌ | |
-| Date/number format masks, automatic time zone | ❌ | Dates are shown as PostgreSQL sends them (ISO) |
+| Translated applications (XLIFF, one copy per language; 26.1: text-message-based translation of one app) | ✅ | One app with translations, like 26.1; XLIFF 1.2 and CSV export/import, coverage per language |
+| Text messages (`APEX_LANG.MESSAGE`, `&APP_TEXT$…`) | ✅ | `meta.message()`, `&APP_TEXT$NAME.`, fallback to base and primary language |
+| Built-in runtime messages in ~34 languages | 🟡 | English and Dutch; other languages via text messages with the same names |
+| Application language from browser / preference / session | ✅ | Browser, user preference or primary; `?lang=`; right-to-left |
+| Date/number format masks, automatic time zone | 🟡 | Date and timestamp masks per app or language; numbers in charts follow the language; no number masks or time zones |
 
 ## Data and integration
 
@@ -148,7 +148,7 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 | Data Workshop (load CSV/XLSX/JSON) | ❌ | |
 | RESTful services (ORDS) | 🟡 | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, JWT-aware `meta.app_user()`/`has_role()` (same RLS as the UI), per-app API role, tokens and endpoint overview in the builder. No REST handler editor or REST-enabled SQL |
 | REST data sources, remote servers, web credentials | ❌ | |
-| Sending e-mail (`APEX_MAIL`) | ❌ | |
+| Sending e-mail (`APEX_MAIL`), e-mail templates, mail queue | ✅ | `meta.send_mail()`, templates with placeholders, attachments, Send e-mail process, SMTP delivery with retries, Builder → Mail |
 | Printing / document generator (PDF) | ❌ | |
 | JSON sources / duality views | ➖ | Postgres `jsonb` works in any SQL region |
 
@@ -174,9 +174,9 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 
 1. **File upload items** (bytea or object storage) and download links.
 2. ~~OpenID Connect~~ (done); **LDAP and SAML** authentication, and MFA for local accounts.
-3. **E-mail and automations:** a mail queue and scheduled PL/pgSQL on `pg_cron`.
+3. ~~E-mail~~ (done); **automations:** scheduled PL/pgSQL on `pg_cron`.
 4. **Interactive report power features:** saved reports, control break, aggregates, highlight, XLSX download.
-5. **Globalization:** translatable text, date/number formats per user.
+5. ~~Globalization~~ (done); number masks, time zones, more built-in languages.
 6. **REST data sources and printing** (PDF documents).
 7. **Approvals / workflow** built on the metadata model.
 8. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
