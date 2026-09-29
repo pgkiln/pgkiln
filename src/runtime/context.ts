@@ -39,6 +39,8 @@ export interface PageContext {
   authzCache: Map<string, boolean>;
   /** Forms rendered after the main page <form> (report search/filter boxes). */
   detached: Raw[];
+  /** The submitted form (POST), e.g. for grid rows. */
+  body?: Record<string, unknown>;
 }
 
 /** Session state plus the built-in substitution strings. */

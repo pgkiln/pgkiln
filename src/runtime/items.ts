@@ -16,11 +16,18 @@ export interface LovOption {
 }
 
 /**
- * List of values: a SELECT returning (display, return), or the static form
- * 'STATIC:Display;Return,Other;OTHER' (a lone entry is used for both).
+ * List of values: a SELECT returning (display, return), the static form
+ * 'STATIC:Display;Return,Other;OTHER' (a lone entry is used for both), or a
+ * shared list of values 'LOV:NAME'.
  */
 export async function lovOptions(ctx: PageContext, lov: string | null): Promise<LovOption[]> {
   if (!lov?.trim()) return [];
+  const shared = /^LOV:([A-Z0-9_]+)$/i.exec(lov.trim());
+  if (shared) {
+    const def = ctx.app.lovs.find((l) => l.name === shared[1].toUpperCase());
+    if (!def) throw new Error(`Shared list of values ${shared[1]} does not exist.`);
+    lov = def.query;
+  }
   if (/^STATIC:/i.test(lov))
     return lov
       .slice(7)
@@ -35,7 +42,11 @@ export async function lovOptions(ctx: PageContext, lov: string | null): Promise<
   return res.rows.map((r: unknown[]) => ({ display: toState(r[0]) ?? '', value: toState(r.length > 1 ? r[1] : r[0]) ?? '' }));
 }
 
-const hasLov = (item: Item) => item.type === 'select' || item.type === 'radio' || (item.type === 'display' && !!item.lov);
+const LOV_TYPES = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov']);
+const hasLov = (item: Item) => LOV_TYPES.has(item.type) || (item.type === 'display' && !!item.lov);
+export const MULTI_VALUE = new Set(['checkbox_group', 'multiselect']);
+/** Multi-value items store their values colon-separated, as in APEX. */
+export const splitValues = (v: string) => (v ? v.split(':') : []);
 
 /** Render one item (field wrapper included). Hidden items are never rendered. */
 export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = false): Promise<Raw | ''> {
@@ -64,7 +75,10 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   let useLegend = false;
   if (!editable) {
     let shown = value;
-    if (hasLov(item)) shown = options.find((o) => o.value === value)?.display ?? value;
+    if (hasLov(item))
+      shown = MULTI_VALUE.has(item.type)
+        ? splitValues(value).map((v) => options.find((o) => o.value === v)?.display ?? v).join(', ')
+        : (options.find((o) => o.value === value)?.display ?? value);
     if (item.type === 'checkbox' || item.type === 'switch') shown = isTruthy(value) ? 'Yes' : 'No';
     if (item.type === 'password') shown = value ? '••••••••' : '';
     control = html`<div class="display-value" id="${id}">${shown || ' '}</div>`;
@@ -78,6 +92,32 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         control = html`<label class="check${item.type === 'switch' ? ' switch' : ''}"><input type="checkbox" id="${id}" name="${id}" value="true"${
           item.type === 'switch' ? raw(' role="switch"') : ''
         }${isTruthy(value) ? raw(' checked') : ''}${aria}><span>${label}</span></label>`;
+        break;
+      case 'checkbox_group': {
+        useLegend = true;
+        const selected = new Set(splitValues(value));
+        control = html`<div class="radio-group">${options.map(
+          (o, i) =>
+            html`<label class="check"><input type="checkbox" id="${i === 0 ? id : `${id}_${i}`}" name="${id}" value="${o.value}"${selected.has(o.value) ? raw(' checked') : ''}${aria}> ${o.display}</label>`,
+        )}</div>`;
+        break;
+      }
+      case 'multiselect': {
+        const selected = new Set(splitValues(value));
+        control = html`<select id="${id}" name="${id}" multiple size="${Math.min(Math.max(options.length, 3), 8)}"${aria}>
+          ${options.map((o) => html`<option value="${o.value}"${selected.has(o.value) ? raw(' selected') : ''}>${o.display}</option>`)}
+        </select>`;
+        break;
+      }
+      case 'popup_lov':
+        // a select list; app.js adds a search box that filters the options
+        control = html`<select id="${id}" name="${id}" data-searchable${aria}>
+          <option value="">${item.config?.null_label ?? '- Select -'}</option>
+          ${options.map((o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`)}
+        </select>`;
+        break;
+      case 'color':
+        control = html`<input type="color" id="${id}" name="${id}" value="${/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'}"${aria}>`;
         break;
       case 'select':
         control = html`<select id="${id}" name="${id}"${aria}>
@@ -96,11 +136,18 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         control = html`<input type="datetime-local" id="${id}" name="${id}" value="${value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
         break;
       default: {
-        const type = item.type === 'number' ? 'number' : item.type === 'date' ? 'date' : item.type === 'password' ? 'password' : 'text';
+        const typed: Record<string, string> = { number: 'number', date: 'date', password: 'password', email: 'email', tel: 'tel', url: 'url' };
+        const type = typed[item.type] ?? 'text';
         const shown = item.type === 'password' ? '' : value;
-        control = html`<input type="${type}" id="${id}" name="${id}" value="${shown}"${type === 'number' ? raw(' step="any"') : ''}${
-          type === 'password' ? raw(' autocomplete="new-password"') : ''
-        }${aria}>`;
+        // inputmode/autocomplete give phones the right keyboard
+        const extra =
+          type === 'number' ? ' step="any" inputmode="decimal"'
+          : type === 'password' ? ' autocomplete="new-password"'
+          : type === 'email' ? ' autocomplete="email" inputmode="email"'
+          : type === 'tel' ? ' autocomplete="tel" inputmode="tel"'
+          : type === 'url' ? ' inputmode="url"'
+          : '';
+        control = html`<input type="${type}" id="${id}" name="${id}" value="${shown}"${raw(extra)}${aria}>`;
       }
     }
   }

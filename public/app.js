@@ -2,6 +2,8 @@
 // without JavaScript (dialogs become normal pages, dynamic actions do nothing).
 // No inline handlers anywhere, so the Content-Security-Policy can forbid
 // inline scripts.
+document.documentElement.classList.add('js');
+
 (() => {
   const body = document.body;
   const base = body.dataset.base;
@@ -71,7 +73,10 @@
     const tpl = document.createElement('template');
     tpl.innerHTML = markup.trim();
     const node = tpl.content.firstElementChild;
-    if (node) el.replaceWith(node);
+    if (node) {
+      el.replaceWith(node);
+      document.dispatchEvent(new CustomEvent('pgapex:replaced', { detail: node }));
+    }
     return node;
   }
 
@@ -292,3 +297,110 @@
     });
   }
 })();
+
+// Chart tooltips: any element with data-tip, on hover or keyboard focus.
+(() => {
+  let tipEl = null;
+  const show = (el, x, y) => {
+    if (!tipEl) {
+      tipEl = document.createElement('div');
+      tipEl.className = 'chart-tip';
+      tipEl.setAttribute('role', 'tooltip');
+      document.body.appendChild(tipEl);
+    }
+    tipEl.textContent = el.dataset.tip;
+    tipEl.hidden = false;
+    const r = tipEl.getBoundingClientRect();
+    tipEl.style.left = `${Math.max(8, Math.min(x + 12, window.innerWidth - r.width - 8))}px`;
+    tipEl.style.top = `${Math.max(8, y - r.height - 12)}px`;
+  };
+  const hide = () => tipEl && (tipEl.hidden = true);
+  document.addEventListener('pointermove', (e) => {
+    const el = e.target.closest?.('.chart [data-tip]');
+    el ? show(el, e.clientX, e.clientY) : hide();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest?.('.chart [data-tip]');
+    if (!el) return hide();
+    const r = el.getBoundingClientRect();
+    show(el, r.left + r.width / 2, r.top);
+  });
+  document.addEventListener('focusout', hide);
+  window.addEventListener('scroll', hide, { passive: true });
+})();
+
+// Interactive grid: add rows, track unsaved changes.
+(() => {
+  let dirty = false;
+  // With JS the blank template row is hidden and must not be submitted (its
+  // clones are); without JS it stays visible as the "new row".
+  document.querySelectorAll('.grid-template [name]').forEach((el) => (el.disabled = true));
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-grid-add]');
+    if (add) {
+      const grid = add.closest('[data-grid]');
+      const g = grid.dataset.grid;
+      const tpl = grid.querySelector('.grid-template tr');
+      const rows = grid.querySelector('tbody:not(.grid-template)');
+      const used = [...grid.querySelectorAll('tbody:not(.grid-template) [data-new-row]')].map((r) => Number(r.dataset.newRow));
+      const next = Math.max(Number(tpl.dataset.newRow), ...used.map((n) => n + 1));
+      const row = tpl.cloneNode(true);
+      row.dataset.newRow = String(next);
+      row.querySelectorAll('[name]').forEach((el) => (el.disabled = false, el.name = el.name.replace(new RegExp(`^${g}_n\\d+_`), `${g}_n${next}_`)));
+      rows.appendChild(row);
+      row.querySelector('input, select')?.focus();
+      dirty = true;
+      return;
+    }
+    const leave = e.target.closest('[data-grid-leave]');
+    if (leave && dirty && !window.confirm('You have unsaved changes in the grid. Leave anyway?')) e.preventDefault();
+  });
+  document.addEventListener('input', (e) => {
+    const row = e.target.closest?.('[data-grid] tr');
+    if (!row) return;
+    row.classList.add('dirty');
+    dirty = true;
+  });
+  document.addEventListener('change', (e) => {
+    const del = e.target.closest?.('[data-grid] .grid-sel input');
+    if (del) del.closest('tr').classList.toggle('deleted', del.checked);
+  });
+  document.addEventListener('submit', () => (dirty = false));
+  window.addEventListener('beforeunload', (e) => {
+    if (dirty && document.querySelector('[data-grid]')) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+})();
+
+// Faceted search: apply on change.
+document.addEventListener('change', (e) => {
+  if (e.target.matches?.('[data-facet]')) e.target.form?.requestSubmit();
+});
+
+// Popup list of values: a search box that filters the options of a select.
+function enhanceSearchable(root) {
+  const selects = root.matches?.('select[data-searchable]') ? [root] : [...root.querySelectorAll('select[data-searchable]')];
+  selects.forEach(addLovSearch);
+}
+document.addEventListener('pgapex:replaced', (e) => enhanceSearchable(e.detail));
+enhanceSearchable(document);
+function addLovSearch(sel) {
+  const box = document.createElement('input');
+  box.type = 'search';
+  box.className = 'lov-search';
+  box.placeholder = 'Search…';
+  box.setAttribute('aria-label', `Search ${sel.labels?.[0]?.textContent?.trim() ?? 'list'}`);
+  sel.before(box);
+  box.addEventListener('input', () => {
+    const q = box.value.toLowerCase();
+    let firstMatch = null;
+    for (const o of sel.options) {
+      const match = !o.value || o.text.toLowerCase().includes(q);
+      o.hidden = !match;
+      if (match && o.value && !firstMatch) firstMatch = o;
+    }
+    if (q && firstMatch && sel.selectedOptions[0]?.hidden) sel.value = firstMatch.value;
+  });
+}

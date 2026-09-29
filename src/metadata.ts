@@ -48,13 +48,15 @@ export interface App {
   authz_schemes: AuthzScheme[];
   app_items: string[];
   app_processes: AppProcess[];
+  lovs: { name: string; query: string }[];
+  theme: { accent?: string; header?: string; nav?: 'side' | 'top' };
 }
 
 export interface Region {
   id: number;
   seq: number;
   title: string | null;
-  type: 'report' | 'form' | 'chart' | 'cards' | 'static';
+  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
@@ -68,7 +70,8 @@ export interface Region {
 
 export type ItemType =
   | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'radio'
-  | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password';
+  | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password'
+  | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color';
 
 export interface Item {
   id: number;
@@ -132,7 +135,7 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'sql';
+  type: 'form_dml' | 'grid_dml' | 'sql';
   region_id: number | null;
   code: string | null;
   point: 'submit' | 'load';
@@ -159,7 +162,8 @@ const agg = (table: string, fk: string, parent: string, order = 'x.seq, x.id') =
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.db_role, a.debug,
+    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.db_role, a.debug, a.theme,
+            coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
                        'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth))
                         from meta.page p where p.app_id = a.id), '[]') as pages,

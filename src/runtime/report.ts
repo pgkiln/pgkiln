@@ -40,7 +40,7 @@ interface Filter {
   raw: string;
 }
 
-interface ReportState {
+export interface ReportState {
   search: string;
   sort: number;
   desc: boolean;
@@ -49,9 +49,9 @@ interface ReportState {
   filters: Filter[];
 }
 
-const key = (r: Region, k: string) => `r${r.id}_${k}`;
+export const key = (r: Region, k: string) => `r${r.id}_${k}`;
 
-function reportState(ctx: PageContext, r: Region): ReportState {
+export function reportState(ctx: PageContext, r: Region): ReportState {
   const p = ctx.params;
   const size = parseInt(p.get(key(r, 'n')) ?? '', 10) || Number(r.config.page_size) || 15;
   return {
@@ -87,7 +87,7 @@ export function normaliseReportParams(params: URLSearchParams): string | null {
   return changed ? params.toString() : null;
 }
 
-function regionUrl(ctx: PageContext, r: Region, change: (p: URLSearchParams) => void) {
+export function regionUrl(ctx: PageContext, r: Region, change: (p: URLSearchParams) => void) {
   const p = new URLSearchParams(ctx.params);
   for (const k of ['clear', 'cs', 'dialog']) p.delete(k);
   change(p);
@@ -95,20 +95,38 @@ function regionUrl(ctx: PageContext, r: Region, change: (p: URLSearchParams) => 
   return `${ctx.base}/${ctx.page.page_no}${q ? `?${q}` : ''}${ctx.dialog ? `${q ? '&' : '?'}dialog=1` : ''}`;
 }
 
-async function columnsOf(ctx: PageContext, src: string) {
+/** Faceted search selections for a report: ?r<id>_x_<column>=value (repeatable). */
+export function facetSelections(ctx: PageContext, r: Region, except?: string) {
+  const out = new Map<string, string[]>();
+  const prefix = `r${r.id}_x_`;
+  for (const k of new Set(ctx.params.keys()))
+    if (k.startsWith(prefix) && k.slice(prefix.length) !== except) {
+      const values = ctx.params.getAll(k).filter((v) => v !== '');
+      if (values.length) out.set(k.slice(prefix.length), values);
+    }
+  return out;
+}
+
+export const facetCondition = (col: string, values: string[]) =>
+  `"__q".${pg.escapeIdentifier(col)}::text in (${values.map((v) => literal(v)).join(', ')})`;
+
+export async function columnsOf(ctx: PageContext, src: string) {
   const c = ctx.client!;
   const res = await savepoint(c, () => c.query(`select * from (\n${src}\n) "__q" limit 0`));
   return res.fields.map((f) => f.name);
 }
 
-async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv') {
+export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv') {
   const src = stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx)));
   const where: string[] = [];
   if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
-  if (st.filters.length) {
+  const facets = facetSelections(ctx, r);
+  if (st.filters.length || facets.size) {
     const cols = new Set(await columnsOf(ctx, src));
     for (const f of st.filters)
       if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(`"__q".${pg.escapeIdentifier(f.column)}`, f.value));
+    for (const [col, values] of facets)
+      if (cols.has(col)) where.push(facetCondition(col, values));
   }
   let sql = `select "__q".*${mode === 'page' ? ', count(*) over () as "__total"' : ''} from (\n${src}\n) "__q"`;
   if (where.length) sql += ` where ${where.join(' and ')}`;
@@ -126,12 +144,12 @@ export function cell(v: unknown, typeOid?: number) {
   return String(v);
 }
 
-const visibleColumns = (r: Region, fields: pg.FieldDef[]) => {
+export const visibleColumns = (r: Region, fields: pg.FieldDef[]) => {
   const hidden = new Set<string>((r.config.hidden ?? []).map((h: string) => h.toLowerCase()));
   return fields.map((f, i) => ({ f, i })).filter(({ f }) => !hidden.has(f.name.toLowerCase()) && !f.name.startsWith('__'));
 };
 
-const headingOf = (r: Region, name: string) => r.config.headings?.[name] ?? heading(name);
+export const headingOf = (r: Region, name: string) => r.config.headings?.[name] ?? heading(name);
 
 /** CSV download (Actions → Download). Cells that look like formulas are neutralised. */
 export async function reportCsv(ctx: PageContext, r: Region) {

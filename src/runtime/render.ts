@@ -59,7 +59,7 @@ function initiallyHidden(ctx: PageContext) {
 
 // ---------------------------------------------------------------- navigation
 
-async function navTree(ctx: PageContext) {
+async function navTree(ctx: PageContext, topNav = false) {
   const current = new Set<number>();
   for (let p: number | null | undefined = ctx.page.page_no, guard = 0; p && guard < 10; guard++) {
     current.add(p);
@@ -77,7 +77,7 @@ async function navTree(ctx: PageContext) {
       const label = html`${icon(e.icon ?? 'chevron')}<span>${e.label}</span>`;
       out.push(
         children.length
-          ? html`<li><details${inTrail ? raw(' open') : ''}><summary class="${inTrail ? 'in-trail' : null}">${label}</summary><ul>${children}</ul></details></li>`
+          ? html`<li><details${inTrail && !topNav ? raw(' open') : ''}><summary class="${inTrail ? 'in-trail' : null}">${label}</summary><ul>${children}</ul></details></li>`
           : html`<li><a href="${ctx.base}/${e.target_page}"${active ? raw(' aria-current="page"') : inTrail ? raw(' class="in-trail"') : ''}>${label}</a></li>`,
       );
     }
@@ -102,6 +102,18 @@ async function breadcrumb(ctx: PageContext) {
   return links;
 }
 
+// ---------------------------------------------------------------- theme
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Per-app colours (Theme Roller). Only strict hex values reach the CSS. */
+export function themeStyle(theme: PageContext['app']['theme']) {
+  const vars: string[] = [];
+  if (theme?.accent && HEX.test(theme.accent)) vars.push(`--accent:${theme.accent};--accent-soft:color-mix(in srgb, ${theme.accent} 14%, var(--surface));`);
+  if (theme?.header && HEX.test(theme.header)) vars.push(`--header:${theme.header};`);
+  return vars.length ? html`<style>:root{${raw(vars.join(''))}}</style>` : '';
+}
+
 // ---------------------------------------------------------------- page
 
 export async function chrome(ctx: PageContext, main: Raw, title: string) {
@@ -110,10 +122,11 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       'data-base': ctx.base,
       'data-page': String(ctx.page.page_no),
       'data-dialog': '1',
-    });
+    }, themeStyle(ctx.app.theme));
 
   const signedIn = ctx.user !== 'nobody';
-  const nav = await navTree(ctx);
+  const topNav = ctx.app.theme?.nav === 'top';
+  const nav = await navTree(ctx, topNav);
   return documentShell(
     `${title} · ${ctx.app.name}`,
     html`<a class="skip-link" href="#main">Skip to content</a>
@@ -141,8 +154,9 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <a href="#" class="t-nav-backdrop" tabindex="-1" aria-hidden="true"></a>
       <main class="t-main" id="main">${main}</main>
     </div>`,
-    't-app',
+    `t-app${topNav ? ' nav-top' : ''}`,
     { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no) },
+    themeStyle(ctx.app.theme),
   );
 }
 

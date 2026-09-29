@@ -7,6 +7,10 @@ import { pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { linkAttrs } from './links.ts';
+import { renderCalendar } from './calendar.ts';
+import { CHART_KINDS, renderChartBody } from './charts.ts';
+import { renderFacets } from './facets.ts';
+import { renderGrid } from './grid.ts';
 import { cell, renderReport } from './report.ts';
 
 // ---------------------------------------------------------------- buttons
@@ -28,7 +32,7 @@ export async function renderButton(ctx: PageContext, b: Button) {
 
 export async function buttonsFor(ctx: PageContext, regionId: number | null) {
   const out = [];
-  for (const b of ctx.vis!.buttons.values()) if (b.region_id === regionId) out.push(await renderButton(ctx, b));
+  for (const b of ctx.vis!.buttons.values()) if (b.region_id === regionId && b.id > 0) out.push(await renderButton(ctx, b));
   return out.some(Boolean) ? html`<div class="buttons">${out}</div>` : '';
 }
 
@@ -41,27 +45,16 @@ async function query(ctx: PageContext, r: Region) {
 }
 
 async function renderChart(ctx: PageContext, r: Region) {
-  let rows: unknown[][];
+  let res;
   try {
     const sql = stripSemicolon(applyBinds(r.source ?? '', bindValues(ctx)));
-    rows = (await savepoint(ctx.client!, () => ctx.client!.query({ text: sql, rowMode: 'array' }))).rows;
+    res = await savepoint(ctx.client!, () => ctx.client!.query({ text: sql, rowMode: 'array' }));
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `chart "${r.title ?? r.id}"`)}</div>`;
   }
-  if (!rows.length) return html`<p class="empty">${r.config.empty ?? 'No data found'}</p>`;
-  const data = rows.map((row) => ({ label: cell(row[0]), value: Number(row[1]) || 0 }));
-  const max = Math.max(...data.map((d) => Math.abs(d.value)), 1);
-  const fmt = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
-  return html`<figure class="bar-chart" aria-label="${r.title ?? 'Chart'}">
-    <table class="sr-only"><caption>${r.title}</caption>${data.map((d) => html`<tr><th scope="row">${d.label}</th><td>${d.value}</td></tr>`)}</table>
-    <div aria-hidden="true">${data.map(
-      (d) => html`<div class="bar-row">
-        <span class="bar-label" title="${d.label}">${d.label}</span>
-        <span class="bar-track"><span class="bar" style="width:${((Math.abs(d.value) / max) * 100).toFixed(1)}%"></span></span>
-        <span class="bar-value">${fmt.format(d.value)}</span>
-      </div>`,
-    )}</div>
-  </figure>`;
+  if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? 'No data found'}</p>`;
+  const kind = CHART_KINDS.includes(r.config.kind) ? r.config.kind : 'bar';
+  return renderChartBody(kind, r.title ?? 'Chart', res.rows, res.fields);
 }
 
 /**
@@ -124,6 +117,25 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
     case 'cards':
       body = await renderCards(ctx, r);
       break;
+    case 'grid':
+      body = await renderGrid(ctx, r);
+      break;
+    case 'calendar':
+      body = await renderCalendar(ctx, r);
+      break;
+    case 'facets':
+      body = await renderFacets(ctx, r);
+      break;
+    case 'dynamic':
+      // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The
+      // developer's SQL produces trusted markup; escape data with meta.html_escape().
+      try {
+        const res = await query(ctx, r);
+        body = raw(res.rows.map((row) => String(Object.values(row)[0] ?? '')).join(''));
+      } catch (e) {
+        body = html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `region "${r.title ?? r.id}"`)}</div>`;
+      }
+      break;
     case 'static': {
       const itemsHtml = await renderItems(ctx, items, hidden);
       body = html`${raw(substitute(r.source ?? '', ctx, esc))}${itemsHtml.length ? html`<div class="form-grid">${itemsHtml}</div>` : ''}`;
@@ -132,6 +144,7 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
   }
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
+  // (a grid renders its own Save button in its toolbar)
   const cls = `region region-${r.type} region-${r.template} col-${r.columns}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
   const titleId = `R${r.id}_title`;
