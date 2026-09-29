@@ -14,7 +14,7 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 |---|---|
 | Core runtime (pages, regions, items, session state, processes) | ✅ solid |
 | Reports, forms, grids, charts, cards, calendar, faceted search | ✅ / 🟡 core features in place, power-user features missing |
-| Security (authn, authz, session state protection, CSP) | ✅ user directory, OpenID Connect SSO; 🟡 no LDAP/SAML/MFA |
+| Security (authn, authz, session state protection, CSP) | ✅ user directory, OpenID Connect SSO; 🟡 no self-service password change, LDAP/SAML/MFA |
 | Builder (page designer, shared components, SQL Workshop) | 🟡 property editor, no drag-and-drop |
 | Responsive UI, dark mode, theming | ✅ / 🟡 basic theme roller |
 | Integration (REST, email, printing, data loading) | 🟡 REST APIs with PostgREST; ❌ email, printing, data loading |
@@ -105,7 +105,14 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 | Social sign-in / OpenID Connect | ✅ | Any OIDC provider (Entra ID, Google, Okta, Keycloak, …): PKCE, group → role mapping, account linking, auto-create |
 | Database accounts, LDAP, SAML, HTTP header | ❌ | |
 | Custom authentication | ❌ | |
-| Multi-factor authentication | ❌ | |
+| Multi-factor authentication | ❌ | Not built into APEX either (MFA comes from the identity provider); with pgapex, use OpenID Connect |
+| Change own password (end users) | ❌ | APEX: no page pattern, but `APEX_UTIL.CHANGE_CURRENT_USER_PW` to build one |
+| Forgot / reset password (end users) | ❌ | APEX has **no** built-in end-user flow either (developers get a "Reset Password" e-mail link); needs e-mail sending |
+| Password expiry, "change on first use", admin reset | ❌ | APEX: per-user *Require change of password on first use*, expiry after N days, `APEX_UTIL.RESET_PASSWORD` |
+| Lockout after failed sign-ins | ✅ | Per user and per IP, time based (APEX: per workspace, until an admin unlocks) |
+| Persistent authentication ("remember me") | ❌ | APEX 22.1+: instance setting, persistent cookie |
+| Session sharing between applications | 🟡 | Each app has its own session and sign-in; with OpenID Connect the second sign-in is silent. APEX: *No sharing* / *Workspace sharing* / *Custom cookie* |
+| App launcher / portal of the user's apps | ❌ | Not in APEX either (users open each app's URL) |
 | Authorization schemes | ✅ | Role or SQL based, negation, fail closed |
 | Session state protection (checksums) | ✅ | HMAC per app, page and user; `meta.page_url()` in SQL |
 | Parsing schema | ✅ | Per-app database role (`SET LOCAL ROLE`) |
@@ -121,12 +128,16 @@ Last reviewed: 2026-09-29 (pgapex 0.4.0).
 | Universal Theme look and layout | ✅ | Header, side/top navigation, breadcrumbs, 12-column grid, region templates |
 | Responsive (phone, tablet, desktop) | ✅ | Tested at 390/768/1024/1440px in CI (`npm run test:e2e`) |
 | Modal dialogs, drawers | ✅ / ❌ | Modal dialog pages (full screen on phones); no drawer pages |
-| Dark mode | ✅ | Follows the OS setting |
+| Dark mode | ✅ / 🟡 | Follows the OS setting automatically (APEX apps don't); no switch for users. APEX: *Vita - Dark* etc., and users may pick a theme style per app (*Customize* link) |
 | Theme Roller | 🟡 | Accent and header colours, navigation position; no style variants or template options |
 | Icons (Font APEX) | 🟡 | 31 line icons |
 | Accessibility | 🟡 | Labels, keyboard, focus rings, reduced motion, table alternatives for charts; no formal audit yet |
 | Progressive Web App | ❌ | |
-| Translations, multi-language apps, number/date format masks | ❌ | |
+| Translated applications (XLIFF, one copy per language; 26.1: text-message-based translation of one app) | ❌ | pgapex's own texts are English only; `<html lang="en">` |
+| Text messages (`APEX_LANG.MESSAGE`, `&APP_TEXT$…`) | ❌ | |
+| Built-in runtime messages in ~34 languages | ❌ | |
+| Application language from browser / preference / session | ❌ | |
+| Date/number format masks, automatic time zone | ❌ | Dates are shown as PostgreSQL sends them (ISO) |
 
 ## Data and integration
 
