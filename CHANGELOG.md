@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-29
+
+### Added
+- Responsive layout for phones, tablets and desktops: navigation drawer, reflowing reports and grids, full-screen dialogs, bottom-sheet menus, touch-sized controls; browser tests at four viewport sizes (`npm run test:e2e`).
+- Interactive grid region with inline editing, adding and deleting rows (signed row keys, per-row errors).
+- Charts: column, line, area and donut, with multi-series support, tooltips and data tables.
+- Calendar, faceted search and dynamic content regions.
+- Item types: checkbox group, multi-select, searchable popup list of values, email, phone, URL, colour.
+- Shared lists of values, theme colours and top navigation.
+- "Interactive grid" page wizard.
+- APEX feature parity matrix (`docs/apex-feature-parity.md`).
+- Open source packaging: Apache-2.0 license, contributing guide, code of conduct, CI, issue templates.
+
 ## [0.2.0] - 2026-09-29
 
 ### Added

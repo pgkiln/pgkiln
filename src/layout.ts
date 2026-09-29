@@ -1,6 +1,6 @@
 import { html, type Raw } from './html.ts';
 
-export function documentShell(title: string, body: Raw, bodyClass = '', data: Record<string, string> = {}) {
+export function documentShell(title: string, body: Raw, bodyClass = '', data: Record<string, string> = {}, head: Raw | '' = '') {
   const attrs = Object.entries(data).map(([k, v]) => html` ${k}="${v}"`);
   return html`<!doctype html>
 <html lang="en">
@@ -10,6 +10,7 @@ export function documentShell(title: string, body: Raw, bodyClass = '', data: Re
 <title>${title}</title>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/app.js" defer></script>
+${head}
 </head>
 <body class="${bodyClass}"${attrs}>
 ${body}

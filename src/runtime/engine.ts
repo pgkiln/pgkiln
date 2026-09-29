@@ -3,6 +3,7 @@ import { applyBinds, literal } from '../binds.ts';
 import { savepoint, type Client } from '../db.ts';
 import type { Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
+import { gridDml } from './grid.ts';
 import { bindValues, publicError, stripSemicolon, toState, type Errors, type PageContext } from './context.ts';
 
 const ident = pg.escapeIdentifier;
@@ -191,9 +192,14 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
   for (const p of ctx.page.processes) {
     if (p.point !== point) continue;
     if (p.when_button && p.when_button !== ctx.request) continue;
+    // a grid's DML runs on that grid's Save button unless a button is named
+    if (p.type === 'grid_dml' && !p.when_button && ctx.request !== `GRID_SAVE_${p.region_id}`) continue;
     if (!(await isAuthorized(ctx, p.authz))) continue;
     try {
-      const msg = p.type === 'form_dml' ? await formDml(ctx, p) : (await runSql(ctx, p.code ?? '', names), p.success_message);
+      const msg =
+        p.type === 'form_dml' ? await formDml(ctx, p)
+        : p.type === 'grid_dml' ? await gridDml(ctx, p)
+        : (await runSql(ctx, p.code ?? '', names), p.success_message);
       if (msg) messages.push(msg);
     } catch (e) {
       throw new ProcessFailed(await publicError(ctx, e, `process "${p.name}"`), errorItem(ctx, e));

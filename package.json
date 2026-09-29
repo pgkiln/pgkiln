@@ -1,6 +1,6 @@
 {
   "name": "pgapex",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Open source low-code, SQL-driven application builder for PostgreSQL, inspired by Oracle APEX",
   "keywords": [
@@ -36,7 +36,8 @@
     "test": "tsx --test test/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/migrate.ts --seed",
-    "setup": "docker compose up -d db && tsx scripts/migrate.ts --seed"
+    "setup": "docker compose up -d db && tsx scripts/migrate.ts --seed",
+    "test:e2e": "tsx --test --test-concurrency=1 test/e2e/*.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
@@ -48,6 +49,7 @@
   "devDependencies": {
     "@types/node": "^26.6.3",
     "@types/pg": "^8.23.1",
+    "playwright": "^1.63.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

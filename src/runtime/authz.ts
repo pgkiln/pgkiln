@@ -1,6 +1,7 @@
 import { applyBinds } from '../binds.ts';
 import { savepoint } from '../db.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext, type Visibility } from './context.ts';
+import { saveButton, saveRequest } from './grid.ts';
 
 export class Forbidden extends Error {}
 
@@ -88,6 +89,11 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     if (!(await sqlTrue(ctx, b.condition, `condition of button ${b.name}`))) continue;
     vis.buttons.set(b.name, b);
   }
+
+  // an editable grid brings its own Save button
+  for (const r of ctx.page.regions)
+    if (r.type === 'grid' && vis.regions.has(r.id) && ctx.page.processes.some((p) => p.type === 'grid_dml' && p.region_id === r.id))
+      vis.buttons.set(saveRequest(r), saveButton(r));
 
   for (const d of ctx.page.dynamic_actions) if (await isAuthorized(ctx, d.authz)) vis.dynamicActions.add(d.id);
   ctx.vis = vis;

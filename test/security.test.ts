@@ -303,3 +303,91 @@ describe('database privileges', () => {
     await assert.rejects(runtime.query('select * from hr.emp'), /permission denied/, 'runtime role has no direct data access');
   });
 });
+
+describe('sprint 3 features', () => {
+  const gridRegion = async () =>
+    (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 10 and r.type = 'grid'`, [appId])).id as number;
+
+  /** The posted form fields of the grid as rendered for this user. */
+  const gridForm = (body: string) => {
+    const form: Record<string, string> = {};
+    for (const m of body.matchAll(/<input([^>]*)name="(g\d+_\d+_[a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>/g)) {
+      if (/type="checkbox"/.test(m[0]) && !/ checked/.test(m[0])) continue; // like a browser
+      form[m[2]] = m[3].replace(/&quot;/g, '"');
+    }
+    return form;
+  };
+
+  test('grid pages follow their authorization scheme', async () => {
+    const allen = await as('allen');
+    assert.equal((await allen.get('/a/hr/10')).statusCode, 403);
+    await allen.get('/a/hr/1');
+    const rid = await gridRegion();
+    assert.equal((await allen.post('/a/hr/10', { __csrf: allen.lastCsrf, __request: `GRID_SAVE_${rid}` })).statusCode, 403);
+  });
+
+  test('grid rows cannot be redirected to another primary key', async () => {
+    const king = await as('king');
+    const page = await king.get('/a/hr/10');
+    const rid = await gridRegion();
+    const form = gridForm(page.body);
+    const g = `g${rid}`;
+    const victim = form[`${g}_1_pk`];
+    const before = await owner.one('select dname, loc from hr.dept where deptno = $1', [victim]);
+    // row 0's checksum with row 1's key, and a changed location
+    const res = await king.post('/a/hr/10', {
+      ...form, __csrf: king.lastCsrf, __request: `GRID_SAVE_${rid}`,
+      [`${g}_0_pk`]: victim, [`${g}_0_c2`]: 'HACKED',
+    });
+    assert.equal(res.statusCode, 422);
+    assert.match(res.body, /changed outside the grid/);
+    assert.deepEqual(await owner.one('select dname, loc from hr.dept where deptno = $1', [victim]), before);
+  });
+
+  test('grid saves only changed cells and rolls back on errors', async () => {
+    const king = await as('king');
+    const rid = await gridRegion();
+    const g = `g${rid}`;
+    const form = gridForm((await king.get('/a/hr/10')).body);
+    const pk = form[`${g}_0_pk`];
+    const orig = await owner.one('select loc from hr.dept where deptno = $1', [pk]);
+    try {
+      const ok = await king.post('/a/hr/10', { ...form, __csrf: king.lastCsrf, __request: `GRID_SAVE_${rid}`, [`${g}_0_c2`]: 'GRID TEST' });
+      assert.equal(ok.statusCode, 303);
+      assert.equal((await owner.one('select loc from hr.dept where deptno = $1', [pk])).loc, 'GRID TEST');
+      // a duplicate name in another row fails the whole save
+      const form2 = gridForm((await king.get('/a/hr/10')).body);
+      const other = form2[`${g}_1_c1`];
+      const bad = await king.post('/a/hr/10', {
+        ...form2, __csrf: king.lastCsrf, __request: `GRID_SAVE_${rid}`, [`${g}_0_c2`]: 'SHOULD ROLL BACK', [`${g}_2_c1`]: other,
+      });
+      assert.equal(bad.statusCode, 422);
+      assert.match(bad.body, /already exists/);
+      assert.equal((await owner.one('select loc from hr.dept where deptno = $1', [pk])).loc, 'GRID TEST');
+    } finally {
+      await owner.query('update hr.dept set loc = $2 where deptno = $1', [pk, orig.loc]);
+    }
+  });
+
+  test('facet and calendar parameters cannot inject SQL', async () => {
+    const king = await as('king');
+    const rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 11 and r.type = 'report'`, [appId])).id;
+    const res = await king.get(`/a/hr/11?${new URLSearchParams([[`r${rid}_x_job"; drop table hr.emp; --`, 'x'], [`r${rid}_x_job`, "Clerk' or '1'='1"]])}`);
+    assert.equal(res.statusCode, 200);
+    assert.match(res.body, /No data found/);
+    const cal = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 12`, [appId])).id;
+    assert.equal((await king.get(`/a/hr/12?r${cal}_m=2026-01'); drop table hr.emp; --`)).statusCode, 200);
+    assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
+  });
+
+  test('theme colours cannot inject CSS', async () => {
+    await owner.query(`update meta.app set theme = '{"accent": "red;}body{display:none", "header": "#123456"}' where id = $1`, [appId]);
+    try {
+      const body = (await (await as('king')).get('/a/hr/1')).body;
+      assert.doesNotMatch(body, /display:none/);
+      assert.match(body, /--header:#123456/);
+    } finally {
+      await owner.query(`update meta.app set theme = '{}' where id = $1`, [appId]);
+    }
+  });
+});

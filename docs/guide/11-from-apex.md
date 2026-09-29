@@ -1,0 +1,134 @@
+# 11. Coming from Oracle APEX
+
+pgapex borrows APEX's model on purpose, so most of what you know carries over. This chapter
+maps the concepts, explains the differences that matter, and gives tips for porting PL/SQL.
+What's missing is listed in the [feature parity matrix](../apex-feature-parity.md).
+
+## Concept map
+
+| Oracle APEX | pgapex |
+|---|---|
+| Instance / workspace | One pgapex installation (one workspace) |
+| Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
+| Application, page, region, item, button | The same, stored in `meta.*` |
+| Page Designer | Builder page designer (component tree + property editor) |
+| Shared components | Navigation menu, authorization schemes, lists of values, application items, application processes |
+| `:P1_ITEM`, `:APP_USER`, `:REQUEST`, `&ITEM.` | The same syntax |
+| `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
+| `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
+| `APEX_ACL` / `apex_acl.has_user_role` | `meta.has_role('role')` |
+| Page access protection "Arguments must have checksum" | `protection = 'checksum'` (the default) |
+| Automatic row processing (DML) | Process type `form_dml` |
+| Interactive grid DML | Process type `grid_dml` |
+| PL/SQL process | Process type `sql` calling PL/pgSQL (`select my_fn(:P1_X)`) |
+| `apex_error.add_error` / raising errors | `raise exception '…' using column = 'col'` |
+| Before-header processes | Process `point = 'load'` |
+| Application computation / process on new session | Application process (`after_login`, `before_page`) |
+| VPD | PostgreSQL row level security |
+| APEX collections | Temporary or unlogged tables, or `jsonb` |
+| ORDS | Not needed to serve apps; for REST APIs see [below](#ords-and-postgrest) |
+| Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
+
+## Users per application
+
+**How APEX does it.** An APEX instance has *workspaces*. Workspace users come in four kinds:
+end users, developers, workspace administrators and instance administrators. With the *Oracle
+APEX Accounts* authentication scheme, an application signs users in against the **workspace's**
+accounts, so every application in a workspace shares the same set of users. You can restrict
+access per application in two ways:
+
+- **Application Access Control** (a shared component) defines roles such as *Reader*, *Contributor*
+  and *Administrator* per application and assigns users to them. It generates authorization
+  schemes and can require that a user has a role to use the application at all.
+- **Authorization schemes** on pages and components.
+
+Many organisations don't use APEX accounts at all. They choose another authentication scheme
+(LDAP, social sign-in / OpenID Connect, SAML, database accounts or custom PL/SQL) and map
+the identity provider's groups to APEX roles. Applications in the same workspace can also share
+a session, so signing in to one signs you in to the others.
+
+**How pgapex does it today.** Users belong to **one application** (`meta.app_user.app_id`),
+with roles per user. That's the Application Access Control model without the shared workspace
+directory: simple, and apps are fully isolated, but one person using three apps needs three
+accounts, and there is no single sign-on yet.
+
+**Direction.** The roadmap moves closer to APEX:
+
+1. A **workspace-level user directory** (one account per person) with **per-application role
+   assignments** and an "only users with a role may use this app" switch, which is exactly APEX's
+   Application Access Control.
+2. **OpenID Connect** sign-in (Microsoft Entra ID, Google, Keycloak, …) with group → role mapping,
+   and optionally sessions shared between apps.
+
+Until then, for users who need several apps, create their account in each app. A script against
+`meta.app_user` makes that easy.
+
+## ORDS and PostgREST
+
+In the Oracle world, ORDS (Oracle REST Data Services) plays two roles:
+
+1. **The web listener for APEX itself**: every APEX page request goes through ORDS's PL/SQL gateway.
+2. **REST APIs**: RESTful services defined in APEX/ORDS, AutoREST for tables and views, and
+   REST-enabled SQL.
+
+In pgapex, **role 1 doesn't exist**. The pgapex server *is* the web tier, talking to PostgreSQL
+directly. You don't need ORDS or any replacement to run applications.
+
+For **role 2**, REST APIs, [PostgREST](https://postgrest.org) is the natural choice. It turns a
+PostgreSQL schema into a REST API: tables and views become resources, functions become RPC
+endpoints, and it authenticates with JWTs whose `role` claim selects the database role, so
+grants and row level security apply, just as in pgapex. That makes it a good partner rather than
+a replacement:
+
+| ORDS feature | PostgreSQL option |
+|---|---|
+| AutoREST for tables and views | PostgREST (automatic for an exposed schema) |
+| Hand-written handlers (GET/POST with SQL or PL/SQL) | PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
+| OAuth2 client credentials | JWTs issued by your identity provider (e.g. Keycloak, Entra ID) |
+| REST-enabled SQL | Not provided by PostgREST (and rarely desirable) |
+| OpenAPI/Swagger | Built into PostgREST |
+
+Recommended setup: expose a dedicated `api` schema containing **views and functions** (not your
+base tables), with its own role, and reuse the same RLS policies as the app. Direct integration
+(for example, `meta.app_user()` recognising a PostgREST JWT so one policy serves both the UI and
+the API) is on the roadmap.
+
+## Porting PL/SQL to PL/pgSQL
+
+| PL/SQL | PL/pgSQL |
+|---|---|
+| `create or replace procedure p (a in number) is begin … end;` | `create or replace procedure p(a numeric) language plpgsql as $$ begin … end $$;` |
+| functions returning values | `create function f(...) returns numeric language plpgsql as $$ … $$;` |
+| `varchar2`, `number`, `date` (with time) | `text`, `numeric` / `int`, `timestamp` (or `date` for dates only) |
+| `nvl(a, b)`, `decode(…)` | `coalesce(a, b)`, `case … end` |
+| `sysdate`, `systimestamp` | `now()`, `current_date` |
+| `raise_application_error(-20001, 'msg')` | `raise exception 'msg';` (add `using column = 'col'` to target a field) |
+| `sql%rowcount`, `%notfound` | `get diagnostics n = row_count;`, `if not found then` |
+| `select … into v from dual` | `select … into v;` (no `dual`) |
+| sequences `seq.nextval` | `nextval('seq')`, or `generated always as identity` columns |
+| packages | schemas + functions (package state → tables or session settings) |
+| autonomous transactions | not supported; use a separate connection or `dblink` if you really need it |
+| `v('APP_USER')`, `:APP_USER` | `meta.app_user()`, `:APP_USER` |
+| empty string is NULL | Postgres distinguishes them, but pgapex stores empty items as NULL, as APEX does |
+
+Tips:
+
+- Cast bind variables where Postgres can't infer the type: `:P1_ID::int`, `:P1_DATE::date`.
+- Use `returning` to get generated keys: `insert … returning id` inside a function, or return a
+  column named like the item (`as p3_id`) from a process.
+- Triggers are `create trigger … execute function f()`, with `new`/`old` records like Oracle's
+  `:new`/`:old`.
+- Row level security replaces most VPD policies, with simpler syntax.
+
+## Things that behave differently
+
+- **No PL/SQL in the page**: logic runs as SQL. Put anything procedural in a PL/pgSQL function and
+  call it.
+- **Everything is one transaction per submit**: validations and all processes commit or roll back
+  together.
+- **Errors are hidden by default**: unexpected errors show a reference number unless the app is in
+  debug mode.
+- **Dates**: date items use ISO format (`2026-10-01`) and the browser's date picker. Format masks
+  are not supported yet.
+- **Modal pages** open over the calling page, and close and refresh it after a successful submit,
+  like an APEX "Close Dialog" process plus "Dialog Closed" refresh.

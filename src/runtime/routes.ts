@@ -9,7 +9,7 @@ import { clientIp, createSession, destroySession, getSession, loginThrottled, lo
 import { checkPageAccess, computeVisibility, Forbidden } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
-import { renderItem } from './items.ts';
+import { MULTI_VALUE, renderItem } from './items.ts';
 import { renderRegion } from './regions.ts';
 import { reportCsv, normaliseReportParams } from './report.ts';
 import { chrome, dialogClosePage, renderPage } from './render.ts';
@@ -111,7 +111,13 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
   for (const item of ctx.page.items) {
     if (!ctx.vis!.editable.has(item.name)) continue;
     if (only && !only.includes(item.name)) continue;
-    const posted = body[item.name];
+    const raw = body[item.name] as string | string[] | undefined;
+    if (MULTI_VALUE.has(item.type)) {
+      const values = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((v) => v !== '');
+      ctx.session.state[item.name] = values.length ? values.join(':') : null;
+      continue;
+    }
+    const posted = Array.isArray(raw) ? raw[raw.length - 1] : raw;
     if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
     else if (item.type === 'password' && !posted) continue;
     else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
@@ -187,6 +193,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ctx = await loadContext(req, reply);
     if (!ctx) return;
     const body = req.body ?? {};
+    ctx.body = body;
     ctx.dialog = body.__dialog === '1';
     const self = `${ctx.base}/${ctx.page.page_no}${ctx.dialog ? '?dialog=1' : ''}`;
     if (body.__csrf !== ctx.session.csrf_token)

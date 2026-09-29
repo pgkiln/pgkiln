@@ -430,13 +430,14 @@ export async function builderRoutes(app: FastifyInstance) {
         </table></div>`)}
       <div class="columns">
         ${region('Create pages from a table', html`
-          <p class="muted" style="margin-top:0">Generates an interactive report page and a modal form page with create/update/delete, plus a menu entry (the "Report and Form" wizard).</p>
+          <p class="muted" style="margin-top:0">"Report and form" generates an interactive report and a modal form with create/update/delete; "Interactive grid" generates one editable grid page. Both add a menu entry.</p>
           <form method="post" action="${BASE}/apps/${a.id}/wizard">${csrf(s)}
             <div class="form-grid">
+              ${select('kind', 'Page type', 'report_form', [['report_form', 'Report and form'], ['grid', 'Interactive grid']])}
               ${select('table', 'Table or view', '', tables.rows.map((t) => t.t))}
               ${input('label', 'Label', '', { placeholder: 'defaults to the table name' })}
-              ${input('report_page', 'Report page', nextPage, { type: 'number', required: true })}
-              ${input('form_page', 'Form page', nextPage + 1, { type: 'number', required: true })}
+              ${input('report_page', 'Page number', nextPage, { type: 'number', required: true })}
+              ${input('form_page', 'Form page (report and form)', nextPage + 1, { type: 'number' })}
               ${select('icon', 'Menu icon', 'table', ICON_OPTIONS.filter(Boolean))}
             </div>
             <div class="buttons"><button class="btn btn-hot">Generate pages</button></div>
@@ -462,11 +463,16 @@ export async function builderRoutes(app: FastifyInstance) {
     try {
       await owner.tx(async (c) => {
         const a = await c.query('select alias from meta.app where id = $1', [req.params.id]);
-        await c.query('select meta.generate_crud($1, $2::regclass, $3, $4, $5, $6)', [
-          a.rows[0].alias, b.table, Number(b.report_page), Number(b.form_page), b.label?.trim() || null, b.icon || 'table',
-        ]);
+        if (b.kind === 'grid')
+          await c.query('select meta.generate_grid($1, $2::regclass, $3, $4, $5)', [a.rows[0].alias, b.table, Number(b.report_page), b.label?.trim() || null, b.icon || 'grid']);
+        else
+          await c.query('select meta.generate_crud($1, $2::regclass, $3, $4, $5, $6)', [
+            a.rows[0].alias, b.table, Number(b.report_page), Number(b.form_page), b.label?.trim() || null, b.icon || 'table',
+          ]);
       });
-      flash(s, `Pages ${b.report_page} and ${b.form_page} created for ${b.table}. Make sure the app's database role has privileges on it.`);
+      flash(s, b.kind === 'grid'
+        ? `Grid page ${b.report_page} created for ${b.table}. Make sure the app's database role has privileges on it.`
+        : `Pages ${b.report_page} and ${b.form_page} created for ${b.table}. Make sure the app's database role has privileges on it.`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -524,6 +530,12 @@ export async function builderRoutes(app: FastifyInstance) {
               <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
                 <small class="help">Shows database error details to end users. Development only.</small></div>
             </div>
+            <h3>Theme</h3>
+            <div class="form-grid">
+              ${input('accent', 'Accent colour', a.theme?.accent ?? '#0b63c5', { type: 'color' })}
+              ${input('header', 'Header colour', a.theme?.header ?? '#13294b', { type: 'color' })}
+              ${select('nav', 'Navigation menu', a.theme?.nav ?? 'side', [['side', 'Side (collapsible)'], ['top', 'Top bar']], 'On tablets and phones the menu is always a drawer.')}
+            </div>
             <div class="buttons"><button class="btn btn-hot">Save settings</button></div>
           </form>
           <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
@@ -546,8 +558,13 @@ export async function builderRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       await owner.query(
-        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, updated_at = now() where id = $1`,
-        [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true'],
+        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8, updated_at = now() where id = $1`,
+        [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
+         JSON.stringify({
+           accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
+           header: /^#[0-9a-f]{6}$/i.test(b.header ?? '') ? b.header : undefined,
+           nav: b.nav === 'top' ? 'top' : 'side',
+         })],
       );
       flash(s, 'Settings saved.');
     } catch (e) {
@@ -565,7 +582,7 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'app_item', 'app_process'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);

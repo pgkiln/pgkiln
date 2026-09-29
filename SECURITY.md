@@ -25,7 +25,7 @@ first version (MVP). Every finding below has a regression test in
 | Row level security | `meta.app_user()` and `meta.has_role()` expose the signed-in application user to SQL, so RLS policies (and triggers, audit logs) know *who* is acting, not just which database role. |
 | Authentication | bcrypt (pgcrypto) behind the `meta.authenticate()` SECURITY DEFINER function. Constant work for unknown users, throttling per user and per IP, session rotation on login. |
 | Authorization schemes | On pages, regions, items, buttons, processes, dynamic actions and navigation entries. They are role based or SQL based and fail closed when unknown. |
-| Session state protection | Item values in URLs carry an HMAC checksum bound to app, page and user. Hidden, display, read-only and unauthorized items cannot be set by a form post. |
+| Session state protection | Item values in URLs, and the row keys of interactive grids, carry an HMAC checksum bound to app, page and user. Hidden, display, read-only and unauthorized items cannot be set by a form post. |
 | Request integrity | A CSRF token on every POST (pages, AJAX, login, logout). Buttons are re-validated on submit. |
 | Output | Auto-escaping HTML templates, strict CSP (no inline script), `X-Frame-Options`, `nosniff`, `no-store`. |
 
