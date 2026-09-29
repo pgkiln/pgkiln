@@ -26,5 +26,22 @@ services:
       - "8180:8180"
     volumes:
       - ./docker/keycloak:/opt/keycloak/data/import:ro
+  # Optional REST API for application schemas (PostgREST alongside pgapex):
+  #   docker compose --profile api up -d postgrest     -> http://127.0.0.1:3000
+  # Tokens are signed with API_JWT_SECRET (.env), which pgapex uses to issue them.
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: pgapex-postgrest
+    profiles: [api]
+    depends_on: [db]
+    environment:
+      PGRST_DB_URI: postgres://pgapex_authenticator:pgapex_authenticator@db:5432/pgapex
+      PGRST_DB_SCHEMAS: api
+      PGRST_DB_ANON_ROLE: pgapex_anon
+      PGRST_JWT_SECRET: ${API_JWT_SECRET:-dev-only-api-secret-change-me-0123456789abcdef}
+      PGRST_DB_MAX_ROWS: 1000
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
+    ports:
+      - "3000:3000"
 volumes:
   pgdata:

@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-29. Steps A (user directory) and B (single sign-on) are **done**; next is step C (PostgREST).
+Last updated: 2026-09-29. Steps A and B are **done**; step C (PostgREST) is **in progress** (core works, verified with curl).
 
 ## Project in one paragraph
 
@@ -120,7 +120,32 @@ Original design notes:
   Optionally a `docker compose --profile sso` Keycloak with a realm import for manual demos.
 - Cross-app SSO comes from the identity provider's own session (signing in to app B through the IdP is silent).
 
-### C: PostgREST alongside pgapex: design, not started
+### C: PostgREST alongside pgapex: in progress
+
+Done (WIP commit on `sprint-4`, verified manually with curl against a running PostgREST):
+- [x] `db/migrations/005_api.sql`: roles `pgapex_authenticator` (login) and `pgapex_anon`; `meta.app.api_role`;
+      `meta.jwt_claims()`; `meta.app_user()`, `meta.app_id()` and `meta.has_role()` fall back to PostgREST JWT claims
+      (`app_user`/`preferred_username`/`email`/`sub`, `app`, `roles`)
+- [x] `db/seed/hr_03_api.sql`: role `hr_api`, schema `api` (security_invoker views `employees` without salary,
+      `leave_requests`, `my_notifications`; RPC `request_leave`, `decide_leave`)
+- [x] `docker-compose.yml`: `postgrest` service (profile `api`, port 3000, `PGRST_JWT_SECRET=${API_JWT_SECRET}`);
+      `.env.example`: `API_URL`, `API_JWT_SECRET`
+- [x] `src/api.ts`: `issueApiToken(appId, username, hours)` (HS256 via jose; checks active + access; includes roles)
+- Verified: Allen's token sees only his own leave; Blake sees his team; Allen can't approve his own request (P0001);
+  Blake approves (204) → trigger notifies Allen; the audit log records the API user; base tables and salary are not
+  exposed; forged tokens are rejected.
+
+To do:
+- [ ] Builder: per-app "REST API" page (api_role, API_URL, issue a token for an account with a TTL, curl examples)
+- [ ] Tests: always-on SQL tests (as `hr_api` with `set_config('request.jwt.claims', …)`: app_user, has_role, RLS), plus
+      HTTP tests that skip when PostgREST at API_URL isn't reachable (send `notify pgrst, 'reload schema'` first);
+      optionally a PostgREST service container in CI
+- [ ] Docs: new chapter `docs/guide/13-rest-api.md` (setup, the api-schema pattern, tokens: pgapex-issued vs identity
+      provider JWKS + role claim, security notes, change the authenticator password); update chapter 11
+      (ORDS vs PostgREST, "on the roadmap" → done), chapter 1 config, the docs index, parity matrix ("RESTful services"), CHANGELOG
+- [ ] Full verification: `npm run db:reset && npm test && npm run test:e2e`, then bump the version to 0.4.0 and give the owner the compare URL
+
+Original design notes:
 
 - `docker-compose.yml`: a `postgrest` service under `profiles: [api]`, with the authenticator
   role (login, noinherit), `web_anon` (no rights) and `db-schemas: api`.
