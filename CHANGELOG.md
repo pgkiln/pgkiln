@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added (sprint 8)
+- OAuth clients for the REST API, like ORDS's `oauth.create_client`: client credentials
+  (`POST /oauth/token`, HTTP Basic or form fields) give short-lived tokens that PostgREST accepts,
+  so tokens never need rotating by hand. Clients act as `client:<name>` with roles that are read
+  live; revoking works at once. Secret rotation with a grace period. Managed under Builder → REST
+  API → OAuth clients or with `meta.oauth_create_client()`, `oauth_rotate_secret()`,
+  `oauth_revoke_client()`, `oauth_grant_role()` and `oauth_revoke_role()` (migration 011).
+
 ### Added
 - Printing: interactive reports get **Download PDF** (A4, landscape when wide; title, active
   filters, repeated headings, page numbers; same query, filters and access checks as the

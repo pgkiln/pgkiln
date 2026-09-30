@@ -11,6 +11,7 @@ import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
 import { accountRoutes } from './runtime/account.ts';
+import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
@@ -36,6 +37,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(builderRoutes);
   await app.register(usersRoutes);
   await app.register(dataLoadRoutes);
+  await app.register(oauthRoutes);
   await app.register(apiRoutes);
   await app.register(globalizationRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));

@@ -3,7 +3,9 @@ import { apiRoleProblem, apiStatus, apiUrl, issueApiToken, MAX_TOKEN_HOURS } fro
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
+import { publicUrl } from '../sso.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
+import { roleHints, roleHintsHtml, splitRoles } from './users.ts';
 
 // Per-application REST API page: the database role API tokens use, what
 // PostgREST exposes to it, and developer-issued tokens for trying it out.
@@ -30,7 +32,72 @@ async function endpoints(role: string) {
   ).rows;
 }
 
-async function apiPage(s: Session, a: any, issued?: { token: string; username: string; expiresInHours: number }) {
+interface NewSecret {
+  name: string;
+  clientId: string;
+  secret: string;
+  rotated: boolean;
+  graceHours?: number;
+}
+
+/** OAuth clients: list, create, rotate, revoke (client credentials, see src/oauth.ts). */
+async function clientsRegion(s: Session, a: any, secret?: NewSecret, usable = true) {
+  const clients = (
+    await owner.query(
+      `select id, name, description, client_id, roles, token_minutes, active, secret_changed_at, last_used_at,
+              previous_valid_until > now() as grace, previous_valid_until
+         from meta.api_client where app_id = $1 order by name`,
+      [a.id],
+    )
+  ).rows;
+  const hints = (await roleHints([a.id])).get(a.id) ?? [];
+  const tokenUrl = `${publicUrl()}/oauth/token`;
+  const when = (d: Date | string | null) => (d ? (d instanceof Date ? d.toISOString() : String(d)).slice(0, 16).replace('T', ' ') : '');
+  const action = (c: any, path: string, label: string, extra: Raw | '' = '', cls = 'btn') =>
+    html`<form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/${path}" class="inline-form">${csrf(s)}${extra}<button class="${cls}">${label}</button></form>`;
+  return region(
+    'OAuth clients',
+    html`<p class="muted" style="margin-top:0">For systems that call the API, like ORDS's <code>oauth.create_client</code>. A client exchanges its id and secret for an access token at
+        <code>${tokenUrl}</code> (<code>grant_type=client_credentials</code>) and fetches a new one when it expires, so tokens never need rotating by hand.
+        The client acts as <code>client:&lt;name&gt;</code> with the roles below, read at every request; revoking works at once.</p>
+      ${secret
+        ? html`<div class="alert alert-success" role="status">${secret.rotated ? `New secret for ${secret.name}` : `Client ${secret.name} created`}. Copy the secret now: it is shown only once.${
+            secret.rotated && secret.graceHours ? ` The previous secret keeps working for ${secret.graceHours} hours.` : ''}</div>
+          <div class="form-grid">
+            <div class="field"><label class="label" for="oauth_id">Client ID</label><input id="oauth_id" class="code" readonly value="${secret.clientId}"></div>
+            <div class="field"><label class="label" for="oauth_secret">Client secret</label><input id="oauth_secret" class="code" readonly value="${secret.secret}"></div>
+          </div>
+          <pre class="source">curl -u '${secret.clientId}:${secret.secret}' -d grant_type=client_credentials ${tokenUrl}</pre>`
+        : ''}
+      ${clients.length
+        ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Client</th><th>Roles</th><th>Token</th><th>Secret</th><th>Last used</th><th></th></tr></thead><tbody>
+            ${clients.map((c) => html`<tr${c.active ? '' : raw(' class="muted"')}>
+              <td data-label="Client"><strong>${c.name}</strong>${c.active ? '' : html` <span class="tag">revoked</span>`}<br><code>${c.client_id}</code>${c.description ? html`<br><small class="help">${c.description}</small>` : ''}</td>
+              <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/roles" class="search roles-form" style="margin:0;max-width:none">${csrf(s)}
+                <input name="roles" value="${c.roles.join(', ')}" aria-label="Roles of ${c.name}" placeholder="no roles"><button class="btn">Save</button>${roleHintsHtml(hints, 'Add')}</form></td>
+              <td data-label="Token">${c.token_minutes} min</td>
+              <td data-label="Secret">${when(c.secret_changed_at)}${c.grace ? html`<br><small class="help">old secret valid until ${when(c.previous_valid_until)}</small>` : ''}</td>
+              <td data-label="Last used">${when(c.last_used_at) || html`<span class="muted">never</span>`}</td>
+              <td class="actions">
+                ${action(c, 'rotate', 'New secret', html`<select name="grace" aria-label="Keep the old secret"><option value="24">old valid 24 h</option><option value="168">old valid 7 days</option><option value="0">old invalid now</option></select>`)}
+                ${action(c, 'active', c.active ? 'Revoke' : 'Reactivate', html`<input type="hidden" name="active" value="${c.active ? 'false' : 'true'}">`)}
+                ${action(c, 'delete', 'Delete', '', 'btn btn-danger')}
+              </td></tr>`)}
+          </tbody></table></div>`
+        : html`<p class="muted">No clients yet.</p>`}
+      <form method="post" action="${BASE}/apps/${a.id}/api/clients" style="margin-top:1rem">${csrf(s)}
+        <div class="form-grid">
+          ${input('name', 'Name', '', { required: true, placeholder: 'e.g. payroll-sync', help: 'Lower case letters, digits, . _ -' })}
+          <div class="field"><label class="label" for="f_roles">Roles</label><input id="f_roles" name="roles" placeholder="comma separated, or pick below">${roleHintsHtml(hints)}</div>
+          ${input('token_minutes', 'Token lifetime (minutes)', 60, { type: 'number', help: '5 to 1440.' })}
+          ${input('description', 'Description', '', { placeholder: 'who uses it' })}
+        </div>
+        <div class="buttons"><button class="btn btn-hot"${usable ? '' : raw(' disabled')}>Create client</button></div>
+      </form>`,
+  );
+}
+
+async function apiPage(s: Session, a: any, issued?: { token: string; username: string; expiresInHours: number }, secret?: NewSecret) {
   const role: string | null = a.api_role;
   const [status, problem, granted, eps] = await Promise.all([
     apiStatus(),
@@ -76,6 +143,7 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
         ${issued ? html`<div class="field" data-wide style="margin-top:1rem"><label class="label" for="api_token">Token for ${issued.username} (shown once, valid ${issued.expiresInHours} h)</label>
           <textarea id="api_token" class="code" rows="4" readonly spellcheck="false">${issued.token}</textarea></div>` : ''}`)}
     </div>
+    ${await clientsRegion(s, a, secret, !!role && !problem)}
     ${region('Endpoints', eps.length
       ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Path</th><th>Kind</th><th>Methods for ${role}</th></tr></thead>
           <tbody>${eps.map((e) => html`<tr><td><code>/${e.kind === 'function' ? 'rpc/' : ''}${e.name}</code></td><td>${e.kind}</td><td>${e.methods || html`<span class="muted">none</span>`}</td></tr>`)}</tbody></table></div>`
@@ -125,5 +193,63 @@ export async function apiRoutes(app: FastifyInstance) {
       flash(s, (e as Error).message, 'error');
       return back(reply, s, `${BASE}/apps/${a.id}/api`);
     }
+  });
+
+  // ---------------------------------------------------------------- OAuth clients
+  // Pages with a new secret are rendered directly, never stored in the session.
+  app.post(`${BASE}/apps/:id/api/clients`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await appOr404(req.params.id);
+    if (!a) return reply.code(404).send('Not found');
+    const b = req.body ?? {};
+    try {
+      const name = (b.name ?? '').trim().toLowerCase();
+      const r = await owner.one(`select * from meta.oauth_create_client($1, $2, $3, $4, $5)`, [
+        a.alias, name, splitRoles(b.roles ?? ''), b.description?.trim() || null, Number(b.token_minutes) || 60,
+      ]);
+      await logActivity({ appId: a.id, username: s.username, event: 'oauth_client', ip: clientIp(req), detail: `created ${name}` });
+      return send(reply.header('cache-control', 'no-store'), s, await apiPage(s, a, undefined, { name, clientId: r.client_id, secret: r.client_secret, rotated: false }));
+    } catch (e) {
+      const err = e as { code?: string; message: string };
+      flash(s, err.code === '23505' ? 'A client with this name already exists.' : err.code === '23514' ? 'Check the name (lower case letters, digits, . _ -) and the token lifetime (5–1440 minutes).' : err.message, 'error');
+      return back(reply, s, `${BASE}/apps/${a.id}/api`);
+    }
+  });
+
+  const clientOf = (appId: string, cid: string) =>
+    owner.one('select id, name, client_id from meta.api_client where id = $1 and app_id = $2', [cid, appId]);
+
+  app.post(`${BASE}/apps/:id/api/clients/:cid/rotate`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await appOr404(req.params.id);
+    const c = a && (await clientOf(req.params.id, req.params.cid));
+    if (!a || !c) return reply.code(404).send('Not found');
+    const grace = [0, 24, 168].includes(Number(req.body?.grace)) ? Number(req.body?.grace) : 24;
+    const r = await owner.one(`select meta.oauth_rotate_secret($1, make_interval(hours => $2)) as secret`, [c.client_id, grace]);
+    await logActivity({ appId: a.id, username: s.username, event: 'oauth_client', ip: clientIp(req), detail: `new secret for ${c.name}, old valid ${grace} h` });
+    return send(reply.header('cache-control', 'no-store'), s, await apiPage(s, a, undefined, { name: c.name, clientId: c.client_id, secret: r.secret, rotated: true, graceHours: grace }));
+  });
+
+  app.post(`${BASE}/apps/:id/api/clients/:cid/:op`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const c = await clientOf(req.params.id, req.params.cid);
+    if (!c) return reply.code(404).send('Not found');
+    const op = req.params.op;
+    if (op === 'active') {
+      const active = req.body?.active === 'true';
+      await owner.query('update meta.api_client set active = $2 where id = $1', [c.id, active]);
+      flash(s, active ? `${c.name} can get tokens again.` : `${c.name} is revoked: its tokens stop working now.`);
+    } else if (op === 'roles') {
+      await owner.query('update meta.api_client set roles = $2 where id = $1', [c.id, splitRoles(req.body?.roles ?? '')]);
+      flash(s, `Roles of ${c.name} saved.`);
+    } else if (op === 'delete') {
+      await owner.query('delete from meta.api_client where id = $1', [c.id]);
+      flash(s, `${c.name} deleted.`);
+    } else return reply.code(404).send('Not found');
+    await logActivity({ appId: Number(req.params.id), username: s.username, event: 'oauth_client', ip: clientIp(req), detail: `${op} ${c.name}` });
+    return back(reply, s, `${BASE}/apps/${req.params.id}/api`);
   });
 }

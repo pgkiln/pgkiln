@@ -686,3 +686,8 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
   input, select, textarea { border: 0 !important; background: none !important; padding: 0 !important; appearance: none; }
   .file-preview { max-height: 3cm; }
 }
+
+/* builder: small forms inside table cells (OAuth clients) */
+.inline-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin: 0 0.3rem 0.3rem 0; }
+.inline-form select { width: auto; }
+.report td.actions { min-width: 15rem; max-width: none; white-space: normal; overflow: visible; }
