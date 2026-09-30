@@ -81,6 +81,11 @@ which is read at startup; real environment variables take precedence.
 | `LOGIN_MAX_FAILURES_PER_IP` | `50` | Failed sign-ins per IP address before a lock |
 | `STATEMENT_TIMEOUT` | `30s` | Maximum run time of any application SQL statement |
 | `DB_POOL_SIZE` | `10` | Connections per pool (there are two pools) |
+| `MAX_UPLOAD_MB` | `10` | Largest file a file item accepts (an item's `max_mb` can only lower it) |
+| `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data |
+| `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
+| `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (the CSV download has all rows) |
+| `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
 ## npm scripts

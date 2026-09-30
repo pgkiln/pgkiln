@@ -62,7 +62,8 @@ Features for end users:
 - **Search** across all columns.
 - **Sort** by clicking a column heading (again for descending), or from the Actions menu.
 - **Actions menu**: add **column filters** (`=`, `≠`, contains, does not contain, `>`, `≥`, `<`,
-  `≤`, is empty, is not empty), choose **rows per page**, **download CSV**, **reset**.
+  `≤`, is empty, is not empty), choose **rows per page**, **download CSV**, **download PDF**,
+  **print**, **reset**.
 - Active search and filters appear as removable chips.
 - **Paging** with Previous/Next.
 - On phones every row **reflows** into a card with labelled values.
@@ -91,6 +92,7 @@ a department select list with `submit_on_change`) are made.
 
 The CSV download uses the current search, filters and sort (up to 100,000 rows). Text cells that
 start with `=`, `+`, `-` or `@` are prefixed with `'` so spreadsheets don't execute them.
+The PDF uses them too; see [printing](16-files.md#printing).
 
 ---
 

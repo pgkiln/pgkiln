@@ -18,6 +18,8 @@ triggers, your own functions).
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
 | `meta.url_encode(text)` | text | Percent-encodes a URL component |
+| `meta.temp_files` (view) | rows | The current session's uploaded files: `id`, `item_name`, `filename`, `mime_type`, `size`, `content`, `created_at` (like `APEX_APPLICATION_TEMP_FILES`; [chapter 16](16-files.md)) |
+| `meta.delete_temp_file(id)` | void | Removes one of the current session's uploaded files |
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
 `pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`.
@@ -126,8 +128,9 @@ needed and grants access; deleting revokes access.
 **`validation`**: `page_id`, `seq`, `name`, `item_name`, `type` (`not_null` / `sql` / `regex`),
 `expression`, `message`, `when_button`.
 
-**`process`**: `page_id`, `seq`, `name`, `type` (`form_dml` / `grid_dml` / `sql`), `region_id`,
-`code`, `point` (`submit` / `load`), `when_button`, `authz`, `success_message`.
+**`process`**: `page_id`, `seq`, `name`, `type` (`form_dml` / `grid_dml` / `sql` / `data_load`),
+`region_id`, `code`, `config` (jsonb, for `data_load`), `point` (`submit` / `load`), `when_button`,
+`authz`, `success_message`.
 
 ### Runtime and instance
 
@@ -143,6 +146,7 @@ needed and grants access; deleting revokes access.
 | `setting` | Account settings: `password_min_length`, `password_require_mixed`, `password_lifetime_days` | yes (read) |
 | `text_message` | Per app: `name`, `language`, `text` | yes |
 | `translation` | Per app and language: `source` (primary-language text) → `target` | yes |
+| `temp_file` | Uploaded files per session (deleted with the session; at most 20 per session). Read through the view `meta.temp_files` | no (through the view) |
 
 Retention: expired sessions are purged automatically. The activity log is kept until you delete
 from it, for example with a scheduled
@@ -163,6 +167,7 @@ from it, for example with a scheduled
 | `r<id>_f=column\|op\|value` | report | Column filter (repeatable); `op` is `eq`, `ne`, `contains`, `not_contains`, `gt`, `ge`, `lt`, `le`, `null`, `not_null` |
 | `r<id>_x_<column>=value` | report + facets | Facet selection (repeatable) |
 | `r<id>_csv=1` | report | Download CSV |
+| `r<id>_pdf=1` | report | Download PDF |
 | `r<id>_m=YYYY-MM` | calendar | Month shown |
 
 ## Icons
@@ -171,7 +176,7 @@ Usable in navigation entries and cards (`icon` column):
 
 `home` `users` `user` `building` `chart` `table` `list` `calendar` `shield` `history` `settings`
 `org` `grid` `file` `check` `menu` `logout` `plus` `download` `filter` `database` `code`
-`activity` `inbox` `close` `chevron` `edit` `layers` `bolt` `key` `play`
+`activity` `inbox` `close` `chevron` `edit` `layers` `bolt` `key` `play` `upload` `printer`
 
 ## HTTP endpoints
 

@@ -21,6 +21,7 @@ src/
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
   binds.ts                 :BIND scanner → escaped literals (unit tested)
+  dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
   html.ts                  auto-escaping html`` templates
   metadata.ts              types + loaders for apps and pages
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -35,6 +36,8 @@ src/
     account.ts             My account (details, own password, preferences)
     locale.ts              language, theme, text messages and translations of a request
     format.ts              date masks
+    files.ts               file items: multipart parsing, temporary files, signed downloads
+    pdf.ts                 report PDFs (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  shell, form helpers, CSRF check, app tab bar
@@ -42,6 +45,7 @@ src/
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
+    dataload.ts            SQL Workshop → Load Data
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
@@ -52,6 +56,10 @@ test/
   api.test.ts              REST API: SQL as the API role; HTTP tests skip without PostgREST
   accounts.test.ts         own password, expiry, admin reset, preferences
   i18n.test.ts             languages, translations, text messages, date masks, XLIFF/CSV
+  files.test.ts            file items: storage, limits, downloads, temporary files
+  dataload.test.ts         parsing, Load Data, the data_load process
+  printing.test.ts         report PDFs
+  fixtures/                test files (employees.xlsx)
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
 ```

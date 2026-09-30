@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-09-30 (pgapex 0.6.0).
+Last reviewed: 2026-09-30 (pgapex 0.6.0 plus sprint 7: file upload, data loading, printing).
 
 ## At a glance
 
@@ -15,15 +15,15 @@ Last reviewed: 2026-09-30 (pgapex 0.6.0).
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 2 | 6 | 7 | 0 | Solid builder and wizards; no drag-and-drop, no team/AI tooling |
 | Regions | 6 | 5 | 6 | 0 | All everyday regions; power-user report features and maps missing |
-| Items | 6 | 2 | 4 | 0 | All common items; no file upload or rich text yet |
+| Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
 | Security | 14 | 2 | 3 | 2 | On par or stricter; no LDAP/SAML, no "remember me" |
 | User interface | 4 | 4 | 2 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
-| Data and integration | 2 | 1 | 5 | 3 | REST APIs via PostgREST; no data loading, printing or REST data sources |
+| Data and integration | 2 | 3 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX loading, report PDFs; no document templates or REST data sources |
 | Workflow, automation and AI | 0 | 0 | 6 | 0 | Not started; approvals are hand-built in PL/pgSQL (see the HR sample) |
 | Administration | 1 | 3 | 1 | 0 | Single workspace |
-| **Total** | **43** | **30** | **37** | **6** | 116 APEX features compared: 37% available, 26% partial |
+| **Total** | **43** | **33** | **34** | **6** | 116 APEX features compared: 37% available, 28% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -52,7 +52,7 @@ Last reviewed: 2026-09-30 (pgapex 0.6.0).
 | APEX | pgapex | Notes |
 |---|---|---|
 | Classic report | ✅ | `report` with `interactive: false` |
-| Interactive report | 🟡 | Search, column filters, sort, rows per page, CSV download, reset, reflow on phones. **Missing:** saved/public reports, control break, highlight, aggregates, group by, pivot, chart view, flashback, XLSX/PDF download, row selection and maximum rows (26.1), natural-language control (26.1) |
+| Interactive report | 🟡 | Search, column filters, sort, rows per page, CSV and PDF download, print, reset, reflow on phones. **Missing:** saved/public reports, control break, highlight, aggregates, group by, pivot, chart view, flashback, XLSX download, row selection and maximum rows (26.1), natural-language control (26.1) |
 | Interactive grid | 🟡 | Inline edit, add and delete rows, lists of values, required columns, per-row errors, all-or-nothing save, signed row keys, search and paging. **Missing:** copy/paste (26.1), column reorder/resize/freeze, master-detail, aggregates, row actions menu, saved reports |
 | Form (automatic row processing) | ✅ | Fetch, insert, update, delete, in a page or a modal dialog. Detects rows deleted meanwhile, but no optimistic locking of concurrent edits yet |
 | Charts | 🟡 | Bar, column, line, area, donut; multi-series, tooltips, data table, palette checked for colour-vision deficiency. **Missing:** scatter, bubble, stacked, combination, gauge, Gantt, drill-down links |
@@ -81,7 +81,7 @@ Last reviewed: 2026-09-30 (pgapex 0.6.0).
 | E-mail, phone, URL, colour picker | ✅ | Typed inputs |
 | Read-only condition, required, help text, default | ✅ | |
 | BOOLEAN session state (26.1) | 🟡 | Stored as `true` / `false` text, which PostgreSQL casts to boolean; boolean columns map to switches |
-| File browse / image upload, paste files (26.1) | ❌ | Top of the roadmap |
+| File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** several files per item, drag-and-drop/paste, object storage, image cropping |
 | Rich text / markdown editor | ❌ | |
 | Star rating, QR code, combobox (tags), date range | ❌ | |
 | Password reveal toggle (24.2) | ❌ | |
@@ -95,7 +95,7 @@ Last reviewed: 2026-09-30 (pgapex 0.6.0).
 | Validations | ✅ | Not null, SQL expression, regex, required items; `RAISE … USING COLUMN` in PL/pgSQL targets a field |
 | Conditions and authorization on components | ✅ | Pages, regions, items, buttons, processes, dynamic actions, navigation entries; re-checked on submit |
 | Computations | 🟡 | Use processes (returned columns set items) |
-| Page processes | 🟡 | SQL / PL/pgSQL, form DML, grid DML. **Missing:** invoke API, data loading, download, workflow, execution chains, *Generate Text with AI* (26.1) |
+| Page processes | 🟡 | SQL / PL/pgSQL, form DML, grid DML, data loading (`data_load`). **Missing:** invoke API, download, workflow, execution chains, *Generate Text with AI* (26.1) |
 | Branches | 🟡 | Per-button target page; no conditional branches |
 | Dynamic actions | 🟡 | Show, hide, enable, disable, set value (SQL), execute SQL, refresh region or item, alert, submit. **Missing:** custom JavaScript, set focus/class, dialog events, show success/error message and clear errors (26.1), plug-ins |
 | APEX PL/SQL APIs | 🟡 | `meta.app_user()`, `meta.has_role()`, `meta.v()`, `meta.page_url()`, `meta.message()`, `meta.html_escape()`, password functions. No equivalents of `APEX_WEB_SERVICE`, `APEX_DATA_PARSER`, `APEX_ZIP`, … |
@@ -164,9 +164,9 @@ Last reviewed: 2026-09-30 (pgapex 0.6.0).
 | RESTful services (ORDS) | ✅ | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, the same RLS as the UI, per-app API role, tokens in the builder, a pre-request check |
 | REST handler editor, REST-enabled SQL | 🟡 | Write RPC functions in the `api` schema instead of handlers; no REST-enabled SQL (rarely desirable) |
 | SQL scripts, query builder, Quick SQL | ❌ | |
-| Data Workshop (load CSV/XLSX/JSON) | ❌ | |
+| Data Workshop (load CSV/XLSX/JSON) | 🟡 | SQL Workshop → Load Data: CSV/TSV/XLSX into a new table (inferred types) or an existing one (append, merge, replace) with a per-row error report; `data_load` process for end users. **Missing:** JSON/XML, saved data load definitions, column transformations, unloading ([chapter 16](guide/16-files.md)) |
 | REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | ❌ | Calling web services from SQL is possible with the `http` or `pg_net` extensions ([extensions](guide/15-extensions.md)) |
-| Printing, document generator (PDF) | ❌ | |
+| Printing, document generator (PDF) | 🟡 | Report PDF (filters applied, landscape when wide, page numbers) and a print stylesheet on every page. **Missing:** report layouts and document templates (BI Publisher / APEX Office Print / document generator) |
 | Data Reporter: self-service reports for business users (26.1) | ❌ | |
 | Sending e-mail (`APEX_MAIL`), e-mail templates, *Send E-Mail* process | ➖ | Deliberately not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` |
 | JSON sources, duality views (24.2) | ➖ | PostgreSQL `jsonb` works in any SQL region, form or grid source |
@@ -231,18 +231,17 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **File upload items** (bytea or object storage) and download links.
-2. **Automations in the builder** on `pg_cron`: schedule an app's SQL or PL/pgSQL, with run history.
-3. **Interactive report power features:** saved reports, control break, aggregates, highlight, XLSX download, row selection.
-4. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
-5. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
-6. **LDAP and SAML** authentication; "remember me".
-7. **Data loading** (CSV/XLSX into a table) and **printing** (PDF).
-8. **Approvals / workflow** built on the metadata model.
-9. **Map and tree regions**; more chart types.
-10. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-11. **Template components and plug-ins.**
-12. **AI features.**
+1. **Automations in the builder** on `pg_cron`: schedule an app's SQL or PL/pgSQL, with run history.
+2. **Interactive report power features:** saved reports, control break, aggregates, highlight, XLSX download, row selection.
+3. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
+4. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
+5. **LDAP and SAML** authentication; "remember me".
+6. **Document printing:** report layouts / templates (e.g. HTML templates rendered to PDF), and JSON in data loading.
+7. **Approvals / workflow** built on the metadata model.
+8. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+9. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+10. **Template components and plug-ins.**
+11. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),
