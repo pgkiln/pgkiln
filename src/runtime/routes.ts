@@ -15,10 +15,12 @@ import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesse
 import { MULTI_VALUE, renderItem } from './items.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
-import { reportCsv, normaliseReportParams } from './report.ts';
+import { reportCsv, reportXlsx, normaliseReportParams } from './report.ts';
 import { reportPdf } from './pdf.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 type Params = { alias: string; page?: string; id?: string; item?: string };
 type Body = Record<string, string | undefined>;
@@ -231,10 +233,10 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
     const flash = takeFlash(ctx.session);
     if (flash) ctx.messages.push(flash);
-    // Actions → Download CSV / PDF: r<region id>_csv=1 or r<region id>_pdf=1
-    const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|pdf)$/.test(k));
+    // Actions → Download CSV / Excel / PDF: r<region id>_csv=1, _xlsx=1 or _pdf=1
+    const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|xlsx|pdf)$/.test(k));
 
-    let result: { html?: string; csv?: string; pdf?: Buffer; name?: string };
+    let result: { html?: string; csv?: string; file?: Buffer; type?: string; name?: string };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -248,11 +250,13 @@ export async function runtimeRoutes(app: FastifyInstance) {
         }
         await computeVisibility(ctx);
         if (downloadKey) {
-          const pdf = downloadKey.endsWith('_pdf');
-          const region = ctx.page.regions.find((r) => `r${r.id}_${pdf ? 'pdf' : 'csv'}` === downloadKey && r.type === 'report' && ctx.vis!.regions.has(r.id));
+          const format = downloadKey.slice(downloadKey.indexOf('_') + 1);
+          const region = ctx.page.regions.find((r) => `r${r.id}_${format}` === downloadKey && r.type === 'report' && ctx.vis!.regions.has(r.id));
           if (!region) throw new Forbidden(ctx.locale.t('error.report_unavailable'));
           const name = (region.title ?? 'report').replace(/[^\w-]+/g, '_');
-          return pdf ? { pdf: await reportPdf(ctx, region), name: `${name}.pdf` } : { csv: await reportCsv(ctx, region), name: `${name}.csv` };
+          if (format === 'pdf') return { file: await reportPdf(ctx, region), type: 'application/pdf', name: `${name}.pdf` };
+          if (format === 'xlsx') return { file: await reportXlsx(ctx, region), type: XLSX_TYPE, name: `${name}.xlsx` };
+          return { csv: await reportCsv(ctx, region), name: `${name}.csv` };
         }
         return { html: await renderPage(ctx) };
       });
@@ -262,8 +266,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
     await saveState(ctx.session);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
-    if (result.pdf)
-      return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type('application/pdf').send(result.pdf);
+    if (result.file)
+      return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type(result.type!).send(result.file);
     if (result.csv !== undefined)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).type('text/csv; charset=utf-8').send(result.csv);
     return reply.type('text/html').send(result.html);

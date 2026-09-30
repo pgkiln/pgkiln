@@ -10,6 +10,7 @@ import { heading } from './items.ts';
 import { linkAttrs } from './links.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
+import { writeXlsx, type XlsxCell } from '../xlsx.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -125,7 +126,7 @@ export async function columnsOf(ctx: PageContext, src: string) {
   return res.fields.map((f) => f.name);
 }
 
-export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'pdf') {
+export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
   const src = stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx)));
   const where: string[] = [];
   if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
@@ -177,6 +178,32 @@ export async function reportCsv(ctx: PageContext, r: Region) {
   for (const row of res.rows)
     lines.push(cols.map(({ f, i }) => esc(cell(row[i], f.dataTypeID), NUMERIC_OIDS.has(f.dataTypeID))).join(','));
   return `﻿${lines.join('\r\n')}\r\n`;
+}
+
+/** A value as an Excel cell: numbers, booleans and dates keep their type. */
+export function xlsxCell(v: unknown, typeOid: number): XlsxCell {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'number' || typeof v === 'boolean') return v;
+  if (typeof v === 'object') return JSON.stringify(v);
+  const s = String(v);
+  // int8 and numeric arrive as strings; keep them exact when a double can't
+  if (NUMERIC_OIDS.has(typeOid) && /^-?\d{1,15}(\.\d+)?$/.test(s) && s.replace(/[-.]/g, '').length <= 15) return Number(s);
+  if (typeOid === 1082) return { date: s };
+  if (TIMESTAMP_OIDS.has(typeOid)) return { date: s, time: true };
+  return s;
+}
+
+/** Excel download (Actions → Download Excel): same rows and columns as the CSV. */
+export async function reportXlsx(ctx: PageContext, r: Region) {
+  const st = reportState(ctx, r);
+  const c = ctx.client!;
+  const res = await savepoint(c, async () => c.query({ text: await buildSql(ctx, r, st, 'xlsx'), rowMode: 'array' }));
+  const cols = visibleColumns(r, res.fields);
+  return writeXlsx({
+    name: r.title ?? ctx.page.title ?? ctx.page.name,
+    headings: cols.map(({ f }) => headingOf(r, f.name, ctx.locale.tr)),
+    rows: res.rows.map((row) => cols.map(({ f, i }) => xlsxCell(row[i], f.dataTypeID))),
+  });
 }
 
 export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw[]) {
@@ -307,6 +334,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
           </div>
           <div class="menu-section menu-links">
             <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>${icon('download')} ${t('report.download')}</a>
+            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'xlsx'), '1'))}" download>${icon('download')} ${t('report.download_xlsx')}</a>
             <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'pdf'), '1'))}" download>${icon('download')} ${t('report.download_pdf')}</a>
             <button type="button" data-print>${icon('printer')} ${t('report.print')}</button>
             <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">${icon('history')} ${t('report.reset')}</a>
