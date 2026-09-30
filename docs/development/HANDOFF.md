@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-30. Sprints 4, 5 and 6 are **done** and pushed; they wait for the owner to merge (`sprint-6` contains `sprint-5`, which contains `sprint-4`).
+Last updated: 2026-09-30. Sprints 3–6 are **merged into `main`** (sprint 4 via PR #2; sprints 5 and 6 with `git merge` on the command line, as the owner asked). Next sprint: branch from `main`.
 
 ## Project in one paragraph
 
@@ -41,10 +41,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | v0.3.0 (`sprint-3` merged via PR #1) |
-| `sprint-4` | v0.4.0: user directory, OpenID Connect SSO, PostgREST REST APIs. Pushed, **not merged yet** |
-| `sprint-5` | v0.5.0: account self-service, light/dark switch, globalization (its e-mail feature is removed again in `sprint-6`). Pushed, **not merged yet** |
-| `sprint-6` | E-mail and forgot password removed (owner decision), PostgreSQL extensions chapter, APEX parity re-review. Branched from `sprint-5`. Pushed, **not merged yet** |
+| `main` | Everything up to sprint 6 (tags so far: v0.2.0; v0.3.0+ not tagged yet) |
+| `sprint-3` … `sprint-6` | Merged; can be deleted |
 
 ## Sprint 4 goal (owner's order)
 
