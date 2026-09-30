@@ -116,7 +116,61 @@ row level security (superusers, `BYPASSRLS`) and its own roles.
 
 ## Tokens
 
-### Tokens issued by pgapex
+There are three kinds of token:
+
+| Kind | For | Lifetime | Acts as |
+|---|---|---|---|
+| **OAuth clients** (client credentials) | Systems and integrations: ETL jobs, other servers, scheduled scripts | Minutes (default 60); the client fetches new tokens itself | `client:<name>`, with the client's roles |
+| Tokens issued in the builder | Development and trying things out | 1 hour to 30 days | An account |
+| Identity-provider tokens | Apps whose users already sign in with your provider | Set by the provider | An account |
+
+### OAuth clients (client credentials)
+
+This is the pgapex counterpart of ORDS's `oauth.create_client` and `/oauth/token`, and the way
+to connect other systems. A client gets a **client ID and secret** once. With them it asks
+pgapex for a **short-lived access token** whenever it needs one, using the standard OAuth 2.0
+client credentials grant. Tokens expire on their own, so nobody has to rotate them by hand, and
+every OAuth library handles the renewal.
+
+Create a client in the builder under **REST API → OAuth clients** (name, roles, token lifetime),
+or in SQL (owner only):
+
+```sql
+select * from meta.oauth_create_client('hr', 'payroll-sync', '{manager}', 'Nightly payroll export', 60);
+--  client_id               | client_secret
+--  H4oHJkaIYQaqiOJqBgA5WQ  | (shown once, stored as a SHA-256 hash)
+
+select meta.oauth_grant_role('H4oHJkaIYQaqiOJqBgA5WQ', 'auditor');
+select meta.oauth_revoke_role('H4oHJkaIYQaqiOJqBgA5WQ', 'auditor');
+select meta.oauth_rotate_secret('H4oHJkaIYQaqiOJqBgA5WQ');          -- old secret valid 24 hours
+select meta.oauth_rotate_secret('H4oHJkaIYQaqiOJqBgA5WQ', '0');     -- old secret invalid at once
+select meta.oauth_revoke_client('H4oHJkaIYQaqiOJqBgA5WQ');
+```
+
+Get a token and use it:
+
+```bash
+curl -u "$CLIENT_ID:$CLIENT_SECRET" -d grant_type=client_credentials https://apps.example.com/oauth/token
+# {"access_token":"eyJ…","token_type":"bearer","expires_in":3600}
+
+curl https://api.example.com/employees -H "Authorization: Bearer eyJ…"
+```
+
+- **Credentials:** the token endpoint accepts HTTP Basic (`client_secret_basic`) or
+  `client_id` / `client_secret` form fields (`client_secret_post`). Errors follow RFC 6749
+  (`invalid_client` → 401, `unsupported_grant_type` → 400). Failed attempts are logged
+  (`oauth_failed`) and throttled per IP address like sign-ins.
+- **What a client token may do:** it acts as application user `client:<name>`, so RLS policies
+  and audit triggers can tell integrations apart. It has the client's roles, which are **read at
+  every request**: granting or revoking a role, or revoking the client, works immediately, even
+  for tokens already issued. A `roles` claim in the token doesn't count for clients.
+- **Rotating a secret:** *New secret* in the builder, or `meta.oauth_rotate_secret()`. The old
+  secret keeps working for a grace period (24 hours by default, 7 days, or none), so you can
+  update the integration without downtime.
+- **Lifetime** is 5 to 1440 minutes per client. Shorter means a leaked token is useful for less
+  time. Because revocation is checked live, a leaked token is also stopped by revoking the client.
+
+### Tokens issued in the builder
 
 Under **REST API → Issue a token**, pick an account and a lifetime (1 hour to 30 days). The token
 is shown once and not stored. Issuing is logged in the activity log (`api_token`).

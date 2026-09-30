@@ -8,7 +8,7 @@ import { owner } from './db.ts';
 export const apiUrl = () => (process.env.API_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '');
 export const MAX_TOKEN_HOURS = 24 * 30;
 
-function secret() {
+export function jwtSecret() {
   const s = process.env.API_JWT_SECRET ?? '';
   if (s.length < 32) throw new Error('API_JWT_SECRET is not set (at least 32 characters, shared with PostgREST).');
   return new TextEncoder().encode(s);
@@ -67,6 +67,6 @@ export async function issueApiToken(appId: number, username: string, hours: numb
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setIssuedAt()
     .setExpirationTime(`${ttl}h`)
-    .sign(secret());
+    .sign(jwtSecret());
   return { token, expiresInHours: ttl, username: acc.username as string };
 }

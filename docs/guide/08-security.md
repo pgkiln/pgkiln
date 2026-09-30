@@ -69,6 +69,11 @@ schemes and `meta.has_role()` check. The same person can be an administrator in 
 plain user in another. Grant access from the application (Access control) or from the account
 (**Users → account → Application access**).
 
+Role names are free text, so under each roles field the builder lists the roles the application
+actually checks: role-type authorization schemes, `meta.has_role('…')` calls in SQL schemes and
+page components, identity-provider group mappings, and roles already given to other users. Click
+one to add it; hover over it to see where it is checked. A role that nothing checks has no effect.
+
 Roles are resolved **at sign-in** and kept with the session. When you change someone's roles or
 revoke access, their sessions in that app end, so the change applies at their next sign-in.
 

@@ -82,7 +82,7 @@ export interface Region {
 export type ItemType =
   | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'radio'
   | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password'
-  | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color';
+  | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color' | 'file';
 
 export interface Item {
   id: number;
@@ -146,9 +146,10 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load';
   region_id: number | null;
   code: string | null;
+  config: Record<string, unknown> | null;
   point: 'submit' | 'load';
   when_button: string | null;
   authz: string | null;

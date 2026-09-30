@@ -27,6 +27,9 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Application computation / process on new session | Application process (`after_login`, `before_page`) |
 | VPD | PostgreSQL row level security |
 | APEX collections | Temporary or unlogged tables, or `jsonb` |
+| File Browse item, `APEX_APPLICATION_TEMP_FILES` | Item type `file`; view `meta.temp_files` ([chapter 16](16-files.md)) |
+| Data Workshop / Data Load Definition, *Execute Data Load* process | SQL Workshop → Load Data; process type `data_load` ([chapter 16](16-files.md#data-loading)) |
+| Interactive report *Download → PDF*, printing | Actions → Download PDF, Print ([chapter 16](16-files.md#printing)) |
 | `APEX_UTIL.CHANGE_CURRENT_USER_PW`, `RESET_PASSWORD`, `EXPIRE_END_USER_ACCOUNT` | My account page; `meta.set_password()`, `meta.expire_password()` ([chapter 8](08-security.md#passwords-and-my-account)) |
 | `APEX_MAIL`, Send E-Mail process, e-mail templates | Not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` ([chapter 15](15-extensions.md)) |
 | Translated applications (XLIFF), `APEX_LANG.MESSAGE`, `&APP_TEXT$NAME.` | Translations in the app (XLIFF/CSV import and export), `meta.message()`, `&APP_TEXT$NAME.` ([chapter 14](14-globalization.md)) |
@@ -84,7 +87,7 @@ a replacement:
 |---|---|
 | AutoREST for tables and views | PostgREST (automatic for an exposed schema) |
 | Hand-written handlers (GET/POST with SQL or PL/SQL) | PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
-| OAuth2 client credentials | Tokens issued by pgapex (Builder → REST API) or by your identity provider (e.g. Keycloak, Entra ID) |
+| OAuth2 client credentials (`oauth.create_client`, `/oauth/token`) | OAuth clients: `meta.oauth_create_client()` or Builder → REST API → OAuth clients, and `POST /oauth/token` on pgapex ([chapter 13](13-rest-api.md#oauth-clients-client-credentials)). Or tokens from your identity provider |
 | REST-enabled SQL | Not provided by PostgREST (and rarely desirable) |
 | OpenAPI/Swagger | Built into PostgREST |
 

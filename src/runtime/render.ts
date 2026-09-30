@@ -222,7 +222,7 @@ export async function renderPage(ctx: PageContext) {
           ? html`<div class="alert alert-error" role="alert">${t('error.correct_below')}</div>`
           : ''}
       </div>
-      <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}" novalidate>
+      <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}"${ctx.page.items.some((i) => i.type === 'file') ? raw(' enctype="multipart/form-data"') : ''} novalidate>
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
         ${ctx.dialog ? html`<input type="hidden" name="__dialog" value="1">` : ''}
         ${defaultButton ? html`<button type="submit" name="__request" value="${defaultButton.name}" class="default-submit" tabindex="-1" aria-hidden="true"></button>` : ''}

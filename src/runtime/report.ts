@@ -1,3 +1,4 @@
+import { icon } from '../icons.ts';
 import pg from 'pg';
 import { applyBinds, literal } from '../binds.ts';
 import { savepoint } from '../db.ts';
@@ -9,6 +10,7 @@ import { heading } from './items.ts';
 import { linkAttrs } from './links.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
+import { writeXlsx, type XlsxCell } from '../xlsx.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -16,6 +18,8 @@ import type { Formatter } from './format.ts';
 // that exist in the result, whitelisted operators, or integers.
 
 const NUMERIC_OIDS = new Set([20, 21, 23, 26, 700, 701, 1700]);
+export const isNumeric = (typeOid: number) => NUMERIC_OIDS.has(typeOid);
+const PDF_MAX_ROWS = Number(process.env.PDF_MAX_ROWS ?? 5000);
 const TIMESTAMP_OIDS = new Set([1114, 1184]);
 export const PAGE_SIZES = [5, 10, 15, 25, 50, 100];
 const CSV_MAX_ROWS = 100_000;
@@ -122,7 +126,7 @@ export async function columnsOf(ctx: PageContext, src: string) {
   return res.fields.map((f) => f.name);
 }
 
-export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv') {
+export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
   const src = stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx)));
   const where: string[] = [];
   if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
@@ -137,7 +141,8 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
   let sql = `select "__q".*${mode === 'page' ? ', count(*) over () as "__total"' : ''} from (\n${src}\n) "__q"`;
   if (where.length) sql += ` where ${where.join(' and ')}`;
   if (st.sort) sql += ` order by ${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`;
-  sql += mode === 'page' ? ` limit ${st.size} offset ${(st.page - 1) * st.size}` : ` limit ${CSV_MAX_ROWS}`;
+  // one row more than a PDF shows, so it can say it was cut off
+  sql += mode === 'page' ? ` limit ${st.size} offset ${(st.page - 1) * st.size}` : ` limit ${mode === 'pdf' ? PDF_MAX_ROWS + 1 : CSV_MAX_ROWS}`;
   return sql;
 }
 
@@ -173,6 +178,32 @@ export async function reportCsv(ctx: PageContext, r: Region) {
   for (const row of res.rows)
     lines.push(cols.map(({ f, i }) => esc(cell(row[i], f.dataTypeID), NUMERIC_OIDS.has(f.dataTypeID))).join(','));
   return `﻿${lines.join('\r\n')}\r\n`;
+}
+
+/** A value as an Excel cell: numbers, booleans and dates keep their type. */
+export function xlsxCell(v: unknown, typeOid: number): XlsxCell {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'number' || typeof v === 'boolean') return v;
+  if (typeof v === 'object') return JSON.stringify(v);
+  const s = String(v);
+  // int8 and numeric arrive as strings; keep them exact when a double can't
+  if (NUMERIC_OIDS.has(typeOid) && /^-?\d{1,15}(\.\d+)?$/.test(s) && s.replace(/[-.]/g, '').length <= 15) return Number(s);
+  if (typeOid === 1082) return { date: s };
+  if (TIMESTAMP_OIDS.has(typeOid)) return { date: s, time: true };
+  return s;
+}
+
+/** Excel download (Actions → Download Excel): same rows and columns as the CSV. */
+export async function reportXlsx(ctx: PageContext, r: Region) {
+  const st = reportState(ctx, r);
+  const c = ctx.client!;
+  const res = await savepoint(c, async () => c.query({ text: await buildSql(ctx, r, st, 'xlsx'), rowMode: 'array' }));
+  const cols = visibleColumns(r, res.fields);
+  return writeXlsx({
+    name: r.title ?? ctx.page.title ?? ctx.page.name,
+    headings: cols.map(({ f }) => headingOf(r, f.name, ctx.locale.tr)),
+    rows: res.rows.map((row) => cols.map(({ f, i }) => xlsxCell(row[i], f.dataTypeID))),
+  });
 }
 
 export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw[]) {
@@ -302,8 +333,11 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
               html`<a href="${regionUrl(ctx, r, (p) => { p.set(key(r, 'n'), String(n)); p.delete(key(r, 'p')); })}"${n === st.size ? raw(' aria-current="true"') : ''}>${n}</a>`)}</div>
           </div>
           <div class="menu-section menu-links">
-            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>⤓ ${t('report.download')}</a>
-            <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">↺ ${t('report.reset')}</a>
+            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>${icon('download')} ${t('report.download')}</a>
+            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'xlsx'), '1'))}" download>${icon('download')} ${t('report.download_xlsx')}</a>
+            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'pdf'), '1'))}" download>${icon('download')} ${t('report.download_pdf')}</a>
+            <button type="button" data-print>${icon('printer')} ${t('report.print')}</button>
+            <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">${icon('history')} ${t('report.reset')}</a>
           </div>
         </div>
       </details>`

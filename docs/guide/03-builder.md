@@ -159,6 +159,9 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
 - **Object Browser**: tables, views and functions per schema. For a table you see columns, types
   and defaults, **row level security policies**, **grants** and the first 25 rows; for a
   function, its source.
+- **Load Data**: load a CSV, TSV or Excel file into a new table (with inferred column types) or
+  an existing one (append, merge by primary key, or replace), with a per-row error report
+  ([chapter 16](16-files.md#sql-workshop--load-data)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

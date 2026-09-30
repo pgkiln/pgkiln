@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-30. Sprints 3–6 are **merged into `main`** (sprint 4 via PR #2; sprints 5 and 6 with `git merge` on the command line, as the owner asked). Next sprint: branch from `main`.
+Last updated: 2026-09-30. Sprints 3–6 are merged into `main` and released as v0.6.0. Sprint 7 is done on `sprint-7`; **sprint 8 is done on `sprint-8`** (branched from sprint 7, so it contains it; see the last section).
 
 ## Project in one paragraph
 
@@ -42,8 +42,10 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 6, released as **v0.6.0** (tags: v0.2.0, v0.6.0; 0.3.0–0.5.0 were never tagged) |
+| `sprint-7` | **Done and pushed**: role suggestions, file upload items, data loading, report PDFs/printing |
+| `sprint-8` | **Done and pushed**: sprint 7 + OAuth clients, Excel download, report layouts. Merging this one brings in both (then version 0.7.0) |
 
-The sprint branches were merged and deleted. Start the next sprint with `git checkout -b sprint-7 main`.
+Older sprint branches were merged and deleted.
 
 ## Sprint 4 goal (owner's order)
 
@@ -218,3 +220,70 @@ Open / candidates for sprint 6:
    with a new roadmap: file upload → automations on pg_cron → IR power features → stricter CSP (styles) → builder quality.
 
 Verification: `npm run db:reset && npm test && npm run test:e2e` (see the commit message for counts).
+
+## Sprint 7 (owner's request, 2026-09-30)
+
+Order: 1 role suggestions under roles fields, 2 file upload items, 3 data loading (CSV/XLSX into
+a table), 4 printing (PDF). Migrations 001–008 are released (v0.6.0): add 009+.
+
+1. **Role suggestions: done** (`roleHints()` / `roleHintsHtml()` in `src/builder/users.ts`, used on
+   the account page and the app's Access control; chip click handler in `public/app.js`).
+2. **File upload items: done** (`db/migrations/009_files.sql`, `src/runtime/files.ts`,
+   `test/files.test.ts`, HR seed `hr_05_files.sql` = employee photo).
+   - Item value = temp file uuid (`meta.temp_file`, readable only via the session-scoped view
+     `meta.temp_files`); uploads are committed in their own transaction so they survive errors.
+   - Form DML writes `source_column` + `config.filename_column` / `mime_column`; value `REMOVE`
+     clears them. `fetchForms` never loads bytes; the item queries size/name when rendering.
+   - Downloads: `GET /a/:alias/:page/file/:item?k=<pk|temp:uuid>&cs=` (checksum over
+     `__FILE`/`__KEY`), page access checked, app role, attachment unless `inline=1` and safe type.
+3. **Data loading: done.** `src/dataload.ts` (parser, inference, batched `loadRows` with a
+   row-by-row retry to find bad rows; `LoadFailed` = roll back), builder `src/builder/dataload.ts`
+   (SQL Workshop → Load Data; the file is a `meta.temp_file` of the builder session between
+   steps), process type `data_load` (migration `010_data_load.sql` adds nullable
+   `meta.process.config`; engine `dataLoad()`), HR page 13 (seed `hr_06_data_load.sql`),
+   `public/samples/employees.csv`, `test/fixtures/employees.xlsx` (hand-built xlsx),
+   `test/dataload.test.ts`.
+4. **Printing: done.** `src/runtime/pdf.ts` (pdfkit, `autoFirstPage: false` so the orientation
+   is chosen after measuring columns; footer written with bottom margin 0), `r<id>_pdf=1` in the
+   page GET handler next to CSV, Actions menu Download PDF + Print (`data-print` in app.js),
+   `@media print` in app.css, `test/printing.test.ts` (inflates content streams to read text).
+5. **Docs: done.** Guide chapter 16, parity (43 ✅ / 33 🟡 / 34 ❌ / 6 ➖), CHANGELOG [Unreleased].
+
+Verified: `npm test` 114/114 and `npm run test:e2e` 20/20 on the dev DB; a fresh install
+(throwaway postgres:17 container) applies 001–010 and seeds 01–06 cleanly.
+
+Ideas for next: document templates (HTML → PDF), several files per item / drag-and-drop,
+JSON in data loading, automations on pg_cron (roadmap item 1).
+
+
+## Sprint 8 (owner's request, 2026-09-30)
+
+The owner asked: (a) REST API tokens without rotating them by hand, (b) whether uploaded files
+reach PL/pgSQL code, (c) an equivalent of ORDS `oauth.create_client`, (d) adjustable PDF
+layouts, (e) XLSX and CSV import/export. Migrations 001–010 come from sprints ≤7; add 013+.
+
+1. **OAuth clients: done** (a + c; commit "feat(api): OAuth clients…"). Migration `011_oauth.sql`
+   (`meta.api_client`, `oauth_create_client/rotate_secret/revoke_client/grant_role/revoke_role`),
+   `src/oauth.ts` (`POST /oauth/token`, client credentials), builder REST API page section,
+   `test/oauth.test.ts`, chapter 13.
+2. **Files in PL/pgSQL** (b): nothing new needed. Sprint 7 already covers it: a file item without a
+   source column puts the upload in `meta.temp_files` (like `APEX_APPLICATION_TEMP_FILES`), which
+   processes read (`select content from meta.temp_files where id = :P5_FILE::uuid`); chapter 16.
+3. **Excel download: done** (e). `src/xlsx.ts` (own writer on `fflate`, now a direct dependency;
+   typed cells, inline strings so no formulas), `reportXlsx()` in `src/runtime/report.ts`,
+   `r<id>_xlsx=1` next to CSV/PDF in `src/runtime/routes.ts`. Import (CSV/TSV/XLSX) was sprint 7.
+4. **Report layouts: done** (d). Migration `012_report_layouts.sql` (`meta.report_layout`, one
+   default per app via trigger, export/import wrap `export_app_base`/`import_app_base`, logo as
+   base64). `src/runtime/pdf.ts` is now `layoutFor()` + pure `tablePdf()` + `layoutPreview()`;
+   region config `pdf.layout/columns/widths(mm)/align`. Builder: generic component spec in
+   `components.ts` (new field kinds `textarea`, `color`) + `src/builder/layouts.ts` (logo upload,
+   magic-byte check, preview). HR seed `hr_07_layouts.sql` (Directory, page 11).
+5. **Tests/docs: done.** `test/layouts.test.ts` (10), e2e covers the layout editor. Chapter 16,
+   chapter 12 code map, parity matrix, CHANGELOG.
+
+Verified: `npm test` 132/132, `npm run test:e2e` 20/20, fresh install (postgres:17) applies
+001–012 and seeds 01–07.
+
+Ideas for next: document templates (letters/invoices; HTML or a JSON layout → PDF), per-user
+column choice for PDFs, a PL/pgSQL API to parse CSV/XLSX from `meta.temp_files` (APEX_DATA_PARSER),
+automations on pg_cron (roadmap item 1).

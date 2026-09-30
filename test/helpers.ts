@@ -35,6 +35,28 @@ export class Browser {
   submit(url: string, form: Record<string, string>) {
     return this.request('POST', url, { __csrf: this.lastCsrf, ...form });
   }
+  /** POST multipart/form-data (file items) with the CSRF token of the last page. */
+  async upload(url: string, form: Record<string, string>, files: Record<string, { name: string; type: string; data: Buffer }>) {
+    const fd = new FormData();
+    fd.set('__csrf', this.lastCsrf);
+    for (const [k, v] of Object.entries(form)) fd.set(k, v);
+    for (const [k, f] of Object.entries(files)) fd.set(k, new Blob([new Uint8Array(f.data)], { type: f.type }), f.name);
+    const body = new Response(fd);
+    const payload = Buffer.from(await body.arrayBuffer());
+    const res = await this.app.inject({
+      method: 'POST',
+      url,
+      payload,
+      headers: {
+        ...this.headers,
+        cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
+        'content-type': body.headers.get('content-type')!,
+      },
+    });
+    const m = /name="__csrf" value="([^"]+)"/.exec(res.body);
+    if (m) this.lastCsrf = m[1];
+    return res;
+  }
   async login(user: string, password = user, alias = 'hr') {
     await this.get(`/a/${alias}/login`);
     return this.post(`/a/${alias}/login`, { __csrf: this.lastCsrf, username: user, password });

@@ -4,6 +4,8 @@ import { savepoint, type Client } from '../db.ts';
 import type { Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
+import { formRegion, isTempId, REMOVE } from './files.ts';
+import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
@@ -16,7 +18,7 @@ export class ValidationFailed extends Error {
 }
 
 /** Resolve a developer-supplied table name to a safely quoted identifier. */
-async function resolveTable(c: Client, name: string) {
+export async function resolveTable(c: Client, name: string) {
   const res = await c.query('select $1::regclass::text as t', [name]);
   return res.rows[0].t as string;
 }
@@ -57,7 +59,9 @@ export async function fetchForms(ctx: PageContext) {
     if (r.type !== 'form' || !r.table_name || !r.pk_column || !r.pk_item) continue;
     const pk = ctx.session.state[r.pk_item];
     if (pk === null || pk === undefined) continue;
-    const items = formItems(ctx, r);
+    // files are not loaded into session state; the item shows the stored file's name
+    const items = formItems(ctx, r).filter((i) => i.type !== 'file');
+    for (const f of formItems(ctx, r)) if (f.type === 'file') ctx.session.state[f.name] = null;
     try {
       const table = await savepoint(c, () => resolveTable(c, r.table_name!));
       const cols = items.map((i) => ident(i.source_column!)).join(', ') || ident(r.pk_column);
@@ -79,6 +83,16 @@ export async function fetchForms(ctx: PageContext) {
 
 // ---------------------------------------------------------------- validations
 
+async function storedFileExists(ctx: PageContext, r: Region, column: string) {
+  const pk = ctx.session.state[r.pk_item!];
+  if (pk === null || pk === undefined) return false;
+  const c = ctx.client!;
+  const res = await savepoint(c, async () =>
+    c.query(`select ${ident(column)} is not null as ok from ${await resolveTable(c, r.table_name!)} where ${ident(r.pk_column!)} = ${literal(pk)}`),
+  );
+  return res.rows[0]?.ok === true;
+}
+
 export async function validate(ctx: PageContext) {
   const c = ctx.client!;
   const errors: Errors = { page: [], items: {} };
@@ -89,8 +103,16 @@ export async function validate(ctx: PageContext) {
     else errors.page.push(msg);
   };
 
-  for (const i of ctx.page.items)
-    if (i.required && vis.editable.has(i.name) && (state[i.name] ?? null) === null) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
+  for (const i of ctx.page.items) {
+    if (!i.required || !vis.editable.has(i.name)) continue;
+    let missing = (state[i.name] ?? null) === null;
+    // a file item keeps the stored file unless a new one is uploaded
+    if (i.type === 'file') {
+      const r = formRegion(ctx, i);
+      missing = state[i.name] === REMOVE || (missing && !(r && (await storedFileExists(ctx, r, i.source_column!))));
+    }
+    if (missing) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
+  }
 
   for (const v of ctx.page.validations) {
     if (v.when_button && v.when_button !== ctx.request) continue;
@@ -141,25 +163,53 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       (i.type === 'hidden' || ctx.vis!.editable.has(i.name)),
   );
 
+  // [column, SQL expression] pairs to write; a file item writes the file and
+  // its name and type columns, or nothing when no new file was uploaded
+  const assignments: [string, string][] = [];
+  const uploaded: string[] = [];
+  for (const i of columns) {
+    const v = state[i.name] ?? null;
+    if (i.type !== 'file') {
+      if (op === 'update' || v !== null) assignments.push([ident(i.source_column!), literal(v)]);
+      continue;
+    }
+    const conf = (i.config ?? {}) as { filename_column?: string; mime_column?: string };
+    const file = (col: string) => `(select ${col} from meta.temp_files where id = ${literal(v)}::uuid)`;
+    if (isTempId(v)) {
+      uploaded.push(v);
+      assignments.push([ident(i.source_column!), file('content')]);
+      if (conf.filename_column) assignments.push([ident(conf.filename_column), file('filename')]);
+      if (conf.mime_column) assignments.push([ident(conf.mime_column), file('mime_type')]);
+    } else if (v === REMOVE && op === 'update') {
+      assignments.push([ident(i.source_column!), 'null']);
+      if (conf.filename_column) assignments.push([ident(conf.filename_column), 'null']);
+      if (conf.mime_column) assignments.push([ident(conf.mime_column), 'null']);
+    }
+  }
+  // saved into the row: the temporary files are no longer needed
+  const done = async () => {
+    for (const id of uploaded) await c.query('select meta.delete_temp_file($1)', [id]);
+    for (const i of columns) if (i.type === 'file') state[i.name] = null;
+  };
+
   if (op === 'insert') {
     // Only non-null values: omitted columns get their DEFAULT.
-    const set = columns.filter((i) => (state[i.name] ?? null) !== null);
-    const sql = set.length
-      ? `insert into ${table} (${set.map((i) => ident(i.source_column!)).join(', ')}) values (${set.map((i) => literal(state[i.name])).join(', ')}) returning ${pkCol}`
+    const sql = assignments.length
+      ? `insert into ${table} (${assignments.map(([col]) => col).join(', ')}) values (${assignments.map(([, v]) => v).join(', ')}) returning ${pkCol}`
       : `insert into ${table} default values returning ${pkCol}`;
     const res = await c.query({ text: sql, rowMode: 'array' });
     state[r.pk_item] = toState(res.rows[0][0]);
+    await done();
     return p.success_message ?? ctx.locale.t('form.created');
   }
 
   if (pk === null) throw new Error(ctx.locale.t('form.no_record'));
   if (op === 'update') {
-    if (columns.length) {
-      const res = await c.query(
-        `update ${table} set ${columns.map((i) => `${ident(i.source_column!)} = ${literal(state[i.name])}`).join(', ')} where ${pkCol} = ${literal(pk)}`,
-      );
+    if (assignments.length) {
+      const res = await c.query(`update ${table} set ${assignments.map(([col, v]) => `${col} = ${v}`).join(', ')} where ${pkCol} = ${literal(pk)}`);
       if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
     }
+    await done();
     return p.success_message ?? ctx.locale.t('form.saved');
   }
 
@@ -168,6 +218,64 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   clearPageItems(ctx);
   return p.success_message ?? ctx.locale.t('form.deleted');
 }
+
+interface DataLoadConfig {
+  file_item?: string;
+  table?: string;
+  mode?: LoadMode;
+  skip_errors?: boolean;
+  headers?: boolean;
+  columns?: Record<string, string>;
+}
+
+/**
+ * data_load: load the file of a file item into a table, as the app's role.
+ * Nothing is loaded when a row fails, unless skip_errors is set.
+ */
+async function dataLoad(ctx: PageContext, p: Process): Promise<string | null> {
+  const t = ctx.locale.t;
+  const conf = (p.config ?? {}) as DataLoadConfig;
+  const fileItem = conf.file_item?.toUpperCase();
+  if (!fileItem || !conf.table) throw new Error(`Process "${p.name}" needs "file_item" and "table" in its configuration.`);
+  // shown on the file item (see errorItem)
+  const fail = (message: string) => Object.assign(new Error(message), { column: fileItem.toLowerCase() });
+  const c = ctx.client!;
+  const id = ctx.session.state[fileItem];
+  const file = isTempId(id) ? (await c.query('select filename, content from meta.temp_files where id = $1', [id])).rows[0] : undefined;
+  if (!file) throw fail(t('load.no_file'));
+  const headers = conf.headers !== false;
+  try {
+    const sheet = await parseFile(file.filename, file.content, { headers });
+    const columns = conf.columns
+      ? sheet.headers.flatMap((h, index) => (conf.columns![h] ? [{ index, column: conf.columns![h] }] : []))
+      : autoMap(sheet.headers, await tableColumns(c, conf.table));
+    if (!columns.length) throw fail(t('load.no_columns', { table: conf.table }));
+    const r = await loadRows(c, sheet, {
+      table: conf.table,
+      columns,
+      mode: conf.mode ?? 'append',
+      skipErrors: !!conf.skip_errors,
+      firstRow: headers ? 2 : 1,
+      // invalid values and RAISE messages are shown; other errors are logged
+      describe: async (e) => {
+        const code = (e as pg.DatabaseError).code ?? '';
+        return code.startsWith('22') || code === 'P0001' ? (e as Error).message : publicError(ctx, e, `data load of ${conf.table}`);
+      },
+    });
+    await c.query('select meta.delete_temp_file($1)', [id]);
+    ctx.session.state[fileItem] = null;
+    const counts = { inserted: String(r.inserted), updated: String(r.updated), failed: String(r.failed) };
+    const done = p.success_message ? p.success_message.replace(/\{(inserted|updated|failed)\}/g, (_, k: keyof typeof counts) => counts[k]) : t('load.done', counts);
+    return r.failed ? `${done} ${t('load.skipped', { ...counts, errors: rowErrors(r.errors) })}` : done;
+  } catch (e) {
+    if (e instanceof LoadFailed) throw fail(t('load.failed', { failed: String(e.result.failed), errors: rowErrors(e.result.errors) }));
+    if (e instanceof LoadError) throw fail(e.message);
+    throw e;
+  }
+}
+
+const rowErrors = (errors: { row: number; message: string }[]) =>
+  errors.slice(0, 5).map((e) => `${e.row}: ${e.message.replace(/\.$/, '')}`).join('; ') + (errors.length > 5 ? '; …' : '');
 
 export class ProcessFailed extends Error {
   constructor(message: string, readonly item: string | null) {
@@ -200,6 +308,7 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
       const msg =
         p.type === 'form_dml' ? await formDml(ctx, p)
         : p.type === 'grid_dml' ? await gridDml(ctx, p)
+        : p.type === 'data_load' ? await dataLoad(ctx, p)
         : (await runSql(ctx, p.code ?? '', names), p.success_message);
       if (msg) messages.push(msg);
     } catch (e) {

@@ -3,6 +3,7 @@ import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
+import { canPreview, fileInfo, fileUrl, formatSize } from './files.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -73,7 +74,9 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
 
   let control: Raw;
   let useLegend = false;
-  if (!editable) {
+  if (item.type === 'file') {
+    control = await fileControl(ctx, item, editable, aria);
+  } else if (!editable) {
     let shown = value;
     if (hasLov(item))
       shown = MULTI_VALUE.has(item.type)
@@ -175,6 +178,31 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     ${item.help ? html`<small class="help" id="${id}_help">${item.help}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}
   ${raw(`</${tag}>`)}`;
+}
+
+/**
+ * A file item: the stored (or just uploaded) file with a preview for images,
+ * a remove option, and the file input.
+ */
+async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria: Raw) {
+  const t = ctx.locale.t;
+  const id = item.name;
+  let f;
+  try {
+    f = await fileInfo(ctx, item);
+  } catch (e) {
+    return html`<small class="error">${await publicError(ctx, e, `file of ${item.name}`)}</small>`;
+  }
+  const current = f
+    ? html`<div class="file-current">
+        ${canPreview(f) ? html`<img class="file-preview" src="${fileUrl(ctx, item, f, true)}" alt="">` : ''}
+        <span><a href="${fileUrl(ctx, item, f)}" download>${f.filename}</a> <small class="help">${formatSize(f.size)}${f.pending ? ` · ${t('file.new')}` : ''}</small></span>
+        ${editable && !f.pending ? html`<label class="check"><input type="checkbox" name="${id}__REMOVE" value="true"> ${t('file.remove')}</label>` : ''}
+      </div>`
+    : '';
+  if (!editable) return html`<div class="display-value" id="${id}">${current || t('file.none')}</div>`;
+  const accept = (item.config as { accept?: string } | null)?.accept;
+  return html`${current}<input type="file" id="${id}" name="${id}"${accept ? raw(` accept="${String(accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${aria}>`;
 }
 
 export async function renderItems(ctx: PageContext, items: Item[], hidden: Set<string> = new Set()) {

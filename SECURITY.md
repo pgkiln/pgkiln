@@ -30,6 +30,8 @@ first version (MVP). Every finding below has a regression test in
 | Session state protection | Item values in URLs, and the row keys of interactive grids, carry an HMAC checksum bound to app, page and user. Hidden, display, read-only and unauthorized items cannot be set by a form post. |
 | Request integrity | A CSRF token on every POST (pages, AJAX, login, logout). Buttons are re-validated on submit. |
 | Output | Auto-escaping HTML templates, strict CSP (no inline script), `X-Frame-Options`, `nosniff`, `no-store`. |
+| Files | Uploads are size- and type-checked and stored per session (`meta.temp_files` shows only the session's own files). A posted text value can't point a file item at another file. Downloads need a checksum bound to user, page, item and record, check page access and read as the app's role (RLS applies). They are sent as attachments with `nosniff` and a sandboxing CSP; only PNG, JPEG, GIF, WebP and PDF are shown inline. |
+| Data loading and PDFs | The `data_load` process loads as the app's role (grants, RLS, triggers apply) and shows only data errors and `RAISE` messages per row. Report PDFs run the report's own query with the same page, region and row checks as the screen. |
 
 ## Findings of the MVP review and their fixes
 

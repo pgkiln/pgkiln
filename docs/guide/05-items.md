@@ -25,6 +25,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `multiselect` | multi-select list | **colon-separated** return values |
 | `display` | read-only text (shows the display value for list items) | whatever was set |
 | `hidden` | not rendered | set by URL (with checksum), fetch or processes |
+| `file` | file upload ([chapter 16](16-files.md)) | the id of the uploaded temporary file (a uuid) |
 
 Use multi-value items in SQL with `string_to_array`:
 

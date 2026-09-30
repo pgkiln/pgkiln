@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { clearAccountSettings } from '../src/accounts.ts';
 import { buildApp } from '../src/app.ts';
+import { roleHints, roleHintsHtml } from '../src/builder/users.ts';
 import { closePools, owner } from '../src/db.ts';
 import { Browser } from './helpers.ts';
 
@@ -177,5 +178,15 @@ describe('preferences', () => {
       await owner.query(`update meta.app set theme = theme - 'user_choice' - 'mode' where id = $1`, [appId]);
       await owner.query(`update meta.account set theme_pref = 'auto' where username = 'allen'`);
     }
+  });
+
+  test('the builder suggests the roles an app actually checks', async () => {
+    const hints = (await roleHints([appId])).get(appId) ?? [];
+    const admin = hints.find((h) => h.role === 'admin');
+    assert.ok(admin, `admin is suggested: ${JSON.stringify(hints)}`);
+    assert.ok(admin.sources.length > 0);
+    const html = String(roleHintsHtml(hints));
+    assert.match(html, /data-add-role="admin"/);
+    assert.match(String(roleHintsHtml([])), /doesn't check any roles/);
   });
 });

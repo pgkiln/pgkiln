@@ -17,9 +17,9 @@ import {
   type Session,
 } from '../session.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
-
-import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
-import { endSessions, grantAccess, splitRoles } from './users.ts';
+import { layoutExtras } from './layouts.ts';
+import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
+import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 
 interface Lookups {
   regions: { id: number; title: string | null; type: string }[];
@@ -74,6 +74,12 @@ function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups,
       }
       case 'code':
         control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 7 : 2}" spellcheck="false">${v ?? ''}</textarea>`;
+        break;
+      case 'textarea':
+        control = html`<textarea id="${id}" name="${f.name}" rows="3">${v ?? ''}</textarea>`;
+        break;
+      case 'color':
+        control = html`<input id="${id}" name="${f.name}" type="color" value="${v ?? '#000000'}">`;
         break;
       case 'json': {
         const text = v && typeof v === 'object' && Object.keys(v).length ? JSON.stringify(v, null, 2) : '';
@@ -524,7 +530,7 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'report_layout'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -555,10 +561,12 @@ export async function builderRoutes(app: FastifyInstance) {
       const row = rows[selKind].find((r) => String(r.id) === selId);
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, selKind, row, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : ''}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
     } else {
       const accounts = (await owner.query('select username from meta.account where active order by lower(username) limit 2000')).rows;
+      const appHints = (await roleHints([a.id])).get(a.id) ?? [];
       const groupRoles = (await owner.query('select group_name, role from meta.app_group_role where app_id = $1 order by 1, 2', [a.id])).rows;
       const groupMap = html`<h3>Identity-provider groups → roles</h3>
         <p class="muted" style="margin-top:0">With single sign-on, members of these groups get the role in this app, and may sign in even without being listed above.</p>
@@ -583,8 +591,9 @@ export async function builderRoutes(app: FastifyInstance) {
           ${users.length
             ? users.map((u) => html`<tr>
                 <td data-label="Account"><a href="${BASE}/users/${u.id}">${u.username}</a>${u.display_name ? html` <span class="muted">${u.display_name}</span>` : ''}${u.active ? '' : html` <b>(inactive)</b>`}</td>
-                <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search" style="margin:0;max-width:none">${csrf(s)}
-                  <input name="roles" value="${u.roles.join(', ')}" aria-label="Roles of ${u.username}" placeholder="no roles"><button class="btn">Save</button></form></td>
+                <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search roles-form" style="margin:0;max-width:none">${csrf(s)}
+                  <input name="roles" value="${u.roles.join(', ')}" aria-label="Roles of ${u.username}" placeholder="no roles"><button class="btn">Save</button>
+                  ${roleHintsHtml(appHints, 'Add')}</form></td>
                 <td data-label="Last sign-in">${u.last_login_at ? String(u.last_login_at).slice(0, 16) : '—'}</td>
                 <td data-label=""><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}/revoke">${csrf(s)}<button class="link-button" data-confirm="Revoke ${u.username}'s access to ${a.name}?">Revoke</button></form></td>
               </tr>`)
@@ -598,7 +607,9 @@ export async function builderRoutes(app: FastifyInstance) {
               <input id="f_grant_user" name="username" list="accounts-list" required autocomplete="off" placeholder="username">
               <datalist id="accounts-list">${accounts.map((x) => html`<option value="${x.username}"></option>`)}</datalist>
               <small class="help">An existing account. <a href="${BASE}/users">Create accounts in Users.</a></small></div>
-            ${input('roles', 'Roles', '', { placeholder: 'comma separated, e.g. admin, manager' })}
+            <div class="field"><label class="label" for="f_roles">Roles</label>
+              <input id="f_roles" name="roles" placeholder="comma separated, or pick below">
+              ${roleHintsHtml(appHints)}</div>
           </div>
           <div class="buttons"><button class="btn btn-hot">Grant access</button></div>
         </form>`);
@@ -613,7 +624,7 @@ export async function builderRoutes(app: FastifyInstance) {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>
           ${rows[kind].map((r) => html`<li><a href="?c=${kind}-${r.id}"${selKind === kind && selId === String(r.id) ? raw(' aria-current="page"') : ''}>${icon(kind === 'nav_entry' ? (r.icon ?? 'chevron') : spec.icon)}<span>${r.parent_id ? '↳ ' : ''}${spec.summary(r)}</span>${
-            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : ''
+            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : ''
           }</a></li>`)}`;
       })}
     </ul>`;
@@ -903,10 +914,6 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- SQL workshop
-  const workshopTabs = (active: 'sql' | 'objects') => html`<div class="buttons" style="margin-bottom:1rem">
-    <a class="btn${active === 'sql' ? ' btn-hot' : ''}" href="${BASE}/sql">${icon('code')} SQL Commands</a>
-    <a class="btn${active === 'objects' ? ' btn-hot' : ''}" href="${BASE}/sql/objects">${icon('database')} Object Browser</a></div>`;
-
   const resultTable = (res: pg.QueryResult<any[]>, limit = 500) => {
     const rows = (res.rows ?? []).slice(0, limit);
     return html`<div class="table-wrap"><table class="report"><thead><tr>${res.fields.map((f) => html`<th>${f.name}</th>`)}</tr></thead>

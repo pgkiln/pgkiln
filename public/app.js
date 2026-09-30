@@ -411,3 +411,32 @@ function addLovSearch(sel) {
     if (q && firstMatch && sel.selectedOptions[0]?.hidden) sel.value = firstMatch.value;
   });
 }
+
+// Builder: role suggestions. Clicking a role adds it to the roles field of
+// the same form; in a form with an application select, only that app's
+// suggestions are shown.
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest?.('[data-add-role]');
+  if (!chip) return;
+  const field = chip.closest('form')?.querySelector('input[name="roles"]');
+  if (!field) return;
+  const roles = field.value.split(',').map((r) => r.trim()).filter(Boolean);
+  if (!roles.some((r) => r.toLowerCase() === chip.dataset.addRole)) roles.push(chip.dataset.addRole);
+  field.value = roles.join(', ');
+  field.focus();
+});
+function syncRoleHints(select) {
+  select.form?.querySelectorAll('[data-hints-for]').forEach((el) => (el.hidden = el.dataset.hintsFor !== select.value));
+}
+document.querySelectorAll('select[name="app_id"]').forEach((sel) => {
+  if (!sel.form?.querySelector('[data-hints-for]')) return;
+  syncRoleHints(sel);
+  sel.addEventListener('change', () => syncRoleHints(sel));
+});
+
+// Actions → Print (the print stylesheet hides navigation and toolbars).
+document.addEventListener('click', (e) => {
+  if (!e.target.closest?.('[data-print]')) return;
+  e.target.closest('details')?.removeAttribute('open');
+  window.print();
+});

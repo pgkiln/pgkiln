@@ -5,6 +5,46 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added (sprint 8)
+- OAuth clients for the REST API, like ORDS's `oauth.create_client`: client credentials
+  (`POST /oauth/token`, HTTP Basic or form fields) give short-lived tokens that PostgREST accepts,
+  so tokens never need rotating by hand. Clients act as `client:<name>` with roles that are read
+  live; revoking works at once. Secret rotation with a grace period. Managed under Builder → REST
+  API → OAuth clients or with `meta.oauth_create_client()`, `oauth_rotate_secret()`,
+  `oauth_revoke_client()`, `oauth_grant_role()` and `oauth_revoke_role()` (migration 011).
+- **Download Excel** for interactive reports: an `.xlsx` with the rows, filters and headings
+  of the report; numbers, dates and booleans keep their type, text never becomes a formula.
+- **Report layouts** (Shared Components → Report layouts, migration 012): paper size (A3, A4,
+  A5, Letter, Legal), orientation, font size, margins, table width, title/header/footer texts
+  with substitutions, colors and a PNG/JPEG logo, with a PDF preview. Reports pick one in their
+  settings (`"pdf": {"layout": …, "columns": […], "widths": {…}, "align": {…}}`), or use the
+  application's default layout. Layouts are included in exports. HR sample: the Directory
+  prints with `HR_DIRECTORY`.
+
+### Added
+- Printing: interactive reports get **Download PDF** (A4, landscape when wide; title, active
+  filters, repeated headings, page numbers; same query, filters and access checks as the
+  screen) and **Print** in the Actions menu; every page has a print stylesheet without
+  navigation and toolbars. `PDF_FONT` / `PDF_FONT_BOLD` embed a TrueType font for scripts
+  beyond Western European; `PDF_MAX_ROWS` (default 5000) limits the rows.
+- Data loading (CSV, TSV, Excel .xlsx):
+  - SQL Workshop → **Load Data**: upload, preview, then load into a new table (column names
+    and types inferred) or an existing one (columns mapped by name; append, merge by primary
+    key, or replace), with a per-row error report. Nothing is loaded when a row fails unless
+    "skip rows with errors" is ticked.
+  - Page process type `data_load` loads a file item's file into a table as the application's
+    role (grants, RLS, triggers apply); row errors are shown on the file item. HR sample:
+    page 13 *Import employees*.
+- File upload items (APEX *File Browse*): item type `file` saves into a form's bytea column
+  (with file name and MIME type columns) or into the session's temporary files
+  (`meta.temp_files`, like `APEX_APPLICATION_TEMP_FILES`). Image previews, remove option,
+  size (`max_mb`, `MAX_UPLOAD_MB`) and type (`accept`) limits, and signed downloads that run
+  as the application's role (row level security applies). Uploads survive validation errors.
+  HR sample: employee photo.
+- Role suggestions in the builder: roles fields (Users → account, and the app's Access control)
+  list the roles the application checks (authorization schemes, `meta.has_role()` in SQL, group
+  mappings, roles in use); click to add, hover to see where each role is checked.
+
 ## [0.6.0] - 2026-09-30
 
 ### Added
