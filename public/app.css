@@ -691,3 +691,6 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .inline-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin: 0 0.3rem 0.3rem 0; }
 .inline-form select { width: auto; }
 .report td.actions { min-width: 15rem; max-width: none; white-space: normal; overflow: visible; }
+
+/* builder: report layout logo */
+.layout-logo { max-width: 12rem; max-height: 5rem; border: 1px solid var(--border, #d0d5dd); border-radius: 4px; padding: 0.25rem; background: #fff; }

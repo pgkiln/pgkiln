@@ -17,7 +17,7 @@ import {
   type Session,
 } from '../session.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
-
+import { layoutExtras } from './layouts.ts';
 import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 
@@ -74,6 +74,12 @@ function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups,
       }
       case 'code':
         control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 7 : 2}" spellcheck="false">${v ?? ''}</textarea>`;
+        break;
+      case 'textarea':
+        control = html`<textarea id="${id}" name="${f.name}" rows="3">${v ?? ''}</textarea>`;
+        break;
+      case 'color':
+        control = html`<input id="${id}" name="${f.name}" type="color" value="${v ?? '#000000'}">`;
         break;
       case 'json': {
         const text = v && typeof v === 'object' && Object.keys(v).length ? JSON.stringify(v, null, 2) : '';
@@ -524,7 +530,7 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'report_layout'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -555,6 +561,7 @@ export async function builderRoutes(app: FastifyInstance) {
       const row = rows[selKind].find((r) => String(r.id) === selId);
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, selKind, row, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : ''}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
     } else {
@@ -617,7 +624,7 @@ export async function builderRoutes(app: FastifyInstance) {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>
           ${rows[kind].map((r) => html`<li><a href="?c=${kind}-${r.id}"${selKind === kind && selId === String(r.id) ? raw(' aria-current="page"') : ''}>${icon(kind === 'nav_entry' ? (r.icon ?? 'chevron') : spec.icon)}<span>${r.parent_id ? '↳ ' : ''}${spec.summary(r)}</span>${
-            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : ''
+            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : ''
           }</a></li>`)}`;
       })}
     </ul>`;

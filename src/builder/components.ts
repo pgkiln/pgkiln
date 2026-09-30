@@ -7,6 +7,8 @@ import { ICONS } from '../icons.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
+  | 'textarea' // plain multi-line text
+  | 'color'    // #rrggbb
   | 'region'   // region of the current page
   | 'authz'    // authorization scheme of the app
   | 'page'     // page of the app
@@ -60,7 +62,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'Boolean expression; the region renders only when true.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
-        help: 'report: {"page_size":15,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows"} · chart: {"kind":"bar"|"column"|"line"|"area"|"donut"} · cards: {"style":"metric","link":{...}} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"facets":[{"column":"job","label":"Job"}]}' },
+        help: 'report: {"page_size":15,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut"} · cards: {"style":"metric","link":{...}} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"facets":[{"column":"job","label":"Job"}]}' },
     ],
   },
   item: {
@@ -246,6 +248,32 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'code', label: 'Code (SQL)', kind: 'code', wide: true, help: 'Returned columns named like application items set them, e.g. select empno as ai_empno from …' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
+    ],
+  },
+  report_layout: {
+    table: 'meta.report_layout',
+    scope: 'app',
+    label: 'Report layout',
+    plural: 'Report layouts',
+    icon: 'printer',
+    summary: (l) => l.name,
+    defaults: { paper: 'A4', orientation: 'auto', font_size: 8.5, margin_mm: 13, show_filters: true, heading_color: '#e8ecf2', stripe_color: '#f6f7f9', text_color: '#111111', logo_width_mm: 30 },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: 'Reports use it in their settings: {"pdf": {"layout": "NAME"}}' },
+      { name: 'is_default', label: 'Default for reports that name no layout', kind: 'bool', group: 'Identification' },
+      { name: 'paper', label: 'Paper size', kind: 'select', options: ['A4', 'A3', 'A5', 'LETTER', 'LEGAL'], group: 'Page' },
+      { name: 'orientation', label: 'Orientation', kind: 'select', options: ['auto', 'portrait', 'landscape'], group: 'Page', help: 'auto: landscape when the columns do not fit upright' },
+      { name: 'font_size', label: 'Font size (pt)', kind: 'text', group: 'Page', help: '5 to 16, e.g. 8.5' },
+      { name: 'margin_mm', label: 'Margins (mm)', kind: 'int', group: 'Page' },
+      { name: 'full_width', label: 'Stretch the table to the page width', kind: 'bool', group: 'Page' },
+      { name: 'title', label: 'Title', kind: 'text', wide: true, group: 'Texts', help: 'Empty: the report title. Substitutions: &REPORT_TITLE. &APP_NAME. &APP_USER. &DATE. &TIMESTAMP. &P1_ITEM. &APP_TEXT$NAME.' },
+      { name: 'header', label: 'Header (under the title)', kind: 'textarea', wide: true, group: 'Texts', help: 'Empty: application, time and user. Several lines are allowed.' },
+      { name: 'footer', label: 'Footer (bottom left of every page)', kind: 'text', wide: true, group: 'Texts', help: 'Empty: the title. Page numbers are always at the bottom right.' },
+      { name: 'show_filters', label: 'Show the filters and search the user applied', kind: 'bool', group: 'Texts' },
+      { name: 'heading_color', label: 'Column heading background', kind: 'color', group: 'Colors' },
+      { name: 'stripe_color', label: 'Stripe every other row', kind: 'text', group: 'Colors', help: '#rrggbb; empty = no stripes' },
+      { name: 'text_color', label: 'Text', kind: 'color', group: 'Colors' },
+      { name: 'logo_width_mm', label: 'Logo width (mm)', kind: 'int', group: 'Logo', help: 'Upload the logo (PNG or JPEG) below, after saving.' },
     ],
   },
 };
