@@ -5,7 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Added (sprint 8)
+## [0.7.0] - 2026-09-30
+
+### Added
 - OAuth clients for the REST API, like ORDS's `oauth.create_client`: client credentials
   (`POST /oauth/token`, HTTP Basic or form fields) give short-lived tokens that PostgREST accepts,
   so tokens never need rotating by hand. Clients act as `client:<name>` with roles that are read
@@ -20,8 +22,6 @@ All notable changes to this project are documented here. The format follows
   settings (`"pdf": {"layout": …, "columns": […], "widths": {…}, "align": {…}}`), or use the
   application's default layout. Layouts are included in exports. HR sample: the Directory
   prints with `HR_DIRECTORY`.
-
-### Added
 - Printing: interactive reports get **Download PDF** (A4, landscape when wide; title, active
   filters, repeated headings, page numbers; same query, filters and access checks as the
   screen) and **Print** in the Actions menu; every page has a print stylesheet without
