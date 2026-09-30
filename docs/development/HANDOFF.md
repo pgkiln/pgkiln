@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-30. Sprints 3–8 are merged into `main` and released as **v0.7.0**. **Sprint 9 (hardening)** is done on `sprint-9`, **sprint 10 (features)** on `sprint-10`, branched from sprint 9 (merging `sprint-10` brings in both).
+Last updated: 2026-09-30. Sprints 3–10 are merged into `main` and released as **v0.8.0** (migrations 001–015 are released: add 016+).
 
 ## Project in one paragraph
 
@@ -41,10 +41,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 8, released as **v0.7.0** (tags: v0.2.0, v0.6.0, v0.7.0; 0.3.0–0.5.0 were never tagged). Migrations 001–012 are released |
-| `sprint-7`, `sprint-8` | Merged into `main`; can be deleted |
-| `sprint-9` | Hardening: export/import consolidated (013), upgrade test in CI, builder routes split |
-| `sprint-10` | Sprint 9 + report power features (014), automations (015), report settings form |
+| `main` | Everything up to sprint 10, released as **v0.8.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0; 0.3.0–0.5.0 were never tagged). Migrations 001–015 are released |
+| `sprint-7` … `sprint-10` | Merged into `main`; can be deleted |
 
 Older sprint branches were merged and deleted.
 

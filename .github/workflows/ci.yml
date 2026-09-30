@@ -83,7 +83,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        from: [v0.6.0, v0.7.0]
+        from: [v0.6.0, v0.7.0, v0.8.0]
     services:
       postgres:
         image: postgres:17
