@@ -25,6 +25,8 @@ jobs:
     env:
       DATABASE_URL: postgres://pgapex:pgapex@localhost:5432/pgapex
       RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
+      # test-only secret for the REST API tokens (src/api.ts needs 32+ characters)
+      API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -55,6 +57,8 @@ jobs:
     env:
       DATABASE_URL: postgres://pgapex:pgapex@localhost:5432/pgapex
       RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
+      # test-only secret for the REST API tokens (src/api.ts needs 32+ characters)
+      API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
       SCREENSHOTS: '1'
     steps:
       - uses: actions/checkout@v4
