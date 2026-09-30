@@ -7,6 +7,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { apiRoutes } from './builder/api.ts';
 import { globalizationRoutes } from './builder/globalization.ts';
+import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
 import { accountRoutes } from './runtime/account.ts';
@@ -34,6 +35,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(accountRoutes);
   await app.register(builderRoutes);
   await app.register(usersRoutes);
+  await app.register(dataLoadRoutes);
   await app.register(apiRoutes);
   await app.register(globalizationRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));

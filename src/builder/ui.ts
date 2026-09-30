@@ -93,6 +93,12 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
         <a class="btn" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
       </div></div>`;
 
+/** Tabs of the SQL Workshop. */
+export const workshopTabs = (active: 'sql' | 'objects' | 'load') => html`<div class="buttons" style="margin-bottom:1rem">
+    <a class="btn${active === 'sql' ? ' btn-hot' : ''}" href="${BASE}/sql">${icon('code')} SQL Commands</a>
+    <a class="btn${active === 'objects' ? ' btn-hot' : ''}" href="${BASE}/sql/objects">${icon('database')} Object Browser</a>
+    <a class="btn${active === 'load' ? ' btn-hot' : ''}" href="${BASE}/sql/load">${icon('upload')} Load Data</a></div>`;
+
 export const APP_COLORS = ['#0b63c5', '#17794a', '#b3261e', '#7a4cc2', '#b86e00', '#00796b', '#5c6bc0', '#8d6e63'];
 
 // ------------------------------------------------------------------ auth

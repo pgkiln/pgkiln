@@ -5,6 +5,7 @@ import type { Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
 import { formRegion, isTempId, REMOVE } from './files.ts';
+import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
@@ -218,6 +219,64 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   return p.success_message ?? ctx.locale.t('form.deleted');
 }
 
+interface DataLoadConfig {
+  file_item?: string;
+  table?: string;
+  mode?: LoadMode;
+  skip_errors?: boolean;
+  headers?: boolean;
+  columns?: Record<string, string>;
+}
+
+/**
+ * data_load: load the file of a file item into a table, as the app's role.
+ * Nothing is loaded when a row fails, unless skip_errors is set.
+ */
+async function dataLoad(ctx: PageContext, p: Process): Promise<string | null> {
+  const t = ctx.locale.t;
+  const conf = (p.config ?? {}) as DataLoadConfig;
+  const fileItem = conf.file_item?.toUpperCase();
+  if (!fileItem || !conf.table) throw new Error(`Process "${p.name}" needs "file_item" and "table" in its configuration.`);
+  // shown on the file item (see errorItem)
+  const fail = (message: string) => Object.assign(new Error(message), { column: fileItem.toLowerCase() });
+  const c = ctx.client!;
+  const id = ctx.session.state[fileItem];
+  const file = isTempId(id) ? (await c.query('select filename, content from meta.temp_files where id = $1', [id])).rows[0] : undefined;
+  if (!file) throw fail(t('load.no_file'));
+  const headers = conf.headers !== false;
+  try {
+    const sheet = await parseFile(file.filename, file.content, { headers });
+    const columns = conf.columns
+      ? sheet.headers.flatMap((h, index) => (conf.columns![h] ? [{ index, column: conf.columns![h] }] : []))
+      : autoMap(sheet.headers, await tableColumns(c, conf.table));
+    if (!columns.length) throw fail(t('load.no_columns', { table: conf.table }));
+    const r = await loadRows(c, sheet, {
+      table: conf.table,
+      columns,
+      mode: conf.mode ?? 'append',
+      skipErrors: !!conf.skip_errors,
+      firstRow: headers ? 2 : 1,
+      // invalid values and RAISE messages are shown; other errors are logged
+      describe: async (e) => {
+        const code = (e as pg.DatabaseError).code ?? '';
+        return code.startsWith('22') || code === 'P0001' ? (e as Error).message : publicError(ctx, e, `data load of ${conf.table}`);
+      },
+    });
+    await c.query('select meta.delete_temp_file($1)', [id]);
+    ctx.session.state[fileItem] = null;
+    const counts = { inserted: String(r.inserted), updated: String(r.updated), failed: String(r.failed) };
+    const done = p.success_message ? p.success_message.replace(/\{(inserted|updated|failed)\}/g, (_, k: keyof typeof counts) => counts[k]) : t('load.done', counts);
+    return r.failed ? `${done} ${t('load.skipped', { ...counts, errors: rowErrors(r.errors) })}` : done;
+  } catch (e) {
+    if (e instanceof LoadFailed) throw fail(t('load.failed', { failed: String(e.result.failed), errors: rowErrors(e.result.errors) }));
+    if (e instanceof LoadError) throw fail(e.message);
+    throw e;
+  }
+}
+
+const rowErrors = (errors: { row: number; message: string }[]) =>
+  errors.slice(0, 5).map((e) => `${e.row}: ${e.message.replace(/\.$/, '')}`).join('; ') + (errors.length > 5 ? '; …' : '');
+
 export class ProcessFailed extends Error {
   constructor(message: string, readonly item: string | null) {
     super(message);
@@ -249,6 +308,7 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
       const msg =
         p.type === 'form_dml' ? await formDml(ctx, p)
         : p.type === 'grid_dml' ? await gridDml(ctx, p)
+        : p.type === 'data_load' ? await dataLoad(ctx, p)
         : (await runSql(ctx, p.code ?? '', names), p.success_message);
       if (msg) messages.push(msg);
     } catch (e) {

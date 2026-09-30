@@ -54,10 +54,10 @@ const cfg = (item: Item) => (item.config ?? {}) as FileConfig;
 export const maxMb = (item: Item) => Math.min(Number(cfg(item).max_mb) || MAX_UPLOAD_MB, MAX_UPLOAD_MB);
 
 /** Read a multipart body: fields as for urlencoded bodies, plus the files. */
-export async function readMultipart(req: FastifyRequest) {
+export async function readMultipart(req: FastifyRequest, maxFileMb = MAX_UPLOAD_MB) {
   const body: Record<string, string | string[]> = {};
   const files = new Map<string, Upload>();
-  for await (const part of req.parts()) {
+  for await (const part of req.parts({ limits: { fileSize: maxFileMb * 1024 * 1024 } })) {
     if (part.type === 'file') {
       const data = await part.toBuffer();
       if (part.filename) files.set(part.fieldname, { filename: part.filename, mimetype: part.mimetype, data, truncated: part.file.truncated });

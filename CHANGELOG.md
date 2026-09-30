@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Data loading (CSV, TSV, Excel .xlsx):
+  - SQL Workshop → **Load Data**: upload, preview, then load into a new table (column names
+    and types inferred) or an existing one (columns mapped by name; append, merge by primary
+    key, or replace), with a per-row error report. Nothing is loaded when a row fails unless
+    "skip rows with errors" is ticked.
+  - Page process type `data_load` loads a file item's file into a table as the application's
+    role (grants, RLS, triggers apply); row errors are shown on the file item. HR sample:
+    page 13 *Import employees*.
 - File upload items (APEX *File Browse*): item type `file` saves into a form's bytea column
   (with file name and MIME type columns) or into the session's temporary files
   (`meta.temp_files`, like `APEX_APPLICATION_TEMP_FILES`). Image previews, remove option,

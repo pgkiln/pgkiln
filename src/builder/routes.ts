@@ -18,7 +18,7 @@ import {
 } from '../session.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
 
-import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 
 interface Lookups {
@@ -907,10 +907,6 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- SQL workshop
-  const workshopTabs = (active: 'sql' | 'objects') => html`<div class="buttons" style="margin-bottom:1rem">
-    <a class="btn${active === 'sql' ? ' btn-hot' : ''}" href="${BASE}/sql">${icon('code')} SQL Commands</a>
-    <a class="btn${active === 'objects' ? ' btn-hot' : ''}" href="${BASE}/sql/objects">${icon('database')} Object Browser</a></div>`;
-
   const resultTable = (res: pg.QueryResult<any[]>, limit = 500) => {
     const rows = (res.rows ?? []).slice(0, limit);
     return html`<div class="table-wrap"><table class="report"><thead><tr>${res.fields.map((f) => html`<th>${f.name}</th>`)}</tr></thead>
