@@ -23,6 +23,7 @@ src/
   binds.ts                 :BIND scanner → escaped literals (unit tested)
   dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
   xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
+  automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
   metadata.ts              types + loaders for apps and pages
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -52,6 +53,8 @@ src/
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data
     layouts.ts             report layouts: logo upload, PDF preview
+    automations.ts         automations: next run, Run now, run history
+    report-settings.ts     page designer: report settings form (columns, link, PDF)
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
