@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Application export and import are one pair of functions again (migration 013 replaces the
+  wrapped `export_app_base`/`import_app_base` chain). The format stays `pgapex/2` and is now
+  documented, with a compatibility promise: sections are only added, and missing sections import
+  as empty.
+- The builder's route file is split into `routes.ts`, `shared.ts`, `designer.ts`, `sql.ts` and
+  `forms.ts` (no behaviour change).
+
+### Added
+- CI: an `upgrade` job installs v0.6.0 and v0.7.0 with sample data, upgrades and runs the tests;
+  `scripts/migrate.ts --root` applies another release's `db/` folder.
+- `test/export.test.ts`: export → import → export round trip, older files, and a check that every
+  table of an app or page is exported (or deliberately left out).
+
 ## [0.7.0] - 2026-09-30
 
 ### Added

@@ -168,6 +168,30 @@ Because the SQL Workshop runs as the owner, restrict who gets a developer accoun
 ## Export and import
 
 **Export** downloads the application as JSON: pages, all components, shared components and
-settings. Users, sessions, logs and your database objects are not included. The format is stable
-(`"format": "pgapex/2"`), and since it's plain JSON you can commit it to git and review changes in
-pull requests.
+settings. Since it's plain JSON you can commit it to git and review changes in pull requests.
+In SQL: `select meta.export_app('hr')` and `select meta.import_app(<json>, 'new_alias')`.
+
+### Export format
+
+The format is `"format": "pgapex/2"`, and it's stable: files exported by pgapex 0.2.0 and later
+import into every later version. New versions only **add** sections, and a missing section
+imports as empty. Import refuses other formats.
+
+| Section | Contents |
+|---|---|
+| `app` | the application's settings (name, alias, home page, authentication, theme, languages, …) |
+| `authz_schemes`, `app_items`, `app_processes`, `lovs` | shared components |
+| `group_roles` | identity-provider group → role mappings |
+| `text_messages`, `translations` | globalization |
+| `report_layouts` | report layouts; the logo as base64 |
+| `nav` | navigation menu (with ids, so parents can be linked again) |
+| `pages` | every page with its `regions`, `items`, `buttons`, `dynamic_actions`, `validations` and `processes` |
+
+Rows appear as they are in the `meta` tables (without their ids and the id of their parent), so a
+new column travels along automatically.
+
+**Not exported, on purpose:** accounts and who has access (they belong to an installation, not to
+an app), OAuth clients and their secrets, sessions, activity logs, temporary files, and your
+database objects (tables, views, functions: keep those in your own migration scripts). After an
+import, check the app's database role under **Settings** and grant access under **Shared
+Components**.
