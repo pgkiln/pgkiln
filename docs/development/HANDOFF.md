@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-30. Sprints 3–6 are **merged into `main`** (sprint 4 via PR #2; sprints 5 and 6 with `git merge` on the command line, as the owner asked). Next sprint: branch from `main`.
+Last updated: 2026-09-30. Sprints 3–6 are merged into `main` and released as v0.6.0. **Sprint 7 is in progress on `sprint-7`** (see the last section).
 
 ## Project in one paragraph
 
@@ -42,8 +42,9 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 6, released as **v0.6.0** (tags: v0.2.0, v0.6.0; 0.3.0–0.5.0 were never tagged) |
+| `sprint-7` | Role suggestions, file upload items; data loading and PDF printing in progress |
 
-The sprint branches were merged and deleted. Start the next sprint with `git checkout -b sprint-7 main`.
+Older sprint branches were merged and deleted.
 
 ## Sprint 4 goal (owner's order)
 
@@ -218,3 +219,26 @@ Open / candidates for sprint 6:
    with a new roadmap: file upload → automations on pg_cron → IR power features → stricter CSP (styles) → builder quality.
 
 Verification: `npm run db:reset && npm test && npm run test:e2e` (see the commit message for counts).
+
+## Sprint 7 (owner's request, 2026-09-30)
+
+Order: 1 role suggestions under roles fields, 2 file upload items, 3 data loading (CSV/XLSX into
+a table), 4 printing (PDF). Migrations 001–008 are released (v0.6.0): add 009+.
+
+1. **Role suggestions: done** (`roleHints()` / `roleHintsHtml()` in `src/builder/users.ts`, used on
+   the account page and the app's Access control; chip click handler in `public/app.js`).
+2. **File upload items: done** (`db/migrations/009_files.sql`, `src/runtime/files.ts`,
+   `test/files.test.ts`, HR seed `hr_05_files.sql` = employee photo).
+   - Item value = temp file uuid (`meta.temp_file`, readable only via the session-scoped view
+     `meta.temp_files`); uploads are committed in their own transaction so they survive errors.
+   - Form DML writes `source_column` + `config.filename_column` / `mime_column`; value `REMOVE`
+     clears them. `fetchForms` never loads bytes; the item queries size/name when rendering.
+   - Downloads: `GET /a/:alias/:page/file/:item?k=<pk|temp:uuid>&cs=` (checksum over
+     `__FILE`/`__KEY`), page access checked, app role, attachment unless `inline=1` and safe type.
+3. **Data loading: next.** Plan: SQL Workshop → Load data (upload, preview, map columns to an
+   existing table or create one with inferred types, load in one transaction with per-row errors);
+   `read-excel-file` (`import { readSheet } from 'read-excel-file/node'`) for XLSX, own CSV parser.
+4. **Printing: after that.** Plan: interactive report Actions → Download PDF with `pdfkit`
+   (filters applied, headings, page numbers, landscape when wide) and `@media print` CSS.
+Then: guide chapter 16 (files, data loading, printing), parity matrix, e2e run, push.
+
