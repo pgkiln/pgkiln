@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-09-30 (pgapex 0.6.0 plus sprint 7: file upload, data loading, printing).
+Last reviewed: 2026-09-30 (pgapex 0.6.0 plus sprints 7 and 8: file upload, data loading, printing, OAuth clients, report layouts, Excel download).
 
 ## At a glance
 
@@ -52,7 +52,7 @@ Last reviewed: 2026-09-30 (pgapex 0.6.0 plus sprint 7: file upload, data loading
 | APEX | pgapex | Notes |
 |---|---|---|
 | Classic report | ✅ | `report` with `interactive: false` |
-| Interactive report | 🟡 | Search, column filters, sort, rows per page, CSV and PDF download, print, reset, reflow on phones. **Missing:** saved/public reports, control break, highlight, aggregates, group by, pivot, chart view, flashback, XLSX download, row selection and maximum rows (26.1), natural-language control (26.1) |
+| Interactive report | 🟡 | Search, column filters, sort, rows per page, CSV, Excel (typed cells) and PDF download, print, reset, reflow on phones. **Missing:** saved/public reports, control break, highlight, aggregates, group by, pivot, chart view, flashback, row selection and maximum rows (26.1), natural-language control (26.1) |
 | Interactive grid | 🟡 | Inline edit, add and delete rows, lists of values, required columns, per-row errors, all-or-nothing save, signed row keys, search and paging. **Missing:** copy/paste (26.1), column reorder/resize/freeze, master-detail, aggregates, row actions menu, saved reports |
 | Form (automatic row processing) | ✅ | Fetch, insert, update, delete, in a page or a modal dialog. Detects rows deleted meanwhile, but no optimistic locking of concurrent edits yet |
 | Charts | 🟡 | Bar, column, line, area, donut; multi-series, tooltips, data table, palette checked for colour-vision deficiency. **Missing:** scatter, bubble, stacked, combination, gauge, Gantt, drill-down links |
@@ -161,12 +161,12 @@ Last reviewed: 2026-09-30 (pgapex 0.6.0 plus sprint 7: file upload, data loading
 | APEX | pgapex | Notes |
 |---|---|---|
 | SQL Workshop: SQL commands, object browser | ✅ | The object browser shows columns, RLS policies, grants, data and function source |
-| RESTful services (ORDS) | ✅ | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, the same RLS as the UI, per-app API role, tokens in the builder, a pre-request check |
+| RESTful services (ORDS) | ✅ | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, the same RLS as the UI, per-app API role, tokens in the builder, a pre-request check, and **OAuth clients** (client credentials, like ORDS `oauth.create_client`) so tokens renew themselves |
 | REST handler editor, REST-enabled SQL | 🟡 | Write RPC functions in the `api` schema instead of handlers; no REST-enabled SQL (rarely desirable) |
 | SQL scripts, query builder, Quick SQL | ❌ | |
 | Data Workshop (load CSV/XLSX/JSON) | 🟡 | SQL Workshop → Load Data: CSV/TSV/XLSX into a new table (inferred types) or an existing one (append, merge, replace) with a per-row error report; `data_load` process for end users. **Missing:** JSON/XML, saved data load definitions, column transformations, unloading ([chapter 16](guide/16-files.md)) |
 | REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | ❌ | Calling web services from SQL is possible with the `http` or `pg_net` extensions ([extensions](guide/15-extensions.md)) |
-| Printing, document generator (PDF) | 🟡 | Report PDF (filters applied, landscape when wide, page numbers) and a print stylesheet on every page. **Missing:** report layouts and document templates (BI Publisher / APEX Office Print / document generator) |
+| Printing, document generator (PDF) | 🟡 | Report PDF (filters applied, page numbers) with **report layouts** (paper, orientation, font, margins, texts, colors, logo; per-report columns and widths) and a print stylesheet on every page. **Missing:** document templates for letters and invoices (BI Publisher / APEX Office Print / document generator) |
 | Data Reporter: self-service reports for business users (26.1) | ❌ | |
 | Sending e-mail (`APEX_MAIL`), e-mail templates, *Send E-Mail* process | ➖ | Deliberately not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` |
 | JSON sources, duality views (24.2) | ➖ | PostgreSQL `jsonb` works in any SQL region, form or grid source |
@@ -232,11 +232,11 @@ Small but real differences, for teams comparing the two:
 ## Roadmap (proposed priority)
 
 1. **Automations in the builder** on `pg_cron`: schedule an app's SQL or PL/pgSQL, with run history.
-2. **Interactive report power features:** saved reports, control break, aggregates, highlight, XLSX download, row selection.
+2. **Interactive report power features:** saved reports, control break, aggregates, highlight, row selection.
 3. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
 4. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
 5. **LDAP and SAML** authentication; "remember me".
-6. **Document printing:** report layouts / templates (e.g. HTML templates rendered to PDF), and JSON in data loading.
+6. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
 7. **Approvals / workflow** built on the metadata model.
 8. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
 9. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.

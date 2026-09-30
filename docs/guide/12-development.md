@@ -22,6 +22,7 @@ src/
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
   binds.ts                 :BIND scanner → escaped literals (unit tested)
   dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
+  xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
   html.ts                  auto-escaping html`` templates
   metadata.ts              types + loaders for apps and pages
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -37,7 +38,7 @@ src/
     locale.ts              language, theme, text messages and translations of a request
     format.ts              date masks
     files.ts               file items: multipart parsing, temporary files, signed downloads
-    pdf.ts                 report PDFs (pdfkit)
+    pdf.ts                 report PDFs with report layouts (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  shell, form helpers, CSRF check, app tab bar
@@ -46,6 +47,7 @@ src/
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data
+    layouts.ts             report layouts: logo upload, PDF preview
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)

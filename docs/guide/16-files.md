@@ -5,7 +5,8 @@ This chapter covers three things that deal with files:
 - **file upload items**, where users upload files into a table or a process;
 - **data loading**, which loads CSV and Excel files into tables, from the SQL Workshop or from
   an application page;
-- **printing**, which covers report PDFs and printing any page from the browser.
+- **downloads and printing**: reports as CSV, Excel and PDF (with adjustable report layouts),
+  and printing any page from the browser.
 
 | APEX | pgapex |
 |---|---|
@@ -13,7 +14,8 @@ This chapter covers three things that deal with files:
 | File Browse item, storage "Table APEX_APPLICATION_TEMP_FILES" | Item type `file` without a source column; read the file from `meta.temp_files` |
 | SQL Workshop → Data Workshop → Load Data | SQL Workshop → **Load Data** |
 | Data Load Definition + "Execute Data Load" process | Process type `data_load` |
-| Interactive report → Download → PDF | Actions → **Download PDF** |
+| Interactive report → Download → CSV / Excel / PDF | Actions → **Download CSV / Excel / PDF** |
+| Shared Components → Report Layouts | Shared Components → **Report layouts** |
 | Print (browser) | Actions → **Print**, and a print stylesheet on every page |
 
 ## File upload items
@@ -154,21 +156,74 @@ The HR sample's page 13, **Administration → Import employees**, merges files i
 Try it with `/static/samples/employees.csv`. A salary above the president's is refused by the
 database trigger, and then nothing is loaded.
 
-## Printing
+## Downloads and printing
+
+### Report CSV and Excel
+
+Every interactive report has **Actions → Download CSV** and **Download Excel**. Both contain the
+rows of the report as on screen: the same query, search, filters, facets and sort, the same
+headings and hidden columns, and the same access checks (page authorization, region visibility,
+row level security). They hold at most 100,000 rows.
+
+The Excel file (`.xlsx`) keeps the data types: numbers are numbers, dates and timestamps are
+Excel dates, and booleans are TRUE/FALSE. The heading row is bold and frozen, with an
+autofilter. Text is always stored as text, so a value like `=HYPERLINK(...)` is never run as a
+formula. In the CSV file such values get a leading `'` for the same reason.
+
+Both formats also load back in: see [data loading](#data-loading).
 
 ### Report PDF
 
-Every interactive report has **Actions → Download PDF**. The PDF contains:
+**Actions → Download PDF** contains:
 
-- **the same rows as the report:** the same query, search, filters, facets and sort, and the same
-  access checks (page authorization, region visibility, row level security);
-- the report title, the application, the time and the user, and the active filters;
+- **the same rows as the report**, with the same access checks as above;
+- a title block: the report title, a header line (by default the application, the time and the
+  user) and the active filters;
 - the column headings, repeated on every page. Numbers are right-aligned and long values wrap.
   Dates use the application's date format, and booleans the user's language;
-- **A4 portrait, or landscape when the columns don't fit**, with *page n of m* at the bottom.
+- a footer with *page n of m* on every page.
 
-A PDF holds at most `PDF_MAX_ROWS` rows (default 5000); if there are more, it says so. The CSV
-download has all rows.
+By default the page is A4, portrait, or landscape when the columns don't fit. A PDF holds at
+most `PDF_MAX_ROWS` rows (default 5000); if there are more, it says so. The CSV and Excel
+downloads have all rows.
+
+### Report layouts
+
+A **report layout** (Shared Components → **Report layouts**) sets how reports print:
+
+| Setting | |
+|---|---|
+| Paper size | A4, A3, A5, Letter or Legal |
+| Orientation | auto (landscape when the columns don't fit), portrait or landscape |
+| Font size, margins | in points and millimetres |
+| Stretch to the page width | widen the columns so the table fills the page |
+| Title, header, footer | texts with substitutions (below); the header may have several lines |
+| Show filters | print the search and filters the user applied, or leave them out |
+| Colors | column heading background, row stripes (or none), text. Headings on a dark background print in white |
+| Logo | a PNG or JPEG, printed at the top right of the first page, with its width in mm |
+
+In the texts you can use `&REPORT_TITLE.`, `&APP_NAME.`, `&APP_USER.`, `&DATE.`, `&TIMESTAMP.`,
+page items (`&P1_DEPTNO.`) and text messages (`&APP_TEXT$NAME.`). **Preview PDF** on the layout
+shows it with sample data.
+
+A report uses the layout named in its region settings, otherwise the layout marked **default**,
+otherwise the built-in look. In the region settings you can also choose the columns to print (in
+that order, including columns that are hidden on screen), fixed widths in millimetres, and the
+alignment:
+
+```json
+{
+  "pdf": {
+    "layout": "LETTERHEAD",
+    "columns": ["ename", "job", "sal"],
+    "widths": { "ename": 50 },
+    "align": { "job": "center" }
+  }
+}
+```
+
+Layouts are part of the application export. The HR sample prints its *Directory* (page 11) with
+the layout `HR_DIRECTORY` (seed `db/seed/hr_07_layouts.sql`).
 
 **Fonts:** the built-in PDF fonts cover Western European languages (Windows-1252). Characters
 outside that set are printed as `?`. For other scripts, point `PDF_FONT` and `PDF_FONT_BOLD` to
@@ -183,8 +238,9 @@ forms and dashboards.
 
 ### Not included
 
-APEX's report queries with layouts (BI Publisher, APEX Office Print) produce designed documents
-such as invoices and letters. pgapex doesn't have this yet. Until then:
+Report layouts shape table reports. APEX can also fill designed documents such as invoices
+and letters from a template (BI Publisher, APEX Office Print, the 24.2+ document generator).
+pgapex doesn't have document templates yet. Until then:
 
 - a dynamic content region with a print-friendly HTML layout, printed from the browser, works
   well for simple documents;

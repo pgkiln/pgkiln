@@ -12,6 +12,14 @@ All notable changes to this project are documented here. The format follows
   live; revoking works at once. Secret rotation with a grace period. Managed under Builder → REST
   API → OAuth clients or with `meta.oauth_create_client()`, `oauth_rotate_secret()`,
   `oauth_revoke_client()`, `oauth_grant_role()` and `oauth_revoke_role()` (migration 011).
+- **Download Excel** for interactive reports: an `.xlsx` with the rows, filters and headings
+  of the report; numbers, dates and booleans keep their type, text never becomes a formula.
+- **Report layouts** (Shared Components → Report layouts, migration 012): paper size (A3, A4,
+  A5, Letter, Legal), orientation, font size, margins, table width, title/header/footer texts
+  with substitutions, colors and a PNG/JPEG logo, with a PDF preview. Reports pick one in their
+  settings (`"pdf": {"layout": …, "columns": […], "widths": {…}, "align": {…}}`), or use the
+  application's default layout. Layouts are included in exports. HR sample: the Directory
+  prints with `HR_DIRECTORY`.
 
 ### Added
 - Printing: interactive reports get **Download PDF** (A4, landscape when wide; title, active
