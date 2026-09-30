@@ -52,9 +52,9 @@ async function renderChart(ctx: PageContext, r: Region) {
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `chart "${r.title ?? r.id}"`)}</div>`;
   }
-  if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? 'No data found'}</p>`;
+  if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
   const kind = CHART_KINDS.includes(r.config.kind) ? r.config.kind : 'bar';
-  return renderChartBody(kind, r.title ?? 'Chart', res.rows, res.fields);
+  return renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.locale.lang, ctx.locale.t);
 }
 
 /**
@@ -69,7 +69,7 @@ async function renderCards(ctx: PageContext, r: Region) {
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `cards "${r.title ?? r.id}"`)}</div>`;
   }
-  if (!rows.length) return html`<p class="empty">${r.config.empty ?? 'No data found'}</p>`;
+  if (!rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
   const link = r.config.link as { page: number; items?: Record<string, string> } | undefined;
   const linkOk = link ? await pageAllowed(ctx, link.page) : false;
   const metric = r.config.style === 'metric';

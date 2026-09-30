@@ -18,6 +18,8 @@ src/
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   api.ts                   REST API tokens for PostgREST, API role checks
+  accounts.ts              account settings and the password policy
+  i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
   binds.ts                 :BIND scanner → escaped literals (unit tested)
   html.ts                  auto-escaping html`` templates
   metadata.ts              types + loaders for apps and pages
@@ -30,12 +32,16 @@ src/
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
     regions.ts             region shell + chart/cards/dynamic dispatch, buttons
     report.ts, grid.ts, charts.ts, calendar.ts, facets.ts, items.ts, links.ts
+    account.ts             My account (details, own password, preferences)
+    locale.ts              language, theme, text messages and translations of a request
+    format.ts              date masks
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  shell, form helpers, CSRF check, app tab bar
     routes.ts              builder pages
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
+    globalization.ts       translations, XLIFF/CSV, text messages
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
@@ -44,10 +50,15 @@ test/
   security.test.ts         security regression tests (in-process, against the database)
   sso.test.ts              single sign-on against an in-process mock identity provider
   api.test.ts              REST API: SQL as the API role; HTTP tests skip without PostgREST
+  accounts.test.ts         own password, expiry, admin reset, preferences
+  i18n.test.ts             languages, translations, text messages, date masks, XLIFF/CSV
+  helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
 ```
 
 ## Principles
+
+- **User-facing texts go through the translator**: `ctx.locale.t('key')` for pgapex's own texts (add the key to `en` and `nl` in `src/i18n.ts`; TypeScript checks that `nl` has every key), `ctx.locale.tr(text)` for texts derived from application metadata.
 
 1. **Metadata first.** A feature is a column or row in `meta.*`, rendered by the runtime, editable
    in the builder, included in export/import and usable from SQL.

@@ -1,10 +1,10 @@
-# Handoff: work in progress (sprint 4)
+# Handoff: work in progress
 
 This file lets another developer (or another Claude session) continue the current sprint without
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-29. Steps A, B and C are **done**; version bumped to **0.4.0**. Waiting for the owner to merge `sprint-4`.
+Last updated: 2026-09-30. Sprints 4, 5 and 6 are **done** and pushed; they wait for the owner to merge (`sprint-6` contains `sprint-5`, which contains `sprint-4`).
 
 ## Project in one paragraph
 
@@ -43,6 +43,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | v0.3.0 (`sprint-3` merged via PR #1) |
 | `sprint-4` | v0.4.0: user directory, OpenID Connect SSO, PostgREST REST APIs. Pushed, **not merged yet** |
+| `sprint-5` | v0.5.0: account self-service, light/dark switch, globalization (its e-mail feature is removed again in `sprint-6`). Pushed, **not merged yet** |
+| `sprint-6` | E-mail and forgot password removed (owner decision), PostgreSQL extensions chapter, APEX parity re-review. Branched from `sprint-5`. Pushed, **not merged yet** |
 
 ## Sprint 4 goal (owner's order)
 
@@ -171,3 +173,49 @@ Original design notes:
   real chapter; the parity matrix row "RESTful services".
 - Tests: run PostgREST in CI (a service container) or skip when not reachable; check that allen via
   the API sees only his own leave requests.
+
+## Sprint 5 (owner's choice: 1 accounts, 3 theme switch, 4 translations and e-mail; 2 "sign in once / app launcher" skipped, sign-in stays per app as in APEX)
+
+Done:
+- `db/migrations/006_accounts.sql`: `must_change_password`, `password_changed_at`, `theme_pref`, `language` on `meta.account`;
+  `meta.setting` (password_min_length, password_require_mixed, password_lifetime_days); `meta.change_password`,
+  `set_password` / `expire_password` / `unexpire_password` (owner only), `password_days_left`; forgot password:
+  `meta.password_reset` (sha256 tokens), `start_/check_/finish_password_reset`, `meta.app.password_reset`
+- `007_i18n.sql`: `meta.app.language/languages/language_from/date_format/timestamp_format`, `meta.text_message`,
+  `meta.translation` (source text → target per language), `meta.message()`, `meta.app_language()`, export/import
+- `008_mail.sql`: `meta.mail_queue`, `mail_attachment`, `email_template`, `send_mail`, `send_mail_template`,
+  `add_attachment`, process type `send_email` (+ `meta.process.config`); export/import wrap the 007 versions (`*_base`)
+- Runtime: `src/runtime/locale.ts` (language + theme per request, cached texts), `src/i18n.ts` (en + nl, all pgapex texts),
+  `src/runtime/format.ts` (date masks), `src/runtime/account.ts` (My account, forgot/reset), expired-password step at sign-in
+  (`POST /a/:alias/password`), theme switch in the user menu, `src/mail.ts` (nodemailer 10, NOTIFY + polling, retries)
+- Builder: Users → account settings / expire / unlock / first-use; Settings → forgot password, theme style, users may choose,
+  globalization; Shared Components → Globalization (`src/builder/globalization.ts`, XLIFF/CSV) and E-mail templates; Builder → Mail
+- HR sample `db/seed/hr_04_i18n_mail.sql`: Dutch, text messages on the dashboard, e-mail on leave decisions, reset enabled
+- Tests: `test/accounts.test.ts`, `test/mail.test.ts`, `test/i18n.test.ts`, sprint-5 block in `security.test.ts` (95 total),
+  e2e covers account/forgot/Dutch/dark and the new builder pages (20). Docs: chapter 14, chapters 1/3/8/9/11/12, parity, SECURITY, CHANGELOG
+- Dev: Mailpit `docker compose --profile mail up -d mailpit` (UI :8025); the local `.env` has SMTP_HOST=127.0.0.1, SMTP_PORT=1025
+
+Open / candidates for sprint 6:
+- More built-in languages (de, fr, …) for `src/i18n.ts`; number masks; time zones (APEX automatic time zone)
+- The builder itself is English only and follows the OS for dark mode (no switch there)
+- Chart data tables show raw column names as headings
+- CI has no PostgREST or Mailpit service (the HTTP API tests skip; mail tests use a fake transport)
+- File upload items (top of the roadmap), then automations on pg_cron
+
+## Sprint 6 (owner's request, 2026-09-30)
+
+1. **Remove e-mail entirely**, including forgot password. Owner: "not happy with the mailing part".
+   Note for future work: APEX *does* have `APEX_MAIL`; the owner still chose to leave mail out. Don't
+   re-add mail features; point to `pg_smtp_client` or an external service instead.
+   - `008_mail.sql` and the reset part of `006` were deleted (both unreleased). **`008_drop_mail.sql`**
+     idempotently removes the objects from databases that ran the development builds, unwraps
+     `export_app`/`import_app`, drops the sample's mail trigger, and renames the seed record
+     `hr_04_i18n_mail.sql` → `hr_04_i18n.sql`.
+   - Code, builder (Mail page, e-mail templates, Send e-mail process, forgot-password setting), i18n texts,
+     `nodemailer`, Mailpit, SMTP settings, tests and docs removed. Chapter 14 is now *Globalization*.
+2. **Extensions**: `docs/guide/15-extensions.md` (tiers, APEX mapping, security notes, integration ideas);
+   `test/extensions.test.ts` proves btree_gist/pg_trgm/unaccent/citext examples; `23P01` now has a friendly message.
+3. **APEX 26.1 re-review**: `docs/apex-feature-parity.md` rewritten (116 rows: 43 ✅, 30 🟡, 37 ❌, 6 ➖),
+   with a new roadmap: file upload → automations on pg_cron → IR power features → stricter CSP (styles) → builder quality.
+
+Verification: `npm run db:reset && npm test && npm run test:e2e` (see the commit message for counts).

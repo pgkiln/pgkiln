@@ -55,6 +55,8 @@ export interface AppContext {
   dbRole: string | null;
   appUser: string;
   sessionId: string;
+  /** language of the request (meta.app_language()) */
+  lang?: string;
 }
 
 /**
@@ -68,8 +70,11 @@ export async function appTx<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): 
       `select set_config('pgapex.app_user', $1, true),
               set_config('pgapex.session_id', $2, true),
               set_config('pgapex.app_id', $3, true),
-              set_config('statement_timeout', $4, true)`,
-      [ctx.appUser, ctx.sessionId, String(ctx.appId), process.env.STATEMENT_TIMEOUT ?? '30s'],
+              set_config('statement_timeout', $4, true),
+              set_config('pgapex.lang', $5, true),
+              set_config('pgapex.public_url', $6, true)`,
+      [ctx.appUser, ctx.sessionId, String(ctx.appId), process.env.STATEMENT_TIMEOUT ?? '30s', ctx.lang ?? '',
+       (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, '')],
     );
     if (ctx.dbRole) await c.query(`set local role ${pg.escapeIdentifier(ctx.dbRole)}`);
     return fn(c);

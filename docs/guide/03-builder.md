@@ -125,8 +125,9 @@ register at the provider, and has a *Test discovery* button. See
 - **Security**: authentication (*App users* / *None*), the database role, and **debug mode**
   (shows full database errors to users; development only).
 - **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
-- **Theme**: accent colour, header colour, and *side* or *top* navigation (on tablets and phones the
-  menu is always a drawer).
+- **Theme**: accent colour, header colour, *side* or *top* navigation (on tablets and phones the
+  menu is always a drawer), the theme style (automatic, light or dark) and whether users may choose light or dark.
+- **Globalization**: primary language, translated languages, how the language is chosen, date formats.
 - **Security checklist**: whether the app has its own role, debug mode, and pages without
   checksum protection or without authentication.
 - **Delete application**: removes the definition (not your tables).
@@ -137,6 +138,11 @@ Per application: page views, distinct users and average page time over the last 
 failed and locked sign-ins; errors and access denials; views and timings per page over 7 days;
 and a list of recent events (with *Include page views*). The "reference #123" numbers users see
 on errors are the event ids here.
+
+## Globalization
+
+**Shared Components → Globalization** translates the application's texts per language, exports and
+imports XLIFF or CSV for translators, and manages text messages. See [chapter 14](14-globalization.md).
 
 ## REST API
 

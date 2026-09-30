@@ -33,12 +33,6 @@ export function checksumValid(expected: string, given: string | undefined) {
 export const newToken = () => randomBytes(32).toString('base64url');
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
-export const MIN_PASSWORD_LENGTH = 8;
-
-export function passwordProblem(password: string | undefined) {
-  if (!password || password.length < MIN_PASSWORD_LENGTH) return `Passwords need at least ${MIN_PASSWORD_LENGTH} characters.`;
-  return null;
-}
 
 // Login throttling: failures per user and per IP address in a sliding window.
 export const LOGIN_WINDOW_MINUTES = Number(process.env.LOGIN_WINDOW_MINUTES ?? 15);

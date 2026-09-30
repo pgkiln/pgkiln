@@ -46,7 +46,7 @@ export async function sqlTrue(ctx: PageContext, expr: string | null | undefined,
 
 export function authzMessage(ctx: PageContext, ref: string | null) {
   const name = ref?.replace(/^!/, '').toUpperCase();
-  return ctx.app.authz_schemes.find((s) => s.name === name)?.error_message ?? 'You are not authorized to access this page.';
+  return ctx.app.authz_schemes.find((s) => s.name === name)?.error_message ?? ctx.locale.t('error.not_authorized');
 }
 
 export async function checkPageAccess(ctx: PageContext) {

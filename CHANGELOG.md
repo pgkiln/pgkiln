@@ -5,6 +5,50 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Chapter 15, *Useful PostgreSQL extensions*: contrib and third-party extensions mapped to APEX
+  features (scheduling, web services, maps, AI search, auditing, Oracle compatibility), with
+  security notes and tested examples (`test/extensions.test.ts`).
+- Exclusion-constraint violations (e.g. overlapping date ranges with `btree_gist`) get a friendly
+  message, like check constraints.
+
+### Changed
+- The APEX 26.1 parity matrix was re-reviewed: 116 features compared, with counts per area and
+  sections on deliberate differences and gaps that extensions close. The CSP row is now partial
+  (inline styles are still allowed).
+
+### Removed
+- **E-mail and "forgot password"** (they were in the unreleased 0.5.0 development builds): the mail
+  queue, `meta.send_mail()`/`send_mail_template()`/`add_attachment()`, e-mail templates, the *Send
+  e-mail* process, Builder → Mail, the SMTP settings, the Mailpit container, and the forgot/reset
+  password pages. pgapex doesn't send mail; administrators set temporary passwords (with change on
+  first use) instead. Migration `008_drop_mail.sql` removes the objects from databases that ran the
+  development builds; fresh installs never create them.
+
+## [0.5.0] - 2026-09-29
+
+### Added
+- **My account** in every application: change your own password, choose light or dark and the language.
+- Password policy and APEX-style account controls:
+  - change of password on first use;
+  - password lifetime (expiry);
+  - expire/unexpire and admin reset (also as `meta.set_password()`, `meta.expire_password()`);
+  - minimum length, letters and digits;
+  - unlock after failed sign-ins (Builder → Users).
+- **Light/dark switch**: an app theme style (automatic, light, dark) and "users may choose", saved on the account.
+- **Globalization**:
+  - a primary language and translated languages per app, chosen from the browser, the user's preference or `?lang=`;
+  - translations of all app texts in the builder, with XLIFF 1.2 and CSV export/import;
+  - text messages (`meta.message()`, `&APP_TEXT$NAME.`);
+  - pgapex's own texts in English and Dutch;
+  - date and timestamp masks;
+  - right-to-left languages.
+- The HR sample in Dutch.
+- New chapter 14, *Globalization*.
+
+### Changed
+- Upgrade note: migrations 006–007 add the new tables. Existing passwords count as changed at upgrade time for the password lifetime.
+
 ## [0.4.0] - 2026-09-29
 
 ### Added

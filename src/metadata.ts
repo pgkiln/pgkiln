@@ -54,7 +54,13 @@ export interface App {
   app_items: string[];
   app_processes: AppProcess[];
   lovs: { name: string; query: string }[];
-  theme: { accent?: string; header?: string; nav?: 'side' | 'top' };
+  theme: { accent?: string; header?: string; nav?: 'side' | 'top'; mode?: 'auto' | 'light' | 'dark'; user_choice?: boolean };
+  /** primary language, translated languages, and how the language is chosen */
+  language: string;
+  languages: string[];
+  language_from: 'primary' | 'browser' | 'user';
+  date_format: string | null;
+  timestamp_format: string | null;
 }
 
 export interface Region {
@@ -168,6 +174,7 @@ const agg = (table: string, fk: string, parent: string, order = 'x.seq, x.id') =
 export async function loadApp(alias: string) {
   return runtime.one<App>(
     `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.db_role, a.debug, a.theme,
+            a.language, a.languages, a.language_from, a.date_format, a.timestamp_format,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
                        'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth))

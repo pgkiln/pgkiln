@@ -483,3 +483,19 @@ describe('HR sample', () => {
     }
   });
 });
+
+describe('sprint 5: accounts and globalization', () => {
+  test('the runtime role cannot change accounts beyond preferences', async () => {
+    for (const sql of [
+      'select password_hash from meta.account',
+      `update meta.account set active = true where username = 'king'`,
+      `update meta.account set must_change_password = false where username = 'king'`,
+      `update meta.account set email = 'x@evil.example' where username = 'king'`,
+      `select meta.set_password('king', 'hijack-hijack')`,
+      `select meta.expire_password('king')`,
+    ])
+      await assert.rejects(runtime.query(sql), /permission denied/, sql);
+    await runtime.query(`update meta.account set theme_pref = theme_pref where username = 'king'`);
+  });
+
+});

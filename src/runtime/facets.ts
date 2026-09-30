@@ -54,10 +54,10 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
     const selected = new Set(ctx.params.getAll(`r${report.id}_x_${f.column}`));
     // keep selected values visible even when their count dropped to 0
     for (const s of selected) if (!values.some((x) => x.v === s)) values.push({ v: s, n: 0 });
-    const label = f.label ?? heading(f.column);
+    const label = f.label ?? ctx.locale.tr(heading(f.column));
     groups.push(html`<fieldset class="facet">
       <legend>${label}${selected.size
-        ? html` <a class="facet-clear" href="${regionUrl(ctx, report, (p) => { p.delete(`r${report.id}_x_${f.column}`); p.delete(`r${report.id}_p`); })}">Clear</a>`
+        ? html` <a class="facet-clear" href="${regionUrl(ctx, report, (p) => { p.delete(`r${report.id}_x_${f.column}`); p.delete(`r${report.id}_p`); })}">${ctx.locale.t('facets.clear')}</a>`
         : ''}</legend>
       ${values
         .filter((x) => x.v !== null)
@@ -75,8 +75,8 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
   return html`<div class="facets">
     ${groups}
     <div class="buttons facet-actions">
-      <button class="btn btn-hot" form="${formId}">Apply</button>
-      ${any ? html`<a class="btn" href="${regionUrl(ctx, report, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${report.id}_x_`)) p.delete(k); })}">Reset</a>` : ''}
+      <button class="btn btn-hot" form="${formId}">${ctx.locale.t('report.apply')}</button>
+      ${any ? html`<a class="btn" href="${regionUrl(ctx, report, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${report.id}_x_`)) p.delete(k); })}">${ctx.locale.t('report.reset')}</a>` : ''}
     </div>
   </div>`;
 }

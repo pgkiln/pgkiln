@@ -1,6 +1,7 @@
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
+import { baseLanguage, LANGUAGE_NAMES } from '../i18n.ts';
 import type { NavEntry } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { substitute, type PageContext } from './context.ts';
@@ -114,24 +115,50 @@ export function themeStyle(theme: PageContext['app']['theme']) {
   return vars.length ? html`<style>:root{${raw(vars.join(''))}}</style>` : '';
 }
 
+// ---------------------------------------------------------------- language
+
+/** Links to switch the language (when the app has more than one). */
+export function languagePicker(app: PageContext['app'], locale: PageContext['locale'], path: string) {
+  if (locale.languages.length < 2) return '';
+  const sep = path.includes('?') ? '&' : '?';
+  return html`<nav class="lang-picker" aria-label="${locale.t('language.label')}">${locale.languages.map((l, i) =>
+    html`${i ? ' · ' : ''}${l === locale.lang
+      ? html`<span aria-current="true">${LANGUAGE_NAMES[baseLanguage(l)] ?? l}</span>`
+      : html`<a href="${path}${sep}lang=${l}" hreflang="${l}" lang="${l}">${LANGUAGE_NAMES[baseLanguage(l)] ?? l}</a>`}`)}</nav>`;
+}
+
 // ---------------------------------------------------------------- page
 
+/** Auto / light / dark buttons (posted to the account's preference, or a cookie when signed out). */
+export function themeSwitch(ctx: PageContext, back: string) {
+  const { t, theme, themeChoice } = ctx.locale;
+  if (!themeChoice) return '';
+  return html`<form method="post" action="${ctx.base}/account/theme" class="menu-section theme-switch">
+    <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="next" value="${back}">
+    <span class="muted">${t('theme.label')}</span>
+    <div class="segmented" role="group" aria-label="${t('theme.label')}">${(['auto', 'light', 'dark'] as const).map((m) =>
+      html`<button name="theme" value="${m}"${theme === m ? raw(' aria-pressed="true"') : raw(' aria-pressed="false"')}>${t(`theme.${m}` as 'theme.auto').split(' (')[0]}</button>`)}</div>
+  </form>`;
+}
+
 export async function chrome(ctx: PageContext, main: Raw, title: string) {
+  const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme };
+  const t = ctx.locale.t;
   if (ctx.dialog)
     return documentShell(`${title} · ${ctx.app.name}`, html`<main class="t-dialog-main" id="main">${main}</main>`, 't-dialog-page', {
       'data-base': ctx.base,
       'data-page': String(ctx.page.page_no),
       'data-dialog': '1',
-    }, themeStyle(ctx.app.theme));
+    }, themeStyle(ctx.app.theme), root);
 
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
   const nav = await navTree(ctx, topNav);
   return documentShell(
     `${title} · ${ctx.app.name}`,
-    html`<a class="skip-link" href="#main">Skip to content</a>
+    html`<a class="skip-link" href="#main">${t('common.skip')}</a>
     <header class="t-header">
-      <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="Toggle navigation" aria-controls="t-nav">${icon('menu')}</a>
+      <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="${t('common.toggle_nav')}" aria-controls="t-nav">${icon('menu')}</a>
       <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
       <span class="t-spacer"></span>
       ${ctx.app.authentication !== 'none'
@@ -139,15 +166,20 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
           ? html`<details class="menu t-user">
               <summary>${icon('user')}<span>${ctx.user}</span></summary>
               <div class="menu-panel align-right">
-                <div class="menu-section"><strong>${ctx.user}</strong>${ctx.roles.length ? html`<div class="muted">Roles: ${ctx.roles.join(', ')}</div>` : ''}</div>
+                <div class="menu-section"><strong>${ctx.user}</strong>${ctx.roles.length ? html`<div class="muted">${t('account.roles')}: ${ctx.roles.join(', ')}</div>` : ''}</div>
+                <div class="menu-section"><a href="${ctx.base}/account">${icon('user')} ${t('account.menu')}</a></div>
+                ${themeSwitch(ctx, here(ctx))}
                 <form method="post" action="${ctx.base}/logout" class="menu-section">
                   <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
-                  <button class="link-button plain">${icon('logout')} Sign out</button>
+                  <button class="link-button plain">${icon('logout')} ${t('login.sign_out')}</button>
                 </form>
               </div>
             </details>`
-          : html`<a href="${ctx.base}/login">Sign in</a>`
-        : ''}
+          : html`<a href="${ctx.base}/login">${t('login.sign_in_link')}</a>`
+        : ctx.locale.themeChoice
+          ? html`<details class="menu t-user"><summary>${icon('settings')}<span class="sr-only">${t('theme.label')}</span></summary>
+              <div class="menu-panel align-right">${themeSwitch(ctx, here(ctx))}</div></details>`
+          : ''}
     </header>
     <div class="t-body">
       <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
@@ -157,10 +189,15 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     `t-app${topNav ? ' nav-top' : ''}`,
     { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no) },
     themeStyle(ctx.app.theme),
+    root,
   );
 }
 
+/** The current page's URL (for returning after a preference change). */
+const here = (ctx: PageContext) => `${ctx.base}/${ctx.page.page_no}`;
+
 export async function renderPage(ctx: PageContext) {
+  const t = ctx.locale.t;
   const hidden = initiallyHidden(ctx);
   const defaultButton = [...ctx.vis!.buttons.values()].find((b) => b.hot && b.action === 'submit');
   const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);
@@ -179,10 +216,10 @@ export async function renderPage(ctx: PageContext) {
         </div>`}
     <div class="t-content">
       <div class="messages" aria-live="polite">
-        ${ctx.messages.map((m) => html`<div class="alert alert-success" role="status">${m}<button type="button" class="alert-close" aria-label="Dismiss">×</button></div>`)}
+        ${ctx.messages.map((m) => html`<div class="alert alert-success" role="status">${m}<button type="button" class="alert-close" aria-label="${t('common.dismiss')}">×</button></div>`)}
         ${ctx.errors.page.map((m) => html`<div class="alert alert-error" role="alert">${m}</div>`)}
         ${Object.keys(ctx.errors.items).length && !ctx.errors.page.length
-          ? html`<div class="alert alert-error" role="alert">Please correct the errors below.</div>`
+          ? html`<div class="alert alert-error" role="alert">${t('error.correct_below')}</div>`
           : ''}
       </div>
       <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}" novalidate>
@@ -205,8 +242,10 @@ export async function renderPage(ctx: PageContext) {
 export function dialogClosePage(ctx: PageContext) {
   return documentShell(
     ctx.app.name,
-    html`<main class="t-dialog-main"><p>Done. <a href="${ctx.base}/${ctx.app.home_page}">Continue</a></p></main>`,
+    html`<main class="t-dialog-main"><p>${ctx.locale.t('dialog.done')} <a href="${ctx.base}/${ctx.app.home_page}">${ctx.locale.t('dialog.continue')}</a></p></main>`,
     't-dialog-page',
     { 'data-dialog-close': '1' },
+    '',
+    { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme },
   );
 }

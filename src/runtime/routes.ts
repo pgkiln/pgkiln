@@ -4,6 +4,8 @@ import { appTx, runtime, savepoint } from '../db.ts';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
 import { accountRoles, loadApp, loadPage, type App, type Page } from '../metadata.ts';
+import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
+import { english, type Translate } from '../i18n.ts';
 import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
 import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn } from '../sso.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
@@ -13,25 +15,41 @@ import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesse
 import { MULTI_VALUE, renderItem } from './items.ts';
 import { renderRegion } from './regions.ts';
 import { reportCsv, normaliseReportParams } from './report.ts';
-import { chrome, dialogClosePage, renderPage } from './render.ts';
+import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
+import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
 type Params = { alias: string; page?: string; id?: string; item?: string };
 type Body = Record<string, string | undefined>;
-type Req = FastifyRequest<{ Params: Params; Body: Body }>;
+export type Req = FastifyRequest<{ Params: Params; Body: Body }>;
 
 const list = (s: string | null | undefined) => (s ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
 
-function simplePage(reply: FastifyReply, code: number, title: string, message: string, back?: string) {
+export function simplePage(reply: FastifyReply, code: number, title: string, message: string, back?: string, locale?: Locale) {
+  const t = locale?.t ?? english;
   return reply
     .code(code)
     .type('text/html')
     .send(
       documentShell(
         title,
-        html`<main class="t-error"><div class="card"><h1>${title}</h1><p>${message}</p>${back ? html`<p><a class="btn" href="${back}">Go back</a></p>` : ''}</div></main>`,
+        html`<main class="t-error"><div class="card"><h1>${title}</h1><p>${message}</p>${back ? html`<p><a class="btn" href="${back}">${t('common.back')}</a></p>` : ''}</div></main>`,
         'login-body',
+        {},
+        '',
+        rootAttrs(locale),
       ),
     );
+}
+
+export const rootAttrs = (locale?: Locale) => (locale ? { lang: locale.lang, dir: locale.dir, theme: locale.theme } : {});
+
+/** Load an app with its texts in the request's language. */
+export async function appWithLocale(req: FastifyRequest, alias: string, session?: Session) {
+  const app = await loadApp(alias);
+  if (!app) return undefined;
+  const locale = await resolveLocale(req, app, session);
+  if (locale.lang !== app.language) translateApp(app, locale.tr);
+  return { app, locale };
 }
 
 export const safeNext = (app: App, next: string | undefined) =>
@@ -55,13 +73,22 @@ export async function completeLogin(
   await destroySession(reply, oldSession, base);
   const s = await createSession(reply, a.id, base, username, roles);
   logActivity({ appId: a.id, username, event: 'login', ip: clientIp(req), detail });
+  // the account's preferences: light/dark and language
+  const pref = await runtime.one<{ theme_pref: string; language: string | null }>(
+    'select theme_pref, language from meta.account where lower(username) = lower($1)', [username]);
+  if (pref) {
+    s.state.__THEME = pref.theme_pref;
+    if (pref.language) s.state.__LANG = pref.language;
+    if (a.theme?.user_choice !== false) reply.setCookie(THEME_COOKIE, pref.theme_pref, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
+  }
+  await saveState(s);
 
   if (a.app_processes.some((p) => p.point === 'after_login')) {
     const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [] } as unknown as Page);
     const ctx: PageContext = {
       app: a, page: home, session: s, base, params: new URLSearchParams(), request: '', user: username,
       roles, ip: clientIp(req), errors: { page: [], items: {} }, messages: [],
-      dialog: false, authzCache: new Map(), detached: [],
+      dialog: false, authzCache: new Map(), detached: [], locale: await resolveLocale(req, a, s),
     };
     await appTx(txContext(ctx), async (c) => {
       ctx.client = c;
@@ -72,27 +99,33 @@ export async function completeLogin(
   return reply.redirect(safeNext(a, next), 303);
 }
 
-const txContext = (ctx: PageContext) => ({
+export const txContext = (ctx: PageContext) => ({
   appId: ctx.app.id,
   alias: ctx.app.alias,
   dbRole: ctx.app.db_role,
   appUser: ctx.user,
   sessionId: ctx.session.id,
+  lang: ctx.locale.lang,
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */
-async function loadContext(req: Req, reply: FastifyReply, { json = false } = {}): Promise<PageContext | null> {
+export async function loadContext(req: Req, reply: FastifyReply, { json = false, pageNo: fixedPage }: { json?: boolean; pageNo?: 'home' } = {}): Promise<PageContext | null> {
   const app = await loadApp(req.params.alias);
-  if (!app) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`), null;
+  if (!app) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias })), null;
   const base = `/a/${app.alias}`;
-  const pageNo = Number(req.params.page);
-  const page = Number.isInteger(pageNo) && pageNo > 0 ? await loadPage(app.id, pageNo) : undefined;
-  if (!page) return simplePage(reply, 404, 'Not found', `Page ${req.params.page} does not exist in ${app.name}.`, base), null;
   const session = await getSession(req, reply, app.id, base);
+  const langBefore = session.state.__LANG;
+  const locale = await resolveLocale(req, app, session);
+  if (session.state.__LANG !== langBefore) await saveState(session);
+  if (locale.lang !== app.language) translateApp(app, locale.tr);
+  const pageNo = fixedPage === 'home' ? app.home_page : Number(req.params.page);
+  const page = Number.isInteger(pageNo) && pageNo > 0 ? await loadPage(app.id, pageNo) : undefined;
+  if (!page) return simplePage(reply, 404, locale.t('error.not_found'), locale.t('error.page_not_found', { page: req.params.page, app: app.name }), base, locale), null;
+  if (locale.lang !== app.language) translatePage(page, locale.tr);
   const user = app.authentication === 'none' ? 'nobody' : (session.username ?? 'nobody');
 
-  if (app.authentication !== 'none' && page.requires_auth && !session.username) {
-    if (json) reply.code(401).send({ error: 'Your session has ended. Please sign in again.' });
+  if (app.authentication !== 'none' && (page.requires_auth || fixedPage) && !session.username) {
+    if (json) reply.code(401).send({ error: locale.t('error.session_ended') });
     else reply.redirect(`${base}/login?next=${encodeURIComponent(req.url)}`);
     return null;
   }
@@ -111,18 +144,20 @@ async function loadContext(req: Req, reply: FastifyReply, { json = false } = {})
     dialog: false,
     authzCache: new Map(),
     detached: [],
+    locale,
   };
 }
 
 async function forbidden(ctx: PageContext, reply: FastifyReply, message: string, detail: string) {
   logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail });
-  const main = html`<div class="t-titlebar"><h1>Access denied</h1></div>
+  const t = ctx.locale.t;
+  const main = html`<div class="t-titlebar"><h1>${t('error.access_denied')}</h1></div>
     <div class="t-content"><div class="alert alert-error" role="alert">${message}</div>
-    <p><a class="btn" href="${ctx.base}/${ctx.app.home_page}">Go to the home page</a></p></div>`;
+    <p><a class="btn" href="${ctx.base}/${ctx.app.home_page}">${t('common.home')}</a></p></div>`;
   ctx.vis = { regions: new Set(), items: new Set(), editable: new Set(), buttons: new Map(), dynamicActions: new Set() };
   const body = await appTx(txContext(ctx), async (c) => {
     ctx.client = c;
-    return chrome(ctx, main, 'Access denied');
+    return chrome(ctx, main, t('error.access_denied'));
   });
   return reply.code(403).type('text/html').send(body);
 }
@@ -177,7 +212,7 @@ async function renderResponse(ctx: PageContext, reply: FastifyReply, code = 200)
 export async function runtimeRoutes(app: FastifyInstance) {
   app.get<{ Params: Params }>('/a/:alias', async (req, reply) => {
     const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
+    if (!a) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
     return reply.redirect(`/a/${a.alias}/${a.home_page}`);
   });
 
@@ -191,7 +226,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const normalised = normaliseReportParams(ctx.params);
     if (normalised !== null) return reply.redirect(`${ctx.base}/${ctx.page.page_no}${normalised ? `?${normalised}` : ''}`);
 
-    if (!applyUrlItems(ctx)) return forbidden(ctx, reply, 'This link is invalid or has been tampered with (checksum error).', `checksum error: ${req.url}`);
+    if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
     const flash = takeFlash(ctx.session);
     if (flash) ctx.messages.push(flash);
     const csvKey = [...ctx.params.keys()].find((k) => /^r\d+_csv$/.test(k));
@@ -211,7 +246,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await computeVisibility(ctx);
         if (csvKey) {
           const region = ctx.page.regions.find((r) => `r${r.id}_csv` === csvKey && r.type === 'report' && ctx.vis!.regions.has(r.id));
-          if (!region) throw new Forbidden('That report is not available.');
+          if (!region) throw new Forbidden(ctx.locale.t('error.report_unavailable'));
           return { csv: await reportCsv(ctx, region), name: `${(region.title ?? 'report').replace(/[^\w-]+/g, '_')}.csv` };
         }
         return { html: await renderPage(ctx) };
@@ -236,7 +271,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     ctx.dialog = body.__dialog === '1';
     const self = `${ctx.base}/${ctx.page.page_no}${ctx.dialog ? '?dialog=1' : ''}`;
     if (body.__csrf !== ctx.session.csrf_token)
-      return simplePage(reply, 403, 'Session expired', 'Your session changed or expired. Reload the page and try again.', self);
+      return simplePage(reply, 403, ctx.locale.t('error.session_changed_title'), ctx.locale.t('error.session_changed'), self, ctx.locale);
 
     let messages: string[] = [];
     let button;
@@ -251,7 +286,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const vis = await computeVisibility(ctx);
         const requested = body.__request ?? '';
         const pressed = requested ? vis.buttons.get(requested) : undefined;
-        if (requested && pressed?.action !== 'submit') throw new Forbidden('That action is not available to you.');
+        if (requested && pressed?.action !== 'submit') throw new Forbidden(ctx.locale.t('error.action_unavailable'));
         applyPostedItems(ctx, body);
         if (!pressed) return undefined;
         ctx.request = pressed.name;
@@ -287,7 +322,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ctx = await loadContext(req, reply, { json: true });
     if (!ctx) return;
     const body = req.body ?? {};
-    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: 'Session expired; reload the page.' });
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
     ctx.params = new URLSearchParams(body.__url_params ?? '');
     try {
       const result = await appTx(txContext(ctx), async (c) => {
@@ -295,7 +330,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await checkPageAccess(ctx);
         let vis = await computeVisibility(ctx);
         const da = ctx.page.dynamic_actions.find((d) => d.id === Number(req.params.id));
-        if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden('Unknown dynamic action.');
+        if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         applyPostedItems(ctx, body, list(da.items_to_submit));
         const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string> } = { items: {}, itemsHtml: {}, regions: {} };
         const affected = list(da.affected_items).filter((n) => vis.items.has(n));
@@ -336,14 +371,14 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ctx = await loadContext(req, reply, { json: true });
     if (!ctx) return;
     const body = req.body ?? {};
-    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: 'Session expired; reload the page.' });
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
     try {
       const out = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
         await checkPageAccess(ctx);
         const vis = await computeVisibility(ctx);
         const item = ctx.page.items.find((i) => i.name === req.params.item && i.config?.cascade_parents);
-        if (!item || !vis.editable.has(item.name)) throw new Forbidden('Unknown item.');
+        if (!item || !vis.editable.has(item.name)) throw new Forbidden(ctx.locale.t('error.unknown_item'));
         applyPostedItems(ctx, body, list(item.config.cascade_parents));
         ctx.session.state[item.name] = null; // the old value may not be in the new list
         return { html: (await renderItem(ctx, item)).toString() };
@@ -357,109 +392,180 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- login / logout
-  const loginPage = async (app: App, session: Session, next: string, error?: string) => {
+  const loginPage = async (app: App, locale: Locale, session: Session, next: string, error?: string) => {
+    const t = locale.t;
     const providers = await enabledProviders(app.sso_providers ?? []);
     const nextQs = next ? `?next=${encodeURIComponent(next)}` : '';
     return documentShell(
-      `Sign in · ${app.name}`,
+      `${t('login.title')} · ${app.name}`,
       html`<main class="login">
         <div class="card login-card">
           <h1>${app.name}</h1>
           ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
+          ${((f) => (f ? html`<div class="alert alert-success" role="status">${f}</div>` : ''))(takeFlash(session))}
           ${providers.length
             ? html`<div class="sso-buttons">${providers.map(
-                (pr) => html`<a class="btn${app.local_login ? '' : ' btn-hot'}" href="/a/${app.alias}/sso/${pr.name}${nextQs}">Sign in with ${pr.display_name}</a>`,
-              )}</div>${app.local_login ? html`<div class="or" role="separator"><span>or</span></div>` : ''}`
+                (pr) => html`<a class="btn${app.local_login ? '' : ' btn-hot'}" href="/a/${app.alias}/sso/${pr.name}${nextQs}">${t('login.with', { provider: pr.display_name })}</a>`,
+              )}</div>${app.local_login ? html`<div class="or" role="separator"><span>${t('login.or')}</span></div>` : ''}`
             : ''}
           ${app.local_login
             ? html`<form method="post" class="login-form">
                 <input type="hidden" name="__csrf" value="${session.csrf_token}">
                 <input type="hidden" name="next" value="${next}">
-                <div class="field"><label class="label" for="username">Username</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
-                <div class="field"><label class="label" for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
-                <button class="btn btn-hot">Sign in</button>
+                <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
+                <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
+                <button class="btn btn-hot">${t('login.submit')}</button>
               </form>`
-            : providers.length ? '' : html`<p>No sign-in method is configured for this application.</p>`}
+            : providers.length ? '' : html`<p>${t('login.none')}</p>`}
+          ${languagePicker(app, locale, `/a/${app.alias}/login${nextQs}`)}
         </div>
       </main>`,
       'login-body',
+      {},
+      '',
+      rootAttrs(locale),
     );
   };
 
-  app.get<{ Params: Params; Querystring: { next?: string } }>('/a/:alias/login', async (req, reply) => {
-    const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
-    if (a.authentication === 'none') return reply.redirect(`/a/${a.alias}`);
+  /** Change an expired password (or one that must change at first use) before signing in. */
+  const expiredPage = (app: App, locale: Locale, session: Session, username: string, next: string, error?: string) => {
+    const t = locale.t;
+    return documentShell(
+      `${t('password.expired.title')} · ${app.name}`,
+      html`<main class="login">
+        <div class="card login-card">
+          <h1>${t('password.expired.title')}</h1>
+          ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : html`<p class="muted">${t('password.expired.text')}</p>`}
+          <form method="post" action="/a/${app.alias}/password" class="login-form">
+            <input type="hidden" name="__csrf" value="${session.csrf_token}">
+            <input type="hidden" name="next" value="${next}">
+            <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" value="${username}" autocomplete="username" readonly></div>
+            <div class="field"><label class="label" for="password">${t('password.current')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200" autofocus></div>
+            <div class="field"><label class="label" for="new_password">${t('password.new')}</label><input id="new_password" name="new_password" type="password" autocomplete="new-password" required maxlength="200"></div>
+            <div class="field"><label class="label" for="confirm_password">${t('password.confirm')}</label><input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required maxlength="200"></div>
+            <button class="btn btn-hot">${t('password.change')}</button>
+          </form>
+        </div>
+      </main>`,
+      'login-body',
+      {},
+      '',
+      rootAttrs(locale),
+    );
+  };
+
+  /** Common start of the sign-in POST handlers: app, session, CSRF, throttling. */
+  const loginRequest = async (req: Req, reply: FastifyReply) => {
+    const loaded = await appWithLocale(req, req.params.alias);
+    if (!loaded) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias })), null;
+    const { app: a, locale } = loaded;
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
-    return reply.type('text/html').send(await loginPage(a, session, safeNext(a, req.query.next)));
+    const { username = '', next } = req.body ?? {};
+    const ip = clientIp(req);
+    const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
+    if (req.body?.__csrf !== session.csrf_token) return fail(locale.t('login.expired_session'), 403), null;
+    if (!a.local_login) return fail(locale.t('login.password_disabled'), 403), null;
+    if (await loginThrottled(a.id, username, ip)) {
+      logActivity({ appId: a.id, username, event: 'login_locked', ip });
+      return fail(locale.t('login.throttled', { minutes: LOGIN_WINDOW_MINUTES }), 429), null;
+    }
+    return { a, locale, session, username: username.slice(0, 100), next, ip, fail };
+  };
+
+  app.get<{ Params: Params; Querystring: { next?: string } }>('/a/:alias/login', async (req, reply) => {
+    const a0 = await loadApp(req.params.alias);
+    if (!a0) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
+    if (a0.authentication === 'none') return reply.redirect(`/a/${a0.alias}`);
+    const session = await getSession(req, reply, a0.id, `/a/${a0.alias}`);
+    const { app: a, locale } = (await appWithLocale(req, req.params.alias, session))!;
+    const body = await loginPage(a, locale, session, safeNext(a, req.query.next));
+    await saveState(session);
+    return reply.type('text/html').send(body);
   });
 
   app.post('/a/:alias/login', async (req: Req, reply) => {
-    const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
-    const base = `/a/${a.alias}`;
-    const session = await getSession(req, reply, a.id, base);
-    const { username = '', password = '', next } = req.body ?? {};
-    const ip = clientIp(req);
-    const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, session, safeNext(a, next), msg));
-
-    if (req.body?.__csrf !== session.csrf_token) return fail('Your session expired. Please try again.', 403);
-    if (!a.local_login) return fail('Password sign-in is not enabled for this application.', 403);
-
-    if (await loginThrottled(a.id, username, ip)) {
-      logActivity({ appId: a.id, username, event: 'login_locked', ip });
-      return fail(`Too many failed sign-in attempts. Try again in ${LOGIN_WINDOW_MINUTES} minutes.`, 429);
-    }
-
-    const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username.slice(0, 100), password.slice(0, 200)]);
+    const r0 = await loginRequest(req, reply);
+    if (!r0) return;
+    const { a, locale, session, username, next, ip, fail } = r0;
+    const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username, (req.body?.password ?? '').slice(0, 200)]);
     if (!r?.username) {
-      await logActivity({ appId: a.id, username: username.slice(0, 100), event: 'login_failed', ip });
-      return fail('Invalid username or password.');
+      await logActivity({ appId: a.id, username, event: 'login_failed', ip });
+      return fail(locale.t('login.invalid'));
     }
-
+    if ((await passwordDaysLeft(r.username)) === 0) {
+      logActivity({ appId: a.id, username: r.username, event: 'password_expired', ip });
+      return reply.type('text/html').send(expiredPage(a, locale, session, r.username, safeNext(a, next)));
+    }
     return completeLogin(req, reply, a, session, r.username, { next });
+  });
+
+  app.post('/a/:alias/password', async (req: Req, reply) => {
+    const r0 = await loginRequest(req, reply);
+    if (!r0) return;
+    const { a, locale, session, username, next, ip } = r0;
+    const b = req.body ?? {};
+    const again = (msg: string, code = 422) => reply.code(code).type('text/html').send(expiredPage(a, locale, session, username, safeNext(a, next), msg));
+    if (b.new_password !== b.confirm_password) return again(locale.t('password.mismatch'));
+    const problem = await passwordProblem(b.new_password, { username, t: locale.t });
+    if (problem) return again(problem);
+    let ok = false;
+    try {
+      ok = !!(await runtime.one('select meta.change_password($1, $2, $3, $4) as ok', [a.id, username, (b.password ?? '').slice(0, 200), b.new_password]))?.ok;
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P0001') return again(locale.t('password.same_as_old'));
+      throw e;
+    }
+    if (!ok) {
+      await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: 'password change' });
+      return again(locale.t('password.wrong_current'), 401);
+    }
+    logActivity({ appId: a.id, username, event: 'password_changed', ip });
+    const canonical = (await runtime.one<{ username: string }>('select username from meta.account where lower(username) = lower($1)', [username]))!.username;
+    return completeLogin(req, reply, a, session, canonical, { next });
   });
 
   // ---------------------------------------------------------------- single sign-on (OpenID Connect)
   const SSO_COOKIE = 'pgapex_sso';
 
   app.get<{ Params: { alias: string; provider: string }; Querystring: { next?: string } }>('/a/:alias/sso/:provider', async (req, reply) => {
-    const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
+    const loaded = await appWithLocale(req, req.params.alias);
+    if (!loaded) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
+    const { app: a, locale } = loaded;
     const p = a.sso_providers.includes(req.params.provider) ? await loadProvider(req.params.provider) : undefined;
-    if (!p) return simplePage(reply, 404, 'Not found', 'This sign-in method is not available.', `/a/${a.alias}/login`);
+    if (!p) return simplePage(reply, 404, locale.t('error.not_found'), locale.t('login.method_unavailable'), `/a/${a.alias}/login`, locale);
     try {
       const { url, browserKey } = await startSignIn(p, a.id, safeNext(a, req.query.next));
       reply.setCookie(SSO_COOKIE, browserKey, { path: '/sso', httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 600 });
       return reply.redirect(url);
     } catch (e) {
       req.log.warn({ err: e }, 'sso start failed');
-      return simplePage(reply, 502, 'Sign-in unavailable', `Could not reach ${p.display_name}. Please try again later.`, `/a/${a.alias}/login`);
+      return simplePage(reply, 502, locale.t('login.unavailable_title'), locale.t('login.sso_unavailable', { provider: p.display_name }), `/a/${a.alias}/login`, locale);
     }
   });
 
   app.get<{ Params: { provider: string } }>('/sso/callback/:provider', async (req, reply) => {
     const ip = clientIp(req);
     const p = await loadProvider(req.params.provider);
-    if (!p) return simplePage(reply, 404, 'Not found', 'Unknown identity provider.');
+    if (!p) return simplePage(reply, 404, english('error.not_found'), english('login.unknown_provider'));
     const browserKey = req.cookies[SSO_COOKIE];
     reply.clearCookie(SSO_COOKIE, { path: '/sso' });
     let result;
     try {
       result = await finishSignIn(p, new URLSearchParams(req.url.split('?')[1] ?? ''), browserKey);
     } catch (e) {
-      const msg = e instanceof SsoError ? e.message : 'The sign-in could not be completed.';
+      const msg = e instanceof SsoError ? e.message : english('login.sso_incomplete');
       if (!(e instanceof SsoError)) req.log.warn({ err: e }, 'sso callback failed');
       logActivity({ event: 'login_failed', ip, detail: `sso:${p.name}: ${msg}` });
-      return simplePage(reply, 403, 'Sign-in failed', msg);
+      return simplePage(reply, 403, english('login.sso_failed'), msg);
     }
     const alias = (await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [result.appId]))?.alias;
-    const a = alias ? await loadApp(alias) : undefined;
-    if (!a || !a.sso_providers.includes(p.name)) return simplePage(reply, 403, 'Sign-in failed', 'This sign-in method is not available.');
+    const loaded = alias ? await appWithLocale(req, alias) : undefined;
+    if (!loaded || !loaded.app.sso_providers.includes(p.name)) return simplePage(reply, 403, english('login.sso_failed'), english('login.method_unavailable'));
+    const { app: a, locale } = loaded;
     const access = await ssoAccess(a.id, result.username, result.groups);
     if (!access.allowed) {
       logActivity({ appId: a.id, username: result.username, event: 'login_failed', ip, detail: `sso:${p.name}: no access` });
-      return simplePage(reply, 403, 'No access', `Your account (${result.username}) has no access to ${a.name}. Ask an administrator.`, `/a/${a.alias}/login`);
+      return simplePage(reply, 403, locale.t('login.no_access_title'), locale.t('login.no_access', { user: result.username, app: a.name }), `/a/${a.alias}/login`, locale);
     }
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
     return completeLogin(req, reply, a, session, result.username, { extraRoles: access.roles, next: result.next ?? undefined, detail: `sso:${p.name}` });
@@ -468,7 +574,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // Sign-out is a POST with a CSRF token (a GET could be triggered by any site).
   app.post('/a/:alias/logout', async (req: Req, reply) => {
     const a = await loadApp(req.params.alias);
-    if (!a) return simplePage(reply, 404, 'Not found', `Application "${req.params.alias}" does not exist.`);
+    if (!a) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
     const base = `/a/${a.alias}`;
     const session = await getSession(req, reply, a.id, base);
     if (req.body?.__csrf !== session.csrf_token) return reply.redirect(`${base}/${a.home_page}`, 303);

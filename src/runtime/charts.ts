@@ -1,3 +1,4 @@
+import type { Translate } from '../i18n.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { cell } from './report.ts';
 
@@ -21,8 +22,10 @@ interface Series {
 }
 
 const MAX_SERIES = 8;
-const fmt = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
-const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+// Set per chart (rendering is synchronous) to the language of the request.
+let fmt = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
+let compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+let texts = { table: 'Data table', other: 'Other', label: 'Label', noSeries: 'The chart query must return a label column and at least one numeric column.' };
 const pct = (v: number) => `${Math.max(0, Math.min(100, v)).toFixed(3)}%`;
 
 /** Round axis bounds and 4-6 clean ticks (0, 1,000, 2,000, …). */
@@ -55,7 +58,7 @@ function legend(series: Series[]) {
 }
 
 function dataTable(title: string, labels: string[], series: Series[], labelHeading: string) {
-  return html`<details class="chart-data"><summary>Data table</summary>
+  return html`<details class="chart-data"><summary>${texts.table}</summary>
     <div class="table-wrap"><table class="report">
       <caption class="sr-only">${title}</caption>
       <thead><tr><th scope="col">${labelHeading}</th>${series.map((s) => html`<th scope="col" class="num">${s.name}</th>`)}</tr></thead>
@@ -160,7 +163,7 @@ function donut(labels: string[], series: Series[]) {
   if (entries.length > 6) {
     entries.sort((a, b) => b.value - a.value);
     const rest = entries.slice(5).reduce((a, e) => a + e.value, 0);
-    entries = [...entries.slice(0, 5), { label: 'Other', value: rest }];
+    entries = [...entries.slice(0, 5), { label: texts.other, value: rest }];
   }
   const total = entries.reduce((a, e) => a + e.value, 0) || 1;
   const R = 15.9155; // circumference 100
@@ -183,9 +186,16 @@ function donut(labels: string[], series: Series[]) {
   </div>`;
 }
 
-export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[]): Raw {
+export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], lang = 'en', t?: Translate): Raw {
+  try {
+    fmt = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
+    compact = new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 });
+  } catch {
+    // unknown locale: keep the previous formats
+  }
+  if (t) texts = { ...texts, table: t('chart.table'), other: t('chart.other'), label: t('chart.label') };
   const { labels, series } = parse(rows, fields);
-  if (!series.length) return html`<p class="empty">The chart query must return a label column and at least one numeric column.</p>`;
+  if (!series.length) return html`<p class="empty">${texts.noSeries}</p>`;
   let body: Raw;
   switch (kind) {
     case 'column':
@@ -204,6 +214,6 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
   return html`<figure class="chart chart-${kind}" aria-label="${title}">
     ${kind === 'donut' ? '' : legend(series)}
     ${body}
-    ${dataTable(title, labels, series, fields[0]?.name ?? 'Label')}
+    ${dataTable(title, labels, series, fields[0]?.name ?? texts.label)}
   </figure>`;
 }

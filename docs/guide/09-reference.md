@@ -11,6 +11,9 @@ triggers, your own functions).
 | `meta.app_id()` | int | The current application's id (in PostgREST: the app named in the token) |
 | `meta.has_role(role)` | boolean | Whether the current user has the role in this application (roles are resolved at sign-in; in PostgREST: the token's `roles` claim or the account's roles in the token's app) |
 | `meta.jwt_claims()` | jsonb | The verified JWT claims of a PostgREST request, or NULL |
+| `meta.app_language()` | text | The language of the request (`nl`, `en-GB`, …) |
+| `meta.message(name, variadic params)` | text | A text message in the current language, `%0`…`%9` replaced; falls back to the base and primary language |
+| `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
@@ -32,6 +35,9 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 | `meta.hash_password(text)` | A bcrypt hash for `meta.app_user.password_hash` / `meta.developer.password_hash` |
 | `meta.authenticate(app_id, username, password)` | Username on success, NULL otherwise, including when the account has no access to the app (used by the login page) |
 | `meta.account_roles(app_id, username)` | The account's roles in an application |
+| `meta.set_password(username, password, change_on_first_use default true)` | Set a password (ends the account's sessions) |
+| `meta.expire_password(username)`, `meta.unexpire_password(username)` | Require (or no longer require) a new password at the next sign-in |
+| `meta.change_password(app_id, username, old, new, keep_session)` | Change a password knowing the current one (used by My account; runtime only) |
 | `meta.api_check()` | PostgREST's pre-request function (`db-pre-request`): rejects tokens whose app doesn't use the current role as its API role, or whose account is inactive or has no access |
 
 ## Metadata tables
@@ -53,6 +59,8 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `sso_providers` | text[] | Names of identity providers offered on the login page |
 | `db_role` | text | Database role every request runs as |
 | `api_role` | text | Database role of REST API tokens for this app (PostgREST switches to it) |
+| `language`, `languages`, `language_from` | text, text[], text | Primary language, translated languages, `browser` / `user` / `primary` |
+| `date_format`, `timestamp_format` | text | Display masks (e.g. `DD-MM-YYYY`); NULL: the language's default |
 | `debug` | boolean | Show database error details to users |
 | `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top"}` |
 
@@ -126,12 +134,15 @@ needed and grants access; deleting revokes access.
 | Table | Contents | Readable by the runtime role |
 |---|---|---|
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
-| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `logout`, `error`, `forbidden`, `api_token`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
+| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
 | `developer` | Builder accounts | no |
 | `auth_provider` | OpenID Connect providers: `name`, `display_name`, `issuer`, `client_id`, `client_secret`, `scopes`, `username_claim`, `groups_claim`, `auto_create`, `enabled` | no |
 | `account_identity` | Links an account to a provider's subject (`provider_id`, `subject`, `account_id`) | no |
 | `sso_pending` | Sign-ins in progress (state, PKCE verifier, nonce; kept for 10 minutes) | no |
 | `instance_setting` | Secrets, e.g. the URL checksum key | no |
+| `setting` | Account settings: `password_min_length`, `password_require_mixed`, `password_lifetime_days` | yes (read) |
+| `text_message` | Per app: `name`, `language`, `text` | yes |
+| `translation` | Per app and language: `source` (primary-language text) → `target` | yes |
 
 Retention: expired sessions are purged automatically. The activity log is kept until you delete
 from it, for example with a scheduled
@@ -173,6 +184,9 @@ Usable in navigation entries and cards (`icon` column):
 | `GET/POST /a/:alias/login`, `POST /a/:alias/logout` | Sign in and out |
 | `GET /a/:alias/sso/:provider` | Start single sign-on with a provider |
 | `GET /sso/callback/:provider` | OpenID Connect redirect URI |
+| `POST /a/:alias/password` | Change an expired password while signing in |
+| `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme` | My account, own password, the light/dark switch |
+| any page `?lang=xx` | Switch the language for the session |
 | `/builder/...` | Builder |
 | PostgREST (separate service, `API_URL`) | REST API of each app's `api` schema, see [chapter 13](13-rest-api.md) |
 | `/static/...` | CSS, JavaScript, icons |

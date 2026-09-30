@@ -83,6 +83,28 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('account pages fit; the theme switch and Dutch work', async () => {
+      const anon = await (await browser.newContext({ viewport: size, locale: 'nl-NL' })).newPage();
+      await anon.goto(`${base}/a/hr/login`);
+      assert.equal(await anon.locator('html').getAttribute('lang'), 'nl');
+      await check(anon, 'app-login-nl', vp);
+      await anon.context().close();
+
+      const page = await (await browser.newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      await page.goto(`${base}/a/hr/account`);
+      await check(page, 'app-account', vp);
+      await page.click('.t-user summary');
+      await check(page, 'app-user-menu', vp);
+      await Promise.all([page.waitForNavigation(), page.click('.theme-switch button[value="dark"]')]);
+      assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+      const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+      assert.notEqual(bg, 'rgb(243, 244, 246)', 'dark background');
+      await check(page, 'app-account-dark', vp);
+      await owner.query(`update meta.account set theme_pref = 'auto' where username = 'king'`);
+      await page.context().close();
+    });
+
     test('navigation is reachable', async () => {
       const page = await (await browser.newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
@@ -128,6 +150,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         settings: `/builder/apps/${appId}/settings`,
         activity: `/builder/apps/${appId}/activity`,
         api: `/builder/apps/${appId}/api`,
+        globalization: `/builder/apps/${appId}/globalization?lang=nl`,
         designer: `/builder/pages/${pageId}`,
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',

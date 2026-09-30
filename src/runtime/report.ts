@@ -7,6 +7,8 @@ import { pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext } from './context.ts';
 import { heading } from './items.ts';
 import { linkAttrs } from './links.ts';
+import type { Translate } from '../i18n.ts';
+import type { Formatter } from './format.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -32,6 +34,10 @@ export const OPERATORS: Record<string, { label: string; sql: (col: string, v: st
 };
 
 const escapeLike = (v: string) => v.replace(/[\\%_]/g, '\\$&');
+
+/** Operator names in the user's language (symbols stay as they are). */
+const opLabel = (t: Translate, op: string) =>
+  ({ contains: t('op.contains'), not_contains: t('op.not_contains'), null: t('op.null'), not_null: t('op.not_null') } as Record<string, string>)[op] ?? OPERATORS[op]?.label ?? op;
 
 interface Filter {
   column: string;
@@ -135,8 +141,10 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
   return sql;
 }
 
-export function cell(v: unknown, typeOid?: number) {
+export function cell(v: unknown, typeOid?: number, fmt?: Formatter) {
   if (v === null || v === undefined) return '';
+  const formatted = fmt?.(v, typeOid);
+  if (formatted !== undefined) return formatted;
   // "2026-09-29 16:06:23.900333+00" -> "2026-09-29 16:06"
   if (typeOid && TIMESTAMP_OIDS.has(typeOid)) return String(v).slice(0, 16);
   if (typeof v === 'boolean') return v ? '✓' : '✗';
@@ -149,7 +157,7 @@ export const visibleColumns = (r: Region, fields: pg.FieldDef[]) => {
   return fields.map((f, i) => ({ f, i })).filter(({ f }) => !hidden.has(f.name.toLowerCase()) && !f.name.startsWith('__'));
 };
 
-export const headingOf = (r: Region, name: string) => r.config.headings?.[name] ?? heading(name);
+export const headingOf = (r: Region, name: string, tr: (s: string) => string = (s) => s) => r.config.headings?.[name] ?? tr(heading(name));
 
 /** CSV download (Actions → Download). Cells that look like formulas are neutralised. */
 export async function reportCsv(ctx: PageContext, r: Region) {
@@ -161,13 +169,14 @@ export async function reportCsv(ctx: PageContext, r: Region) {
     if (!numeric && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const lines = [cols.map(({ f }) => esc(headingOf(r, f.name), false)).join(',')];
+  const lines = [cols.map(({ f }) => esc(headingOf(r, f.name, ctx.locale.tr), false)).join(',')];
   for (const row of res.rows)
     lines.push(cols.map(({ f, i }) => esc(cell(row[i], f.dataTypeID), NUMERIC_OIDS.has(f.dataTypeID))).join(','));
   return `﻿${lines.join('\r\n')}\r\n`;
 }
 
 export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw[]) {
+  const t = ctx.locale.t;
   const c = ctx.client!;
   const st = reportState(ctx, r);
   const searchable = r.config.searchable !== false;
@@ -205,7 +214,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const header = cols.map(({ f, i }) => {
     const pos = i + 1;
     const cls = NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null;
-    const label = headingOf(r, f.name);
+    const label = headingOf(r, f.name, ctx.locale.tr);
     if (r.config.sortable === false) return html`<th scope="col" class="${cls}">${label}</th>`;
     const active = st.sort === pos;
     const href = regionUrl(ctx, r, (p) => {
@@ -220,11 +229,11 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const body = res.rows.map(
     (row) =>
       html`<tr>${cols.map(({ f, i }) => {
-        const text = cell(row[i], f.dataTypeID);
+        const text = cell(row[i], f.dataTypeID, ctx.locale.format);
         const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
-        const label = headingOf(r, f.name);
+        const label = headingOf(r, f.name, ctx.locale.tr);
         return i === linkIdx
-          ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || 'Edit'}</a></td>`
+          ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
           : html`<td class="${cls}" data-label="${label}">${text}</td>`;
       })}</tr>`,
   );
@@ -252,30 +261,30 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       p.delete(key(r, 'p'));
     });
     const op = OPERATORS[f.op];
-    return html`<span class="chip">${headingOf(r, f.column)} ${op.label}${op.noValue ? '' : html` <b>${f.value}</b>`}
-      <a href="${href}" aria-label="Remove filter">×</a></span>`;
+    return html`<span class="chip">${headingOf(r, f.column, ctx.locale.tr)} ${opLabel(t, f.op)}${op.noValue ? '' : html` <b>${f.value}</b>`}
+      <a href="${href}" aria-label="${t('report.remove_filter')}">×</a></span>`;
   });
   if (st.search)
     chips.unshift(
-      html`<span class="chip">Search <b>${st.search}</b> <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'q')); p.delete(key(r, 'p')); })}" aria-label="Clear search">×</a></span>`,
+      html`<span class="chip">${t('report.search_chip')} <b>${st.search}</b> <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'q')); p.delete(key(r, 'p')); })}" aria-label="${t('report.clear_search')}">×</a></span>`,
     );
 
   const actionsMenu = interactive
     ? html`<details class="menu actions-menu">
-        <summary class="btn">Actions <span aria-hidden="true">▾</span></summary>
+        <summary class="btn">${t('report.actions')} <span aria-hidden="true">▾</span></summary>
         <div class="menu-panel">
           <div class="menu-section">
-            <strong>Filter</strong>
+            <strong>${t('report.filter')}</strong>
             <div class="filter-row">
-              <select name="${key(r, 'fc')}" form="${filterForm}" aria-label="Column">${cols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name)}</option>`)}</select>
-              <select name="${key(r, 'fo')}" form="${filterForm}" aria-label="Operator">${Object.entries(OPERATORS).map(([k, o]) => html`<option value="${k}"${k === 'contains' ? raw(' selected') : ''}>${o.label}</option>`)}</select>
-              <input name="${key(r, 'fv')}" form="${filterForm}" aria-label="Value" placeholder="Value">
-              <button class="btn btn-hot" form="${filterForm}">Apply</button>
+              <select name="${key(r, 'fc')}" form="${filterForm}" aria-label="${t('report.column')}">${cols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <select name="${key(r, 'fo')}" form="${filterForm}" aria-label="${t('report.operator')}">${Object.keys(OPERATORS).map((k) => html`<option value="${k}"${k === 'contains' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
+              <input name="${key(r, 'fv')}" form="${filterForm}" aria-label="${t('report.value')}" placeholder="${t('report.value')}">
+              <button class="btn btn-hot" form="${filterForm}">${t('report.apply')}</button>
             </div>
           </div>
           ${r.config.sortable === false
             ? ''
-            : html`<div class="menu-section"><strong>Sort</strong>
+            : html`<div class="menu-section"><strong>${t('report.sort')}</strong>
                 <div class="seg">${cols.map(({ f, i }) => {
                   const pos = i + 1;
                   const active = st.sort === pos;
@@ -285,16 +294,16 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
                     else p.delete(key(r, 'd'));
                     p.delete(key(r, 'p'));
                   });
-                  return html`<a href="${href}"${active ? raw(' aria-current="true"') : ''}>${headingOf(r, f.name)}${active ? (st.desc ? ' ▼' : ' ▲') : ''}</a>`;
+                  return html`<a href="${href}"${active ? raw(' aria-current="true"') : ''}>${headingOf(r, f.name, ctx.locale.tr)}${active ? (st.desc ? ' ▼' : ' ▲') : ''}</a>`;
                 })}</div>
               </div>`}
-          <div class="menu-section"><strong>Rows per page</strong>
+          <div class="menu-section"><strong>${t('report.rows_per_page')}</strong>
             <div class="seg">${PAGE_SIZES.map((n) =>
               html`<a href="${regionUrl(ctx, r, (p) => { p.set(key(r, 'n'), String(n)); p.delete(key(r, 'p')); })}"${n === st.size ? raw(' aria-current="true"') : ''}>${n}</a>`)}</div>
           </div>
           <div class="menu-section menu-links">
-            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>⤓ Download CSV</a>
-            <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">↺ Reset report</a>
+            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>⤓ ${t('report.download')}</a>
+            <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">↺ ${t('report.reset')}</a>
           </div>
         </div>
       </details>`
@@ -306,8 +315,8 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
           ${filterItems}
           ${searchable
             ? html`<div class="search" role="search">
-                <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="Search all columns…" form="${searchForm}" aria-label="Search ${r.title ?? 'report'}">
-                <button class="btn" form="${searchForm}">Go</button>
+                <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_all')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}">
+                <button class="btn" form="${searchForm}">${t('report.go')}</button>
                 ${actionsMenu}
               </div>`
             : ''}
@@ -320,19 +329,19 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
 
   const from = total ? (pageNo - 1) * st.size + 1 : 0;
   const to = Math.min(total, pageNo * st.size);
-  const empty = r.config.empty ?? 'No data found';
+  const empty = r.config.empty ?? t('report.no_data');
   return html`${toolbar}
     <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
       <thead><tr>${header}</tr></thead>
       <tbody>${body.length ? body : html`<tr><td colspan="${cols.length || 1}" class="empty">${empty}</td></tr>`}</tbody>
     </table></div>
     ${total > st.size || pageNo > 1
-      ? html`<nav class="pager" aria-label="Pagination">
-          <span>${from}–${to} of ${total}</span>
-          ${pageNo > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo - 1)))}">‹ Previous</a>` : ''}
-          ${to < total ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo + 1)))}">Next ›</a>` : ''}
+      ? html`<nav class="pager" aria-label="${t('report.pagination')}">
+          <span>${t('report.range', { from, to, total })}</span>
+          ${pageNo > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo - 1)))}">‹ ${t('report.previous')}</a>` : ''}
+          ${to < total ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo + 1)))}">${t('report.next')} ›</a>` : ''}
         </nav>`
       : total && searchable
-        ? html`<div class="pager"><span>${total} row${total === 1 ? '' : 's'}</span></div>`
+        ? html`<div class="pager"><span>${t('report.rows')}: ${total}</span></div>`
         : ''}`;
 }

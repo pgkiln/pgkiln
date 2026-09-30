@@ -24,8 +24,35 @@ Like APEX's workspace accounts, pgapex has **one account per person** for the wh
 |---|---|
 | Username | Unique, not case-sensitive; no spaces or colons |
 | Name, e-mail | For display |
-| Password | bcrypt hash; at least 8 characters when set in the builder. May be empty for accounts that only sign in through single sign-on |
+| Password | bcrypt hash, following the password rules below. May be empty for accounts that only sign in through single sign-on |
 | Active | Inactive accounts can't sign in anywhere; deactivating ends their sessions |
+
+### Passwords and My account
+
+The builder and the runtime cover what APEX offers for its accounts:
+
+| APEX | pgapex |
+|---|---|
+| `APEX_UTIL.CHANGE_CURRENT_USER_PW` | **My account** (user menu → *My account*, `/a/<alias>/account`): current password, new password twice. Other sessions of the account end |
+| *Require Change of Password on First Use* | Checkbox when creating an account or setting its password in the builder (on by default). The next sign-in asks for a new password before continuing |
+| `APEX_UTIL.RESET_PASSWORD` | **Users → account → Set password**, or `meta.set_password(username, password, change_on_first_use default true)` |
+| `APEX_UTIL.EXPIRE_END_USER_ACCOUNT` / `UNEXPIRE_…` | **Expire password** / **Unexpire password**, or `meta.expire_password(username)` / `meta.unexpire_password(username)` |
+| *Account Password Lifetime (days)* | **Users → Account settings → Password lifetime** (0 = never). Expired passwords must be changed at sign-in; My account shows the days left |
+| Password complexity rules | Minimum length, *letters and digits*, and never containing the username (Account settings) |
+| *Maximum Login Failures* / unlock | Sign-in locks for `LOGIN_WINDOW_MINUTES` after `LOGIN_MAX_FAILURES_PER_USER` failures. **Unlock sign-in** on the account lifts it at once |
+
+The `meta.set_password`/`expire`/`unexpire` functions are owner-only. Grant them to an app role if
+you want to build user administration pages inside an application.
+
+pgapex doesn't send e-mail, so there is no self-service "forgot password" link (APEX apps don't
+have one out of the box either). A user who forgot their password asks an administrator, who
+sets a temporary one under **Users → account → Set password**, with *Require change of password
+on first use* ticked (the default).
+
+With single sign-on, password changes happen at the identity provider; My account says so.
+
+**My account** also holds the user's **preferences**: light or dark (when the app allows it) and
+the language (when the app has translations). See [chapter 14](14-globalization.md).
 
 ### Access control per application
 

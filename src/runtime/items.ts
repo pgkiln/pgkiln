@@ -55,7 +55,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   const id = item.name;
   const error = ctx.errors.items[item.name];
   const editable = ctx.vis!.editable.has(item.name);
-  const label = item.label ?? heading(item.name);
+  const label = item.label ?? ctx.locale.tr(heading(item.name));
   const described = [item.help ? `${id}_help` : '', error ? `${id}_error` : ''].filter(Boolean).join(' ') || null;
   const aria = raw(
     `${described ? ` aria-describedby="${described}"` : ''}${error ? ' aria-invalid="true"' : ''}${item.required && editable ? ' aria-required="true"' : ''}`,
@@ -79,7 +79,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       shown = MULTI_VALUE.has(item.type)
         ? splitValues(value).map((v) => options.find((o) => o.value === v)?.display ?? v).join(', ')
         : (options.find((o) => o.value === value)?.display ?? value);
-    if (item.type === 'checkbox' || item.type === 'switch') shown = isTruthy(value) ? 'Yes' : 'No';
+    if (item.type === 'checkbox' || item.type === 'switch') shown = isTruthy(value) ? ctx.locale.t('item.yes') : ctx.locale.t('item.no');
     if (item.type === 'password') shown = value ? '••••••••' : '';
     control = html`<div class="display-value" id="${id}">${shown || ' '}</div>`;
   } else {
@@ -112,7 +112,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       case 'popup_lov':
         // a select list; app.js adds a search box that filters the options
         control = html`<select id="${id}" name="${id}" data-searchable${aria}>
-          <option value="">${item.config?.null_label ?? '- Select -'}</option>
+          <option value="">${item.config?.null_label ?? ctx.locale.t('lov.none')}</option>
           ${options.map((o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`)}
         </select>`;
         break;
@@ -121,7 +121,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         break;
       case 'select':
         control = html`<select id="${id}" name="${id}"${aria}>
-          ${item.config?.null_label === false ? '' : html`<option value="">${item.config?.null_label ?? '- Select -'}</option>`}
+          ${item.config?.null_label === false ? '' : html`<option value="">${item.config?.null_label ?? ctx.locale.t('lov.none')}</option>`}
           ${options.map((o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`)}
         </select>`;
         break;
