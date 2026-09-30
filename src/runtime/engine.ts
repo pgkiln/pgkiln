@@ -200,7 +200,6 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
       const msg =
         p.type === 'form_dml' ? await formDml(ctx, p)
         : p.type === 'grid_dml' ? await gridDml(ctx, p)
-        : p.type === 'send_email' ? (await sendEmail(ctx, p), p.success_message)
         : (await runSql(ctx, p.code ?? '', names), p.success_message);
       if (msg) messages.push(msg);
     } catch (e) {
@@ -208,26 +207,6 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
     }
   }
   return messages;
-}
-
-/**
- * "Send e-mail" process (APEX: Send E-Mail): queued in the page's
- * transaction, so it's only sent when the page's processing succeeds.
- */
-async function sendEmail(ctx: PageContext, p: Process) {
-  const c = p.config ?? {};
-  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? substitute(v, ctx, (x) => x) : null);
-  if (c.template) {
-    const placeholders = Object.fromEntries(Object.entries(c.placeholders ?? {}).map(([k, v]) => [k, text(v) ?? '']));
-    await ctx.client!.query('select meta.send_mail_template($1, $2, $3, $4, $5, $6, $7)', [
-      c.template, placeholders, text(c.to), text(c.from), text(c.cc), text(c.bcc), text(c.reply_to),
-    ]);
-    return;
-  }
-  const html = typeof c.body_html === 'string' && c.body_html.trim() ? substitute(c.body_html, ctx, esc) : null;
-  await ctx.client!.query('select meta.send_mail($1, $2, $3, $4, $5, $6, $7, $8)', [
-    text(c.to), text(c.subject) ?? '', text(c.body), html, text(c.from), text(c.cc), text(c.bcc), text(c.reply_to),
-  ]);
 }
 
 /** Application processes (after_login, before_page), in sequence. */

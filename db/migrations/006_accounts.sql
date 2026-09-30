@@ -5,8 +5,6 @@
 --   * "Require change of password on first use" and password expiry after
 --     N days (APEX account login controls), admin reset and expire
 --     (APEX_UTIL.RESET_PASSWORD, EXPIRE_END_USER_ACCOUNT)
---   * forgot password: one-time reset links sent by e-mail (APEX has no
---     built-in end-user flow; here it's an opt-in per application)
 --   * preferences per account: light/dark theme and language
 -- =====================================================================
 
@@ -122,84 +120,11 @@ $$;
 revoke all on function meta.set_password(text, text, boolean), meta.expire_password(text), meta.unexpire_password(text) from public;
 
 -- ---------------------------------------------------------------------
--- Forgot password: one-time links, valid 30 minutes. Only the SHA-256 of
--- the token is stored.
--- ---------------------------------------------------------------------
-alter table meta.app add column password_reset boolean not null default false;
-
-create table meta.password_reset (
-  token_hash text primary key,
-  account_id int not null references meta.account on delete cascade,
-  app_id     int not null references meta.app on delete cascade,
-  created_at timestamptz not null default now(),
-  used_at    timestamptz
-);
-create index on meta.password_reset (account_id, created_at);
-
--- Start a reset for a username or e-mail address. Returns the account's
--- e-mail and a token when the account may reset its password in this app,
--- and nothing otherwise (the caller shows the same message either way).
-create function meta.start_password_reset(p_app_id int, p_login text)
-returns table (username text, email text, display_name text, token text)
-language plpgsql security definer set search_path = meta, public, pg_catalog as $$
-declare
-  v_acc   meta.account;
-  v_token text := encode(gen_random_bytes(32), 'hex');
-begin
-  select a.* into v_acc from meta.account a
-   where (lower(a.username) = lower(p_login) or lower(a.email) = lower(p_login))
-     and a.active and a.email is not null and a.password_hash is not null
-   order by lower(a.username) = lower(p_login) desc
-   limit 1;
-  if not found
-     or not exists (select 1 from meta.app x where x.id = p_app_id and x.password_reset and x.local_login)
-     or (not exists (select 1 from meta.app x where x.id = p_app_id and x.access_control = 'any_user')
-         and not exists (select 1 from meta.app_access aa where aa.app_id = p_app_id and aa.account_id = v_acc.id))
-     -- at most 3 links per account per hour
-     or (select count(*) from meta.password_reset r where r.account_id = v_acc.id and r.created_at > now() - interval '1 hour') >= 3 then
-    return;
-  end if;
-  delete from meta.password_reset r where r.created_at < now() - interval '1 day';
-  update meta.password_reset r set used_at = now() where r.account_id = v_acc.id and r.used_at is null;
-  insert into meta.password_reset (token_hash, account_id, app_id)
-  values (encode(digest(v_token, 'sha256'), 'hex'), v_acc.id, p_app_id);
-  return query select v_acc.username, v_acc.email, v_acc.display_name, v_token;
-end
-$$;
-
--- Whether a token is valid (for showing the form), and for which account.
-create function meta.check_password_reset(p_app_id int, p_token text) returns text
-language sql stable security definer set search_path = meta, public, pg_catalog as $$
-  select a.username from meta.password_reset r join meta.account a on a.id = r.account_id
-   where r.token_hash = encode(digest(coalesce(p_token, ''), 'sha256'), 'hex') and r.app_id = p_app_id
-     and r.used_at is null and r.created_at > now() - interval '30 minutes' and a.active
-$$;
-
--- Set a new password with a token (once). Ends all sessions of the account.
-create function meta.finish_password_reset(p_app_id int, p_token text, p_new text) returns text
-language plpgsql security definer set search_path = meta, public, pg_catalog as $$
-declare
-  v_user text := meta.check_password_reset(p_app_id, p_token);
-begin
-  if v_user is null then
-    return null;
-  end if;
-  update meta.password_reset set used_at = now() where token_hash = encode(digest(p_token, 'sha256'), 'hex');
-  update meta.account set password_hash = crypt(p_new, gen_salt('bf', 10)), must_change_password = false
-   where lower(username) = lower(v_user);
-  delete from meta.session where app_id is not null and lower(username) = lower(v_user);
-  return v_user;
-end
-$$;
-
--- ---------------------------------------------------------------------
 -- Privileges
 -- ---------------------------------------------------------------------
 grant select on meta.setting to pgapex_runtime;
 grant select (must_change_password, password_changed_at, theme_pref, language) on meta.account to pgapex_runtime;
 grant update (theme_pref, language) on meta.account to pgapex_runtime;
 grant execute on function meta.setting(text), meta.password_days_left(text) to public;
-revoke all on function meta.change_password(int, text, text, text, uuid), meta.start_password_reset(int, text),
-  meta.check_password_reset(int, text), meta.finish_password_reset(int, text, text) from public;
-grant execute on function meta.change_password(int, text, text, text, uuid), meta.start_password_reset(int, text),
-  meta.check_password_reset(int, text), meta.finish_password_reset(int, text, text) to pgapex_runtime;
+revoke all on function meta.change_password(int, text, text, text, uuid) from public;
+grant execute on function meta.change_password(int, text, text, text, uuid) to pgapex_runtime;

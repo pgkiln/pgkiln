@@ -124,7 +124,7 @@ register at the provider, and has a *Test discovery* button. See
 - **Application**: name, alias, home page.
 - **Security**: authentication (*App users* / *None*), the database role, and **debug mode**
   (shows full database errors to users; development only).
-- **Sign-in methods**: username and password (optionally with a *Forgot password?* link), and/or the identity providers to offer on the login page.
+- **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
 - **Theme**: accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), the theme style (automatic, light or dark) and whether users may choose light or dark.
 - **Globalization**: primary language, translated languages, how the language is chosen, date formats.
@@ -142,13 +142,7 @@ on errors are the event ids here.
 ## Globalization
 
 **Shared Components → Globalization** translates the application's texts per language, exports and
-imports XLIFF or CSV for translators, and manages text messages. See [chapter 14](14-globalization-and-email.md).
-
-## Mail
-
-**Builder → Mail** (top navigation) shows the mail queue and log, lets you retry failed mail, send
-the queue now and queue a test e-mail. E-mail templates live under **Shared Components → E-mail
-templates**. See [chapter 14](14-globalization-and-email.md#e-mail).
+imports XLIFF or CSV for translators, and manages text messages. See [chapter 14](14-globalization.md).
 
 ## REST API
 

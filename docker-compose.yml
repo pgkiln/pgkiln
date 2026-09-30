@@ -44,15 +44,5 @@ services:
       PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
     ports:
       - "3000:3000"
-  # Optional SMTP server that catches all mail, for development:
-  #   docker compose --profile mail up -d mailpit     -> web UI http://127.0.0.1:8025
-  # and in .env: SMTP_HOST=127.0.0.1, SMTP_PORT=1025
-  mailpit:
-    image: axllent/mailpit:v1.27
-    container_name: pgapex-mailpit
-    profiles: [mail]
-    ports:
-      - "1025:1025"
-      - "8025:8025"
 volumes:
   pgdata:

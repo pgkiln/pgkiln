@@ -446,8 +446,6 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <h3>Sign-in methods</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
-            <div class="field"><label class="check"><input type="checkbox" name="password_reset" value="true"${a.password_reset ? raw(' checked') : ''}> "Forgot password?" link (reset by e-mail)</label>
-              <small class="help">Sends a one-time link, valid 30 minutes, to the account's e-mail address. Needs e-mail (Builder → Mail). APEX has no built-in end-user reset; this is optional.</small></div>
             ${providers.length
               ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
               : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
@@ -492,8 +490,8 @@ export async function builderRoutes(app: FastifyInstance) {
     try {
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
-                local_login = $9, sso_providers = $10, password_reset = $11, language = $12, languages = $13, language_from = $14,
-                date_format = $15, timestamp_format = $16, updated_at = now() where id = $1`,
+                local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
+                date_format = $14, timestamp_format = $15, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
@@ -504,7 +502,6 @@ export async function builderRoutes(app: FastifyInstance) {
          }),
          b.local_login === 'true',
          ([] as string[]).concat((b.sso_providers as unknown as string | string[] | undefined) ?? []).filter(Boolean),
-         b.password_reset === 'true',
          b.language?.trim().toLowerCase() || 'en',
          [...new Set((b.languages ?? '').split(',').map((l) => l.trim().toLowerCase()).filter((l) => /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(l) && l !== (b.language?.trim().toLowerCase() || 'en')))],
          ['primary', 'user'].includes(b.language_from ?? '') ? b.language_from : 'browser',
@@ -527,7 +524,7 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'email_template'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);

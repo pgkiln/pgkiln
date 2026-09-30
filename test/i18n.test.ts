@@ -207,17 +207,16 @@ describe('builder: globalization', () => {
     assert.match((await b.get(`/builder/apps/${appId}/globalization`)).body, /not a translated language/);
   });
 
-  test('export and import keep text messages, translations and e-mail templates', async () => {
+  test('export and import keep text messages and translations', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     assert.ok(doc.translations.length > 50);
     assert.ok(doc.text_messages.some((m: { name: string }) => m.name === 'KPI_PAYROLL'));
-    assert.ok(doc.email_templates.some((t: { static_id: string }) => t.static_id === 'LEAVE_DECIDED'));
+    assert.equal(doc.email_templates, undefined, 'no e-mail templates in exports');
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_copy_i18n') as id`, [JSON.stringify(doc)])).id;
     try {
       const n = await owner.one(
-        `select (select count(*) from meta.translation where app_id = $1)::int as t, (select count(*) from meta.text_message where app_id = $1)::int as m,
-                (select count(*) from meta.email_template where app_id = $1)::int as e`, [id]);
-      assert.deepEqual(n, { t: doc.translations.length, m: doc.text_messages.length, e: doc.email_templates.length });
+        `select (select count(*) from meta.translation where app_id = $1)::int as t, (select count(*) from meta.text_message where app_id = $1)::int as m`, [id]);
+      assert.deepEqual(n, { t: doc.translations.length, m: doc.text_messages.length });
     } finally {
       await owner.query('delete from meta.app where id = $1', [id]);
     }

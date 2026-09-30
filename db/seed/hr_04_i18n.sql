@@ -1,15 +1,13 @@
 -- =====================================================================
--- HR sample, part 4: globalization and e-mail (see docs/guide/14-globalization-and-email.md)
+-- HR sample, part 4: globalization (see docs/guide/14-globalization.md)
 --
 --   * Dutch (nl) as a translated language; the language follows the browser
 --     or the user's choice (My account, ?lang=nl, the picker on the login page)
 --   * translations of the app's texts, and text messages for texts that
 --     come from SQL (the dashboard's key figures use meta.message())
---   * e-mail: addresses for the demo accounts, a template, and a trigger that
---     mails the employee when leave is decided; "forgot password" is enabled
 -- =====================================================================
 
-update meta.app set languages = '{nl}', language_from = 'user', password_reset = true where alias = 'hr';
+update meta.app set languages = '{nl}', language_from = 'user' where alias = 'hr';
 
 insert into meta.translation (app_id, language, source, target)
 select a.id, 'nl', t.source, t.target
@@ -142,41 +140,6 @@ update meta.region r
   from meta.page p join meta.app a on a.id = p.app_id
  where r.page_id = p.id and a.alias = 'hr' and p.page_no = 1 and r.title = 'Key figures';
 
--- E-mail addresses for the demo accounts (example.com never delivers anywhere).
+-- E-mail addresses for the demo accounts (shown in the user directory).
 update meta.account set email = lower(username) || '@example.com' where email is null
    and lower(username) in ('king', 'blake', 'jones', 'allen', 'scott', 'demo');
-
-insert into meta.email_template (app_id, static_id, name, subject, body_html, body_text)
-select a.id, 'LEAVE_DECIDED', 'Leave decided',
-       'Your leave from #START# to #END# was #DECISION#',
-       '<p>Hello #NAME#,</p><p>Your leave request from <b>#START#</b> to <b>#END#</b> was <b>#DECISION#</b> by #DECIDED_BY#.</p><p>#NOTE#</p><p><a href="#LINK#">Open your leave requests</a></p>',
-       E'Hello #NAME#,\n\nYour leave request from #START# to #END# was #DECISION# by #DECIDED_BY#.\n#NOTE#\n\n#LINK#'
-  from meta.app a where a.alias = 'hr';
-
--- Mail the employee when a manager decides. The mail is queued in the same
--- transaction, so it's only sent when the decision is committed.
-create function hr.mail_leave_decided() returns trigger
-language plpgsql security definer set search_path = hr, pg_catalog as $$
-declare
-  v_email text;
-  v_name  text;
-begin
-  if new.status not in ('APPROVED', 'REJECTED') then
-    return new;
-  end if;
-  select a.email, coalesce(a.display_name, initcap(e.ename)) into v_email, v_name
-    from hr.emp e join meta.account a on lower(a.username) = lower(e.username)
-   where e.empno = new.empno;
-  if v_email is not null and meta.app_id() is not null then
-    perform meta.send_mail_template('LEAVE_DECIDED', jsonb_build_object(
-      'NAME', v_name, 'START', to_char(new.start_date, 'DD Mon YYYY'), 'END', to_char(new.end_date, 'DD Mon YYYY'),
-      'DECISION', lower(new.status), 'DECIDED_BY', new.decided_by, 'NOTE', coalesce(new.decision_note, ''),
-      'LINK', coalesce(nullif(current_setting('pgapex.public_url', true), ''), 'http://127.0.0.1:3100') || '/a/hr/6'), v_email);
-  end if;
-  return new;
-end
-$$;
-
-create trigger leave_decided_mail after update of status on hr.leave_request
-  for each row when (old.status is distinct from new.status)
-  execute function hr.mail_leave_decided();

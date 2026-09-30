@@ -88,8 +88,6 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await anon.goto(`${base}/a/hr/login`);
       assert.equal(await anon.locator('html').getAttribute('lang'), 'nl');
       await check(anon, 'app-login-nl', vp);
-      await anon.goto(`${base}/a/hr/forgot`);
-      await check(anon, 'app-forgot', vp);
       await anon.context().close();
 
       const page = await (await browser.newContext({ viewport: size })).newPage();
@@ -153,7 +151,6 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         activity: `/builder/apps/${appId}/activity`,
         api: `/builder/apps/${appId}/api`,
         globalization: `/builder/apps/${appId}/globalization?lang=nl`,
-        mail: '/builder/mail',
         designer: `/builder/pages/${pageId}`,
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',

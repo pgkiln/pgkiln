@@ -1,7 +1,7 @@
-# 14. Globalization and e-mail
+# 14. Globalization
 
-This chapter covers two things APEX handles under *Shared Components → Globalization* and
-`APEX_MAIL`: applications in several languages, and sending e-mail from SQL.
+This chapter covers what APEX handles under *Shared Components → Globalization*: applications in
+several languages, translated texts, date formats, and the light/dark theme choice.
 
 ## Languages
 
@@ -112,95 +112,3 @@ Under **Settings → Theme**, *Theme style* is **Automatic** (follow the device,
 *Enable End Users to Choose Theme Style*), the user menu has an *Appearance* switch and My account
 has the same choice. The choice is saved on the account, so it applies in every application that
 allows it. For public applications it's kept in a cookie.
-
-## E-mail
-
-### Sending
-
-Application SQL queues e-mail. It is sent **only when the transaction commits**: when a page's
-processing fails and rolls back, nothing is sent.
-
-```sql
--- APEX_MAIL.SEND
-select meta.send_mail(
-  p_to        => 'allen@example.com, Blake <blake@example.com>',
-  p_subject   => 'Your leave was approved',
-  p_body      => 'Plain text body',
-  p_body_html => '<p>HTML body</p>',   -- optional
-  p_from      => null,                 -- default MAIL_FROM
-  p_cc => null, p_bcc => null, p_reply_to => null);   -- returns the mail id
-
--- APEX_MAIL.ADD_ATTACHMENT (only on a queued mail of the same app and user)
-select meta.add_attachment(:mail_id, pdf_bytes, 'leave.pdf', 'application/pdf');
-```
-
-- Addresses are checked: plain `a@b.c` or `Name <a@b.c>`, comma separated, at most 50 per field.
-  Line breaks, which would inject headers, are refused.
-- Mail is limited to 2 MB of body and 10 MB per attachment.
-
-### Templates
-
-**Shared Components → E-mail templates** holds templates with a static ID, a subject, an HTML body
-and a plain-text body, with `#PLACEHOLDER#` substitutions (APEX: Email Templates):
-
-```sql
-select meta.send_mail_template('LEAVE_DECIDED',
-  jsonb_build_object('NAME', 'Allen', 'DECISION', 'approved'), 'allen@example.com');
-```
-
-Placeholder values are HTML-escaped in the HTML body. `#NAME!RAW#` inserts a value as-is, for
-HTML you built and escaped yourself.
-
-### The Send e-mail process
-
-A page process of type **send_email** sends mail without SQL (APEX: *Send E-Mail* process). Its
-settings are JSON in *E-mail*. Every value may use `&ITEM.` substitutions, which are escaped in
-`body_html`:
-
-```json
-{"to": "&P7_EMAIL.", "subject": "Leave &P7_ID.", "body": "Hello &P7_ENAME.", "body_html": "<p>Hello &P7_ENAME.</p>"}
-{"to": "&P7_EMAIL.", "template": "LEAVE_DECIDED", "placeholders": {"NAME": "&P7_ENAME.", "DECISION": "&P7_STATUS."}}
-```
-
-### Delivery
-
-The pgapex server delivers the queue over SMTP. A `NOTIFY` wakes it right after a commit, and it
-also checks every `MAIL_POLL_SECONDS`.
-
-- Failed mail is retried with back-off (2, 4, 8 … minutes) and marked **failed** after
-  `MAIL_MAX_ATTEMPTS`.
-- Several pgapex instances can run side by side; each mail is sent once.
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `SMTP_HOST` | *(none)* | SMTP server; without it, mail stays queued |
-| `SMTP_PORT` | `587` | |
-| `SMTP_SECURE` | `false` | `true` for TLS from the start (port 465); otherwise STARTTLS is used when offered |
-| `SMTP_REQUIRE_TLS` | `false` | `true`: refuse to send without STARTTLS |
-| `SMTP_USER`, `SMTP_PASSWORD` | | Credentials, if the server needs them |
-| `MAIL_FROM` | | Default sender, e.g. `HR <hr@example.com>` |
-| `MAIL_POLL_SECONDS` | `30` | How often the queue is checked (besides the NOTIFY) |
-| `MAIL_MAX_ATTEMPTS` | `5` | Attempts before a mail is marked failed |
-
-For development, the Compose file has **Mailpit**, which catches all mail:
-
-```bash
-docker compose --profile mail up -d mailpit    # SMTP on 1025, web UI http://127.0.0.1:8025
-# .env: SMTP_HOST=127.0.0.1  SMTP_PORT=1025
-```
-
-**Builder → Mail** shows the queue and the log, with filters, each mail's content, and retry and
-delete buttons. It also has **Send queued mail now** (APEX_MAIL.PUSH_QUEUE), a test e-mail, and
-clean-up of sent mail older than 30 days. Only the owner connection can read the queue; the
-runtime and application roles can only add to it.
-
-### The HR sample
-
-`db/seed/hr_04_i18n_mail.sql` does the following:
-
-- gives the demo accounts `@example.com` addresses;
-- adds the template `LEAVE_DECIDED`;
-- adds a trigger that mails the employee when a manager approves or rejects leave;
-- enables *Forgot password*.
-
-With Mailpit running, approve a request as blake and open http://127.0.0.1:8025.

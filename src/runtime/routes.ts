@@ -415,7 +415,6 @@ export async function runtimeRoutes(app: FastifyInstance) {
                 <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
                 <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
                 <button class="btn btn-hot">${t('login.submit')}</button>
-                ${app.password_reset ? html`<p class="login-extra"><a href="/a/${app.alias}/forgot">${t('login.forgot')}</a></p>` : ''}
               </form>`
             : providers.length ? '' : html`<p>${t('login.none')}</p>`}
           ${languagePicker(app, locale, `/a/${app.alias}/login${nextQs}`)}

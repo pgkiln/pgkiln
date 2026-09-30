@@ -13,9 +13,6 @@ triggers, your own functions).
 | `meta.jwt_claims()` | jsonb | The verified JWT claims of a PostgREST request, or NULL |
 | `meta.app_language()` | text | The language of the request (`nl`, `en-GB`, …) |
 | `meta.message(name, variadic params)` | text | A text message in the current language, `%0`…`%9` replaced; falls back to the base and primary language |
-| `meta.send_mail(to, subject, body, body_html, from, cc, bcc, reply_to)` | bigint | Queue an e-mail (sent when the transaction commits); returns its id |
-| `meta.send_mail_template(template, placeholders jsonb, to, from, cc, bcc, reply_to)` | bigint | Queue an e-mail from an e-mail template |
-| `meta.add_attachment(mail_id, content bytea, filename, mime_type)` | void | Attach a file to a queued mail of the same app and user |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
@@ -41,7 +38,6 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 | `meta.set_password(username, password, change_on_first_use default true)` | Set a password (ends the account's sessions) |
 | `meta.expire_password(username)`, `meta.unexpire_password(username)` | Require (or no longer require) a new password at the next sign-in |
 | `meta.change_password(app_id, username, old, new, keep_session)` | Change a password knowing the current one (used by My account; runtime only) |
-| `meta.start_password_reset(app_id, login)`, `meta.check_password_reset(app_id, token)`, `meta.finish_password_reset(app_id, token, new)` | The forgot-password flow (runtime only) |
 | `meta.api_check()` | PostgREST's pre-request function (`db-pre-request`): rejects tokens whose app doesn't use the current role as its API role, or whose account is inactive or has no access |
 
 ## Metadata tables
@@ -63,7 +59,6 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `sso_providers` | text[] | Names of identity providers offered on the login page |
 | `db_role` | text | Database role every request runs as |
 | `api_role` | text | Database role of REST API tokens for this app (PostgREST switches to it) |
-| `password_reset` | boolean | Offer "Forgot password?" (reset links by e-mail) |
 | `language`, `languages`, `language_from` | text, text[], text | Primary language, translated languages, `browser` / `user` / `primary` |
 | `date_format`, `timestamp_format` | text | Display masks (e.g. `DD-MM-YYYY`); NULL: the language's default |
 | `debug` | boolean | Show database error details to users |
@@ -139,16 +134,13 @@ needed and grants access; deleting revokes access.
 | Table | Contents | Readable by the runtime role |
 |---|---|---|
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
-| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`, `password_reset_requested`, `password_reset`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
+| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
 | `developer` | Builder accounts | no |
 | `auth_provider` | OpenID Connect providers: `name`, `display_name`, `issuer`, `client_id`, `client_secret`, `scopes`, `username_claim`, `groups_claim`, `auto_create`, `enabled` | no |
 | `account_identity` | Links an account to a provider's subject (`provider_id`, `subject`, `account_id`) | no |
 | `sso_pending` | Sign-ins in progress (state, PKCE verifier, nonce; kept for 10 minutes) | no |
 | `instance_setting` | Secrets, e.g. the URL checksum key | no |
 | `setting` | Account settings: `password_min_length`, `password_require_mixed`, `password_lifetime_days` | yes (read) |
-| `password_reset` | Reset links: SHA-256 of the token, account, app, `created_at`, `used_at` | no |
-| `mail_queue`, `mail_attachment` | E-mail queue and log: recipients, subject, bodies, `status` (`queued`, `sending`, `sent`, `failed`), `attempts`, `last_error` | no (apps add through `meta.send_mail()`) |
-| `email_template` | Per app: `static_id`, `name`, `subject`, `body_html`, `body_text` | yes |
 | `text_message` | Per app: `name`, `language`, `text` | yes |
 | `translation` | Per app and language: `source` (primary-language text) → `target` | yes |
 
@@ -194,7 +186,6 @@ Usable in navigation entries and cards (`icon` column):
 | `GET /sso/callback/:provider` | OpenID Connect redirect URI |
 | `POST /a/:alias/password` | Change an expired password while signing in |
 | `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme` | My account, own password, the light/dark switch |
-| `GET/POST /a/:alias/forgot`, `GET/POST /a/:alias/reset` | Forgot password (when enabled) |
 | any page `?lang=xx` | Switch the language for the session |
 | `/builder/...` | Builder |
 | PostgREST (separate service, `API_URL`) | REST API of each app's `api` schema, see [chapter 13](13-rest-api.md) |

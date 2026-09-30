@@ -44,21 +44,15 @@ The builder and the runtime cover what APEX offers for its accounts:
 The `meta.set_password`/`expire`/`unexpire` functions are owner-only. Grant them to an app role if
 you want to build user administration pages inside an application.
 
-**Forgot password** is an extra that APEX doesn't have for end users. Enable it per application
-(**Settings → Sign-in methods → "Forgot password?" link**); it needs [e-mail](14-globalization-and-email.md#e-mail).
-
-- The user enters a username or e-mail address and gets a link valid for **30 minutes**, usable **once**.
-- The database stores only a SHA-256 hash of the link's token.
-- The answer is the same whether or not the account exists.
-- Requests are limited to 3 links per account per hour and 10 requests per IP address per 15 minutes.
-- A new link cancels the previous one.
-- Setting the new password ends all of the account's sessions.
-- Accounts without an e-mail address, without a local password (single sign-on only), inactive, or without access to the application get no link.
+pgapex doesn't send e-mail, so there is no self-service "forgot password" link (APEX apps don't
+have one out of the box either). A user who forgot their password asks an administrator, who
+sets a temporary one under **Users → account → Set password**, with *Require change of password
+on first use* ticked (the default).
 
 With single sign-on, password changes happen at the identity provider; My account says so.
 
 **My account** also holds the user's **preferences**: light or dark (when the app allows it) and
-the language (when the app has translations). See [chapter 14](14-globalization-and-email.md).
+the language (when the app has translations). See [chapter 14](14-globalization.md).
 
 ### Access control per application
 

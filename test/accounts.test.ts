@@ -1,5 +1,5 @@
 // Account self-service: own password, expiry and first-use change, admin
-// reset, forgot password by e-mail, preferences (theme, language).
+// password reset, preferences (theme, language).
 import { after, before, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -21,7 +21,6 @@ before(async () => {
 after(async () => {
   for (const u of created) {
     await owner.query('delete from meta.activity_log where lower(username) = lower($1)', [u]);
-    await owner.query('delete from meta.mail_queue where mail_to = $1', [`${u}@example.com`]);
     await owner.query('delete from meta.account where username = $1', [u]);
   }
   await owner.query(`update meta.setting set value = '0' where name = 'password_lifetime_days'`);
@@ -125,67 +124,21 @@ describe('expiry and first use', () => {
   });
 });
 
-describe('forgot password', () => {
-  const lastToken = async (u: string) => {
-    const m = await owner.one(`select body_text from meta.mail_queue where mail_to = $1 order by id desc limit 1`, [`${u}@example.com`]);
-    return /reset\?token=([0-9a-f]{64})/.exec(m?.body_text ?? '')?.[1];
-  };
-
-  test('a reset link is e-mailed, works once, and ends sessions', async () => {
-    const u = await account();
-    const signedIn = new Browser(app);
-    await signedIn.login(u, 'correct-horse-1');
+describe('no e-mail features', () => {
+  // pgapex doesn't send mail (owner decision, sprint 6): there is no
+  // "forgot password" link or page, and no mail tables.
+  test('the login page has no forgot-password link and the old pages are gone', async () => {
     const b = new Browser(app);
-    await b.get('/a/hr/forgot');
-    const sent = await b.submit('/a/hr/forgot', { login: u });
-    assert.match(sent.body, /reset link is on its way/);
-    const token = await lastToken(u);
-    assert.ok(token, 'mail queued with a link');
-    assert.ok(!(await owner.one('select 1 as x from meta.password_reset where token_hash = $1', [token])), 'only the hash is stored');
-    const form = await b.get(`/a/hr/reset?token=${token}`);
-    assert.equal(form.statusCode, 200);
-    assert.equal(form.headers['cache-control'], 'no-store');
-    const done = await b.submit('/a/hr/reset', { token: token!, new_password: 'reset-horse-4', confirm_password: 'reset-horse-4' });
-    assert.equal(done.statusCode, 303);
-    assert.match((await b.get('/a/hr/login')).body, /Your password was changed/);
-    assert.equal((await b.get(`/a/hr/reset?token=${token}`)).statusCode, 410, 'used');
-    assert.equal((await signedIn.get('/a/hr/1')).statusCode, 302, 'sessions ended');
-    assert.equal((await new Browser(app).login(u, 'reset-horse-4')).statusCode, 303);
+    const login = await b.get('/a/hr/login');
+    assert.doesNotMatch(login.body, /forgot/i);
+    assert.equal((await b.get('/a/hr/forgot')).statusCode, 404);
+    assert.equal((await b.get('/a/hr/reset?token=x')).statusCode, 404);
   });
 
-  test('the answer does not reveal whether an account exists; requests are limited', async () => {
-    const u = await account();
-    const noMail = await account({ email: false });
-    const answer = async (login: string) => {
-      const b = new Browser(app);
-      await b.get('/a/hr/forgot');
-      return (await b.submit('/a/hr/forgot', { login })).body.replace(/name="__csrf" value="[^"]+"/, '');
-    };
-    const known = await answer(u);
-    assert.equal(await answer('no-such-user-anywhere'), known);
-    assert.equal(await answer(noMail), known);
-    for (let i = 0; i < 4; i++) await answer(u);
-    assert.equal((await owner.one(`select count(*)::int as n from meta.password_reset r join meta.account a on a.id = r.account_id where a.username = $1`, [u])).n, 3, 'at most 3 links per hour');
-    const tokens = await owner.query(`select used_at from meta.password_reset r join meta.account a on a.id = r.account_id where a.username = $1 order by r.created_at`, [u]);
-    assert.equal(tokens.rows.filter((r) => r.used_at === null).length, 1, 'a new link replaces the previous one');
-  });
-
-  test('expired, wrong-app and forged tokens are refused; the page is off unless enabled', async () => {
-    const u = await account();
-    const b = new Browser(app);
-    await b.get('/a/hr/forgot');
-    await b.submit('/a/hr/forgot', { login: u });
-    const token = (await lastToken(u))!;
-    await owner.query(`update meta.password_reset set created_at = now() - interval '31 minutes' where used_at is null and account_id = (select id from meta.account where username = $1)`, [u]);
-    assert.equal((await b.get(`/a/hr/reset?token=${token}`)).statusCode, 410, 'expired');
-    assert.equal((await b.get(`/a/hr/reset?token=${'0'.repeat(64)}`)).statusCode, 410, 'forged');
-    await owner.query(`update meta.app set password_reset = false where id = $1`, [appId]);
-    try {
-      assert.equal((await new Browser(app).get('/a/hr/forgot')).statusCode, 404);
-      assert.doesNotMatch((await new Browser(app).get('/a/hr/login')).body, /Forgot your password/);
-    } finally {
-      await owner.query(`update meta.app set password_reset = true where id = $1`, [appId]);
-    }
+  test('the mail and password-reset objects do not exist', async () => {
+    const r = await owner.one(`select to_regclass('meta.mail_queue') as q, to_regclass('meta.email_template') as t,
+                                      to_regclass('meta.password_reset') as r, to_regprocedure('meta.send_mail(text,text,text,text,text,text,text,text)') as f`);
+    assert.deepEqual(r, { q: null, t: null, r: null, f: null });
   });
 });
 
