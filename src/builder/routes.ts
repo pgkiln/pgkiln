@@ -19,7 +19,7 @@ import {
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
 
 import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
-import { endSessions, grantAccess, splitRoles } from './users.ts';
+import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 
 interface Lookups {
   regions: { id: number; title: string | null; type: string }[];
@@ -559,6 +559,7 @@ export async function builderRoutes(app: FastifyInstance) {
         : html`<p>Not found.</p>`;
     } else {
       const accounts = (await owner.query('select username from meta.account where active order by lower(username) limit 2000')).rows;
+      const appHints = (await roleHints([a.id])).get(a.id) ?? [];
       const groupRoles = (await owner.query('select group_name, role from meta.app_group_role where app_id = $1 order by 1, 2', [a.id])).rows;
       const groupMap = html`<h3>Identity-provider groups → roles</h3>
         <p class="muted" style="margin-top:0">With single sign-on, members of these groups get the role in this app, and may sign in even without being listed above.</p>
@@ -583,8 +584,9 @@ export async function builderRoutes(app: FastifyInstance) {
           ${users.length
             ? users.map((u) => html`<tr>
                 <td data-label="Account"><a href="${BASE}/users/${u.id}">${u.username}</a>${u.display_name ? html` <span class="muted">${u.display_name}</span>` : ''}${u.active ? '' : html` <b>(inactive)</b>`}</td>
-                <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search" style="margin:0;max-width:none">${csrf(s)}
-                  <input name="roles" value="${u.roles.join(', ')}" aria-label="Roles of ${u.username}" placeholder="no roles"><button class="btn">Save</button></form></td>
+                <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search roles-form" style="margin:0;max-width:none">${csrf(s)}
+                  <input name="roles" value="${u.roles.join(', ')}" aria-label="Roles of ${u.username}" placeholder="no roles"><button class="btn">Save</button>
+                  ${roleHintsHtml(appHints, 'Add')}</form></td>
                 <td data-label="Last sign-in">${u.last_login_at ? String(u.last_login_at).slice(0, 16) : '—'}</td>
                 <td data-label=""><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}/revoke">${csrf(s)}<button class="link-button" data-confirm="Revoke ${u.username}'s access to ${a.name}?">Revoke</button></form></td>
               </tr>`)
@@ -598,7 +600,9 @@ export async function builderRoutes(app: FastifyInstance) {
               <input id="f_grant_user" name="username" list="accounts-list" required autocomplete="off" placeholder="username">
               <datalist id="accounts-list">${accounts.map((x) => html`<option value="${x.username}"></option>`)}</datalist>
               <small class="help">An existing account. <a href="${BASE}/users">Create accounts in Users.</a></small></div>
-            ${input('roles', 'Roles', '', { placeholder: 'comma separated, e.g. admin, manager' })}
+            <div class="field"><label class="label" for="f_roles">Roles</label>
+              <input id="f_roles" name="roles" placeholder="comma separated, or pick below">
+              ${roleHintsHtml(appHints)}</div>
           </div>
           <div class="buttons"><button class="btn btn-hot">Grant access</button></div>
         </form>`);

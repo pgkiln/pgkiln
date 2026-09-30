@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Role suggestions in the builder: roles fields (Users → account, and the app's Access control)
+  list the roles the application checks (authorization schemes, `meta.has_role()` in SQL, group
+  mappings, roles in use); click to add, hover to see where each role is checked.
+
 ## [0.6.0] - 2026-09-30
 
 ### Added

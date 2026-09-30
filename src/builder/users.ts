@@ -10,6 +10,66 @@ import { back, BASE, csrf, developer, flash, input, region, select, send, shell,
 // Application Access Control): one account per person, access and roles
 // assigned per application.
 
+export interface RoleHint {
+  role: string;
+  sources: string[];
+}
+
+/**
+ * The roles an application checks, and where: role-based authorization
+ * schemes, meta.has_role('…') in SQL schemes and page components,
+ * identity-provider group mappings, and roles already assigned to users.
+ * Roles are free text, so this is what makes them discoverable.
+ */
+export async function roleHints(appIds: number[]): Promise<Map<number, RoleHint[]>> {
+  const hasRole = String.raw`has_role\s*\(\s*'([^']+)'\s*\)`;
+  const rows = (
+    await owner.query<{ app_id: number; role: string; sources: string[] }>(
+      `with src as (
+         select s.app_id, lower(s.value) as role, 'authorization scheme ' || s.name as source
+           from meta.authz_scheme s where s.type = 'role' and s.app_id = any($1)
+         union all
+         select s.app_id, lower(m[1]), 'authorization scheme ' || s.name
+           from meta.authz_scheme s, regexp_matches(s.value, $2, 'gi') m where s.type = 'sql' and s.app_id = any($1)
+         union all
+         select p.app_id, lower(m[1]), 'SQL on page ' || p.page_no
+           from meta.page p
+           join lateral (
+             select concat_ws(' ', r.source, r.condition) as t from meta.region r where r.page_id = p.id
+             union all select concat_ws(' ', b.condition) from meta.button b where b.page_id = p.id
+             union all select concat_ws(' ', i.lov, i.readonly_condition) from meta.item i where i.page_id = p.id
+             union all select concat_ws(' ', x.code) from meta.process x where x.page_id = p.id
+             union all select concat_ws(' ', v.expression) from meta.validation v where v.page_id = p.id
+             union all select concat_ws(' ', d.code) from meta.dynamic_action d where d.page_id = p.id
+           ) c on true,
+           regexp_matches(c.t, $2, 'gi') m
+          where p.app_id = any($1)
+         union all
+         select g.app_id, lower(g.role), 'identity-provider group ' || g.group_name
+           from meta.app_group_role g where g.app_id = any($1)
+         union all
+         select aa.app_id, lower(r), 'assigned to users'
+           from meta.app_access aa, unnest(aa.roles) r where aa.app_id = any($1)
+       )
+       select app_id, role, array_agg(distinct source order by source) as sources
+         from src where role <> '' group by 1, 2 order by 1, 2`,
+      [appIds, hasRole],
+    )
+  ).rows;
+  const out = new Map<number, RoleHint[]>(appIds.map((id) => [id, []]));
+  for (const r of rows) out.get(r.app_id)?.push({ role: r.role, sources: r.sources });
+  return out;
+}
+
+/** Clickable role suggestions under a roles field (JS adds the role; without JS they're a list). */
+export function roleHintsHtml(hints: RoleHint[], label = 'Roles this app checks') {
+  if (!hints.length)
+    return html`<small class="help role-hints">This app doesn't check any roles yet. Roles only matter where an authorization scheme or <code>meta.has_role()</code> checks them (Shared Components → Authorization schemes).</small>`;
+  return html`<small class="help role-hints">${label}: ${hints.map(
+    (h) => html`<button type="button" class="chip role-chip" data-add-role="${h.role}" title="${h.sources.join('; ')}">${h.role}</button> `,
+  )}</small>`;
+}
+
 export const splitRoles = (v: string | undefined) =>
   [...new Set((v ?? '').split(',').map((r) => r.trim().toLowerCase()).filter(Boolean))].sort();
 
@@ -148,6 +208,7 @@ export async function usersRoutes(app: FastifyInstance) {
       ),
       owner.query(`select id, name, alias from meta.app where id not in (select app_id from meta.app_access where account_id = $1) order by name`, [u.id]),
     ]);
+    const hints = await roleHints([...access.rows.map((a) => a.app_id), ...apps.rows.map((a) => a.id)]);
     const main = html`
       <div class="title-row"><h1>${u.username}</h1></div>
       <div class="columns">
@@ -185,8 +246,9 @@ export async function usersRoutes(app: FastifyInstance) {
             ${access.rows.length
               ? access.rows.map((a) => html`<tr>
                   <td data-label="Application"><a href="${BASE}/apps/${a.app_id}/shared">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
-                  <td data-label="Roles"><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}" class="search" style="margin:0;max-width:none">${csrf(s)}
-                    <input name="roles" value="${a.roles.join(', ')}" aria-label="Roles in ${a.name}" placeholder="no roles"><button class="btn">Save</button></form></td>
+                  <td data-label="Roles"><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}" class="search roles-form" style="margin:0;max-width:none">${csrf(s)}
+                    <input name="roles" value="${a.roles.join(', ')}" aria-label="Roles in ${a.name}" placeholder="no roles (e.g. ${(hints.get(a.app_id) ?? []).slice(0, 2).map((h) => h.role).join(', ') || 'admin'})"><button class="btn">Save</button>
+                    ${roleHintsHtml(hints.get(a.app_id) ?? [])}</form></td>
                   <td data-label=""><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}/revoke">${csrf(s)}<button class="link-button" data-confirm="Revoke access to ${a.name}?">Revoke</button></form></td>
                 </tr>`)
               : html`<tr><td colspan="3" class="empty">No access to any application yet.</td></tr>`}
@@ -196,7 +258,10 @@ export async function usersRoutes(app: FastifyInstance) {
               <form method="post" action="${BASE}/users/${u.id}/access">${csrf(s)}
                 <div class="form-grid">
                   ${select('app_id', 'Application', '', apps.rows.map((a): [string, string] => [String(a.id), a.name]))}
-                  ${input('roles', 'Roles', '', { placeholder: 'comma separated, e.g. admin, manager' })}
+                  <div class="field"><label class="label" for="f_roles">Roles</label>
+                    <input id="f_roles" name="roles" placeholder="comma separated, or pick below">
+                    ${apps.rows.map((a) => html`<div data-hints-for="${a.id}">${roleHintsHtml(hints.get(a.id) ?? [], `${a.name} checks`)}</div>`)}
+                  </div>
                 </div>
                 <div class="buttons"><button class="btn btn-hot">Grant access</button></div>
               </form>`
