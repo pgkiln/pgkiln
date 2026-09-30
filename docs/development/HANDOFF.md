@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-30. Sprints 3–8 are merged into `main` and released as **v0.7.0**. Sprint 9 (hardening) and sprint 10 (features) follow on their own branches.
+Last updated: 2026-09-30. Sprints 3–8 are merged into `main` and released as **v0.7.0**. **Sprint 9 (hardening)** is done on `sprint-9`, **sprint 10 (features)** on `sprint-10`, branched from sprint 9 (merging `sprint-10` brings in both).
 
 ## Project in one paragraph
 
@@ -43,6 +43,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | Everything up to sprint 8, released as **v0.7.0** (tags: v0.2.0, v0.6.0, v0.7.0; 0.3.0–0.5.0 were never tagged). Migrations 001–012 are released |
 | `sprint-7`, `sprint-8` | Merged into `main`; can be deleted |
+| `sprint-9` | Hardening: export/import consolidated (013), upgrade test in CI, builder routes split |
+| `sprint-10` | Sprint 9 + report power features (014), automations (015), report settings form |
 
 Older sprint branches were merged and deleted.
 
@@ -286,3 +288,46 @@ Verified: `npm test` 132/132, `npm run test:e2e` 20/20, fresh install (postgres:
 Ideas for next: document templates (letters/invoices; HTML or a JSON layout → PDF), per-user
 column choice for PDFs, a PL/pgSQL API to parse CSV/XLSX from `meta.temp_files` (APEX_DATA_PARSER),
 automations on pg_cron (roadmap item 1).
+
+## Sprint 9: hardening (owner's request, 2026-09-30)
+
+After the review "is this a stable basis?": harden first, then features. Migrations 001–012 are
+released (v0.7.0).
+
+1. **Release 0.7.0** on `main` (tag `v0.7.0`), after fixing CI: it had been red since sprint 4
+   because `API_JWT_SECRET` wasn't set there (commit "ci: set a test-only API_JWT_SECRET").
+2. **Export/import consolidated**: `013_export_format.sql` replaces the `export_app_base` /
+   `import_app_base` wrapper chain with one pair; format `pgapex/2` documented in chapter 3 with a
+   compatibility promise. `test/export.test.ts` round-trips the HR app and fails when a new table
+   referencing `meta.app`/`meta.page` is neither exported nor listed in `NOT_EXPORTED`.
+   Rule: a later migration that adds a section redefines both functions with `create or replace`.
+3. **Upgrade test**: `scripts/migrate.ts --root <dir>`; CI job `upgrade` installs v0.6.0 and v0.7.0
+   (git archive of `db/`) with sample data, upgrades and runs `npm test`. Add each new tag to its matrix.
+4. **Builder split**: `routes.ts` → `routes.ts`, `forms.ts`, `shared.ts`, `designer.ts`, `sql.ts`.
+5. **Not done (needs the owner):** protect `main` on GitHub (Settings → Branches: require the `test`,
+   `e2e` and `upgrade` checks). The local `gh` has no access.
+
+## Sprint 10: features (owner's request, 2026-09-30)
+
+1. **Interactive report power features** (`014_saved_reports.sql`): control break (`r<id>_b`),
+   aggregates (`r<id>_a=fn|col`, totals + subtotals, separate queries over all filtered rows),
+   highlights (`r<id>_h=col|op|color|value`, evaluated in SQL as `__h<n>` columns, CSS classes
+   `hl-*`), saved reports (`meta.saved_report` via view `meta.saved_reports` and security definer
+   `save_report` / `delete_saved_report`; POST `/a/:alias/:page/report/:id/save` and
+   `…/saved/:sid/delete`; public ones need the region's `public_reports` scheme). `test/reports.test.ts`.
+2. **Automations** (`015_automations.sql`, `src/automations.ts`, `src/builder/automations.ts`):
+   cron + time zone, optional per-row query, roles read live by `meta.has_role()` via
+   `pgapex.automation_id`, one transaction as the app's `db_role`, log (last 100). The scheduler
+   runs in the server (`startScheduler()` in `server.ts`; not in tests), claims with `SKIP LOCKED`,
+   advisory lock per run. Imported copies are disabled. HR seed `hr_08_automations.sql`.
+   Binds aren't replaced inside `$$` blocks (the scanner skips strings). `test/automations.test.ts`.
+3. **Report settings form** (`src/builder/report-settings.ts`) under report regions in the page
+   designer; `mergeReportSettings()` keeps unknown keys and leaves defaults out. `test/report-settings.test.ts`.
+   Generic additions: component field kinds `list` (text[]) and a `validate` hook on specs.
+
+Verified: `npm test` 162/162, `npm run test:e2e` 20/20; a clean-environment run and the v0.6.0
+upgrade path (see the commit/notes).
+
+Ideas for next: settings forms for grid/chart/cards/calendar/facets; pivot/group-by in reports;
+per-row error handling and on-demand runs (`meta.run_automation()`) for automations; document
+templates; approvals/workflow.

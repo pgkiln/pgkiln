@@ -75,3 +75,47 @@ jobs:
         with:
           name: screenshots
           path: test-results/
+
+  # Install an older release with its sample data, upgrade to this commit,
+  # then run the tests: migrations must work on existing databases too.
+  upgrade:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        from: [v0.6.0, v0.7.0]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pgapex
+          POSTGRES_PASSWORD: pgapex
+          POSTGRES_DB: pgapex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pgapex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://pgapex:pgapex@localhost:5432/pgapex
+      RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
+      API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the release tags
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install ${{ matrix.from }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/old"
+          git archive "${{ matrix.from }}" db | tar -x -C "$RUNNER_TEMP/old"
+          npx tsx scripts/migrate.ts --seed --root "$RUNNER_TEMP/old"
+      - name: Upgrade to this commit
+        run: npm run db:seed
+      - run: npm test

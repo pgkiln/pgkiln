@@ -5,6 +5,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Long help texts (JSON examples) wrap instead of widening the builder on phones.
+- Application export and import are one pair of functions again (migration 013 replaces the
+  wrapped `export_app_base`/`import_app_base` chain). The format stays `pgapex/2` and is now
+  documented, with a compatibility promise: sections are only added, and missing sections import
+  as empty.
+- The builder's route file is split into `routes.ts`, `shared.ts`, `designer.ts`, `sql.ts` and
+  `forms.ts` (no behaviour change).
+
+### Added
+- Interactive reports: **control break** (group rows by a column), **aggregates** (sum,
+  average, count, minimum, maximum over all filtered rows, with subtotals per group and a
+  total), **highlights** (color matching rows) and **saved reports** (private per user; public
+  ones for users who pass the region's `public_reports` scheme). Migration 014 adds
+  `meta.saved_report`, reached through `meta.saved_reports`, `meta.save_report()` and
+  `meta.delete_saved_report()`.
+- **Automations** (Shared Components → Automations, migration 015): SQL or PL/pgSQL on a cron
+  schedule with a time zone, once or for each row of a query, as the application's database role
+  with the automation's roles for `meta.has_role()`. Run now, next run and run history in the
+  builder. The pgapex server schedules them (no extension needed); several servers never run
+  one twice; `AUTOMATIONS=off` switches the scheduler off. Exported with the app; imported
+  copies start switched off. HR sample: *Remind managers*.
+- **Report settings** in the page designer: a form for a report region's rows per page,
+  search/sort/Actions switches, saved and public reports, per-column heading, visibility, printing
+  and PDF width, the link and the PDF layout. Columns are read from the query. It writes the
+  region's JSON attributes and keeps other keys.
+- CI: an `upgrade` job installs v0.6.0 and v0.7.0 with sample data, upgrades and runs the tests;
+  `scripts/migrate.ts --root` applies another release's `db/` folder.
+- `test/export.test.ts`: export → import → export round trip, older files, and a check that every
+  table of an app or page is exported (or deliberately left out).
+
 ## [0.7.0] - 2026-09-30
 
 ### Added

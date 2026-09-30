@@ -148,11 +148,16 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         app: `/builder/apps/${appId}`,
         shared: `/builder/apps/${appId}/shared`,
         layout: `/builder/apps/${appId}/shared?c=report_layout-${(await owner.one(`select id from meta.report_layout where app_id = $1 and name = 'HR_DIRECTORY'`, [appId])).id}`,
+        automation: `/builder/apps/${appId}/shared?c=automation-${(await owner.one(`select id from meta.automation where app_id = $1 and name = 'Remind managers'`, [appId])).id}`,
         settings: `/builder/apps/${appId}/settings`,
         activity: `/builder/apps/${appId}/activity`,
         api: `/builder/apps/${appId}/api`,
         globalization: `/builder/apps/${appId}/globalization?lang=nl`,
         designer: `/builder/pages/${pageId}`,
+        report_region: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',

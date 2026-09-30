@@ -23,6 +23,7 @@ src/
   binds.ts                 :BIND scanner → escaped literals (unit tested)
   dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
   xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
+  automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
   metadata.ts              types + loaders for apps and pages
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -42,12 +43,18 @@ src/
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  shell, form helpers, CSRF check, app tab bar
-    routes.ts              builder pages
+    routes.ts              sign-in, workspace and app home, settings, activity, developers
+    forms.ts               generic component property form (lookups, render, save)
+    shared.ts              Shared Components and access control
+    designer.ts            page designer
+    sql.ts                 SQL Workshop: SQL commands, object browser
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data
     layouts.ts             report layouts: logo upload, PDF preview
+    automations.ts         automations: next run, Run now, run history
+    report-settings.ts     page designer: report settings form (columns, link, PDF)
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
@@ -93,8 +100,25 @@ npm run test:e2e     # needs `npx playwright install chromium`; SCREENSHOTS=1 sa
 npm run db:reset     # fresh database
 ```
 
-CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and the browser tests against
-PostgreSQL 17, and uploads the screenshots as an artifact.
+CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
+
+- **test**: typecheck and `npm test` on a fresh database;
+- **e2e**: the browser tests, uploading the screenshots as an artifact;
+- **upgrade**: installs older releases (`v0.6.0`, `v0.7.0`) with their sample data, upgrades to the
+  commit and runs `npm test` on the result. Add each new release to its matrix.
+
+CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the
+PostgREST HTTP tests skip. To reproduce a CI failure, run the tests in a clean checkout
+(`git worktree add`) against a throwaway database with only those variables, and
+`API_URL=http://127.0.0.1:1`. A new required environment variable must be added to the workflow.
+
+To try the upgrade locally:
+
+```bash
+mkdir -p /tmp/old && git archive v0.6.0 db | tar -x -C /tmp/old
+DATABASE_URL=<empty database> npx tsx scripts/migrate.ts --seed --root /tmp/old
+DATABASE_URL=<same database> npm run db:seed && npm test
+```
 
 ## Adding a region type (example)
 
@@ -119,11 +143,18 @@ differently.
 - Never change a migration that has been released (tagged). Add a new numbered file.
 - Each file runs in one transaction. Prefer idempotent statements for roles and extensions
   (`do $$ … if not exists … $$`).
-- `meta.export_app()` / `meta.import_app()` use `to_jsonb` / `jsonb_populate_record`, so new columns
-  travel automatically. New *tables* need to be added to both functions.
+- `meta.export_app()` / `meta.import_app()` (migration 013) use `to_jsonb` / `jsonb_populate_record`,
+  so new columns travel automatically. A new *table* that references `meta.app` or `meta.page`
+  must be added to both functions as a new top-level section (read it with
+  `coalesce(p_doc->'section', '[]')`), or to `NOT_EXPORTED` in `test/export.test.ts` with a reason;
+  that test fails until you do. Redefine the functions with `create or replace` in the new
+  migration; don't wrap them.
+- Never rename or remove a section of the `pgapex/2` format (see [chapter 3](03-builder.md#export-format)).
 
 ## Releasing
 
 1. Update `CHANGELOG.md` and the version in `package.json`.
-2. Merge to `main`; CI must be green.
+2. Merge to `main`; CI must be green (all three jobs). The `main` branch should be protected on
+   GitHub (Settings → Branches → rule for `main`: require the `test`, `e2e` and `upgrade` checks).
 3. Tag: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
+4. Add the new tag to the `upgrade` job's matrix in `.github/workflows/ci.yml`.

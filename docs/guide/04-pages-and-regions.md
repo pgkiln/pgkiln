@@ -33,7 +33,7 @@ only when true) and `authz` (an authorization scheme).
 
 | Type | Purpose |
 |---|---|
-| [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, paging and CSV download |
+| [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
 | [`chart`](#chart) | Bar, column, line, area or donut chart from a SELECT |
@@ -61,18 +61,34 @@ Features for end users:
 
 - **Search** across all columns.
 - **Sort** by clicking a column heading (again for descending), or from the Actions menu.
-- **Actions menu**: add **column filters** (`=`, `≠`, contains, does not contain, `>`, `≥`, `<`,
-  `≤`, is empty, is not empty), choose **rows per page**, **download CSV**, **download PDF**,
-  **print**, **reset**.
-- Active search and filters appear as removable chips.
+- **Actions menu**:
+  - **column filters** (`=`, `≠`, contains, does not contain, `>`, `≥`, `<`, `≤`, is empty, is
+    not empty) and **sort**;
+  - **control break**: group the rows by a column, with a heading row per group;
+  - **aggregates**: sum, average, count, minimum or maximum of a column, over all filtered rows
+    (not just the page). A *Total* row closes the table, and with a control break every group
+    gets a *Subtotal*;
+  - **highlight**: color the rows that match a condition (yellow, green, red, blue or gray; the
+    first matching rule wins);
+  - **saved reports**: save the current search, filters, sort, break, aggregates and highlights
+    under a name, and switch between saved reports (below);
+  - **rows per page**, **download CSV / Excel / PDF**, **print**, **reset**.
+- Active search, filters, break, aggregates and highlights appear as removable chips.
 - **Paging** with Previous/Next.
 - On phones every row **reflows** into a card with labelled values.
 
-The report's state lives in the URL (`?r12_q=…&r12_s=3&r12_d=desc`), so it can be bookmarked and
-shared. Everything the user enters is applied safely: search and filter values become literals,
-filter columns must exist in the result, sort positions are integers.
+The report's state lives in the URL (`?r12_q=…&r12_s=3&r12_d=desc&r12_b=job&r12_a=sum|sal&r12_h=sal|gt|green|3000`),
+so it can be bookmarked and shared. Everything the user enters is applied safely: search, filter
+and highlight values become literals, columns must exist in the result, operators, aggregate
+functions and colors come from fixed lists, sort positions are integers.
 
-Attributes:
+**Saved reports** (like APEX's saved interactive reports) belong to the signed-in user. A
+region with `"public_reports": "ADMIN"` lets users who pass that authorization scheme save
+**public** reports, which everyone who can see the report can apply; only the owner can
+delete a report. Saved reports are user data: they stay in `meta.saved_report` and aren't part
+of the application export.
+
+Attributes (most of them are also in the page designer's **Report settings** form):
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -86,13 +102,18 @@ Attributes:
 | `link` | none | Makes one column a link: `{"column": "empno", "page": 3, "items": {"P3_EMPNO": "#empno#"}}`. `#col#` is replaced by the row's value; the link carries a checksum and is hidden when the user may not open that page |
 | `empty` | "No data found" | Text when there are no rows |
 | `preformatted` | `[]` | Columns shown with preserved spaces (e.g. indented trees) |
+| `saved_reports` | `true` | `false` hides saved reports for this report |
+| `public_reports` | none | Authorization scheme whose users may save public reports |
+| `pdf` | none | PDF layout, columns and widths; see [report layouts](16-files.md#report-layouts) |
 
 Items placed **in** a report region appear in its toolbar; that's how filter fields (for example
 a department select list with `submit_on_change`) are made.
 
-The CSV download uses the current search, filters and sort (up to 100,000 rows). Text cells that
-start with `=`, `+`, `-` or `@` are prefixed with `'` so spreadsheets don't execute them.
-The PDF uses them too; see [printing](16-files.md#printing).
+The CSV and Excel downloads use the current search, filters and sort, grouped by the control
+break column when there is one (up to 100,000 rows). Text cells that start with `=`, `+`, `-` or
+`@` are prefixed with `'` in CSV so spreadsheets don't execute them. The PDF uses them too; see
+[downloads and printing](16-files.md#downloads-and-printing). Highlights and aggregates are shown
+on screen only.
 
 ---
 
