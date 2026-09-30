@@ -41,8 +41,9 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 6 (tags so far: v0.2.0; v0.3.0+ not tagged yet) |
-| `sprint-3` … `sprint-6` | Merged; can be deleted |
+| `main` | Everything up to sprint 6, released as **v0.6.0** (tags: v0.2.0, v0.6.0; 0.3.0–0.5.0 were never tagged) |
+
+The sprint branches were merged and deleted. Start the next sprint with `git checkout -b sprint-7 main`.
 
 ## Sprint 4 goal (owner's order)
 
