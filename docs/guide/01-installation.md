@@ -85,6 +85,8 @@ which is read at startup; real environment variables take precedence.
 | `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data |
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
 | `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (the CSV download has all rows) |
+| `AUTOMATIONS` | on | `off` stops this server from running [automations](06-processing.md#automations) |
+| `SCHEDULER_INTERVAL_S` | `30` | How often the automation scheduler looks for due runs |
 | `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 

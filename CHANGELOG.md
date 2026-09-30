@@ -20,6 +20,12 @@ All notable changes to this project are documented here. The format follows
   ones for users who pass the region's `public_reports` scheme). Migration 014 adds
   `meta.saved_report`, reached through `meta.saved_reports`, `meta.save_report()` and
   `meta.delete_saved_report()`.
+- **Automations** (Shared Components → Automations, migration 015): SQL or PL/pgSQL on a cron
+  schedule with a time zone, once or for each row of a query, as the application's database role
+  with the automation's roles for `meta.has_role()`. Run now, next run and run history in the
+  builder. The pgapex server schedules them (no extension needed); several servers never run
+  one twice; `AUTOMATIONS=off` switches the scheduler off. Exported with the app; imported
+  copies start switched off. HR sample: *Remind managers*.
 - CI: an `upgrade` job installs v0.6.0 and v0.7.0 with sample data, upgrades and runs the tests;
   `scripts/migrate.ts --root` applies another release's `db/` folder.
 - `test/export.test.ts`: export → import → export round trip, older files, and a check that every

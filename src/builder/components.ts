@@ -3,12 +3,14 @@
 // from this spec, and SQL column names only ever come from here (never from
 // the request).
 
+import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
   | 'textarea' // plain multi-line text
   | 'color'    // #rrggbb
+  | 'list'     // comma-separated values into a text[] column
   | 'region'   // region of the current page
   | 'authz'    // authorization scheme of the app
   | 'page'     // page of the app
@@ -34,6 +36,8 @@ export interface ComponentSpec {
   fields: Field[];
   summary: (row: any) => string;
   defaults?: Record<string, unknown>;
+  /** checks the parsed values before saving; returns a message when they're not valid */
+  validate?: (values: Record<string, any>) => string | null;
 }
 
 const AUTHZ_HELP = 'Authorization scheme; prefix with ! to negate. MUST_NOT_BE_PUBLIC_USER is built in.';
@@ -276,6 +280,30 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'logo_width_mm', label: 'Logo width (mm)', kind: 'int', group: 'Logo', help: 'Upload the logo (PNG or JPEG) below, after saving.' },
     ],
   },
+  automation: {
+    table: 'meta.automation',
+    scope: 'app',
+    label: 'Automation',
+    plural: 'Automations',
+    icon: 'clock',
+    summary: (a) => a.name,
+    defaults: { enabled: true, schedule: '0 7 * * 1-5', time_zone: 'UTC', timeout_s: 300 },
+    validate: (v) => (v.schedule ? scheduleProblem(String(v.schedule), String(v.time_zone ?? 'UTC')) : 'Enter a schedule.') ?? (v.code ? null : 'Enter the code to run.'),
+    fields: [
+      { name: 'name', label: 'Name', kind: 'text', group: 'Identification' },
+      { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
+      { name: 'enabled', label: 'Enabled (runs on its schedule)', kind: 'bool', group: 'Identification' },
+      { name: 'schedule', label: 'Schedule (cron)', kind: 'text', group: 'Schedule',
+        help: 'minute hour day-of-month month day-of-week, e.g. 0 7 * * 1-5 (07:00 on weekdays), */15 * * * * (every 15 minutes), 0 2 1 * * (02:00 on the 1st); or @hourly, @daily, @weekly, @monthly' },
+      { name: 'time_zone', label: 'Time zone', kind: 'text', group: 'Schedule', help: 'IANA name, e.g. Europe/Amsterdam or UTC' },
+      { name: 'query', label: 'For each row of (optional)', kind: 'code', wide: true, group: 'Action',
+        help: 'A SELECT; the code then runs once per row with its columns as binds, e.g. select id, username from hr.leave_request where status = \'PENDING\' → :ID, :USERNAME' },
+      { name: 'code', label: 'Code (SQL or PL/pgSQL)', kind: 'code', wide: true, group: 'Action',
+        help: 'Runs as the application\'s database role, in one transaction. Binds: :APP_ID, :APP_ALIAS, :APP_USER (automation:<name>), :AUTOMATION_NAME, and the row\'s columns (not inside $$ … $$ blocks: pass them to a function instead).' },
+      { name: 'roles', label: 'Roles', kind: 'list', group: 'Action', help: 'Comma separated; what meta.has_role() returns true for while it runs.' },
+      { name: 'timeout_s', label: 'Timeout (seconds)', kind: 'int', group: 'Action' },
+    ],
+  },
 };
 
 export const ICON_OPTIONS = ['', ...ICONS];
@@ -303,6 +331,9 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
         } catch {
           throw new Error(`${f.label} is not valid JSON`);
         }
+        break;
+      case 'list':
+        values[f.name] = [...new Set(v.split(',').map((x) => x.trim()).filter(Boolean))];
         break;
       case 'upper':
       case 'authz':

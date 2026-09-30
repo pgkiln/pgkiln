@@ -27,6 +27,7 @@ const SECTIONS: Record<string, string> = {
   text_message: 'text_messages',
   translation: 'translations',
   report_layout: 'report_layouts',
+  automation: 'automations',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',
@@ -47,6 +48,8 @@ function normalise(doc: any) {
   return {
     ...doc,
     app: { ...doc.app, alias: '(alias)' },
+    // imported automations are switched off on purpose
+    automations: doc.automations.map((a: any) => ({ ...a, enabled: '(any)' })),
     nav: doc.nav.map(strip),
     pages: doc.pages.map((p: any) => ({
       ...p,
@@ -80,7 +83,7 @@ describe('application export', () => {
   test('export → import → export gives the same document', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     assert.equal(doc.format, 'pgapex/2');
-    for (const key of ['app', 'authz_schemes', 'app_items', 'app_processes', 'lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'nav', 'pages'])
+    for (const key of ['app', 'authz_schemes', 'app_items', 'app_processes', 'lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations', 'nav', 'pages'])
       assert.ok(key in doc, `section ${key}`);
     assert.ok(doc.report_layouts.length && doc.pages.some((p: any) => p.regions.some((r: any) => r.type === 'facets')), 'the HR sample covers layouts and facets');
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_roundtrip') as id`, [JSON.stringify(doc)])).id;
@@ -108,7 +111,7 @@ describe('application export', () => {
   test('older files without the newer sections still import', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     // as exported by 0.2.0: no LOVs, group roles, texts, translations or layouts
-    for (const k of ['lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts']) delete doc[k];
+    for (const k of ['lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations']) delete doc[k];
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_old_format') as id`, [JSON.stringify(doc)])).id;
     try {
       assert.ok((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [id])).n > 5);

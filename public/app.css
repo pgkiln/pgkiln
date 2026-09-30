@@ -721,3 +721,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 @media print {
   .report tr[class^="hl-"] td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* small status tags (saved reports, automation runs) */
+.tag { display: inline-block; font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 4px; background: var(--surface-3); color: var(--muted); }
+.tag-error { background: var(--danger-soft); color: var(--danger); }

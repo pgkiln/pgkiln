@@ -129,7 +129,6 @@ Audit triggers record such changes as made by `nobody`, which is what you want f
 
 | Idea | Extension | Effort |
 |---|---|---|
-| **Automations** in the builder: schedule an app's SQL or PL/pgSQL, with run history | pg_cron | Medium |
 | **Top SQL per application** on the Activity page | pg_stat_statements | Small |
 | **Code check** of an app's functions in the builder (like APEX Advisor) | plpgsql_check | Small |
 | **Map region** from GeoJSON or PostGIS geometries | PostGIS (optional) | Medium–large |

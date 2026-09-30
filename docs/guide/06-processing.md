@@ -141,3 +141,43 @@ select (select empno from hr.emp where lower(username) = lower(:APP_USER)) as ai
 ```
 
 `&AI_ENAME.` then greets the user on the dashboard.
+
+## Automations
+
+**Shared Components → Automations** run SQL or PL/pgSQL on a schedule, like APEX automations:
+nightly clean-ups, reminders, recalculations. The pgapex server schedules them, so no extension is
+needed (pg_cron isn't available on every managed PostgreSQL service).
+
+| Setting | |
+|---|---|
+| Schedule | cron syntax, `minute hour day-of-month month day-of-week`: `0 7 * * 1-5` (07:00 on weekdays), `*/15 * * * *` (every 15 minutes), `0 2 1 * *` (02:00 on the 1st), `30 6 1 jan,jul *`; or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. When both day fields are set, either may match, as in cron |
+| Time zone | the schedule's time zone, e.g. `Europe/Amsterdam` (daylight saving included) or `UTC` |
+| For each row of | optional query: the code then runs once per row, with the row's columns as binds (APEX's query-based automations) |
+| Code | one or more SQL statements, a `do $$ … $$` block or `call`. Binds: `:APP_ID`, `:APP_ALIAS`, `:APP_USER` (`automation:<name>`), `:AUTOMATION_NAME` and the row's columns. Binds aren't replaced inside `$$ … $$`: pass them to a function instead |
+| Roles | what `meta.has_role()` returns true for while it runs (read at every run) |
+| Timeout | the statement timeout of a run (default 300 s) |
+
+A run is **one transaction as the application's database role**, so grants and row level security
+apply, and an error rolls the whole run back. The editor shows the next run, a **Run now**
+button (it also works while the automation is disabled) and the last runs with their status, row
+count and error message; the last 100 runs are kept in `meta.automation_log`.
+
+The HR sample's *Remind managers* runs at 08:00 on weekdays and reminds managers of leave requests
+that have waited more than two days (`db/seed/hr_08_automations.sql`):
+
+```sql
+-- For each row of
+select id from hr.leave_request
+ where status = 'PENDING' and created_at < now() - interval '2 days'
+-- Code
+select hr.remind_pending_leave(:ID::int);
+```
+
+**Running more than one pgapex server?** Every server runs the scheduler (every 30 seconds,
+`SCHEDULER_INTERVAL_S`). Due automations are claimed with `FOR UPDATE SKIP LOCKED` and a run holds
+an advisory lock, so an automation never runs twice at the same time. Set `AUTOMATIONS=off` on
+servers that shouldn't run them. Exported applications include their automations; an imported
+copy starts with them **switched off**, so a copy never runs the original's jobs unasked.
+
+If you prefer the database to schedule work, [pg_cron](15-extensions.md) still works next to this.
+

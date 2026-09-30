@@ -64,6 +64,9 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       case 'textarea':
         control = html`<textarea id="${id}" name="${f.name}" rows="3">${v ?? ''}</textarea>`;
         break;
+      case 'list':
+        control = html`<input id="${id}" name="${f.name}" value="${Array.isArray(v) ? v.join(', ') : (v ?? '')}">`;
+        break;
       case 'color':
         control = html`<input id="${id}" name="${f.name}" type="color" value="${v ?? '#000000'}">`;
         break;
@@ -88,6 +91,8 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
 export async function saveComponent(kind: string, parentCol: 'page_id' | 'app_id', parentId: string, cid: string | undefined, body: Body) {
   const spec = COMPONENTS[kind];
   const values = parseFields(spec, body);
+  const problem = spec.validate?.(values);
+  if (problem) throw new Error(problem);
   if (cid) {
     const cols = Object.keys(values);
     const res = await owner.query(

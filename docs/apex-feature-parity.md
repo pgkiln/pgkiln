@@ -14,16 +14,16 @@ Last reviewed: 2026-09-30 (pgapex 0.7.0: file upload, data loading, printing, OA
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 2 | 6 | 7 | 0 | Solid builder and wizards; no drag-and-drop, no team/AI tooling |
-| Regions | 6 | 5 | 6 | 0 | All everyday regions; power-user report features and maps missing |
+| Regions | 6 | 5 | 6 | 0 | All everyday regions, reports with breaks, aggregates, highlights and saved reports; pivot and maps missing |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
 | Security | 14 | 2 | 3 | 2 | On par or stricter; no LDAP/SAML, no "remember me" |
 | User interface | 4 | 4 | 2 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 2 | 3 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX loading, report PDFs; no document templates or REST data sources |
-| Workflow, automation and AI | 0 | 0 | 6 | 0 | Not started; approvals are hand-built in PL/pgSQL (see the HR sample) |
+| Workflow, automation and AI | 0 | 1 | 5 | 0 | Scheduled automations; approvals are hand-built in PL/pgSQL (see the HR sample) |
 | Administration | 1 | 3 | 1 | 0 | Single workspace |
-| **Total** | **43** | **33** | **34** | **6** | 116 APEX features compared: 37% available, 28% partial |
+| **Total** | **43** | **34** | **33** | **6** | 116 APEX features compared: 37% available, 29% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -178,7 +178,7 @@ Last reviewed: 2026-09-30 (pgapex 0.7.0: file upload, data loading, printing, OA
 |---|---|---|
 | Approvals and task list | ❌ | The HR sample builds an approval flow in PL/pgSQL with RLS |
 | Workflow (26.1: parallel flows, multi-tenancy) | ❌ | |
-| Automations (scheduled) | ❌ | `pg_cron` runs scheduled SQL today ([extensions](guide/15-extensions.md)); builder integration is planned |
+| Automations (scheduled) | 🟡 | Shared Components → Automations: cron schedules with time zones, SQL/PL/pgSQL once or per row of a query, roles, run history and Run now, safe with several servers ([chapter 6](guide/06-processing.md#automations)). **Missing:** several actions per automation, error handling per row (skip and continue), on-demand runs from SQL (`APEX_AUTOMATION.EXECUTE`) |
 | AI assistant, natural-language reports (NL2IR), AI agents and tools (26.1) | ❌ | `pgvector` covers semantic search on the data side |
 | *Generate Text with AI* process, structured outputs (26.1) | ❌ | |
 | Blueprints, spec-driven development (26.1) | ❌ | |
@@ -209,7 +209,7 @@ Last reviewed: 2026-09-30 (pgapex 0.7.0: file upload, data loading, printing, OA
 
 | Gap | Extension | See |
 |---|---|---|
-| Automations / scheduler | `pg_cron` | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
+| Automations / scheduler | built in, or `pg_cron` | [chapter 6](guide/06-processing.md#automations), [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
 | Calling REST APIs from SQL (`APEX_WEB_SERVICE`) | `http`, `pg_net` | [chapter 15](guide/15-extensions.md#tier-3-situational) |
 | Map data | PostGIS | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
 | Semantic search / RAG | `pgvector` | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
@@ -231,7 +231,7 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Automations in the builder** on `pg_cron`: schedule an app's SQL or PL/pgSQL, with run history.
+1. **Settings forms instead of JSON** in the page designer (report columns, links, PDF), then the rest of the builder quality work.
 2. **Interactive report power features:** group by, pivot, chart view, computed columns, row selection.
 3. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
 4. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
