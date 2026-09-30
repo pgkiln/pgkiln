@@ -42,7 +42,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 10, released as **v0.8.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0; 0.3.0–0.5.0 were never tagged). Migrations 001–015 are released |
-| `sprint-7` … `sprint-10` | Merged into `main`; can be deleted |
+| (sprint branches) | `sprint-7` … `sprint-10` were merged and deleted. The next sprint starts a new `sprint-11` branch from `main` |
 
 Older sprint branches were merged and deleted.
 
