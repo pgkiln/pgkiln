@@ -42,7 +42,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 6, released as **v0.6.0** (tags: v0.2.0, v0.6.0; 0.3.0–0.5.0 were never tagged) |
-| `sprint-7` | Role suggestions, file upload items; data loading and PDF printing in progress |
+| `sprint-7` | **Done and pushed**: role suggestions, file upload items, data loading, report PDFs/printing. Ready for the owner to merge (then version 0.7.0) |
 
 Older sprint branches were merged and deleted.
 
@@ -235,10 +235,22 @@ a table), 4 printing (PDF). Migrations 001–008 are released (v0.6.0): add 009+
      clears them. `fetchForms` never loads bytes; the item queries size/name when rendering.
    - Downloads: `GET /a/:alias/:page/file/:item?k=<pk|temp:uuid>&cs=` (checksum over
      `__FILE`/`__KEY`), page access checked, app role, attachment unless `inline=1` and safe type.
-3. **Data loading: next.** Plan: SQL Workshop → Load data (upload, preview, map columns to an
-   existing table or create one with inferred types, load in one transaction with per-row errors);
-   `read-excel-file` (`import { readSheet } from 'read-excel-file/node'`) for XLSX, own CSV parser.
-4. **Printing: after that.** Plan: interactive report Actions → Download PDF with `pdfkit`
-   (filters applied, headings, page numbers, landscape when wide) and `@media print` CSS.
-Then: guide chapter 16 (files, data loading, printing), parity matrix, e2e run, push.
+3. **Data loading: done.** `src/dataload.ts` (parser, inference, batched `loadRows` with a
+   row-by-row retry to find bad rows; `LoadFailed` = roll back), builder `src/builder/dataload.ts`
+   (SQL Workshop → Load Data; the file is a `meta.temp_file` of the builder session between
+   steps), process type `data_load` (migration `010_data_load.sql` adds nullable
+   `meta.process.config`; engine `dataLoad()`), HR page 13 (seed `hr_06_data_load.sql`),
+   `public/samples/employees.csv`, `test/fixtures/employees.xlsx` (hand-built xlsx),
+   `test/dataload.test.ts`.
+4. **Printing: done.** `src/runtime/pdf.ts` (pdfkit, `autoFirstPage: false` so the orientation
+   is chosen after measuring columns; footer written with bottom margin 0), `r<id>_pdf=1` in the
+   page GET handler next to CSV, Actions menu Download PDF + Print (`data-print` in app.js),
+   `@media print` in app.css, `test/printing.test.ts` (inflates content streams to read text).
+5. **Docs: done.** Guide chapter 16, parity (43 ✅ / 33 🟡 / 34 ❌ / 6 ➖), CHANGELOG [Unreleased].
+
+Verified: `npm test` 114/114 and `npm run test:e2e` 20/20 on the dev DB; a fresh install
+(throwaway postgres:17 container) applies 001–010 and seeds 01–06 cleanly.
+
+Ideas for next: document templates (HTML → PDF), several files per item / drag-and-drop,
+JSON in data loading, automations on pg_cron (roadmap item 1).
 
