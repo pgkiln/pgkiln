@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-09-30 (pgapex 0.6.0-dev, branch `sprint-6`).
+Last reviewed: 2026-09-30 (pgapex 0.6.0).
 
 ## At a glance
 

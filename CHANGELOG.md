@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### Added
 - Chapter 15, *Useful PostgreSQL extensions*: contrib and third-party extensions mapped to APEX
   features (scheduling, web services, maps, AI search, auditing, Oracle compatibility), with
@@ -26,6 +28,8 @@ All notable changes to this project are documented here. The format follows
   development builds; fresh installs never create them.
 
 ## [0.5.0] - 2026-09-29
+
+Not tagged as a release: its development builds included e-mail, which 0.6.0 removed again.
 
 ### Added
 - **My account** in every application: change your own password, choose light or dark and the language.
