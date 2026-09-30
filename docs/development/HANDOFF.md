@@ -1,10 +1,10 @@
-# Handoff: work in progress (sprint 4)
+# Handoff: work in progress
 
 This file lets another developer (or another Claude session) continue the current sprint without
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-09-29. Sprint 4 (v0.4.0) and sprint 5 (v0.5.0) are **done** and pushed; both wait for the owner to merge (`sprint-5` contains `sprint-4`).
+Last updated: 2026-09-30. Sprints 4, 5 and 6 are **done** and pushed; they wait for the owner to merge (`sprint-6` contains `sprint-5`, which contains `sprint-4`).
 
 ## Project in one paragraph
 
@@ -43,7 +43,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | v0.3.0 (`sprint-3` merged via PR #1) |
 | `sprint-4` | v0.4.0: user directory, OpenID Connect SSO, PostgREST REST APIs. Pushed, **not merged yet** |
-| `sprint-5` | v0.5.0: account self-service, light/dark switch, globalization, e-mail. Branched from `sprint-4`. Pushed, **not merged yet** |
+| `sprint-5` | v0.5.0: account self-service, light/dark switch, globalization (its e-mail feature is removed again in `sprint-6`). Pushed, **not merged yet** |
+| `sprint-6` | E-mail and forgot password removed (owner decision), PostgreSQL extensions chapter, APEX parity re-review. Branched from `sprint-5`. Pushed, **not merged yet** |
 
 ## Sprint 4 goal (owner's order)
 
@@ -200,3 +201,21 @@ Open / candidates for sprint 6:
 - Chart data tables show raw column names as headings
 - CI has no PostgREST or Mailpit service (the HTTP API tests skip; mail tests use a fake transport)
 - File upload items (top of the roadmap), then automations on pg_cron
+
+## Sprint 6 (owner's request, 2026-09-30)
+
+1. **Remove e-mail entirely**, including forgot password. Owner: "not happy with the mailing part".
+   Note for future work: APEX *does* have `APEX_MAIL`; the owner still chose to leave mail out. Don't
+   re-add mail features; point to `pg_smtp_client` or an external service instead.
+   - `008_mail.sql` and the reset part of `006` were deleted (both unreleased). **`008_drop_mail.sql`**
+     idempotently removes the objects from databases that ran the development builds, unwraps
+     `export_app`/`import_app`, drops the sample's mail trigger, and renames the seed record
+     `hr_04_i18n_mail.sql` → `hr_04_i18n.sql`.
+   - Code, builder (Mail page, e-mail templates, Send e-mail process, forgot-password setting), i18n texts,
+     `nodemailer`, Mailpit, SMTP settings, tests and docs removed. Chapter 14 is now *Globalization*.
+2. **Extensions**: `docs/guide/15-extensions.md` (tiers, APEX mapping, security notes, integration ideas);
+   `test/extensions.test.ts` proves btree_gist/pg_trgm/unaccent/citext examples; `23P01` now has a friendly message.
+3. **APEX 26.1 re-review**: `docs/apex-feature-parity.md` rewritten (116 rows: 43 ✅, 30 🟡, 37 ❌, 6 ➖),
+   with a new roadmap: file upload → automations on pg_cron → IR power features → stricter CSP (styles) → builder quality.
+
+Verification: `npm run db:reset && npm test && npm run test:e2e` (see the commit message for counts).

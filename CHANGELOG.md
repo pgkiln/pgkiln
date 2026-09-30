@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Chapter 15, *Useful PostgreSQL extensions*: contrib and third-party extensions mapped to APEX
+  features (scheduling, web services, maps, AI search, auditing, Oracle compatibility), with
+  security notes and tested examples (`test/extensions.test.ts`).
+- Exclusion-constraint violations (e.g. overlapping date ranges with `btree_gist`) get a friendly
+  message, like check constraints.
+
+### Changed
+- The APEX 26.1 parity matrix was re-reviewed: 116 features compared, with counts per area and
+  sections on deliberate differences and gaps that extensions close. The CSP row is now partial
+  (inline styles are still allowed).
+
 ### Removed
 - **E-mail and "forgot password"** (they were in the unreleased 0.5.0 development builds): the mail
   queue, `meta.send_mail()`/`send_mail_template()`/`add_attachment()`, e-mail templates, the *Send
