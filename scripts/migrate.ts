@@ -1,10 +1,16 @@
 // Applies db/migrations/*.sql in order (each once, in a transaction), then
 // optionally db/seed/*.sql (--seed). Uses DATABASE_URL (the owner role).
+// --root <dir> reads db/ from another directory, e.g. an older release for
+// the upgrade test: git archive v0.6.0 db | tar -x -C /tmp/old, then
+// migrate.ts --seed --root /tmp/old, then migrate.ts --seed.
 import '../src/env.ts';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import pg from 'pg';
-import { root } from '../src/env.ts';
+import { root as appRoot } from '../src/env.ts';
+
+const rootArg = process.argv.indexOf('--root');
+const root = rootArg > 0 ? process.argv[rootArg + 1] : appRoot;
 
 let client: pg.Client;
 for (let attempt = 1; ; attempt++) {
