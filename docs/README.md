@@ -22,6 +22,7 @@ deploying applications, and how to extend pgapex itself.
 | 12 | [Developing pgapex](guide/12-development.md) | Code structure, tests, adding a region or item type, release process |
 | 13 | [REST APIs with PostgREST](guide/13-rest-api.md) | PostgREST next to pgapex, the `api` schema pattern, tokens, one set of RLS policies for UI and API |
 | 14 | [Globalization](guide/14-globalization.md) | Languages, translating an app (XLIFF/CSV), text messages, date formats, light/dark |
+| 15 | [Useful PostgreSQL extensions](guide/15-extensions.md) | Extensions for search, scheduling, auditing, maps, AI search, Oracle compatibility and web services, mapped to APEX features, with security notes |
 
 ## Other documents
 

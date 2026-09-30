@@ -95,6 +95,8 @@ const FRIENDLY: Record<string, (e: pg.DatabaseError, t: Translate) => string> = 
       : t('error.missing_reference'),
   '23502': (e, t) => t('error.not_null', { column: e.column ?? t('error.not_null_any') }),
   '23514': (e, t) => t('error.check', { rule: e.constraint ?? 'check' }),
+  // exclusion constraints, e.g. no overlapping date ranges (btree_gist)
+  '23P01': (e, t) => t('error.check', { rule: e.constraint ?? 'exclusion' }),
   '22P02': (_, t) => t('error.format'),
   '22007': (_, t) => t('error.datetime'),
   '22008': (_, t) => t('error.datetime_range'),
