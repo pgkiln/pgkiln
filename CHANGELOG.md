@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- File upload items (APEX *File Browse*): item type `file` saves into a form's bytea column
+  (with file name and MIME type columns) or into the session's temporary files
+  (`meta.temp_files`, like `APEX_APPLICATION_TEMP_FILES`). Image previews, remove option,
+  size (`max_mb`, `MAX_UPLOAD_MB`) and type (`accept`) limits, and signed downloads that run
+  as the application's role (row level security applies). Uploads survive validation errors.
+  HR sample: employee photo.
 - Role suggestions in the builder: roles fields (Users → account, and the app's Access control)
   list the roles the application checks (authorization schemes, `meta.has_role()` in SQL, group
   mappings, roles in use); click to add, hover to see where each role is checked.

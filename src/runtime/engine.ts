@@ -4,6 +4,7 @@ import { savepoint, type Client } from '../db.ts';
 import type { Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
+import { formRegion, isTempId, REMOVE } from './files.ts';
 import { esc } from '../html.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
@@ -16,7 +17,7 @@ export class ValidationFailed extends Error {
 }
 
 /** Resolve a developer-supplied table name to a safely quoted identifier. */
-async function resolveTable(c: Client, name: string) {
+export async function resolveTable(c: Client, name: string) {
   const res = await c.query('select $1::regclass::text as t', [name]);
   return res.rows[0].t as string;
 }
@@ -57,7 +58,9 @@ export async function fetchForms(ctx: PageContext) {
     if (r.type !== 'form' || !r.table_name || !r.pk_column || !r.pk_item) continue;
     const pk = ctx.session.state[r.pk_item];
     if (pk === null || pk === undefined) continue;
-    const items = formItems(ctx, r);
+    // files are not loaded into session state; the item shows the stored file's name
+    const items = formItems(ctx, r).filter((i) => i.type !== 'file');
+    for (const f of formItems(ctx, r)) if (f.type === 'file') ctx.session.state[f.name] = null;
     try {
       const table = await savepoint(c, () => resolveTable(c, r.table_name!));
       const cols = items.map((i) => ident(i.source_column!)).join(', ') || ident(r.pk_column);
@@ -79,6 +82,16 @@ export async function fetchForms(ctx: PageContext) {
 
 // ---------------------------------------------------------------- validations
 
+async function storedFileExists(ctx: PageContext, r: Region, column: string) {
+  const pk = ctx.session.state[r.pk_item!];
+  if (pk === null || pk === undefined) return false;
+  const c = ctx.client!;
+  const res = await savepoint(c, async () =>
+    c.query(`select ${ident(column)} is not null as ok from ${await resolveTable(c, r.table_name!)} where ${ident(r.pk_column!)} = ${literal(pk)}`),
+  );
+  return res.rows[0]?.ok === true;
+}
+
 export async function validate(ctx: PageContext) {
   const c = ctx.client!;
   const errors: Errors = { page: [], items: {} };
@@ -89,8 +102,16 @@ export async function validate(ctx: PageContext) {
     else errors.page.push(msg);
   };
 
-  for (const i of ctx.page.items)
-    if (i.required && vis.editable.has(i.name) && (state[i.name] ?? null) === null) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
+  for (const i of ctx.page.items) {
+    if (!i.required || !vis.editable.has(i.name)) continue;
+    let missing = (state[i.name] ?? null) === null;
+    // a file item keeps the stored file unless a new one is uploaded
+    if (i.type === 'file') {
+      const r = formRegion(ctx, i);
+      missing = state[i.name] === REMOVE || (missing && !(r && (await storedFileExists(ctx, r, i.source_column!))));
+    }
+    if (missing) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
+  }
 
   for (const v of ctx.page.validations) {
     if (v.when_button && v.when_button !== ctx.request) continue;
@@ -141,25 +162,53 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       (i.type === 'hidden' || ctx.vis!.editable.has(i.name)),
   );
 
+  // [column, SQL expression] pairs to write; a file item writes the file and
+  // its name and type columns, or nothing when no new file was uploaded
+  const assignments: [string, string][] = [];
+  const uploaded: string[] = [];
+  for (const i of columns) {
+    const v = state[i.name] ?? null;
+    if (i.type !== 'file') {
+      if (op === 'update' || v !== null) assignments.push([ident(i.source_column!), literal(v)]);
+      continue;
+    }
+    const conf = (i.config ?? {}) as { filename_column?: string; mime_column?: string };
+    const file = (col: string) => `(select ${col} from meta.temp_files where id = ${literal(v)}::uuid)`;
+    if (isTempId(v)) {
+      uploaded.push(v);
+      assignments.push([ident(i.source_column!), file('content')]);
+      if (conf.filename_column) assignments.push([ident(conf.filename_column), file('filename')]);
+      if (conf.mime_column) assignments.push([ident(conf.mime_column), file('mime_type')]);
+    } else if (v === REMOVE && op === 'update') {
+      assignments.push([ident(i.source_column!), 'null']);
+      if (conf.filename_column) assignments.push([ident(conf.filename_column), 'null']);
+      if (conf.mime_column) assignments.push([ident(conf.mime_column), 'null']);
+    }
+  }
+  // saved into the row: the temporary files are no longer needed
+  const done = async () => {
+    for (const id of uploaded) await c.query('select meta.delete_temp_file($1)', [id]);
+    for (const i of columns) if (i.type === 'file') state[i.name] = null;
+  };
+
   if (op === 'insert') {
     // Only non-null values: omitted columns get their DEFAULT.
-    const set = columns.filter((i) => (state[i.name] ?? null) !== null);
-    const sql = set.length
-      ? `insert into ${table} (${set.map((i) => ident(i.source_column!)).join(', ')}) values (${set.map((i) => literal(state[i.name])).join(', ')}) returning ${pkCol}`
+    const sql = assignments.length
+      ? `insert into ${table} (${assignments.map(([col]) => col).join(', ')}) values (${assignments.map(([, v]) => v).join(', ')}) returning ${pkCol}`
       : `insert into ${table} default values returning ${pkCol}`;
     const res = await c.query({ text: sql, rowMode: 'array' });
     state[r.pk_item] = toState(res.rows[0][0]);
+    await done();
     return p.success_message ?? ctx.locale.t('form.created');
   }
 
   if (pk === null) throw new Error(ctx.locale.t('form.no_record'));
   if (op === 'update') {
-    if (columns.length) {
-      const res = await c.query(
-        `update ${table} set ${columns.map((i) => `${ident(i.source_column!)} = ${literal(state[i.name])}`).join(', ')} where ${pkCol} = ${literal(pk)}`,
-      );
+    if (assignments.length) {
+      const res = await c.query(`update ${table} set ${assignments.map(([col, v]) => `${col} = ${v}`).join(', ')} where ${pkCol} = ${literal(pk)}`);
       if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
     }
+    await done();
     return p.success_message ?? ctx.locale.t('form.saved');
   }
 

@@ -14,13 +14,18 @@ import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
 let appId: number;
+// the sample users' own language choice (My account) would override the browser's
+let saved: { username: string; language: string | null }[] = [];
 
 before(async () => {
   app = await buildApp({ logger: false });
   appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+  saved = (await owner.query(`select username, language from meta.account where language is not null and username in ('king', 'blake', 'allen', 'demo')`)).rows;
+  await owner.query(`update meta.account set language = null where username = any($1)`, [saved.map((s) => s.username)]);
 });
 
 after(async () => {
+  for (const s of saved) await owner.query('update meta.account set language = $2 where username = $1', [s.username, s.language]);
   await app.close();
   await closePools();
 });

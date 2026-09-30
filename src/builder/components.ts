@@ -73,7 +73,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     defaults: { type: 'text' },
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', help: 'Referenced in SQL as :NAME, e.g. P3_ENAME', group: 'Identification' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['text', 'textarea', 'number', 'date', 'datetime', 'select', 'popup_lov', 'radio', 'checkbox', 'switch', 'checkbox_group', 'multiselect', 'email', 'tel', 'url', 'color', 'hidden', 'display', 'password'], group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['text', 'textarea', 'number', 'date', 'datetime', 'select', 'popup_lov', 'radio', 'checkbox', 'switch', 'checkbox_group', 'multiselect', 'email', 'tel', 'url', 'color', 'file', 'hidden', 'display', 'password'], group: 'Identification' },
       { name: 'label', label: 'Label', kind: 'text', group: 'Identification' },
       { name: 'region_id', label: 'Region', kind: 'region', group: 'Layout' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Layout' },
@@ -84,7 +84,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'help', label: 'Help text', kind: 'text', group: 'Validation' },
       { name: 'readonly_condition', label: 'Read-only condition (SQL)', kind: 'code', group: 'Security', help: 'When true the item is shown read-only and ignored on submit.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
-      { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}' },
+      { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. File items: {"filename_column":"photo_name","mime_column":"photo_mime","accept":"image/*,.pdf","max_mb":2}' },
     ],
   },
   button: {

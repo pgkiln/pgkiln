@@ -82,7 +82,7 @@ export interface Region {
 export type ItemType =
   | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'radio'
   | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password'
-  | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color';
+  | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color' | 'file';
 
 export interface Item {
   id: number;

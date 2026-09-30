@@ -657,3 +657,10 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .role-hints { display: block; line-height: 2; }
 .role-chip { border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; font-size: 0.78rem; padding: 0.05rem 0.55rem; }
 .role-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+/* file upload items */
+.file-current { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin-bottom: 0.5rem; }
+.file-current a { word-break: break-all; }
+.file-preview { max-width: 160px; max-height: 110px; object-fit: cover; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+.field-file input[type="file"] { max-width: 100%; }
+.display-value .file-current { margin: 0; }

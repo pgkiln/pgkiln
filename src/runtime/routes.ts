@@ -13,6 +13,7 @@ import { checkPageAccess, computeVisibility, Forbidden } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { MULTI_VALUE, renderItem } from './items.ts';
+import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { reportCsv, normaliseReportParams } from './report.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
@@ -183,7 +184,7 @@ function applyUrlItems(ctx: PageContext): boolean {
 /** Copy submitted values into session state, for editable items only. */
 function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
   for (const item of ctx.page.items) {
-    if (!ctx.vis!.editable.has(item.name)) continue;
+    if (!ctx.vis!.editable.has(item.name) || item.type === 'file') continue;
     if (only && !only.includes(item.name)) continue;
     const raw = body[item.name] as string | string[] | undefined;
     if (MULTI_VALUE.has(item.type)) {
@@ -264,6 +265,13 @@ export async function runtimeRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- submit page
   app.post('/a/:alias/:page', async (req: Req, reply) => {
+    // a page with file items posts multipart/form-data
+    let files = new Map<string, Upload>();
+    if (req.isMultipart()) {
+      const parsed = await readMultipart(req);
+      req.body = parsed.body as Body;
+      files = parsed.files;
+    }
     const ctx = await loadContext(req, reply);
     if (!ctx) return;
     const body = req.body ?? {};
@@ -288,6 +296,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const pressed = requested ? vis.buttons.get(requested) : undefined;
         if (requested && pressed?.action !== 'submit') throw new Forbidden(ctx.locale.t('error.action_unavailable'));
         applyPostedItems(ctx, body);
+        await applyUploads(ctx, files, body, txContext);
+        if (Object.keys(ctx.errors.items).length) throw new ValidationFailed(ctx.errors);
         if (!pressed) return undefined;
         ctx.request = pressed.name;
         snapshot = { ...ctx.session.state };
@@ -316,6 +326,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx));
     return reply.redirect(button.target_page ? `${ctx.base}/${button.target_page}` : self, 303);
   });
+
+  // ---------------------------------------------------------------- file downloads
+  fileRoutes(app, loadContext, txContext, forbidden);
 
   // ---------------------------------------------------------------- dynamic actions (AJAX)
   app.post('/a/:alias/:page/da/:id', async (req: Req, reply) => {
