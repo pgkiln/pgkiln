@@ -16,6 +16,7 @@ import { MULTI_VALUE, renderItem } from './items.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { reportCsv, normaliseReportParams } from './report.ts';
+import { reportPdf } from './pdf.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
@@ -230,9 +231,10 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
     const flash = takeFlash(ctx.session);
     if (flash) ctx.messages.push(flash);
-    const csvKey = [...ctx.params.keys()].find((k) => /^r\d+_csv$/.test(k));
+    // Actions → Download CSV / PDF: r<region id>_csv=1 or r<region id>_pdf=1
+    const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|pdf)$/.test(k));
 
-    let result: { html?: string; csv?: string; name?: string };
+    let result: { html?: string; csv?: string; pdf?: Buffer; name?: string };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -245,10 +247,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
           ctx.errors.page.push((e as Error).message);
         }
         await computeVisibility(ctx);
-        if (csvKey) {
-          const region = ctx.page.regions.find((r) => `r${r.id}_csv` === csvKey && r.type === 'report' && ctx.vis!.regions.has(r.id));
+        if (downloadKey) {
+          const pdf = downloadKey.endsWith('_pdf');
+          const region = ctx.page.regions.find((r) => `r${r.id}_${pdf ? 'pdf' : 'csv'}` === downloadKey && r.type === 'report' && ctx.vis!.regions.has(r.id));
           if (!region) throw new Forbidden(ctx.locale.t('error.report_unavailable'));
-          return { csv: await reportCsv(ctx, region), name: `${(region.title ?? 'report').replace(/[^\w-]+/g, '_')}.csv` };
+          const name = (region.title ?? 'report').replace(/[^\w-]+/g, '_');
+          return pdf ? { pdf: await reportPdf(ctx, region), name: `${name}.pdf` } : { csv: await reportCsv(ctx, region), name: `${name}.csv` };
         }
         return { html: await renderPage(ctx) };
       });
@@ -258,6 +262,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
     await saveState(ctx.session);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
+    if (result.pdf)
+      return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type('application/pdf').send(result.pdf);
     if (result.csv !== undefined)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).type('text/csv; charset=utf-8').send(result.csv);
     return reply.type('text/html').send(result.html);

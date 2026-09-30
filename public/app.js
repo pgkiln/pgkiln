@@ -433,3 +433,10 @@ document.querySelectorAll('select[name="app_id"]').forEach((sel) => {
   syncRoleHints(sel);
   sel.addEventListener('change', () => syncRoleHints(sel));
 });
+
+// Actions → Print (the print stylesheet hides navigation and toolbars).
+document.addEventListener('click', (e) => {
+  if (!e.target.closest?.('[data-print]')) return;
+  e.target.closest('details')?.removeAttribute('open');
+  window.print();
+});

@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Printing: interactive reports get **Download PDF** (A4, landscape when wide; title, active
+  filters, repeated headings, page numbers; same query, filters and access checks as the
+  screen) and **Print** in the Actions menu; every page has a print stylesheet without
+  navigation and toolbars. `PDF_FONT` / `PDF_FONT_BOLD` embed a TrueType font for scripts
+  beyond Western European; `PDF_MAX_ROWS` (default 5000) limits the rows.
 - Data loading (CSV, TSV, Excel .xlsx):
   - SQL Workshop → **Load Data**: upload, preview, then load into a new table (column names
     and types inferred) or an existing one (columns mapped by name; append, merge by primary

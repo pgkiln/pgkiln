@@ -1,3 +1,4 @@
+import { icon } from '../icons.ts';
 import pg from 'pg';
 import { applyBinds, literal } from '../binds.ts';
 import { savepoint } from '../db.ts';
@@ -16,6 +17,8 @@ import type { Formatter } from './format.ts';
 // that exist in the result, whitelisted operators, or integers.
 
 const NUMERIC_OIDS = new Set([20, 21, 23, 26, 700, 701, 1700]);
+export const isNumeric = (typeOid: number) => NUMERIC_OIDS.has(typeOid);
+const PDF_MAX_ROWS = Number(process.env.PDF_MAX_ROWS ?? 5000);
 const TIMESTAMP_OIDS = new Set([1114, 1184]);
 export const PAGE_SIZES = [5, 10, 15, 25, 50, 100];
 const CSV_MAX_ROWS = 100_000;
@@ -122,7 +125,7 @@ export async function columnsOf(ctx: PageContext, src: string) {
   return res.fields.map((f) => f.name);
 }
 
-export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv') {
+export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'pdf') {
   const src = stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx)));
   const where: string[] = [];
   if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
@@ -137,7 +140,8 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
   let sql = `select "__q".*${mode === 'page' ? ', count(*) over () as "__total"' : ''} from (\n${src}\n) "__q"`;
   if (where.length) sql += ` where ${where.join(' and ')}`;
   if (st.sort) sql += ` order by ${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`;
-  sql += mode === 'page' ? ` limit ${st.size} offset ${(st.page - 1) * st.size}` : ` limit ${CSV_MAX_ROWS}`;
+  // one row more than a PDF shows, so it can say it was cut off
+  sql += mode === 'page' ? ` limit ${st.size} offset ${(st.page - 1) * st.size}` : ` limit ${mode === 'pdf' ? PDF_MAX_ROWS + 1 : CSV_MAX_ROWS}`;
   return sql;
 }
 
@@ -302,8 +306,10 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
               html`<a href="${regionUrl(ctx, r, (p) => { p.set(key(r, 'n'), String(n)); p.delete(key(r, 'p')); })}"${n === st.size ? raw(' aria-current="true"') : ''}>${n}</a>`)}</div>
           </div>
           <div class="menu-section menu-links">
-            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>⤓ ${t('report.download')}</a>
-            <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">↺ ${t('report.reset')}</a>
+            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>${icon('download')} ${t('report.download')}</a>
+            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'pdf'), '1'))}" download>${icon('download')} ${t('report.download_pdf')}</a>
+            <button type="button" data-print>${icon('printer')} ${t('report.print')}</button>
+            <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">${icon('history')} ${t('report.reset')}</a>
           </div>
         </div>
       </details>`

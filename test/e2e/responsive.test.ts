@@ -154,6 +154,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         designer: `/builder/pages/${pageId}`,
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
+        load: '/builder/sql/load',
         developers: '/builder/developers',
         users: '/builder/users',
         providers: '/builder/users/providers',
