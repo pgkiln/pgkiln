@@ -9,20 +9,20 @@ import { english, type Translate } from '../i18n.ts';
 import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
 import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn } from '../sso.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
-import { checkPageAccess, computeVisibility, Forbidden } from './authz.ts';
+import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { MULTI_VALUE, renderItem } from './items.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
-import { reportCsv, reportXlsx, normaliseReportParams } from './report.ts';
+import { reportCsv, reportParams, reportXlsx, normaliseReportParams } from './report.ts';
 import { reportPdf } from './pdf.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-type Params = { alias: string; page?: string; id?: string; item?: string };
+type Params = { alias: string; page?: string; id?: string; item?: string; sid?: string };
 type Body = Record<string, string | undefined>;
 export type Req = FastifyRequest<{ Params: Params; Body: Body }>;
 
@@ -388,6 +388,55 @@ export async function runtimeRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: await publicError(ctx, e, 'dynamic action') });
     }
   });
+
+  // ---------------------------------------------------------------- saved reports
+  // Actions → Saved reports. Back to the page with the report's parameters.
+  const savedReport = async (req: Req, reply: FastifyReply, run: (ctx: PageContext, regionId: number, params: URLSearchParams) => Promise<string>) => {
+    const ctx = await loadContext(req, reply);
+    if (!ctx) return;
+    const body = req.body ?? {};
+    if (body.__csrf !== ctx.session.csrf_token) return forbidden(ctx, reply, ctx.locale.t('error.session_reload'), 'saved report: csrf');
+    if (ctx.user === 'nobody') return forbidden(ctx, reply, ctx.locale.t('error.access_denied'), 'saved report: not signed in');
+    const regionId = Number(req.params.id);
+    const region = ctx.page.regions.find((r) => r.id === regionId && r.type === 'report');
+    // only the report's own parameters come back
+    const params = region ? reportParams(region, new URLSearchParams(body.params ?? '')) : new URLSearchParams();
+    try {
+      const message = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        if (!region || !vis.regions.has(region.id) || region.config.saved_reports === false) throw new Forbidden(ctx.locale.t('error.report_unavailable'));
+        return run(ctx, region.id, params);
+      });
+      ctx.session.state.__FLASH = message;
+    } catch (e) {
+      if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `saved report on page ${ctx.page.page_no}`);
+      ctx.session.state.__FLASH = await publicError(ctx, e, 'saved report');
+    }
+    await saveState(ctx.session);
+    const q = params.toString();
+    return reply.redirect(`${ctx.base}/${ctx.page.page_no}${q ? `?${q}` : ''}`, 303);
+  };
+
+  app.post('/a/:alias/:page/report/:id/save', async (req: Req, reply) =>
+    savedReport(req, reply, async (ctx, regionId, params) => {
+      const t = ctx.locale.t;
+      const name = (req.body?.name ?? '').trim().slice(0, 80);
+      if (!name) return t('report.name_required');
+      const region = ctx.page.regions.find((r) => r.id === regionId)!;
+      const pub = req.body?.public === 'true' && typeof region.config.public_reports === 'string' && (await isAuthorized(ctx, region.config.public_reports));
+      await ctx.client!.query('select meta.save_report($1, $2, $3, $4)', [regionId, name, params.toString(), pub]);
+      return t('report.saved', { name });
+    }),
+  );
+
+  app.post('/a/:alias/:page/report/:id/saved/:sid/delete', async (req: Req, reply) =>
+    savedReport(req, reply, async (ctx) => {
+      await ctx.client!.query('select meta.delete_saved_report($1)', [Number(req.params.sid) || 0]);
+      return ctx.locale.t('report.saved_deleted');
+    }),
+  );
 
   // Cascading list of values: re-render a select after its parent changed.
   app.post('/a/:alias/:page/lov/:item', async (req: Req, reply) => {

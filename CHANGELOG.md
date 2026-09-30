@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format follows
   `forms.ts` (no behaviour change).
 
 ### Added
+- Interactive reports: **control break** (group rows by a column), **aggregates** (sum,
+  average, count, minimum, maximum over all filtered rows, with subtotals per group and a
+  total), **highlights** (color matching rows) and **saved reports** (private per user; public
+  ones for users who pass the region's `public_reports` scheme). Migration 014 adds
+  `meta.saved_report`, reached through `meta.saved_reports`, `meta.save_report()` and
+  `meta.delete_saved_report()`.
 - CI: an `upgrade` job installs v0.6.0 and v0.7.0 with sample data, upgrades and runs the tests;
   `scripts/migrate.ts --root` applies another release's `db/` folder.
 - `test/export.test.ts`: export → import → export round trip, older files, and a check that every

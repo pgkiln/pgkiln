@@ -14,6 +14,7 @@ const NOT_EXPORTED = new Set([
   'session',
   'activity_log',
   'sso_pending',
+  'saved_report', // users' saved interactive reports
 ]);
 
 /** Where each exported table appears in the document. */

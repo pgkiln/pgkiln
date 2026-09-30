@@ -4,7 +4,7 @@ import { applyBinds, literal } from '../binds.ts';
 import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
-import { pageAllowed } from './authz.ts';
+import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext } from './context.ts';
 import { heading } from './items.ts';
 import { linkAttrs } from './links.ts';
@@ -50,6 +50,25 @@ interface Filter {
   raw: string;
 }
 
+export const AGGREGATES: Record<string, { numeric: boolean; sql: (col: string) => string }> = {
+  sum: { numeric: true, sql: (c) => `sum(${c})` },
+  avg: { numeric: true, sql: (c) => `round(avg(${c})::numeric, 2)` },
+  count: { numeric: false, sql: (c) => `count(${c})` },
+  min: { numeric: false, sql: (c) => `min(${c})` },
+  max: { numeric: false, sql: (c) => `max(${c})` },
+};
+export const HIGHLIGHT_COLORS = ['yellow', 'green', 'red', 'blue', 'gray'];
+
+interface Aggregate {
+  fn: string;
+  column: string;
+  raw: string;
+}
+
+interface Highlight extends Filter {
+  color: string;
+}
+
 export interface ReportState {
   search: string;
   sort: number;
@@ -57,6 +76,10 @@ export interface ReportState {
   page: number;
   size: number;
   filters: Filter[];
+  /** control break column */
+  breakCol: string | null;
+  aggregates: Aggregate[];
+  highlights: Highlight[];
 }
 
 export const key = (r: Region, k: string) => `r${r.id}_${k}`;
@@ -74,6 +97,16 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
       const [column, op, ...rest] = raw.split('|');
       return column && OPERATORS[op] ? [{ column, op, value: rest.join('|'), raw }] : [];
     }),
+    breakCol: p.get(key(r, 'b')) || null,
+    aggregates: p.getAll(key(r, 'a')).slice(0, 20).flatMap((raw) => {
+      const [fn, column] = raw.split('|');
+      return AGGREGATES[fn] && column ? [{ fn, column, raw }] : [];
+    }),
+    // column|operator|color|value (the value last: it may contain "|")
+    highlights: p.getAll(key(r, 'h')).slice(0, 10).flatMap((raw) => {
+      const [column, op, color, ...rest] = raw.split('|');
+      return column && OPERATORS[op] && HIGHLIGHT_COLORS.includes(color) ? [{ column, op, color, value: rest.join('|'), raw }] : [];
+    }),
   };
 }
 
@@ -83,16 +116,33 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
  */
 export function normaliseReportParams(params: URLSearchParams): string | null {
   let changed = false;
-  for (const k of [...params.keys()]) {
-    const m = /^r(\d+)_fc$/.exec(k);
-    if (!m) continue;
-    const id = m[1];
-    const col = params.get(k) ?? '';
-    const op = params.get(`r${id}_fo`) ?? 'eq';
-    const val = params.get(`r${id}_fv`) ?? '';
-    for (const x of ['fc', 'fo', 'fv', 'p']) params.delete(`r${id}_${x}`);
-    if (col && OPERATORS[op]) params.append(`r${id}_f`, `${col}|${op}|${val}`);
+  const take = (id: string, names: string[]) => {
+    const values = names.map((n) => params.get(`r${id}_${n}`) ?? '');
+    for (const n of [...names, 'p']) params.delete(`r${id}_${n}`);
     changed = true;
+    return values;
+  };
+  for (const k of [...params.keys()]) {
+    let m: RegExpExecArray | null;
+    if ((m = /^r(\d+)_fc$/.exec(k))) {
+      // filter: column, operator, value
+      const [col, op, val] = take(m[1], ['fc', 'fo', 'fv']);
+      if (col && OPERATORS[op || 'eq']) params.append(`r${m[1]}_f`, `${col}|${op || 'eq'}|${val}`);
+    } else if ((m = /^r(\d+)_bc$/.exec(k))) {
+      // control break
+      const [col] = take(m[1], ['bc']);
+      if (col) params.set(`r${m[1]}_b`, col);
+      else params.delete(`r${m[1]}_b`);
+    } else if ((m = /^r(\d+)_ac$/.exec(k))) {
+      // aggregate: function, column
+      const [col, fn] = take(m[1], ['ac', 'af']);
+      const v = `${fn}|${col}`;
+      if (col && AGGREGATES[fn] && !params.getAll(`r${m[1]}_a`).includes(v)) params.append(`r${m[1]}_a`, v);
+    } else if ((m = /^r(\d+)_hc$/.exec(k))) {
+      // highlight: column, operator, value, color
+      const [col, op, val, color] = take(m[1], ['hc', 'ho', 'hv', 'hk']);
+      if (col && OPERATORS[op] && HIGHLIGHT_COLORS.includes(color)) params.append(`r${m[1]}_h`, `${col}|${op}|${color}|${val}`);
+    }
   }
   return changed ? params.toString() : null;
 }
@@ -126,24 +176,64 @@ export async function columnsOf(ctx: PageContext, src: string) {
   return res.fields.map((f) => f.name);
 }
 
-export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
+const q = (col: string) => `"__q".${pg.escapeIdentifier(col)}`;
+
+/**
+ * The report's query with the user's search, filters and facets applied:
+ * the source, the WHERE clause, and the result's column names (only looked
+ * up when a user-chosen column needs checking).
+ */
+async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const src = stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx)));
   const where: string[] = [];
   if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
   const facets = facetSelections(ctx, r);
-  if (st.filters.length || facets.size) {
-    const cols = new Set(await columnsOf(ctx, src));
-    for (const f of st.filters)
-      if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(`"__q".${pg.escapeIdentifier(f.column)}`, f.value));
-    for (const [col, values] of facets)
-      if (cols.has(col)) where.push(facetCondition(col, values));
+  const needCols = st.filters.length || facets.size || st.breakCol || st.aggregates.length || st.highlights.length;
+  const cols = needCols ? new Set(await columnsOf(ctx, src)) : new Set<string>();
+  for (const f of st.filters) if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
+  for (const [col, values] of facets) if (cols.has(col)) where.push(facetCondition(col, values));
+  return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols };
+}
+
+export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
+  const { src, where, cols } = await filtered(ctx, r, st);
+  const extra: string[] = [];
+  if (mode === 'page') {
+    extra.push('count(*) over () as "__total"');
+    // highlights: one boolean per rule, the first true one colors the row
+    st.highlights.forEach((h, i) => {
+      if (cols.has(h.column)) extra.push(`coalesce(${OPERATORS[h.op].sql(q(h.column), h.value)}, false) as "__h${i}"`);
+    });
   }
-  let sql = `select "__q".*${mode === 'page' ? ', count(*) over () as "__total"' : ''} from (\n${src}\n) "__q"`;
-  if (where.length) sql += ` where ${where.join(' and ')}`;
-  if (st.sort) sql += ` order by ${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`;
+  let sql = `select "__q".*${extra.map((x) => `, ${x}`).join('')} from (\n${src}\n) "__q"${where}`;
+  const order: string[] = [];
+  if (st.breakCol && cols.has(st.breakCol)) order.push(`${q(st.breakCol)} asc nulls last`);
+  if (st.sort) order.push(`${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`);
+  if (order.length) sql += ` order by ${order.join(', ')}`;
   // one row more than a PDF shows, so it can say it was cut off
   sql += mode === 'page' ? ` limit ${st.size} offset ${(st.page - 1) * st.size}` : ` limit ${mode === 'pdf' ? PDF_MAX_ROWS + 1 : CSV_MAX_ROWS}`;
   return sql;
+}
+
+/**
+ * The aggregates over all filtered rows (not just the page): the totals,
+ * and per control-break value when there is a break column.
+ */
+async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numeric: (col: string) => boolean) {
+  const { src, where, cols } = await filtered(ctx, r, st);
+  const aggs = st.aggregates.filter((a) => cols.has(a.column) && (!AGGREGATES[a.fn].numeric || numeric(a.column)));
+  if (!aggs.length) return null;
+  const exprs = aggs.map((a) => AGGREGATES[a.fn].sql(q(a.column)));
+  const c = ctx.client!;
+  const total = await savepoint(c, () => c.query({ text: `select ${exprs.join(', ')} from (\n${src}\n) "__q"${where}`, rowMode: 'array' }));
+  const groups = new Map<string, unknown[]>();
+  if (st.breakCol && cols.has(st.breakCol)) {
+    const res = await savepoint(c, () =>
+      c.query({ text: `select ${q(st.breakCol!)}::text, ${exprs.join(', ')} from (\n${src}\n) "__q"${where} group by 1`, rowMode: 'array' }),
+    );
+    for (const row of res.rows) groups.set(String(row[0]), row.slice(1));
+  }
+  return { aggs, types: total.fields.map((f) => f.dataTypeID), total: total.rows[0] ?? [], groups };
 }
 
 export function cell(v: unknown, typeOid?: number, fmt?: Formatter) {
@@ -206,6 +296,56 @@ export async function reportXlsx(ctx: PageContext, r: Region) {
   });
 }
 
+/** The report's own state parameters (r<id>_*), as saved in a saved report. */
+export function reportParams(r: Region, params: URLSearchParams) {
+  const out = new URLSearchParams();
+  const prefix = `r${r.id}_`;
+  for (const [k, v] of params) if (k.startsWith(prefix) && !/_(p|csv|xlsx|pdf)$/.test(k)) out.append(k, v);
+  return out;
+}
+
+/** Actions → Saved reports: apply, delete and save (signed-in users; off with "saved_reports": false). */
+async function savedReports(ctx: PageContext, r: Region) {
+  if (ctx.user === 'nobody' || r.config.saved_reports === false) return null;
+  const t = ctx.locale.t;
+  const c = ctx.client!;
+  const list = (
+    await savepoint(c, () =>
+      c.query<{ id: number; name: string; public: boolean; own: boolean; params: string }>(
+        'select id, name, public, own, params from meta.saved_reports where region_id = $1 order by public desc, lower(name)',
+        [r.id],
+      ),
+    )
+  ).rows;
+  const current = reportParams(r, ctx.params).toString();
+  const mayPublish = typeof r.config.public_reports === 'string' && (await isAuthorized(ctx, r.config.public_reports));
+  const base = `${ctx.base}/${ctx.page.page_no}/report/${r.id}`;
+  const csrf = html`<input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">`;
+  const apply = (params: string) =>
+    regionUrl(ctx, r, (p) => {
+      for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k);
+      for (const [k, v] of new URLSearchParams(params)) if (k.startsWith(`r${r.id}_`)) p.append(k, v);
+    });
+  const saveForm = `rsv${r.id}`;
+  ctx.detached.push(html`<form id="${saveForm}" method="post" action="${base}/save">${csrf}<input type="hidden" name="params" value="${current}"></form>`);
+  for (const x of list.filter((x) => x.own))
+    ctx.detached.push(html`<form id="rsd${r.id}_${x.id}" method="post" action="${base}/saved/${x.id}/delete">${csrf}<input type="hidden" name="params" value="${current}"></form>`);
+  return html`<div class="menu-section">
+      <strong>${t('report.saved_reports')}</strong>
+      ${list.length
+        ? html`<ul class="saved-reports">${list.map((x) => html`<li>
+            <a href="${apply(x.params)}"${x.params === current ? raw(' aria-current="true"') : ''}>${x.name}</a>${x.public ? html` <span class="tag">${t('report.public_tag')}</span>` : ''}
+            ${x.own ? html`<button class="link-button" form="rsd${r.id}_${x.id}" data-confirm="${t('report.delete_saved_confirm', { name: x.name })}" aria-label="${t('report.delete_saved')} ${x.name}">×</button>` : ''}
+          </li>`)}</ul>`
+        : ''}
+      <div class="filter-row">
+        <input name="name" form="${saveForm}" required maxlength="80" aria-label="${t('report.name')}" placeholder="${t('report.save_as')}">
+        ${mayPublish ? html`<label class="check"><input type="checkbox" name="public" value="true" form="${saveForm}"> ${t('report.public')}</label>` : ''}
+        <button class="btn" form="${saveForm}">${t('report.save')}</button>
+      </div>
+    </div>`;
+}
+
 export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw[]) {
   const t = ctx.locale.t;
   const c = ctx.client!;
@@ -225,9 +365,21 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     res = { rows: [], fields: [] } as any;
   }
 
-  const fields = res.fields.slice(0, -1);
-  const total = res.rows.length ? Number(res.rows[0][fields.length]) : 0;
-  const cols = visibleColumns(r, fields);
+  // the source's columns come first, then __total and the highlight flags
+  const totalIdx = res.fields.findIndex((f) => f.name === '__total');
+  const fields = totalIdx >= 0 ? res.fields.slice(0, totalIdx) : [];
+  const total = res.rows.length ? Number(res.rows[0][totalIdx]) : 0;
+  const hlIdx = st.highlights.map((_, i) => res.fields.findIndex((f) => f.name === `__h${i}`));
+  const breakIdx = st.breakCol ? fields.findIndex((f) => f.name === st.breakCol) : -1;
+  const allCols = visibleColumns(r, fields);
+  const cols = allCols.filter(({ i }) => i !== breakIdx);
+  let agg: Awaited<ReturnType<typeof aggregateRows>> = null;
+  if (!failure && st.aggregates.length)
+    try {
+      agg = await aggregateRows(ctx, r, st, (col) => NUMERIC_OIDS.has(fields.find((f) => f.name === col)?.dataTypeID ?? 0));
+    } catch (e) {
+      failure = await publicError(ctx, e, `report "${r.title ?? r.id}" aggregates`);
+    }
   const link = r.config.link as { column: string; page: number; items?: Record<string, string> } | undefined;
   const linkIdx = link && (await pageAllowed(ctx, link.page)) ? fields.findIndex((f) => f.name.toLowerCase() === link.column.toLowerCase()) : -1;
   const pre = new Set<string>((r.config.preformatted ?? []).map((x: string) => x.toLowerCase()));
@@ -257,17 +409,43 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     return html`<th scope="col" class="${cls}" aria-sort="${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
   });
 
-  const body = res.rows.map(
-    (row) =>
-      html`<tr>${cols.map(({ f, i }) => {
-        const text = cell(row[i], f.dataTypeID, ctx.locale.format);
-        const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
-        const label = headingOf(r, f.name, ctx.locale.tr);
-        return i === linkIdx
-          ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
-          : html`<td class="${cls}" data-label="${label}">${text}</td>`;
-      })}</tr>`,
-  );
+  // an aggregate row (totals, or a control break's subtotals): the values
+  // under their columns, the label in the first cell
+  const aggRow = (values: unknown[], label: string, cls: string) =>
+    html`<tr class="${cls}">${cols.map(({ f }, ci) => {
+      const parts = agg!.aggs.flatMap((a, ai) => (a.column === f.name ? [`${t(`agg.${a.fn}`)}: ${cell(values[ai], agg!.types[ai], ctx.locale.format)}`] : []));
+      const text = [ci === 0 ? label : '', ...parts].filter(Boolean).join(' · ');
+      return html`<td class="${parts.length && NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null}" data-label="${parts.length ? headingOf(r, f.name, ctx.locale.tr) : ''}">${text}</td>`;
+    })}</tr>`;
+  const breakKey = (v: unknown) => (v === null || v === undefined ? '\u0000' : String(v));
+  const breakField = breakIdx >= 0 ? fields[breakIdx] : undefined;
+  const lastPage = pageNo * st.size >= total;
+
+  const body: Raw[] = [];
+  let group: string | undefined;
+  for (const row of res.rows) {
+    if (breakField) {
+      const k = breakKey(row[breakIdx]);
+      if (k !== group) {
+        if (group !== undefined && agg?.groups.has(group)) body.push(aggRow(agg.groups.get(group)!, t('report.subtotal'), 'agg-row subtotal'));
+        group = k;
+        const value = cell(row[breakIdx], breakField.dataTypeID, ctx.locale.format);
+        body.push(html`<tr class="break-row"><th colspan="${cols.length || 1}" scope="colgroup">${headingOf(r, breakField.name, ctx.locale.tr)}: ${value || '—'}</th></tr>`);
+      }
+    }
+    const hl = st.highlights.find((_, hi) => hlIdx[hi] >= 0 && row[hlIdx[hi]] === true);
+    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${cols.map(({ f, i }) => {
+      const text = cell(row[i], f.dataTypeID, ctx.locale.format);
+      const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
+      const label = headingOf(r, f.name, ctx.locale.tr);
+      return i === linkIdx
+        ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
+        : html`<td class="${cls}" data-label="${label}">${text}</td>`;
+    })}</tr>`);
+  }
+  // the last group's subtotal once the group has ended (on the last page)
+  if (breakField && group !== undefined && lastPage && agg?.groups.has(group)) body.push(aggRow(agg.groups.get(group)!, t('report.subtotal'), 'agg-row subtotal'));
+  const foot = agg && cols.length ? html`<tfoot>${aggRow(agg.total, t('report.total'), 'agg-row total')}</tfoot>` : '';
 
   // ---- toolbar: filter items, search, Actions menu ----
   const searchForm = `rs${r.id}`;
@@ -280,9 +458,14 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   if (searchable) {
     ctx.detached.push(html`<form id="${searchForm}" method="get" action="${action}">${hiddenInputs([key(r, 'q'), key(r, 'p')])}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}</form>`);
   }
+  const breakForm = `rb${r.id}`;
+  const aggForm = `ra${r.id}`;
+  const hlForm = `rh${r.id}`;
   if (interactive) {
-    ctx.detached.push(html`<form id="${filterForm}" method="get" action="${action}">${hiddenInputs([key(r, 'p')])}</form>`);
+    for (const id of [filterForm, breakForm, aggForm, hlForm])
+      ctx.detached.push(html`<form id="${id}" method="get" action="${action}">${hiddenInputs([key(r, 'p')])}</form>`);
   }
+  const saved = interactive ? await savedReports(ctx, r) : null;
 
   const chips = st.filters.map((f) => {
     const href = regionUrl(ctx, r, (p) => {
@@ -295,6 +478,22 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     return html`<span class="chip">${headingOf(r, f.column, ctx.locale.tr)} ${opLabel(t, f.op)}${op.noValue ? '' : html` <b>${f.value}</b>`}
       <a href="${href}" aria-label="${t('report.remove_filter')}">×</a></span>`;
   });
+  const removeValue = (k: string, raw: string) =>
+    regionUrl(ctx, r, (p) => {
+      const rest = p.getAll(key(r, k)).filter((x) => x !== raw);
+      p.delete(key(r, k));
+      rest.forEach((x) => p.append(key(r, k), x));
+      p.delete(key(r, 'p'));
+    });
+  if (breakField)
+    chips.push(html`<span class="chip">${t('report.break')}: <b>${headingOf(r, breakField.name, ctx.locale.tr)}</b>
+      <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'b')); p.delete(key(r, 'p')); })}" aria-label="${t('report.remove')}">×</a></span>`);
+  for (const a of st.aggregates)
+    chips.push(html`<span class="chip">${t(`agg.${a.fn}`)}: <b>${headingOf(r, a.column, ctx.locale.tr)}</b>
+      <a href="${removeValue('a', a.raw)}" aria-label="${t('report.remove')}">×</a></span>`);
+  for (const h of st.highlights)
+    chips.push(html`<span class="chip"><span class="swatch hl-${h.color}" aria-hidden="true"></span>${headingOf(r, h.column, ctx.locale.tr)} ${opLabel(t, h.op)}${OPERATORS[h.op].noValue ? '' : html` <b>${h.value}</b>`}
+      <a href="${removeValue('h', h.raw)}" aria-label="${t('report.remove')}">×</a></span>`);
   if (st.search)
     chips.unshift(
       html`<span class="chip">${t('report.search_chip')} <b>${st.search}</b> <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'q')); p.delete(key(r, 'p')); })}" aria-label="${t('report.clear_search')}">×</a></span>`,
@@ -328,6 +527,35 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
                   return html`<a href="${href}"${active ? raw(' aria-current="true"') : ''}>${headingOf(r, f.name, ctx.locale.tr)}${active ? (st.desc ? ' ▼' : ' ▲') : ''}</a>`;
                 })}</div>
               </div>`}
+          <div class="menu-section">
+            <strong>${t('report.break')}</strong>
+            <div class="filter-row">
+              <select name="${key(r, 'bc')}" form="${breakForm}" aria-label="${t('report.break')}">
+                <option value="">${t('report.none')}</option>
+                ${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.breakCol ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}
+              </select>
+              <button class="btn" form="${breakForm}">${t('report.apply')}</button>
+            </div>
+          </div>
+          <div class="menu-section">
+            <strong>${t('report.aggregate')}</strong>
+            <div class="filter-row">
+              <select name="${key(r, 'af')}" form="${aggForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}">${t(`agg.${fn}`)}</option>`)}</select>
+              <select name="${key(r, 'ac')}" form="${aggForm}" aria-label="${t('report.column')}">${cols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <button class="btn" form="${aggForm}">${t('report.apply')}</button>
+            </div>
+          </div>
+          <div class="menu-section">
+            <strong>${t('report.highlight')}</strong>
+            <div class="filter-row">
+              <select name="${key(r, 'hc')}" form="${hlForm}" aria-label="${t('report.column')}">${allCols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <select name="${key(r, 'ho')}" form="${hlForm}" aria-label="${t('report.operator')}">${Object.keys(OPERATORS).map((k) => html`<option value="${k}"${k === 'eq' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
+              <input name="${key(r, 'hv')}" form="${hlForm}" aria-label="${t('report.value')}" placeholder="${t('report.value')}">
+              <select name="${key(r, 'hk')}" form="${hlForm}" aria-label="${t('report.color')}">${HIGHLIGHT_COLORS.map((c) => html`<option value="${c}">${t(`color.${c}`)}</option>`)}</select>
+              <button class="btn" form="${hlForm}">${t('report.apply')}</button>
+            </div>
+          </div>
+          ${saved ?? ''}
           <div class="menu-section"><strong>${t('report.rows_per_page')}</strong>
             <div class="seg">${PAGE_SIZES.map((n) =>
               html`<a href="${regionUrl(ctx, r, (p) => { p.set(key(r, 'n'), String(n)); p.delete(key(r, 'p')); })}"${n === st.size ? raw(' aria-current="true"') : ''}>${n}</a>`)}</div>
@@ -368,6 +596,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
       <thead><tr>${header}</tr></thead>
       <tbody>${body.length ? body : html`<tr><td colspan="${cols.length || 1}" class="empty">${empty}</td></tr>`}</tbody>
+      ${res.rows.length ? foot : ''}
     </table></div>
     ${total > st.size || pageNo > 1
       ? html`<nav class="pager" aria-label="${t('report.pagination')}">

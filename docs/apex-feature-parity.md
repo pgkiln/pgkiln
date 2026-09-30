@@ -52,7 +52,7 @@ Last reviewed: 2026-09-30 (pgapex 0.7.0: file upload, data loading, printing, OA
 | APEX | pgapex | Notes |
 |---|---|---|
 | Classic report | ✅ | `report` with `interactive: false` |
-| Interactive report | 🟡 | Search, column filters, sort, rows per page, CSV, Excel (typed cells) and PDF download, print, reset, reflow on phones. **Missing:** saved/public reports, control break, highlight, aggregates, group by, pivot, chart view, flashback, row selection and maximum rows (26.1), natural-language control (26.1) |
+| Interactive report | 🟡 | Search, column filters, sort, rows per page, control break, aggregates (with subtotals), highlight, saved private and public reports, CSV, Excel (typed cells) and PDF download, print, reset, reflow on phones. **Missing:** group by, pivot, chart view, flashback, compute, row selection and maximum rows (26.1), natural-language control (26.1) |
 | Interactive grid | 🟡 | Inline edit, add and delete rows, lists of values, required columns, per-row errors, all-or-nothing save, signed row keys, search and paging. **Missing:** copy/paste (26.1), column reorder/resize/freeze, master-detail, aggregates, row actions menu, saved reports |
 | Form (automatic row processing) | ✅ | Fetch, insert, update, delete, in a page or a modal dialog. Detects rows deleted meanwhile, but no optimistic locking of concurrent edits yet |
 | Charts | 🟡 | Bar, column, line, area, donut; multi-series, tooltips, data table, palette checked for colour-vision deficiency. **Missing:** scatter, bubble, stacked, combination, gauge, Gantt, drill-down links |
@@ -232,7 +232,7 @@ Small but real differences, for teams comparing the two:
 ## Roadmap (proposed priority)
 
 1. **Automations in the builder** on `pg_cron`: schedule an app's SQL or PL/pgSQL, with run history.
-2. **Interactive report power features:** saved reports, control break, aggregates, highlight, row selection.
+2. **Interactive report power features:** group by, pivot, chart view, computed columns, row selection.
 3. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
 4. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
 5. **LDAP and SAML** authentication; "remember me".
