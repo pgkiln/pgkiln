@@ -80,6 +80,13 @@ The page designer has two panes:
 Click a component to edit it, use **+ Add** to create one, and use **Run page** to open the page in
 a new tab. Changes are saved per component with **Save** and are live immediately.
 
+**Report regions** also get a **Report settings** form under their properties, so the common
+settings need no JSON: rows per page, search, Actions menu, sorting, saved and public reports,
+and per column its heading, whether it's shown, whether it's printed and its PDF width, plus the
+link column (page and items) and the PDF layout. The columns are read from the region's query
+(run with `limit 0` as the application's role and rolled back). Saving writes the region's
+*Attributes (JSON)* and keeps any other keys there.
+
 Page properties:
 
 | Property | Meaning |

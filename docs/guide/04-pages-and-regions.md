@@ -88,7 +88,7 @@ region with `"public_reports": "ADMIN"` lets users who pass that authorization s
 delete a report. Saved reports are user data: they stay in `meta.saved_report` and aren't part
 of the application export.
 
-Attributes:
+Attributes (most of them are also in the page designer's **Report settings** form):
 
 | Key | Default | Meaning |
 |---|---|---|

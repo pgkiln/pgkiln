@@ -231,7 +231,7 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Settings forms instead of JSON** in the page designer (report columns, links, PDF), then the rest of the builder quality work.
+1. **Settings forms for the other region types** (grid, chart, cards, calendar, facets), like the report settings, then the rest of the builder quality work.
 2. **Interactive report power features:** group by, pivot, chart view, computed columns, row selection.
 3. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
 4. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".

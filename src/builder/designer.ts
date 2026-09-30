@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { COMPONENTS } from './components.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { componentForm, lookups, saveComponent } from './forms.ts';
+import { reportSettingsForm } from './report-settings.ts';
 
 // Page designer: a page's regions, items, buttons, dynamic actions,
 // validations and processes, edited with the generic component forms.
@@ -64,6 +65,7 @@ export async function designerRoutes(app: FastifyInstance) {
       const row = rows[kind].find((r) => String(r.id) === cid);
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, 'Save')}
+            ${kind === 'region' && row.type === 'report' ? await reportSettingsForm(p.id, p.app_id, row, s) : ''}
             <form method="post" action="${BASE}/pages/${p.id}/c/${kind}/${row.id}/delete" class="danger-zone">${csrf(s)}
               <button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete ${spec.label.toLowerCase()}</button></form>`)
         : html`<p>Component not found.</p>`;

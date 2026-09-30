@@ -154,6 +154,10 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         api: `/builder/apps/${appId}/api`,
         globalization: `/builder/apps/${appId}/globalization?lang=nl`,
         designer: `/builder/pages/${pageId}`,
+        report_region: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',
