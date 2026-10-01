@@ -156,6 +156,8 @@ register at the provider, and has a *Test discovery* button. See
   checksum protection or without authentication.
 - **Delete application**: removes the definition (not your tables).
 
+**Progressive Web App** (in Settings): installable, offline pages, forms sent offline, the icon ([chapter 17](17-mobile.md)).
+
 ## Search and "Used in"
 
 **Search** (in the application's header) looks through every page and component of the

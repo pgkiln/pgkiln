@@ -761,6 +761,22 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .task-history ol { margin: 0.4rem 0; padding-left: 1.2rem; }
 .task-history q { color: var(--muted); }
 
+/* Progressive Web App and field work */
+.offline-banner { position: sticky; top: 0; z-index: 60; padding: 0.45rem 1rem; background: var(--warning-soft); color: var(--text); border-bottom: 1px solid var(--border); font-size: 0.88rem; text-align: center; }
+.offline-queue { position: fixed; left: max(1rem, env(safe-area-inset-left)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 70; max-width: min(28rem, calc(100vw - 2rem)); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.5rem 0.8rem; box-shadow: 0 4px 18px rgb(0 0 0 / 18%); font-size: 0.88rem; }
+.offline-queue summary { cursor: pointer; font-weight: 600; }
+.offline-queue ul { margin: 0.5rem 0; padding-left: 1rem; }
+.offline-pages { padding-left: 1.2rem; }
+.input-with-button { display: flex; gap: 0.4rem; align-items: center; }
+.input-with-button input { flex: 1; min-width: 0; }
+.scan-dialog { border: 0; border-radius: 12px; padding: 0.8rem; width: min(30rem, 94vw); background: var(--surface); }
+.scan-dialog video { width: 100%; border-radius: 8px; background: #000; }
+.scan-dialog .btn { margin-top: 0.6rem; width: 100%; }
+@media (display-mode: standalone) {
+  .t-header { padding-top: env(safe-area-inset-top); }
+  .t-main { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}
+
 /* Workflow diagram (inline SVG; no style attributes) */
 .wf-wrap { overflow-x: auto; padding: 0.5rem 0; }
 .wf-diagram { display: block; width: 100%; min-width: 320px; max-width: 900px; height: auto; margin: 0 auto; }

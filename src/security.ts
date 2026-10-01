@@ -56,7 +56,8 @@ export function securityHeaders(app: FastifyInstance) {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'same-origin');
     reply.header('X-Frame-Options', 'SAMEORIGIN');
-    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    // the app's own pages may use the camera (photos, scanning) and the position (location items); nothing else may
+    reply.header('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
     const type = String(reply.getHeader('content-type') ?? '');
     if (type.startsWith('text/html')) {
       // No inline scripts and no inline styles: behaviour lives in /static/app.js,

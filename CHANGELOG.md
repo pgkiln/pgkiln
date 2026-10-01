@@ -6,12 +6,24 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Progressive Web Apps** for mobile and field work (App → Settings, migration 023): installable
+  (manifest, icon, service worker per application), offline pages (opt-in; wiped at sign-in and
+  sign-out), an offline page, and **forms sent offline** kept on the device (files included) and
+  sent when the connection is back, under the same user, at most once. New chapter 17.
+- **Field items**: `location` (*Use my location*, `latitude,longitude`, checked on the server), camera
+  capture and photos made smaller before upload on file items, a barcode/QR *Scan* button on text items.
+- Page forms carry a submission id (a resend is never processed twice) and their form's record key,
+  signed, so a form sent later updates the record it was opened for.
 - **Workflows** (Shared Components → Workflows, migration 022): definitions of task, SQL, switch,
   wait and end steps with variables, started from application SQL with `meta.start_workflow(…)`,
   run by the pgapex server (on `NOTIFY` and every few seconds; `WORKFLOWS=off` to disable) one step
   per transaction as the application's role. A `workflows` region is the console (terminate, retry
   a faulted step); the builder checks the steps and draws them. The HR example starts an onboarding
   workflow from its employee form.
+
+### Changed
+- `Permissions-Policy` allows the camera and geolocation for the application itself
+  (`camera=(self), geolocation=(self)`); the microphone stays off.
 
 ## [0.10.0] - 2026-10-01
 

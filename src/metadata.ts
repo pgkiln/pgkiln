@@ -50,6 +50,12 @@ export interface App {
   remember_me_days: number | null;
   /** LDAP directories the password form checks after local accounts */
   ldap_directories: string[];
+  /** Progressive Web App: installable, offline pages, offline form queue */
+  pwa: boolean;
+  pwa_short_name: string | null;
+  pwa_has_icon: boolean;
+  pwa_offline_pages: boolean;
+  pwa_offline_submit: boolean;
   db_role: string | null;
   debug: boolean;
   pages: PageSummary[];
@@ -86,7 +92,7 @@ export interface Region {
 export type ItemType =
   | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'radio'
   | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password'
-  | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color' | 'file';
+  | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color' | 'file' | 'location';
 
 export interface Item {
   id: number;
@@ -180,7 +186,7 @@ const agg = (table: string, fk: string, parent: string, order = 'x.seq, x.id') =
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.ldap_directories, a.db_role, a.debug, a.theme,
+    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.ldap_directories, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.db_role, a.debug, a.theme,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,

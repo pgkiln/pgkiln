@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example; plus unreleased: workflows).
+Last reviewed: 2026-10-01 (pgapex 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example; plus unreleased: workflows, Progressive Web Apps).
 
 ## At a glance
 
@@ -18,12 +18,12 @@ Last reviewed: 2026-10-01 (pgapex 0.10.0: LDAP, SAML, "Keep me signed in", docum
 | Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
-| User interface | 4 | 4 | 2 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
+| User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 3 | 2 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and multi-step workflows; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **51** | **31** | **29** | **6** | 117 APEX features compared: 44% available, 26% partial |
+| **Total** | **52** | **31** | **28** | **6** | 117 APEX features compared: 44% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -144,7 +144,7 @@ Last reviewed: 2026-10-01 (pgapex 0.10.0: LDAP, SAML, "Keep me signed in", docum
 | Accessibility | 🟡 | Labels, keyboard, focus rings, reduced motion, table alternatives for charts; no formal audit yet |
 | Drawers, top/bottom dialogs (26.1) | 🟡 | The navigation is a drawer on small screens; no drawer pages |
 | New "Iris" default style (26.1) | ❌ | pgapex has its own neutral style |
-| Progressive Web App | ❌ | |
+| Progressive Web App | ✅ | Per app: installable (manifest, icon, standalone), service worker, offline pages (opt-in, wiped at sign-in/out), **forms sent offline queued on the device and sent later** (files included, once only, under the same user), location, camera and barcode items. **Missing:** push notifications |
 
 ## Globalization
 
@@ -232,13 +232,12 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Progressive Web App** for field operations and logistics (owner's priority): installable apps, offline use of pages already visited, queued form submissions, camera and location items, a phone-first layout.
-2. **REST endpoints in the builder**: define handlers (SQL, PL/pgSQL) per application, with generated OpenAPI documentation, next to the existing PostgREST API.
-3. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-4. **Workflow:** parallel branches and versions.
-5. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-6. **Template components and plug-ins.**
-7. **AI features.**
+1. **REST endpoints in the builder**: define handlers (SQL, PL/pgSQL) per application, with generated OpenAPI documentation, next to the existing PostgREST API.
+2. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+3. **Workflow:** parallel branches and versions.
+4. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+5. **Template components and plug-ins.**
+6. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

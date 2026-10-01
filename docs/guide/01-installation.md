@@ -24,7 +24,7 @@ npm run dev          # starts pgapex on http://127.0.0.1:3100 and restarts on co
 
 Open the **builder** at http://127.0.0.1:3100/builder, sign in as `admin` / `admin` (change the
 password on the Developers page straight away) and create your first application from a table
-(*Create application*), or follow the [tutorial](05-tutorial.md).
+(*Create application*), or follow the [tutorial](10-tutorial.md).
 
 ### The example application (optional)
 

@@ -46,6 +46,7 @@ src/
     files.ts               file items: multipart parsing, temporary files, signed downloads
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
+    pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     tasks.ts               task list region and task actions (approvals)
     workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit)
@@ -70,6 +71,7 @@ src/
     top-sql.ts             Top SQL per app role from pg_stat_statements
     ldap.ts                Users → LDAP directories
     documents.ts           document template preview (Shared Components)
+    pwa.ts                 Settings → Progressive Web App (icon upload)
     workflows.ts           workflow diagram and instance counts (Shared Components)
 public/
   app.css                  theme (light/dark, responsive)

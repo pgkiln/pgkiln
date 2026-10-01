@@ -61,6 +61,7 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `sso_providers` | text[] | Names of identity providers (OpenID Connect or SAML) offered on the login page |
 | `ldap_directories` | text[] | LDAP directories the password form checks, after local accounts |
 | `remember_me_days` | int | Days a "Keep me signed in" sign-in lasts; NULL = not offered |
+| `pwa`, `pwa_short_name`, `pwa_icon`, `pwa_offline_pages`, `pwa_offline_submit` | boolean, text, bytea, boolean, boolean | Progressive Web App ([chapter 17](17-mobile.md)) |
 | `db_role` | text | Database role every request runs as |
 | `api_role` | text | Database role of REST API tokens for this app (PostgREST switches to it) |
 | `language`, `languages`, `language_from` | text, text[], text | Primary language, translated languages, `browser` / `user` / `primary` |
@@ -204,6 +205,7 @@ Usable in navigation entries and cards (`icon` column):
 | `GET /sso/saml/:provider/metadata` | SAML service provider metadata |
 | `POST /a/:alias/workflows/:id` | Workflow console action (`terminate`, `retry`) |
 | `POST /a/:alias/tasks/:id` | A task list action (`claim`, `release`, `approve`, `reject`, `complete`, `delegate`, `cancel`, `comment`) |
+| `GET /a/:alias/manifest.webmanifest`, `/sw.js`, `/icon-192.png`, `/icon-512.png`, `/offline` | Progressive Web App files (only when the app has PWA on) |
 | any page `?doc=NAME` | Download a document template filled with the page's values |
 | `POST /a/:alias/account/devices` | Sign out on all devices ("Keep me signed in") |
 | `POST /a/:alias/password` | Change an expired password while signing in |

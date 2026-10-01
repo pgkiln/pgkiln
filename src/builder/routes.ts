@@ -3,6 +3,7 @@ import pg from 'pg';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
+import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
@@ -374,6 +375,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete application ${a.name} and all its pages?">Delete application</button>
           </form>`)}
+        ${region('Progressive Web App', pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>

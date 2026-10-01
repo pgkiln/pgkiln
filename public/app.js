@@ -467,3 +467,198 @@ document.addEventListener('change', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
   for (const form of document.querySelectorAll('form[data-autosubmit]')) form.submit();
 });
+
+// ------------------------------------------------------------------ Progressive Web App and field work
+(() => {
+  const metaEl = document.getElementById('pgapex-meta');
+  const texts = (metaEl ? JSON.parse(metaEl.textContent).texts : null) || {};
+  const t = (k, n) => (texts[k] || k).replace('{n}', n === undefined ? '' : String(n));
+  const body = document.body;
+
+  function note(message, kind = 'success') {
+    const box = document.querySelector('.messages') || document.querySelector('main');
+    if (!box) return;
+    const div = document.createElement('div');
+    div.className = `alert alert-${kind}`;
+    div.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    div.textContent = message;
+    box.prepend(div);
+  }
+
+  // the service worker of an installable app, and its messages
+  if (body.dataset.sw && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register(body.dataset.sw, { scope: `${body.dataset.base}/` }).catch(() => {});
+    const post = (msg) => navigator.serviceWorker.ready.then((r) => r.active && r.active.postMessage(msg));
+    if (body.dataset.offlineQueue === '1') {
+      post({ type: 'pgapex:user', user: body.dataset.user || 'nobody' });
+      post({ type: 'pgapex:replay' });
+      window.addEventListener('online', () => post({ type: 'pgapex:replay' }));
+    }
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'pgapex:queue') showQueue(e.data.items, post);
+    });
+    if (new URLSearchParams(location.search).get('queued') === '1') note(t('pwa.queued'));
+  }
+
+  // offline: say so (the page may come from the device)
+  const banner = () => {
+    let b = document.querySelector('.offline-banner');
+    if (navigator.onLine) return b && b.remove();
+    if (b || !document.querySelector('.t-header, .login-card')) return;
+    b = document.createElement('div');
+    b.className = 'offline-banner';
+    b.setAttribute('role', 'status');
+    b.textContent = t('pwa.offline_banner');
+    document.body.prepend(b);
+  };
+  window.addEventListener('online', banner);
+  window.addEventListener('offline', banner);
+  banner();
+
+  // the queue of forms waiting to be sent (data-offline-queue apps)
+  function showQueue(items, post) {
+    const mine = items.filter((i) => i.user === (body.dataset.user || 'nobody'));
+    let box = document.querySelector('.offline-queue');
+    if (!mine.length) return box && box.remove();
+    if (!box) {
+      box = document.createElement('details');
+      box.className = 'offline-queue';
+      document.body.append(box);
+    }
+    box.replaceChildren();
+    const summary = document.createElement('summary');
+    summary.textContent = t('pwa.queue_waiting', mine.length);
+    const list = document.createElement('ul');
+    for (const i of mine) {
+      const li = document.createElement('li');
+      const what = document.createElement('span');
+      what.textContent = `${new Date(i.at).toLocaleString()} · ${new URL(i.title, location.href).pathname} · ${t(`pwa.status.${i.status}`)}`;
+      const discard = document.createElement('button');
+      discard.type = 'button';
+      discard.className = 'link-button';
+      discard.textContent = t('pwa.discard');
+      discard.addEventListener('click', () => post({ type: 'pgapex:discard', id: i.id }));
+      li.append(what, ' ', discard);
+      list.append(li);
+    }
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'btn btn-hot';
+    send.textContent = t('pwa.send_now');
+    send.addEventListener('click', () => post({ type: 'pgapex:replay' }));
+    box.append(summary, list, send);
+  }
+
+  // the offline page: the pages kept on this device
+  const pages = document.querySelector('[data-offline-pages]');
+  if (pages && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (!e.data || e.data.type !== 'pgapex:pages') return;
+      for (const u of e.data.pages) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = u;
+        a.textContent = new URL(u).pathname + new URL(u).search;
+        li.append(a);
+        pages.append(li);
+      }
+    });
+    navigator.serviceWorker.controller.postMessage('pgapex:pages');
+  }
+
+  // location items: the device's position as "lat,lng"
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('[data-locate]');
+    if (!btn) return;
+    const input = document.getElementById(btn.dataset.locate);
+    if (!input || !navigator.geolocation) return note(t('item.locate_error'), 'error');
+    btn.setAttribute('aria-busy', 'true');
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        btn.removeAttribute('aria-busy');
+        input.value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      },
+      () => {
+        btn.removeAttribute('aria-busy');
+        note(t('item.locate_error'), 'error');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  });
+
+  // scan buttons: only where the browser reads barcodes (BarcodeDetector, e.g. Chrome on Android)
+  if ('BarcodeDetector' in window && navigator.mediaDevices) {
+    for (const b of document.querySelectorAll('[data-scan]')) b.hidden = false;
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest && e.target.closest('[data-scan]');
+      if (!btn) return;
+      const input = document.getElementById(btn.dataset.scan);
+      const dlg = document.createElement('dialog');
+      dlg.className = 'scan-dialog';
+      const video = document.createElement('video');
+      video.setAttribute('playsinline', '');
+      video.muted = true;
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'btn';
+      close.textContent = t('item.scan_close');
+      dlg.append(video, close);
+      document.body.append(dlg);
+      let stream;
+      let done = false;
+      const stop = () => {
+        done = true;
+        if (stream) stream.getTracks().forEach((tr) => tr.stop());
+        dlg.close();
+        dlg.remove();
+      };
+      close.addEventListener('click', stop);
+      dlg.showModal();
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        await video.play();
+        const detector = new window.BarcodeDetector();
+        while (!done) {
+          const codes = await detector.detect(video).catch(() => []);
+          if (codes.length) {
+            input.value = codes[0].rawValue;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            stop();
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      } catch {
+        stop();
+        note(t('item.locate_error'), 'error');
+      }
+    });
+  }
+
+  // file items with data-max-px: photos are made smaller (JPEG) before they are uploaded
+  document.addEventListener('change', async (e) => {
+    const input = e.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'file' || !input.dataset.maxPx || !input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const max = Number(input.dataset.maxPx);
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || !window.createImageBitmap || !window.DataTransfer) return;
+    try {
+      const img = await createImageBitmap(file);
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      if (scale >= 1) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+      if (!blob || blob.size >= file.size) return;
+      const dt = new DataTransfer();
+      dt.items.add(new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }));
+      input.files = dt.files;
+    } catch {
+      // keep the original
+    }
+  });
+})();
