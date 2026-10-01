@@ -146,6 +146,7 @@ needed and grants access; deleting revokes access.
 | `sso_pending` | Sign-ins in progress (state, PKCE verifier, nonce or SAML request ID; kept for 10 minutes) | no |
 | `saml_request` | SAML AuthnRequest IDs awaiting their response (used once) | no |
 | `ldap_directory` | LDAP directories: URL, service account (write-only password), user and group search | no |
+| `document_template` | Document templates per app: `name`, `description`, `query`, `template`, `layout`, `filename`, `authz` | yes (read) |
 | `ldap_identity` | Links an account to a directory entry (`directory_id`, `subject` = entryUUID or DN) | no |
 | `persistent_login` | "Keep me signed in" tokens: `token_hash`, `account_id`, `app_id`, `groups`, `method`, `expires_at` | no |
 | `instance_setting` | Secrets, e.g. the URL checksum key | no |
@@ -197,6 +198,7 @@ Usable in navigation entries and cards (`icon` column):
 | `GET /sso/callback/:provider` | OpenID Connect redirect URI |
 | `POST /sso/saml/:provider`, `POST /sso/saml/:provider/finish` | SAML assertion consumer service (and the same-site step after it) |
 | `GET /sso/saml/:provider/metadata` | SAML service provider metadata |
+| any page `?doc=NAME` | Download a document template filled with the page's values |
 | `POST /a/:alias/account/devices` | Sign out on all devices ("Keep me signed in") |
 | `POST /a/:alias/password` | Change an expired password while signing in |
 | `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme` | My account, own password, the light/dark switch |

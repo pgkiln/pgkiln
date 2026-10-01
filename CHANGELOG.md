@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Document templates** (Shared Components → Document templates, migration 020; APEX: Document
+  Generator): a query fills an HTML template with Mustache-style tags (values always escaped;
+  lists from JSON columns; number and date filters), drawn as a PDF with a report layout. Buttons
+  with action *document* and `?doc=NAME` links download them; the builder previews them. The HR
+  sample's employee form has a *Print* button (employee sheet).
+- Data loading reads **JSON**: an array of objects, an object holding one, or JSON Lines.
 - **"Keep me signed in"** (APEX: persistent authentication), per application for 1–365 days: a
   rotating one-time token in a long-lived cookie starts a new session when the old one has ended.
   Signing out, a new password, deactivation or removed access ends it; My account has *Sign out on

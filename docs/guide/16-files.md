@@ -98,6 +98,10 @@ Both ways of loading accept:
 - CSV and TSV: UTF-8 with or without BOM, or Windows-1252. The delimiter `,` `;` tab or `|` is
   detected. Quoted fields can contain delimiters, `""` and line breaks.
 - Excel `.xlsx`: the first sheet. Numbers keep their exact text and dates become `YYYY-MM-DD`.
+- JSON: an array of objects (`[{"empno": 7839, "ename": "KING"}, …]`), an object holding one
+  such array (`{"employees": [...]}`), or JSON Lines (one object per line). The keys are the
+  columns, in the order they first appear; nested objects and arrays load as JSON text, so they
+  fit `json`/`jsonb` columns.
 
 The first row holds the column names. Empty cells become NULL. Rows are inserted in batches; if
 a batch fails, its rows are retried one by one to find the bad rows. **When a row fails, nothing
@@ -236,13 +240,75 @@ stylesheet. It leaves out the header, navigation, toolbars, buttons and paginati
 the full width, with headings repeated on each printed page. This works on every page, including
 forms and dashboards.
 
-### Not included
+### Document templates
 
-Report layouts shape table reports. APEX can also fill designed documents such as invoices
-and letters from a template (BI Publisher, APEX Office Print, the 24.2+ document generator).
-pgapex doesn't have document templates yet. Until then:
+Letters, invoices, certificates and employee sheets are **document templates** (APEX: Document
+Generator), under **Shared Components → Document templates**:
 
-- a dynamic content region with a print-friendly HTML layout, printed from the browser, works
-  well for simple documents;
-- for designed PDFs, generate them outside pgapex (for example a small service with a template
-  engine) and store the result in a bytea column with a file item.
+| Field | Meaning |
+|---|---|
+| Name | `EMPLOYEE_SHEET`; pages download it with `?doc=EMPLOYEE_SHEET` |
+| Title | The PDF's title, and `&REPORT_TITLE.` in the layout's footer |
+| Data (SQL) | A SELECT with `:ITEM` binds, run as the application's role (grants and RLS apply) |
+| Template (HTML) | The document: a subset of HTML with tags (below) |
+| Report layout | Paper, orientation, margins, font size, colours, logo and footer ([report layouts](#report-layouts)); empty: the default layout |
+| File name | e.g. `employee-&P3_EMPNO.` (`.pdf` is added) |
+| Authorization | Who may download it, on top of access to the page |
+
+**The data.** The first row's columns are available at the top level, all rows as `rows`, and
+`json`/`jsonb` columns become lists and objects, so one query can bring an invoice and its lines:
+
+```sql
+select o.id, o.ordered_on, c.name as customer, o.total,
+       (select json_agg(json_build_object('product', l.product, 'qty', l.qty, 'amount', l.amount) order by l.line_no)
+          from shop.order_line l where l.order_id = o.id) as lines
+  from shop.orders o join shop.customer c on c.id = o.customer_id
+ where o.id = :P5_ORDER_ID::int
+```
+
+Built in: `APP_USER`, `APP_NAME`, `TODAY` and `NOW`.
+
+**Tags.** Every value is HTML-escaped; there is no way to output data as markup.
+
+| Tag | Meaning |
+|---|---|
+| `{{customer}}`, `{{order.customer.name}}` | A value (dotted paths into objects) |
+| `{{total\|number:2}}`, `{{ordered_on\|date}}` | Filters: `number[:decimals]` (in the user's language), `date` and `datetime` (the app's formats), `upper`, `lower`, `default:text` |
+| `{{#lines}}…{{/lines}}` | Repeated for each item of a list; entered for an object; shown when a value is true or non-empty |
+| `{{^lines}}…{{/lines}}` | Shown when the list is empty (or the value false or empty) |
+| `{{@index}}`, `{{.}}` | The position in the list (1, 2, …); the current item itself |
+| `{{! comment }}` | Left out |
+
+**HTML.** `h1`–`h4`, `p`, `div`, `br`, `b`/`strong`, `i`/`em`, `u`, `small`, `a href` (a link in the
+PDF), `ul`/`ol`/`li`, `hr`, tables (`thead`, `tbody`, `tfoot`, `tr`, `th`, `td`; `width="30%"` or
+`"40mm"` on the first row, `align`, `colspan`, `class="plain"` for a table without lines),
+`<img src="logo" width="30mm">` (the layout's logo; `data:` PNG/JPEG images work too, remote images
+don't), `class="page-break"` on a `div` or `hr`, `align="right"`/`"center"` (or `class="right"`) and
+`class="muted"`. A table's header rows repeat on every page it runs over; rows are never split.
+`<p>&nbsp;</p>` is an empty line. Other tags show their text.
+
+```html
+<img src="logo" align="right" width="30mm">
+<h1>Invoice {{id}}</h1>
+<p>{{customer}} · {{ordered_on|date}}</p>
+<table>
+  <thead><tr><th width="60%">Product</th><th align="right">Qty</th><th align="right">Amount</th></tr></thead>
+  {{#lines}}<tr><td>{{product}}</td><td align="right">{{qty}}</td><td align="right">{{amount|number:2}}</td></tr>{{/lines}}
+  <tr><td colspan="2" align="right"><b>Total</b></td><td align="right"><b>{{total|number:2}}</b></td></tr>
+</table>
+```
+
+**Downloading.** A button with action **document** and the template's name downloads it, filled
+with the page's values as they were last loaded or saved (so save a changed form first); any link
+can use `?doc=NAME` too. Item values in such a URL need their checksum like every link, and the
+page's own access rules apply. The HR sample's employee form (page 3) has a *Print* button for the
+`EMPLOYEE_SHEET` template.
+
+In the builder, **Preview PDF** under the template fills it with item values you type
+(`P3_EMPNO=7839`), as the application's role, in a transaction that is rolled back. The template's
+tags are checked when you save it; the Advisor also checks the query and templates that buttons
+name.
+
+The standard PDF fonts cover Western European text; set `PDF_FONT` (and `PDF_FONT_BOLD`) for other
+scripts, as for report PDFs. APEX's Word and Excel templates and outputs have no equivalent: the
+templates here are HTML and the output is PDF.
