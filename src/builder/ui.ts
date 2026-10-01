@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { readFileSync } from 'node:fs';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
@@ -7,6 +8,16 @@ import { getSession, saveState, takeFlash, type Session } from '../session.ts';
 // Shared building blocks of the builder UI.
 
 export const BASE = '/builder';
+
+/** pgapex's version and the database name, for the builder's status bar. */
+const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
+const DATABASE = (() => {
+  try {
+    return decodeURIComponent(new URL(process.env.DATABASE_URL ?? '').pathname.slice(1)) || 'pgapex';
+  } catch {
+    return 'pgapex';
+  }
+})();
 
 export type Body = Record<string, string | undefined>;
 export type Req = FastifyRequest<{ Params: Record<string, string>; Body: Body; Querystring: Record<string, string> }>;
@@ -131,6 +142,12 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       <main class="${opts.full ? 'ide-work' : 'page ide-page'}" id="main">
         ${main}
       </main>
+      <footer class="ide-status">
+        <span title="Signed in as">${icon('user')}${s.username}</span>
+        <span title="Database">${icon('database')}${DATABASE}</span>
+        <span title="Builder language">en</span>
+        <span class="ide-status-version">pgapex ${VERSION}</span>
+      </footer>
     </div>`,
     `builder-body ide${opts.full ? ' ide-full' : ''}`,
     {},

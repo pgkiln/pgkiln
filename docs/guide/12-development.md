@@ -64,8 +64,9 @@ src/
     pdf.ts                 report PDFs with report layouts (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
-    ui.ts                  IDE shell (icon rail, toolbar, breadcrumb), builder theme, form helpers, CSRF check, app tabs
-    routes.ts              sign-in, workspace and app home, settings, activity, developers
+    ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
+    routes.ts              sign-in, app home, settings, activity, developers, create/import (POST)
+    home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree, layout canvas and gallery, property editor, toolbar
@@ -110,6 +111,7 @@ test/
   fixtures/                test files (employees.xlsx)
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
+  builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers

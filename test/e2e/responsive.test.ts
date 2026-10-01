@@ -243,6 +243,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       const pageId = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 3`, [appId])).id;
       const urls = {
         home: '/builder',
+        home_cards: '/builder?view=grid',
+        create: '/builder/create',
+        import: '/builder/import',
+        dashboard: '/builder/dashboard',
+        utilities: '/builder/utilities',
         app: `/builder/apps/${appId}`,
         shared: `/builder/apps/${appId}/shared`,
         layout: `/builder/apps/${appId}/shared?c=report_layout-${(await owner.one(`select id from meta.report_layout where app_id = $1 and name = 'HR_DIRECTORY'`, [appId])).id}`,
