@@ -499,3 +499,57 @@ describe('sprint 5: accounts and globalization', () => {
   });
 
 });
+
+describe('sprint 11: report views and row selection', () => {
+  const report2 = async () => (await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]));
+  const state = async (b: Browser) => (await owner.one('select state from meta.session where csrf_token = $1', [b.lastCsrf])).state;
+
+  test('computed columns, group by, pivot and chart parameters cannot inject SQL', async () => {
+    const king = await as('king');
+    const { id } = await report2();
+    const get = (params: [string, string][]) => king.get(`/a/hr/2?${new URLSearchParams(params.map(([k, v]) => [`r${id}_${k}`, v]))}`);
+    for (const params of [
+      [['c', 'H|(select password_hash from meta.account limit 1)']],
+      [['c', 'H|ename) from meta.account; --']],
+      [['c', 'H|current_user']],
+      [['g', 'job" from meta.account --'], ['ga', 'sum|sal) from meta.account --'], ['v', 'group']],
+      [['pv', 'job|department" from meta.account --|count|empno'], ['v', 'pivot']],
+      [['pv', 'job|department|sum|sal); drop table hr.emp; --'], ['v', 'pivot']],
+      [['ch', 'bar|job"; drop table hr.emp; --|count|empno'], ['v', 'chart']],
+      [['ch', 'bar|job|pg_sleep|empno'], ['v', 'chart']],
+    ] as [string, string][][]) {
+      const res = await get(params);
+      assert.equal(res.statusCode, 200, JSON.stringify(params));
+      assert.doesNotMatch(res.body, /\$2[aby]\$/, 'no password hashes');
+      assert.doesNotMatch(res.body, /pgapex_runtime|syntax error/, JSON.stringify(params));
+    }
+    assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
+  });
+
+  test('pivot values with quotes are literals', async () => {
+    const king = await as('king');
+    const { id } = await report2();
+    const res = await king.get(`/a/hr/2?${new URLSearchParams([[`r${id}_c`, `Q|job || ''' or ''1''=''1'`], [`r${id}_pv`, 'department|Q|count|empno'], [`r${id}_v`, 'pivot']])}`);
+    assert.equal(res.statusCode, 200);
+    assert.match(res.body, /CLERK&#39; or &#39;1&#39;=&#39;1|CLERK&#x27; or/);
+    assert.doesNotMatch(res.body, /alert-error/);
+  });
+
+  test('only a configured selection item accepts posted values', async () => {
+    const r = await report2();
+    await owner.query(`insert into meta.item (page_id, name, type) values ($1, 'P2_PICKED', 'hidden')`, [r.page_id]);
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/2');
+      await king.post('/a/hr/2', { __csrf: king.lastCsrf, P2_PICKED: '7839' });
+      assert.equal((await state(king)).P2_PICKED ?? null, null, 'a hidden item is not posted');
+      await owner.query('update meta.region set config = config || $2 where id = $1', [r.id, JSON.stringify({ selection: { column: 'empno', item: 'P2_PICKED' } })]);
+      await king.get('/a/hr/2');
+      await king.post('/a/hr/2', { __csrf: king.lastCsrf, P2_PICKED: '7839' });
+      assert.equal((await state(king)).P2_PICKED, '7839');
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
+      await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_PICKED'`, [r.page_id]);
+    }
+  });
+});

@@ -2,15 +2,18 @@ import { icon } from '../icons.ts';
 import pg from 'pg';
 import { applyBinds, literal } from '../binds.ts';
 import { savepoint } from '../db.ts';
-import { html, raw, type Raw } from '../html.ts';
+import { esc, html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext } from './context.ts';
-import { heading } from './items.ts';
+import { heading, splitValues } from './items.ts';
 import { linkAttrs } from './links.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
 import { writeXlsx, type XlsxCell } from '../xlsx.ts';
+import { CHART_KINDS } from './charts.ts';
+import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
+import { renderView, VIEWS, type View } from './report-views.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -80,9 +83,33 @@ export interface ReportState {
   breakCol: string | null;
   aggregates: Aggregate[];
   highlights: Highlight[];
+  /** computed columns (name|expression) */
+  computations: Computation[];
+  /** which view shows: the rows, or a group by, pivot or chart of them */
+  view: View;
+  groupBy: { columns: string[]; functions: Aggregate[] };
+  pivot: { row: string; column: string; fn: string; value: string } | null;
+  chart: { kind: string; label: string; fn: string; value: string } | null;
 }
 
+export const MAX_COMPUTATIONS = 5;
+const MAX_GROUP_COLUMNS = 3;
+const MAX_GROUP_FUNCTIONS = 6;
+
 export const key = (r: Region, k: string) => `r${r.id}_${k}`;
+
+/**
+ * Row selection: "selection": {"column": "empno", "item": "P2_SELECTED"} puts
+ * a checkbox in front of each row; on submit the checked rows' values reach
+ * the item, colon separated (like a checkbox group). The item must be on the
+ * page; it may be hidden.
+ */
+export function selectionOf(page: { items: { name: string }[] }, r: Region) {
+  const sel = r.config.selection as { column?: unknown; item?: unknown } | undefined;
+  if (r.type !== 'report' || typeof sel?.column !== 'string' || typeof sel?.item !== 'string') return null;
+  const item = sel.item.toUpperCase();
+  return page.items.some((i) => i.name === item) ? { column: sel.column, item } : null;
+}
 
 export function reportState(ctx: PageContext, r: Region): ReportState {
   const p = ctx.params;
@@ -107,6 +134,27 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
       const [column, op, color, ...rest] = raw.split('|');
       return column && OPERATORS[op] && HIGHLIGHT_COLORS.includes(color) ? [{ column, op, color, value: rest.join('|'), raw }] : [];
     }),
+    // name|expression (the expression last: it may contain "|")
+    computations: p.getAll(key(r, 'c')).slice(0, MAX_COMPUTATIONS).flatMap((raw) => {
+      const [name, ...rest] = raw.split('|');
+      return name && computeNameOk(name) && rest.length ? [{ name, expr: rest.join('|'), raw }] : [];
+    }),
+    view: (VIEWS as string[]).includes(p.get(key(r, 'v')) ?? '') ? (p.get(key(r, 'v')) as View) : 'report',
+    groupBy: {
+      columns: p.getAll(key(r, 'g')).filter(Boolean).slice(0, MAX_GROUP_COLUMNS),
+      functions: p.getAll(key(r, 'ga')).slice(0, MAX_GROUP_FUNCTIONS).flatMap((raw) => {
+        const [fn, column] = raw.split('|');
+        return AGGREGATES[fn] && column ? [{ fn, column, raw }] : [];
+      }),
+    },
+    pivot: (() => {
+      const [row, column, fn, value] = (p.get(key(r, 'pv')) ?? '').split('|');
+      return row && column && AGGREGATES[fn] && value ? { row, column, fn, value } : null;
+    })(),
+    chart: (() => {
+      const [kind, label, fn, value] = (p.get(key(r, 'ch')) ?? '').split('|');
+      return (CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value ? { kind, label, fn, value } : null;
+    })(),
   };
 }
 
@@ -142,6 +190,42 @@ export function normaliseReportParams(params: URLSearchParams): string | null {
       // highlight: column, operator, value, color
       const [col, op, val, color] = take(m[1], ['hc', 'ho', 'hv', 'hk']);
       if (col && OPERATORS[op] && HIGHLIGHT_COLORS.includes(color)) params.append(`r${m[1]}_h`, `${col}|${op}|${color}|${val}`);
+    } else if ((m = /^r(\d+)_cn$/.exec(k))) {
+      // computed column: name, expression (a new expression under an existing name replaces it)
+      const [name, expr] = take(m[1], ['cn', 'ce']);
+      const n = name.trim();
+      if (n && expr.trim() && computeNameOk(n)) {
+        const rest = params.getAll(`r${m[1]}_c`).filter((x) => x.split('|')[0] !== n);
+        params.delete(`r${m[1]}_c`);
+        for (const x of [...rest, `${n}|${expr.trim()}`].slice(-MAX_COMPUTATIONS)) params.append(`r${m[1]}_c`, x);
+      }
+    } else if ((m = /^r(\d+)_gb1$/.exec(k))) {
+      // group by: up to three columns and a function to add
+      const [c1, c2, c3, fn, col] = take(m[1], ['gb1', 'gb2', 'gb3', 'gbf', 'gbc']);
+      const columns = [...new Set([c1, c2, c3].filter(Boolean))];
+      params.delete(`r${m[1]}_g`);
+      for (const c of columns) params.append(`r${m[1]}_g`, c);
+      const v = `${fn}|${col}`;
+      if (AGGREGATES[fn] && col && !params.getAll(`r${m[1]}_ga`).includes(v)) params.append(`r${m[1]}_ga`, v);
+      if (columns.length) params.set(`r${m[1]}_v`, 'group');
+      else {
+        params.delete(`r${m[1]}_ga`);
+        if (params.get(`r${m[1]}_v`) === 'group') params.delete(`r${m[1]}_v`);
+      }
+    } else if ((m = /^r(\d+)_pr$/.exec(k))) {
+      // pivot: row column, pivot column, function, value column
+      const [row, col, fn, value] = take(m[1], ['pr', 'pp', 'pf', 'pc']);
+      if (row && col && row !== col && AGGREGATES[fn] && value) {
+        params.set(`r${m[1]}_pv`, `${row}|${col}|${fn}|${value}`);
+        params.set(`r${m[1]}_v`, 'pivot');
+      }
+    } else if ((m = /^r(\d+)_ck$/.exec(k))) {
+      // chart: kind, label column, function, value column
+      const [kind, label, fn, value] = take(m[1], ['ck', 'cl', 'cf', 'cv']);
+      if ((CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value) {
+        params.set(`r${m[1]}_ch`, `${kind}|${label}|${fn}|${value}`);
+        params.set(`r${m[1]}_v`, 'chart');
+      }
     }
   }
   return changed ? params.toString() : null;
@@ -170,26 +254,55 @@ export function facetSelections(ctx: PageContext, r: Region, except?: string) {
 export const facetCondition = (col: string, values: string[]) =>
   `"__q".${pg.escapeIdentifier(col)}::text in (${values.map((v) => literal(v)).join(', ')})`;
 
-export async function columnsOf(ctx: PageContext, src: string) {
+export async function fieldsOf(ctx: PageContext, src: string) {
   const c = ctx.client!;
   const res = await savepoint(c, () => c.query(`select * from (\n${src}\n) "__q" limit 0`));
-  return res.fields.map((f) => f.name);
+  return res.fields;
 }
 
-const q = (col: string) => `"__q".${pg.escapeIdentifier(col)}`;
+export async function columnsOf(ctx: PageContext, src: string) {
+  return (await fieldsOf(ctx, src)).map((f) => f.name);
+}
+
+export const q = (col: string) => `"__q".${pg.escapeIdentifier(col)}`;
+
+/**
+ * The region's source with the user's computed columns added at the end.
+ * A computation that doesn't parse (or whose name is taken) is left out and
+ * reported, so the report keeps working and the user can remove it.
+ */
+export async function withComputations(ctx: PageContext, src: string, st: ReportState) {
+  if (!st.computations.length) return { src, errors: [] as { c: Computation; message: string }[] };
+  const columns = await columnsOf(ctx, src);
+  const errors: { c: Computation; message: string }[] = [];
+  const exprs: string[] = [];
+  const taken = new Set(columns.map((c) => c.toLowerCase()));
+  for (const c of st.computations) {
+    try {
+      if (taken.has(c.name.toLowerCase())) throw new ComputeError(`There is already a column ${c.name}.`);
+      exprs.push(`${computeSql(c.expr, columns)} as ${pg.escapeIdentifier(c.name)}`);
+      taken.add(c.name.toLowerCase());
+    } catch (e) {
+      if (!(e instanceof ComputeError)) throw e;
+      errors.push({ c, message: e.message });
+    }
+  }
+  return { src: exprs.length ? `select "__s".*, ${exprs.join(', ')} from (\n${src}\n) "__s"` : src, errors };
+}
 
 /**
  * The report's query with the user's search, filters and facets applied:
  * the source, the WHERE clause, and the result's column names (only looked
  * up when a user-chosen column needs checking).
  */
-async function filtered(ctx: PageContext, r: Region, st: ReportState) {
-  const src = stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx)));
+export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
+  const { src } = await withComputations(ctx, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st);
   const where: string[] = [];
   if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
   const facets = facetSelections(ctx, r);
-  const needCols = st.filters.length || facets.size || st.breakCol || st.aggregates.length || st.highlights.length;
-  const cols = needCols ? new Set(await columnsOf(ctx, src)) : new Set<string>();
+  const needCols = st.filters.length || facets.size || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report';
+  // column name → type oid
+  const cols = new Map<string, number>(needCols ? (await fieldsOf(ctx, src)).map((f) => [f.name, f.dataTypeID]) : []);
   for (const f of st.filters) if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
   for (const [col, values] of facets) if (cols.has(col)) where.push(facetCondition(col, values));
   return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols };
@@ -383,6 +496,13 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const link = r.config.link as { column: string; page: number; items?: Record<string, string> } | undefined;
   const linkIdx = link && (await pageAllowed(ctx, link.page)) ? fields.findIndex((f) => f.name.toLowerCase() === link.column.toLowerCase()) : -1;
   const pre = new Set<string>((r.config.preformatted ?? []).map((x: string) => x.toLowerCase()));
+  let computeErrors: { c: Computation; message: string }[] = [];
+  if (st.computations.length && !failure)
+    computeErrors = (await withComputations(ctx, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st).catch(() => ({ errors: [] }))).errors;
+  const selection = st.view === 'report' ? selectionOf(ctx.page, r) : null;
+  const selIdx = selection ? fields.findIndex((f) => f.name.toLowerCase() === selection.column.toLowerCase()) : -1;
+  const selected = new Set(selIdx >= 0 ? splitValues(ctx.session.state[selection!.item] ?? '') : []);
+  const lead = selIdx >= 0 ? 1 : 0;
 
   const rowItems = (row: unknown[]) => {
     const items: Record<string, string> = {};
@@ -408,11 +528,12 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     });
     return html`<th scope="col" class="${cls}" aria-sort="${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
   });
+  if (lead) header.unshift(html`<th scope="col" class="row-select"><label><input type="checkbox" data-select-all="${selection!.item}" aria-label="${t('report.select_all')}"><span class="row-select-label" aria-hidden="true">${t('report.select_all')}</span></label></th>`);
 
   // an aggregate row (totals, or a control break's subtotals): the values
   // under their columns, the label in the first cell
   const aggRow = (values: unknown[], label: string, cls: string) =>
-    html`<tr class="${cls}">${cols.map(({ f }, ci) => {
+    html`<tr class="${cls}">${lead ? html`<td class="row-select"></td>` : ''}${cols.map(({ f }, ci) => {
       const parts = agg!.aggs.flatMap((a, ai) => (a.column === f.name ? [`${t(`agg.${a.fn}`)}: ${cell(values[ai], agg!.types[ai], ctx.locale.format)}`] : []));
       const text = [ci === 0 ? label : '', ...parts].filter(Boolean).join(' · ');
       return html`<td class="${parts.length && NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null}" data-label="${parts.length ? headingOf(r, f.name, ctx.locale.tr) : ''}">${text}</td>`;
@@ -430,11 +551,14 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
         if (group !== undefined && agg?.groups.has(group)) body.push(aggRow(agg.groups.get(group)!, t('report.subtotal'), 'agg-row subtotal'));
         group = k;
         const value = cell(row[breakIdx], breakField.dataTypeID, ctx.locale.format);
-        body.push(html`<tr class="break-row"><th colspan="${cols.length || 1}" scope="colgroup">${headingOf(r, breakField.name, ctx.locale.tr)}: ${value || '—'}</th></tr>`);
+        body.push(html`<tr class="break-row"><th colspan="${cols.length + lead || 1}" scope="colgroup">${headingOf(r, breakField.name, ctx.locale.tr)}: ${value || '—'}</th></tr>`);
       }
     }
     const hl = st.highlights.find((_, hi) => hlIdx[hi] >= 0 && row[hlIdx[hi]] === true);
-    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${cols.map(({ f, i }) => {
+    const pick = lead
+      ? html`<td class="row-select" data-label="${t('report.select_row')}"><input type="checkbox" name="${selection!.item}" value="${cell(row[selIdx])}"${selected.has(cell(row[selIdx])) ? raw(' checked') : ''} aria-label="${t('report.select_row')} ${cell(row[selIdx])}"></td>`
+      : '';
+    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${cols.map(({ f, i }) => {
       const text = cell(row[i], f.dataTypeID, ctx.locale.format);
       const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
@@ -461,8 +585,12 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const breakForm = `rb${r.id}`;
   const aggForm = `ra${r.id}`;
   const hlForm = `rh${r.id}`;
+  const computeForm = `rc${r.id}`;
+  const groupForm = `rg${r.id}`;
+  const pivotForm = `rp${r.id}`;
+  const chartForm = `rk${r.id}`;
   if (interactive) {
-    for (const id of [filterForm, breakForm, aggForm, hlForm])
+    for (const id of [filterForm, breakForm, aggForm, hlForm, computeForm, groupForm, pivotForm, chartForm])
       ctx.detached.push(html`<form id="${id}" method="get" action="${action}">${hiddenInputs([key(r, 'p')])}</form>`);
   }
   const saved = interactive ? await savedReports(ctx, r) : null;
@@ -494,6 +622,25 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   for (const h of st.highlights)
     chips.push(html`<span class="chip"><span class="swatch hl-${h.color}" aria-hidden="true"></span>${headingOf(r, h.column, ctx.locale.tr)} ${opLabel(t, h.op)}${OPERATORS[h.op].noValue ? '' : html` <b>${h.value}</b>`}
       <a href="${removeValue('h', h.raw)}" aria-label="${t('report.remove')}">×</a></span>`);
+  const dropView = (p: URLSearchParams, v: View, keys: string[]) => {
+    for (const k of keys) p.delete(key(r, k));
+    if (p.get(key(r, 'v')) === v) p.delete(key(r, 'v'));
+    p.delete(key(r, 'p'));
+  };
+  for (const c of st.computations) {
+    const err = computeErrors.find((x) => x.c.raw === c.raw);
+    chips.push(html`<span class="chip${err ? ' chip-error' : ''}"${err ? raw(` title="${esc(err.message)}"`) : ''}>${c.name} = <b>${c.expr}</b>
+      <a href="${removeValue('c', c.raw)}" aria-label="${t('report.remove')}">×</a></span>`);
+  }
+  if (st.groupBy.columns.length)
+    chips.push(html`<span class="chip">${t('report.group_by')}: <b>${st.groupBy.columns.map((c) => headingOf(r, c, ctx.locale.tr)).join(', ')}</b>${st.groupBy.functions.map((a) => html` · ${t(`agg.${a.fn}`)}: ${headingOf(r, a.column, ctx.locale.tr)}`)}
+      <a href="${regionUrl(ctx, r, (p) => dropView(p, 'group', ['g', 'ga']))}" aria-label="${t('report.remove')}">×</a></span>`);
+  if (st.pivot)
+    chips.push(html`<span class="chip">${t('report.pivot')}: <b>${headingOf(r, st.pivot.row, ctx.locale.tr)} × ${headingOf(r, st.pivot.column, ctx.locale.tr)}</b>
+      <a href="${regionUrl(ctx, r, (p) => dropView(p, 'pivot', ['pv']))}" aria-label="${t('report.remove')}">×</a></span>`);
+  if (st.chart)
+    chips.push(html`<span class="chip">${t('report.chart')}: <b>${t(`chart.${st.chart.kind}`)}, ${headingOf(r, st.chart.label, ctx.locale.tr)}</b>
+      <a href="${regionUrl(ctx, r, (p) => dropView(p, 'chart', ['ch']))}" aria-label="${t('report.remove')}">×</a></span>`);
   if (st.search)
     chips.unshift(
       html`<span class="chip">${t('report.search_chip')} <b>${st.search}</b> <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'q')); p.delete(key(r, 'p')); })}" aria-label="${t('report.clear_search')}">×</a></span>`,
@@ -555,6 +702,45 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
               <button class="btn" form="${hlForm}">${t('report.apply')}</button>
             </div>
           </div>
+          <div class="menu-section">
+            <strong>${t('report.compute')}</strong>
+            <div class="filter-row">
+              <input name="${key(r, 'cn')}" form="${computeForm}" maxlength="40" aria-label="${t('report.compute_name')}" placeholder="${t('report.compute_name')}">
+              <input name="${key(r, 'ce')}" form="${computeForm}" maxlength="500" aria-label="${t('report.compute_expr')}" placeholder="${t('report.compute_expr')}">
+              <button class="btn" form="${computeForm}">${t('report.apply')}</button>
+            </div>
+            <small class="help">${t('report.compute_help')}</small>
+          </div>
+          <div class="menu-section">
+            <strong>${t('report.group_by')}</strong>
+            <div class="filter-row">
+              ${[1, 2, 3].map((n) => html`<select name="${key(r, `gb${n}`)}" form="${groupForm}" aria-label="${t('report.group_by')} ${n}">
+                <option value="">${t('report.none')}</option>${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.groupBy.columns[n - 1] ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>`)}
+              <select name="${key(r, 'gbf')}" form="${groupForm}" aria-label="${t('report.function')}"><option value="">${t('report.none')}</option>${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}">${t(`agg.${fn}`)}</option>`)}</select>
+              <select name="${key(r, 'gbc')}" form="${groupForm}" aria-label="${t('report.column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === '' ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <button class="btn" form="${groupForm}">${t('report.apply')}</button>
+            </div>
+          </div>
+          <div class="menu-section">
+            <strong>${t('report.pivot')}</strong>
+            <div class="filter-row">
+              <select name="${key(r, 'pr')}" form="${pivotForm}" aria-label="${t('report.pivot_row')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.pivot?.row ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <select name="${key(r, 'pp')}" form="${pivotForm}" aria-label="${t('report.pivot_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.pivot?.column ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <select name="${key(r, 'pf')}" form="${pivotForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}"${fn === (st.pivot?.fn ?? 'count') ? raw(' selected') : ''}>${t(`agg.${fn}`)}</option>`)}</select>
+              <select name="${key(r, 'pc')}" form="${pivotForm}" aria-label="${t('report.value_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.pivot?.value ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <button class="btn" form="${pivotForm}">${t('report.apply')}</button>
+            </div>
+          </div>
+          <div class="menu-section">
+            <strong>${t('report.chart')}</strong>
+            <div class="filter-row">
+              <select name="${key(r, 'ck')}" form="${chartForm}" aria-label="${t('report.chart_type')}">${CHART_KINDS.map((k) => html`<option value="${k}"${k === st.chart?.kind ? raw(' selected') : ''}>${t(`chart.${k}`)}</option>`)}</select>
+              <select name="${key(r, 'cl')}" form="${chartForm}" aria-label="${t('report.label_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.chart?.label ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <select name="${key(r, 'cf')}" form="${chartForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}"${fn === (st.chart?.fn ?? 'count') ? raw(' selected') : ''}>${t(`agg.${fn}`)}</option>`)}</select>
+              <select name="${key(r, 'cv')}" form="${chartForm}" aria-label="${t('report.value_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.chart?.value ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <button class="btn" form="${chartForm}">${t('report.apply')}</button>
+            </div>
+          </div>
           ${saved ?? ''}
           <div class="menu-section"><strong>${t('report.rows_per_page')}</strong>
             <div class="seg">${PAGE_SIZES.map((n) =>
@@ -587,15 +773,27 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       : '';
 
   // Keep the toolbar only when a search or filter may be the cause, so it can be removed.
-  if (failure) return html`${st.filters.length || st.search ? toolbar : ''}<div class="alert alert-error" role="alert">${failure}</div>`;
+  if (failure) return html`${reportParams(r, ctx.params).size ? toolbar : ''}<div class="alert alert-error" role="alert">${failure}</div>`;
+
+  // Report / Group by / Pivot / Chart, once the user has set up another view
+  const views = VIEWS.filter((v) => v === 'report' || (v === 'group' && st.groupBy.columns.length) || (v === 'pivot' && st.pivot) || (v === 'chart' && st.chart));
+  const switcher = views.length > 1
+    ? html`<nav class="seg view-switch" aria-label="${t('report.view')}">${views.map((v) => html`<a href="${regionUrl(ctx, r, (p) => {
+        if (v === 'report') p.delete(key(r, 'v'));
+        else p.set(key(r, 'v'), v);
+        p.delete(key(r, 'p'));
+      })}"${v === st.view ? raw(' aria-current="true"') : ''}>${t(`report.view_${v}`)}</a>`)}</nav>`
+    : '';
+  const errors = computeErrors.map((x) => html`<div class="alert alert-error" role="alert">${t('report.compute_error', { name: x.c.name, message: x.message })}</div>`);
+  if (st.view !== 'report') return html`${toolbar}${switcher}${errors}${await renderView(ctx, r, st)}`;
 
   const from = total ? (pageNo - 1) * st.size + 1 : 0;
   const to = Math.min(total, pageNo * st.size);
   const empty = r.config.empty ?? t('report.no_data');
-  return html`${toolbar}
+  return html`${toolbar}${switcher}${errors}
     <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
       <thead><tr>${header}</tr></thead>
-      <tbody>${body.length ? body : html`<tr><td colspan="${cols.length || 1}" class="empty">${empty}</td></tr>`}</tbody>
+      <tbody>${body.length ? body : html`<tr><td colspan="${cols.length + lead || 1}" class="empty">${empty}</td></tr>`}</tbody>
       ${res.rows.length ? foot : ''}
     </table></div>
     ${total > st.size || pageNo > 1

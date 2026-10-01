@@ -2,6 +2,7 @@ import { applyBinds } from '../binds.ts';
 import { savepoint } from '../db.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext, type Visibility } from './context.ts';
 import { saveButton, saveRequest } from './grid.ts';
+import { selectionOf } from './report.ts';
 
 export class Forbidden extends Error {}
 
@@ -81,6 +82,12 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     // fail closed: a broken read-only condition makes the item read-only
     if (i.readonly_condition && (await sqlTrue(ctx, i.readonly_condition, `read-only condition of ${i.name}`, true))) continue;
     vis.editable.add(i.name);
+  }
+
+  // a report's row selection posts its item, hidden or not (the values are the user's input: check them in the process)
+  for (const r of ctx.page.regions) {
+    const sel = vis.regions.has(r.id) ? selectionOf(ctx.page, r) : null;
+    if (sel && vis.items.has(sel.item)) vis.editable.add(sel.item);
   }
 
   for (const b of ctx.page.buttons) {

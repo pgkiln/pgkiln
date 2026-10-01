@@ -15,7 +15,7 @@ import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesse
 import { MULTI_VALUE, renderItem } from './items.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
-import { reportCsv, reportParams, reportXlsx, normaliseReportParams } from './report.ts';
+import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
 import { reportPdf } from './pdf.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
@@ -186,11 +186,12 @@ function applyUrlItems(ctx: PageContext): boolean {
 
 /** Copy submitted values into session state, for editable items only. */
 function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
+  const selectionItems = new Set(ctx.page.regions.flatMap((r) => selectionOf(ctx.page, r)?.item ?? []));
   for (const item of ctx.page.items) {
     if (!ctx.vis!.editable.has(item.name) || item.type === 'file') continue;
     if (only && !only.includes(item.name)) continue;
     const raw = body[item.name] as string | string[] | undefined;
-    if (MULTI_VALUE.has(item.type)) {
+    if (MULTI_VALUE.has(item.type) || selectionItems.has(item.name)) {
       const values = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((v) => v !== '');
       ctx.session.state[item.name] = values.length ? values.join(':') : null;
       continue;

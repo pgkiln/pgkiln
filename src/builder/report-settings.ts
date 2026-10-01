@@ -60,6 +60,7 @@ interface ReportConfig {
   saved_reports?: boolean;
   public_reports?: string;
   pdf?: { layout?: string; columns?: string[]; widths?: Record<string, number>; align?: Record<string, string> };
+  selection?: { column: string; item: string };
   [k: string]: unknown;
 }
 
@@ -67,10 +68,11 @@ interface ReportConfig {
 export async function reportSettingsForm(pageId: number, appId: number, r: { id: number; source: string | null; config: ReportConfig }, s: Session) {
   const cfg = r.config ?? {};
   const cols = await reportColumns(appId, r.source);
-  const [layouts, schemes, pages] = await Promise.all([
+  const [layouts, schemes, pages, items] = await Promise.all([
     owner.query('select name, is_default from meta.report_layout where app_id = $1 order by name', [appId]),
     owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId]),
     owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId]),
+    owner.query('select name, type from meta.item where page_id = $1 order by name', [pageId]),
   ]);
   const id = (n: string) => `rs_${r.id}_${n}`;
   const check = (name: string, label: string, on: boolean) =>
@@ -127,6 +129,13 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
           <input id="${id('link_items')}" name="link_items" value="${linkItems}" placeholder="P3_EMPNO=#empno#">
           <small class="help">ITEM=#column#, comma separated; #column# is replaced by the row's value.</small></div>
       </div></fieldset>
+      <fieldset class="prop-group"><legend>Row selection</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('sel_column')}">Value column</label>
+          <select id="${id('sel_column')}" name="sel_column">${opt('', '- no row selection -', cfg.selection?.column)}${all.map((n) => opt(n, n, cfg.selection?.column))}</select></div>
+        <div class="field"><label class="label" for="${id('sel_item')}">Into item</label>
+          <select id="${id('sel_item')}" name="sel_item">${opt('', '- choose -', cfg.selection?.item)}${items.rows.map((x) => opt(x.name, `${x.name} (${x.type})`, cfg.selection?.item))}</select>
+          <small class="help">A checkbox per row; on submit the checked rows' values reach the item, colon separated (e.g. 7839:7902). Usually a hidden item. Treat the values as user input in your process.</small></div>
+      </div></fieldset>
       <fieldset class="prop-group"><legend>PDF</legend><div class="form-grid">
         <div class="field"><label class="label" for="${id('layout')}">Report layout</label>
           <select id="${id('layout')}" name="pdf_layout">${opt('', layouts.rows.some((l) => l.is_default) ? '- the default layout -' : '- built-in -', cfg.pdf?.layout)}${layouts.rows.map((l) => opt(l.name, l.name + (l.is_default ? ' (default)' : ''), cfg.pdf?.layout))}</select>
@@ -137,7 +146,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
 }
 
 /** The region's config after the Report settings form: known keys replaced, defaults left out. */
-export function mergeReportSettings(config: ReportConfig, b: Record<string, string | undefined>, pages: Set<number>, layouts: Set<string>, schemes: Set<string>): ReportConfig {
+export function mergeReportSettings(config: ReportConfig, b: Record<string, string | undefined>, pages: Set<number>, layouts: Set<string>, schemes: Set<string>, items: Set<string> = new Set()): ReportConfig {
   const out: ReportConfig = { ...config };
   const set = <K extends keyof ReportConfig>(k: K, v: ReportConfig[K] | undefined) => {
     if (v === undefined) delete out[k];
@@ -184,6 +193,7 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
     const items = parseLinkItems(b.link_items);
     set('link', { column: b.link_column, page, ...(Object.keys(items).length ? { items } : {}) });
   } else set('link', undefined);
+  set('selection', b.sel_column && cols.some((c) => c.name === b.sel_column) && b.sel_item && items.has(b.sel_item) ? { column: b.sel_column, item: b.sel_item } : undefined);
   return out;
 }
 
@@ -196,10 +206,11 @@ export async function reportSettingsRoutes(app: FastifyInstance) {
       ? await owner.one(`select r.id, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = 'report'`, [rid, pid])
       : undefined;
     if (!r) return reply.code(404).send('Not found');
-    const [pages, layouts, schemes] = await Promise.all([
+    const [pages, layouts, schemes, items] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.report_layout where app_id = $1', [r.app_id]),
       owner.query('select name from meta.authz_scheme where app_id = $1', [r.app_id]),
+      owner.query('select name from meta.item where page_id = $1', [pid]),
     ]);
     const config = mergeReportSettings(
       r.config ?? {},
@@ -207,6 +218,7 @@ export async function reportSettingsRoutes(app: FastifyInstance) {
       new Set(pages.rows.map((x) => x.page_no)),
       new Set(layouts.rows.map((x) => x.name)),
       new Set(schemes.rows.map((x) => x.name)),
+      new Set(items.rows.map((x) => x.name)),
     );
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     flash(s, 'Report settings saved.');

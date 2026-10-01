@@ -440,3 +440,20 @@ document.addEventListener('click', (e) => {
   e.target.closest('details')?.removeAttribute('open');
   window.print();
 });
+
+// Report row selection: the header checkbox checks or clears every row on the page.
+document.addEventListener('change', (e) => {
+  const all = e.target.closest?.('[data-select-all]');
+  if (all) {
+    const table = all.closest('table');
+    for (const box of table.querySelectorAll(`input[type=checkbox][name="${CSS.escape(all.dataset.selectAll)}"]`)) box.checked = all.checked;
+    return;
+  }
+  const box = e.target;
+  if (box.type !== 'checkbox' || !box.name) return;
+  const head = box.closest('table')?.querySelector(`[data-select-all="${CSS.escape(box.name)}"]`);
+  if (!head) return;
+  const boxes = [...box.closest('table').querySelectorAll(`input[type=checkbox][name="${CSS.escape(box.name)}"]`)];
+  head.checked = boxes.every((b) => b.checked);
+  head.indeterminate = !head.checked && boxes.some((b) => b.checked);
+});
