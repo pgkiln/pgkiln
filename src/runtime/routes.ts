@@ -1,3 +1,4 @@
+import { PageCss } from '../css.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
@@ -92,7 +93,7 @@ export async function completeLogin(
     const ctx: PageContext = {
       app: a, page: home, session: s, base, params: new URLSearchParams(), request: '', user: username,
       roles, ip: clientIp(req), errors: { page: [], items: {} }, messages: [],
-      dialog: false, authzCache: new Map(), detached: [], locale: await resolveLocale(req, a, s),
+      dialog: false, authzCache: new Map(), detached: [], css: new PageCss(), nonce: req.cspNonce, locale: await resolveLocale(req, a, s),
     };
     await appTx(txContext(ctx), async (c) => {
       ctx.client = c;
@@ -148,6 +149,8 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
     dialog: false,
     authzCache: new Map(),
     detached: [],
+    css: new PageCss(),
+    nonce: req.cspNonce,
     locale,
   };
 }
@@ -356,7 +359,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const da = ctx.page.dynamic_actions.find((d) => d.id === Number(req.params.id));
         if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         applyPostedItems(ctx, body, list(da.items_to_submit));
-        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string> } = { items: {}, itemsHtml: {}, regions: {} };
+        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string } = { items: {}, itemsHtml: {}, regions: {} };
         const affected = list(da.affected_items).filter((n) => vis.items.has(n));
         switch (da.action) {
           case 'set_value': {
@@ -372,6 +375,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
             vis = await computeVisibility(ctx);
             const r = ctx.page.regions.find((x) => x.id === da.affected_region_id);
             if (r) out.regions[r.id] = (await renderRegion(ctx, r)).toString();
+            out.css = ctx.css.text;
             break;
           }
           case 'refresh_item':

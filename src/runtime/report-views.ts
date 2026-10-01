@@ -122,7 +122,7 @@ async function chart(ctx: PageContext, r: Region, st: ReportState): Promise<Raw>
     }),
   );
   if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? t('report.no_data')}</p>`;
-  return html`${renderChartBody(ch.kind as ChartKind, r.title ?? '', res.rows.slice(0, MAX_CHART_LABELS), res.fields, ctx.locale.lang, t)}
+  return html`${renderChartBody(ch.kind as ChartKind, r.title ?? '', res.rows.slice(0, MAX_CHART_LABELS), res.fields, ctx.css, ctx.locale.lang, t)}
     ${res.rows.length > MAX_CHART_LABELS ? notice(t('report.chart_truncated', { labels: MAX_CHART_LABELS })) : ''}`;
 }
 

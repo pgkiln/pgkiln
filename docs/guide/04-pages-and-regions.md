@@ -331,4 +331,7 @@ select '<ul>' || string_agg('<li>' || meta.html_escape(ename) || '</li>', '') ||
   from hr.emp where job = 'MANAGER'
 ```
 
-The content security policy blocks inline `<script>` and event handler attributes in both.
+The content security policy blocks inline `<script>`, event handler attributes, `style="…"`
+attributes and `<style>` blocks in both: use the classes of `/static/app.css` (for example
+`muted`, `lead`, `alert alert-success`, `tag`, `btn`, `cards`/`card`) instead. A browser ignores
+blocked styles and reports them in its developer console.

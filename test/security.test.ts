@@ -8,6 +8,7 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner, runtime } from '../src/db.ts';
 import { urlChecksum } from '../src/security.ts';
+import { PageCss } from '../src/css.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -551,5 +552,52 @@ describe('sprint 11: report views and row selection', () => {
       await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
       await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_PICKED'`, [r.page_id]);
     }
+  });
+});
+
+describe('sprint 12: Content-Security-Policy without inline styles', () => {
+  const policy = (res: { headers: Record<string, unknown> }) => String(res.headers['content-security-policy'] ?? '');
+  const nonceOf = (res: { headers: Record<string, unknown> }) => /'nonce-([A-Za-z0-9+/=]+)'/.exec(policy(res))?.[1];
+
+  test('pages allow only their own nonce\'d <style> and no style attributes', async () => {
+    const king = await as('king');
+    const pages = (await owner.query(`select p.page_no from meta.page p where p.app_id = $1 order by 1`, [appId])).rows.map((r) => `/a/hr/${r.page_no}`);
+    const nonces = new Set<string>();
+    for (const url of [...pages, '/a/hr/login', '/a/hr/account']) {
+      const res = await king.get(url);
+      if (res.statusCode !== 200) continue;
+      const csp = policy(res);
+      assert.match(csp, /style-src 'self' 'nonce-/, url);
+      assert.doesNotMatch(csp, /unsafe-inline/, url);
+      assert.doesNotMatch(res.body, /\sstyle="/, `${url} has a style attribute`);
+      const nonce = nonceOf(res)!;
+      for (const m of res.body.matchAll(/<style([^>]*)>/g)) assert.equal(m[1], ` nonce="${nonce}" id="pgapex-css"`, `${url}: <style> without the nonce`);
+      nonces.add(nonce);
+    }
+    assert.ok(nonces.size > 5, 'a new nonce for every response');
+  });
+
+  test('builder pages have no style attributes either', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    for (const url of ['/builder', `/builder/apps/${appId}`, `/builder/apps/${appId}/shared`, `/builder/apps/${appId}/settings`, `/builder/apps/${appId}/api`,
+      `/builder/apps/${appId}/globalization`, '/builder/sql', '/builder/sql/load', '/builder/users', '/builder/users/providers']) {
+      const res = await dev.get(url);
+      assert.equal(res.statusCode, 200, url);
+      assert.doesNotMatch(policy(res), /unsafe-inline/);
+      assert.doesNotMatch(res.body, /\sstyle="/, `${url} has a style attribute`);
+    }
+  });
+
+  test('chart geometry becomes classes; declarations cannot break out of the rule', async () => {
+    const res = await (await as('king')).get('/a/hr/1');
+    const css = /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec(res.body)![1];
+    assert.match(css, /\.x[A-Za-z0-9]{10}\{bottom:[\d.]+%;height:[\d.]+%\}/);
+    const cls = /\.(x[A-Za-z0-9]{10})\{bottom:[\d.]+%;height/.exec(css)![1];
+    assert.match(res.body, new RegExp(`class="col s\\d+ ${cls}"`), 'a column carries its geometry class');
+    const sheet = new PageCss();
+    assert.equal(sheet.cls('width:1%'), sheet.cls('width:1%'), 'equal declarations share a class');
+    for (const bad of ['x}body{display:none', '</style><script>', 'a{b']) assert.throws(() => sheet.cls(bad));
   });
 });

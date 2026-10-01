@@ -1,3 +1,4 @@
+import type { PageCss } from '../css.ts';
 import type pg from 'pg';
 import type { BindValues } from '../binds.ts';
 import type { Client } from '../db.ts';
@@ -41,6 +42,10 @@ export interface PageContext {
   authzCache: Map<string, boolean>;
   /** Forms rendered after the main page <form> (report search/filter boxes). */
   detached: Raw[];
+  /** data-dependent styles (chart geometry): one nonce'd <style> in the page head */
+  css: PageCss;
+  /** the response's CSP nonce */
+  nonce: string;
   /** The submitted form (POST), e.g. for grid rows. */
   body?: Record<string, unknown>;
   /** language, texts and theme of this request */

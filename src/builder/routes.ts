@@ -99,8 +99,8 @@ export async function builderRoutes(app: FastifyInstance) {
       <div class="app-cards">
         ${apps.rows.length
           ? apps.rows.map((a, i) => html`<article class="app-card">
-              <div style="display:flex;gap:.75rem;align-items:center">
-                <span class="app-icon" style="background:${APP_COLORS[i % APP_COLORS.length]}">${a.name.slice(0, 1).toUpperCase()}</span>
+              <div class="u-row">
+                <span class="app-icon app-color-${i % APP_COLORS}">${a.name.slice(0, 1).toUpperCase()}</span>
                 <div><h3><a href="${BASE}/apps/${a.id}">${a.name}</a></h3><div class="meta">/a/${a.alias} · ${a.pages} pages · ${a.views} views today</div></div>
               </div>
               <div class="meta">${a.authentication === 'none' ? 'Public' : 'App users'} · role ${a.db_role ?? '(owner!)'}${a.debug ? ' · debug' : ''}</div>
@@ -240,7 +240,7 @@ export async function builderRoutes(app: FastifyInstance) {
         </table></div>`)}
       <div class="columns">
         ${region('Create pages from a table', html`
-          <p class="muted" style="margin-top:0">"Report and form" generates an interactive report and a modal form with create/update/delete; "Interactive grid" generates one editable grid page. Both add a menu entry.</p>
+          <p class="muted u-mt0">"Report and form" generates an interactive report and a modal form with create/update/delete; "Interactive grid" generates one editable grid page. Both add a menu entry.</p>
           <form method="post" action="${BASE}/apps/${a.id}/wizard">${csrf(s)}
             <div class="form-grid">
               ${select('kind', 'Page type', 'report_form', [['report_form', 'Report and form'], ['grid', 'Interactive grid']])}
@@ -460,7 +460,7 @@ export async function builderRoutes(app: FastifyInstance) {
       <div class="columns">
         ${region('Page views by page (7 days)', html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Page</th><th>Name</th><th class="num">Views</th><th class="num">Avg ms</th><th class="num">Max ms</th></tr></thead>
           <tbody>${byPage.rows.map((r) => html`<tr><td class="num">${r.page_no}</td><td>${r.name}</td><td class="num">${r.views}</td><td class="num">${r.avg_ms}</td><td class="num">${r.max_ms}</td></tr>`)}</tbody></table></div>`)}
-        ${region('Recent events', html`<p class="muted" style="margin-top:0">${req.query.all === '1' ? html`Showing all events. <a href="?">Hide page views</a>` : html`Sign-ins, denials and errors. <a href="?all=1">Include page views</a>`}</p>
+        ${region('Recent events', html`<p class="muted u-mt0">${req.query.all === '1' ? html`Showing all events. <a href="?">Hide page views</a>` : html`Sign-ins, denials and errors. <a href="?all=1">Include page views</a>`}</p>
           <div class="table-wrap"><table class="report"><thead><tr><th>When</th><th>Event</th><th>User</th><th class="num">Page</th><th>IP</th><th>Detail</th></tr></thead>
           <tbody>${events.rows.map((r) => html`<tr><td>${String(r.at).slice(0, 19)}</td><td><span class="ev ev-${r.event}">${r.event}</span></td><td>${r.username}</td><td class="num">${r.page_no}</td><td>${r.ip}</td><td title="${r.detail}">${r.detail}</td></tr>`)}</tbody></table></div>`)}
       </div>`;
@@ -472,7 +472,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const devs = (await owner.query('select username from meta.developer order by 1')).rows;
-    const main = html`<h1 style="margin-bottom:1rem">Developers</h1>
+    const main = html`<h1 class="u-mb1">Developers</h1>
       <div class="columns">
         ${region('Change your password', html`<form method="post" action="${BASE}/developers/password">${csrf(s)}
           <div class="form-grid">

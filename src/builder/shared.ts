@@ -53,29 +53,29 @@ export async function sharedRoutes(app: FastifyInstance) {
       const appHints = (await roleHints([a.id])).get(a.id) ?? [];
       const groupRoles = (await owner.query('select group_name, role from meta.app_group_role where app_id = $1 order by 1, 2', [a.id])).rows;
       const groupMap = html`<h3>Identity-provider groups → roles</h3>
-        <p class="muted" style="margin-top:0">With single sign-on, members of these groups get the role in this app, and may sign in even without being listed above.</p>
+        <p class="muted u-mt0">With single sign-on, members of these groups get the role in this app, and may sign in even without being listed above.</p>
         ${groupRoles.length
           ? html`<div class="chips">${groupRoles.map((g) => html`<span class="chip">${g.group_name} → <b>${g.role}</b>
-              <form method="post" action="${BASE}/apps/${a.id}/groups/delete" style="display:inline">${csrf(s)}<input type="hidden" name="group_name" value="${g.group_name}"><input type="hidden" name="role" value="${g.role}"><button class="link-button" aria-label="Remove mapping ${g.group_name} to ${g.role}">×</button></form></span>`)}</div>`
+              <form method="post" action="${BASE}/apps/${a.id}/groups/delete" class="u-inline">${csrf(s)}<input type="hidden" name="group_name" value="${g.group_name}"><input type="hidden" name="role" value="${g.role}"><button class="link-button" aria-label="Remove mapping ${g.group_name} to ${g.role}">×</button></form></span>`)}</div>`
           : html`<p class="muted">No group mappings.</p>`}
         <form method="post" action="${BASE}/apps/${a.id}/groups">${csrf(s)}
           <div class="form-grid">${input('group_name', 'Group (as in the token)', '', { required: true, placeholder: 'e.g. hr-managers' })}${input('role', 'Role in this app', '', { required: true, placeholder: 'e.g. manager' })}</div>
           <div class="buttons"><button class="btn">Add mapping</button></div>
         </form>`;
       editor = region('Access control', html`
-        <form method="post" action="${BASE}/apps/${a.id}/access" class="search" style="max-width:none;margin-bottom:1rem">${csrf(s)}
+        <form method="post" action="${BASE}/apps/${a.id}/access" class="search u-mwnone u-mb1">${csrf(s)}
           ${select('access_control', 'Who may sign in', a.access_control, [
             ['assigned', 'Only accounts listed below (role-based access)'],
             ['any_user', 'Any active account in the directory'],
           ])}
-          <button class="btn" style="align-self:end">Save</button>
+          <button class="btn u-selfend">Save</button>
         </form>
         <p class="muted">Accounts live in the <a href="${BASE}/users">user directory</a>; here you grant them access to <b>${a.name}</b> and assign roles, which authorization schemes and <code>meta.has_role()</code> check. Role changes apply at the user's next sign-in (their sessions in this app end).</p>
         <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Account</th><th>Roles in this app</th><th>Last sign-in</th><th></th></tr></thead><tbody>
           ${users.length
             ? users.map((u) => html`<tr>
                 <td data-label="Account"><a href="${BASE}/users/${u.id}">${u.username}</a>${u.display_name ? html` <span class="muted">${u.display_name}</span>` : ''}${u.active ? '' : html` <b>(inactive)</b>`}</td>
-                <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search roles-form" style="margin:0;max-width:none">${csrf(s)}
+                <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search roles-form u-m0 u-mwnone">${csrf(s)}
                   <input name="roles" value="${u.roles.join(', ')}" aria-label="Roles of ${u.username}" placeholder="no roles"><button class="btn">Save</button>
                   ${roleHintsHtml(appHints, 'Add')}</form></td>
                 <td data-label="Last sign-in">${u.last_login_at ? String(u.last_login_at).slice(0, 16) : '—'}</td>

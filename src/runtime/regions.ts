@@ -54,7 +54,7 @@ async function renderChart(ctx: PageContext, r: Region) {
   }
   if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
   const kind = CHART_KINDS.includes(r.config.kind) ? r.config.kind : 'bar';
-  return renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.locale.lang, ctx.locale.t);
+  return renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t);
 }
 
 /**

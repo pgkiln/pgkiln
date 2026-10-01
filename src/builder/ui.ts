@@ -46,7 +46,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${navLink('developers', `${BASE}/developers`, 'users', 'Developers')}
       </nav>
       <div class="user"><span>${s.username}</span>
-        <form method="post" action="${BASE}/logout">${csrf(s)}<button class="link-button plain" style="color:inherit">${icon('logout')}<span class="sr-only">Sign out</span></button></form>
+        <form method="post" action="${BASE}/logout">${csrf(s)}<button class="link-button plain u-inherit">${icon('logout')}<span class="sr-only">Sign out</span></button></form>
       </div>
     </header>
     <main class="page" id="main">
@@ -94,12 +94,13 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
       </div></div>`;
 
 /** Tabs of the SQL Workshop. */
-export const workshopTabs = (active: 'sql' | 'objects' | 'load') => html`<div class="buttons" style="margin-bottom:1rem">
+export const workshopTabs = (active: 'sql' | 'objects' | 'load') => html`<div class="buttons u-mb1">
     <a class="btn${active === 'sql' ? ' btn-hot' : ''}" href="${BASE}/sql">${icon('code')} SQL Commands</a>
     <a class="btn${active === 'objects' ? ' btn-hot' : ''}" href="${BASE}/sql/objects">${icon('database')} Object Browser</a>
     <a class="btn${active === 'load' ? ' btn-hot' : ''}" href="${BASE}/sql/load">${icon('upload')} Load Data</a></div>`;
 
-export const APP_COLORS = ['#0b63c5', '#17794a', '#b3261e', '#7a4cc2', '#b86e00', '#00796b', '#5c6bc0', '#8d6e63'];
+/** Number of app tile colours (.app-color-0 … -7 in app.css). */
+export const APP_COLORS = 8;
 
 // ------------------------------------------------------------------ auth
 

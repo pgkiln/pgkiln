@@ -22,9 +22,9 @@ export function imageType(b: Buffer): 'image/png' | 'image/jpeg' | null {
 /** Logo and preview forms under a layout's settings. */
 export function layoutExtras(appId: number, row: { id: number; logo: Buffer | null }, s: Session) {
   const base = `${BASE}/apps/${appId}/shared/report_layout/${row.id}`;
-  return html`<fieldset class="prop-group" style="margin-top:1.25rem"><legend>Logo image</legend>
+  return html`<fieldset class="prop-group u-mt125"><legend>Logo image</legend>
       ${row.logo ? html`<p><img src="${base}/logo" alt="Logo of this layout" class="layout-logo"></p>` : html`<p class="muted">No logo. It prints at the top right of the first page.</p>`}
-      <form method="post" action="${base}/logo" enctype="multipart/form-data" class="search" style="max-width:none">${csrf(s)}
+      <form method="post" action="${base}/logo" enctype="multipart/form-data" class="search u-mwnone">${csrf(s)}
         <input type="file" name="logo" accept="image/png,image/jpeg" aria-label="Logo (PNG or JPEG)">
         <button class="btn">${icon('upload')} Upload</button>
         ${row.logo ? html`<button class="btn" name="remove" value="1">Remove logo</button>` : ''}

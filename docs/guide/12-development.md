@@ -14,7 +14,7 @@ src/
   env.ts                   .env loader (imported first)
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings), savepoints
-  security.ts              URL checksums, password policy, security headers, throttling limits
+  security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   api.ts                   REST API tokens for PostgREST, API role checks
@@ -25,6 +25,7 @@ src/
   xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
+  css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   metadata.ts              types + loaders for apps and pages
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
@@ -86,7 +87,12 @@ test/
 3. **Visibility is authority.** Anything a user can trigger (buttons, items, dynamic actions, grid
    saves) must be checked against `computeVisibility()` on the server.
 4. **Server-rendered HTML, progressive enhancement.** Every page works without JavaScript; `app.js`
-   uses event delegation, and the CSP forbids inline scripts.
+   uses event delegation, and the CSP forbids inline scripts. Styles: no `style="…"` attributes
+   either (`style-src 'self' 'nonce-…'`). Use a class in `app.css` (the `u-*` utilities for
+   one-off spacing); for values that depend on data (chart geometry) call `ctx.css.cls('width:34%')`
+   (`src/css.ts`), which returns a class whose rule goes into the page's nonce'd `<style>`. A
+   refreshed region sends its rules along and `app.js` adds them through the CSSOM. The e2e test
+   fails on any CSP violation in the browser.
 5. **Escape by default.** Build HTML only with `html```; use `raw()` only for markup you generated.
 6. **Responsive and accessible.** Labels, keyboard support, focus rings, and layouts that pass
    the e2e overflow checks.

@@ -1,3 +1,4 @@
+import { PageCss } from '../css.ts';
 import type { Translate } from '../i18n.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { cell } from './report.ts';
@@ -22,7 +23,9 @@ interface Series {
 }
 
 const MAX_SERIES = 8;
-// Set per chart (rendering is synchronous) to the language of the request.
+// Set per chart (rendering is synchronous): the page's stylesheet for the geometry
+// classes, and the number formats of the request's language.
+let css = new PageCss();
 let fmt = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
 let compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 let texts = { table: 'Data table', other: 'Other', label: 'Label', noSeries: 'The chart query must return a label column and at least one numeric column.' };
@@ -77,7 +80,7 @@ function bar(labels: string[], series: Series[]) {
     (l, i) => html`<div class="bar-row" data-tip="${tip(l, series, i)}">
       <span class="bar-label" title="${l}">${l}</span>
       <span class="bar-stack">${series.map(
-        (s, si) => html`<span class="bar-track"><span class="bar s${si + 1}" style="width:${pct((Math.abs(s.values[i]) / max) * 100)}"></span></span>`,
+        (s, si) => html`<span class="bar-track"><span class="bar s${si + 1} ${css.cls(`width:${pct((Math.abs(s.values[i]) / max) * 100)}`)}"></span></span>`,
       )}</span>
       <span class="bar-value">${series.length === 1 ? fmt.format(series[0].values[i]) : ''}</span>
     </div>`,
@@ -90,7 +93,7 @@ function yAxis(scale: ReturnType<typeof niceScale>) {
   return {
     y,
     grid: html`<div class="chart-grid" aria-hidden="true">${scale.ticks.map(
-      (t) => html`<div class="gridline${t === 0 ? ' baseline' : ''}" style="bottom:${pct(y(t))}"><span>${compact.format(t)}</span></div>`,
+      (t) => html`<div class="gridline${t === 0 ? ' baseline' : ''} ${css.cls(`bottom:${pct(y(t))}`)}"><span>${compact.format(t)}</span></div>`,
     )}</div>`,
   };
 }
@@ -116,9 +119,9 @@ function column(labels: string[], series: Series[]) {
         const v = s.values[i];
         const top = y(Math.max(v, 0));
         const bottom = y(Math.min(v, 0));
-        return html`<span class="col-slot"><span class="col s${si + 1}${v < 0 ? ' neg' : ''}" style="bottom:${pct(bottom)};height:${pct(top - bottom)}"></span></span>`;
+        return html`<span class="col-slot"><span class="col s${si + 1}${v < 0 ? ' neg' : ''} ${css.cls(`bottom:${pct(bottom)};height:${pct(top - bottom)}`)}"></span></span>`;
       })}${series.length === 1 && labels.length <= 12
-        ? html`<span class="col-value" style="bottom:${pct(Math.max(y(series[0].values[i]), zero))}">${compact.format(series[0].values[i])}</span>`
+        ? html`<span class="col-value ${css.cls(`bottom:${pct(Math.max(y(series[0].values[i]), zero))}`)}">${compact.format(series[0].values[i])}</span>`
         : ''}</div>`,
     )}</div>
   </div>${xLabels(labels)}`;
@@ -140,7 +143,7 @@ function line(labels: string[], series: Series[], area: boolean) {
   });
   // End markers + a direct label for the last value of each series (<= 4 series).
   const ends = series.map(
-    (s, si) => html`<span class="dot s${si + 1}" style="left:${pct(x(n - 1))};bottom:${pct(y(s.values[n - 1]))}"></span>`,
+    (s, si) => html`<span class="dot s${si + 1} ${css.cls(`left:${pct(x(n - 1))};bottom:${pct(y(s.values[n - 1]))}`)}"></span>`,
   );
   return html`<div class="chart-plot line-plot">
     ${grid}
@@ -150,7 +153,7 @@ function line(labels: string[], series: Series[], area: boolean) {
       // each hit area is centred on its point (the plot clips the outer halves)
       (l, i) => {
         const w = n === 1 ? 100 : 100 / (n - 1);
-        return html`<div class="hit" style="left:${(x(i) - w / 2).toFixed(3)}%;width:${w.toFixed(3)}%" data-tip="${tip(l, series, i)}"><span class="guide"></span></div>`;
+        return html`<div class="hit ${css.cls(`left:${(x(i) - w / 2).toFixed(3)}%;width:${w.toFixed(3)}%`)}" data-tip="${tip(l, series, i)}"><span class="guide"></span></div>`;
       },
     )}</div>
   </div>${xLabels(labels)}`;
@@ -186,7 +189,9 @@ function donut(labels: string[], series: Series[]) {
   </div>`;
 }
 
-export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], lang = 'en', t?: Translate): Raw {
+/** A chart's markup; its geometry goes into `sheet` as classes (no inline styles: see css.ts). */
+export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], sheet: PageCss, lang = 'en', t?: Translate): Raw {
+  css = sheet;
   try {
     fmt = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
     compact = new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 });

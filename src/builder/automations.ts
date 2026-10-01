@@ -26,13 +26,13 @@ export async function automationExtras(appId: number, row: { id: number; enabled
     next = `never: ${(e as Error).message}`;
   }
   const scheduler = process.env.AUTOMATIONS === 'off' ? html` <b>(the scheduler is off on this server: AUTOMATIONS=off)</b>` : '';
-  return html`<fieldset class="prop-group" style="margin-top:1.25rem"><legend>Runs</legend>
+  return html`<fieldset class="prop-group u-mt125"><legend>Runs</legend>
       <p>Next run: <b>${next}</b>${scheduler}</p>
       <form method="post" action="${BASE}/apps/${appId}/shared/automation/${row.id}/run">${csrf(s)}
         <button class="btn">${icon('play')} Run now</button>
       </form>
       ${log.length
-        ? html`<div class="table-wrap" style="margin-top:0.75rem"><table class="report report-reflow"><thead><tr><th>Started</th><th>Took</th><th>By</th><th>Status</th><th class="num">Rows</th><th>Message</th></tr></thead><tbody>
+        ? html`<div class="table-wrap u-mt075"><table class="report report-reflow"><thead><tr><th>Started</th><th>Took</th><th>By</th><th>Status</th><th class="num">Rows</th><th>Message</th></tr></thead><tbody>
             ${log.map((l) => html`<tr>
               <td data-label="Started">${when(l.started_at)}</td>
               <td data-label="Took">${l.finished_at ? `${((new Date(l.finished_at).getTime() - new Date(l.started_at).getTime()) / 1000).toFixed(1)} s` : '…'}</td>

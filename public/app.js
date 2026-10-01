@@ -134,6 +134,10 @@ document.documentElement.classList.add('js');
         const w = wrapperOf(name);
         if (w) replaceHtml(w, markup);
       }
+      // a refreshed region's styles (chart geometry) go into the page's own stylesheet:
+      // the CSP refuses inline styles, but not rules added through the CSSOM
+      const sheet = document.getElementById('pgapex-css')?.sheet;
+      if (sheet && res.css) for (const rule of res.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
       for (const [id, markup] of Object.entries(res.regions || {})) {
         const r = document.getElementById(`R${id}`);
         if (r) replaceHtml(r, markup);

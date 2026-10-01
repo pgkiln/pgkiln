@@ -46,6 +46,16 @@ async function login(page: Page, url: string, user: string, password: string, us
 }
 
 /** Widest element sticking out of the viewport, for a helpful failure message. */
+/** A browser context that records Content-Security-Policy violations (checked in check()). */
+async function newContext(options: Parameters<Browser['newContext']>[0]) {
+  const context = await browser.newContext(options);
+  await context.addInitScript(() => {
+    (window as any).__csp = [];
+    document.addEventListener('securitypolicyviolation', (e) => (window as any).__csp.push(`${e.violatedDirective}: ${e.blockedURI || e.sample || 'inline'}`));
+  });
+  return context;
+}
+
 async function overflow(page: Page) {
   return page.evaluate(() => {
     const vw = document.documentElement.clientWidth;
@@ -61,6 +71,8 @@ async function overflow(page: Page) {
 
 async function check(page: Page, name: string, vp: string) {
   if (shots) await page.screenshot({ path: `test-results/${vp}-${name}.png`, fullPage: true });
+  const csp = await page.evaluate(() => (window as any).__csp ?? []);
+  assert.deepEqual(csp, [], `${name} violates the Content-Security-Policy at ${vp}`);
   const o = await overflow(page);
   assert.equal(o, null, `${name} overflows at ${vp}: ${JSON.stringify(o)}`);
 }
@@ -68,7 +80,7 @@ async function check(page: Page, name: string, vp: string) {
 for (const [vp, size] of Object.entries(VIEWPORTS)) {
   describe(`${vp} (${size.width}px)`, () => {
     test('application pages fit the screen', async () => {
-      const page = await (await browser.newContext({ viewport: size })).newPage();
+      const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
       const pages = (await owner.query(`select p.page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.mode = 'normal' order by 1`)).rows;
       for (const { page_no: p } of pages) {
@@ -113,14 +125,39 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('a refreshed chart region brings its styles through the CSSOM', async () => {
+      const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                                  where a.alias = 'hr' and p.page_no = 1 and r.type = 'chart' order by r.seq, r.id limit 1`);
+      const da = await owner.one(`insert into meta.dynamic_action (page_id, name, event, action, affected_region_id) values ($1, 'e2e refresh', 'load', 'refresh_region', $2) returning id`, [r.page_id, r.id]);
+      try {
+        const page = await (await newContext({ viewport: size })).newPage();
+        await login(page, '/a/hr/login', 'king', 'king');
+        const done = page.waitForResponse((res) => res.url().includes(`/da/${da.id}`));
+        await page.goto(`${base}/a/hr/1`);
+        await done;
+        await page.waitForTimeout(200);
+        const { inline, rules, height } = await page.evaluate((id) => {
+          const el = document.getElementById('pgapex-css') as HTMLStyleElement;
+          const col = document.querySelector(`#R${id} .col`) as HTMLElement;
+          return { inline: el.textContent!.split('\n').filter(Boolean).length, rules: el.sheet!.cssRules.length, height: col.getBoundingClientRect().height };
+        }, r.id);
+        assert.ok(rules > inline, `the refresh added rules (${rules} > ${inline})`);
+        assert.ok(height > 0, 'the refreshed columns have their height');
+        await check(page, 'app-1-refreshed', vp);
+        await page.context().close();
+      } finally {
+        await owner.query('delete from meta.dynamic_action where id = $1', [da.id]);
+      }
+    });
+
     test('account pages fit; the theme switch and Dutch work', async () => {
-      const anon = await (await browser.newContext({ viewport: size, locale: 'nl-NL' })).newPage();
+      const anon = await (await newContext({ viewport: size, locale: 'nl-NL' })).newPage();
       await anon.goto(`${base}/a/hr/login`);
       assert.equal(await anon.locator('html').getAttribute('lang'), 'nl');
       await check(anon, 'app-login-nl', vp);
       await anon.context().close();
 
-      const page = await (await browser.newContext({ viewport: size })).newPage();
+      const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
       await page.goto(`${base}/a/hr/account`);
       await check(page, 'app-account', vp);
@@ -136,7 +173,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
     });
 
     test('navigation is reachable', async () => {
-      const page = await (await browser.newContext({ viewport: size })).newPage();
+      const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
       const nav = page.locator('#t-nav');
       if (size.width < 1024) {
@@ -154,7 +191,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
     });
 
     test('modal dialog form fits and saves', async () => {
-      const page = await (await browser.newContext({ viewport: size })).newPage();
+      const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
       await page.goto(`${base}/a/hr/2`);
       await page.locator('table.report a, .report-reflow a').filter({ hasText: '7839' }).first().click();
@@ -169,7 +206,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
     });
 
     test('builder pages fit the screen', async () => {
-      const page = await (await browser.newContext({ viewport: size })).newPage();
+      const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
       const appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
       const pageId = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 3`, [appId])).id;

@@ -43,6 +43,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | Everything up to sprint 10, released as **v0.8.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0; 0.3.0–0.5.0 were never tagged). Migrations 001–015 are released |
 | `sprint-11` | Merged into `main` (not released/tagged yet); can be deleted |
+| `sprint-12` | CSP without inline styles (see Sprint 12), pushed; not merged yet |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
 Older sprint branches were merged and deleted.
@@ -364,3 +365,23 @@ Not released yet (no tag): CHANGELOG entries are under [Unreleased].
 
 Next on the roadmap: stricter CSP (inline `style` on chart bars), builder quality (top SQL, plpgsql_check,
 search / where used), LDAP/SAML.
+
+## Sprint 12 (owner: "please continue", 2026-10-01)
+
+Branch `sprint-12` from `main` (which has sprint 11, unreleased).
+
+1. **CSP without `unsafe-inline`: done.** `style-src 'self' 'nonce-…'`: `securityHeaders()` sets
+   `req.cspNonce` in an onRequest hook and uses it in the header. `src/css.ts` `PageCss.cls(decl)` →
+   hash-named class; `ctx.css` / `ctx.nonce` on PageContext; `pageStyle(ctx)` in render.ts emits the
+   one `<style nonce id="pgapex-css">` (theme colours + rules), always present. Charts take the sheet
+   as a parameter (`renderChartBody(…, ctx.css, lang, t)`). Dynamic action `refresh_region` returns
+   `css`; app.js `insertRule`s it. Builder: 55 `style=""` → `u-*` utility classes (`!important`, as
+   inline styles had precedence) and `.app-color-N`. Developer HTML with `style=` is now ignored by
+   browsers (upgrade note in CHANGELOG, SECURITY.md, chapter 4).
+   Tests: sprint-12 block in `security.test.ts` (3: no style attributes on any HR/builder page,
+   nonce per response, classes can't break out of a rule); e2e records `securitypolicyviolation`
+   events in every page check (verified it fails when a `style=` is reintroduced) and a new test
+   refreshes a chart region through a dynamic action.
+   Also fixed: chart legend swatches were grey (sprint 10's `.swatch` rule; now `.chip .swatch`).
+
+Verified: `npm test` 190/190, `npm run test:e2e` 24/24.

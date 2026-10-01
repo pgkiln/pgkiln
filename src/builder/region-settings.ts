@@ -259,8 +259,8 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
       <td data-label="Column"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="Facet"><input type="checkbox" name="on_${i}" value="true"${f ? raw(' checked') : ''} aria-label="Facet on ${n}"></td>
       <td data-label="Label"><input name="label_${i}" value="${f?.label ?? ''}" placeholder="${heading(n)}" aria-label="Label of ${n}"></td>
-      <td data-label="Values shown"><input name="limit_${i}" type="number" min="1" max="50" value="${f?.limit ?? ''}" placeholder="${FACET_LIMIT}" aria-label="Values shown for ${n}" style="max-width:6rem"></td>
-      <td data-label="Order"><input name="seq_${i}" type="number" value="${(i + 1) * 10}" aria-label="Order of ${n}" style="max-width:6rem"></td>
+      <td data-label="Values shown"><input name="limit_${i}" type="number" min="1" max="50" value="${f?.limit ?? ''}" placeholder="${FACET_LIMIT}" aria-label="Values shown for ${n}" class="u-mw6"></td>
+      <td data-label="Order"><input name="seq_${i}" type="number" value="${(i + 1) * 10}" aria-label="Order of ${n}" class="u-mw6"></td>
     </tr>`;
   });
   return html`<input type="hidden" name="n" value="${all.length}">
@@ -296,7 +296,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
     case 'chart':
       title = 'Chart settings';
       body = html`${columnsHint(await reportColumns(appId, r.source))}
-        <p class="muted" style="margin-top:0">The first column is the label; each following numeric column is a series (up to 8).</p>
+        <p class="muted u-mt0">The first column is the label; each following numeric column is a series (up to 8).</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('kind')}">Chart type</label>
             <select id="${id('kind')}" name="kind">${CHART_KINDS.map((k) => opt(k, CHART_LABELS[k], cfg.kind ?? 'bar'))}</select></div>
@@ -306,7 +306,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
     case 'cards':
       title = 'Cards settings';
       body = html`${columnsHint(await reportColumns(appId, r.source))}
-        <p class="muted" style="margin-top:0">Cards show the columns ${CARD_COLUMNS.map((c, i) => html`${i ? ', ' : ''}<code>${c}</code>`)}; KPI tiles show title, badge (the value) and icon.</p>
+        <p class="muted u-mt0">Cards show the columns ${CARD_COLUMNS.map((c, i) => html`${i ? ', ' : ''}<code>${c}</code>`)}; KPI tiles show title, badge (the value) and icon.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('style')}">Style</label>
             <select id="${id('style')}" name="style">${opt('', 'Cards', cfg.style)}${opt('metric', 'KPI tiles (metric)', cfg.style)}</select></div>
@@ -317,7 +317,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
     case 'calendar':
       title = 'Calendar settings';
       body = html`${columnsHint(await reportColumns(appId, r.source), ['start_date', 'title'])}
-        <p class="muted" style="margin-top:0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code>.</p>
+        <p class="muted u-mt0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code>.</p>
         ${linkFieldset(id, cfg.link, await pages(), 'Each event')}`;
       break;
     case 'facets':
@@ -325,8 +325,8 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       body = await facetsFields(r, pageId, appId, id);
       break;
   }
-  return html`<h3 style="margin-top:1.5rem">${title}</h3>
-    <p class="muted" style="margin-top:0">These fields write the region's settings JSON above (other keys are kept).</p>
+  return html`<h3 class="u-mt15">${title}</h3>
+    <p class="muted u-mt0">These fields write the region's settings JSON above (other keys are kept).</p>
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/settings" class="component-form">${csrf(s)}
       ${body!}
       <div class="buttons"><button class="btn btn-hot">Save ${title.toLowerCase()}</button></div>
