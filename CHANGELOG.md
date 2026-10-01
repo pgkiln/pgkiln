@@ -5,6 +5,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-01
+
+### Added
+- **App Builder home like APEX's**: four tiles (Create, Import, Dashboard, Workspace Utilities), the
+  applications as a report (id, name, alias, pages, views, sign-in, updated, Edit / Run) or as
+  cards, a search that filters as you type, sortable columns and an Actions menu, and a side column
+  with About, Recent (the applications you opened) and Tasks. Create and Import are pages of their
+  own.
+- **Workspace dashboard** (`/builder/dashboard`): applications, pages, active accounts, page views,
+  users, failed sign-ins and errors of the last 24 hours, and per application the last 7 days.
+- **Workspace utilities** (`/builder/utilities`): users, identity providers, LDAP directories,
+  password policy, developers and the SQL Workshop in one place.
+- A status bar on every builder page: who is signed in, the database, the language and the
+  pgapex version.
+
+### Fixed
+- **Map tiles from OpenStreetMap showed "Access blocked" (403)**: pgapex's `Referrer-Policy:
+  same-origin` sent tile requests without a `Referer`, which OpenStreetMap's tile policy refuses.
+  The tile layer now sends the site's origin (never the page's path or query).
+- The page designer's gallery showed the raw type name of template component regions.
+
 ## [0.16.0] - 2026-10-01
 
 ### Added
