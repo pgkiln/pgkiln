@@ -25,7 +25,7 @@ export async function lookups(appId: number, pageId?: number): Promise<Lookups> 
 }
 
 /** Property editor for one component, grouped like APEX's property editor. */
-export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups, action: string, s: Session, submit: string) {
+export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups, action: string, s: Session, submit: string, opts: { id?: string } = {}) {
   const field = (f: Field) => {
     const v = row?.[f.name];
     const help = f.help ? html`<small class="help">${f.help}</small>` : '';
@@ -81,7 +81,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
     return html`<div class="field"${f.wide ? raw(' data-wide') : ''}><label class="label" for="${id}">${f.label}</label>${control}${help}</div>`;
   };
   const groups = [...new Set(spec.fields.map((f) => f.group ?? ''))];
-  return html`<form method="post" action="${action}" class="component-form">
+  return html`<form method="post" action="${action}" class="component-form"${opts.id ? html` id="${opts.id}"` : ''}>
     ${csrf(s)}
     ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${g}</legend>` : ''}<div class="form-grid">${spec.fields.filter((f) => (f.group ?? '') === g).map(field)}</div></fieldset>`)}
     <div class="buttons"><button class="btn btn-hot">${submit}</button></div>
@@ -93,6 +93,11 @@ export async function saveComponent(kind: string, parentCol: 'page_id' | 'app_id
   const values = parseFields(spec, body);
   const problem = spec.validate?.(values);
   if (problem) throw new Error(problem);
+  // region fields only take regions of the same page
+  if (parentCol === 'page_id')
+    for (const f of spec.fields)
+      if (f.kind === 'region' && values[f.name] != null && !(await owner.one('select 1 as ok from meta.region where id = $1 and page_id = $2', [values[f.name], parentId])))
+        throw new Error(`${f.label}: that region is not on this page.`);
   if (cid) {
     const cols = Object.keys(values);
     const res = await owner.query(
