@@ -5,6 +5,47 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-01
+
+### Added
+- **Page Designer and builder look** (APEX: Page Designer): an IDE-style builder window with an
+  icon rail, a toolbar and breadcrumb, dark by default (light or system from the account menu).
+  The Page Designer has a component tree, a layout canvas where regions, items and buttons are
+  dragged into place or wider/narrower, a gallery to add new ones, a filterable property editor
+  with an Attributes tab for region settings, undo/redo, zoom and maximize. Keyboard shortcuts
+  (Alt+↑/↓, Alt+Shift+←/→) and Arrange buttons do the same without a mouse; below 1024px the panes
+  become Tree / Layout / Properties tabs.
+- **Code editor** for the builder's SQL, PL/pgSQL, JSON and HTML fields and the SQL Workshop:
+  highlighting, line numbers, bracket matching, indenting, and suggestions for tables, columns
+  and `:ITEM` binds of the application's own database role (Ctrl+Space, or a Suggest button on
+  touch screens). Plain JavaScript, no new dependency; without JavaScript it's a normal text field.
+- **Template components** (APEX 23.1+; migration 028): HTML templates with escaped
+  `#PLACEHOLDERS#`, `{if}`, `{case}` and `{loop}` directives, custom attributes and a wrapper,
+  used as a `template_component` region and as report column templates, with a preview.
+  Templates are checked against an allow-list (no scripts, styles, event handlers or
+  `javascript:` links). Included in application export/import.
+- **Plug-ins**: a template component is exported and imported as one file; three examples in
+  `examples/plugins` (status badge, contact card, timeline item).
+- **Parallel branches in workflows** (APEX 26.1; migration 027): a `parallel` step runs branches
+  side by side until a `join` that waits for all of them or for the first (the others are
+  cancelled), nested branches included.
+- **Workflow versions** (APEX: development / active / inactive): a new version is edited while
+  the active one runs, then activated; running instances keep the version they started with.
+  Instance diagrams in the builder show where each branch is.
+- **The `pgapex` command line**: `migrate`, `apps`, `export` (one JSON file or a directory),
+  `import` (JSON, directory or .zip; `--replace` updates an application in place and keeps its
+  access, sessions, saved reports, tasks and workflows), `diff` and `users`.
+- **One file per component** (APEX 26.1: APEXlang-like app files): `pgapex export --format dir`
+  writes sorted JSON per component, SQL and HTML in sibling files, and references by static id
+  instead of database ids, for git; the builder downloads the same layout as a .zip.
+- HR example: onboarding version 2 prepares the workplace and access in parallel; page 19 "Team"
+  uses template components.
+
+### Fixed
+- Workflow definitions and REST modules could not be saved in the builder: their check read the
+  JSON field as text and refused every save.
+- Importing an export without workflow versions fills in version 1.
+
 ## [0.15.0] - 2026-10-01
 
 ### Added
