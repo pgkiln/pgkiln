@@ -159,6 +159,84 @@ The HR sample's login page then shows *Sign in with Keycloak*. Keycloak users: `
 (groups hr-admins and hr-managers), `allen` / `allen-sso`, and `carol` / `carol-sso` (hr-managers;
 she has no pgapex account yet and is created on first sign-in).
 
+### Single sign-on (SAML 2.0)
+
+For identity providers that speak SAML (ADFS, Shibboleth, Entra ID, Okta, Keycloak, …), add the
+provider under **Users → Identity providers** with protocol **SAML 2.0**:
+
+| Field | Meaning |
+|---|---|
+| Issuer | The IdP's **entity ID** (from its metadata). Assertions from any other issuer are refused |
+| Client ID | pgapex's entity ID at the IdP. Empty: `<PUBLIC_URL>/sso/saml/<name>/metadata` |
+| IdP sign-in URL | The IdP's `SingleSignOnService` location (HTTP-Redirect binding) |
+| IdP signing certificate | The IdP's certificate (PEM, or the base64 from its metadata). Assertions **must** be signed with it |
+| Username claim | `nameID`, or the name of an attribute (e.g. `uid`, `email`) |
+| Groups claim | The attribute holding the groups (e.g. `groups`, `memberOf`) |
+
+At the IdP, register pgapex with the metadata at `<PUBLIC_URL>/sso/saml/<name>/metadata` (entity
+ID and assertion consumer service `<PUBLIC_URL>/sso/saml/<name>`, HTTP-POST binding), sign the
+assertions, and add a group attribute. Enable the provider per application and map its groups to
+roles exactly as for OpenID Connect; accounts are linked by the NameID.
+
+pgapex checks the assertion's signature, issuer, audience, recipient and validity period, and that
+the response answers an AuthnRequest this browser started, once (`InResponseTo`, a one-time
+`RelayState` and the browser-binding cookie, as for OpenID Connect). Because the IdP posts the
+response from another site, where `SameSite=Lax` cookies aren't sent, pgapex answers with a short
+page that posts it on to itself (submitted by `app.js`; a *Continue* button without script).
+
+**Try it locally:** the bundled Keycloak realm has a SAML client for pgapex.
+
+```bash
+docker compose --profile sso up -d keycloak
+psql "$DATABASE_URL" -f examples/keycloak-saml.sql    # reads Keycloak's signing certificate
+```
+
+The HR login page then offers *Sign in with Keycloak (SAML)*, with the same Keycloak users.
+
+### LDAP and Active Directory
+
+Applications can check passwords against **LDAP directories** (OpenLDAP, Active Directory,
+389 Directory Server, …), APEX's *LDAP Directory* scheme. The username and password form checks
+local accounts first, then the directories enabled for the app, in order.
+
+Add a directory under **Users → LDAP directories**:
+
+| Field | Meaning |
+|---|---|
+| URL | `ldaps://host` (TLS) or `ldap://host:389`; tick **StartTLS** to upgrade `ldap://`. Plain `ldap://` sends passwords unencrypted |
+| Service account DN / password | Searches users and groups. Empty: an anonymous search. The password is write-only |
+| User search base / filter | Where users are and how to find one: `(uid={username})`, Active Directory `(sAMAccountName={username})`. `{username}` is escaped (RFC 4515) |
+| Username attribute | The pgapex username (`uid`, AD `sAMAccountName`) |
+| Group attribute | e.g. `memberOf` (group DNs; the first value of each is the group name) |
+| Group search base / filter | Optional: search groups too, e.g. `(member={dn})` |
+| Create accounts automatically | As for single sign-on |
+
+**Test connection** binds as the service account and checks the search base (or looks a user up).
+Then tick the directory under the app's **Settings → Sign-in methods** (keep *Username and
+password* on) and map groups to roles under **Access control**, as for single sign-on.
+
+Signing in searches the user, then binds as that user with the password given. Empty passwords
+are refused before that (LDAP treats them as an anonymous bind). Accounts are linked by the
+entry's `entryUUID` (or its DN), with the same rules as single sign-on; a local password keeps
+working next to the directory one. When a directory can't be reached, users see that, and the next
+directory is tried. **Try it locally:** `docker compose --profile ldap up -d ldap`, then
+`psql "$DATABASE_URL" -f examples/ldap-directory.sql` (users `blake` / `blake-ldap`, `dora` /
+`dora-ldap`).
+
+### Keep me signed in
+
+Under **Settings → Sign-in methods**, *"Keep me signed in" for (days)* (1–365) adds a checkbox to the
+password form (APEX: persistent authentication). A browser that ticked it stays signed in for that
+many days after the sign-in, also after the session's idle or maximum time: a long-lived cookie
+holds a random token (only its SHA-256 is stored, in `meta.persistent_login`, readable by the owner
+connection only), which starts a new session and is then **replaced** by a fresh token, so a copied
+cookie works once at most. The expiry stays that of the original sign-in.
+
+Each use checks the account again (active, access to the app, roles; directory and identity-provider
+groups from the sign-in are mapped to roles again). Signing out, a new password, deactivating the
+account or removing its access ends it, and **My account → Sign out on all devices** ends it for every
+browser. An expired password always needs the password form.
+
 ### What sign-in protects against
 
 - **Brute force**: after 5 failed attempts for a username (or 50 from one IP address) within 15

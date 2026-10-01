@@ -240,6 +240,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         developers: '/builder/developers',
         users: '/builder/users',
         providers: '/builder/users/providers',
+        directories: '/builder/users/directories',
         user: `/builder/users/${(await owner.one(`select id from meta.account where username = 'king'`)).id}`,
       };
       for (const [name, url] of Object.entries(urls)) {

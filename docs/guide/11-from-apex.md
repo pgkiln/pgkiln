@@ -64,7 +64,9 @@ any active account) plus role assignments per account. Roles feed authorization 
 Instead of (or next to) passwords, applications can use **single sign-on with OpenID Connect**,
 APEX's "Social Sign-In" scheme, with identity-provider groups mapped to application roles. Signing
 in to a second app is then silent via the identity provider's session. See
-[chapter 8](08-security.md#single-sign-on-openid-connect). LDAP and SAML are not supported yet.
+[chapter 8](08-security.md#single-sign-on-openid-connect). **SAML 2.0** providers and **LDAP /
+Active Directory** passwords work the same way (groups → roles), and *Keep me signed in* matches
+APEX's persistent authentication. Database accounts and custom PL/SQL schemes have no equivalent.
 
 ## ORDS and PostgREST
 

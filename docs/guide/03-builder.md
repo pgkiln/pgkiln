@@ -135,7 +135,7 @@ its name and e-mail, set or remove its password, deactivate or delete it, and gr
 revoke access per application. Password changes, deactivation and access changes end the
 affected sessions. See [chapter 8](08-security.md#the-user-directory).
 
-**Users → Identity providers** configures OpenID Connect providers for single sign-on: issuer,
+**Users → Identity providers** configures OpenID Connect and SAML providers for single sign-on, and **Users → LDAP directories** the LDAP servers passwords can be checked against. Identity providers: issuer,
 client ID and secret, claims, automatic account creation. The page shows the redirect URI to
 register at the provider, and has a *Test discovery* button. See
 [chapter 8](08-security.md#single-sign-on-openid-connect).

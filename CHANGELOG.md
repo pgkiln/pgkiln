@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **"Keep me signed in"** (APEX: persistent authentication), per application for 1–365 days: a
+  rotating one-time token in a long-lived cookie starts a new session when the old one has ended.
+  Signing out, a new password, deactivation or removed access ends it; My account has *Sign out on
+  all devices*. Migration 017.
+- **LDAP and Active Directory** sign-in (Users → LDAP directories, migration 018): the password form
+  checks local accounts, then the app's directories (search, bind as the user, groups → roles,
+  StartTLS/LDAPS). Demo directory: `docker compose --profile ldap`, `examples/ldap-directory.sql`.
+- **SAML 2.0** single sign-on next to OpenID Connect (migration 019): signed assertions, issuer,
+  audience and one-time `InResponseTo` checks, SP metadata at `/sso/saml/<name>/metadata`. The
+  development Keycloak realm has a SAML client (`examples/keycloak-saml.sql`).
+
 ## [0.9.0] - 2026-10-01
 
 ### Added
