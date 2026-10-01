@@ -754,3 +754,49 @@ src/server.ts` restarted it. Map tiles: verified in Chromium against :3100 (Refe
 browser (Brave) still gets "Access blocked", Shields may strip the Referer: a server-side tile proxy is the option
 offered. Verified: `npm test` 367/367 (fresh DB), `npm run test:e2e` 58/58. Released as **v0.17.1**.
 
+
+## Sprint 26 (IN PROGRESS): five parity workstreams in parallel (owner: "move on with the parity list", 2026-10-01)
+
+Branch `sprint-26` from `main` (v0.17.1). Five agents work in git worktrees under `../pgapex-wt/<name>`, branch
+`sprint-26-<name>`, each with its own `postgres:17` container (made with `docker run`, NOT compose), migrated with the
+HR example, and its own app port in the worktree's `.env` (`node_modules` is a symlink to the main checkout's: remove
+the symlink with `rm`, never `rm -r`, before `git worktree remove`).
+
+| Worktree / branch | Gaps (parity matrix) | Container, ports | Reserved |
+|---|---|---|---|
+| `items` / `sprint-26-items` | rich text / markdown editor, star rating, combobox (tags), date range, password reveal (QR only without a dependency) | `pgapex-items`, 5441, app 3111 | migration 032, `hr_20`, HR page 20 |
+| `regions` / `sprint-26-regions` | region display selector and tabs, smart filters, faceted search range/search facets and exclude | `pgapex-regions`, 5442, 3112 | 031, `hr_21`, page 21 |
+| `logic` / `sprint-26-logic` | conditional branches, computations, DA set focus/class, success/error message, clear errors, menu buttons and badges, build options | `pgapex-logic`, 5443, 3113 | 029, `hr_22`, page 22 |
+| `data` / `sprint-26-data` | REST data sources + web credentials (SSRF allow-list, write-only secrets), invoke API process; new chapter 19 | `pgapex-data`, 5444, 3114 | 030, `hr_23`, page 23 |
+| `views` / `sprint-26-views` | calendar week/day/list, create on click, drag and drop; bubble, gauge, funnel, radar charts; drill-down links | `pgapex-views`, 5445, 3115 | 033, `hr_24`, page 24 |
+
+Reset a worktree DB: `docker rm -f pgapex-<n> && docker run -d --name pgapex-<n> -e POSTGRES_USER=pgapex -e
+POSTGRES_PASSWORD=pgapex -e POSTGRES_DB=pgapex -p <port>:5432 postgres:17 -c shared_preload_libraries=pg_stat_statements`,
+wait for `pg_isready`, then `npx tsx scripts/migrate.ts`. **Never** `npm run db:reset` in a worktree.
+
+The agents commit on their own branch (trailer `Co-Authored-By` + `Claude-Session`), don't push, and don't edit
+CHANGELOG, the parity matrix, SECURITY.md or this file. If a session ends while they run: check each worktree with
+`git -C ../pgapex-wt/<n> log --oneline sprint-26..` and `git status`; uncommitted work can be finished by a new agent
+told to continue from it (as was done in sprint 23).
+
+**To finish the sprint** (coordinator):
+1. Merge the branches into `sprint-26` (suggested order: items, views, regions, data, logic; logic and data and
+   regions may each redefine `meta.export_app` / `meta.import_app` (028's are the last released): the highest-numbered
+   migration must carry all changes, so check 029–033 and write a follow-up migration if needed). Expect conflicts in
+   `public/app.js`, `public/app.css`, `src/i18n.ts`, `src/builder/components.ts`, `src/builder/region-settings.ts`,
+   `src/builder/arrange.ts`, `src/cli/replace.ts`, `src/appfiles.ts`, `test/security.test.ts` (appended blocks: keep
+   all, check the closing braces), `test/e2e/responsive.test.ts`, `docs/guide/12-development.md`, `docs/README.md`.
+2. `npx tsc --noEmit`; `npm run db:reset && npm test`; `npm run test:e2e` in the main checkout (the owner's
+   `npm run dev` on :3100 shares the dev DB and runs workflows: a stray failure may come from it).
+3. CI-style: a throwaway `postgres:17` (e.g. port 5446) without PostgREST, install `v0.17.1` with
+   `npx tsx scripts/migrate.ts --seed --root <git archive of the tag>`, then `npm run example:hr` and `npm test`
+   with DATABASE_URL/RUNTIME_DATABASE_URL pointing at it (the script used before: install tag, upgrade, test).
+4. Update the parity matrix (rows + recount the summary from the tables), CHANGELOG (0.18.0), SECURITY.md
+   (from the agents' security notes), this file, `.env.example` (data agent's env vars), package version, CI upgrade
+   matrix (+ v0.18.0), the `v0.6.0 … v0.x` line in chapter 12; merge `sprint-26` into `main`, tag `v0.18.0`, push.
+5. Clean up: remove the worktrees, branches `sprint-26-*` and `sprint-26`, and containers `pgapex-items`,
+   `pgapex-regions`, `pgapex-logic`, `pgapex-data`, `pgapex-views`.
+
+Still open for the owner: **AI features** (provider and API key storage); an optional server-side map tile proxy if
+Brave keeps getting OpenStreetMap's "Access blocked"; leftovers `../pgapex-wt/designer-shots`, `editor-shots`, the docker
+network `templates_default` and volume `templates_pgdata` (can be deleted).
