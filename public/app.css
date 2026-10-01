@@ -712,7 +712,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .hl-blue { --hl: rgb(59 130 246 / 22%); }
 .hl-gray { --hl: rgb(148 163 184 / 30%); }
 .report tr[class^="hl-"] td, .report tr[class^="hl-"]:hover td { background: var(--hl); }
-.swatch { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 3px; background: var(--hl); border: 1px solid var(--border); }
+.chip .swatch { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 3px; background: var(--hl); border: 1px solid var(--border); }
 .saved-reports { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
 .saved-reports li { display: flex; align-items: center; gap: 0.35rem; }
 .saved-reports a[aria-current="true"] { font-weight: 600; }
