@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyBinds, bindNames } from '../src/binds.ts';
+import { applyBinds, bindNames, splitStatements } from '../src/binds.ts';
 
 test('replaces binds with escaped literals', () => {
   assert.equal(
@@ -29,4 +29,13 @@ test('backslashes are escaped safely', () => {
 
 test('bindNames lists distinct upper-cased names', () => {
   assert.deepEqual(bindNames(':p1_a = :P1_A or :b'), ['P1_A', 'B']);
+});
+
+test('splitStatements splits at semicolons outside strings, comments and dollar quotes', () => {
+  assert.deepEqual(splitStatements(`update t set a = ';'; -- x;y\ndo $$ begin perform 1; end $$;; /* a; b */ select 1;`), [
+    `update t set a = ';'`,
+    'do $$ begin perform 1; end $$',
+    'select 1',
+  ]);
+  assert.deepEqual(splitStatements('  ;  -- only a comment\n'), []);
 });
