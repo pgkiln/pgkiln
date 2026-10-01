@@ -14,6 +14,22 @@ to change it. On the **Developers** page you can:
 
 All developers have full rights in the builder and the SQL Workshop.
 
+## The builder window
+
+Every builder page has the same frame, modelled on an IDE:
+
+- **The icon rail** on the left: App Builder, SQL Workshop, Users, Developers, **Search** (on the
+  pages of an application), Help, and your account menu (the circle with your initials) with the
+  **builder theme** (*Dark*, the default; *Light*; or *System*, which follows the operating system),
+  Change password and Sign out. The theme is remembered on this device, also after signing out;
+  it only changes the builder, not your applications.
+- **The toolbar** at the top: a back button, the breadcrumb and, in the page designer, the page
+  tools.
+- The pages of an application have tabs under its name: Pages, Shared Components, Activity, REST
+  API, Settings, Search and Advisor, with Export and Run on the right.
+
+On phones the rail gets narrower and the breadcrumb shows only the current page.
+
 ## App Builder home
 
 The home page shows your applications as cards (with page count and today's page views), and
@@ -44,8 +60,8 @@ of the export; check it under **Settings**, and create users under **Shared Comp
 ## App dashboard
 
 Open an application to see its pages, with region/item/dynamic-action/process counts,
-authorization and protection. The buttons at the top lead to **Shared Components**, **Activity**,
-**REST API**, **Settings**, **Export** and **Run**.
+authorization and protection. The tabs under its name lead to **Shared Components**, **Activity**,
+**REST API**, **Settings**, **Search** and **Advisor**; **Export** and **Run** are on the right.
 
 ### Create pages from a table (wizards)
 
@@ -64,21 +80,59 @@ components in the page designer.
 
 ## The page designer
 
-The page designer has two panes:
+The page designer has three panes, as in APEX's Page Designer. From 1024 pixels wide they sit
+side by side; on phones and portrait tablets they are tabs (**Tree**, **Layout**, **Properties**):
+choosing a component opens the Properties tab.
 
-- **Left: the component tree**, as in APEX's Page Designer:
-  - the page itself;
-  - **Rendering**: regions, each with its items and buttons (plus *+ item* / *+ button* shortcuts);
-  - **Page-level items & buttons**: those not in a region;
-  - **Dynamic actions**;
-  - **Validations** and **Processes**.
+- **Left: the component tree**, with four tabs:
+  - **Rendering**: the page, *Pre-Rendering* (processes that run before the page is shown), the
+    **Regions** with their items and buttons, and page-level items and buttons;
+  - **Dynamic actions**, grouped by event (change, click, page load);
+  - **Processing**: validations, processes and the branches (buttons that go to another page);
+  - **Shared components** the page can use (lists of values, authorization schemes, navigation,
+    application items), linking to Shared Components.
 
-  Tags show which components have an authorization scheme (e.g. `MANAGER`) or a condition (`cond`).
+  Icons show which components have an authorization scheme or a condition. Folders open and close
+  with a click; with the keyboard, the arrow keys walk the tree (Left / Right close and open a
+  folder), Enter opens a component.
+- **Middle: the Layout**: the page's regions on the 12-column grid, each with its items and
+  buttons, as they will be placed on the page; under it a **gallery** of region types, item types
+  and button actions. The middle pane also has a **Page search** tab (searches the application)
+  and a **Help** tab (layout keys and the substitution cheat sheet). Zoom in, zoom out and
+  maximize (hides the side panes) are above the layout.
 - **Right: the property editor** for the selected component, grouped (Identification, Source,
-  Layout, Security, …) with help text for each property.
+  Layout, Security, …) with help text for each property. Type in **Filter** to show only the
+  properties whose name contains the text (Escape clears it); click a group's name to fold it
+  (remembered on this device).
 
-Click a component to edit it, use **+ Add** to create one, and use **Run page** to open the page in
-a new tab. Changes are saved per component with **Save** and are live immediately.
+The toolbar has the page switcher (previous, a list of all pages, next), **Undo** / **Redo** of
+layout changes, the **Create** menu (region, item, button, dynamic action, validation, process, or a
+new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
+**Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
+(opens the page in a new tab). Changes are live as soon as they are saved.
+
+### Arranging the layout
+
+Regions are placed in sequence order; a region's *column span* (1–12) sets its width, and a
+region that no longer fits starts a new row.
+
+- **Drag a region** by its header to another place, or drag its right edge to make it wider or
+  narrower.
+- **Drag an item or button** to another place in its region, to another region, or to *Page level*.
+- **Drag an entry of the gallery** onto the layout to create that component there, with a working
+  starting point (a sample query for reports, charts and cards; a name like `P5_NEW` for items);
+  then set its properties on the right. Clicking a gallery entry instead opens the create form
+  with that type filled in.
+- **Without a mouse**: focus a component on the layout and press <kbd>Alt</kbd>+<kbd>↑</kbd> /
+  <kbd>↓</kbd> to move it, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd> to make a
+  region narrower or wider. The **Arrange** bar above the properties does the same with buttons
+  (move up, move down, narrower, wider, or move an item or button to another region); on phones and
+  tablets this is the way to arrange things.
+- **Undo** and **Redo** in the toolbar take back the last 20 layout changes on this page (moving
+  and resizing; creating a component starts a new history).
+
+Without JavaScript the panes are shown one under the other, every component is a link and the
+Arrange buttons still work.
 
 **Report regions** also get a **Report settings** form under their properties, so the common
 settings need no JSON: rows per page, search, Actions menu, sorting, saved and public reports,
