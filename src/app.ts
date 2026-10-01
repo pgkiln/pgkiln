@@ -13,6 +13,7 @@ import { sqlRoutes } from './builder/sql.ts';
 import { automationRoutes } from './builder/automations.ts';
 import { workflowBuilderRoutes } from './builder/workflows.ts';
 import { regionSettingsRoutes } from './builder/region-settings.ts';
+import { templateRoutes } from './builder/templates.ts';
 import { searchRoutes } from './builder/search.ts';
 import { advisorRoutes } from './builder/advisor.ts';
 import { topSqlRoutes } from './builder/top-sql.ts';
@@ -69,6 +70,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(workflowBuilderRoutes);
   await app.register(reportSettingsRoutes);
   await app.register(regionSettingsRoutes);
+  await app.register(templateRoutes);
   await app.register(searchRoutes);
   await app.register(advisorRoutes);
   await app.register(topSqlRoutes);

@@ -884,3 +884,69 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .app-color-5 { background: #00796b; }
 .app-color-6 { background: #5c6bc0; }
 .app-color-7 { background: #8d6e63; }
+
+/* ===================================================================
+   Template components (src/runtime/template-components.ts, sprint 23)
+   Templates can't carry style attributes or <style> (CSP), so their look
+   comes from these classes. Layout of the instances in a region:
+   tc-list, tc-grid, tc-inline, tc-divided, tc-compact. Building blocks
+   for templates: tc-badge(-success|-warning|-danger|-info|-neutral),
+   tc-card, tc-card-head, tc-avatar, tc-title, tc-meta, tc-body,
+   tc-actions, tc-timeline, tc-timeline-item (+ tc-state-success|-warning|-danger|-neutral),
+   tc-stack, tc-row, tc-muted.
+   =================================================================== */
+.tc-region { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.tc-region > * { min-width: 0; }
+.tc-region.tc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); }
+.tc-region.tc-inline { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.tc-region.tc-divided { gap: 0; }
+.tc-region.tc-divided > * + * { border-top: 1px solid var(--border); }
+.tc-region.tc-divided > * { padding: 0.6rem 0; }
+.tc-region.tc-compact { gap: 0.35rem; }
+.tc-region.tc-compact.tc-divided > * { padding: 0.3rem 0; }
+
+.tc-badge { display: inline-flex; align-items: center; gap: 0.3rem; max-width: 100%; font-size: 0.78rem; font-weight: 600; line-height: 1.4;
+  padding: 0.1rem 0.6rem; border-radius: 99px; background: var(--surface-3); color: var(--text); overflow-wrap: anywhere; }
+.tc-badge-neutral { background: var(--surface-3); color: var(--muted); }
+.tc-badge-success { background: var(--success-soft); color: var(--success); }
+.tc-badge-danger { background: var(--danger-soft); color: var(--danger); }
+.tc-badge-warning { background: var(--warning-soft); color: var(--text); }
+.tc-badge-info { background: var(--accent-soft); color: var(--accent); }
+a.tc-badge { text-decoration: none; }
+
+.tc-card { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.9rem 1rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); color: inherit; overflow-wrap: anywhere; }
+a.tc-card { text-decoration: none; }
+a.tc-card:hover, a.tc-card:focus-visible { border-color: var(--accent); }
+.tc-card-head { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+.tc-card-head > :last-child { min-width: 0; }
+.tc-avatar { flex: none; display: inline-grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: var(--accent-soft);
+  color: var(--accent); font-weight: 700; font-size: 0.95rem; text-transform: uppercase; overflow: hidden; }
+img.tc-avatar { object-fit: cover; }
+.tc-title { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.3; }
+.tc-meta, .tc-muted { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.tc-body { margin: 0; }
+.tc-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.tc-stack { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.tc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
+
+.tc-timeline { list-style: none; margin: 0; padding: 0; }
+.tc-timeline-item { position: relative; margin: 0; padding: 0 0 1rem 1.6rem; border-left: 2px solid var(--border); margin-left: 0.45rem; overflow-wrap: anywhere; }
+.tc-timeline-item:last-child { border-left-color: transparent; padding-bottom: 0; }
+.tc-timeline-item::before { content: ""; position: absolute; left: -0.5rem; top: 0.15rem; width: 0.8rem; height: 0.8rem; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--accent); }
+.tc-timeline-item.tc-state-success::before { border-color: var(--success); background: var(--success); }
+.tc-timeline-item.tc-state-danger::before { border-color: var(--danger); background: var(--danger); }
+.tc-timeline-item.tc-state-warning::before { border-color: var(--muted); background: var(--warning-soft); }
+.tc-timeline-item.tc-state-neutral::before { border-color: var(--muted); }
+
+/* report cells rendered through a component, and the builder */
+td.tc-cell { overflow-wrap: anywhere; }
+.tc-preview { margin-top: 0.75rem; padding: 1rem; background: var(--bg); border: 1px dashed var(--border); border-radius: var(--radius); overflow-x: auto; }
+.tc-preview-form .check { display: inline-flex; margin: 0.25rem 0; }
+.tc-columns textarea { width: 100%; min-width: 10rem; }
+@media (max-width: 640px) {
+  .tc-card { padding: 0.75rem; }
+  .tc-preview { padding: 0.6rem; }
+  .tc-columns textarea { min-width: 0; }
+}

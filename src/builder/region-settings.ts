@@ -7,6 +7,7 @@ import { positionColumns } from '../runtime/report.ts';
 import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { columnTemplatesForm, templateRegionForm } from './templates.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
 // for grid, chart, cards, calendar and faceted search regions (report
@@ -354,7 +355,8 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
 
 /** The settings form under a region in the page designer, or '' for types without one. */
 export async function regionSettingsForm(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
-  if (r.type === 'report') return reportSettingsForm(pageId, appId, r, s);
+  if (r.type === 'report') return html`${await reportSettingsForm(pageId, appId, r, s)}${await columnTemplatesForm(pageId, appId, r, s)}`;
+  if (r.type === 'template_component') return templateRegionForm(pageId, appId, r, s);
   if (!(SETTINGS_TYPES as readonly string[]).includes(r.type)) return '';
   const cfg = r.config ?? {};
   const id = (n: string) => `rg_${r.id}_${n}`;

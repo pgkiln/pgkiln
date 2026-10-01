@@ -126,6 +126,9 @@ const en = {
   'map.filter_clear': 'Show everything',
   'map.fewer': 'Fewer',
   'map.more': 'More',
+  // template components (src/runtime/template-region.ts)
+  'tc.missing': 'The template component "{name}" does not exist in this application.',
+  'tc.invalid': 'The template component "{name}" is not valid and is not shown.',
   'pwa.offline_title': "You're offline",
   'pwa.offline_text': "This page isn't on this device. Pages you opened before are listed below; forms you send are kept and sent when the connection is back.",
   'pwa.try_again': 'Try again',
@@ -486,6 +489,9 @@ const nl: Record<MessageKey, string> = {
   'map.filter_clear': 'Alles tonen',
   'map.fewer': 'Minder',
   'map.more': 'Meer',
+  // sjablooncomponenten (src/runtime/template-region.ts)
+  'tc.missing': 'Het sjablooncomponent "{name}" bestaat niet in deze applicatie.',
+  'tc.invalid': 'Het sjablooncomponent "{name}" is niet geldig en wordt niet getoond.',
   'pwa.offline_title': 'Je bent offline',
   'pwa.offline_text': "Deze pagina staat niet op dit apparaat. Pagina's die je eerder opende staan hieronder; formulieren die je verstuurt worden bewaard en verzonden zodra de verbinding terug is.",
   'pwa.try_again': 'Opnieuw proberen',

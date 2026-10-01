@@ -9,6 +9,7 @@ db/
   migrations/NNN_*.sql     the meta schema, roles and SQL API; applied once each, in order
   seed/*.sql               the HR sample (not for production)
 examples/                  example applications as SQL (the tutorial)
+examples/plugins/          plug-in files (template components) to import
 scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
 src/
@@ -56,6 +57,8 @@ src/
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution, OpenAPI
     tree.ts                tree region
+    template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
+    template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
     workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit)
@@ -83,6 +86,8 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
+    template-spec.ts       template component property form (Shared Components)
+    templates.ts           template components: preview, plug-in export/import, region settings, report column templates
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
@@ -97,6 +102,7 @@ test/
   dataload.test.ts         parsing, Load Data, the data_load process
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
+  template-components.test.ts  template language, escaping, plug-ins, regions and column templates
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
 ```

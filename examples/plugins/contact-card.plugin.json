@@ -1,0 +1,54 @@
+{
+  "format": "pgapex-plugin/1",
+  "type": "template_component",
+  "static_id": "contact_card",
+  "name": "Contact card",
+  "version": "1.0.0",
+  "description": "A person or organisation with initials, a subtitle, e-mail and phone links and tags. The name links to #LINK# when the region sets a link.",
+  "template": "<article class=\"tc-card\">\n  <div class=\"tc-card-head\">\n    <span class=\"tc-avatar\" aria-hidden=\"true\">#INITIALS#</span>\n    <div class=\"tc-stack\">\n      <h3 class=\"tc-title\">{if ?LINK/}<a href=\"#LINK#\">#NAME#</a>{else/}#NAME#{endif/}</h3>\n      {if ?SUBTITLE/}<p class=\"tc-meta\">#SUBTITLE#</p>{endif/}\n    </div>\n  </div>\n  {if ?EMAIL/}<p class=\"tc-meta\"><a href=\"mailto:#EMAIL#\">#EMAIL#</a></p>{endif/}\n  {if ?PHONE/}<p class=\"tc-meta\"><a href=\"tel:#PHONE#\">#PHONE#</a></p>{endif/}\n  {if ?TAGS/}<p class=\"tc-row\">{loop \",\" TAGS/}<span class=\"tc-badge tc-badge-info\">#APEX$ITEM#</span>{endloop/}</p>{endif/}\n</article>",
+  "wrapper": null,
+  "css_classes": [
+    "tc-grid"
+  ],
+  "attributes": [
+    {
+      "name": "NAME",
+      "label": "Name",
+      "type": "text",
+      "default": "#NAME#"
+    },
+    {
+      "name": "INITIALS",
+      "label": "Initials",
+      "type": "text",
+      "default": "#INITIALS#",
+      "help": "One or two letters in the circle."
+    },
+    {
+      "name": "SUBTITLE",
+      "label": "Subtitle",
+      "type": "text",
+      "default": "#SUBTITLE#",
+      "help": "e.g. job title or company."
+    },
+    {
+      "name": "EMAIL",
+      "label": "E-mail",
+      "type": "text",
+      "default": "#EMAIL#"
+    },
+    {
+      "name": "PHONE",
+      "label": "Phone",
+      "type": "text",
+      "default": "#PHONE#"
+    },
+    {
+      "name": "TAGS",
+      "label": "Tags",
+      "type": "text",
+      "default": "#TAGS#",
+      "help": "Comma separated."
+    }
+  ]
+}

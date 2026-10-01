@@ -35,6 +35,7 @@ const SECTIONS: Record<string, string> = {
   task_definition: 'task_definitions',
   workflow_definition: 'workflow_definitions',
   rest_module: 'rest_modules',
+  template_component: 'template_components',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',
@@ -90,9 +91,10 @@ describe('application export', () => {
   test('export → import → export gives the same document', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     assert.equal(doc.format, 'pgapex/2');
-    for (const key of ['app', 'authz_schemes', 'app_items', 'app_processes', 'lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations', 'document_templates', 'task_definitions', 'workflow_definitions', 'rest_modules', 'nav', 'pages'])
+    for (const key of ['app', 'authz_schemes', 'app_items', 'app_processes', 'lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations', 'document_templates', 'task_definitions', 'workflow_definitions', 'rest_modules', 'template_components', 'nav', 'pages'])
       assert.ok(key in doc, `section ${key}`);
     assert.ok(doc.report_layouts.length && doc.pages.some((p: any) => p.regions.some((r: any) => r.type === 'facets')), 'the HR sample covers layouts and facets');
+    assert.ok(doc.template_components.length >= 3, 'the HR sample covers template components');
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_roundtrip') as id`, [JSON.stringify(doc)])).id;
     try {
       const again = (await owner.one(`select meta.export_app('hr_roundtrip') as d`)).d;

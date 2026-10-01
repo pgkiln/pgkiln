@@ -14,6 +14,7 @@ import { writeXlsx, type XlsxCell } from '../xlsx.ts';
 import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
 import { renderView, VIEWS, type View } from './report-views.ts';
+import { columnTemplates } from './template-components.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -550,6 +551,9 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const selIdx = selection ? fields.findIndex((f) => f.name.toLowerCase() === selection.column.toLowerCase()) : -1;
   const selected = new Set(selIdx >= 0 ? splitValues(ctx.session.state[selection!.item] ?? '') : []);
   const lead = selIdx >= 0 ? 1 : 0;
+  // columns rendered through a template component (config.column_templates)
+  const templated = st.view === 'report' ? await columnTemplates(ctx, r, fields, (v, oid) => cell(v, oid, ctx.locale.format), (v) => cell(v)) : new Map();
+  let rowNum = (pageNo - 1) * st.size;
 
   const rowItems = (row: unknown[]) => {
     const items: Record<string, string> = {};
@@ -605,10 +609,13 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     const pick = lead
       ? html`<td class="row-select" data-label="${t('report.select_row')}"><input type="checkbox" name="${selection!.item}" value="${cell(row[selIdx])}"${selected.has(cell(row[selIdx])) ? raw(' checked') : ''} aria-label="${t('report.select_row')} ${cell(row[selIdx])}"></td>`
       : '';
+    rowNum++;
     body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${cols.map(({ f, i }) => {
       const text = cell(row[i], f.dataTypeID, ctx.locale.format);
       const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
+      const tpl = templated.get(i);
+      if (tpl) return html`<td class="${cls ? `${cls} tc-cell` : 'tc-cell'}" data-label="${label}">${tpl(row, rowNum)}</td>`;
       return i === linkIdx
         ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
         : html`<td class="${cls}" data-label="${label}">${text}</td>`;

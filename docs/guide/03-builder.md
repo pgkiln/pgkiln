@@ -130,6 +130,7 @@ Components used by the whole application:
 | **Workflows** | Multi-step processes of tasks, SQL, decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
+| **Template components** | HTML templates with placeholders and directives, used as a region type and as report column templates, with a preview; shared as plug-in files ([chapter 4](04-pages-and-regions.md#template-components)) |
 
 ## Users (the user directory)
 
@@ -262,6 +263,7 @@ imports as empty. Import refuses other formats.
 | `group_roles` | identity-provider group → role mappings |
 | `text_messages`, `translations` | globalization |
 | `report_layouts` | report layouts; the logo as base64 |
+| `template_components` | template components (regions and report columns refer to them by static id) |
 | `nav` | navigation menu (with ids, so parents can be linked again) |
 | `pages` | every page with its `regions`, `items`, `buttons`, `dynamic_actions`, `validations` and `processes` |
 
