@@ -137,4 +137,22 @@ describe('REST module v1', () => {
     assert.ok(!r.findings.some((f) => f.entry?.kind === 'rest_module'), 'the HR module checks out');
     assert.ok((await owner.one(`select meta.export_app('hr') as d`)).d.rest_modules.some((x: any) => x.name === 'v1'));
   });
+
+  test('the builder saves a module with valid handlers and refuses broken ones', async () => {
+    const dev = new Browser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.get(`/builder/apps/${appId}/shared?new=rest_module`);
+    const module = (name: string, handlers: unknown) => ({ name, title: 'Test', description: '', enabled: 'true', handlers: JSON.stringify(handlers) });
+    try {
+      await dev.submit(`/builder/apps/${appId}/shared/rest_module`, module('test_ok', [{ method: 'GET', path: 'one', type: 'item', source: 'select 1 as one' }]));
+      const saved = await owner.one(`select handlers from meta.rest_module where app_id = $1 and name = 'test_ok'`, [appId]);
+      assert.equal(saved?.handlers[0].path, 'one', 'valid handlers are saved');
+      await dev.get(`/builder/apps/${appId}/shared?new=rest_module`);
+      await dev.submit(`/builder/apps/${appId}/shared/rest_module`, module('test_broken', [{ method: 'FETCH', path: 'x', type: 'item', source: 'select 1' }]));
+      assert.equal(await owner.one(`select 1 from meta.rest_module where name = 'test_broken'`), undefined, 'broken handlers are not');
+    } finally {
+      await owner.query(`delete from meta.rest_module where app_id = $1 and name in ('test_ok', 'test_broken')`, [appId]);
+    }
+  });
 });

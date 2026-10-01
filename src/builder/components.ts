@@ -279,7 +279,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       ],
     },
     validate: (v) => {
-      const problems = handlerProblems(v.handlers);
+      // parseFields gives the JSON as text
+      const problems = handlerProblems(typeof v.handlers === 'string' ? JSON.parse(v.handlers) : v.handlers);
       return problems.length ? problems.join(' ') : null;
     },
     fields: [
