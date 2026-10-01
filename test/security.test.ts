@@ -601,3 +601,23 @@ describe('sprint 12: Content-Security-Policy without inline styles', () => {
     for (const bad of ['x}body{display:none', '</style><script>', 'a{b']) assert.throws(() => sheet.cls(bad));
   });
 });
+
+describe('sprint 13: builder search, Advisor and Top SQL', () => {
+  test('developers only, CSRF on the reset, the query is escaped', async () => {
+    const anon = new Browser();
+    for (const url of [`/builder/apps/${appId}/search?q=x`, `/builder/apps/${appId}/advisor`, `/builder/apps/${appId}/top-sql`])
+      assert.equal((await anon.get(url)).statusCode, 302, url);
+    assert.equal((await anon.post(`/builder/apps/${appId}/top-sql/reset`, {})).statusCode, 302);
+    // an application user is not a developer
+    const king = await as('king');
+    assert.equal((await king.get(`/builder/apps/${appId}/advisor`)).statusCode, 302);
+
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const res = await dev.get(`/builder/apps/${appId}/search?q=${encodeURIComponent('"><img src=x onerror=alert(1)>')}`);
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /<img src=x/);
+    assert.equal((await dev.post(`/builder/apps/${appId}/top-sql/reset`, { __csrf: 'forged' })).statusCode, 403);
+  });
+});
