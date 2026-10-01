@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **REST modules** (Shared Components → REST modules, migration 024; APEX: RESTful Services):
+  handlers with a method, a path with parameters and SQL (a paged collection, one item, or
+  statements), roles and public endpoints, served by pgapex under `/a/<alias>/rest/<module>/` with
+  bearer tokens, as the application's role (RLS applies), and an OpenAPI description per module.
+  The HR example has a `v1` module.
+
+### Changed
+- Tokens and OAuth clients no longer need an API role: without one they are valid for the REST
+  modules pgapex serves (PostgREST treats them as anonymous).
+- Builder property groups (fieldsets) no longer grow wider than the screen with long content.
+
 ## [0.11.0] - 2026-10-01
 
 ### Added

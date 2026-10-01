@@ -713,3 +713,28 @@ describe('sprint 18: Progressive Web App', () => {
     assert.deepEqual(Object.keys(JSON.parse(settings.replace(/^const PGAPEX = |;$/g, ''))), ['base', 'offlinePages', 'offlineSubmit', 'version']);
   });
 });
+
+describe('sprint 19: REST modules', () => {
+  test('values from the path, query and body are binds; a browser session is no credential', async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    const tok = (await issueApiToken(appId, 'king', 1)).token;
+    const get = (path: string, headers: Record<string, string> = { authorization: `Bearer ${tok}` }) => app.inject({ url: `/a/hr/rest/v1/${path}`, headers });
+    // a path parameter that tries to break out of the literal
+    const inj = await get(`employees/${encodeURIComponent("7839' or '1'='1")}`);
+    assert.equal(inj.statusCode, 400, 'invalid input for ::int, not a widened query');
+    assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
+    // a signed-in browser (session cookie) without a token gets nothing: no CSRF through the API
+    const king = await as('king');
+    const cookie = [...king.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
+    assert.equal((await get('employees', { cookie })).statusCode, 401);
+    // a PostgREST token without the app claim is refused
+    const { SignJWT } = await import('jose');
+    const { jwtSecret } = await import('../src/api.ts');
+    const noApp = await new SignJWT({ role: 'hr_api', app_user: 'king' }).setProtectedHeader({ alg: 'HS256' }).setExpirationTime('1h').sign(jwtSecret());
+    assert.equal((await get('employees', { authorization: `Bearer ${noApp}` })).statusCode, 401);
+    // "none" algorithm tokens are refused
+    const unsigned = `${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from('{"app":"hr","app_user":"king"}').toString('base64url')}.`;
+    assert.equal((await get('employees', { authorization: `Bearer ${unsigned}` })).statusCode, 401);
+  });
+});
+

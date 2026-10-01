@@ -541,7 +541,7 @@ pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--sur
 }
 
 /* property editor groups (builder) */
-fieldset.prop-group { border: 0; border-top: 1px solid var(--border); margin: 0 0 0.5rem; padding: 0.9rem 0 0.4rem; }
+fieldset.prop-group { min-width: 0; border: 0; border-top: 1px solid var(--border); margin: 0 0 0.5rem; padding: 0.9rem 0 0.4rem; }
 fieldset.prop-group:first-of-type { border-top: 0; padding-top: 0; }
 fieldset.prop-group > legend { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--muted); padding: 0 0.4rem 0 0; }
 .checklist { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.4rem; }
@@ -817,6 +817,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .u-selfend { align-self: end !important; }
 .u-inherit { color: inherit !important; }
 .u-spacer { height: 1rem !important; }
+.wrap-anywhere, .wrap-anywhere code { overflow-wrap: anywhere; word-break: break-word; }
 .u-row { display: flex !important; gap: 0.75rem !important; align-items: center !important; }
 .app-color-0 { background: #0b63c5; }
 .app-color-1 { background: #17794a; }

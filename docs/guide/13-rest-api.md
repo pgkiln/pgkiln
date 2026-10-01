@@ -1,7 +1,69 @@
-# 13. REST APIs with PostgREST
+# 13. REST APIs
 
-pgapex serves web pages. For **REST APIs** (mobile apps, integrations, scripts) it works with
-[PostgREST](https://postgrest.org), which runs as a separate service **next to** pgapex and turns
+pgapex offers two ways to expose data securely over REST (mobile apps, integrations, scripts),
+which can be combined:
+
+| | [REST modules](#rest-modules-in-the-builder) | [PostgREST](#how-it-works) |
+|---|---|---|
+| What | Endpoints you define in the builder: a method, a path and the SQL | A separate service that turns a schema of views and functions into an API |
+| Served by | pgapex itself, under `/a/<alias>/rest/<module>/` | PostgREST, next to pgapex |
+| Runs as | the application's database role (like its pages) | a dedicated API role |
+| Good for | a handful of tailored endpoints, field apps, integrations | broad data access with filtering, sorting and embedding |
+
+Both use the same tokens (App → REST API: tokens and OAuth clients), the same accounts and the
+same row level security, and both publish an OpenAPI description.
+
+## REST modules in the builder
+
+**Shared Components → REST modules** (APEX: RESTful Services). A module is a set of handlers under
+`/a/<alias>/rest/<name>/`:
+
+```json
+[{"method": "GET",  "path": "orders",     "type": "collection", "source": "select id, customer, total from sales.orders order by id"},
+ {"method": "GET",  "path": "orders/:id", "type": "item",       "source": "select * from sales.orders where id = :ID::int"},
+ {"method": "POST", "path": "orders",     "type": "sql",        "source": "select sales.create_order(:CUSTOMER, :TOTAL::numeric) as id", "roles": ["sales"]},
+ {"method": "GET",  "path": "products",   "type": "collection", "source": "select id, name from sales.product", "auth": "public"}]
+```
+
+| Key | Meaning |
+|---|---|
+| `method` | `GET`, `POST`, `PUT`, `PATCH` or `DELETE` |
+| `path` | Segments with `:parameters`, e.g. `orders/:id/lines` |
+| `type` | `collection`: a SELECT, returned page by page as `{items, offset, limit, has_more}` (`?limit=` up to 500, `?offset=`, `page_size` for the default) · `item`: one row as an object, 404 when there is none · `sql`: statements; the first row of the last one is the response (201 for POST, 204 without a row; `status` overrides) |
+| `source` | The SQL. Binds: path parameters, query parameters and the fields of a JSON (or form) body, upper case (`:ID`, `:CUSTOMER`); `:BODY` is the whole JSON body |
+| `roles` | The caller needs one of these roles (as `meta.has_role()` sees them) |
+| `auth` | `token` (default) or `public` (no token; the SQL runs with `meta.app_user()` = `nobody`) |
+| `description` | For the OpenAPI description |
+
+**Calling them.** Send `Authorization: Bearer <token>` with a token from **App → REST API**: a token
+issued for an account, or one from `POST /oauth/token` for an OAuth client ([below](#tokens)). An
+application needs no API role for these endpoints. On every request pgapex checks the token's
+signature and application, and that the account is active with access (or that the client is not
+revoked). The SQL then runs **as the application's database role** with `meta.app_user()` = the
+caller and `meta.has_role()` = the caller's roles, so the same grants and RLS policies as the
+application's pages apply. A browser session (cookie) is not accepted, so pages of other sites
+can't call the API on a user's behalf.
+
+**Errors** are JSON `{"error": "…"}`: 401 (no or invalid token), 403 (no access, a missing role,
+or a missing grant), 404, 405, and 400 for errors of the SQL itself such as a PL/pgSQL
+`raise exception` (its message) or invalid input.
+
+**OpenAPI.** `GET /a/<alias>/rest/<module>/openapi.json` describes the module's endpoints (without
+their SQL), for Swagger UI, Postman or client generators. The builder lists every endpoint with a
+curl example; the Advisor checks the handlers' SQL.
+
+**Example:** the HR example application's module `v1` (`examples/hr/hr_13_rest.sql`):
+
+```bash
+TOKEN=…   # App → REST API → Issue a token for allen
+curl http://127.0.0.1:3100/a/hr/rest/v1/my/leave -H "Authorization: Bearer $TOKEN"
+curl -X POST http://127.0.0.1:3100/a/hr/rest/v1/leave -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" -d '{"start_date": "2027-05-03", "end_date": "2027-05-04", "reason": "dentist"}'
+```
+
+## PostgREST
+
+[PostgREST](https://postgrest.org) runs as a separate service **next to** pgapex and turns
 a PostgreSQL schema into a REST API. Both use the same database, the same accounts and the same
 row level security policies, so a rule like "employees see only their own leave requests" holds in
 the web app and in the API without writing it twice.

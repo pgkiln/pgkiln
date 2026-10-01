@@ -49,7 +49,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 18, released as **v0.11.0** (tags: v0.2.0, v0.6.0–v0.11.0; 0.3.0–0.5.0 were never tagged). Migrations 001–023 are released |
-| (sprint branches) | `sprint-17`, `sprint-18` were merged (v0.11.0) and deleted. The next sprint starts `sprint-19` from `main` |
+| `sprint-19` | REST modules (see Sprint 19) |
+| (older sprint branches) | `sprint-17`, `sprint-18` were merged (v0.11.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -538,3 +539,19 @@ Branch `sprint-18`. Migration 023 is new.
 Verified: `npm test` 256/256, `npm run test:e2e` 28/28.
 
 Next on the roadmap: REST endpoints in the builder (with OpenAPI), then map and tree regions.
+
+## Sprint 19: REST modules in the builder (owner: double-check the REST request, 2026-10-01)
+
+Branch `sprint-19`. Migration 024 is new.
+
+1. **REST modules: done.** `024_rest_modules.sql` (`meta.rest_module` with handlers jsonb; export section). `src/runtime/rest.ts`:
+   `handlerProblems`, `matchHandler`, bearer tokens checked like `meta.api_check` (jose HS256, app claim, account active +
+   access or client active), SQL in `runtime.tx` with `request.jwt.claims` set (so `meta.has_role()` works) and `set local role`
+   to the app's db_role; collection/item/sql responses; OpenAPI 3 per module. Tokens and OAuth clients work without an API role
+   now (no `role` claim). Builder spec + `src/builder/rest.ts` (endpoints, curl, OpenAPI link), Advisor checks handler SQL.
+   HR example `hr_13_rest.sql` (`v1`). `test/rest.test.ts` (6), sprint-19 security block. Fix: `fieldset.prop-group { min-width: 0 }`
+   (fieldsets were as wide as their widest unbreakable content: the e2e overflow check caught it on the module page).
+
+Verified: `npm test` 263/263, `npm run test:e2e` 28/28.
+
+Next on the roadmap: map and tree regions, more chart types, several files per upload item.

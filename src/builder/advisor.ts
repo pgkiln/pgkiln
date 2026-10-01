@@ -6,6 +6,7 @@ import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems } from '../workflow.ts';
+import { handlerProblems } from '../runtime/rest.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
@@ -71,6 +72,9 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
       return [{ name: 'action_code', shape: 'statements' }];
     case 'workflow_definition':
       // checked step by step below
+      return [];
+    case 'rest_module':
+      // checked handler by handler below
       return [];
     default:
       return [];
@@ -162,6 +166,16 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
         if (problem) findings.push({ ...problem, entry, field: label });
       }
     }
+    // REST handlers
+    for (const { kind, row } of all.filter((x) => x.kind === 'rest_module')) {
+      const entry = byKey.get(`${kind}-${row.id}`) ?? null;
+      for (const h of Array.isArray(row.handlers) ? row.handlers : []) {
+        if (typeof h?.source !== 'string' || !h.source.trim()) continue;
+        checked++;
+        const problem = await checkSql(c, h.source, h.type === 'sql' ? 'statements' : 'select');
+        if (problem) findings.push({ ...problem, entry, field: `${h.method} ${h.path}` });
+      }
+    }
     // workflow steps: sql code, switch conditions, task owner queries
     for (const { kind, row } of all.filter((x) => x.kind === 'workflow_definition')) {
       const entry = byKey.get(`${kind}-${row.id}`) ?? null;
@@ -229,6 +243,7 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');
+    if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);
     if (kind === 'workflow_definition')
       for (const problem of stepProblems(row.steps, new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase())))) missing(e, 'Steps (JSON)', problem);
     if (kind === 'document_template') {

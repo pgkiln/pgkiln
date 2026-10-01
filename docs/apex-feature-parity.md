@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-01 (unreleased: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
@@ -20,10 +20,10 @@ Last reviewed: 2026-10-01 (pgapex 0.11.0: workflows and Progressive Web Apps; 0.
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
-| Data and integration | 3 | 2 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
+| Data and integration | 4 | 1 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and multi-step workflows; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **52** | **31** | **28** | **6** | 117 APEX features compared: 44% available, 26% partial |
+| **Total** | **53** | **30** | **28** | **6** | 117 APEX features compared: 45% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -163,7 +163,7 @@ Last reviewed: 2026-10-01 (pgapex 0.11.0: workflows and Progressive Web Apps; 0.
 |---|---|---|
 | SQL Workshop: SQL commands, object browser | ✅ | The object browser shows columns, RLS policies, grants, data and function source |
 | RESTful services (ORDS) | ✅ | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, the same RLS as the UI, per-app API role, tokens in the builder, a pre-request check, and **OAuth clients** (client credentials, like ORDS `oauth.create_client`) so tokens renew themselves |
-| REST handler editor, REST-enabled SQL | 🟡 | Secure REST APIs are there (PostgREST, tokens, OAuth clients, the same RLS as the UI); endpoints are written as views and functions in an `api` schema rather than defined in the builder. **Missing:** a builder for REST endpoints with generated OpenAPI docs, REST-enabled SQL |
+| REST handler editor, REST-enabled SQL | ✅ | **REST modules** in the builder: handlers (method, path with parameters, SQL as collection, item or statements, roles, public) served by pgapex with bearer tokens and an OpenAPI description; plus PostgREST for schema-wide APIs. **Missing:** REST-enabled SQL (rarely desirable) |
 | SQL scripts, query builder, Quick SQL | ❌ | |
 | Data Workshop (load CSV/XLSX/JSON) | 🟡 | SQL Workshop → Load Data: CSV/TSV/XLSX/JSON into a new table (inferred types) or an existing one (append, merge, replace) with a per-row error report; `data_load` process for end users. **Missing:** XML, saved data load definitions, column transformations, unloading ([chapter 16](guide/16-files.md)) |
 | REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | ❌ | Calling web services from SQL is possible with the `http` or `pg_net` extensions ([extensions](guide/15-extensions.md)) |
@@ -232,12 +232,11 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **REST endpoints in the builder**: define handlers (SQL, PL/pgSQL) per application, with generated OpenAPI documentation, next to the existing PostgREST API.
-2. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-3. **Workflow:** parallel branches and versions.
-4. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-5. **Template components and plug-ins.**
-6. **AI features.**
+1. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+2. **Workflow:** parallel branches and versions.
+3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+4. **Template components and plug-ins.**
+5. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

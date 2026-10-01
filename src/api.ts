@@ -50,8 +50,9 @@ export async function apiStatus(): Promise<{ ok: boolean; detail: string }> {
  */
 export async function issueApiToken(appId: number, username: string, hours: number) {
   const app = await owner.one('select alias, api_role, access_control from meta.app where id = $1', [appId]);
-  if (!app?.api_role) throw new Error('Set the application’s API database role first.');
-  const problem = await apiRoleProblem(app.api_role);
+  if (!app) throw new Error('No such application.');
+  // without an API role the token is for pgapex's own REST modules only (they run as the app's role)
+  const problem = app.api_role ? await apiRoleProblem(app.api_role) : null;
   if (problem) throw new Error(problem);
   const acc = await owner.one(
     `select a.username, a.active, aa.app_id is not null as has_access
@@ -63,7 +64,7 @@ export async function issueApiToken(appId: number, username: string, hours: numb
   if (!acc.active) throw new Error('This account is inactive.');
   if (!acc.has_access && app.access_control !== 'any_user') throw new Error('This account has no access to the application.');
   const ttl = Math.max(1, Math.min(MAX_TOKEN_HOURS, Math.round(hours)));
-  const token = await new SignJWT({ role: app.api_role, app_user: acc.username, app: app.alias })
+  const token = await new SignJWT({ ...(app.api_role ? { role: app.api_role } : {}), app_user: acc.username, app: app.alias })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setIssuedAt()
     .setExpirationTime(`${ttl}h`)
