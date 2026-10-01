@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–18 are merged into `main` and released as **v0.11.0** (migrations 001–023 are released: add 024+).
+Last updated: 2026-10-01. Sprints 3–19 are merged into `main` and released as **v0.12.0** (migrations 001–024 are released: add 025+).
 
 ## Project in one paragraph
 
@@ -48,9 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 18, released as **v0.11.0** (tags: v0.2.0, v0.6.0–v0.11.0; 0.3.0–0.5.0 were never tagged). Migrations 001–023 are released |
-| `sprint-19` | REST modules (see Sprint 19) |
-| (older sprint branches) | `sprint-17`, `sprint-18` were merged (v0.11.0) and deleted |
+| `main` | Everything up to sprint 19, released as **v0.12.0** (tags: v0.2.0, v0.6.0–v0.12.0; 0.3.0–0.5.0 were never tagged). Migrations 001–024 are released |
+| (sprint branches) | `sprint-17` … `sprint-19` were merged (v0.11.0, v0.12.0) and deleted. The next sprint starts `sprint-20` from `main` |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
