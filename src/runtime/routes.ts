@@ -1,5 +1,6 @@
 import { PageCss } from '../css.ts';
 import { forgetRemember, issueRemember, useRemember } from '../remember.ts';
+import { appDirectories, ldapAuthenticate, LdapError, resolveLdapAccount } from '../ldap.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
@@ -588,16 +589,47 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const r0 = await loginRequest(req, reply);
     if (!r0) return;
     const { a, locale, session, username, next, ip, fail } = r0;
-    const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username, (req.body?.password ?? '').slice(0, 200)]);
+    const password = (req.body?.password ?? '').slice(0, 200);
+    const remember = req.body?.remember === 'true';
+    const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username, password]);
     if (!r?.username) {
-      await logActivity({ appId: a.id, username, event: 'login_failed', ip });
-      return fail(locale.t('login.invalid'));
+      // not a local password: the app's LDAP directories, in order
+      let unreachable = false;
+      for (const d of await appDirectories(a.ldap_directories)) {
+        let user;
+        try {
+          user = await ldapAuthenticate(d, username, password);
+        } catch (e) {
+          req.log.warn({ err: e, directory: d.name }, 'ldap sign-in failed');
+          unreachable = true;
+          continue;
+        }
+        if (!user) continue;
+        let account: string;
+        try {
+          account = await resolveLdapAccount(d, user);
+        } catch (e) {
+          if (!(e instanceof LdapError)) throw e;
+          logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: `ldap:${d.name}: ${e.message}` });
+          return fail(e.message, 403);
+        }
+        const access = await ssoAccess(a.id, account, user.groups);
+        if (!access.allowed) {
+          logActivity({ appId: a.id, username: account, event: 'login_failed', ip, detail: `ldap:${d.name}: no access` });
+          return fail(locale.t('login.no_access', { user: account, app: a.name }), 403);
+        }
+        return completeLogin(req, reply, a, session, account, {
+          next, remember, extraRoles: access.roles, groups: user.groups, method: `ldap:${d.name}`, detail: `ldap:${d.name}`,
+        });
+      }
+      await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: unreachable ? 'ldap unreachable' : undefined });
+      return fail(unreachable ? locale.t('login.ldap_unavailable') : locale.t('login.invalid'));
     }
     if ((await passwordDaysLeft(r.username)) === 0) {
       logActivity({ appId: a.id, username: r.username, event: 'password_expired', ip });
       return reply.type('text/html').send(expiredPage(a, locale, session, r.username, safeNext(a, next)));
     }
-    return completeLogin(req, reply, a, session, r.username, { next, remember: req.body?.remember === 'true' });
+    return completeLogin(req, reply, a, session, r.username, { next, remember });
   });
 
   app.post('/a/:alias/password', async (req: Req, reply) => {

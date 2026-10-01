@@ -112,7 +112,7 @@ export async function usersRoutes(app: FastifyInstance) {
     ).rows;
     const cfg = await accountSettings();
     const main = html`
-      <div class="title-row"><h1>Users</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">Identity providers (single sign-on)</a></div></div>
+      <div class="title-row"><h1>Users</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">Identity providers (single sign-on)</a> <a class="btn" href="${BASE}/users/directories">LDAP directories</a></div></div>
       <p class="muted u-mt0">One account per person. Give accounts access to applications, with roles per application, here or under an application's <b>Shared Components → Access control</b>.</p>
       <div class="columns wide-left">
         ${region('Accounts', html`

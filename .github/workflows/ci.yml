@@ -22,11 +22,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # LDAP sign-in tests (test/ldap.test.ts adds the entries it needs)
+      ldap:
+        image: osixia/openldap:1.5.0
+        env:
+          LDAP_ORGANISATION: Example
+          LDAP_DOMAIN: example.org
+          LDAP_ADMIN_PASSWORD: admin
+        ports:
+          - 3890:389
     env:
       DATABASE_URL: postgres://pgapex:pgapex@localhost:5432/pgapex
       RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
       # test-only secret for the REST API tokens (src/api.ts needs 32+ characters)
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
+      LDAP_URL: ldap://127.0.0.1:3890
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
