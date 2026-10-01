@@ -6,6 +6,7 @@ import { COMPONENTS } from './components.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { componentForm, lookups, saveComponent } from './forms.ts';
 import { regionSettingsForm } from './region-settings.ts';
+import { usedInPanel } from './search.ts';
 
 // Page designer: a page's regions, items, buttons, dynamic actions,
 // validations and processes, edited with the generic component forms.
@@ -66,6 +67,7 @@ export async function designerRoutes(app: FastifyInstance) {
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, 'Save')}
             ${kind === 'region' ? await regionSettingsForm(p.id, p.app_id, row, s) : ''}
+            ${await usedInPanel(p.app_id, kind, row)}
             <form method="post" action="${BASE}/pages/${p.id}/c/${kind}/${row.id}/delete" class="danger-zone">${csrf(s)}
               <button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete ${spec.label.toLowerCase()}</button></form>`)
         : html`<p>Component not found.</p>`;
@@ -90,7 +92,8 @@ export async function designerRoutes(app: FastifyInstance) {
           <div class="buttons"><button class="btn btn-hot">Save page</button></div>
         </form>
         <form method="post" action="${BASE}/pages/${p.id}/delete" class="danger-zone">${csrf(s)}
-          <button class="btn btn-danger" data-confirm="Delete page ${p.page_no} and all its components?">Delete page</button></form>`)}
+          <button class="btn btn-danger" data-confirm="Delete page ${p.page_no} and all its components?">Delete page</button></form>
+        ${await usedInPanel(p.app_id, 'page', p)}`)}
         <div class="u-spacer"></div>
         ${region('Cheat sheet', html`<div class="cheat">
           <p><code>:P1_ITEM</code> binds an item value in any SQL (always escaped). <code>:APP_USER</code>, <code>:APP_PAGE_ID</code>, <code>:REQUEST</code> are built in.</p>

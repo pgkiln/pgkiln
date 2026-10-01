@@ -153,12 +153,58 @@ register at the provider, and has a *Test discovery* button. See
   checksum protection or without authentication.
 - **Delete application**: removes the definition (not your tables).
 
+## Search and "Used in"
+
+**Search** (in the application's header) looks through every page and component of the
+application: names, titles, SQL, conditions, settings JSON and help texts, case-insensitively,
+grouped by component type with the matching text marked. Each result links to the component.
+
+Under an **item**, **page**, **list of values**, **authorization scheme** or **report layout**, a
+**Used in** list shows the components that refer to it:
+
+| Target | Found as |
+|---|---|
+| Item (page or application item) | the name as a whole word: `:P3_ID`, `&P3_ID.`, `"P3_ID"` in links and settings, `v('P3_ID')` |
+| List of values | `LOV:NAME` in items and grid columns |
+| Authorization scheme | Authorization fields (also negated, `!NAME`) and `"public_reports"` |
+| Page | target pages, breadcrumb parents, navigation, `"page": n` in links, `meta.page_url(n, …)` |
+| Report layout | `"layout": "NAME"` in report settings |
+
+Database code (views, functions, RLS policies) isn't part of the application, so it isn't searched.
+
+## Advisor
+
+**Advisor** (in the application's header) checks the application without running it:
+
+- **SQL:** every region source, list of values, condition, validation, process, dynamic action,
+  authorization scheme, application process and automation is planned with `EXPLAIN` as the
+  application's database role, with binds as NULL, in a transaction that is rolled back. That
+  finds syntax errors, unknown tables, columns and functions, type errors and missing grants.
+  `DO` blocks are compiled into a temporary function (syntax). Statements that can't be planned
+  without running them (`notify`, `call`, `set`, …) are listed as notes.
+- **References:** pages, items, lists of values, authorization schemes, report layouts and
+  regions that a component names but that don't exist; grids without a key or a save process.
+- **PL/pgSQL functions:** when the `plpgsql_check` extension is installed, the functions in the
+  schemas the application's role can use are checked with `plpgsql_check_function_tb` (see
+  [extensions](15-extensions.md)).
+
+Findings are errors, warnings or notes, each linking to the component.
+
 ## Activity monitor
 
 Per application: page views, distinct users and average page time over the last 24 hours;
 failed and locked sign-ins; errors and access denials; views and timings per page over 7 days;
 and a list of recent events (with *Include page views*). The "reference #123" numbers users see
 on errors are the event ids here.
+
+**Top SQL** lists the statements the application's database role ran, from `pg_stat_statements`:
+calls, total and mean time, rows and share of the total, sortable, with *Reset the statistics*.
+Literals appear as `$1`, `$2`…; applications that share a database role share the list. It needs
+the server to load the module (`shared_preload_libraries = 'pg_stat_statements'`, set by the
+development `docker-compose.yml`) and the extension, which migration 016 creates when it can (as
+a superuser; otherwise `create extension pg_stat_statements;` by hand). Reading other roles' query
+texts needs `pg_read_all_stats` for the owner role, and resetting needs execute on
+`pg_stat_statements_reset`.
 
 ## Globalization
 

@@ -36,6 +36,89 @@ export function applyBinds(sql: string, values: BindValues): string {
   return substitute(sql, (name) => literal(values[name]));
 }
 
+/**
+ * When a comment, quoted string or identifier, or dollar-quoted body starts
+ * at sql[i], the index just past its end; otherwise null.
+ */
+function skipQuoted(sql: string, i: number): number | null {
+  const n = sql.length;
+  const c = sql[i];
+  const next = sql[i + 1];
+  // -- line comment
+  if (c === '-' && next === '-') {
+    const end = sql.indexOf('\n', i);
+    return end === -1 ? n : end;
+  }
+  // /* block comment */ (Postgres allows nesting)
+  if (c === '/' && next === '*') {
+    let depth = 0;
+    let j = i;
+    while (j < n) {
+      if (sql[j] === '/' && sql[j + 1] === '*') {
+        depth++;
+        j += 2;
+      } else if (sql[j] === '*' && sql[j + 1] === '/') {
+        depth--;
+        j += 2;
+        if (depth === 0) break;
+      } else j++;
+    }
+    return j;
+  }
+  // 'string' (incl. E'...' where backslash escapes a quote) and "identifier"
+  if (c === "'" || c === '"') {
+    const backslashEscapes = c === "'" && (sql[i - 1] === 'E' || sql[i - 1] === 'e');
+    let j = i + 1;
+    while (j < n) {
+      if (backslashEscapes && sql[j] === '\\') {
+        j += 2;
+        continue;
+      }
+      if (sql[j] === c) {
+        if (sql[j + 1] === c) {
+          j += 2;
+          continue;
+        }
+        break;
+      }
+      j++;
+    }
+    return Math.min(n, j + 1);
+  }
+  // $tag$ dollar quoting $tag$
+  if (c === '$') {
+    const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
+    if (m) {
+      const tag = m[0];
+      const end = sql.indexOf(tag, i + tag.length);
+      return end === -1 ? n : end + tag.length;
+    }
+  }
+  return null;
+}
+
+/** The statements of a script, split at semicolons outside comments, strings and dollar quotes. */
+export function splitStatements(sql: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  let i = 0;
+  while (i < sql.length) {
+    const end = skipQuoted(sql, i);
+    if (end !== null) {
+      i = end;
+      continue;
+    }
+    if (sql[i] === ';') {
+      out.push(sql.slice(start, i));
+      start = i + 1;
+    }
+    i++;
+  }
+  out.push(sql.slice(start));
+  // leading comments go (so the statement starts with its keyword); one of only comments isn't a statement
+  return out.map((x) => x.replace(/^(\s*(--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/))*\s*/, '').trim()).filter(Boolean);
+}
+
 function substitute(sql: string, replace: (name: string) => string): string {
   let out = '';
   let i = 0;
@@ -43,66 +126,11 @@ function substitute(sql: string, replace: (name: string) => string): string {
   while (i < n) {
     const c = sql[i];
     const next = sql[i + 1];
-
-    // -- line comment
-    if (c === '-' && next === '-') {
-      const end = sql.indexOf('\n', i);
-      const stop = end === -1 ? n : end;
-      out += sql.slice(i, stop);
-      i = stop;
+    const end = skipQuoted(sql, i);
+    if (end !== null) {
+      out += sql.slice(i, end);
+      i = end;
       continue;
-    }
-    // /* block comment */ (Postgres allows nesting)
-    if (c === '/' && next === '*') {
-      let depth = 0;
-      let j = i;
-      while (j < n) {
-        if (sql[j] === '/' && sql[j + 1] === '*') {
-          depth++;
-          j += 2;
-        } else if (sql[j] === '*' && sql[j + 1] === '/') {
-          depth--;
-          j += 2;
-          if (depth === 0) break;
-        } else j++;
-      }
-      out += sql.slice(i, j);
-      i = j;
-      continue;
-    }
-    // 'string' (incl. E'...' where backslash escapes a quote) and "identifier"
-    if (c === "'" || c === '"') {
-      const backslashEscapes = c === "'" && (sql[i - 1] === 'E' || sql[i - 1] === 'e');
-      let j = i + 1;
-      while (j < n) {
-        if (backslashEscapes && sql[j] === '\\') {
-          j += 2;
-          continue;
-        }
-        if (sql[j] === c) {
-          if (sql[j + 1] === c) {
-            j += 2;
-            continue;
-          }
-          break;
-        }
-        j++;
-      }
-      out += sql.slice(i, j + 1);
-      i = j + 1;
-      continue;
-    }
-    // $tag$ dollar quoting $tag$
-    if (c === '$') {
-      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
-      if (m) {
-        const tag = m[0];
-        const end = sql.indexOf(tag, i + tag.length);
-        const stop = end === -1 ? n : end + tag.length;
-        out += sql.slice(i, stop);
-        i = stop;
-        continue;
-      }
     }
     // :: cast
     if (c === ':' && next === ':') {

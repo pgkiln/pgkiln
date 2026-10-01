@@ -81,7 +81,7 @@ export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '') =
   html`<section class="region region-standard"><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
 
 /** Title and tab buttons of an application's builder pages. */
-export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api') => html`
+export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor') => html`
     <div class="title-row"><h1>${a.name}</h1>
       <div class="buttons">
         <a class="btn${active === 'pages' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}">${icon('file')} Pages</a>
@@ -89,6 +89,8 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
         <a class="btn${active === 'activity' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/activity">${icon('activity')} Activity</a>
         <a class="btn${active === 'api' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/api">${icon('code')} REST API</a>
         <a class="btn${active === 'settings' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/settings">${icon('settings')} Settings</a>
+        <a class="btn${active === 'search' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/search">${icon('search')} Search</a>
+        <a class="btn${active === 'advisor' ? ' btn-hot' : ''}" href="${BASE}/apps/${a.id}/advisor">${icon('check')} Advisor</a>
         <a class="btn" href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a>
         <a class="btn" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
       </div></div>`;

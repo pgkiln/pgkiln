@@ -740,9 +740,22 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 /* small status tags (saved reports, automation runs) */
 .tag { display: inline-block; font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 4px; background: var(--surface-3); color: var(--muted); }
 .tag-error { background: var(--danger-soft); color: var(--danger); }
+.tag-warning { background: var(--warning-soft); color: var(--text); }
+.tag-info { background: var(--accent-soft); color: var(--text); }
 
 /* help texts may hold long JSON examples: never wider than their field */
 .field .help, small.help { overflow-wrap: anywhere; }
+
+/* Builder: search results and "Used in" */
+.hits { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.hits li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.25rem 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.hits li > a { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.hits .hit-snippet { grid-column: 1 / -1; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.82rem; color: var(--muted); background: none; padding: 0; }
+.hits mark { background: rgb(250 204 21 / 45%); color: var(--text); border-radius: 2px; }
+.used-in { margin-top: 1.5rem; }
+.sql-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; display: block; max-height: 12rem; overflow: auto; }
+.small { font-size: 0.82rem; }
+@media (max-width: 600px) { .hits li { grid-template-columns: minmax(0, 1fr); } }
 
 /* Utilities for the builder (no inline style attributes: see the Content-Security-Policy).
    !important keeps the precedence the style attributes had. */
