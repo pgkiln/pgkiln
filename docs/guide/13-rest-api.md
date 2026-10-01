@@ -71,7 +71,7 @@ outside development: `alter role pgapex_authenticator password '…';`.
 
 ### 2. Create the API role and schema
 
-The HR sample does this in `db/seed/hr_03_api.sql`. The pattern:
+The HR sample does this in `examples/hr/hr_03_api.sql`. The pattern:
 
 ```sql
 -- A role for API callers of this application, and permission for PostgREST to use it.

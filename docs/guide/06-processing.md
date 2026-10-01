@@ -163,7 +163,7 @@ button (it also works while the automation is disabled) and the last runs with t
 count and error message; the last 100 runs are kept in `meta.automation_log`.
 
 The HR sample's *Remind managers* runs at 08:00 on weekdays and reminds managers of leave requests
-that have waited more than two days (`db/seed/hr_08_automations.sql`):
+that have waited more than two days (`examples/hr/hr_08_automations.sql`):
 
 ```sql
 -- For each row of

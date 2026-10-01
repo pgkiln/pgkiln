@@ -28,7 +28,10 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 - Dev database: Docker container `pgapex-db`, port **5434** (5433 is another project on this machine).
   App on port **3100**. `.env` from `.env.example`.
-- `npm run setup` / `npm run db:reset` (recreates the DB: migrations + `db/seed/*`), `npm run dev`.
+- `npm run setup` / `npm run db:reset` install **pgapex only** (migrations); `npm run example:hr` adds the HR example
+  (`examples/hr/`), which `npm test` / `npm run test:e2e` install first (pretest). `npm run dev`.
+- **Principle (owner, 2026-10-01): pgapex is a framework; HR is only an example on top of it.** Nothing in `src/`
+  or `db/migrations/` may depend on HR; builder defaults and help texts use neutral examples.
 - Tests: `npm test` (needs the DB), `npm run test:e2e` (needs `npx playwright install chromium`).
 - Stop the dev server with `kill $(lsof -t -iTCP:3100 -sTCP:LISTEN)`. **Don't** use `pkill -f server.ts`:
   the pattern matches the calling shell itself.
@@ -48,6 +51,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | `main` | Everything up to sprint 13, released as **v0.9.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0, v0.9.0; 0.3.0–0.5.0 were never tagged). Migrations 001–016 are released |
 | `sprint-14` | Merged into `main` (not released yet); can be deleted |
 | `sprint-15` | Merged into `main` (not released yet); can be deleted |
+| `sprint-16` | Approvals and the task list; HR moved to examples/ (see Sprint 16), pushed; not merged yet |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
@@ -467,3 +471,27 @@ Branch `sprint-15` from `main` (sprint 14 merged). Migration 020 is new.
 Verified: `npm test` 234/234, `npm run test:e2e` 24/24; employee sheet and a 4-page invoice checked visually.
 
 Next on the roadmap: approvals / workflow.
+
+## Sprint 16: approvals, and pgapex as a framework (owner: "yes," 2026-10-01)
+
+Branch `sprint-16` from `main` (sprint 15 merged). Migration 021 is new.
+
+1. **Approvals and the task list: done.** `021_approvals.sql`: `meta.task_definition` (shared component),
+   `meta.task`, `meta.task_event` (closed to app roles), `meta.task_rights(task)` (the one rights function),
+   views `meta.tasks` / `meta.task_events`, API `create_task`, `claim/release/delegate/cancel_task`,
+   `add_task_comment`, `complete_task` (returns the action SQL + binds), `close_tasks`; region type `tasks`;
+   export section `task_definitions`. `src/runtime/tasks.ts`: region (detached forms per task) and
+   `POST /a/:alias/tasks/:id` (the completion SQL runs as the app role in the same transaction). Error flash
+   `__FLASH_ERROR` on pages. Builder: component spec, region settings (`mergeTasksSettings`), Advisor.
+   HR example `hr_10_approvals.sql` (LEAVE_APPROVAL via triggers, page 14 *My tasks*). `test/approvals.test.ts` (6),
+   sprint-16 block in `security.test.ts`.
+2. **HR out of the framework: done** (owner's remark during the sprint). `db/seed/` → `examples/hr/` (+ README);
+   `migrate.ts --example <name>`; `--seed` reads an old release's `db/seed/` or means `--example hr`; package
+   scripts `setup`/`db:reset` framework-only, `example:hr`, `pretest`, `pretest:e2e`; CI upgrade job archives
+   the whole release tree. Builder defaults/placeholders/help texts neutral; layout preview sample made up.
+   Docs: README, chapter 1, CHANGELOG. Verified: framework-only fresh install (no apps, builder works), then
+   `npm test` there installs the example (232 + 9 skipped for services that DB lacks); v0.9.0 → this upgrade.
+
+Verified: `npm test` 241/241, `npm run test:e2e` 24/24 (dev DB).
+
+Next on the roadmap: workflow (multi-step) on top of task definitions; map and tree regions.

@@ -82,7 +82,7 @@ raise exception '%', meta.message('LEAVE_OVERLAP', to_char(p_start, 'DD-MM-YYYY'
 - A missing language falls back to the base language (`nl-BE` → `nl`), then to the primary language, then to the name itself.
 - In static HTML, titles and other texts with substitutions, use `&APP_TEXT$NAME.`, e.g. `&APP_TEXT$GREETING.`.
 
-The HR sample's dashboard uses them for its key figures (`db/seed/hr_04_i18n_mail.sql`).
+The HR sample's dashboard uses them for its key figures (`examples/hr/hr_04_i18n.sql`).
 
 ### Date formats
 

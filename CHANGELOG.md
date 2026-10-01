@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **pgapex installs no application.** The HR sample moved from `db/seed/` to `examples/hr/` as an
+  example application built on pgapex: `npm run setup` and `npm run db:reset` install the framework
+  only, `npm run example:hr` adds the example, and `npm test` / `npm run test:e2e` install it first
+  as their fixture. `npm run db:seed` is gone; `migrate.ts --seed` still reads an older release's
+  `db/seed/` (upgrade test). Databases that have the sample carry on: files are recorded by name.
+- Builder defaults, placeholders and help texts use neutral examples instead of HR tables, and the
+  report-layout preview shows made-up order rows.
+
 ### Added
 - **Approvals and the task list** (migration 021): task definitions (Shared Components), tasks created
   from application SQL with `meta.create_task(…)`, a `tasks` region type (claim, approve / reject /

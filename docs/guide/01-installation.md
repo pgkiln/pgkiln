@@ -18,14 +18,25 @@ git clone git@github.com:NickVrgr/Postgresql_APEX.git pgapex
 cd pgapex
 npm install
 cp .env.example .env
-npm run setup        # starts PostgreSQL 17 in Docker on port 5434, runs migrations and installs the HR sample
+npm run setup        # starts PostgreSQL 17 in Docker on port 5434 and installs pgapex (the migrations)
 npm run dev          # starts pgapex on http://127.0.0.1:3100 and restarts on code changes
 ```
 
-Then open:
+Open the **builder** at http://127.0.0.1:3100/builder, sign in as `admin` / `admin` (change the
+password on the Developers page straight away) and create your first application from a table
+(*Create application*), or follow the [tutorial](05-tutorial.md).
 
-- **Builder**: http://127.0.0.1:3100/builder. Sign in as `admin` / `admin`, and change the password on the Developers page straight away.
-- **HR sample app**: http://127.0.0.1:3100/a/hr. Sign in as `king`, `blake`, `allen` or `demo`; the password equals the username.
+### The example application (optional)
+
+pgapex comes with an example application, **HR**: employees, departments, leave requests with an
+approval task, a dashboard, a REST API, translations, documents and more, built the way you would
+build your own (`examples/hr/`). It is not part of pgapex; install it to see the features at work:
+
+```bash
+npm run example:hr   # http://127.0.0.1:3100/a/hr: king, blake, allen or demo (password = username)
+```
+
+The tests use it as their fixture: `npm test` and `npm run test:e2e` install it first.
 
 ### Using your own PostgreSQL instead of Docker
 
@@ -34,7 +45,7 @@ Then open:
    create role pgapex login password 'choose-a-password' superuser;
    create database pgapex owner pgapex;
    ```
-2. Point `DATABASE_URL` in `.env` at it, then run `npm run db:seed`, which applies the migrations and the sample.
+2. Point `DATABASE_URL` in `.env` at it, then run `npm run db:migrate` (and `npm run example:hr` for the example application).
 3. Set `RUNTIME_DATABASE_URL` for the `pgapex_runtime` role that the first migration creates (see below).
 
 ## The two database connections
@@ -96,13 +107,13 @@ which is read at startup; real environment variables take precedence.
 |---|---|
 | `npm run dev` | Start with auto-restart on changes |
 | `npm start` | Start (production) |
-| `npm run setup` | Start the Docker database, apply migrations and the sample |
+| `npm run setup` | Start the Docker database and apply the migrations |
 | `npm run db:up` | Start the Docker database |
 | `npm run db:migrate` | Apply pending migrations (`db/migrations/*.sql`) |
-| `npm run db:seed` | Apply migrations, then pending sample data (`db/seed/*.sql`) |
+| `npm run example:hr` | Apply migrations, then install the HR example application (`examples/hr/*.sql`) |
 | `npm run db:reset` | **Delete** the Docker database and set it up again |
 | `npm run typecheck` | TypeScript type check |
-| `npm test` | Unit and security tests (need the database) |
+| `npm test` | Unit and security tests (need the database; install the HR example first, as their fixture) |
 | `npm run test:e2e` | Browser tests at phone, tablet and desktop widths (run `npx playwright install chromium` once) |
 
 ## Upgrading
@@ -169,7 +180,7 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgapex (nod
 5. **Restrict the builder.** `/builder` is for developers. Consider allowing it only from your
    office network or VPN at the proxy (for example an nginx `location /builder { allow …; deny all; }`).
 6. **Change default passwords**: `admin` in the builder (Developers page), and the demo users if the sample is installed.
-   Don't install the sample (`db/seed`) in production: run `npm run db:migrate`, not `db:seed`.
+   Don't install the example application in production: `npm run db:migrate` installs pgapex only.
 7. Walk through the checklist at the end of [SECURITY.md](../../SECURITY.md).
 
 ### Scaling

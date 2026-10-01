@@ -16,23 +16,38 @@ them.
 ```bash
 npm install
 cp .env.example .env
-npm run setup        # Postgres 17 on localhost:5434, migrations + HR sample
-npm run dev          # http://127.0.0.1:3100
-npm test             # unit + security regression tests (needs the database)
+npm run setup        # Postgres 17 on localhost:5434 + the pgapex schema (migrations)
+npm run dev          # http://127.0.0.1:3100/builder (admin / admin)
+```
+
+Then build an application on your own tables: *Create application* in the builder generates
+report and form pages from a table, and everything else (regions, items, processes, security,
+translations, documents, approvals) is added in the page designer and Shared Components. The
+[tutorial](docs/guide/05-tutorial.md) walks through one.
+
+### The example application
+
+pgapex itself contains no application. The repository ships an example built on it, **HR**
+(`examples/hr/`): employees and departments, leave requests with approvals, a dashboard, a REST API,
+translations, documents, automations and row level security, all of it ordinary pgapex metadata
+and PostgreSQL code, the way you would build your own.
+
+```bash
+npm run example:hr   # http://127.0.0.1:3100/a/hr
+```
+
+Users (password = username): `king` is admin and manager (the president), `blake` and `jones` are
+managers, `allen` and `scott` are employees, and `demo` is an admin who is not an employee. Sign
+in as different users to see authorization schemes and row level security at work.
+
+### Developing pgapex
+
+```bash
+npm test             # unit + security regression tests (installs the HR example as their fixture)
 npm run test:e2e     # browser tests on phone/tablet/desktop (npx playwright install chromium first)
 ```
 
-| URL | Login | What |
-|---|---|---|
-| http://127.0.0.1:3100/builder | `admin` / `admin` | Builder: apps, page designer, shared components, SQL Workshop |
-| http://127.0.0.1:3100/a/hr | `demo`, `king`, `blake`, `jones`, `allen`, `scott` (password = username) | HR sample app |
-
-HR sample users: `king` is admin and manager (the president), `blake` and
-`jones` are managers, `allen` and `scott` are employees, and `demo` is an
-admin who is not an employee. Sign in as different users to see
-authorization schemes and row level security at work.
-
-`npm run db:reset` recreates the database. Schema changes go in a new
+`npm run db:reset` recreates the database (pgapex only). Schema changes go in a new
 `db/migrations/NNN_*.sql` file; `npm run db:migrate` applies pending ones.
 
 ## Documentation
@@ -73,9 +88,9 @@ For a full comparison with Oracle APEX 26.1, including what's missing, see
 
 **Security** is covered in [SECURITY.md](SECURITY.md): least-privilege runtime role, per-app database roles, authorization schemes, checksummed URLs and grid rows, CSRF protection, login throttling, a strict CSP, and 28 security regression tests.
 
-## PL/pgSQL examples in the HR app
+## PL/pgSQL examples in the HR example application
 
-The sample ([`db/seed/hr.sql`](db/seed/hr.sql)) keeps its business rules in
+The example ([`examples/hr/hr.sql`](examples/hr/hr.sql)) keeps its business rules in
 the database and calls them from the app:
 
 | Where in the app | Database object | Shows |
@@ -133,8 +148,8 @@ Inside functions and `DO` blocks, use `meta.v('P1_X')`.
 ## Project layout
 
 ```
-db/migrations/     versioned schema (metadata repository, roles, SQL API)
-db/seed/hr.sql     HR sample: schema, PL/pgSQL, RLS, and the app definition
+db/migrations/     pgapex: versioned schema (metadata repository, roles, SQL API)
+examples/hr/       an example application built on pgapex (not part of it): schema, PL/pgSQL, RLS, app definition
 src/runtime/       context, authz, items, report, grid, charts, calendar, facets, regions, render, engine, routes
 src/builder/       builder UI; components.ts is the spec the property editor is generated from
 src/security.ts    checksums, headers, password policy
