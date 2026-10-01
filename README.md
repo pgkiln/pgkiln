@@ -85,6 +85,8 @@ For a full comparison with Oracle APEX 26.1, including what's missing, see
 - Settings with theme and a security checklist, and an **activity monitor**
 - **SQL Workshop**: SQL commands, plus an object browser with RLS policies and grants
 - Export and import of apps as JSON, and developer accounts
+- A `pgapex` command line: migrations, export/import, and apps as one file per component for git
+  (diff, update in place)
 
 **Security** is covered in [SECURITY.md](SECURITY.md): least-privilege runtime role, per-app database roles, authorization schemes, checksummed URLs and grid rows, CSRF protection, login throttling, a strict CSP, and 28 security regression tests.
 
@@ -143,7 +145,7 @@ Inside functions and `DO` blocks, use `meta.v('P1_X')`.
 | `meta.v('P1_ITEM')` | Session state value |
 | `meta.page_url(3, '{"P3_ID": 7}')` | Link with a valid checksum |
 | `meta.generate_crud('app', 'schema.table', 2, 3)` | The page wizard |
-| `meta.export_app('alias')` / `meta.import_app(json)` | Deployment |
+| `meta.export_app('alias')` / `meta.import_app(json)` | Deployment (or `pgapex export` / `pgapex import`, [chapter 18](docs/guide/18-cli.md)) |
 
 ## Project layout
 
@@ -153,6 +155,7 @@ examples/hr/       an example application built on pgapex (not part of it): sche
 src/runtime/       context, authz, items, report, grid, charts, calendar, facets, regions, render, engine, routes
 src/builder/       builder UI; components.ts is the spec the property editor is generated from
 src/security.ts    checksums, headers, password policy
+src/cli/           the `pgapex` command line (bin/pgapex.js; docs/guide/18-cli.md)
 public/            theme (CSS), app.js, icon sprite
 test/              bind scanner unit tests, security regression tests, e2e/ browser tests
 ```

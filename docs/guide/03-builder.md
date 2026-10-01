@@ -244,6 +244,11 @@ Because the SQL Workshop runs as the owner, restrict who gets a developer accoun
 settings. Since it's plain JSON you can commit it to git and review changes in pull requests.
 In SQL: `select meta.export_app('hr')` and `select meta.import_app(<json>, 'new_alias')`.
 
+For git, the [command line](18-cli.md) exports an application as a directory with one file per
+component (`pgapex export hr --format dir`), shows what differs (`pgapex diff`) and imports it
+again, also over the existing application (`pgapex import hr/ --replace`). The builder downloads
+that directory as a zip from `/builder/apps/<id>/export?format=dir`.
+
 ### Export format
 
 The format is `"format": "pgapex/2"`, and it's stable: files exported by pgapex 0.2.0 and later

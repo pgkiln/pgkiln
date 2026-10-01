@@ -9,9 +9,14 @@ db/
   migrations/NNN_*.sql     the meta schema, roles and SQL API; applied once each, in order
   seed/*.sql               the HR sample (not for production)
 examples/                  example applications as SQL (the tutorial)
-scripts/migrate.ts         migration/seed runner
+scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
+bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)
+  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate)
+  appfiles.ts              application export as one file per component (dir layout, static ids) and back
+  cli/                     the command line: main.ts (commands, help, exit codes), files.ts (directories,
+                           zip), diff.ts, replace.ts (import --replace in place)
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
@@ -178,6 +183,10 @@ differently.
   that test fails until you do. Redefine the functions with `create or replace` in the new
   migration; don't wrap them.
 - Never rename or remove a section of the `pgapex/2` format (see [chapter 3](03-builder.md#export-format)).
+- A new table that belongs to an application or references a component must also be listed in
+  `src/cli/replace.ts` (replaced with the application's definition, or kept as installation data);
+  `test/cli.test.ts` fails until it is. The directory format ([chapter 18](18-cli.md)) needs no
+  change: unknown sections and columns travel along.
 
 ## Releasing
 

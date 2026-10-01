@@ -25,6 +25,7 @@ deploying applications, and how to extend pgapex itself.
 | 15 | [Useful PostgreSQL extensions](guide/15-extensions.md) | Extensions for search, scheduling, auditing, maps, AI search, Oracle compatibility and web services, mapped to APEX features, with security notes |
 | 16 | [Files, data loading and printing](guide/16-files.md) | File upload items, loading CSV/Excel/JSON into tables (SQL Workshop and pages), report PDFs, document templates and printing |
 | 17 | [Mobile and field work](guide/17-mobile.md) | Progressive Web Apps: installing, offline pages, forms sent offline, location, camera and barcode items |
+| 18 | [The command line and application files](guide/18-cli.md) | `pgapex` CLI: migrate, export/import, one file per component for git, static ids, diff, updating an app in place |
 
 ## Other documents
 
