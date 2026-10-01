@@ -757,7 +757,9 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const el of document.querySelectorAll('[data-map]')) {
     const data = JSON.parse(el.nextElementSibling.textContent);
     const map = window.L.map(el, { scrollWheelZoom: false, tap: true });
-    window.L.tileLayer(data.tiles, { attribution: data.attribution, maxZoom: 19 }).addTo(map);
+    // pgapex sends Referrer-Policy: same-origin, but OpenStreetMap blocks browser tile requests
+    // without a Referer: the tiles get the site's origin only (no paths or item values)
+    window.L.tileLayer(data.tiles, { attribution: data.attribution, maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(map);
     const popup = (p) => {
       // built with the DOM, not HTML strings: titles and texts are data
       const box = document.createElement('div');
