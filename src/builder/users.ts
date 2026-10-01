@@ -150,7 +150,7 @@ export async function usersRoutes(app: FastifyInstance) {
             <div class="field"><label class="check"><input type="checkbox" name="password_require_mixed" value="true"${cfg.requireMixed ? raw(' checked') : ''}> Passwords need letters and digits</label></div>
             <p class="muted">Passwords may never contain the username. Sign-in is locked for ${LOGIN_WINDOW_MINUTES} minutes after ${LOGIN_MAX_FAILURES_PER_USER} failed attempts (LOGIN_* settings); Unlock on an account lifts it.</p>
             <div class="buttons"><button class="btn">Save settings</button></div>
-          </form>`)}
+          </form>`, '', 'account-settings')}
       </div>`;
     return send(reply, s, shell(s, 'Users', [['Users']], main, 'users'));
   });
@@ -191,7 +191,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- one account
-  app.get(`${BASE}/users/:id`, async (req: Req, reply) => {
+  app.get(`${BASE}/users/:id(^\\d+$)`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const u = await owner.one('select *, meta.password_days_left(username) as days_left from meta.account where id = $1', [req.params.id]);
@@ -271,7 +271,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return send(reply, s, shell(s, u.username, [['Users', `${BASE}/users`], [u.username]], main, 'users'));
   });
 
-  app.post(`${BASE}/users/:id`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const b = req.body ?? {};
@@ -283,7 +283,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
-  app.post(`${BASE}/users/:id/password`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)/password`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const b = req.body ?? {};
@@ -303,7 +303,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
-  app.post(`${BASE}/users/:id/expire`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)/expire`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const acc = await owner.one('select username from meta.account where id = $1', [req.params.id]);
@@ -312,7 +312,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
-  app.post(`${BASE}/users/:id/unlock`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)/unlock`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const acc = await owner.one('select username from meta.account where id = $1', [req.params.id]);
@@ -321,7 +321,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
-  app.post(`${BASE}/users/:id/delete`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)/delete`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     await endSessions(req.params.id);
@@ -330,7 +330,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/users`);
   });
 
-  app.post(`${BASE}/users/:id/access`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)/access`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     await grantAccess(req.body?.app_id ?? '', req.params.id, splitRoles(req.body?.roles));
@@ -338,7 +338,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
-  app.post(`${BASE}/users/:id/access/:appId`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)/access/:appId`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     await grantAccess(req.params.appId, req.params.id, splitRoles(req.body?.roles));
@@ -346,7 +346,7 @@ export async function usersRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
-  app.post(`${BASE}/users/:id/access/:appId/revoke`, async (req: Req, reply) => {
+  app.post(`${BASE}/users/:id(^\\d+$)/access/:appId/revoke`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     await owner.query('delete from meta.app_access where account_id = $1 and app_id = $2', [req.params.id, req.params.appId]);

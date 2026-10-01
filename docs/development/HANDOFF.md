@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–24 are merged into `main` and released as **v0.17.0** (migrations 001–028 are released: add 029+).
+Last updated: 2026-10-01. Sprints 3–24 are merged into `main` and released as **v0.17.1** (migrations 001–028 are released: add 029+).
 
 ## Project in one paragraph
 
@@ -48,7 +48,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 24, released as **v0.17.0** (tags: v0.2.0, v0.6.0–v0.17.0; 0.3.0–0.5.0 were never tagged). Migrations 001–028 are released |
+| `main` | Everything up to sprint 25, released as **v0.17.1** (tags: v0.2.0, v0.6.0–v0.17.1; 0.3.0–0.5.0 were never tagged). Migrations 001–028 are released |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
@@ -741,4 +741,16 @@ Note: one run without a reset had a workflow test fault at SPLIT; it did not rep
 reset the DB, before trusting a failure there. Released as **v0.17.0**.
 
 Next: **AI features** need the owner's decision on the provider and API keys.
+
+## Sprint 25: fixes from the owner's testing (2026-10-01)
+
+Branch `sprint-25`, no migration. Workspace Utilities linked Password policy to `/builder/users/settings` (POST only;
+the GET hit `/builder/users/:id` → 500 "invalid input syntax for type integer"). Now `/builder/users#account-settings`
+(`region()` takes an optional id). `users/:id` routes are `:id(^\\d+$)`; `setErrorHandler` in `src/app.ts` maps
+PostgreSQL 22P02 / 22003 to a 404 everywhere (malformed ids in any URL). Tests: every builder link on the home,
+utilities and dashboard pages must answer 200 (`test/builder-home.test.ts`); malformed ids are 404s (security.test.ts).
+Also: the owner's `npm run dev` (tsx watch) had stopped reloading after 19:59 and served old code; `touch
+src/server.ts` restarted it. Map tiles: verified in Chromium against :3100 (Referer sent, real tiles); if the owner's
+browser (Brave) still gets "Access blocked", Shields may strip the Referer: a server-side tile proxy is the option
+offered. Verified: `npm test` 367/367 (fresh DB), `npm run test:e2e` 58/58. Released as **v0.17.1**.
 

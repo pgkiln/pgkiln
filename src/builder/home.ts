@@ -261,7 +261,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/users`, icon('user'), 'Users', 'Accounts of the people who use the applications, and their access.')}
         ${card(`${BASE}/users/providers`, icon('key'), 'Identity providers', 'OpenID Connect and SAML sign-in.')}
         ${card(`${BASE}/users/directories`, icon('org'), 'LDAP directories', 'Sign in with directory accounts.')}
-        ${card(`${BASE}/users/settings`, icon('shield'), 'Password policy', 'Length, complexity and lifetime of passwords.')}
+        ${card(`${BASE}/users#account-settings`, icon('shield'), 'Password policy', 'Length, complexity and lifetime of passwords.')}
         ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
         ${card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
