@@ -1,4 +1,5 @@
 import { PageCss } from '../css.ts';
+import { forgetRemember, issueRemember, useRemember } from '../remember.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
@@ -65,14 +66,21 @@ export const safeNext = (app: App, next: string | undefined) =>
  * session fixation), resolve the user's roles for this app (plus roles from
  * identity-provider groups), log it and run the "after login" processes.
  */
-export async function completeLogin(
-  req: FastifyRequest,
-  reply: FastifyReply,
-  a: App,
-  oldSession: Session,
-  username: string,
-  { extraRoles = [], next, detail }: { extraRoles?: string[]; next?: string; detail?: string } = {},
-) {
+interface SignInOptions {
+  extraRoles?: string[];
+  detail?: string;
+  /** "Remember me" was checked (or the sign-in came from a remembered one) */
+  remember?: boolean;
+  /** identity-provider groups, kept with a remembered sign-in */
+  groups?: string[];
+  method?: string;
+  /** a remembered sign-in keeps the expiry of the original one */
+  rememberUntil?: Date;
+}
+
+/** Sign-in: replace the session with one for the user and run the after-login processes. */
+export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, oldSession: Session, username: string, opts: SignInOptions = {}) {
+  const { extraRoles = [], detail } = opts;
   const base = `/a/${a.alias}`;
   const roles = [...new Set([...(await accountRoles(a.id, username)), ...extraRoles.map((r) => r.toLowerCase())])].sort();
   await destroySession(reply, oldSession, base);
@@ -101,7 +109,13 @@ export async function completeLogin(
     });
     await saveState(s);
   }
-  return reply.redirect(safeNext(a, next), 303);
+  if (opts.remember) await issueRemember(req, reply, a, username, { groups: opts.groups, method: opts.method, expiresAt: opts.rememberUntil });
+  return s;
+}
+
+export async function completeLogin(req: FastifyRequest, reply: FastifyReply, a: App, oldSession: Session, username: string, opts: SignInOptions & { next?: string } = {}) {
+  await signIn(req, reply, a, oldSession, username, opts);
+  return reply.redirect(safeNext(a, opts.next), 303);
 }
 
 export const txContext = (ctx: PageContext) => ({
@@ -118,7 +132,16 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   const app = await loadApp(req.params.alias);
   if (!app) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias })), null;
   const base = `/a/${app.alias}`;
-  const session = await getSession(req, reply, app.id, base);
+  let session = await getSession(req, reply, app.id, base);
+  // the session ended, but the browser was remembered: sign in again silently (a new token each time)
+  if (app.authentication !== 'none' && !session.username) {
+    const remembered = await useRemember(req, reply, app);
+    if (remembered)
+      session = await signIn(req, reply, app, session, remembered.username, {
+        extraRoles: remembered.roles, groups: remembered.groups, method: remembered.method,
+        remember: true, rememberUntil: remembered.expiresAt, detail: 'remember me',
+      });
+  }
   const langBefore = session.state.__LANG;
   const locale = await resolveLocale(req, app, session);
   if (session.state.__LANG !== langBefore) await saveState(session);
@@ -491,6 +514,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
                 <input type="hidden" name="next" value="${next}">
                 <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
                 <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
+                ${app.remember_me_days ? html`<label class="check"><input type="checkbox" name="remember" value="true"> ${t('login.remember', { days: app.remember_me_days })}</label>` : ''}
                 <button class="btn btn-hot">${t('login.submit')}</button>
               </form>`
             : providers.length ? '' : html`<p>${t('login.none')}</p>`}
@@ -573,7 +597,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       logActivity({ appId: a.id, username: r.username, event: 'password_expired', ip });
       return reply.type('text/html').send(expiredPage(a, locale, session, r.username, safeNext(a, next)));
     }
-    return completeLogin(req, reply, a, session, r.username, { next });
+    return completeLogin(req, reply, a, session, r.username, { next, remember: req.body?.remember === 'true' });
   });
 
   app.post('/a/:alias/password', async (req: Req, reply) => {
@@ -656,6 +680,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const session = await getSession(req, reply, a.id, base);
     if (req.body?.__csrf !== session.csrf_token) return reply.redirect(`${base}/${a.home_page}`, 303);
     if (session.username) logActivity({ appId: a.id, username: session.username, event: 'logout', ip: clientIp(req) });
+    await forgetRemember(req, reply, a);
     await destroySession(reply, session, base);
     return reply.redirect(`${base}/login`, 303);
   });

@@ -3,6 +3,7 @@ import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { appTx, runtime } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { baseLanguage, LANGUAGE_NAMES } from '../i18n.ts';
+import { forgetAllRemembered, rememberCookie, rememberedCount } from '../remember.ts';
 import { getSession, logActivity, saveState, takeFlash } from '../session.ts';
 import type { PageContext } from './context.ts';
 import { isTheme, matchLanguage, THEME_COOKIE } from './locale.ts';
@@ -24,6 +25,7 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
     [ctx.user],
   )) ?? {};
   const days = await passwordDaysLeft(ctx.user);
+  const devices = ctx.app.remember_me_days ? await rememberedCount(ctx.app.id, ctx.user) : 0;
   const hasPassword = !!acc.has_password;
   const flash = takeFlash(ctx.session);
   const csrf = html`<input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">`;
@@ -72,6 +74,12 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
               </form>`
             : html`<p class="muted">${t('account.sso_only')}</p>`}
         </div></section>
+        ${ctx.app.remember_me_days
+          ? html`<section class="region region-standard col-6"><header class="region-header"><h2>${t('account.devices')}</h2></header><div class="region-body">
+              <p class="muted u-mt0">${t('account.devices_help', { count: devices })}</p>
+              <form method="post" action="${ctx.base}/account/devices">${csrf}<button class="btn">${t('account.forget_devices')}</button></form>
+            </div></section>`
+          : ''}
       </div>
     </div>`;
   ctx.vis = { regions: new Set(), items: new Set(), editable: new Set(), buttons: new Map(), dynamicActions: new Set() };
@@ -109,6 +117,18 @@ export async function accountRoutes(app: FastifyInstance) {
     // the confirmation in the newly chosen language
     const again = await appWithLocale(req, ctx.app.alias, ctx.session);
     ctx.session.state.__FLASH = (again?.locale.t ?? ctx.locale.t)('account.saved');
+    await saveState(ctx.session);
+    return reply.redirect(`${ctx.base}/account`, 303);
+  });
+
+  app.post('/a/:alias/account/devices', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { pageNo: 'home' });
+    if (!ctx) return;
+    if (req.body?.__csrf !== ctx.session.csrf_token) return reply.redirect(`${ctx.base}/account`, 303);
+    await forgetAllRemembered(ctx.app.id, ctx.user);
+    reply.clearCookie(rememberCookie(ctx.app.id), { path: ctx.base });
+    logActivity({ appId: ctx.app.id, username: ctx.user, event: 'logout', ip: ctx.ip, detail: 'all remembered devices' });
+    ctx.session.state.__FLASH = ctx.locale.t('account.devices_forgotten');
     await saveState(ctx.session);
     return reply.redirect(`${ctx.base}/account`, 303);
   });
