@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-01
+
 ### Added
 - **More chart types** (APEX: stacked, combination, scatter and pie charts): `stacked` columns
   (negative values stack downwards), `combo` (the first series as columns, the others as lines),
