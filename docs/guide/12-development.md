@@ -34,7 +34,7 @@ src/
     engine.ts              form fetch, validations, processes, application processes
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
     regions.ts             region shell + chart/cards/dynamic dispatch, buttons
-    report.ts, grid.ts, charts.ts, calendar.ts, facets.ts, items.ts, links.ts
+    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, charts.ts, calendar.ts, facets.ts, items.ts, links.ts
     account.ts             My account (details, own password, preferences)
     locale.ts              language, theme, text messages and translations of a request
     format.ts              date masks
@@ -54,7 +54,7 @@ src/
     dataload.ts            SQL Workshop → Load Data
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: next run, Run now, run history
-    report-settings.ts     page designer: report settings form (columns, link, PDF)
+    report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
     region-settings.ts     page designer: settings forms for grid, chart, cards, calendar, facets
 public/
   app.css                  theme (light/dark, responsive)

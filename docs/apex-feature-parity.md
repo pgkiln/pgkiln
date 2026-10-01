@@ -7,14 +7,14 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-09-30 (pgapex 0.8.0: report control break, aggregates, highlights and saved reports; automations).
+Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 2 | 6 | 7 | 0 | Solid builder and wizards; no drag-and-drop, no team/AI tooling |
-| Regions | 6 | 5 | 6 | 0 | All everyday regions, reports with breaks, aggregates, highlights and saved reports; pivot and maps missing |
+| Regions | 6 | 5 | 6 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps missing |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
 | Security | 14 | 2 | 3 | 2 | On par or stricter; no LDAP/SAML, no "remember me" |
@@ -52,7 +52,7 @@ Last reviewed: 2026-09-30 (pgapex 0.8.0: report control break, aggregates, highl
 | APEX | pgapex | Notes |
 |---|---|---|
 | Classic report | ✅ | `report` with `interactive: false` |
-| Interactive report | 🟡 | Search, column filters, sort, rows per page, control break, aggregates (with subtotals), highlight, saved private and public reports, CSV, Excel (typed cells) and PDF download, print, reset, reflow on phones. **Missing:** group by, pivot, chart view, flashback, compute, row selection and maximum rows (26.1), natural-language control (26.1) |
+| Interactive report | 🟡 | Search, column filters, sort, rows per page, control break, aggregates (with subtotals), highlight, saved private and public reports, computed columns, group by, pivot, chart view, row selection into a page item, CSV, Excel (typed cells) and PDF download, print, reset, reflow on phones. **Missing:** flashback, maximum rows (26.1), natural-language control (26.1), selection across pages |
 | Interactive grid | 🟡 | Inline edit, add and delete rows, lists of values, required columns, per-row errors, all-or-nothing save, signed row keys, search and paging. **Missing:** copy/paste (26.1), column reorder/resize/freeze, master-detail, aggregates, row actions menu, saved reports |
 | Form (automatic row processing) | ✅ | Fetch, insert, update, delete, in a page or a modal dialog. Detects rows deleted meanwhile, but no optimistic locking of concurrent edits yet |
 | Charts | 🟡 | Bar, column, line, area, donut; multi-series, tooltips, data table, palette checked for colour-vision deficiency. **Missing:** scatter, bubble, stacked, combination, gauge, Gantt, drill-down links |
@@ -231,16 +231,15 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Interactive report power features:** group by, pivot, chart view, computed columns, row selection.
-2. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
-3. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
-4. **LDAP and SAML** authentication; "remember me".
-5. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
-6. **Approvals / workflow** built on the metadata model.
-7. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-8. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-9. **Template components and plug-ins.**
-10. **AI features.**
+1. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
+2. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
+3. **LDAP and SAML** authentication; "remember me".
+4. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
+5. **Approvals / workflow** built on the metadata model.
+6. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+7. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+8. **Template components and plug-ins.**
+9. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

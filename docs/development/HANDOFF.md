@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–10 are merged into `main` and released as **v0.8.0** (migrations 001–015 are released: add 016+). Sprint 11 is in progress on `sprint-11`.
+Last updated: 2026-10-01. Sprints 3–10 are merged into `main` and released as **v0.8.0** (migrations 001–015 are released: add 016+). Sprint 11 is merged into `main`, not yet released.
 
 ## Project in one paragraph
 
@@ -42,7 +42,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 10, released as **v0.8.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0; 0.3.0–0.5.0 were never tagged). Migrations 001–015 are released |
-| `sprint-11` | In progress (see Sprint 11 below), pushed; not merged yet |
+| `sprint-11` | Merged into `main` (not released/tagged yet); can be deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
 Older sprint branches were merged and deleted.
@@ -345,6 +345,22 @@ pivot, chart view, computed columns, row selection), stricter CSP, builder quali
    `report-settings.ts`. `test/region-settings.test.ts` (9); e2e covers each region type's designer page.
    Docs: chapter 3, chapter 12 code map, parity matrix (roadmap item removed), CHANGELOG.
 
-Verified: `npm test` 171/171, `npm run test:e2e` 20/20.
+2. **IR power features: done.** `src/runtime/compute.ts` (tokenizer + recursive-descent parser for
+   computed column expressions → SQL with quoted identifiers, literals, whitelisted functions;
+   `/` is numeric with `nullif(…, 0)`), `src/runtime/report-views.ts` (group by, pivot via
+   `fn(case when … then value end)`, chart view through `renderChartBody`). `report.ts`: new state
+   `r<id>_c` (name|expr), `_v` (view), `_g`/`_ga`, `_pv`, `_ch`; form fields `_cn/_ce`, `_gb1-3/_gbf/_gbc`,
+   `_pr/_pp/_pf/_pc`, `_ck/_cl/_cf/_cv` are folded in `normaliseReportParams()`; `filtered()` adds
+   computed columns (`withComputations`) and returns a name → type map. Row selection: region config
+   `selection {column, item}`, `selectionOf()`; `computeVisibility()` makes that item editable and
+   `applyPostedItems()` joins its values with ':'. Select-all JS in `public/app.js`; on phones the
+   header cell stays visible. Report settings form has a Row selection fieldset.
+   Tests: `test/report-views.test.ts` (12), sprint-11 block in `security.test.ts` (3), report settings
+   (+1), e2e covers compute/group/pivot/chart/selection at all viewports. `Browser` in
+   `test/helpers.ts` can post arrays (repeated fields). Docs: chapter 4 (computed columns, row
+   selection), chapter 3, 12, parity, CHANGELOG.
 
-Next: IR power features (roadmap item 1).
+Not released yet (no tag): CHANGELOG entries are under [Unreleased].
+
+Next on the roadmap: stricter CSP (inline `style` on chart bars), builder quality (top SQL, plpgsql_check,
+search / where used), LDAP/SAML.
