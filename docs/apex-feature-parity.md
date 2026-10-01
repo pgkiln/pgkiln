@@ -65,7 +65,7 @@ Last reviewed: 2026-10-01 (pgapex 0.14.0: stacked, combo, scatter and pie charts
 | Navigation menu (side or top) | ✅ | Collapsible side menu or top bar; a drawer on tablets and phones |
 | Region display selector, tabs | ❌ | |
 | Tree | ✅ | `tree` region from id / parent id / label rows, with icons, links and the first levels open; works without JavaScript |
-| Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, configurable tile server. **Missing:** vector tiles, heat maps, bounding-box filtering of a report |
+| Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, heat maps (weighted), filtering a report by the visible map area (bounding box), configurable tile server. **Missing:** vector tiles, marker clustering, several layers per map, spatial queries on the server (PostGIS operators) |
 | Timeline, comments, media list, avatar template components | ❌ | Cards cover simple cases |
 | Template components and template directives | ❌ | `dynamic` regions can produce any HTML from SQL in the meantime |
 
@@ -81,7 +81,7 @@ Last reviewed: 2026-10-01 (pgapex 0.14.0: stacked, combo, scatter and pie charts
 | E-mail, phone, URL, colour picker | ✅ | Typed inputs |
 | Read-only condition, required, help text, default | ✅ | |
 | BOOLEAN session state (26.1) | 🟡 | Stored as `true` / `false` text, which PostgreSQL casts to boolean; boolean columns map to switches |
-| File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), **several files per item** (one row per file in a child table, or a list of temporary files), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** drag-and-drop/paste, object storage, image cropping |
+| File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), **several files per item** (one row per file in a child table, or a list of temporary files), drag-and-drop and paste (26.1), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** object storage, image cropping |
 | Rich text / markdown editor | ❌ | |
 | Star rating, QR code, combobox (tags), date range | ❌ | |
 | Password reveal toggle (24.2) | ❌ | |
@@ -232,11 +232,10 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. File drag-and-drop and paste; map extras (heat maps, report filtering by map area).
-2. **Workflow:** parallel branches and versions.
-3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-4. **Template components and plug-ins.**
-5. **AI features.**
+1. **Workflow:** parallel branches and versions.
+2. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+3. **Template components and plug-ins.**
+4. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),
