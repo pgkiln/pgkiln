@@ -205,6 +205,37 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('several files can be chosen in the dialog form and are listed after saving', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      const open = async () => {
+        await page.goto(`${base}/a/hr/2`);
+        await page.locator('table.report a, .report-reflow a').filter({ hasText: '7934' }).first().click();
+        const frame = page.frameLocator('#t-dialog iframe');
+        await frame.locator('#P3_DOCUMENTS').waitFor();
+        return frame;
+      };
+      try {
+        let frame = await open();
+        await frame.locator('#P3_DOCUMENTS').setInputFiles([
+          { name: 'contract.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n') },
+          { name: 'a-rather-long-file-name-for-a-certificate-of-employment-2026.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n') },
+        ]);
+        await frame.locator('button.btn[value="SAVE"]').click();
+        await page.locator('#t-dialog iframe').waitFor({ state: 'detached' }).catch(() => {});
+        frame = await open();
+        assert.equal(await frame.locator('.file-list li').count(), 2);
+        const inner = page.frames().find((f) => f.url().includes('/a/hr/3'))!;
+        const wide = await inner.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+        assert.equal(wide, false, 'the file list fits the dialog');
+        await frame.locator('#P3_DOCUMENTS').scrollIntoViewIfNeeded();
+        if (shots) await page.screenshot({ path: `test-results/${vp}-app-dialog-files.png` });
+      } finally {
+        await owner.query(`delete from hr.emp_document where empno = 7934`);
+        await page.context().close();
+      }
+    });
+
     test('builder pages fit the screen', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');

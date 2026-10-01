@@ -4,7 +4,7 @@ import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
-import { canPreview, fileInfo, fileUrl, formatSize } from './files.ts';
+import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, maxFiles, removals } from './files.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -199,7 +199,41 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
  * A file item: the stored (or just uploaded) file with a preview for images,
  * a remove option, and the file input.
  */
+/** The <input type="file"> of a file item, with its accept, capture and max_px attributes. */
+function fileInput(item: Item, aria: Raw) {
+  const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number };
+  // capture: open the camera on phones ("environment" = the back camera); max_px: photos are made smaller before upload (app.js)
+  const capture = conf.capture === 'user' || conf.capture === 'environment' ? raw(` capture="${conf.capture}"`) : '';
+  const maxPx = Number(conf.max_px) >= 200 && Number(conf.max_px) <= 8000 ? raw(` data-max-px="${Math.round(Number(conf.max_px))}"`) : '';
+  const multiple = isMultiple(item) ? raw(' multiple') : '';
+  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx}${aria}>`;
+}
+
+/** A multiple file item: its files (stored and new), each with a remove box, and the file input. */
+async function fileListControl(ctx: PageContext, item: Item, editable: boolean, aria: Raw) {
+  const t = ctx.locale.t;
+  let files;
+  try {
+    files = await fileList(ctx, item);
+  } catch (e) {
+    return html`<small class="error">${await publicError(ctx, e, `files of ${item.name}`)}</small>`;
+  }
+  const ticked = new Set(removals(ctx, item));
+  const list = files.length
+    ? html`<ul class="file-list">${files.map(
+        (f) => html`<li>
+          ${canPreview(f) ? html`<img class="file-thumb" src="${fileUrl(ctx, item, f, true)}" alt="">` : ''}
+          <span><a href="${fileUrl(ctx, item, f)}" download>${f.filename}</a> <small class="help">${formatSize(f.size)}${f.pending ? ` · ${t('file.new')}` : ''}</small></span>
+          ${editable ? html`<label class="check"><input type="checkbox" name="${item.name}__REMOVE" value="${f.key}"${ticked.has(f.key) ? raw(' checked') : ''}> ${t('file.remove')}</label>` : ''}
+        </li>`,
+      )}</ul>`
+    : '';
+  if (!editable) return html`<div class="display-value" id="${item.name}">${list || t('file.none')}</div>`;
+  return html`${list}${fileInput(item, aria)}<small class="help">${t('file.max_files', { max: String(maxFiles(item)) })}</small>`;
+}
+
 async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria: Raw) {
+  if (isMultiple(item)) return fileListControl(ctx, item, editable, aria);
   const t = ctx.locale.t;
   const id = item.name;
   let f;
@@ -216,11 +250,7 @@ async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria
       </div>`
     : '';
   if (!editable) return html`<div class="display-value" id="${id}">${current || t('file.none')}</div>`;
-  const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number };
-  // capture: open the camera on phones ("environment" = the back camera); max_px: photos are made smaller before upload (app.js)
-  const capture = conf.capture === 'user' || conf.capture === 'environment' ? raw(` capture="${conf.capture}"`) : '';
-  const maxPx = Number(conf.max_px) >= 200 && Number(conf.max_px) <= 8000 ? raw(` data-max-px="${Math.round(Number(conf.max_px))}"`) : '';
-  return html`${current}<input type="file" id="${id}" name="${id}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${capture}${maxPx}${aria}>`;
+  return html`${current}${fileInput(item, aria)}`;
 }
 
 export async function renderItems(ctx: PageContext, items: Item[], hidden: Set<string> = new Set()) {

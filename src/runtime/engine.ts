@@ -4,7 +4,7 @@ import { savepoint, type Client } from '../db.ts';
 import type { Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
-import { formRegion, isTempId, REMOVE } from './files.ts';
+import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, tempIds } from './files.ts';
 import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
@@ -107,7 +107,10 @@ export async function validate(ctx: PageContext) {
     if (!i.required || !vis.editable.has(i.name)) continue;
     let missing = (state[i.name] ?? null) === null;
     // a file item keeps the stored file unless a new one is uploaded
-    if (i.type === 'file') {
+    if (isMultiple(i)) {
+      const remove = new Set(removals(ctx, i));
+      missing = !tempIds(state[i.name]).length && !(await storedFiles(ctx, i)).some((f) => !remove.has(f.key));
+    } else if (i.type === 'file') {
       const r = formRegion(ctx, i);
       missing = state[i.name] === REMOVE || (missing && !(r && (await storedFileExists(ctx, r, i.source_column!))));
     }
@@ -162,9 +165,11 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   const pk = state[r.pk_item] ?? null;
   // Columns written: items the user may see and that are not read-only
   // (hidden non-key items carry server-set values and are included too).
+  // (a multiple file item's source column is in its child table: saveFileLists)
   const columns = formItems(ctx, r).filter(
     (i) =>
       i.source_column !== r.pk_column &&
+      !isMultiple(i) &&
       i.type !== 'display' &&
       ctx.vis!.items.has(i.name) &&
       (i.type === 'hidden' || ctx.vis!.editable.has(i.name)),
@@ -206,6 +211,7 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       : `insert into ${table} default values returning ${pkCol}`;
     const res = await c.query({ text: sql, rowMode: 'array' });
     state[r.pk_item] = toState(res.rows[0][0]);
+    await saveFileLists(ctx, r, 'insert');
     await done();
     return p.success_message ?? ctx.locale.t('form.created');
   }
@@ -216,10 +222,12 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       const res = await c.query(`update ${table} set ${assignments.map(([col, v]) => `${col} = ${v}`).join(', ')} where ${pkCol} = ${literal(pk)}`);
       if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
     }
+    await saveFileLists(ctx, r, 'update');
     await done();
     return p.success_message ?? ctx.locale.t('form.saved');
   }
 
+  await saveFileLists(ctx, r, 'delete');
   const res = await c.query(`delete from ${table} where ${pkCol} = ${literal(pk)}`);
   if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
   clearPageItems(ctx);

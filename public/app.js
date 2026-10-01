@@ -637,29 +637,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // file items with data-max-px: photos are made smaller (JPEG) before they are uploaded
-  document.addEventListener('change', async (e) => {
-    const input = e.target;
-    if (!(input instanceof HTMLInputElement) || input.type !== 'file' || !input.dataset.maxPx || !input.files || !input.files[0]) return;
-    const file = input.files[0];
-    const max = Number(input.dataset.maxPx);
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || !window.createImageBitmap || !window.DataTransfer) return;
+  // file items with data-max-px: photos are made smaller (JPEG) before they are uploaded (every file of a multiple item)
+  async function smaller(file, max) {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
     try {
       const img = await createImageBitmap(file);
       const scale = Math.min(1, max / Math.max(img.width, img.height));
-      if (scale >= 1) return;
+      if (scale >= 1) return file;
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
-      if (!blob || blob.size >= file.size) return;
-      const dt = new DataTransfer();
-      dt.items.add(new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }));
-      input.files = dt.files;
+      return blob && blob.size < file.size ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
     } catch {
-      // keep the original
+      return file; // keep the original
     }
+  }
+  document.addEventListener('change', async (e) => {
+    const input = e.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'file' || !input.dataset.maxPx || !input.files || !input.files[0]) return;
+    if (!window.createImageBitmap || !window.DataTransfer) return;
+    const max = Number(input.dataset.maxPx);
+    const files = [...input.files];
+    const out = await Promise.all(files.map((f) => smaller(f, max)));
+    if (out.every((f, i) => f === files[i])) return;
+    const dt = new DataTransfer();
+    for (const f of out) dt.items.add(f);
+    input.files = dt.files;
   });
 })();
 

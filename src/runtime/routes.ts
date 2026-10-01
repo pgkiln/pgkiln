@@ -312,11 +312,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- submit page
   app.post('/a/:alias/:page', async (req: Req, reply) => {
     // a page with file items posts multipart/form-data
-    let files = new Map<string, Upload>();
+    let files = new Map<string, Upload[]>();
     if (req.isMultipart()) {
       const parsed = await readMultipart(req);
       req.body = parsed.body as Body;
-      files = parsed.files;
+      files = parsed.lists;
     }
     const ctx = await loadContext(req, reply);
     if (!ctx) return;
