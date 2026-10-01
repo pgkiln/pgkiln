@@ -43,7 +43,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | Everything up to sprint 10, released as **v0.8.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0; 0.3.0–0.5.0 were never tagged). Migrations 001–015 are released |
 | `sprint-11` | Merged into `main` (not released/tagged yet); can be deleted |
-| `sprint-12` | CSP without inline styles (see Sprint 12), pushed; not merged yet |
+| `sprint-12` | Merged into `main` (not released yet); can be deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
 Older sprint branches were merged and deleted.
