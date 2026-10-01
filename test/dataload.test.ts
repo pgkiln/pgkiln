@@ -69,6 +69,18 @@ describe('parsing', () => {
     assert.deepEqual(sheet.rows[0], ['9101', 'XL ONE', 'CLERK', '2024-01-01', '1100.5', '20']);
   });
 
+  test('JSON: arrays of objects, a wrapping object, JSON Lines; nested values as JSON text', async () => {
+    const arr = await parseFile('x.json', Buffer.from('[{"empno": 1, "ename": "A", "tags": ["x"]}, {"ename": "B", "active": true, "empno": null}]'));
+    assert.deepEqual(arr, { format: 'json', headers: ['empno', 'ename', 'tags', 'active'], rows: [['1', 'A', '["x"]', null], [null, 'B', null, 'true']] });
+    const wrapped = await parseFile('data.txt', Buffer.from('\uFEFF {"employees": [{"a": 1}], "count": 1}'));
+    assert.deepEqual(wrapped.rows, [['1']], 'detected by content, BOM allowed');
+    const lines = await parseFile('x.jsonl', Buffer.from('{"a": 1}\n{"a": 2, "b": {"c": 3}}\n'));
+    assert.deepEqual(lines, { format: 'json', headers: ['a', 'b'], rows: [['1', null], ['2', '{"c":3}']] });
+    await assert.rejects(parseFile('x.json', Buffer.from('[1, 2]')), /must be an object/);
+    await assert.rejects(parseFile('x.json', Buffer.from('[]')), /no records/);
+    await assert.rejects(parseFile('x.json', Buffer.from('{"a": ')), /not valid JSON/);
+  });
+
   test('binary files that are not Excel are refused', async () => {
     await assert.rejects(parseFile('x.csv', Buffer.from([0x00, 0x01, 0x02])), /not a text/);
     await assert.rejects(parseFile('x.xlsx', Buffer.from('PK\x03\x04garbage')), /not a readable Excel/);

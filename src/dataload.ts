@@ -2,14 +2,14 @@ import pg from 'pg';
 import { readSheet } from 'read-excel-file/node';
 import { savepoint, type Client } from './db.ts';
 
-// Data loading: CSV/TSV and XLSX files into a table. Used by the SQL
+// Data loading: CSV/TSV, XLSX and JSON files into a table. Used by the SQL
 // Workshop (as the owner) and by the data_load page process (as the
 // application's role, so row level security and grants apply).
 
 const ident = pg.escapeIdentifier;
 
 export interface Sheet {
-  format: 'csv' | 'xlsx';
+  format: 'csv' | 'xlsx' | 'json';
   delimiter?: string;
   headers: string[];
   rows: (string | null)[][];
@@ -101,11 +101,50 @@ function cellText(v: unknown): string | null {
   return String(v);
 }
 
+/**
+ * JSON: an array of objects, an object with one such array (e.g. {"employees": [...]}),
+ * or JSON Lines (one object per line). The columns are the keys, in the order they
+ * first appear; nested objects and arrays load as JSON text (for json/jsonb columns).
+ */
+export function parseJson(text: string): Sheet {
+  let records: unknown;
+  const trimmed = text.trim();
+  try {
+    records = JSON.parse(trimmed);
+  } catch (e) {
+    // JSON Lines
+    const lines = trimmed.split(/\r?\n/).filter((l) => l.trim());
+    try {
+      records = lines.map((l) => JSON.parse(l));
+    } catch {
+      throw new LoadError(`This is not valid JSON: ${(e as Error).message}`);
+    }
+  }
+  if (records && typeof records === 'object' && !Array.isArray(records)) {
+    const arrays = Object.values(records).filter(Array.isArray);
+    records = arrays.length === 1 ? arrays[0] : [records];
+  }
+  if (!Array.isArray(records) || !records.length) throw new LoadError('The JSON holds no records (expected an array of objects).');
+  if (records.length > MAX_ROWS) throw new LoadError(`The file has ${records.length} rows; at most ${MAX_ROWS} can be loaded at once.`);
+  const headers: string[] = [];
+  const seen = new Set<string>();
+  for (const r of records) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw new LoadError('Every JSON record must be an object ({"column": value, …}).');
+    for (const k of Object.keys(r)) if (!seen.has(k)) (seen.add(k), headers.push(k));
+  }
+  const text_ = (v: unknown) => (v === null || v === undefined || v === '' ? null : typeof v === 'object' ? JSON.stringify(v) : String(v));
+  return { format: 'json', headers, rows: records.map((r) => headers.map((h) => text_((r as Record<string, unknown>)[h]))) };
+}
+
 /** Parse an uploaded file; the first row holds the column headings unless `headers` is false. */
 export async function parseFile(filename: string, data: Buffer, { headers = true } = {}): Promise<Sheet> {
   let format: Sheet['format'] = 'csv';
   let delimiter: string | undefined;
   let table: (string | null)[][];
+  if (/\.(json|jsonl|ndjson)$/i.test(filename) || /^\s*[[{]/.test(decode(data.subarray(0, 64)).replace(/^\uFEFF/, ''))) {
+    if (data.includes(0)) throw new LoadError('This is not a text (JSON) file.');
+    return parseJson(decode(data).replace(/^\uFEFF/, ''));
+  }
   if (/\.xlsx$/i.test(filename) || isZip(data)) {
     format = 'xlsx';
     try {
