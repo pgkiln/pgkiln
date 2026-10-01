@@ -49,7 +49,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 16, released as **v0.10.0** (tags: v0.2.0, v0.6.0–v0.10.0; 0.3.0–0.5.0 were never tagged). Migrations 001–021 are released |
-| `sprint-17` | Workflows (see Sprint 17); merged when done |
+| `sprint-17` | Merged into `main` (not released yet) |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
