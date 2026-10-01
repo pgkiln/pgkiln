@@ -27,6 +27,7 @@ import { accountRoutes } from './runtime/account.ts';
 import { taskRoutes } from './runtime/tasks.ts';
 import { workflowRoutes } from './runtime/workflows.ts';
 import { pwaRoutes } from './runtime/pwa.ts';
+import { restRoutes } from './runtime/rest.ts';
 import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
@@ -53,6 +54,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(taskRoutes);
   await app.register(workflowRoutes);
   await app.register(pwaRoutes);
+  await app.register(restRoutes);
   await app.register(builderRoutes);
   await app.register(sharedRoutes);
   await app.register(designerRoutes);

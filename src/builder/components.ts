@@ -7,6 +7,7 @@ import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems } from '../workflow.ts';
+import { handlerProblems } from '../runtime/rest.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -255,6 +256,33 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'code', label: 'Code (SQL)', kind: 'code', wide: true, help: 'Returned columns named like application items set them, e.g. select id as ai_customer_id from sales.customer where lower(username) = lower(:APP_USER)' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
+    ],
+  },
+  rest_module: {
+    table: 'meta.rest_module',
+    scope: 'app',
+    label: 'REST module',
+    plural: 'REST modules',
+    icon: 'code',
+    summary: (d) => d.name,
+    defaults: {
+      enabled: true,
+      handlers: [
+        { method: 'GET', path: 'items', type: 'collection', source: 'select 1 as id, current_user as db_role' },
+        { method: 'GET', path: 'items/:id', type: 'item', source: 'select :ID as id' },
+      ],
+    },
+    validate: (v) => {
+      const problems = handlerProblems(v.handlers);
+      return problems.length ? problems.join(' ') : null;
+    },
+    fields: [
+      { name: 'name', label: 'Name (in the URL)', kind: 'text', group: 'Identification', help: 'lowercase; served under /a/<alias>/rest/<name>/' },
+      { name: 'title', label: 'Title', kind: 'text', group: 'Identification', help: 'The title of the OpenAPI description.' },
+      { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
+      { name: 'enabled', label: 'Enabled', kind: 'bool', group: 'Identification' },
+      { name: 'handlers', label: 'Handlers (JSON)', kind: 'json', wide: true, group: 'Handlers',
+        help: '[{"method": "GET", "path": "orders", "type": "collection", "source": "select id, customer, total from sales.orders order by id"}, {"method": "GET", "path": "orders/:id", "type": "item", "source": "select * from sales.orders where id = :ID::int"}, {"method": "POST", "path": "orders", "type": "sql", "source": "select sales.create_order(:CUSTOMER, :TOTAL::numeric) as id", "roles": ["sales"]}] · type: collection (paged: ?limit, ?offset), item (404 when no row), sql (the first row of the last statement). Binds: path parameters, query parameters and JSON body fields, upper case; :BODY is the whole body. "auth": "public" for endpoints without a token. The SQL runs as the application\'s role, with meta.app_user() the caller.' },
     ],
   },
   workflow_definition: {

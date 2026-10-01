@@ -122,13 +122,13 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
         <p class="muted u-mt0">PostgREST runs next to pgapex and serves the <code>${API_SCHEMA}</code> schema over HTTP. Requests carry a JWT whose <code>role</code> claim is this application’s API role; row level security uses the same <code>meta.app_user()</code> and <code>meta.has_role()</code> as the web pages.</p>
         <form method="post" action="${BASE}/apps/${a.id}/api">${csrf(s)}
           <div class="form-grid">
-            ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'Grant it only the api schema’s views and functions, and grant it to pgapex_authenticator. Empty disables tokens for this app.' })}
+            ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'For PostgREST: grant it only the api schema’s views and functions, and grant it to pgapex_authenticator. Empty: tokens work for the REST modules pgapex serves (Shared Components → REST modules) only.' })}
           </div>
           <div class="buttons"><button class="btn btn-hot">Save</button></div>
         </form>
         <ul class="checklist u-mt1">
           ${check(status.ok, html`PostgREST at <code>${url}</code>: ${status.ok ? status.detail : html`<b>not reachable</b> (${status.detail})`}`)}
-          ${role ? check(!problem, problem ?? html`<code>${role}</code> is a dedicated role`) : check(false, 'No API role: tokens can’t be issued')}
+          ${role ? check(!problem, problem ?? html`<code>${role}</code> is a dedicated role`) : check(false, 'No API role: tokens are for the REST modules pgapex serves only')}
           ${role && !problem ? check(!!granted?.ok, granted?.ok ? html`pgapex_authenticator may switch to <code>${role}</code>` : html`<b>run</b> <code>grant ${role} to pgapex_authenticator;</code>`) : ''}
         </ul>`)}
       ${region('Issue a token', html`
@@ -138,12 +138,12 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
             ${input('username', 'Account', issued?.username ?? '', { required: true, auto: 'off' })}
             ${input('hours', 'Valid for (hours)', issued?.expiresInHours ?? 8, { type: 'number', help: `1 to ${MAX_TOKEN_HOURS}.` })}
           </div>
-          <div class="buttons"><button class="btn btn-hot"${role && !problem ? '' : raw(' disabled')}>Issue token</button></div>
+          <div class="buttons"><button class="btn btn-hot"${!problem ? '' : raw(' disabled')}>Issue token</button></div>
         </form>
         ${issued ? html`<div class="field u-mt1" data-wide><label class="label" for="api_token">Token for ${issued.username} (shown once, valid ${issued.expiresInHours} h)</label>
           <textarea id="api_token" class="code" rows="4" readonly spellcheck="false">${issued.token}</textarea></div>` : ''}`)}
     </div>
-    ${await clientsRegion(s, a, secret, !!role && !problem)}
+    ${await clientsRegion(s, a, secret, !problem)}
     ${region('Endpoints', eps.length
       ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Path</th><th>Kind</th><th>Methods for ${role}</th></tr></thead>
           <tbody>${eps.map((e) => html`<tr><td><code>/${e.kind === 'function' ? 'rpc/' : ''}${e.name}</code></td><td>${e.kind}</td><td>${e.methods || html`<span class="muted">none</span>`}</td></tr>`)}</tbody></table></div>`
@@ -172,7 +172,7 @@ export async function apiRoutes(app: FastifyInstance) {
       const problem = role ? await apiRoleProblem(role) : null;
       if (problem) throw new Error(problem);
       await owner.query('update meta.app set api_role = $2, updated_at = now() where id = $1', [req.params.id, role]);
-      flash(s, role ? `API role set to ${role}.` : 'API role removed; new tokens can’t be issued.');
+      flash(s, role ? `API role set to ${role}.` : 'API role removed; new tokens work for the REST modules pgapex serves only.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }

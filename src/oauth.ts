@@ -33,11 +33,11 @@ export async function clientToken(clientId: string, clientSecret: string) {
   const hash = sha256(clientSecret);
   const valid = !!c && c.active && (same(c.secret_hash, hash) || (c.previous_valid && same(c.previous_secret_hash, hash)));
   if (!valid) throw new OAuthError('invalid_client', 'Unknown client, wrong secret, or the client was revoked.', 401);
-  if (!c.api_role) throw new OAuthError('invalid_client', 'The application has no API database role.', 401);
-  const problem = await apiRoleProblem(c.api_role);
+  // without an API role the token is for pgapex's own REST modules only
+  const problem = c.api_role ? await apiRoleProblem(c.api_role) : null;
   if (problem) throw new OAuthError('invalid_client', problem, 401);
   await owner.query('update meta.api_client set last_used_at = now() where id = $1', [c.id]);
-  const token = await new SignJWT({ role: c.api_role, app: c.alias, app_user: `client:${c.name}`, client_id: clientId })
+  const token = await new SignJWT({ ...(c.api_role ? { role: c.api_role } : {}), app: c.alias, app_user: `client:${c.name}`, client_id: clientId })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setIssuedAt()
     .setJti(randomUUID())

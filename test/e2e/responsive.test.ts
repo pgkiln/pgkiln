@@ -222,6 +222,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         search: `/builder/apps/${appId}/search?q=empno`,
         advisor: `/builder/apps/${appId}/advisor`,
         top_sql: `/builder/apps/${appId}/top-sql`,
+        rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,
         document: `/builder/apps/${appId}/shared?c=document_template-${(await owner.one(`select id from meta.document_template where app_id = $1 and name = 'EMPLOYEE_SHEET'`, [appId])).id}`,

@@ -88,10 +88,10 @@ a replacement:
 | ORDS feature | PostgreSQL option |
 |---|---|
 | AutoREST for tables and views | PostgREST (automatic for an exposed schema) |
-| Hand-written handlers (GET/POST with SQL or PL/SQL) | PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
+| Hand-written handlers (GET/POST with SQL or PL/SQL) | **REST modules** in the builder: method, path with parameters and SQL, served by pgapex ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)); or PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
 | OAuth2 client credentials (`oauth.create_client`, `/oauth/token`) | OAuth clients: `meta.oauth_create_client()` or Builder → REST API → OAuth clients, and `POST /oauth/token` on pgapex ([chapter 13](13-rest-api.md#oauth-clients-client-credentials)). Or tokens from your identity provider |
 | REST-enabled SQL | Not provided by PostgREST (and rarely desirable) |
-| OpenAPI/Swagger | Built into PostgREST |
+| OpenAPI/Swagger | Generated for every REST module (`…/openapi.json`) and built into PostgREST |
 
 pgapex integrates with it: `meta.app_user()` and `meta.has_role()` understand PostgREST's JWT
 claims, so **one set of RLS policies** protects the UI and the API, and each app has an API role,

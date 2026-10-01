@@ -47,6 +47,7 @@ src/
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
+    rest.ts                REST modules: handler checks, matching, bearer tokens, execution, OpenAPI
     tasks.ts               task list region and task actions (approvals)
     workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit)
@@ -72,6 +73,7 @@ src/
     ldap.ts                Users → LDAP directories
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
+    rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow diagram and instance counts (Shared Components)
 public/
   app.css                  theme (light/dark, responsive)

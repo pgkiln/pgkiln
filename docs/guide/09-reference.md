@@ -148,6 +148,7 @@ needed and grants access; deleting revokes access.
 | `saml_request` | SAML AuthnRequest IDs awaiting their response (used once) | no |
 | `ldap_directory` | LDAP directories: URL, service account (write-only password), user and group search | no |
 | `task_definition` | Approval and action task definitions per app | yes (read) |
+| `rest_module` | REST modules per app: `name`, `title`, `handlers` (JSON) | yes (read) |
 | `workflow_definition` | Workflow definitions per app (steps as JSON) | yes (read) |
 | `workflow`, `workflow_event` | Workflow instances (state, current step, variables, a copy of the steps) and their history; reached through `meta.workflows` / `meta.workflow_events` and the functions | no |
 | `task`, `task_event` | Tasks and their history; reached only through `meta.tasks`, `meta.task_events` and the `meta.*_task` functions | no |
@@ -203,6 +204,7 @@ Usable in navigation entries and cards (`icon` column):
 | `GET /sso/callback/:provider` | OpenID Connect redirect URI |
 | `POST /sso/saml/:provider`, `POST /sso/saml/:provider/finish` | SAML assertion consumer service (and the same-site step after it) |
 | `GET /sso/saml/:provider/metadata` | SAML service provider metadata |
+| `GET/POST/PUT/PATCH/DELETE /a/:alias/rest/:module/…`, `GET …/openapi.json` | REST module endpoints (bearer token) and their OpenAPI description |
 | `POST /a/:alias/workflows/:id` | Workflow console action (`terminate`, `retry`) |
 | `POST /a/:alias/tasks/:id` | A task list action (`claim`, `release`, `approve`, `reject`, `complete`, `delegate`, `cancel`, `comment`) |
 | `GET /a/:alias/manifest.webmanifest`, `/sw.js`, `/icon-192.png`, `/icon-512.png`, `/offline` | Progressive Web App files (only when the app has PWA on) |
