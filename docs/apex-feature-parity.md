@@ -55,7 +55,7 @@ Last reviewed: 2026-10-01 (pgapex 0.13.0: map and tree regions; 0.12.0: REST mod
 | Interactive report | 🟡 | Search, column filters, sort, rows per page, control break, aggregates (with subtotals), highlight, saved private and public reports, computed columns, group by, pivot, chart view, row selection into a page item, CSV, Excel (typed cells) and PDF download, print, reset, reflow on phones. **Missing:** flashback, maximum rows (26.1), natural-language control (26.1), selection across pages |
 | Interactive grid | 🟡 | Inline edit, add and delete rows, lists of values, required columns, per-row errors, all-or-nothing save, signed row keys, search and paging. **Missing:** copy/paste (26.1), column reorder/resize/freeze, master-detail, aggregates, row actions menu, saved reports |
 | Form (automatic row processing) | ✅ | Fetch, insert, update, delete, in a page or a modal dialog. Detects rows deleted meanwhile, but no optimistic locking of concurrent edits yet |
-| Charts | 🟡 | Bar, column, line, area, donut; multi-series, tooltips, data table, palette checked for colour-vision deficiency. **Missing:** scatter, bubble, stacked, combination, gauge, Gantt, drill-down links |
+| Charts | 🟡 | Bar, column, stacked, line, area, combination (columns + lines), scatter, donut, pie; multi-series, tooltips, data table, palette checked for colour-vision deficiency. **Missing:** bubble, gauge, Gantt, funnel, radar, drill-down links |
 | Cards and metric cards (26.1 metric card template) | ✅ | Cards from SQL, with a KPI "metric" style |
 | Calendar | 🟡 | Month view with links; agenda list on phones. **Missing:** week/day/list views, drag-and-drop, create on click |
 | Faceted search | 🟡 | Checkbox facets with live counts. **Missing:** range, search and star facets, facet charts, exclude option (26.1) |
@@ -232,7 +232,7 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. More chart types; several files per upload item, drag-and-drop; map extras (heat maps, report filtering by map area).
+1. Several files per upload item, drag-and-drop; map extras (heat maps, report filtering by map area).
 2. **Workflow:** parallel branches and versions.
 3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
 4. **Template components and plug-ins.**

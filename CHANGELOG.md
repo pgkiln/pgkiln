@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **More chart types** (APEX: stacked, combination, scatter and pie charts): `stacked` columns
+  (negative values stack downwards), `combo` (the first series as columns, the others as lines),
+  `scatter` (a numeric first column as the x axis) and `pie`, next to bar, column, line, area and
+  donut. The interactive report's chart view also offers pie. The HR example has an "Analytics"
+  page with one chart of each new kind.
+
 ## [0.13.0] - 2026-10-01
 
 ### Added

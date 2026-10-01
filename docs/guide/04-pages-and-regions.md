@@ -36,7 +36,7 @@ only when true) and `authz` (an authorization scheme).
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
-| [`chart`](#chart) | Bar, column, line, area or donut chart from a SELECT |
+| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, donut or pie chart from a SELECT |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month calendar of dated rows |
 | [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
@@ -81,8 +81,9 @@ Features for end users:
     minimums or maximums per group;
   - **pivot**: one column's values as columns (up to 30), with a function of a value column in
     the cells and a total per row, e.g. salary per department × job;
-  - **chart**: a bar, column, line, area or donut chart of a function per label column (up to 50
-    labels), with its data table;
+  - **chart**: a bar, column, line, area, donut or pie chart of a function per label column (up to
+    50 labels), with its data table. The chart view has one series, so the stacked, combo and
+    scatter kinds are only available in a chart region;
   - **saved reports**: save the current search, filters, sort, break, aggregates, highlights,
     computed columns and views under a name, and switch between saved reports (below);
   - **rows per page**, **download CSV / Excel / PDF**, **print**, **reset**.
@@ -243,14 +244,38 @@ select d.dname as department,
  group by d.dname order by 1
 ```
 
-Attributes: `{"kind": "bar" | "column" | "line" | "area" | "donut"}` (default `bar`).
+Attributes: `{"kind": "bar" | "column" | "stacked" | "line" | "area" | "combo" | "scatter" | "donut" | "pie"}`
+(default `bar`).
 
 | Kind | Best for | Notes |
 |---|---|---|
 | `bar` | ranking categories with long labels | horizontal bars, values at the tips |
 | `column` | comparing a few categories or series | values on the caps for ≤ 12 categories |
+| `stacked` | parts of a total per category | one column per label with the series stacked on top of each other; negative values stack downwards |
 | `line` / `area` | change over time | label column should be ordered (dates, years) |
-| `donut` | parts of a whole (≤ 6 slices) | uses the first series; more than 6 slices fold into "Other" |
+| `combo` | two measures with one shared label | the **first series is drawn as columns**, the other series as lines over them |
+| `scatter` | the relation between two numbers | the **first column must be numeric** (the x axis); each further column is a y value. Rows with an empty or non-numeric x are left out. The axes don't have to start at zero |
+| `donut` / `pie` | parts of a whole (≤ 6 slices) | uses the first series; more than 6 slices fold into "Other"; zero and negative values are left out. The donut shows the total in the middle |
+
+A stacked chart, a combination of columns and a line, and a scatter plot:
+
+```sql
+-- stacked: one column per department, a segment per job
+select d.dname as department,
+       count(e.empno) filter (where e.job = 'CLERK')    as "Clerk",
+       count(e.empno) filter (where e.job = 'SALESMAN') as "Salesman",
+       count(e.empno) filter (where e.job = 'ANALYST')  as "Analyst"
+  from hr.dept d left join hr.emp e using (deptno)
+ group by d.dname order by 1
+
+-- combo: the budget as columns, the average as a line
+select initcap(job) as job, sum(sal) as "Salary budget", round(avg(sal)) as "Average salary"
+  from hr.emp group by job order by 2 desc
+
+-- scatter: x = years of service, y = salary
+select extract(year from age(current_date, hiredate))::int as "Years of service", sal as "Salary"
+  from hr.emp where active order by 1
+```
 
 Up to 8 series; two or more get a legend. Every chart has hover/focus **tooltips** and a
 **Data table** toggle (the accessible alternative). Colours come from a palette checked for
