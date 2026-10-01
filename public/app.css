@@ -342,12 +342,24 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .hit { position: absolute; top: 0; bottom: 0; }
 .hit .guide { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px solid var(--chart-axis); display: none; }
 .hit:hover .guide { display: block; }
+/* stacked columns: one wider slot per label, segments divided by a hairline */
+.col-slot.stack { flex-basis: 32px; }
+.col.seg { border-radius: 0; box-shadow: inset 0 1px 0 var(--surface); }
+.col.seg.top { border-radius: 4px 4px 0 0; } .col.seg.neg { border-radius: 0 0 4px 4px; }
+/* combo: the lines sit over the columns but leave the hover to them */
+.chart-combo .chart-lines { pointer-events: none; }
+/* scatter: dots, and an x axis with its own ticks */
+.pt { position: absolute; width: 9px; height: 9px; margin: 0 0 -4.5px -4.5px; border-radius: 50%; background: var(--c); opacity: 0.85; box-shadow: 0 0 0 1px var(--surface); outline-offset: 2px; }
+.pt:hover, .pt:focus-visible { opacity: 1; transform: scale(1.4); }
+.chart-xs { position: relative; height: 1.5rem; margin: 0 0 0 2.6rem; font-size: 0.75rem; color: var(--muted); }
+.chart-xs span { position: absolute; top: 0.3rem; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* donut */
 .chart-donut { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; }
 .donut-figure { position: relative; width: min(200px, 60vw); aspect-ratio: 1; flex: none; }
 .donut-figure svg { width: 100%; height: 100%; transform: none; }
 .slice { fill: none; stroke: var(--c); stroke-width: 6; }
+.chart-pie .slice { stroke-width: 15.9155; }
 .donut-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
 .donut-center b { font-size: 1.4rem; line-height: 1.1; }
 .donut-center span { font-size: 0.78rem; color: var(--muted); }
