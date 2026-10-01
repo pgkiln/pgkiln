@@ -35,6 +35,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # services can't pass server options: load pg_stat_statements (Top SQL) with ALTER SYSTEM and a restart
+      - name: Load pg_stat_statements
+        run: |
+          psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = 'pg_stat_statements'"
+          docker restart ${{ job.services.postgres.id }}
+          for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U pgapex && break; sleep 1; done
       - run: npm run db:seed
       - run: npm test
 
