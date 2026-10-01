@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–20 are merged into `main` and released as **v0.13.0** (migrations 001–025 are released: add 026+).
+Last updated: 2026-10-01. Sprints 3–21 are merged into `main` and released as **v0.14.0** (migrations 001–025 are released: add 026+).
 
 ## Project in one paragraph
 
@@ -48,9 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 20, released as **v0.13.0** (tags: v0.2.0, v0.6.0–v0.13.0; 0.3.0–0.5.0 were never tagged). Migrations 001–025 are released |
-| `sprint-21` | **In progress** from `main` (v0.13.0): four new chart types done (WIP commit), docs/e2e/full test run and "several files per upload item" still to do; see "Sprint 21" below |
-| (sprint branches) | `sprint-17` … `sprint-20` were merged (v0.11.0–v0.13.0) and deleted |
+| `main` | Everything up to sprint 21, released as **v0.14.0** (tags: v0.2.0, v0.6.0–v0.14.0; 0.3.0–0.5.0 were never tagged). Migrations 001–025 are released |
+| (sprint branches) | `sprint-17` … `sprint-21` were merged (v0.11.0–v0.14.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -589,50 +588,38 @@ Verified: `npm test` 269/269, `npm run test:e2e` 30/30; upgrade from v0.12.0 in 
 Next on the roadmap: more chart types, several files per upload item, workflow parallel branches/versions,
 builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.
 
-## Sprint 21: more chart types, several files per upload (roadmap item 1, 2026-10-01): IN PROGRESS
+## Sprint 21: more chart types, several files per upload item (roadmap item 1, 2026-10-01)
 
-Branch `sprint-21` from `main` (v0.13.0).
+Branch `sprint-21` from `main` (v0.13.0). No migration (both features use jsonb config).
 
-### 1. Chart types: code done, docs and the full test run still open
+1. **Chart types** (`src/runtime/charts.ts`): `stacked` (negatives stack down), `combo` (first series as columns, the
+   others as lines through the slot centres, shared `lineLayer`), `scatter` (numeric first column = x; `niceScale(min, max,
+   zero = true)` got a third parameter), `pie` (`donut(…, pie)`). `REPORT_CHART_KINDS` (bar, column, line, area, donut, pie)
+   limits the interactive report's chart view; region charts take all `CHART_KINDS`. i18n `chart.*`, `CHART_LABELS` in
+   the builder, CSS. HR page **15 "Analytics"** (`hr_15_charts.sql`) has one of each.
+2. **Several files per upload item** (`src/runtime/files.ts`): config `multiple: true`, `max_files` (≤ `MAX_FILES` = 10, a
+   session keeps 20 temp files). `readMultipart` returns `lists` (all files per field) next to `files` (first per field,
+   used by the builder uploads); `applyUploads` takes the lists. The value is `:`-separated temp ids (`tempIds()`).
+   With `table` + `parent_column` (+ `key_column`, default `id`) in a form region (`childTable()`), `saveFileLists()`
+   runs from `formDml` after insert/update (insert one row per temp file, delete ticked keys **only where
+   parent_column = the record**) and before delete (all the record's files). `formDml` skips multiple items as columns.
+   Remove boxes post `<ITEM>__REMOVE` = child key or `temp:<id>` (`removals()`, request-scoped from `ctx.body`); a ticked
+   pending file is deleted at once. All-or-none per request: one refused file → none kept. Required = at least one
+   file left. Downloads: key = child key (signed), read as the app role. Render: `fileListControl` in `items.ts`
+   (`.file-list`, `.file-thumb`), `fileInput()` shared. `app.js` `max_px` now resizes every chosen file.
+   HR: `hr_16_documents.sql` (`hr.emp_document` with RLS: own/team/admin; managers/admins insert/delete) and
+   `P3_DOCUMENTS` (`wide`) on the employee form.
+3. Tests: `test/charts.test.ts`, `report-views`, `region-settings`; `test/files.test.ts` "several files per upload item"
+   (8); `test/security.test.ts` sprint-21 block (report chart kinds from the URL, chart labels escaped, multiple file
+   item: posted ids and remove boxes can't reach other sessions/records; its `Browser` now posts arrays as repeated
+   fields, `test/helpers.ts` `upload()` takes lists); e2e `responsive.test.ts` picks two files in the dialog at all
+   four sizes (page 15 was already covered by the all-pages loop).
+4. Docs: chapter 4 (chart kinds, query shapes), chapter 16 (several files), parity (Charts row, File browse row,
+   roadmap), SECURITY (remove boxes), CHANGELOG, builder item config help.
 
-Done (WIP commit "feat(charts): stacked, combo, scatter and pie charts"):
-- [x] `src/runtime/charts.ts`: `ChartKind`/`CHART_KINDS` now bar, column, **stacked**, line, area, **combo**, **scatter**, donut, **pie**.
-  - `stacked`: positives stack up, negatives down, scale from the per-label sums; one wider `.col-slot.stack` per label,
-    segments `.col.seg` (hairline divider); the outermost segment per side gets `top` / `neg` (rounded end).
-  - `combo`: first series as columns (`s1`), the others as lines through the slot centres `(i + 0.5) / n`.
-    The SVG/marker code moved out of `line()` into `lineLayer(series, firstSlot, n, x, y, scale, area)`, shared by both.
-  - `scatter(rows, fields, series)`: x = numeric label column (rows with a non-numeric/null x are left out; none left →
-    "needs a numeric first column"), each series = y; dots `.pt` (focusable, `data-tip`), own x-axis ticks in `.chart-xs`.
-    `niceScale(min, max, zero = true)` got a third parameter: scatter axes don't have to include zero; a single distinct
-    value is padded ±10% so the span is never 0.
-  - `pie`: `donut(labels, series, pie)`: r = 7.9577, lengths × 0.5, no gap, no centre total; CSS `.chart-pie .slice { stroke-width: 15.9155 }`.
-- [x] `REPORT_CHART_KINDS` (bar, column, line, area, donut, pie) used by the interactive report's chart view in
-  `src/runtime/report.ts` (parse, normalise, the kind `<select>`); region charts accept all of `CHART_KINDS`.
-- [x] i18n `chart.stacked|combo|scatter|pie` (en, nl); `CHART_LABELS` in `src/builder/region-settings.ts`; CSS in `public/app.css`
-  (charts section, after `.hit:hover .guide`, and the pie rule after `.slice`).
-- [x] HR example `examples/hr/hr_15_charts.sql`: page **15 "Analytics"** (nav entry seq 2, icon `chart`) with one chart of
-  each new kind + nl translations. Applied to the dev DB.
-- [x] Tests: new `test/charts.test.ts` (6 unit tests: every kind CSP-safe/escaped/data table/tooltips, stacked geometry,
-  combo, scatter, pie, niceScale); `test/report-views.test.ts` (pie allowed, stacked/combo/scatter rejected in the report);
-  `test/region-settings.test.ts` (new kinds kept). Those three files: 27/27 green.
-- [x] Checked by hand with Playwright at 390/768/1024(dark)/1440 on `/a/hr/15`: no horizontal overflow, no CSP violations,
-  rendering looks right (screenshots were in the session scratchpad, not committed).
+Verified: `npm test` 286/286 and `npm run test:e2e` 34/34 (dev DB); CI-style in a clean worktree against a throwaway
+`postgres:17` on port 5435 with only the workflow's env (+ `API_URL=http://127.0.0.1:1`): fresh install 283 + 3 skipped,
+and upgrade from v0.13.0 283 + 3 skipped. Released as **v0.14.0**.
 
-To do:
-- [ ] Run the **full** `npm test` and `npm run test:e2e` (not run yet this sprint).
-- [ ] e2e: add `/a/hr/15` to the pages checked at the four sizes in `test/e2e/responsive.test.ts` (overflow + CSP).
-- [ ] `test/security.test.ts`: a case that `ch=scatter|…` (and stacked/combo) on a report doesn't select the chart view
-  (the unit test covers `normaliseReportParams`; the convention wants the input path in security.test.ts too).
-- [ ] Docs: chapter 4 chart section (`docs/guide/04-pages-and-regions.md`: the query shape for each new kind, scatter's
-  numeric first column, combo = first series as columns, report chart view limited to single-series kinds),
-  parity matrix "Charts" row in `docs/apex-feature-parity.md`, CHANGELOG (Unreleased).
-- Note: the dev server already running on port 3100 at the start of this session was started without watch mode, so it
-  doesn't have these changes; restart it (see Environment notes) to see page 15.
-
-### 2. Several files per upload item (APEX: multiple files): not started, not designed
-
-Next after charts. Look at how the file item / `hr_05_files.sql` and `test/files.test.ts` store one file today before designing.
-
-### 3. Release
-
-When both are done: HR example charts (done), docs, parity row, CHANGELOG, then the usual release (v0.14.0).
+Next on the roadmap: file drag-and-drop and paste, map extras (heat maps, report filtering by map area), workflow
+parallel branches/versions, builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.
