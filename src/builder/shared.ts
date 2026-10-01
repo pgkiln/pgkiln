@@ -9,6 +9,7 @@ import { restExtras } from './rest.ts';
 import { COMPONENTS } from './components.ts';
 import { automationExtras } from './automations.ts';
 import { layoutExtras } from './layouts.ts';
+import { templateExtras, templateImport } from './templates.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
@@ -18,7 +19,7 @@ import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -44,12 +45,13 @@ export async function sharedRoutes(app: FastifyInstance) {
     if (newKind && SHARED.includes(newKind)) {
       const spec = COMPONENTS[newKind];
       editor = region(`New ${spec.label.toLowerCase()}`, componentForm(spec, newKind, { seq: 10, ...spec.defaults }, lk, `${BASE}/apps/${a.id}/shared/${newKind}`, s, 'Create'));
+      if (newKind === 'template_component') editor = html`${editor}${templateImport(a.id, s)}`;
     } else if (selKind && SHARED.includes(selKind)) {
       const spec = COMPONENTS[selKind];
       const row = rows[selKind].find((r) => String(r.id) === selId);
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, selKind, row, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
-            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row) : selKind === 'rest_module' ? restExtras(a, row) : ''}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : ''}
             ${await usedInPanel(a.id, selKind, row)}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;

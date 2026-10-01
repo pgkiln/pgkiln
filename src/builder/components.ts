@@ -8,6 +8,7 @@ import { ICONS } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
+import { TEMPLATE_COMPONENT_SPEC } from './template-spec.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -57,9 +58,9 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     defaults: { type: 'report', columns: 12, template: 'standard' },
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree', 'static', 'dynamic'], group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'static', 'dynamic'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
-        help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
+        help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · template_component: any SELECT (its columns are #COLUMN# in the template), or empty for one instance · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
       { name: 'table_name', label: 'Table (form, grid)', kind: 'text', help: 'e.g. sales.orders', group: 'Source' },
       { name: 'pk_column', label: 'Primary key column (form, grid)', kind: 'text', group: 'Source' },
       { name: 'pk_item', label: 'Primary key item (form)', kind: 'upper', group: 'Source' },
@@ -341,6 +342,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
         help: 'Runs as the application\'s role when the task is approved, rejected or completed, in the same transaction (an error undoes the decision). Binds: :TASK_ID, :DETAIL_PK, :OUTCOME (APPROVED, REJECTED, COMPLETED), :COMMENT, :APPROVER, :INITIATOR and the task parameters, e.g. select expenses.decide(:DETAIL_PK::int, :OUTCOME, :COMMENT)' },
     ],
   },
+  template_component: TEMPLATE_COMPONENT_SPEC,
   document_template: {
     table: 'meta.document_template',
     scope: 'app',
