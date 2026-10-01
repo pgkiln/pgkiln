@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-01
+
 ### Added
 - **Progressive Web Apps** for mobile and field work (App → Settings, migration 023): installable
   (manifest, icon, service worker per application), offline pages (opt-in; wiped at sign-in and
