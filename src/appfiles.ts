@@ -101,6 +101,7 @@ const CODE: Record<string, Record<string, string>> = {
   automation: { query: 'sql', code: 'sql' },
   document_template: { query: 'sql', template: 'html' },
   task_definition: { action_code: 'sql' },
+  template_component: { template: 'html', wrapper: 'html' },
 };
 const isLong = (v: unknown): v is string => typeof v === 'string' && (v.includes('\n') || v.length > 60);
 const codeExt = (table: string, column: string, row: any) =>
@@ -140,6 +141,7 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['task_definitions', 'shared/task-definitions', 'task_definition'],
   ['workflow_definitions', 'shared/workflow-definitions', 'workflow_definition'],
   ['rest_modules', 'shared/rest-modules', 'rest_module'],
+  ['template_components', 'shared/template-components', 'template_component'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
@@ -185,7 +187,7 @@ export function docToFiles(doc: Doc): FileMap {
 
   for (const [section, dir, table] of NAMED) {
     const rows: any[] = doc[section] ?? [];
-    const keys = uniqueKeys(rows, (r) => r.name, table);
+    const keys = uniqueKeys(rows, (r) => (table === 'template_component' ? r.static_id : r.name), table);
     rows.forEach((row, i) => {
       const r = { ...row };
       if (table === 'report_layout' && typeof r.logo === 'string') {

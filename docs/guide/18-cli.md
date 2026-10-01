@@ -63,6 +63,7 @@ hr/
     lovs/jobs.json
     lovs/jobs.query.sql
     report-layouts/hr_directory.json   (a logo as hr_directory.logo.png)
+    template-components/status_badge.json   (named by static id; the template in status_badge.template.html)
     automations/ document-templates/ task-definitions/ workflow-definitions/ rest-modules/
     group-roles.json
   globalization/

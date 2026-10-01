@@ -101,7 +101,7 @@ describe('pgapex command line', () => {
     const r = cli('export', 'hr', '--format', 'dir', '--out', dir);
     assert.equal(r.code, 0, r.err);
     const files = readDir(dir);
-    for (const p of ['pgapex.json', 'app.json', 'navigation.json', 'shared/lovs/departments.json', 'globalization/text-messages.json'])
+    for (const p of ['pgapex.json', 'app.json', 'navigation.json', 'shared/lovs/departments.json', 'globalization/text-messages.json', 'shared/template-components/status_badge.json'])
       assert.ok(files.has(p), p);
     const page3 = [...files.keys()].filter((p) => p.startsWith('pages/0003-employees-form/'));
     assert.ok(page3.includes('pages/0003-employees-form/page.json'));
@@ -118,7 +118,8 @@ describe('pgapex command line', () => {
       assert.ok(s.endsWith('\n'), `${p} ends with a newline`);
       if (p.endsWith('.json')) {
         assert.equal(s, stableJson(JSON.parse(s)), `${p} has sorted keys`);
-        assert.doesNotMatch(s, /"(id|parent_id|region_id|affected_region_id|app_id|page_id)":/, `${p} has no ids`);
+        // top-level keys only: a report's headings may name a column "id"
+        assert.doesNotMatch(s, /^ {2}"(id|parent_id|region_id|affected_region_id|app_id|page_id)":/m, `${p} has no ids`);
       }
     }
     assert.ok(![...files.values()].some((b) => b.toString('utf8').includes('password_hash')), 'no password hashes');
