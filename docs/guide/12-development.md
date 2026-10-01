@@ -43,6 +43,8 @@ src/
     locale.ts              language, theme, text messages and translations of a request
     format.ts              date masks
     files.ts               file items: multipart parsing, temporary files, signed downloads
+    document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
+    documents.ts           ?doc=NAME: a template filled with the page's values
     pdf.ts                 report PDFs with report layouts (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
@@ -64,6 +66,7 @@ src/
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
     ldap.ts                Users → LDAP directories
+    documents.ts           document template preview (Shared Components)
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)

@@ -111,8 +111,10 @@ export interface Button {
   seq: number;
   name: string;
   label: string;
-  action: 'submit' | 'redirect' | 'da';
+  action: 'submit' | 'redirect' | 'da' | 'document';
   target_page: number | null;
+  /** action = document: the document template to download */
+  document?: string | null;
   target_items: Record<string, string>;
   condition: string | null;
   authz: string | null;

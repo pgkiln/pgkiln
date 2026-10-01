@@ -47,6 +47,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | Everything up to sprint 13, released as **v0.9.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0, v0.9.0; 0.3.0–0.5.0 were never tagged). Migrations 001–016 are released |
 | `sprint-14` | Merged into `main` (not released yet); can be deleted |
+| `sprint-15` | Document templates, JSON loading (see Sprint 15), pushed; not merged yet |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
@@ -445,3 +446,24 @@ Verified: `npm test` 221/221, `npm run test:e2e` 24/24. One earlier full run had
 throttle shared by all tests from 127.0.0.1, or a dev server on the same database).
 
 Next on the roadmap: document printing (templates → PDF), approvals / workflow.
+
+## Sprint 15: document printing (owner: "yes, continue", 2026-10-01)
+
+Branch `sprint-15` from `main` (sprint 14 merged). Migration 020 is new.
+
+1. **Document templates: done.** `020_documents.sql` (`meta.document_template`, `meta.button.document`,
+   action 'document'; export/import redefined with a `document_templates` section). `src/runtime/document.ts`:
+   tag language (tokenize/parse/render, values always escaped, filters), tolerant HTML-subset parser, and
+   `documentPdf()` (pdfkit: runs with continued text, lists, tables with % / mm widths, colspan, repeated
+   header rows, page breaks, logo/data: images, footer with page numbers). `src/runtime/documents.ts`:
+   `?doc=NAME` in the page GET (template read via the runtime pool: the page transaction already runs as
+   the app role). Builder: component spec (validate = templateProblem), preview route
+   `src/builder/documents.ts`, "Used in" for templates, Advisor checks. HR seed `hr_09_documents.sql`
+   (EMPLOYEE_SHEET + Print button on page 3; P13_FILE accepts .json). `test/documents.test.ts` (10);
+   `pdfText()` moved to `test/helpers.ts`.
+2. **JSON in data loading: done.** `parseJson()` in `src/dataload.ts` (array, wrapper object, JSON Lines;
+   detected by extension or content).
+
+Verified: `npm test` 234/234, `npm run test:e2e` 24/24; employee sheet and a 4-page invoice checked visually.
+
+Next on the roadmap: approvals / workflow.

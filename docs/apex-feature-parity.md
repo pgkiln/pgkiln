@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML and "Keep me signed in").
+Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML, "Keep me signed in", document templates and JSON loading).
 
 ## At a glance
 
@@ -20,10 +20,10 @@ Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML and "Keep m
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 4 | 4 | 2 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
-| Data and integration | 2 | 3 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX loading, report PDFs; no document templates or REST data sources |
+| Data and integration | 3 | 2 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
 | Workflow, automation and AI | 0 | 1 | 5 | 0 | Scheduled automations; approvals are hand-built in PL/pgSQL (see the HR sample) |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **49** | **31** | **31** | **6** | 117 APEX features compared: 42% available, 26% partial |
+| **Total** | **50** | **30** | **31** | **6** | 117 APEX features compared: 43% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -165,9 +165,9 @@ Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML and "Keep m
 | RESTful services (ORDS) | ✅ | [PostgREST](https://postgrest.org) next to pgapex: `api` schema, the same RLS as the UI, per-app API role, tokens in the builder, a pre-request check, and **OAuth clients** (client credentials, like ORDS `oauth.create_client`) so tokens renew themselves |
 | REST handler editor, REST-enabled SQL | 🟡 | Write RPC functions in the `api` schema instead of handlers; no REST-enabled SQL (rarely desirable) |
 | SQL scripts, query builder, Quick SQL | ❌ | |
-| Data Workshop (load CSV/XLSX/JSON) | 🟡 | SQL Workshop → Load Data: CSV/TSV/XLSX into a new table (inferred types) or an existing one (append, merge, replace) with a per-row error report; `data_load` process for end users. **Missing:** JSON/XML, saved data load definitions, column transformations, unloading ([chapter 16](guide/16-files.md)) |
+| Data Workshop (load CSV/XLSX/JSON) | 🟡 | SQL Workshop → Load Data: CSV/TSV/XLSX/JSON into a new table (inferred types) or an existing one (append, merge, replace) with a per-row error report; `data_load` process for end users. **Missing:** XML, saved data load definitions, column transformations, unloading ([chapter 16](guide/16-files.md)) |
 | REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | ❌ | Calling web services from SQL is possible with the `http` or `pg_net` extensions ([extensions](guide/15-extensions.md)) |
-| Printing, document generator (PDF) | 🟡 | Report PDF (filters applied, page numbers) with **report layouts** (paper, orientation, font, margins, texts, colors, logo; per-report columns and widths) and a print stylesheet on every page. **Missing:** document templates for letters and invoices (BI Publisher / APEX Office Print / document generator) |
+| Printing, document generator (PDF) | ✅ | **Document templates**: a query (with JSON columns for lines) fills an HTML template with Mustache-style tags, drawn as PDF with a report layout; buttons and links download them. Report PDF with **report layouts** and a print stylesheet on every page. No Word/Excel templates or DOCX/XLSX output |
 | Data Reporter: self-service reports for business users (26.1) | ❌ | |
 | Sending e-mail (`APEX_MAIL`), e-mail templates, *Send E-Mail* process | ➖ | Deliberately not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` |
 | JSON sources, duality views (24.2) | ➖ | PostgreSQL `jsonb` works in any SQL region, form or grid source |
@@ -232,12 +232,11 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
-2. **Approvals / workflow** built on the metadata model.
-3. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-4. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-5. **Template components and plug-ins.**
-6. **AI features.**
+1. **Approvals / workflow** built on the metadata model.
+2. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+4. **Template components and plug-ins.**
+5. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

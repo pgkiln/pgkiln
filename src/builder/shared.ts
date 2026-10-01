@@ -3,6 +3,7 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { usedInPanel } from './search.ts';
+import { documentExtras } from './documents.ts';
 import { COMPONENTS } from './components.ts';
 import { automationExtras } from './automations.ts';
 import { layoutExtras } from './layouts.ts';
@@ -15,7 +16,7 @@ import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'automation', 'report_layout'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -46,7 +47,7 @@ export async function sharedRoutes(app: FastifyInstance) {
       const row = rows[selKind].find((r) => String(r.id) === selId);
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, selKind, row, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
-            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : ''}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : ''}
             ${await usedInPanel(a.id, selKind, row)}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
