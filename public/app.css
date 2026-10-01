@@ -746,6 +746,21 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 /* help texts may hold long JSON examples: never wider than their field */
 .field .help, small.help { overflow-wrap: anywhere; }
 
+/* Task list (approvals) */
+.tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.task { border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem 0.9rem; background: var(--surface); }
+.task.overdue { border-left: 4px solid var(--danger); }
+.task-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-weight: 600; }
+.task-subject { overflow-wrap: anywhere; }
+.task-meta { font-size: 0.85rem; margin-top: 0.15rem; }
+.task-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.6rem; }
+.task-actions input[name="comment"] { flex: 1 1 14rem; min-width: 0; }
+.task-delegate { display: inline-flex; gap: 0.3rem; }
+.task-delegate input { width: 9rem; }
+.task-history { margin-top: 0.5rem; font-size: 0.85rem; }
+.task-history ol { margin: 0.4rem 0; padding-left: 1.2rem; }
+.task-history q { color: var(--muted); }
+
 /* Builder: search results and "Used in" */
 .hits { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .hits li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.25rem 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }

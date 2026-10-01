@@ -16,7 +16,7 @@ import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);

@@ -23,6 +23,7 @@ import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
 import { accountRoutes } from './runtime/account.ts';
+import { taskRoutes } from './runtime/tasks.ts';
 import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
@@ -46,6 +47,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(fastifyStatic, { root: join(root, 'public'), prefix: '/static/' });
   await app.register(runtimeRoutes);
   await app.register(accountRoutes);
+  await app.register(taskRoutes);
   await app.register(builderRoutes);
   await app.register(sharedRoutes);
   await app.register(designerRoutes);

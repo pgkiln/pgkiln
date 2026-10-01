@@ -11,6 +11,7 @@ import { renderCalendar } from './calendar.ts';
 import { CHART_KINDS, renderChartBody } from './charts.ts';
 import { renderFacets } from './facets.ts';
 import { renderGrid } from './grid.ts';
+import { renderTasks } from './tasks.ts';
 import { cell, renderReport } from './report.ts';
 
 // ---------------------------------------------------------------- buttons
@@ -128,6 +129,9 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
       break;
     case 'facets':
       body = await renderFacets(ctx, r);
+      break;
+    case 'tasks':
+      body = await renderTasks(ctx, r);
       break;
     case 'dynamic':
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The

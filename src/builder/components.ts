@@ -55,7 +55,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     defaults: { type: 'report', columns: 12, template: 'standard' },
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'static', 'dynamic'], group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'static', 'dynamic'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
         help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
       { name: 'table_name', label: 'Table (form, grid)', kind: 'text', help: 'e.g. hr.emp', group: 'Source' },
@@ -254,6 +254,34 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'code', label: 'Code (SQL)', kind: 'code', wide: true, help: 'Returned columns named like application items set them, e.g. select empno as ai_empno from …' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
+    ],
+  },
+  task_definition: {
+    table: 'meta.task_definition',
+    scope: 'app',
+    label: 'Task definition',
+    plural: 'Task definitions',
+    icon: 'check',
+    summary: (d) => d.name,
+    defaults: { type: 'approval', priority: 3, subject: 'Request &DETAIL_PK.' },
+    validate: (v) => {
+      if (v.due_in && !/^\s*\d+\s*(minute|hour|day|week|month)s?\s*$/i.test(String(v.due_in))) return 'Due in: a number and a unit, e.g. 2 days or 4 hours.';
+      if (v.priority !== null && v.priority !== undefined && (Number(v.priority) < 1 || Number(v.priority) > 5)) return 'Priority: 1 (urgent) to 5 (low).';
+      return null;
+    },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: "Application SQL creates tasks with meta.create_task('NAME', :P1_ID, params, owners)." },
+      { name: 'type', label: 'Type', kind: 'select', options: ['approval', 'action'], group: 'Identification', help: 'approval: Approve / Reject · action: Complete' },
+      { name: 'subject', label: 'Subject', kind: 'text', wide: true, group: 'Identification', help: '&KEY. is replaced by the task parameter KEY (and &DETAIL_PK.), e.g. Leave for &ENAME.: &DAYS. day(s)' },
+      { name: 'owner_roles', label: 'Potential owners (roles)', kind: 'list', group: 'Participants', help: 'Users with one of these roles may act on the task, as may the users given to create_task.' },
+      { name: 'admin_role', label: 'Business administrator (role)', kind: 'text', group: 'Participants', help: 'Sees all these tasks, delegates and cancels them.' },
+      { name: 'initiator_can_complete', label: 'The person who requested it may complete it', kind: 'bool', group: 'Participants' },
+      { name: 'priority', label: 'Priority (1 urgent – 5 low)', kind: 'int', group: 'Deadline' },
+      { name: 'due_in', label: 'Due in', kind: 'text', group: 'Deadline', help: 'e.g. 2 days; overdue tasks are marked in the task list.' },
+      { name: 'details_page', label: 'Details page', kind: 'page', group: 'Details', help: 'The subject links here, setting the item below to the task\'s record key.' },
+      { name: 'details_item', label: 'Details item', kind: 'upper', group: 'Details', help: 'e.g. P7_ID' },
+      { name: 'action_code', label: 'On completion (SQL)', kind: 'code', wide: true, group: 'Action',
+        help: 'Runs as the application\'s role when the task is approved, rejected or completed, in the same transaction (an error undoes the decision). Binds: :TASK_ID, :DETAIL_PK, :OUTCOME (APPROVED, REJECTED, COMPLETED), :COMMENT, :APPROVER, :INITIATOR and the task parameters, e.g. select hr.decide_leave(:DETAIL_PK::int, :OUTCOME, :COMMENT)' },
     ],
   },
   document_template: {
