@@ -49,7 +49,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 20, released as **v0.13.0** (tags: v0.2.0, v0.6.0–v0.13.0; 0.3.0–0.5.0 were never tagged). Migrations 001–025 are released |
-| `sprint-21` | **Just started** from `main` (v0.13.0): more chart types, then several files per upload item. No code changes yet; see "Sprint 21" below |
+| `sprint-21` | **In progress** from `main` (v0.13.0): four new chart types done (WIP commit), docs/e2e/full test run and "several files per upload item" still to do; see "Sprint 21" below |
 | (sprint branches) | `sprint-17` … `sprint-20` were merged (v0.11.0–v0.13.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
@@ -589,21 +589,50 @@ Verified: `npm test` 269/269, `npm run test:e2e` 30/30; upgrade from v0.12.0 in 
 Next on the roadmap: more chart types, several files per upload item, workflow parallel branches/versions,
 builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.
 
-## Sprint 21: more chart types, several files per upload (roadmap item 1, 2026-10-01): JUST STARTED
+## Sprint 21: more chart types, several files per upload (roadmap item 1, 2026-10-01): IN PROGRESS
 
-Branch `sprint-21` from `main` (v0.13.0). Nothing changed yet. Plan:
+Branch `sprint-21` from `main` (v0.13.0).
 
-1. **Chart types** in `src/runtime/charts.ts` (server-rendered HTML/CSS + SVG, geometry as `PageCss` classes, no inline styles;
-   every chart keeps its data table and `data-tip` tooltips):
-   - `stacked`: stacked columns (positives up, negatives down; scale from the per-label sums); reuse `.col-group`/`.col`.
-   - `pie`: like `donut` but filled (SVG circle with r = 7.9577, stroke-width 15.9155, lengths × 0.5), same legend and "Other" folding.
-   - `scatter`: label column numeric = x, each series = y; `niceScale` on both axes; dots positioned with `left`/`bottom` classes.
-   - `combo`: first series as columns, the others as lines on the same axis (line x at slot centres `(i + 0.5) / n`, so
-     `line()` needs an x-function parameter).
-   - Add them to `ChartKind`/`CHART_KINDS`, i18n `chart.<kind>` (en, nl), `CHART_LABELS` in `src/builder/region-settings.ts`, CSS.
-   - The interactive report's chart view (`report.ts` lines ~155, ~225, ~737) has a single series and text labels: allow only
-     bar/column/line/area/donut/pie there (a separate `REPORT_CHART_KINDS`), not scatter/stacked/combo.
-2. **Several files per upload item** (APEX: multiple files): next after charts; not designed yet.
-3. Tests (unit for each kind's markup and CSP-safe classes, e2e screenshot/overflow at the four sizes in `test/e2e/responsive.test.ts`),
-   HR example charts, docs (chapter 4 chart section, parity "Charts" row, CHANGELOG), then the usual release (v0.14.0).
+### 1. Chart types: code done, docs and the full test run still open
 
+Done (WIP commit "feat(charts): stacked, combo, scatter and pie charts"):
+- [x] `src/runtime/charts.ts`: `ChartKind`/`CHART_KINDS` now bar, column, **stacked**, line, area, **combo**, **scatter**, donut, **pie**.
+  - `stacked`: positives stack up, negatives down, scale from the per-label sums; one wider `.col-slot.stack` per label,
+    segments `.col.seg` (hairline divider); the outermost segment per side gets `top` / `neg` (rounded end).
+  - `combo`: first series as columns (`s1`), the others as lines through the slot centres `(i + 0.5) / n`.
+    The SVG/marker code moved out of `line()` into `lineLayer(series, firstSlot, n, x, y, scale, area)`, shared by both.
+  - `scatter(rows, fields, series)`: x = numeric label column (rows with a non-numeric/null x are left out; none left →
+    "needs a numeric first column"), each series = y; dots `.pt` (focusable, `data-tip`), own x-axis ticks in `.chart-xs`.
+    `niceScale(min, max, zero = true)` got a third parameter: scatter axes don't have to include zero; a single distinct
+    value is padded ±10% so the span is never 0.
+  - `pie`: `donut(labels, series, pie)`: r = 7.9577, lengths × 0.5, no gap, no centre total; CSS `.chart-pie .slice { stroke-width: 15.9155 }`.
+- [x] `REPORT_CHART_KINDS` (bar, column, line, area, donut, pie) used by the interactive report's chart view in
+  `src/runtime/report.ts` (parse, normalise, the kind `<select>`); region charts accept all of `CHART_KINDS`.
+- [x] i18n `chart.stacked|combo|scatter|pie` (en, nl); `CHART_LABELS` in `src/builder/region-settings.ts`; CSS in `public/app.css`
+  (charts section, after `.hit:hover .guide`, and the pie rule after `.slice`).
+- [x] HR example `examples/hr/hr_15_charts.sql`: page **15 "Analytics"** (nav entry seq 2, icon `chart`) with one chart of
+  each new kind + nl translations. Applied to the dev DB.
+- [x] Tests: new `test/charts.test.ts` (6 unit tests: every kind CSP-safe/escaped/data table/tooltips, stacked geometry,
+  combo, scatter, pie, niceScale); `test/report-views.test.ts` (pie allowed, stacked/combo/scatter rejected in the report);
+  `test/region-settings.test.ts` (new kinds kept). Those three files: 27/27 green.
+- [x] Checked by hand with Playwright at 390/768/1024(dark)/1440 on `/a/hr/15`: no horizontal overflow, no CSP violations,
+  rendering looks right (screenshots were in the session scratchpad, not committed).
+
+To do:
+- [ ] Run the **full** `npm test` and `npm run test:e2e` (not run yet this sprint).
+- [ ] e2e: add `/a/hr/15` to the pages checked at the four sizes in `test/e2e/responsive.test.ts` (overflow + CSP).
+- [ ] `test/security.test.ts`: a case that `ch=scatter|…` (and stacked/combo) on a report doesn't select the chart view
+  (the unit test covers `normaliseReportParams`; the convention wants the input path in security.test.ts too).
+- [ ] Docs: chapter 4 chart section (`docs/guide/04-pages-and-regions.md`: the query shape for each new kind, scatter's
+  numeric first column, combo = first series as columns, report chart view limited to single-series kinds),
+  parity matrix "Charts" row in `docs/apex-feature-parity.md`, CHANGELOG (Unreleased).
+- Note: the dev server already running on port 3100 at the start of this session was started without watch mode, so it
+  doesn't have these changes; restart it (see Environment notes) to see page 15.
+
+### 2. Several files per upload item (APEX: multiple files): not started, not designed
+
+Next after charts. Look at how the file item / `hr_05_files.sql` and `test/files.test.ts` store one file today before designing.
+
+### 3. Release
+
+When both are done: HR example charts (done), docs, parity row, CHANGELOG, then the usual release (v0.14.0).
