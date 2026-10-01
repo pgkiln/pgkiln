@@ -84,6 +84,14 @@ describe('App Builder home', () => {
     for (const href of ['/builder/users', '/builder/users/providers', '/builder/developers', '/builder/sql']) assert.ok(util.includes(`href="${href}"`), href);
   });
 
+  test('every builder link on the home page and the utilities page opens', async () => {
+    for (const url of ['/builder', '/builder/utilities', '/builder/dashboard']) {
+      const hrefs = [...(await dev.get(url)).body.matchAll(/href="(\/builder[^"#]*)/g)].map((m) => m[1].replace(/&amp;/g, '&'));
+      assert.ok(hrefs.length > 5, url);
+      for (const href of new Set(hrefs)) assert.equal((await dev.get(href)).statusCode, 200, `${url} → ${href}`);
+    }
+  });
+
   test('relative times as APEX shows them', () => {
     const now = Date.parse('2026-10-01T12:00:00Z');
     assert.equal(ago(new Date(now - 20_000), now), 'just now');

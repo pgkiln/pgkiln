@@ -44,6 +44,12 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     trustProxy: process.env.TRUST_PROXY === 'true',
   });
   securityHeaders(app);
+  // An id in the URL that isn't a number (or is too big) fails in PostgreSQL:
+  // that's a page that doesn't exist, not a server error.
+  app.setErrorHandler((err: Error & { code?: string }, _req, reply) => {
+    if (err.code === '22P02' || err.code === '22003') return reply.code(404).type('text/plain').send('Not found');
+    return reply.send(err);
+  });
   await app.register(cookie);
   await app.register(formbody, { bodyLimit: 5 * 1024 * 1024 });
   // file upload items; oversized files are cut off and reported, not thrown

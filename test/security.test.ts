@@ -1213,3 +1213,18 @@ describe('sprint 24: App Builder home, dashboard and utilities', () => {
     }
   });
 });
+
+
+describe('sprint 25: malformed ids in builder URLs', () => {
+  test('a URL id that is not a number, or too big, is a 404 without a database error', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    for (const url of ['/builder/users/settings', '/builder/users/abc', '/builder/users/99999999999999', '/builder/users/providers/abc',
+      '/builder/apps/abc', '/builder/apps/abc/settings', '/builder/pages/abc', "/builder/apps/1'/settings"]) {
+      const res = await dev.get(url);
+      assert.equal(res.statusCode, 404, url);
+      assert.doesNotMatch(res.body, /invalid input syntax|22P02|out of range/, url);
+    }
+  });
+});

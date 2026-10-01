@@ -172,8 +172,8 @@ export function select(name: string, label: string, value: unknown, options: (st
     })}</select>${help ? html`<small class="help">${help}</small>` : ''}</div>`;
 }
 
-export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '') =>
-  html`<section class="region region-standard"><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
+export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '', id = '') =>
+  html`<section class="region region-standard"${id ? raw(` id="${id.replace(/[^a-z0-9-]/g, '')}"`) : ''}><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
 
 /** Title and tabs of an application's builder pages (Pages, Shared Components, …). */
 export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor') => {
