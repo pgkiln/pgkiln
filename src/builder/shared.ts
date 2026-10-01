@@ -4,7 +4,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { usedInPanel } from './search.ts';
 import { documentExtras } from './documents.ts';
-import { workflowExtras } from './workflows.ts';
+import { workflowExtras, workflowForm } from './workflows.ts';
 import { restExtras } from './rest.ts';
 import { COMPONENTS } from './components.ts';
 import { automationExtras } from './automations.ts';
@@ -47,9 +47,11 @@ export async function sharedRoutes(app: FastifyInstance) {
     } else if (selKind && SHARED.includes(selKind)) {
       const spec = COMPONENTS[selKind];
       const row = rows[selKind].find((r) => String(r.id) === selId);
+      // a workflow definition's form edits its development version (src/builder/workflows.ts)
+      const [formSpec, formRow] = row && selKind === 'workflow_definition' ? workflowForm(spec, row) : [spec, row];
       editor = row
-        ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, selKind, row, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
-            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row) : selKind === 'rest_module' ? restExtras(a, row) : ''}
+        ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(formSpec, selKind, formRow, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : ''}
             ${await usedInPanel(a.id, selKind, row)}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;

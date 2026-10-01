@@ -272,6 +272,8 @@ steps; the builder checks them and draws the flow.
 | `sql` | Runs SQL; the columns of the row it returns become variables | `code`, `next` |
 | `switch` | Goes to the first case whose condition is true | `cases: [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}]`, `otherwise` |
 | `wait` | Waits before going on | `for` (`30 minutes`, `2 days`), `next` |
+| `parallel` | Starts a branch at each of its steps; they run side by side | `branches` (the first step of each, at least two), `join` |
+| `join` | Where the branches of a `parallel` step meet | `wait_for` (`all`, the default, or `any`), `next` |
 | `end` | Ends the workflow | |
 
 `next` is optional: the following step in the list (after the last one, the workflow is complete).
@@ -305,25 +307,55 @@ servers can share a database: each instance is locked while it runs.
 
 A step that fails puts the workflow in **faulted** with the error; an administrator (the
 definition's administrator role) fixes the cause and **retries** the step. A task that is
-cancelled ends the workflow unless the step has a `cancelled` branch. Running instances keep the
-steps they started with, so editing a definition doesn't change them.
+cancelled ends the workflow unless the step has a `cancelled` branch.
+
+**Parallel branches.** A `parallel` step (APEX: parallel activities) starts a branch at each step
+in `branches`; every branch runs on its own (its own step, wait and task) until it reaches the
+`join` step, while the workflow waits there. With `"wait_for": "all"` the join goes on when every
+branch has arrived; with `"any"` when the first one has, and the others are cancelled with their
+open tasks. Branches share the variables (a later value wins), and a branch may itself contain a
+`parallel` step with its own join.
+
+```json
+[{"name": "SPLIT",   "type": "parallel", "branches": ["ORDER", "NOTIFY"], "join": "BOTH"},
+ {"name": "ORDER",   "type": "task", "task": "ORDER_LAPTOP", "next": "BOTH"},
+ {"name": "NOTIFY",  "type": "sql", "code": "select staff.notify_facilities(:DETAIL_PK::int) as notified_at", "next": "BOTH"},
+ {"name": "BOTH",    "type": "join", "wait_for": "all"},
+ {"name": "WELCOME", "type": "sql", "code": "select staff.welcome(:DETAIL_PK::int) as welcomed_at"}]
+```
+
+The builder checks the structure: every branch reaches its join and stays inside (no step after
+the join, no step shared with another branch, no way into the join from outside the branches),
+and every join belongs to one `parallel` step. An `end` step inside a branch, or a cancelled task
+without a `cancelled` outcome, ends the whole workflow. A failing step faults its branch; the
+workflow shows as faulted while the other branches go on, and a retry resumes the failed branch.
+The diagram draws branches as dashed arrows and marks every step an instance is at.
+
+**Versions.** A definition has versions (APEX: workflow versions), each **development**,
+**active** or **inactive**. New instances start the active version, and there is only one. Running
+instances keep the version they started with (and its steps) until they end, so changing a
+definition never changes them. The active steps can't be edited: under the definition, **Create
+new version** copies them into a development version (the label is optional: the next number),
+which the property form then edits; **Activate** makes it the active version (the builder refuses
+steps with problems), and the active one becomes inactive. **Discard** throws a development version
+away. The Versions table shows each version with its instance count and diagram; the Instances
+table shows which version each instance runs and where it is.
 
 **The console.** A region of type **`workflows`** lists the workflows the user started (or, with
-`"context": "admin"`, those they administer), with their state, the current step and the history.
-The initiator and administrators can **terminate** a workflow (its open task is cancelled);
-administrators can retry a faulted one.
+`"context": "admin"`, those they administer), with their state, the version, the current steps (several with parallel branches), a diagram
+and the history. The initiator and administrators can **terminate** a workflow (its open tasks and
+branches are cancelled); administrators can retry a faulted one.
 
 | Function / view | |
 |---|---|
 | `meta.start_workflow(name, detail_pk, vars jsonb)` | Returns the workflow id |
 | `meta.terminate_workflow(id, comment)`, `meta.retry_workflow(id)` | The console's actions, with the same checks |
-| `meta.workflows`, `meta.workflow_events` | The workflows the user may see, and their history |
-
-Not yet: parallel branches (APEX 26.1) and versions of a definition (instances keep a copy of the
-steps instead).
+| `meta.workflows`, `meta.workflow_events` | The workflows the user may see (with `version` and `active_steps`), and their history |
+| `meta.new_workflow_version(definition_id, label)`, `meta.activate_workflow_version(definition_id)`, `meta.discard_workflow_version(definition_id)` | Versions, for the owner (the builder; scripts that install an application). Not for applications |
 
 **Example:** the HR example application's employee form starts `ONBOARDING` when an employee is
-created: the manager prepares the workplace (a task), employees with a salary of 2500 or more also
-need an administrator to give them access (a switch and a task), then the manager is notified
-(SQL). *My tasks* (page 14) shows the workflows.
+created. Its version 2 (part 18) prepares the workplace (the manager's task) and, in a parallel
+branch, the access that employees with a salary of 2500 or more need (a switch and an
+administrator's task); when both branches are done, the manager is notified (SQL). Version 1, which
+did this one after the other, is inactive. *My tasks* (page 14) shows the workflows.
 

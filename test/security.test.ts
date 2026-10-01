@@ -839,3 +839,35 @@ describe('sprint 22: map areas and dropped files', () => {
   });
 });
 
+
+describe('sprint 23: workflow branches and versions', () => {
+  test('only developers manage versions (with CSRF); applications cannot call the version functions or read branches', async () => {
+    const d = await owner.one(`select id, version, dev_version from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId]);
+    const url = `/builder/apps/${appId}/shared/workflow_definition/${d.id}/versions`;
+    assert.equal((await new Browser().post(url, { action: 'new' })).statusCode, 302, 'not signed in');
+    const king = await as('king');
+    assert.equal((await king.post(url, { __csrf: king.lastCsrf, action: 'new' })).statusCode, 302, 'an application user is not a developer');
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal((await dev.post(url, { __csrf: 'forged', action: 'new' })).statusCode, 403);
+    // a label is checked before it reaches the database or the page
+    await dev.get(`/builder/apps/${appId}/shared?c=workflow_definition-${d.id}`);
+    await dev.post(url, { __csrf: dev.lastCsrf, action: 'new', version: "1'); drop table hr.emp; --" });
+    const page = (await dev.get(`/builder/apps/${appId}/shared?c=workflow_definition-${d.id}`)).body;
+    assert.match(page, /A version label is letters, digits/);
+    const after = await owner.one('select version, dev_version from meta.workflow_definition where id = $1', [d.id]);
+    assert.deepEqual(after, { version: d.version, dev_version: d.dev_version });
+
+    const run = (sql: string, params: unknown[] = []) =>
+      owner.tx(async (c) => {
+        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true)`, [String(appId)]);
+        await c.query('set local role hr_app');
+        return c.query(sql, params);
+      });
+    for (const sql of ['select meta.new_workflow_version($1)', 'select meta.activate_workflow_version($1)', 'select meta.discard_workflow_version($1)'])
+      await assert.rejects(run(sql, [d.id]), /permission denied/, sql);
+    await assert.rejects(run('select * from meta.workflow_branch'), /permission denied/);
+    await assert.rejects(run(`update meta.workflow_definition set version = '9'`), /permission denied/);
+  });
+});

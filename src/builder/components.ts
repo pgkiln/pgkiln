@@ -7,6 +7,7 @@ import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems } from '../workflow.ts';
+import { workflowBeforeSave } from './workflows.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 
 export type FieldKind =
@@ -28,6 +29,8 @@ export interface Field {
   help?: string;
   wide?: boolean;
   group?: string;
+  /** shown, not editable (the form still posts it) */
+  readonly?: boolean;
 }
 
 export interface ComponentSpec {
@@ -41,6 +44,8 @@ export interface ComponentSpec {
   defaults?: Record<string, unknown>;
   /** checks the parsed values before saving; returns a message when they're not valid */
   validate?: (values: Record<string, any>) => string | null;
+  /** adjusts the parsed values before they are saved (cid: the row being edited); throws when they can't be */
+  beforeSave?: (values: Record<string, unknown>, cid: string | undefined) => Promise<void>;
 }
 
 const AUTHZ_HELP = 'Authorization scheme; prefix with ! to negate. MUST_NOT_BE_PUBLIC_USER is built in.';
@@ -301,16 +306,18 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       ],
     },
     validate: (v) => {
-      const problems = stepProblems(v.steps);
+      // parseFields gives the JSON as text
+      const problems = stepProblems(typeof v.steps === 'string' ? JSON.parse(v.steps) : v.steps);
       return problems.length ? problems.join(' ') : null;
     },
+    beforeSave: workflowBeforeSave,
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: "Application SQL starts it with meta.start_workflow('NAME', :P1_ID, '{\"AMOUNT\": 100}')." },
       { name: 'title', label: 'Title', kind: 'text', wide: true, group: 'Identification', help: '&VAR. is replaced by a variable given at the start (and &DETAIL_PK.), e.g. Onboarding of &NAME.' },
       { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
       { name: 'admin_role', label: 'Administrator (role)', kind: 'text', group: 'Identification', help: 'Sees every instance, terminates them and retries a failed step.' },
       { name: 'steps', label: 'Steps (JSON)', kind: 'json', wide: true, group: 'Steps',
-        help: '[{"name": "CHECK", "type": "switch", "cases": [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}], "otherwise": "MANAGER"}, {"name": "MANAGER", "type": "task", "task": "EXPENSE_APPROVAL", "owners": "select manager from staff where id = :DETAIL_PK::int", "next": {"approved": "PAY", "rejected": "END"}}, {"name": "PAY", "type": "sql", "code": "select expenses.pay(:DETAIL_PK::int) as paid_on"}, {"name": "PAUSE", "type": "wait", "for": "2 days"}, {"name": "END", "type": "end"}] · "next" is optional (the following step). Binds: the variables, :DETAIL_PK, :WORKFLOW_ID, :INITIATOR, and after a task :TASK_OUTCOME and :TASK_APPROVER. Columns that sql steps return become variables.' },
+        help: '[{"name": "CHECK", "type": "switch", "cases": [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}], "otherwise": "MANAGER"}, {"name": "MANAGER", "type": "task", "task": "EXPENSE_APPROVAL", "owners": "select manager from staff where id = :DETAIL_PK::int", "next": {"approved": "PAY", "rejected": "END"}}, {"name": "PAY", "type": "sql", "code": "select expenses.pay(:DETAIL_PK::int) as paid_on"}, {"name": "PAUSE", "type": "wait", "for": "2 days"}, {"name": "END", "type": "end"}] · "next" is optional (the following step). Parallel branches: {"name": "SPLIT", "type": "parallel", "branches": ["BOOK", "NOTIFY"], "join": "BOTH"} runs the branches side by side until each reaches the join {"name": "BOTH", "type": "join", "wait_for": "all"} ("any": the first one, the others are cancelled). Binds: the variables, :DETAIL_PK, :WORKFLOW_ID, :INITIATOR, and after a task :TASK_OUTCOME and :TASK_APPROVER. Columns that sql steps return become variables.' },
     ],
   },
   task_definition: {

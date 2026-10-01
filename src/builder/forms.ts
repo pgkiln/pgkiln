@@ -72,7 +72,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
         break;
       case 'json': {
         const text = v && typeof v === 'object' && Object.keys(v).length ? JSON.stringify(v, null, 2) : '';
-        control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 4 : 2}" spellcheck="false">${text}</textarea>`;
+        control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 4 : 2}" spellcheck="false"${f.readonly ? raw(' readonly') : ''}>${text}</textarea>`;
         break;
       }
       default:
@@ -93,6 +93,7 @@ export async function saveComponent(kind: string, parentCol: 'page_id' | 'app_id
   const values = parseFields(spec, body);
   const problem = spec.validate?.(values);
   if (problem) throw new Error(problem);
+  await spec.beforeSave?.(values, cid);
   if (cid) {
     const cols = Object.keys(values);
     const res = await owner.query(
