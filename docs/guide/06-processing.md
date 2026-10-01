@@ -260,3 +260,70 @@ use an automation to remind owners of overdue tasks.
 employee's manager; *My tasks* (page 14) approves or rejects it through `hr.decide_leave`, the same
 function as the leave request page's buttons, and a request decided there closes its task.
 
+## Workflows
+
+A workflow (APEX: Workflow) runs a process of several steps that can take days: tasks for people,
+SQL, decisions, waits. A **workflow definition** (Shared Components → Workflows) is a list of named
+steps; the builder checks them and draws the flow.
+
+| Step type | Does | Fields |
+|---|---|---|
+| `task` | Creates a task ([task definitions](#approvals-and-the-task-list)) and waits until it is completed or cancelled | `task` (definition name), `owners` (a SELECT returning usernames, optional), `next` (a step, or per outcome: `{"approved": "PAY", "rejected": "END"}`) |
+| `sql` | Runs SQL; the columns of the row it returns become variables | `code`, `next` |
+| `switch` | Goes to the first case whose condition is true | `cases: [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}]`, `otherwise` |
+| `wait` | Waits before going on | `for` (`30 minutes`, `2 days`), `next` |
+| `end` | Ends the workflow | |
+
+`next` is optional: the following step in the list (after the last one, the workflow is complete).
+
+```json
+[{"name": "CHECK",    "type": "switch", "cases": [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}], "otherwise": "MANAGER"},
+ {"name": "DIRECTOR", "type": "task", "task": "EXPENSE_APPROVAL", "owners": "select username from staff where role = 'director'",
+                      "next": {"approved": "PAY", "rejected": "END"}},
+ {"name": "MANAGER",  "type": "task", "task": "EXPENSE_APPROVAL", "owners": "select manager from staff where id = :DETAIL_PK::int",
+                      "next": {"approved": "PAY", "rejected": "END"}},
+ {"name": "PAY",      "type": "sql", "code": "select expenses.pay(:DETAIL_PK::int) as paid_on"},
+ {"name": "END",      "type": "end"}]
+```
+
+**Starting one.** Application SQL, typically a page process:
+
+```sql
+select meta.start_workflow('EXPENSE', :P5_ID, jsonb_build_object('AMOUNT', :P5_AMOUNT))
+```
+
+The variables (upper case) are binds in every step, with `:DETAIL_PK`, `:WORKFLOW_ID` and
+`:INITIATOR`; after a task step also `:TASK_OUTCOME` (`APPROVED`, `REJECTED`, `COMPLETED`,
+`CANCELLED`) and `:TASK_APPROVER`. The title may use `&VAR.`.
+
+**How it runs.** The pgapex server runs workflows: right after they start or a task of theirs
+ends (`NOTIFY`), and it checks for waits that are over every few seconds (`WORKFLOW_INTERVAL_S`,
+default 10; `WORKFLOWS=off` on servers that shouldn't run them). Each step runs in its own
+transaction **as the application's database role**, with the initiator as `meta.app_user()`, so
+grants and row level security apply (`meta.has_role()` is false: there is no session). Several
+servers can share a database: each instance is locked while it runs.
+
+A step that fails puts the workflow in **faulted** with the error; an administrator (the
+definition's administrator role) fixes the cause and **retries** the step. A task that is
+cancelled ends the workflow unless the step has a `cancelled` branch. Running instances keep the
+steps they started with, so editing a definition doesn't change them.
+
+**The console.** A region of type **`workflows`** lists the workflows the user started (or, with
+`"context": "admin"`, those they administer), with their state, the current step and the history.
+The initiator and administrators can **terminate** a workflow (its open task is cancelled);
+administrators can retry a faulted one.
+
+| Function / view | |
+|---|---|
+| `meta.start_workflow(name, detail_pk, vars jsonb)` | Returns the workflow id |
+| `meta.terminate_workflow(id, comment)`, `meta.retry_workflow(id)` | The console's actions, with the same checks |
+| `meta.workflows`, `meta.workflow_events` | The workflows the user may see, and their history |
+
+Not yet: parallel branches (APEX 26.1) and versions of a definition (instances keep a copy of the
+steps instead).
+
+**Example:** the HR example application's employee form starts `ONBOARDING` when an employee is
+created: the manager prepares the workplace (a task), employees with a salary of 2500 or more also
+need an administrator to give them access (a switch and a task), then the manager is notified
+(SQL). *My tasks* (page 14) shows the workflows.
+

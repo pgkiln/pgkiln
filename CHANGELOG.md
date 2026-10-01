@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Workflows** (Shared Components → Workflows, migration 022): definitions of task, SQL, switch,
+  wait and end steps with variables, started from application SQL with `meta.start_workflow(…)`,
+  run by the pgapex server (on `NOTIFY` and every few seconds; `WORKFLOWS=off` to disable) one step
+  per transaction as the application's role. A `workflows` region is the console (terminate, retry
+  a faulted step); the builder checks the steps and draws them. The HR example starts an onboarding
+  workflow from its employee form.
+
 ## [0.10.0] - 2026-10-01
 
 ### Changed

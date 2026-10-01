@@ -20,6 +20,7 @@ src/
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
+  workflow.ts              workflows: step checks, the runner (NOTIFY + polling), the diagram
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
@@ -46,6 +47,7 @@ src/
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
     tasks.ts               task list region and task actions (approvals)
+    workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
@@ -68,6 +70,7 @@ src/
     top-sql.ts             Top SQL per app role from pg_stat_statements
     ldap.ts                Users → LDAP directories
     documents.ts           document template preview (Shared Components)
+    workflows.ts           workflow diagram and instance counts (Shared Components)
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
