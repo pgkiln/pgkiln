@@ -7,23 +7,23 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-01 (pgapex 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
-| App Builder and development | 4 | 4 | 6 | 0 | Solid builder and wizards, search, where used and an Advisor; no drag-and-drop, no team/AI tooling |
-| Regions | 7 | 6 | 4 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees |
+| App Builder and development | 5 | 4 | 6 | 0 | Page Designer with drag-and-drop and a code editor, wizards, search, where used, an Advisor, a CLI with one file per component; no team/AI tooling |
+| Regions | 8 | 7 | 2 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload (several files per item); no rich text editor yet |
-| Logic and processing | 4 | 4 | 3 | 1 | Core APEX model complete; fewer declarative process types |
-| Security | 16 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
+| Logic and processing | 4 | 6 | 2 | 1 | Core APEX model complete; fewer declarative process types |
+| Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 4 | 1 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
-| Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and multi-step workflows; no AI |
+| Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and workflows with parallel branches and versions; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **53** | **29** | **26** | **6** | 114 APEX features compared: 46% available, 25% partial |
+| **Total** | **56** | **32** | **23** | **6** | 117 APEX features compared: 48% available, 27% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -34,10 +34,10 @@ Last reviewed: 2026-10-01 (pgapex 0.15.0: drop and paste files, heat maps, filte
 | App Builder: create, edit, delete, run apps | ✅ | Builder at `/builder` |
 | Create application wizard | 🟡 | Blank app with a dedicated database role and schema. No "from a spreadsheet", no blueprints (26.1) |
 | Create page wizards | 🟡 | *Report and form* and *Interactive grid* from any table; other page types start blank |
-| Page Designer | 🟡 | Component tree and grouped property editor; settings forms for report, grid, chart, cards, calendar, faceted search, map and tree regions. No drag-and-drop layout grid; no code editor with autocomplete |
-| Shared components | 🟡 | Navigation menu, authorization schemes, lists of values, application items and processes, access control, globalization. No generic lists, templates, plug-ins or build options |
+| Page Designer | ✅ | IDE-style window (dark or light): component tree, a layout canvas with drag and drop (with keyboard and button alternatives) and a gallery of regions, items and buttons, a filterable property editor; undo/redo; panes become tabs on phones. Settings forms for report, grid, chart, cards, calendar, faceted search, map, tree and template component regions. A code editor for SQL, PL/pgSQL, JSON and HTML with highlighting and autocomplete of tables, columns and `:ITEM` binds (no extra libraries). Drag and drop needs a mouse; on touch screens the Arrange buttons move components |
+| Shared components | 🟡 | Navigation menu, authorization schemes, lists of values, application items and processes, access control, globalization, template components and plug-ins. No generic lists or build options |
 | Export / import | ✅ | `meta.export_app()` / `meta.import_app()`: portable JSON, also in the builder |
-| APEXlang: human-readable, diffable app files; static IDs (26.1) | 🟡 | The JSON export is diffable, but there's no file-per-component layout, CLI or static IDs |
+| APEXlang: human-readable, diffable app files; static IDs (26.1) | 🟡 | `pgapex export --format dir`: one JSON file per component with sorted keys, SQL and HTML in sibling files, references by static id instead of database ids; `pgapex import --replace` updates an app in place, `pgapex diff` compares ([chapter 18](guide/18-cli.md)). Static ids are derived from names (template components have stored ones), and the files are JSON rather than a language of their own |
 | Working copies, merge, team development | ❌ | Use git on exports |
 | Application lock (26.1), page locks, comments | ❌ | |
 | Supporting objects (install scripts) | ❌ | Put your schema in versioned SQL migrations next to the export |
@@ -66,8 +66,8 @@ Last reviewed: 2026-10-01 (pgapex 0.15.0: drop and paste files, heat maps, filte
 | Region display selector, tabs | ❌ | |
 | Tree | ✅ | `tree` region from id / parent id / label rows, with icons, links and the first levels open; works without JavaScript |
 | Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, heat maps (weighted), filtering a report by the visible map area (bounding box), configurable tile server. **Missing:** vector tiles, marker clustering, several layers per map, spatial queries on the server (PostGIS operators) |
-| Timeline, comments, media list, avatar template components | ❌ | Cards cover simple cases |
-| Template components and template directives | ❌ | `dynamic` regions can produce any HTML from SQL in the meantime |
+| Timeline, comments, media list, avatar template components | 🟡 | Example plug-ins to import: timeline item, contact card (avatar) and status badge (`examples/plugins`); none built in |
+| Template components and template directives | ✅ | Shared Components → Template components: `#PLACEHOLDERS#` (always escaped), `{if}`, `{case}` and `{loop}` directives, custom attributes, a wrapper; as a region type and as report column templates, with a preview. Templates are checked against an allow-list (no scripts, styles, event handlers or `javascript:` links) ([chapter 4](guide/04-pages-and-regions.md#template-components)) |
 
 ## Items
 
@@ -100,7 +100,7 @@ Last reviewed: 2026-10-01 (pgapex 0.15.0: drop and paste files, heat maps, filte
 | Dynamic actions | 🟡 | Show, hide, enable, disable, set value (SQL), execute SQL, refresh region or item, alert, submit. **Missing:** custom JavaScript, set focus/class, dialog events, show success/error message and clear errors (26.1), plug-ins |
 | APEX PL/SQL APIs | 🟡 | `meta.app_user()`, `meta.has_role()`, `meta.v()`, `meta.page_url()`, `meta.message()`, `meta.html_escape()`, password functions. No equivalents of `APEX_WEB_SERVICE`, `APEX_DATA_PARSER`, `APEX_ZIP`, … |
 | Declarative menu buttons, button badges (26.1) | ❌ | |
-| Plug-ins | ❌ | |
+| Plug-ins | 🟡 | Template component plug-ins: one JSON file to export and import, three examples. **Missing:** item, region, process and dynamic action plug-ins with their own code (pgapex runs no third-party JavaScript or server code) |
 | Build options | ❌ | |
 | Collections (`APEX_COLLECTION`) | ➖ | Temporary or unlogged tables, or `jsonb` in session state |
 
@@ -178,7 +178,7 @@ Last reviewed: 2026-10-01 (pgapex 0.15.0: drop and paste files, heat maps, filte
 | APEX | pgapex | Notes |
 |---|---|---|
 | Approvals and task list | ✅ | Task definitions (approval / action, owner roles and users, business administrators, priority, due date, details page), `meta.create_task` from application SQL, a task list region (claim, approve/reject/complete with comment, release, delegate, cancel, history), completion SQL in the same transaction. **Missing:** e-mail notifications (pgapex sends no mail), vacation rules, expiry/escalation policies |
-| Workflow (26.1: parallel flows, multi-tenancy) | 🟡 | Workflow definitions of task, SQL, switch, wait and end steps with variables, started from application SQL, run by the server (NOTIFY + polling) as the app's role; console region (terminate, retry a faulted step); diagram in the builder. **Missing:** parallel branches, versions, e-mail/invoke-API activities |
+| Workflow (26.1: parallel flows, multi-tenancy) | 🟡 | Workflow definitions of task, SQL, switch, wait and end steps with variables, started from application SQL, run by the server (NOTIFY + polling) as the app's role; console region (terminate, retry a faulted step); diagram in the builder. **Parallel branches** (split, then a join that waits for all or for the first branch) and **versions** (development, active, inactive; running instances keep theirs) ([chapter 6](guide/06-processing.md#workflows)). **Missing:** e-mail/invoke-API activities, multi-tenancy |
 | Automations (scheduled) | 🟡 | Shared Components → Automations: cron schedules with time zones, SQL/PL/pgSQL once or per row of a query, roles, run history and Run now, safe with several servers ([chapter 6](guide/06-processing.md#automations)). **Missing:** several actions per automation, error handling per row (skip and continue), on-demand runs from SQL (`APEX_AUTOMATION.EXECUTE`) |
 | AI assistant, natural-language reports (NL2IR), AI agents and tools (26.1) | ❌ | `pgvector` covers semantic search on the data side |
 | *Generate Text with AI* process, structured outputs (26.1) | ❌ | |
@@ -232,10 +232,10 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Workflow:** parallel branches and versions.
-2. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-3. **Template components and plug-ins.**
-4. **AI features.**
+Done in 0.16.0: workflow branches and versions; the Page Designer with drag and drop and a code
+editor; the file-per-component export and CLI; template components and plug-ins.
+
+1. **AI features** (needs a decision on the provider and API keys).
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

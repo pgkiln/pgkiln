@@ -69,6 +69,17 @@ Severity is rated for an internet-facing deployment.
   and `<style>` blocks are blocked by the CSP (`style-src 'self' 'nonce-…'`):
   even HTML that slips through can't restyle the page to fake a form or hide
   a warning. Style developer HTML with the classes in `/static/app.css`.
+- **Template components and plug-ins are not trusted like developer HTML**,
+  because a plug-in file may come from someone else. A template is checked
+  against an allow-list when it is saved, imported (builder or SQL trigger)
+  and rendered: no scripts, styles, event handlers, `data-*`, forms, frames,
+  unquoted attribute values or raw placeholders. Every placeholder is
+  HTML-escaped, and a value that would make a `javascript:` (or similar) link
+  is dropped. Plug-ins carry no code of their own.
+- **The builder's code editor** suggests tables and columns as the
+  application's own database role sees them (the runtime role for apps
+  without one), so a developer of one application can't list another
+  application's schema through it; it never returns password hashes.
 - **Server-side checks belong in the database** for anything that matters:
   RLS policies, or checks inside PL/pgSQL functions (see `hr.decide_leave`).
   UI authorization hides things; the database enforces them.
