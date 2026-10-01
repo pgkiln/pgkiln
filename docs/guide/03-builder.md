@@ -28,14 +28,30 @@ Every builder page has the same frame, modelled on an IDE:
 - The pages of an application have tabs under its name: Pages, Shared Components, Activity, REST
   API, Settings, Search and Advisor, with Export and Run on the right.
 
+- **The status bar** at the bottom: who is signed in, the database, the builder's language and
+  the pgapex version.
+
 On phones the rail gets narrower and the breadcrumb shows only the current page.
 
 ## App Builder home
 
-The home page shows your applications as cards (with page count and today's page views), and
-forms to **create** and **import** applications.
+The home page is laid out like APEX's App Builder:
+
+- **Four tiles**: **Create** and **Import** (each on its own page), the workspace **Dashboard**
+  (applications, pages, active accounts; page views, users, failed sign-ins and errors of the last
+  24 hours, and per application the last 7 days with a link to its Activity page) and
+  **Workspace Utilities** (users, identity providers, LDAP directories, password policy,
+  developers, the SQL Workshop).
+- **The applications**, as a report (application id, name, alias, pages, page views of the last 24
+  hours, sign-in, last updated, and Edit / Run) or as cards. **Search** filters the list as you type
+  (by name, alias or id; without JavaScript, press Enter). Click a column heading, or use
+  **Actions**, to sort. The view and the sort are remembered until you sign out.
+- **A side column** (on the right on wide screens, below the list otherwise): About, **Recent** (the
+  applications you opened last) and Tasks.
 
 ### Creating an application
+
+**Create** (a tile, or `/builder/create`):
 
 | Field | Meaning |
 |---|---|
@@ -54,7 +70,9 @@ Creating the app also:
 
 ### Importing
 
-Paste the JSON of an export and optionally give a new alias. Imported apps keep the database role
+**Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new
+alias. A directory export (one file per component) is imported with `pgapex import`
+([chapter 18](18-cli.md)). Imported apps keep the database role
 of the export; check it under **Settings**, and create users under **Shared Components**.
 
 ## App dashboard

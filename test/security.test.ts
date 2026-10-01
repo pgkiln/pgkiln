@@ -1179,3 +1179,37 @@ describe('sprint 23: page designer layout and builder theme', () => {
     }
   });
 });
+
+
+describe('sprint 24: App Builder home, dashboard and utilities', () => {
+  test('the workspace pages are for signed-in developers only', async () => {
+    const king = await as('king'); // an application session is not a builder session
+    for (const b of [new Browser(), king])
+      for (const url of ['/builder', '/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities']) {
+        const res = await b.get(url);
+        assert.equal(res.statusCode, 302, url);
+        assert.equal(res.headers.location, '/builder/login', url);
+      }
+  });
+
+  test('the search term and application names are escaped', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const evil = '"><script>alert(1)</script>';
+    const body = (await dev.get(`/builder?q=${encodeURIComponent(evil)}`)).body;
+    assert.ok(!body.includes('<script>alert(1)'), 'search term');
+    const { name } = await owner.one('select name from meta.app where id = $1', [appId]);
+    try {
+      await owner.query('update meta.app set name = $2 where id = $1', [appId, `<img src=x onerror=alert(1)>`]);
+      for (const url of ['/builder?view=report', '/builder?view=grid', '/builder/dashboard']) {
+        const page = (await dev.get(url)).body;
+        assert.ok(!page.includes('<img src=x'), url);
+        assert.ok(page.includes('&lt;img src=x onerror=alert(1)&gt;'), url);
+      }
+    } finally {
+      await owner.query('update meta.app set name = $2 where id = $1', [appId, name]);
+      await dev.get('/builder?view=report');
+    }
+  });
+});

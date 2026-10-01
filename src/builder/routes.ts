@@ -11,6 +11,7 @@ import { ICON_OPTIONS } from './components.ts';
 import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
+import { homeRoutes, rememberApp } from './home.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -110,58 +111,8 @@ export async function builderRoutes(app: FastifyInstance) {
     return back(reply, s, back_to);
   });
 
-  // ---------------------------------------------------------------- workspace home
-  app.get(BASE, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const [apps, schemas] = await Promise.all([
-      owner.query(`select a.*, (select count(*) from meta.page p where p.app_id = a.id)::int as pages,
-                          (select count(*) from meta.activity_log l where l.app_id = a.id and l.event = 'page_view' and l.at > now() - interval '1 day')::int as views
-                     from meta.app a order by a.name`),
-      owner.query(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`),
-    ]);
-    const main = html`
-      <div class="title-row"><h1>App Builder</h1></div>
-      <div class="tiles">
-        <a class="tile" href="#create"><span class="tile-icon">${icon('plus')}</span><span><strong>Create application</strong><small>Start from a table or blank</small></span></a>
-        <a class="tile" href="${BASE}/sql"><span class="tile-icon">${icon('database')}</span><span><strong>SQL Workshop</strong><small>Run SQL, browse objects</small></span></a>
-        <a class="tile" href="#import"><span class="tile-icon">${icon('download')}</span><span><strong>Import</strong><small>From an export JSON</small></span></a>
-      </div>
-      <div class="app-cards">
-        ${apps.rows.length
-          ? apps.rows.map((a, i) => html`<article class="app-card">
-              <div class="u-row">
-                <span class="app-icon app-color-${i % APP_COLORS}">${a.name.slice(0, 1).toUpperCase()}</span>
-                <div><h3><a href="${BASE}/apps/${a.id}">${a.name}</a></h3><div class="meta">/a/${a.alias} · ${a.pages} pages · ${a.views} views today</div></div>
-              </div>
-              <div class="meta">${a.authentication === 'none' ? 'Public' : 'App users'} · role ${a.db_role ?? '(owner!)'}${a.debug ? ' · debug' : ''}</div>
-              <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}">${icon('edit')} Edit</a><a class="btn" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a></div>
-            </article>`)
-          : html`<p class="muted">No applications yet.</p>`}
-      </div>
-      <div class="columns">
-        <section class="region region-standard" id="create"><header class="region-header"><h2>Create application</h2></header><div class="region-body">
-          <form method="post" action="${BASE}/apps">${csrf(s)}
-            <div class="form-grid">
-              ${input('name', 'Name', '', { required: true })}
-              ${input('alias', 'Alias (URL)', '', { required: true, help: 'lowercase, e.g. inventory → /a/inventory' })}
-              ${select('schema', 'Parsing schema', '', [['', '- new schema named after the alias -'], ...schemas.rows.map((r): [string, string] => [r.nspname, r.nspname])],
-                'A database role app_<alias> is created with access to this schema only; the app runs as that role.')}
-              ${select('authentication', 'Authentication', 'app_users', [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
-              ${input('admin_user', 'First user', '', { placeholder: 'e.g. your name', help: 'Gets the admin role. An existing account in Users is reused.' })}
-              ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password', help: 'For a new account; at least 8 characters.' })}
-            </div>
-            <div class="buttons"><button class="btn btn-hot">Create application</button></div>
-          </form></div></section>
-        <section class="region region-standard" id="import"><header class="region-header"><h2>Import application</h2></header><div class="region-body">
-          <form method="post" action="${BASE}/import">${csrf(s)}
-            <div class="field" data-wide><label class="label" for="f_doc">Export JSON</label><textarea id="f_doc" name="doc" class="code" rows="7" required data-code="json"></textarea></div>
-            ${input('alias', 'New alias (optional)', '')}
-            <div class="buttons"><button class="btn btn-hot">Import</button></div>
-          </form></div></section>
-      </div>`;
-    return send(reply, s, shell(s, 'App Builder', [['App Builder']], main));
-  });
+  // the workspace pages (App Builder home, Create, Import, Dashboard, Utilities) are in home.ts
+  await homeRoutes(app);
 
   app.post(`${BASE}/apps`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -216,7 +167,7 @@ export async function builderRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/apps/${id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
-      return back(reply, s, BASE);
+      return back(reply, s, `${BASE}/create`);
     }
   });
 
@@ -230,7 +181,7 @@ export async function builderRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/apps/${r.id}`);
     } catch (e) {
       flash(s, `Import failed: ${(e as Error).message}`, 'error');
-      return back(reply, s, BASE);
+      return back(reply, s, `${BASE}/import`);
     }
   });
 
@@ -242,6 +193,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
+    rememberApp(s, a.id);
     const [pages, tables] = await Promise.all([
       owner.query(
         `select p.*, (select count(*) from meta.region r where r.page_id = p.id)::int as regions,

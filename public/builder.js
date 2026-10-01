@@ -8,7 +8,8 @@
 //  - .pd-tree: an ARIA tree with collapsible folders and arrow-key navigation;
 //  - the property editor: a filter box and collapsible property groups;
 //  - the layout canvas: drag and drop to move / create / resize components,
-//    Alt+arrow keys as the keyboard alternative, zoom and maximize.
+//    Alt+arrow keys as the keyboard alternative, zoom and maximize;
+//  - input[data-filter-list]: filters the rows it names as you type.
 (() => {
   'use strict';
   const store = {
@@ -475,6 +476,23 @@
   // a select that navigates (the toolbar's page switcher)
   document.addEventListener('change', (e) => {
     if (e.target.matches?.('select[data-autosubmit]')) e.target.form?.submit();
+  });
+
+  // a search box that filters a list as you type (the App Builder's applications);
+  // without script the form searches on the server
+  document.addEventListener('input', (e) => {
+    const box = e.target;
+    if (!box.matches?.('input[data-filter-list]')) return;
+    const words = box.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const rows = [...document.querySelectorAll(box.dataset.filterList)];
+    let shown = 0;
+    for (const row of rows) {
+      const text = row.textContent.toLowerCase();
+      row.hidden = !words.every((w) => text.includes(w));
+      if (!row.hidden) shown++;
+    }
+    const count = document.querySelector('.ab-count');
+    if (count) count.textContent = shown === rows.length ? `${rows.length} application${rows.length === 1 ? '' : 's'}` : `${shown} of ${rows.length}`;
   });
 
   function init() {

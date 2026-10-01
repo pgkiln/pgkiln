@@ -28,6 +28,7 @@ export const REGION_LABELS: Record<string, [string, string]> = {
   report: ['Interactive report', 'table'], grid: ['Interactive grid', 'grid'], form: ['Form', 'file'], chart: ['Chart', 'chart'],
   cards: ['Cards', 'layers'], calendar: ['Calendar', 'calendar'], facets: ['Faceted search', 'filter'], tasks: ['Task list', 'inbox'],
   workflows: ['Workflow console', 'activity'], map: ['Map', 'map'], tree: ['Tree', 'org'], static: ['Static content', 'region'], dynamic: ['Dynamic content', 'code'],
+  template_component: ['Template component', 'layers'],
 };
 export const ITEM_LABELS: Record<string, [string, string]> = {
   text: ['Text field', 'item'], textarea: ['Text area', 'item'], number: ['Number field', 'item'], date: ['Date picker', 'calendar'],

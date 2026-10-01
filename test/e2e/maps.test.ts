@@ -35,8 +35,10 @@ after(() => close());
 async function signedIn() {
   const context = await browser.newContext();
   let tiles = 0;
+  const referers = new Set<string>();
   await context.route(`${tileOrigin()}/**`, (route) => {
     tiles++;
+    referers.add(route.request().headers().referer ?? '(none)');
     return route.fulfill({ contentType: 'image/png', body: TILE });
   });
   await context.addInitScript(() => {
@@ -48,19 +50,21 @@ async function signedIn() {
   await page.fill('#username', 'king');
   await page.fill('#password', 'king');
   await Promise.all([page.waitForNavigation(), page.click('button.btn-hot')]);
-  return { context, page, tiles: () => tiles };
+  return { context, page, tiles: () => tiles, referers: () => [...referers] };
 }
 
 const violations = (page: Page) => page.evaluate(() => (window as any).__csp as string[]);
 
 describe('map and tree regions', () => {
   test('the map draws with tiles and markers, without breaking the Content-Security-Policy', async () => {
-    const { context, page, tiles } = await signedIn();
+    const { context, page, tiles, referers } = await signedIn();
     await page.goto(`${base}/a/hr/4`);
     await page.locator('.leaflet-container').waitFor();
     await page.locator('.leaflet-tile-loaded').first().waitFor();
     assert.equal(await page.locator('.leaflet-marker-icon').count(), 4, 'the four offices');
     assert.ok(tiles() > 0);
+    // OpenStreetMap blocks tile requests without a Referer; only the origin is sent, never the page
+    assert.deepEqual(referers(), [`${base}/`]);
     await page.locator('.leaflet-marker-icon').first().click();
     const popup = page.locator('.leaflet-popup-content');
     await popup.waitFor();

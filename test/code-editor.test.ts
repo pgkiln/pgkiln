@@ -202,7 +202,7 @@ describe('code editor: marked fields', () => {
     assert.match(wf, /name="steps" [^>]*data-code="json"/);
     const da = (await dev.get(`/builder/pages/${page.id}?new=dynamic_action`)).body;
     assert.match(da, /name="code" [^>]*data-code-check-switch="action:set_value=select,\*=statements"/);
-    assert.match((await dev.get('/builder')).body, /name="doc" [^>]*data-code="json"/, 'import an application');
+    assert.match((await dev.get('/builder/import')).body, /name="doc" [^>]*data-code="json"/, 'import an application');
     const rest = (await dev.get(`/builder/apps/${appId}/shared?new=rest_module`)).body;
     assert.match(rest, /name="handlers" [^>]*data-code="json"/);
     // runtime pages don't load it

@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–23 are merged into `main` and released as **v0.16.0** (migrations 001–028 are released: add 029+).
+Last updated: 2026-10-01. Sprints 3–24 are merged into `main` and released as **v0.17.0** (migrations 001–028 are released: add 029+).
 
 ## Project in one paragraph
 
@@ -48,8 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 23, released as **v0.16.0** (tags: v0.2.0, v0.6.0–v0.16.0; 0.3.0–0.5.0 were never tagged). Migrations 001–028 are released |
-| (sprint branches) | `sprint-17` … `sprint-23` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.16.0) and deleted |
+| `main` | Everything up to sprint 24, released as **v0.17.0** (tags: v0.2.0, v0.6.0–v0.17.0; 0.3.0–0.5.0 were never tagged). Migrations 001–028 are released |
+| (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -715,3 +715,30 @@ Next: **AI features** (the last roadmap item) need the owner's decision on the p
 items: the Advisor doesn't flag regions/columns pointing at a missing template component; column templates apply
 only to the normal report view (not downloads, group by or pivot); drag and drop needs a mouse (Arrange buttons on
 touch); item/process/dynamic-action plug-ins with their own code are not planned for now.
+
+## Sprint 24: OpenStreetMap tiles, an App Builder home like APEX's (owner's screenshots, 2026-10-01)
+
+Branch `sprint-24` from `main` (v0.16.0). No migration.
+
+1. **Map tiles blocked** ("Access blocked, 403" tiles from tile.openstreetmap.org): OSM refuses browser tile requests
+   without a `Referer`, and pgapex sends `Referrer-Policy: same-origin`. Verified with curl (browser `Sec-Fetch-*`
+   headers: no Referer → the blocked image, with Referer → the tile). Fix: `referrerPolicy:
+   'strict-origin-when-cross-origin'` on the Leaflet tile layer (origin only). The map e2e test asserts the Referer.
+2. **App Builder home** (`src/builder/home.ts`, owner's APEX 26.1 screenshot): tiles Create / Import / Dashboard /
+   Workspace Utilities; the applications as a report or cards (`?view=`, `?sort=`, remembered in session state
+   `__BVIEW` / `__BSORT`); search `?q=` on the server, live filtering by `input[data-filter-list]` in builder.js;
+   side column About / Recent (`rememberApp()` on the app home, session state `__RECENT`, a comma list) / Tasks.
+   `GET /builder/create` and `/builder/import` hold the forms (their POSTs stay in routes.ts and redirect back there on
+   errors). `/builder/dashboard` and `/builder/utilities` are new. `shell()` adds `footer.ide-status` (user,
+   database name from DATABASE_URL, language, version from package.json). CSS in builder.css ("App Builder home",
+   `--gold` for APEX's gold headings and links). The designer gallery labels `template_component`.
+3. Tests: `test/builder-home.test.ts`, a sprint 24 block in `security.test.ts`, the new pages in the responsive e2e.
+   Docs: chapter 3 (builder window, App Builder home), chapter 12 code map, SECURITY (the tile server sees the origin).
+
+Verified: dev DB (fresh) `npm test` 365/365, `npm run test:e2e` 58/58; CI-style upgrade from v0.16.0 362 + 3 skipped.
+Note: one run without a reset had a workflow test fault at SPLIT; it did not reproduce. The owner's `npm run dev`
+(tsx watch, port 3100) shares the dev DB and also runs workflows, with whatever code it last reloaded: stop it, or
+reset the DB, before trusting a failure there. Released as **v0.17.0**.
+
+Next: **AI features** need the owner's decision on the provider and API keys.
+
