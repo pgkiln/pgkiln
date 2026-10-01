@@ -3,6 +3,7 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { CHART_KINDS } from '../runtime/charts.ts';
 import { heading } from '../runtime/items.ts';
+import { positionColumns } from '../runtime/report.ts';
 import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
@@ -217,6 +218,9 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
   set('zoom', b.zoom && Number.isInteger(zoom) && zoom >= 1 && zoom <= 19 ? zoom : undefined);
   set('empty', b.empty?.trim() || undefined);
   set('link', mergeLink(b, a.pages));
+  set('layer', b.layer === 'heat' ? 'heat' : undefined);
+  const report = Number(b.report);
+  set('report', b.report && a.reports.has(report) ? report : undefined);
   return out;
 }
 
@@ -291,6 +295,22 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
         ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Shown</th><th>Read-only</th><th>Required</th><th>Edit as</th></tr></thead><tbody>${rows}</tbody></table></div>
           <small class="help">"Edit as" picks a shared list of values (Shared Components → Lists of values) for a select list.</small>`
         : html`<p class="muted">No columns yet.</p>`}
+    </fieldset>`;
+}
+
+/** A map can filter a report on its page to the visible area; the report needs position columns. */
+async function mapReportFieldset(r: RegionRow, pageId: number, appId: number, id: (n: string) => string) {
+  const cfg = r.config ?? {};
+  const reports = (await owner.query(`select id, title, source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
+  const target = reports.find((x) => x.id === Number(cfg.report));
+  const cols = target ? await reportColumns(appId, target.source) : null;
+  const noPosition = cols && 'columns' in cols && !positionColumns(cols.columns);
+  return html`<fieldset class="prop-group"><legend>Filter a report</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('report')}">Report region</label>
+        <select id="${id('report')}" name="report">${opt('', '- none -', target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? '(untitled)'} (#${x.id})`, cfg.report))}</select>
+        <small class="help">${reports.length ? 'Users can show only the rows in the map\'s visible area ("Show this area in the list"). The report needs lat and lng (or location) columns.' : 'Add a report region to this page to filter it by the map area.'}</small></div>
+    </div>
+    ${noPosition ? html`<div class="alert alert-error" role="alert">The report has no <code>lat</code>/<code>lng</code> or <code>location</code> columns, so the map area can't filter it.</div>` : ''}
     </fieldset>`;
 }
 
@@ -380,15 +400,18 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
     case 'map':
       title = 'Map settings';
       body = html`${columnsHint(await reportColumns(appId, r.source))}
-        <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas.</p>
+        <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas. A heat map weighs each place by a <code>weight</code> column.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('layer')}">Show places as</label>
+            <select id="${id('layer')}" name="layer">${opt('', 'Markers', cfg.layer)}${opt('heat', 'Heat map', cfg.layer)}</select></div>
           <div class="field"><label class="label" for="${id('height')}">Height</label>
             <select id="${id('height')}" name="height">${opt('small', 'Small', cfg.height)}${opt('', 'Medium', cfg.height)}${opt('large', 'Large', cfg.height)}</select></div>
           <div class="field"><label class="label" for="${id('zoom')}">Zoom for a single place (1–19)</label>
             <input id="${id('zoom')}" name="zoom" type="number" min="1" max="19" value="${cfg.zoom ?? ''}" placeholder="14"></div>
           ${emptyField(id, cfg)}
         </div></fieldset>
-        ${linkFieldset(id, cfg.link, await pages(), 'Each place')}`;
+        ${linkFieldset(id, cfg.link, await pages(), 'Each place')}
+        ${await mapReportFieldset(r, pageId, appId, id)}`;
       break;
     case 'tree':
       title = 'Tree settings';
@@ -444,7 +467,7 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
     const [pages, lovs, reports] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.lov where app_id = $1', [r.app_id]),
-      r.type === 'facets' ? owner.query(`select id, source from meta.region where page_id = $1 and type = 'report'`, [pid]) : Promise.resolve({ rows: [] as any[] }),
+      r.type === 'facets' || r.type === 'map' ? owner.query(`select id, source from meta.region where page_id = $1 and type = 'report'`, [pid]) : Promise.resolve({ rows: [] as any[] }),
     ]);
     const reportCols = new Map<number, string[]>();
     for (const x of reports.rows) {

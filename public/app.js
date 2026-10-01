@@ -666,6 +666,88 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const f of out) dt.items.add(f);
     input.files = dt.files;
   });
+
+  // file items (data-drop): drop files on the field, or paste them (a screenshot, a copied file).
+  // The files go into the <input type="file">, so the form posts them as usual.
+  function addFiles(input, files) {
+    const dt = new DataTransfer();
+    if (input.multiple) for (const f of input.files) dt.items.add(f);
+    for (const f of input.multiple ? files : files.slice(0, 1)) dt.items.add(f);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // wrap each file input in a drop zone with its hint (again after a dynamic action replaced an item)
+  function dropZones(root) {
+    for (const input of root.querySelectorAll('input[type=file][data-drop]')) {
+      if (input.parentElement.classList.contains('file-drop')) continue;
+      const zone = document.createElement('div');
+      zone.className = 'file-drop';
+      input.before(zone);
+      const hint = document.createElement('span');
+      hint.className = 'file-drop-hint';
+      hint.textContent = input.dataset.drop;
+      zone.append(input, hint);
+    }
+  }
+  if (window.DataTransfer) {
+    dropZones(document);
+    document.addEventListener('pgapex:replaced', (e) => e.detail && dropZones(e.detail.parentElement || document));
+    const zoneOf = (e) => (e.target instanceof Element ? e.target.closest('.file-drop') : null);
+    const carriesFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    let over = null;
+    let depth = 0;
+    const leave = () => {
+      over?.classList.remove('dragover');
+      over = null;
+      depth = 0;
+    };
+    document.addEventListener('dragenter', (e) => {
+      const zone = zoneOf(e);
+      if (!zone || !carriesFiles(e)) return;
+      e.preventDefault();
+      if (zone !== over) {
+        leave();
+        over = zone;
+        zone.classList.add('dragover');
+      }
+      depth++;
+    });
+    // a file dropped next to a zone must not open in the browser (the form would be lost)
+    document.addEventListener('dragover', (e) => {
+      if (over && zoneOf(e) === over) e.preventDefault();
+      else if (carriesFiles(e) && document.querySelector('.file-drop')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'none';
+      }
+    });
+    document.addEventListener('dragleave', (e) => {
+      if (over && zoneOf(e) === over && --depth <= 0) leave();
+    });
+    document.addEventListener('drop', (e) => {
+      const zone = zoneOf(e);
+      leave();
+      if (carriesFiles(e) && document.querySelector('.file-drop')) e.preventDefault();
+      const input = zone?.querySelector('input[type=file]');
+      if (!input || !e.dataTransfer.files.length) return;
+      addFiles(input, [...e.dataTransfer.files]);
+    });
+    // Paste: into the file item that has focus (or whose field has it), or the page's only file item
+    // when no text field has focus (text fields keep their normal paste).
+    document.addEventListener('paste', (e) => {
+      const files = e.clipboardData ? [...e.clipboardData.files] : [];
+      if (!files.length) return;
+      const active = document.activeElement;
+      let input = active && active.closest ? active.closest('.field')?.querySelector('input[type=file][data-drop]') : null;
+      if (!input) {
+        const typing = active && (active.isContentEditable || /^(TEXTAREA|SELECT)$/.test(active.tagName) || (active.tagName === 'INPUT' && active.type !== 'file'));
+        const all = document.querySelectorAll('input[type=file][data-drop]');
+        if (typing || all.length !== 1) return;
+        input = all[0];
+      }
+      e.preventDefault();
+      addFiles(input, files);
+    });
+  }
 })();
 
 // ------------------------------------------------------------------ map regions (Leaflet, loaded on pages with a map)
@@ -696,13 +778,147 @@ document.addEventListener('DOMContentLoaded', () => {
       return box;
     };
     const layers = [];
-    for (const p of data.points) layers.push(window.L.marker([p.lat, p.lng], { title: p.title || '' }).bindPopup(() => popup(p)));
+    if (data.layer === 'heat') layers.push(heatLayer(data.points));
+    else for (const p of data.points) layers.push(window.L.marker([p.lat, p.lng], { title: p.title || '' }).bindPopup(() => popup(p)));
     if (data.shapes.length)
       layers.push(window.L.geoJSON({ type: 'FeatureCollection', features: data.shapes }, { onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)) }));
     const group = window.L.featureGroup(layers).addTo(map);
     const bounds = group.getBounds();
-    if (data.points.length === 1 && !data.shapes.length) map.setView([data.points[0].lat, data.points[0].lng], data.zoom || 14);
+    const area = data.filter && data.filter.area;
+    if (area) map.fitBounds([[area.s, area.w], [area.n, area.e]]);
+    else if (data.points.length === 1 && !data.shapes.length) map.setView([data.points[0].lat, data.points[0].lng], data.zoom || 14);
     else if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: data.zoom || 16 });
     else map.setView([20, 0], 2);
+    if (data.layer === 'heat') heatLegend(map, data.legend);
+    if (data.filter) areaFilter(map, data.filter);
   }
 });
+
+// A heat map layer: every point is a soft spot on a canvas, weighted; the summed
+// intensity is coloured with one-hue blue steps (light and translucent → dark).
+const HEAT_STOPS = [
+  [0, [109, 167, 236, 0]],
+  [0.25, [109, 167, 236, 0.45]],
+  [0.5, [57, 135, 229, 0.65]],
+  [0.75, [28, 92, 171, 0.8]],
+  [1, [13, 54, 107, 0.9]],
+];
+function heatRamp() {
+  const out = new Uint8ClampedArray(256 * 4);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let k = 1;
+    while (k < HEAT_STOPS.length - 1 && HEAT_STOPS[k][0] < t) k++;
+    const [t0, c0] = HEAT_STOPS[k - 1];
+    const [t1, c1] = HEAT_STOPS[k];
+    const f = (t - t0) / (t1 - t0 || 1);
+    for (let j = 0; j < 4; j++) out[i * 4 + j] = (c0[j] + (c1[j] - c0[j]) * f) * (j === 3 ? 255 : 1);
+  }
+  return out;
+}
+function heatLayer(points) {
+  const ramp = heatRamp();
+  const max = Math.max(...points.map((p) => p.weight), 0) || 1;
+  const Heat = window.L.Layer.extend({
+    onAdd(map) {
+      this._map = map;
+      this._canvas = window.L.DomUtil.create('canvas', 'map-heat leaflet-zoom-hide');
+      map.getPanes().overlayPane.append(this._canvas);
+      map.on('moveend zoomend resize', this._draw, this);
+      this._draw();
+    },
+    onRemove(map) {
+      this._canvas.remove();
+      map.off('moveend zoomend resize', this._draw, this);
+    },
+    getBounds() {
+      return window.L.latLngBounds(points.map((p) => [p.lat, p.lng]));
+    },
+    _draw() {
+      const map = this._map;
+      const size = map.getSize();
+      const c = this._canvas;
+      c.width = size.x;
+      c.height = size.y;
+      window.L.DomUtil.setPosition(c, map.containerPointToLayerPoint([0, 0]));
+      const g = c.getContext('2d');
+      // the radius grows a little with the zoom level, so cities stay spots and streets stay readable
+      const radius = Math.max(22, Math.min(44, 10 + map.getZoom() * 2.5));
+      for (const p of points) {
+        if (!p.weight) continue;
+        const at = map.latLngToContainerPoint([p.lat, p.lng]);
+        if (at.x < -radius || at.y < -radius || at.x > size.x + radius || at.y > size.y + radius) continue;
+        const spot = g.createRadialGradient(at.x, at.y, 0, at.x, at.y, radius);
+        spot.addColorStop(0, `rgba(0,0,0,${Math.max(0.08, p.weight / max) * 0.6})`);
+        spot.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = spot;
+        g.fillRect(at.x - radius, at.y - radius, radius * 2, radius * 2);
+      }
+      const img = g.getImageData(0, 0, size.x, size.y);
+      const px = img.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const a = px[i + 3];
+        if (!a) continue;
+        px[i] = ramp[a * 4];
+        px[i + 1] = ramp[a * 4 + 1];
+        px[i + 2] = ramp[a * 4 + 2];
+        px[i + 3] = ramp[a * 4 + 3];
+      }
+      g.putImageData(img, 0, 0);
+    },
+  });
+  return new Heat();
+}
+function heatLegend(map, [fewer, more]) {
+  const Legend = window.L.Control.extend({
+    onAdd() {
+      const box = window.L.DomUtil.create('div', 'map-legend');
+      const lo = document.createElement('span');
+      lo.textContent = fewer;
+      const bar = document.createElement('span');
+      bar.className = 'map-legend-ramp';
+      bar.setAttribute('aria-hidden', 'true');
+      const hi = document.createElement('span');
+      hi.textContent = more;
+      box.append(lo, bar, hi);
+      return box;
+    },
+  });
+  new Legend({ position: 'bottomleft' }).addTo(map);
+}
+// "Show this area in the list": after the user moves the map, a button filters the report to the visible area.
+function areaFilter(map, f) {
+  const Control = window.L.Control.extend({
+    onAdd() {
+      const box = window.L.DomUtil.create('div', 'map-filter');
+      window.L.DomEvent.disableClickPropagation(box);
+      const go = document.createElement('a');
+      go.className = 'btn btn-hot map-filter-go';
+      go.textContent = f.label;
+      go.href = '#';
+      go.hidden = true;
+      go.addEventListener('click', (e) => {
+        e.preventDefault();
+        const b = map.getBounds();
+        const r = (v) => Math.round(v * 1e5) / 1e5;
+        // west/east wrapped to -180..180 (west > east across the antimeridian); the whole world when zoomed far out
+        const wrap = (v) => r(((((v + 180) % 360) + 360) % 360) - 180);
+        const wide = b.getEast() - b.getWest() >= 360;
+        const bb = [r(Math.max(-90, b.getSouth())), wide ? -180 : wrap(b.getWest()), r(Math.min(90, b.getNorth())), wide ? 180 : wrap(b.getEast())].join(',');
+        location.href = f.url.replace('__BB__', encodeURIComponent(bb));
+      });
+      box.append(go);
+      if (f.area) {
+        const all = document.createElement('a');
+        all.className = 'btn map-filter-clear';
+        all.textContent = f.clearLabel;
+        all.href = f.clear;
+        box.append(all);
+      }
+      // shown once the user moved the map (not after the first fit)
+      map.whenReady(() => setTimeout(() => map.on('moveend', () => (go.hidden = false)), 0));
+      return box;
+    },
+  });
+  new Control({ position: 'topright' }).addTo(map);
+}

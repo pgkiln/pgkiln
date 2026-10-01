@@ -90,6 +90,50 @@ export interface ReportState {
   groupBy: { columns: string[]; functions: Aggregate[] };
   pivot: { row: string; column: string; fn: string; value: string } | null;
   chart: { kind: string; label: string; fn: string; value: string } | null;
+  /** the visible area of a map region that filters this report (r<id>_bb) */
+  area: MapArea | null;
+}
+
+/** A map's visible area: south, west, north, east (west > east when it spans the antimeridian). */
+export interface MapArea {
+  s: number;
+  w: number;
+  n: number;
+  e: number;
+}
+
+/** "south,west,north,east" → a map area, or null when it isn't one. */
+export function parseArea(v: string | null): MapArea | null {
+  const parts = (v ?? '').split(',');
+  if (parts.length !== 4 || parts.some((x) => !/^\s*-?\d{1,3}(\.\d{1,8})?\s*$/.test(x))) return null;
+  const [s, w, n, e] = parts.map(Number);
+  return Math.abs(s) <= 90 && Math.abs(n) <= 90 && s <= n && Math.abs(w) <= 180 && Math.abs(e) <= 180 ? { s, w, n, e } : null;
+}
+
+/**
+ * The columns a report's rows have their position in, as for a map region:
+ * lat/lng (or latitude/longitude, lon), or location as "lat,lng" text.
+ */
+export type Position = { lat: string; lng: string } | { location: string };
+export function positionColumns(names: string[]): Position | null {
+  const find = (...want: string[]) => names.find((n) => want.includes(n.toLowerCase()));
+  const lat = find('lat', 'latitude');
+  const lng = find('lng', 'lon', 'longitude');
+  if (lat && lng) return { lat, lng };
+  const location = find('location');
+  return location ? { location } : null;
+}
+
+const LOCATION_RE = `'^\\s*-?\\d{1,2}(\\.\\d+)?\\s*,\\s*-?\\d{1,3}(\\.\\d+)?\\s*$'`;
+
+/** SQL for "the row lies in the area" (the numbers are parsed, never text from the URL). */
+export function areaCondition(area: MapArea, pos: Position) {
+  const [lat, lng] =
+    'lat' in pos
+      ? [`(${q(pos.lat)})::float8`, `(${q(pos.lng)})::float8`]
+      : [1, 2].map((i) => `(case when ${q(pos.location)}::text ~ ${LOCATION_RE} then trim(split_part(${q(pos.location)}::text, ',', ${i}))::float8 end)`);
+  const lngIn = area.w <= area.e ? `${lng} between ${area.w} and ${area.e}` : `(${lng} >= ${area.w} or ${lng} <= ${area.e})`;
+  return `(${lat} between ${area.s} and ${area.n} and ${lngIn})`;
 }
 
 export const MAX_COMPUTATIONS = 5;
@@ -155,6 +199,7 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
       const [kind, label, fn, value] = (p.get(key(r, 'ch')) ?? '').split('|');
       return (REPORT_CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value ? { kind, label, fn, value } : null;
     })(),
+    area: parseArea(p.get(key(r, 'bb'))),
   };
 }
 
@@ -300,11 +345,13 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const where: string[] = [];
   if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
   const facets = facetSelections(ctx, r);
-  const needCols = st.filters.length || facets.size || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report';
+  const needCols = st.filters.length || facets.size || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area;
   // column name → type oid
   const cols = new Map<string, number>(needCols ? (await fieldsOf(ctx, src)).map((f) => [f.name, f.dataTypeID]) : []);
   for (const f of st.filters) if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
   for (const [col, values] of facets) if (cols.has(col)) where.push(facetCondition(col, values));
+  const pos = st.area ? positionColumns([...cols.keys()]) : null;
+  if (st.area && pos) where.push(areaCondition(st.area, pos));
   return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols };
 }
 
@@ -365,7 +412,7 @@ export const visibleColumns = (r: Region, fields: pg.FieldDef[]) => {
   return fields.map((f, i) => ({ f, i })).filter(({ f }) => !hidden.has(f.name.toLowerCase()) && !f.name.startsWith('__'));
 };
 
-export const headingOf = (r: Region, name: string, tr: (s: string) => string = (s) => s) => r.config.headings?.[name] ?? tr(heading(name));
+export const headingOf = (r: Region, name: string, tr: (s: string) => string = (s) => s) => tr(r.config.headings?.[name] ?? heading(name));
 
 /** CSV download (Actions → Download). Cells that look like formulas are neutralised. */
 export async function reportCsv(ctx: PageContext, r: Region) {
@@ -641,6 +688,12 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   if (st.chart)
     chips.push(html`<span class="chip">${t('report.chart')}: <b>${t(`chart.${st.chart.kind}`)}, ${headingOf(r, st.chart.label, ctx.locale.tr)}</b>
       <a href="${regionUrl(ctx, r, (p) => dropView(p, 'chart', ['ch']))}" aria-label="${t('report.remove')}">×</a></span>`);
+  if (st.area) {
+    // a report without position columns can't be filtered by a map: say so on the chip
+    const pos = positionColumns(cols.map(({ f }) => f.name));
+    chips.push(html`<span class="chip${pos ? '' : ' chip-error'}"${pos ? '' : raw(` title="${esc(t('report.no_position'))}"`)}>${t('report.map_area')}
+      <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'bb')); p.delete(key(r, 'p')); })}" aria-label="${t('report.remove')}">×</a></span>`);
+  }
   if (st.search)
     chips.unshift(
       html`<span class="chip">${t('report.search_chip')} <b>${st.search}</b> <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'q')); p.delete(key(r, 'p')); })}" aria-label="${t('report.clear_search')}">×</a></span>`,
