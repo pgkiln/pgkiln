@@ -66,6 +66,15 @@ describe('report settings', () => {
     assert.equal(merge({}, { public_reports: 'NOPE' }).public_reports, undefined);
   });
 
+  test('row selection: a column of the query into an item of the page', () => {
+    const items = new Set(['P2_SELECTED']);
+    const m = (b: Record<string, string>) => mergeReportSettings({ selection: { column: 'x', item: 'Y' } }, { ...on, ...cols(['empno', { shown: 'true', print: 'true' }]), ...b }, sets.pages, sets.layouts, sets.schemes, items);
+    assert.deepEqual(m({ sel_column: 'empno', sel_item: 'P2_SELECTED' }).selection, { column: 'empno', item: 'P2_SELECTED' });
+    assert.equal(m({ sel_column: 'empno', sel_item: 'P9_OTHER' }).selection, undefined, 'item of another page');
+    assert.equal(m({ sel_column: 'nope', sel_item: 'P2_SELECTED' }).selection, undefined);
+    assert.equal(m({}).selection, undefined);
+  });
+
   test('columns come from the query, as the app role, without running it', async () => {
     const r = await reportColumns(appId, 'select empno, ename, sal from hr.emp where deptno = :P2_DEPTNO::int');
     assert.deepEqual(r, { columns: ['empno', 'ename', 'sal'] });

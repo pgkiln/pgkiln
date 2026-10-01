@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Region settings** in the page designer for grid, chart, cards, calendar and faceted search
+  regions, like the report settings: grid columns (heading, shown, read-only, required, list of
+  values) and add/change/delete switches; chart type; cards style and link; calendar link; the
+  facets' report and per facet its label, values shown and order. Saving keeps unknown keys and
+  leaves defaults out; links, lists of values and the report are checked server-side.
+- Interactive reports: **computed columns** (Actions → Compute, e.g. `sal * 12`; a small
+  expression language that is parsed, never pasted into SQL), **group by** (up to three columns
+  with row counts and functions), **pivot** (values of a column as columns, with row totals) and
+  a **chart view** (bar, column, line, area or donut), with Report / Group by / Pivot / Chart links
+  once set up. All of them are kept in saved reports.
+- **Row selection** for report regions: `"selection": {"column": …, "item": …}` (also in the
+  Report settings form) adds a checkbox per row and a *select all*; on submit the checked values
+  reach the item, colon separated.
+
 ## [0.8.0] - 2026-09-30
 
 ### Changed

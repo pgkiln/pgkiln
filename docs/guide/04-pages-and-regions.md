@@ -33,7 +33,7 @@ only when true) and `authz` (an authorization scheme).
 
 | Type | Purpose |
 |---|---|
-| [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, saved reports, paging and CSV/Excel/PDF download |
+| [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
 | [`chart`](#chart) | Bar, column, line, area or donut chart from a SELECT |
@@ -70,17 +70,59 @@ Features for end users:
     gets a *Subtotal*;
   - **highlight**: color the rows that match a condition (yellow, green, red, blue or gray; the
     first matching rule wins);
-  - **saved reports**: save the current search, filters, sort, break, aggregates and highlights
-    under a name, and switch between saved reports (below);
+  - **compute**: add a column calculated from others, e.g. *Year pay* = `sal * 12` (see
+    [computed columns](#computed-columns)); it can be filtered, sorted, aggregated and highlighted
+    like any column;
+  - **group by**: up to three columns, with the number of rows and any sums, averages, counts,
+    minimums or maximums per group;
+  - **pivot**: one column's values as columns (up to 30), with a function of a value column in
+    the cells and a total per row, e.g. salary per department × job;
+  - **chart**: a bar, column, line, area or donut chart of a function per label column (up to 50
+    labels), with its data table;
+  - **saved reports**: save the current search, filters, sort, break, aggregates, highlights,
+    computed columns and views under a name, and switch between saved reports (below);
   - **rows per page**, **download CSV / Excel / PDF**, **print**, **reset**.
-- Active search, filters, break, aggregates and highlights appear as removable chips.
+- Active search, filters, break, aggregates, highlights, computed columns and views appear as
+  removable chips. Once a group by, pivot or chart is set, **Report / Group by / Pivot / Chart**
+  links switch between the views; all views use the same search, filters and facets.
 - **Paging** with Previous/Next.
 - On phones every row **reflows** into a card with labelled values.
 
 The report's state lives in the URL (`?r12_q=…&r12_s=3&r12_d=desc&r12_b=job&r12_a=sum|sal&r12_h=sal|gt|green|3000`),
 so it can be bookmarked and shared. Everything the user enters is applied safely: search, filter
 and highlight values become literals, columns must exist in the result, operators, aggregate
-functions and colors come from fixed lists, sort positions are integers.
+functions, chart types and colors come from fixed lists, sort positions are integers, and computed
+column expressions are parsed (below), never pasted into SQL.
+
+### Computed columns
+
+An expression uses the report's columns by name (case doesn't matter; quote names with spaces as
+`"Total pay"`), numbers, text in single quotes, `+ - * /`, `||` to join text, parentheses and these
+functions: `abs ceil floor round trunc mod power upper lower initcap length trim substr left right
+replace concat coalesce nullif greatest least`. Division returns a decimal number, and `x / 0`
+gives an empty value instead of an error. Up to five per report; an expression that doesn't parse
+is shown as an error and left out, so the report keeps working.
+
+```
+sal * 12 + coalesce(comm, 0)
+upper(ename) || ' (' || job || ')'
+round(sal / 12, 2)
+```
+
+### Row selection
+
+`"selection": {"column": "empno", "item": "P2_SELECTED"}` puts a checkbox in front of every row
+(with *select all* in the header). When the page is submitted, the checked rows' values reach the
+item, colon separated (`7839:7902`), like a checkbox group; a process can then work on them:
+
+```sql
+update hr.emp set active = false
+ where empno = any(string_to_array(:P2_SELECTED, ':')::int[]);
+```
+
+The item must be on the same page and is usually `hidden`; it accepts posted values only because
+the selection names it. The values come from the browser, so treat them as user input (RLS and
+your process's own checks apply). Only the rows on the current page can be selected.
 
 **Saved reports** (like APEX's saved interactive reports) belong to the signed-in user. A
 region with `"public_reports": "ADMIN"` lets users who pass that authorization scheme save
@@ -105,6 +147,7 @@ Attributes (most of them are also in the page designer's **Report settings** for
 | `saved_reports` | `true` | `false` hides saved reports for this report |
 | `public_reports` | none | Authorization scheme whose users may save public reports |
 | `pdf` | none | PDF layout, columns and widths; see [report layouts](16-files.md#report-layouts) |
+| `selection` | none | Row selection: `{"column": "empno", "item": "P2_SELECTED"}` (see [row selection](#row-selection)) |
 
 Items placed **in** a report region appear in its toolbar; that's how filter fields (for example
 a department select list with `submit_on_change`) are made.
@@ -112,8 +155,8 @@ a department select list with `submit_on_change`) are made.
 The CSV and Excel downloads use the current search, filters and sort, grouped by the control
 break column when there is one (up to 100,000 rows). Text cells that start with `=`, `+`, `-` or
 `@` are prefixed with `'` in CSV so spreadsheets don't execute them. The PDF uses them too; see
-[downloads and printing](16-files.md#downloads-and-printing). Highlights and aggregates are shown
-on screen only.
+[downloads and printing](16-files.md#downloads-and-printing). Computed columns are included in the
+downloads; highlights, aggregates and the group by, pivot and chart views are shown on screen only.
 
 ---
 

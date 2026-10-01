@@ -80,6 +80,36 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.goto(`${base}/a/hr/2`);
       await page.click('summary:has-text("Actions")');
       await check(page, 'app-2-actions', vp);
+      // the other report views: a computed column, group by, pivot and chart
+      const rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report'`)).id;
+      const views: Record<string, [string, string][]> = {
+        compute: [['c', 'Year pay|sal * 12']],
+        group: [['g', 'department'], ['g', 'job'], ['ga', 'sum|sal'], ['ga', 'avg|sal'], ['v', 'group']],
+        pivot: [['pv', 'department|job|sum|sal'], ['v', 'pivot']],
+        chart: [['ch', 'column|job|sum|sal'], ['v', 'chart']],
+      };
+      for (const [name, params] of Object.entries(views)) {
+        const res = await page.goto(`${base}/a/hr/2?${new URLSearchParams(params.map(([k, v]) => [`r${rid}_${k}`, v]))}`);
+        assert.equal(res?.status(), 200, name);
+        assert.equal(await page.locator('.alert-error').count(), 0, `${name}: no errors`);
+        await check(page, `app-2-${name}`, vp);
+      }
+      // row selection: select all checks every row
+      const before = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+      const pageId = (await owner.one('select page_id from meta.region where id = $1', [rid])).page_id;
+      await owner.query(`insert into meta.item (page_id, name, type) values ($1, 'P2_SELECTED', 'hidden')`, [pageId]);
+      await owner.query('update meta.region set config = config || $2 where id = $1', [rid, JSON.stringify({ selection: { column: 'empno', item: 'P2_SELECTED' } })]);
+      try {
+        await page.goto(`${base}/a/hr/2`);
+        await page.locator('[data-select-all]').check();
+        const boxes = page.locator('input[name="P2_SELECTED"]');
+        assert.ok((await boxes.count()) > 0);
+        assert.equal(await page.locator('input[name="P2_SELECTED"]:not(:checked)').count(), 0, 'all rows checked');
+        await check(page, 'app-2-selection', vp);
+      } finally {
+        await owner.query('update meta.region set config = $2 where id = $1', [rid, JSON.stringify(before)]);
+        await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_SELECTED'`, [pageId]);
+      }
       await page.context().close();
     });
 
@@ -158,6 +188,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
           return `/builder/pages/${r.page_id}?c=region-${r.id}`;
         })(),
+        ...Object.fromEntries(
+          (await owner.query(`select distinct on (r.type) r.type, r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id
+                               where p.app_id = $1 and r.type in ('grid', 'chart', 'cards', 'calendar', 'facets') order by r.type, r.id`, [appId])).rows
+            .map((r) => [`${r.type}_region`, `/builder/pages/${r.page_id}?c=region-${r.id}`]),
+        ),
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',

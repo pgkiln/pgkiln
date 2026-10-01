@@ -6,11 +6,13 @@ export class Browser {
   lastCsrf = '';
   constructor(readonly app: FastifyInstance, readonly headers: Record<string, string> = {}) {}
 
-  async request(method: 'GET' | 'POST', url: string, form?: Record<string, string>) {
+  async request(method: 'GET' | 'POST', url: string, form?: Record<string, string | string[]>) {
+    // an array posts the field once per value (checkboxes with one name)
+    const payload = form ? new URLSearchParams(Object.entries(form).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [k, x]) : [[k, v]]))).toString() : undefined;
     const res = await this.app.inject({
       method,
       url,
-      payload: form ? new URLSearchParams(form).toString() : undefined,
+      payload,
       headers: {
         ...this.headers,
         cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
@@ -28,11 +30,11 @@ export class Browser {
   get(url: string) {
     return this.request('GET', url);
   }
-  post(url: string, form: Record<string, string>) {
+  post(url: string, form: Record<string, string | string[]>) {
     return this.request('POST', url, form);
   }
   /** POST with the CSRF token of the last page. */
-  submit(url: string, form: Record<string, string>) {
+  submit(url: string, form: Record<string, string | string[]>) {
     return this.request('POST', url, { __csrf: this.lastCsrf, ...form });
   }
   /** POST multipart/form-data (file items) with the CSRF token of the last page. */

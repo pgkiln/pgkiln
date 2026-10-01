@@ -254,6 +254,12 @@ textarea.code { font-family: var(--mono); font-size: 0.84rem; line-height: 1.45;
 .chip { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.83rem; padding: 0.15rem 0.3rem 0.15rem 0.7rem; background: var(--accent-soft); border-radius: 99px; }
 .chip a { text-decoration: none; font-size: 1rem; line-height: 1; padding: 0 0.3rem; border-radius: 99px; }
 .chip a:hover { background: var(--surface); }
+.chip-error { background: var(--danger-soft); outline: 1px solid var(--danger); }
+.view-switch { margin: 0 0 0.6rem; }
+.view-note { margin: 0.4rem 0; font-size: 0.85rem; }
+.report th.row-select, .report td.row-select { width: 2.25rem; text-align: center; }
+.report-pivot tbody th { text-align: left; font-weight: 600; }
+.row-select-label { display: none; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
 .region-plain .table-wrap, .region-standard .table-wrap { border-radius: 6px; }
 table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
@@ -673,7 +679,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 @media print {
   :root { color-scheme: light; }
   body, .t-app { background: #fff !important; color: #000 !important; }
-  .t-header, .t-nav, .t-nav-backdrop, .skip-link, .report-toolbar, .pager, .buttons, .actions-menu,
+  .t-header, .t-nav, .t-nav-backdrop, .skip-link, .report-toolbar, .view-switch, .pager, .buttons, .actions-menu,
   .alert-close, .default-submit, .facets, .region-facets, .chart-data summary, .crumbs, dialog { display: none !important; }
   .t-body { display: block; min-height: 0; }
   .t-content { padding: 0; max-width: none; }
@@ -716,7 +722,16 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
   .report-reflow tfoot { display: block; }
   .report-reflow tr[class^="hl-"], .report-reflow tbody tr[class^="hl-"]:hover { background: var(--hl); }
   .report-reflow tr[class^="hl-"] td, .report-reflow tr[class^="hl-"]:hover td { background: transparent; }
-  .report-reflow .agg-row td[data-label=""] { display: none; }
+  .report-reflow .agg-row td[data-label=""], .report-reflow .agg-row td.row-select { display: none; }
+  .report-reflow td.row-select { width: 100%; }
+  /* the header is collapsed on phones: keep its "select all" box, with a label */
+  .report-reflow thead:has(th.row-select) { position: static; width: auto; height: auto; overflow: visible; clip: auto; display: block; }
+  .report-reflow thead:has(th.row-select) tr { display: block; border: 0; padding: 0; margin: 0 0 0.5rem; background: none; }
+  .report-reflow thead:has(th.row-select) th:not(.row-select) { display: none; }
+  .report-reflow th.row-select { display: block; width: auto; text-align: left; border: 0; padding: 0 0.2rem; }
+  .report-reflow th.row-select label { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 500; }
+  .report-reflow .row-select-label { display: inline; }
+  .report-reflow td.row-select input { justify-self: start; }
 }
 @media print {
   .report tr[class^="hl-"] td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
