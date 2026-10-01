@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Region settings** in the page designer for grid, chart, cards, calendar and faceted search
+  regions, like the report settings: grid columns (heading, shown, read-only, required, list of
+  values) and add/change/delete switches; chart type; cards style and link; calendar link; the
+  facets' report and per facet its label, values shown and order. Saving keeps unknown keys and
+  leaves defaults out; links, lists of values and the report are checked server-side.
+
 ## [0.8.0] - 2026-09-30
 
 ### Changed

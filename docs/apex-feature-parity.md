@@ -34,7 +34,7 @@ Last reviewed: 2026-09-30 (pgapex 0.8.0: report control break, aggregates, highl
 | App Builder: create, edit, delete, run apps | ✅ | Builder at `/builder` |
 | Create application wizard | 🟡 | Blank app with a dedicated database role and schema. No "from a spreadsheet", no blueprints (26.1) |
 | Create page wizards | 🟡 | *Report and form* and *Interactive grid* from any table; other page types start blank |
-| Page Designer | 🟡 | Component tree and grouped property editor. No drag-and-drop layout grid; no code editor with autocomplete |
+| Page Designer | 🟡 | Component tree and grouped property editor; settings forms for report, grid, chart, cards, calendar and faceted search regions. No drag-and-drop layout grid; no code editor with autocomplete |
 | Shared components | 🟡 | Navigation menu, authorization schemes, lists of values, application items and processes, access control, globalization. No generic lists, templates, plug-ins or build options |
 | Export / import | ✅ | `meta.export_app()` / `meta.import_app()`: portable JSON, also in the builder |
 | APEXlang: human-readable, diffable app files; static IDs (26.1) | 🟡 | The JSON export is diffable, but there's no file-per-component layout, CLI or static IDs |
@@ -231,17 +231,16 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Settings forms for the other region types** (grid, chart, cards, calendar, facets), like the report settings, then the rest of the builder quality work.
-2. **Interactive report power features:** group by, pivot, chart view, computed columns, row selection.
-3. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
-4. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
-5. **LDAP and SAML** authentication; "remember me".
-6. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
-7. **Approvals / workflow** built on the metadata model.
-8. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-9. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-10. **Template components and plug-ins.**
-11. **AI features.**
+1. **Interactive report power features:** group by, pivot, chart view, computed columns, row selection.
+2. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
+3. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
+4. **LDAP and SAML** authentication; "remember me".
+5. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
+6. **Approvals / workflow** built on the metadata model.
+7. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+8. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+9. **Template components and plug-ins.**
+10. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

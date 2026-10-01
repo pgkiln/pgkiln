@@ -87,6 +87,20 @@ link column (page and items) and the PDF layout. The columns are read from the r
 (run with `limit 0` as the application's role and rolled back). Saving writes the region's
 *Attributes (JSON)* and keeps any other keys there.
 
+The other region types with settings get a similar form, under the same rules (defaults are left
+out, other keys are kept, columns the query no longer returns stay listed so you can clear them):
+
+| Region | Settings form |
+|---|---|
+| `grid` | Rows per page; whether users may add, change and delete rows; per column its heading, shown, read-only, required and "Edit as" (a shared list of values) |
+| `chart` | Chart type and the text when there are no rows; lists the query's columns |
+| `cards` | Cards or KPI tiles, the text when there are no rows, and the link (page and items) |
+| `calendar` | The link of each event (page and items); warns when the query lacks `start_date` or `title` |
+| `facets` | The report region it filters, and per column of that report: facet on/off, label, values shown and order |
+
+Links, lists of values and the facets' report are checked when saving: a form can only point to
+pages and shared lists of values of the same application, and to report regions on the same page.
+
 Page properties:
 
 | Property | Meaning |

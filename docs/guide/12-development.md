@@ -55,6 +55,7 @@ src/
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: next run, Run now, run history
     report-settings.ts     page designer: report settings form (columns, link, PDF)
+    region-settings.ts     page designer: settings forms for grid, chart, cards, calendar, facets
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
