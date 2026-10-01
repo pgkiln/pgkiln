@@ -29,7 +29,7 @@ first version (MVP). Every finding below has a regression test in
 | Passwords | Password policy (length, letters and digits, no username), expiry and change on first use enforced before a session exists; changing a password needs the current one and ends other sessions. |
 | Session state protection | Item values in URLs, and the row keys of interactive grids, carry an HMAC checksum bound to app, page and user. Hidden, display, read-only and unauthorized items cannot be set by a form post. |
 | Request integrity | A CSRF token on every POST (pages, AJAX, login, logout). Buttons are re-validated on submit. |
-| Output | Auto-escaping HTML templates, strict CSP (no inline script), `X-Frame-Options`, `nosniff`, `no-store`. |
+| Output | Auto-escaping HTML templates, strict CSP (no inline scripts, no inline styles: the page's one `<style>` carries a per-response nonce), `X-Frame-Options`, `nosniff`, `no-store`. |
 | Files | Uploads are size- and type-checked and stored per session (`meta.temp_files` shows only the session's own files). A posted text value can't point a file item at another file. Downloads need a checksum bound to user, page, item and record, check page access and read as the app's role (RLS applies). They are sent as attachments with `nosniff` and a sandboxing CSP; only PNG, JPEG, GIF, WebP and PDF are shown inline. |
 | Data loading and PDFs | The `data_load` process loads as the app's role (grants, RLS, triggers apply) and shows only data errors and `RAISE` messages per row. Report PDFs run the report's own query with the same page, region and row checks as the screen. |
 
@@ -61,7 +61,10 @@ Severity is rated for an internet-facing deployment.
   literals, whitelisted operators, integers, or identifiers checked against
   the result's column list.
 - **Static region HTML is trusted.** `&ITEM.` substitutions in it are
-  escaped, and inline scripts are blocked by the CSP.
+  escaped, and inline scripts, event handler attributes, `style` attributes
+  and `<style>` blocks are blocked by the CSP (`style-src 'self' 'nonce-…'`):
+  even HTML that slips through can't restyle the page to fake a form or hide
+  a warning. Style developer HTML with the classes in `/static/app.css`.
 - **Server-side checks belong in the database** for anything that matters:
   RLS policies, or checks inside PL/pgSQL functions (see `hr.decide_leave`).
   UI authorization hides things; the database enforces them.

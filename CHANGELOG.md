@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- The Content-Security-Policy no longer allows inline styles: `style-src 'self' 'nonce-…'` with a
+  new nonce per response. Chart geometry and theme colours go into the page's one nonce'd
+  `<style>` as classes (`src/css.ts`); a refreshed region sends its rules along and `app.js` adds
+  them through the CSSOM. The builder uses CSS classes instead of `style` attributes.
+  **Upgrade note:** `style="…"` attributes and `<style>` blocks in your own static or dynamic
+  region HTML are now ignored by browsers; use the classes in `/static/app.css`.
+
+### Fixed
+- Chart legend swatches were grey since 0.8.0 (the highlight chip's swatch rule applied to them).
+
 ### Added
 - **Region settings** in the page designer for grid, chart, cards, calendar and faceted search
   regions, like the report settings: grid columns (heading, shown, read-only, required, list of

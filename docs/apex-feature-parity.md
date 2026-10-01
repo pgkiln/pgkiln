@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection).
+Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection; CSP without `unsafe-inline`).
 
 ## At a glance
 
@@ -17,13 +17,13 @@ Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all regio
 | Regions | 6 | 5 | 6 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps missing |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
-| Security | 14 | 2 | 3 | 2 | On par or stricter; no LDAP/SAML, no "remember me" |
+| Security | 15 | 1 | 3 | 2 | On par or stricter (CSP without `unsafe-inline`); no LDAP/SAML, no "remember me" |
 | User interface | 4 | 4 | 2 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 2 | 3 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX loading, report PDFs; no document templates or REST data sources |
 | Workflow, automation and AI | 0 | 1 | 5 | 0 | Scheduled automations; approvals are hand-built in PL/pgSQL (see the HR sample) |
 | Administration | 1 | 3 | 1 | 0 | Single workspace |
-| **Total** | **43** | **34** | **33** | **6** | 116 APEX features compared: 37% available, 29% partial |
+| **Total** | **44** | **33** | **33** | **6** | 116 APEX features compared: 38% available, 28% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -122,7 +122,7 @@ Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all regio
 | CSRF protection | ✅ | Tokens on every POST, SameSite cookies |
 | Activity monitoring and audit | ✅ | Page views, sign-ins, denials, errors per app. Database-level auditing via `pgaudit` |
 | Error handling that hides internals | ✅ | Reference numbers; debug mode per app |
-| Content Security Policy without `unsafe-inline` (26.1) | 🟡 | Scripts: strict (`script-src 'self'`, no inline scripts). Styles still allow inline `style` attributes (`style-src 'unsafe-inline'`), used for chart bar widths and developer HTML |
+| Content Security Policy without `unsafe-inline` (26.1) | ✅ | Scripts and styles: `script-src 'self'`, `style-src 'self' 'nonce-…'`. No inline scripts or `style` attributes; theme colours and chart geometry are in one `<style>` with a fresh nonce per response |
 | Session sharing between applications | 🟡 | Each app has its own session; with OpenID Connect the second sign-in is silent. APEX: workspace sharing or a custom cookie |
 | Forgot password for end users | ➖ | pgapex sends no mail. As in APEX apps, users ask an administrator for a temporary password (change on first use) |
 | Database accounts, LDAP, SAML, HTTP-header authentication | ❌ | |
@@ -223,7 +223,7 @@ Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all regio
 Small but real differences, for teams comparing the two:
 
 - Open source (Apache-2.0), on any PostgreSQL 15+, including every managed service.
-- A strict script CSP by default, and a security regression suite that runs in CI.
+- A strict CSP by default (no inline scripts or styles), and a security regression suite that runs in CI.
 - Responsive layouts verified automatically at four screen sizes.
 - The theme follows the device's light/dark setting automatically, and the choice is saved per user.
 - A built-in *My account* page (own password, theme, language).
@@ -231,15 +231,14 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Stricter CSP:** move inline `style` attributes (chart bars) to classes or CSS variables set from CSS, then drop `style-src 'unsafe-inline'`.
-2. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
-3. **LDAP and SAML** authentication; "remember me".
-4. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
-5. **Approvals / workflow** built on the metadata model.
-6. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-7. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-8. **Template components and plug-ins.**
-9. **AI features.**
+1. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
+2. **LDAP and SAML** authentication; "remember me".
+3. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
+4. **Approvals / workflow** built on the metadata model.
+5. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+6. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+7. **Template components and plug-ins.**
+8. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),
