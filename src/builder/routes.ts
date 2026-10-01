@@ -8,7 +8,7 @@ import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
 import { ICON_OPTIONS } from './components.ts';
-import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
@@ -33,7 +33,10 @@ export async function builderRoutes(app: FastifyInstance) {
           ${input('password', 'Password', '', { type: 'password', required: true, auto: 'current-password' })}
           <button class="btn btn-hot">Sign in</button>
         </form></main>`,
-        'login-body',
+        'login-body ide-login',
+        {},
+        builderHead(),
+        { theme: validTheme(req.cookies?.[THEME_COOKIE]) ?? 'dark' },
       ),
     );
   });
@@ -66,6 +69,12 @@ export async function builderRoutes(app: FastifyInstance) {
     }
     await destroySession(reply, s, BASE);
     const ns = await createSession(reply, null, BASE, dev.username);
+    // the builder theme chosen earlier on this device
+    const theme = validTheme(req.cookies?.[THEME_COOKIE]);
+    if (theme) {
+      ns.state.__BTHEME = theme;
+      await saveState(ns);
+    }
     logActivity({ username: dev.username, event: 'login', ip, detail: 'builder' });
     if (password === 'admin' || password === dev.username) {
       ns.state.__WEAK = '1';
@@ -78,6 +87,26 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await getSession(req, reply, null, BASE);
     if (req.body?.__csrf === s.csrf_token) await destroySession(reply, s, BASE);
     return reply.redirect(`${BASE}/login`, 303);
+  });
+
+  // The builder's light/dark theme (the developer's menu in the icon rail).
+  app.post(`${BASE}/theme`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const theme = validTheme(req.body?.theme);
+    if (!theme) return reply.code(400).send('Unknown theme');
+    s.state.__BTHEME = theme;
+    reply.setCookie(THEME_COOKIE, theme, { path: BASE, httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600, secure: process.env.COOKIE_SECURE === 'true' });
+    const ref = String(req.headers.referer ?? '');
+    const back_to = (() => {
+      try {
+        const u = new URL(ref);
+        return u.host === req.headers.host && u.pathname.startsWith(BASE) ? u.pathname + u.search : BASE;
+      } catch {
+        return BASE;
+      }
+    })();
+    return back(reply, s, back_to);
   });
 
   // ---------------------------------------------------------------- workspace home
