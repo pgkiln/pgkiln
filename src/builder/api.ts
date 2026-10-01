@@ -122,7 +122,7 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
         <p class="muted u-mt0">PostgREST runs next to pgapex and serves the <code>${API_SCHEMA}</code> schema over HTTP. Requests carry a JWT whose <code>role</code> claim is this application’s API role; row level security uses the same <code>meta.app_user()</code> and <code>meta.has_role()</code> as the web pages.</p>
         <form method="post" action="${BASE}/apps/${a.id}/api">${csrf(s)}
           <div class="form-grid">
-            ${input('api_role', 'API database role', role, { placeholder: 'e.g. hr_api', help: 'Grant it only the api schema’s views and functions, and grant it to pgapex_authenticator. Empty disables tokens for this app.' })}
+            ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'Grant it only the api schema’s views and functions, and grant it to pgapex_authenticator. Empty disables tokens for this app.' })}
           </div>
           <div class="buttons"><button class="btn btn-hot">Save</button></div>
         </form>

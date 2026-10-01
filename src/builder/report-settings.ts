@@ -34,7 +34,7 @@ export async function reportColumns(appId: number, source: string | null): Promi
   }
 }
 
-/** "P3_EMPNO=#empno#, P3_X=a=b" → { P3_EMPNO: '#empno#', P3_X: 'a=b' } (item names upper case). */
+/** "P3_ID=#id#, P3_X=a=b" → { P3_ID: '#id#', P3_X: 'a=b' } (item names upper case). */
 export function parseLinkItems(text: string | undefined): Record<string, string> {
   return Object.fromEntries(
     (text ?? '')
@@ -126,7 +126,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
         <div class="field"><label class="label" for="${id('link_page')}">To page</label>
           <select id="${id('link_page')}" name="link_page">${opt('', '- choose -', cfg.link?.page)}${pages.rows.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, cfg.link?.page))}</select></div>
         <div class="field" data-wide><label class="label" for="${id('link_items')}">Set items</label>
-          <input id="${id('link_items')}" name="link_items" value="${linkItems}" placeholder="P3_EMPNO=#empno#">
+          <input id="${id('link_items')}" name="link_items" value="${linkItems}" placeholder="P3_ID=#id#">
           <small class="help">ITEM=#column#, comma separated; #column# is replaced by the row's value.</small></div>
       </div></fieldset>
       <fieldset class="prop-group"><legend>Row selection</legend><div class="form-grid">

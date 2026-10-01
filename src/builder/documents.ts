@@ -12,7 +12,7 @@ import { BASE, developer, type Req } from './ui.ts';
 // Shared Components → Document templates → Preview: the template filled with
 // item values typed by the developer, as the app's role (rolled back).
 
-/** "P3_EMPNO=7839" lines → binds */
+/** "P5_ID=42" lines → binds */
 export const previewBinds = (text: string) =>
   Object.fromEntries(
     text

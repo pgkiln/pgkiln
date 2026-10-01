@@ -36,7 +36,7 @@ export async function sqlRoutes(app: FastifyInstance) {
     const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sql')}
       <p class="muted">Runs as the builder's owner connection (not as an application role). Multiple statements are allowed; results of the last one are shown.</p>
       <form method="post">${csrf(s)}
-        <textarea name="sql" class="code sql-editor" rows="12" spellcheck="false" aria-label="SQL">${sql || 'select * from hr.emp;'}</textarea>
+        <textarea name="sql" class="code sql-editor" rows="12" spellcheck="false" aria-label="SQL">${sql || 'select current_user, version();'}</textarea>
         <div class="buttons"><button class="btn btn-hot">${icon('play')} Run (Ctrl+Enter)</button></div>
       </form>
       <div class="u-mt1">${result}</div>`;
