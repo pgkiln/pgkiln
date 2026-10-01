@@ -91,7 +91,7 @@ export async function designerRoutes(app: FastifyInstance) {
         </form>
         <form method="post" action="${BASE}/pages/${p.id}/delete" class="danger-zone">${csrf(s)}
           <button class="btn btn-danger" data-confirm="Delete page ${p.page_no} and all its components?">Delete page</button></form>`)}
-        <div style="height:1rem"></div>
+        <div class="u-spacer"></div>
         ${region('Cheat sheet', html`<div class="cheat">
           <p><code>:P1_ITEM</code> binds an item value in any SQL (always escaped). <code>:APP_USER</code>, <code>:APP_PAGE_ID</code>, <code>:REQUEST</code> are built in.</p>
           <p><code>&amp;P1_ITEM.</code> substitutes into titles, static HTML and link targets (HTML-escaped).</p>

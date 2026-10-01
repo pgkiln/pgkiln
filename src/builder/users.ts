@@ -113,10 +113,10 @@ export async function usersRoutes(app: FastifyInstance) {
     const cfg = await accountSettings();
     const main = html`
       <div class="title-row"><h1>Users</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">Identity providers (single sign-on)</a></div></div>
-      <p class="muted" style="margin-top:0">One account per person. Give accounts access to applications, with roles per application, here or under an application's <b>Shared Components → Access control</b>.</p>
+      <p class="muted u-mt0">One account per person. Give accounts access to applications, with roles per application, here or under an application's <b>Shared Components → Access control</b>.</p>
       <div class="columns wide-left">
         ${region('Accounts', html`
-          <form method="get" class="search" role="search" style="margin-bottom:.75rem;max-width:none">
+          <form method="get" class="search u-mb075 u-mwnone" role="search">
             <input type="search" name="q" value="${q}" placeholder="Search name, username or e-mail…" aria-label="Search accounts"><button class="btn">Search</button>
           </form>
           <div class="table-wrap"><table class="report report-reflow">
@@ -218,7 +218,7 @@ export async function usersRoutes(app: FastifyInstance) {
               ${input('display_name', 'Name', u.display_name)}
               ${input('email', 'E-mail', u.email, { type: 'email' })}
             </div>
-            <div class="field" style="margin-top:.75rem"><label class="check"><input type="checkbox" name="active" value="true"${u.active ? raw(' checked') : ''}> Active</label>
+            <div class="field u-mt075"><label class="check"><input type="checkbox" name="active" value="true"${u.active ? raw(' checked') : ''}> Active</label>
               <small class="help">Inactive accounts can't sign in to any application; deactivating ends their sessions.</small></div>
             <div class="buttons"><button class="btn btn-hot">Save</button></div>
           </form>
@@ -246,7 +246,7 @@ export async function usersRoutes(app: FastifyInstance) {
             ${access.rows.length
               ? access.rows.map((a) => html`<tr>
                   <td data-label="Application"><a href="${BASE}/apps/${a.app_id}/shared">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
-                  <td data-label="Roles"><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}" class="search roles-form" style="margin:0;max-width:none">${csrf(s)}
+                  <td data-label="Roles"><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}" class="search roles-form u-m0 u-mwnone">${csrf(s)}
                     <input name="roles" value="${a.roles.join(', ')}" aria-label="Roles in ${a.name}" placeholder="no roles (e.g. ${(hints.get(a.app_id) ?? []).slice(0, 2).map((h) => h.role).join(', ') || 'admin'})"><button class="btn">Save</button>
                     ${roleHintsHtml(hints.get(a.app_id) ?? [])}</form></td>
                   <td data-label=""><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}/revoke">${csrf(s)}<button class="link-button" data-confirm="Revoke access to ${a.name}?">Revoke</button></form></td>
@@ -367,7 +367,7 @@ export async function usersRoutes(app: FastifyInstance) {
         ${input('username_claim', 'Username claim', pr.username_claim ?? 'preferred_username', { help: 'Use a claim users cannot change themselves (e.g. preferred_username, upn, email).' })}
         ${input('groups_claim', 'Groups claim', pr.groups_claim ?? 'groups', { help: 'Dot paths work, e.g. realm_access.roles' })}
       </div>
-      <div class="field" style="margin-top:.75rem"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> Create accounts automatically on first sign-in</label>
+      <div class="field u-mt075"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> Create accounts automatically on first sign-in</label>
         <small class="help">Otherwise only people with an existing account (same username) can sign in.</small></div>
       <div class="field"><label class="check"><input type="checkbox" name="enabled" value="true"${pr.enabled !== false ? raw(' checked') : ''}> Enabled</label></div>
       ${!isNew && pr.has_secret ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_secret" value="true"> Remove the stored client secret</label></div>` : ''}
@@ -389,7 +389,7 @@ export async function usersRoutes(app: FastifyInstance) {
       from meta.auth_provider p order by display_name`)).rows;
     const main = html`
       <div class="title-row"><h1>Identity providers</h1></div>
-      <p class="muted" style="margin-top:0">OpenID Connect providers for single sign-on (Microsoft Entra ID, Google, Okta, Keycloak, Auth0, …). Register pgapex at the provider as a web application with the redirect URI shown, then enable the provider per application under <b>Settings → Sign-in methods</b>.</p>
+      <p class="muted u-mt0">OpenID Connect providers for single sign-on (Microsoft Entra ID, Google, Okta, Keycloak, Auth0, …). Register pgapex at the provider as a web application with the redirect URI shown, then enable the provider per application under <b>Settings → Sign-in methods</b>.</p>
       <div class="columns wide-left">
         ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow">
           <thead><tr><th>Provider</th><th>Issuer</th><th>Used by</th><th>Linked accounts</th><th>Status</th></tr></thead>

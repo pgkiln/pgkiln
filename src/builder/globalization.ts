@@ -120,7 +120,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
     const all = [...new Set([a.language, ...langs])];
 
     const main = html`${appHeader(a, 'shared')}
-      <p class="muted" style="margin-top:0"><a href="${BASE}/apps/${a.id}/shared">Shared Components</a> / Globalization</p>
+      <p class="muted u-mt0"><a href="${BASE}/apps/${a.id}/shared">Shared Components</a> / Globalization</p>
       <div class="columns">
         ${region('Languages', html`<ul class="checklist">
             <li>Primary language: <b>${langName(a.language)}</b></li>
@@ -130,12 +130,12 @@ export async function globalizationRoutes(app: FastifyInstance) {
           </ul>
           <p><a class="btn" href="${BASE}/apps/${a.id}/settings">Change languages in Settings</a></p>`)}
         ${lang ? region('Export and import', html`
-          <p class="muted" style="margin-top:0">Give translators an XLIFF file (as in APEX) or a CSV file, then import it here. Empty targets are ignored on import.</p>
+          <p class="muted u-mt0">Give translators an XLIFF file (as in APEX) or a CSV file, then import it here. Empty targets are ignored on import.</p>
           <div class="buttons">
             <a class="btn" href="${BASE}/apps/${a.id}/globalization/export?lang=${lang}&format=xliff">${raw('&#8595;')} XLIFF (${lang})</a>
             <a class="btn" href="${BASE}/apps/${a.id}/globalization/export?lang=${lang}&format=csv">${raw('&#8595;')} CSV (${lang})</a>
           </div>
-          <form method="post" action="${BASE}/apps/${a.id}/globalization/import" style="margin-top:1rem">${csrf(s)}
+          <form method="post" action="${BASE}/apps/${a.id}/globalization/import" class="u-mt1">${csrf(s)}
             <input type="hidden" name="lang" value="${lang}">
             <div class="field" data-wide><label class="label" for="f_file">File</label><input id="f_file" type="file" accept=".xlf,.xliff,.csv,.xml,text/csv,application/xml" data-fill="f_doc"></div>
             <div class="field" data-wide><label class="label" for="f_doc">…or paste XLIFF / CSV</label><textarea id="f_doc" name="doc" class="code" rows="4" required></textarea></div>
@@ -145,7 +145,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
       ${lang
         ? region(`Translate into ${langName(lang)}`, html`
             ${langs.length > 1 ? html`<nav class="chips" aria-label="Language">${langs.map((l) => html`<a class="chip" href="?lang=${l}"${l === lang ? raw(' aria-current="page"') : ''}>${langName(l)}</a> `)}</nav>` : ''}
-            <p class="muted" style="margin-top:0">${done} of ${texts.length} texts translated. Leave a translation empty to show the ${a.language} text.</p>
+            <p class="muted u-mt0">${done} of ${texts.length} texts translated. Leave a translation empty to show the ${a.language} text.</p>
             <form method="post" action="${BASE}/apps/${a.id}/globalization/save">${csrf(s)}
               <input type="hidden" name="lang" value="${lang}">
               <div class="table-wrap"><table class="report report-reflow translate-table">
@@ -169,12 +169,12 @@ export async function globalizationRoutes(app: FastifyInstance) {
             </form>`)
         : region('Translate', html`<p>Add a translated language under <a href="${BASE}/apps/${a.id}/settings">Settings → Globalization</a> first (for example <code>nl</code>).</p>`)}
       ${region('Text messages', html`
-        <p class="muted" style="margin-top:0">Use them in SQL with <code>meta.message('NAME', param0, …)</code> (placeholders <code>%0</code>…<code>%9</code>) and in texts as <code>&amp;APP_TEXT$NAME.</code>, like APEX_LANG.MESSAGE. A message named like a pgapex text (e.g. <code>login.title</code>, <code>report.no_data</code>) replaces it. Missing languages fall back to the primary language.</p>
+        <p class="muted u-mt0">Use them in SQL with <code>meta.message('NAME', param0, …)</code> (placeholders <code>%0</code>…<code>%9</code>) and in texts as <code>&amp;APP_TEXT$NAME.</code>, like APEX_LANG.MESSAGE. A message named like a pgapex text (e.g. <code>login.title</code>, <code>report.no_data</code>) replaces it. Missing languages fall back to the primary language.</p>
         <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Name</th><th>Language</th><th>Text</th><th></th></tr></thead><tbody>
           ${messages.rows.length
             ? messages.rows.map((m) => html`<tr>
                 <td data-label="Name"><code>${m.name}</code></td><td data-label="Language">${m.language}</td>
-                <td data-label="Text"><form method="post" action="${BASE}/apps/${a.id}/globalization/message" class="search" style="margin:0;max-width:none">${csrf(s)}
+                <td data-label="Text"><form method="post" action="${BASE}/apps/${a.id}/globalization/message" class="search u-m0 u-mwnone">${csrf(s)}
                   <input type="hidden" name="name" value="${m.name}"><input type="hidden" name="language" value="${m.language}">
                   <input name="text" value="${m.text}" aria-label="Text of ${m.name} (${m.language})"><button class="btn">Save</button></form></td>
                 <td data-label=""><form method="post" action="${BASE}/apps/${a.id}/globalization/message/delete">${csrf(s)}

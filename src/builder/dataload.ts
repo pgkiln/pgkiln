@@ -65,7 +65,7 @@ function resultHtml(r: LoadResult, failed: boolean) {
 
 export async function dataLoadRoutes(app: FastifyInstance) {
   const page = (s: Session, reply: FastifyReply, main: Raw) =>
-    send(reply, s, shell(s, 'Load Data', [['SQL Workshop', `${BASE}/sql`], ['Load Data']], html`<h1 style="margin-bottom:1rem">SQL Workshop</h1>${workshopTabs('load')}${main}`, 'sql'));
+    send(reply, s, shell(s, 'Load Data', [['SQL Workshop', `${BASE}/sql`], ['Load Data']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('load')}${main}`, 'sql'));
 
   // step 1: choose a file
   app.get(`${BASE}/sql/load`, async (req: Req, reply) => {
@@ -173,7 +173,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
         ${skip}
         <div class="buttons"><button class="btn btn-hot">Load into ${chosen}</button></div></form>`;
     }
-    const existing = html`<form method="get" action="${action}" class="search" style="max-width:none">
+    const existing = html`<form method="get" action="${action}" class="search u-mwnone">
         <input type="hidden" name="h" value="${headers ? '1' : '0'}">
         <select name="table" aria-label="Table"><option value="">- choose a table -</option>${tables.map((t) => html`<option${t === chosen ? raw(' selected') : ''}>${t}</option>`)}</select>
         <button class="btn">Map columns</button></form>${mapping}`;
@@ -184,7 +184,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
       reply,
       html`${result}
         ${region(`Preview`, html`<p class="muted">${info}${sheet.rows.length > PREVIEW_ROWS ? ` (first ${PREVIEW_ROWS} shown)` : ''}. <a href="${BASE}/sql/load">Choose another file</a></p>${preview(sheet)}`)}
-        <div class="columns" style="margin-top:1rem">
+        <div class="columns u-mt1">
           ${region('Load into a new table', newTable)}
           ${region('Load into an existing table', existing)}
         </div>`,

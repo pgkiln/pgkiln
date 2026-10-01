@@ -39,8 +39,19 @@ export const LOGIN_WINDOW_MINUTES = Number(process.env.LOGIN_WINDOW_MINUTES ?? 1
 export const LOGIN_MAX_FAILURES_PER_USER = Number(process.env.LOGIN_MAX_FAILURES_PER_USER ?? 5);
 export const LOGIN_MAX_FAILURES_PER_IP = Number(process.env.LOGIN_MAX_FAILURES_PER_IP ?? 50);
 
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** The CSP nonce of this response: the only inline <style> allowed carries it. */
+    cspNonce: string;
+  }
+}
+
 /** Security headers for every response. */
 export function securityHeaders(app: FastifyInstance) {
+  app.decorateRequest('cspNonce', '');
+  app.addHook('onRequest', async (req) => {
+    req.cspNonce = randomBytes(18).toString('base64');
+  });
   app.addHook('onSend', async (req, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'same-origin');
@@ -48,11 +59,12 @@ export function securityHeaders(app: FastifyInstance) {
     reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     const type = String(reply.getHeader('content-type') ?? '');
     if (type.startsWith('text/html')) {
-      // No inline scripts anywhere: all behaviour lives in /static/app.js.
-      // Inline styles are allowed (developer HTML, chart bar widths).
+      // No inline scripts and no inline styles: behaviour lives in /static/app.js,
+      // styling in /static/app.css. The only <style> a page has (theme colours,
+      // chart geometry) carries this response's nonce; style="" attributes are refused.
       reply.header(
         'Content-Security-Policy',
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+        `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:; ` +
           "frame-ancestors 'self'; form-action 'self'; base-uri 'none'; object-src 'none'",
       );
       // Pages contain user data: never cache them (e.g. back button after sign-out).

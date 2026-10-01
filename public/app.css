@@ -743,3 +743,29 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 
 /* help texts may hold long JSON examples: never wider than their field */
 .field .help, small.help { overflow-wrap: anywhere; }
+
+/* Utilities for the builder (no inline style attributes: see the Content-Security-Policy).
+   !important keeps the precedence the style attributes had. */
+.u-mt0 { margin-top: 0 !important; }
+.u-mt075 { margin-top: 0.75rem !important; }
+.u-mt1 { margin-top: 1rem !important; }
+.u-mt125 { margin-top: 1.25rem !important; }
+.u-mt15 { margin-top: 1.5rem !important; }
+.u-mb075 { margin-bottom: 0.75rem !important; }
+.u-mb1 { margin-bottom: 1rem !important; }
+.u-m0 { margin: 0 !important; }
+.u-mwnone { max-width: none !important; }
+.u-mw6 { max-width: 6rem !important; }
+.u-inline { display: inline !important; }
+.u-selfend { align-self: end !important; }
+.u-inherit { color: inherit !important; }
+.u-spacer { height: 1rem !important; }
+.u-row { display: flex !important; gap: 0.75rem !important; align-items: center !important; }
+.app-color-0 { background: #0b63c5; }
+.app-color-1 { background: #17794a; }
+.app-color-2 { background: #b3261e; }
+.app-color-3 { background: #7a4cc2; }
+.app-color-4 { background: #b86e00; }
+.app-color-5 { background: #00796b; }
+.app-color-6 { background: #5c6bc0; }
+.app-color-7 { background: #8d6e63; }

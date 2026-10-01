@@ -33,13 +33,13 @@ export async function sqlRoutes(app: FastifyInstance) {
         result = html`<div class="alert alert-error"><strong>Error:</strong> ${(e as Error).message}</div>`;
       }
     }
-    const main = html`<h1 style="margin-bottom:1rem">SQL Workshop</h1>${workshopTabs('sql')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sql')}
       <p class="muted">Runs as the builder's owner connection (not as an application role). Multiple statements are allowed; results of the last one are shown.</p>
       <form method="post">${csrf(s)}
         <textarea name="sql" class="code sql-editor" rows="12" spellcheck="false" aria-label="SQL">${sql || 'select * from hr.emp;'}</textarea>
         <div class="buttons"><button class="btn btn-hot">${icon('play')} Run (Ctrl+Enter)</button></div>
       </form>
-      <div style="margin-top:1rem">${result}</div>`;
+      <div class="u-mt1">${result}</div>`;
     return send(reply, s, shell(s, 'SQL Workshop', [['SQL Workshop']], main, 'sql'));
   };
   app.get(`${BASE}/sql`, sqlWorkshop);
@@ -89,11 +89,11 @@ export async function sqlRoutes(app: FastifyInstance) {
         const asArray = (r: pg.QueryResult) => ({ ...r, rows: r.rows.map((x) => Object.values(x)) }) as unknown as pg.QueryResult<any[]>;
         detail = html`${region(`${selected.kind === 'view' ? 'View' : 'Table'} ${selected.qname}`, resultTable(asArray(cols)),
             html`<span class="count">${selected.rls ? 'row level security ON' : 'no RLS'}</span>`)}
-          <div style="height:1rem"></div>
+          <div class="u-spacer"></div>
           ${region('Row level security policies', policies.rowCount ? resultTable(asArray(policies)) : html`<p class="muted">No policies.</p>`)}
-          <div style="height:1rem"></div>
+          <div class="u-spacer"></div>
           ${region('Grants', resultTable(asArray(grants)))}
-          <div style="height:1rem"></div>
+          <div class="u-spacer"></div>
           ${region('Data (first 25 rows)', data instanceof Error ? html`<div class="alert alert-error">${data.message}</div>` : resultTable(data))}`;
       }
     }
@@ -102,7 +102,7 @@ export async function sqlRoutes(app: FastifyInstance) {
       const header = x.schema !== lastSchema ? html`<li class="group">${(lastSchema = x.schema)}</li>` : '';
       return html`${header}<li><a href="?o=${encodeURIComponent(x.qname)}"${x.qname === o ? raw(' aria-current="page"') : ''}>${icon(x.kind === 'function' ? 'code' : x.kind === 'view' ? 'layers' : 'table')}<span>${x.name}</span>${x.rls ? html`<span class="tag">RLS</span>` : ''}</a></li>`;
     })}</ul>`;
-    const main = html`<h1 style="margin-bottom:1rem">SQL Workshop</h1>${workshopTabs('objects')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('objects')}
       <div class="designer"><aside class="region region-standard" aria-label="Database objects">${list}</aside><div>${detail}</div></div>`;
     return send(reply, s, shell(s, 'Object Browser', [['SQL Workshop', `${BASE}/sql`], ['Object Browser']], main, 'sql'));
   });

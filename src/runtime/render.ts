@@ -112,8 +112,16 @@ export function themeStyle(theme: PageContext['app']['theme']) {
   const vars: string[] = [];
   if (theme?.accent && HEX.test(theme.accent)) vars.push(`--accent:${theme.accent};--accent-soft:color-mix(in srgb, ${theme.accent} 14%, var(--surface));`);
   if (theme?.header && HEX.test(theme.header)) vars.push(`--header:${theme.header};`);
-  return vars.length ? html`<style>:root{${raw(vars.join(''))}}</style>` : '';
+  return vars.length ? `:root{${vars.join('')}}` : '';
 }
+
+/**
+ * The page's one inline <style>: theme colours and the data-dependent rules
+ * of its regions, with the response's CSP nonce. Always present, so a
+ * refreshed region can add its rules to it (app.js).
+ */
+export const pageStyle = (ctx: PageContext) =>
+  html`<style nonce="${ctx.nonce}" id="pgapex-css">${raw([themeStyle(ctx.app.theme), ctx.css.text].filter(Boolean).join('\n'))}</style>`;
 
 // ---------------------------------------------------------------- language
 
@@ -149,7 +157,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       'data-base': ctx.base,
       'data-page': String(ctx.page.page_no),
       'data-dialog': '1',
-    }, themeStyle(ctx.app.theme), root);
+    }, pageStyle(ctx), root);
 
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
@@ -188,7 +196,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     </div>`,
     `t-app${topNav ? ' nav-top' : ''}`,
     { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no) },
-    themeStyle(ctx.app.theme),
+    pageStyle(ctx),
     root,
   );
 }

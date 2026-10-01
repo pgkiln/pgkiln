@@ -92,12 +92,12 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
       <td data-label="Heading"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="Heading of ${n}"></td>
       <td data-label="Shown"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="Show ${n}"></td>
       <td data-label="In PDF"><input type="checkbox" name="print_${i}" value="true"${(printed ? printed.has(n.toLowerCase()) : !hidden.has(n.toLowerCase())) ? raw(' checked') : ''} aria-label="Print ${n}"></td>
-      <td data-label="PDF width (mm)"><input name="width_${i}" type="number" min="0" max="500" value="${cfg.pdf?.widths?.[n] ?? ''}" aria-label="PDF width of ${n}" style="max-width:6rem"></td>
+      <td data-label="PDF width (mm)"><input name="width_${i}" type="number" min="0" max="500" value="${cfg.pdf?.widths?.[n] ?? ''}" aria-label="PDF width of ${n}" class="u-mw6"></td>
     </tr>`);
 
   const linkItems = linkItemsText(cfg.link?.items);
-  return html`<h3 style="margin-top:1.5rem">Report settings</h3>
-    <p class="muted" style="margin-top:0">These fields write the region's settings JSON above (other keys are kept).</p>
+  return html`<h3 class="u-mt15">Report settings</h3>
+    <p class="muted u-mt0">These fields write the region's settings JSON above (other keys are kept).</p>
     ${'error' in cols ? html`<div class="alert alert-error" role="alert">The columns could not be read: ${cols.error}</div>` : ''}
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/report-settings" class="component-form">${csrf(s)}
       <input type="hidden" name="n" value="${all.length}">
