@@ -14,16 +14,16 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 5 | 4 | 6 | 0 | Page Designer with drag-and-drop and a code editor, wizards, search, where used, an Advisor, a CLI with one file per component; no team/AI tooling |
-| Regions | 8 | 7 | 2 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components |
+| Regions | 8 | 8 | 4 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; no lazy loading or region caching |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload (several files per item); no rich text editor yet |
 | Logic and processing | 4 | 6 | 2 | 1 | Core APEX model complete; fewer declarative process types |
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
-| Data and integration | 4 | 1 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
+| Data and integration | 4 | 2 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and workflows with parallel branches and versions; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **56** | **32** | **23** | **6** | 117 APEX features compared: 48% available, 27% partial |
+| **Total** | **56** | **34** | **25** | **6** | 121 APEX features compared: 46% available, 28% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -67,6 +67,9 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | Tree | ✅ | `tree` region from id / parent id / label rows, with icons, links and the first levels open; works without JavaScript |
 | Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, heat maps (weighted), filtering a report by the visible map area (bounding box), configurable tile server. **Missing:** vector tiles, marker clustering, several layers per map, spatial queries on the server (PostGIS operators) |
 | Timeline, comments, media list, avatar template components | 🟡 | Example plug-ins to import: timeline item, contact card (avatar) and status badge (`examples/plugins`); none built in |
+| Pagination of large tables (row ranges, maximum row count) | 🟡 | Reports and grids page in the database (`limit` / `offset`), so only one page of rows reaches the server. **But** every page also runs `count(*) over ()` for "x–y of N", which reads the whole filtered result (slow on 100M+ rows), and deep pages pay the full `offset`. **Missing:** APEX's "row ranges X to Y" pagination without a total (fetch `size + 1` rows for *Next*), a maximum row count, optionally keyset ("seek") paging on an indexed sort. Cards, charts, dynamic content and select-list LOVs have **no row limit** at all (calendar 2000, map 5000, tree and template components are capped) |
+| Lazy loading of regions | ❌ | Every region is queried before the page is sent, so one slow chart delays the whole page. The *Refresh region* endpoint already renders a single region; lazy loading would send a placeholder and fetch it after the page shows, falling back to the normal render without JavaScript. Popup LOV with server-side search belongs here too (see *Items*) |
+| Region caching (per user, per session, for a duration) | ❌ | No cache of rendered regions; PostgreSQL's own caches and materialized views are the workaround |
 | Template components and template directives | ✅ | Shared Components → Template components: `#PLACEHOLDERS#` (always escaped), `{if}`, `{case}` and `{loop}` directives, custom attributes, a wrapper; as a region type and as report column templates, with a preview. Templates are checked against an allow-list (no scripts, styles, event handlers or `javascript:` links) ([chapter 4](guide/04-pages-and-regions.md#template-components)) |
 
 ## Items
@@ -166,6 +169,7 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | REST handler editor, REST-enabled SQL | ✅ | **REST modules** in the builder: handlers (method, path with parameters, SQL as collection, item or statements, roles, public) served by pgapex with bearer tokens and an OpenAPI description; plus PostgREST for schema-wide APIs. **Missing:** REST-enabled SQL (rarely desirable) |
 | SQL scripts, query builder, Quick SQL | ❌ | |
 | Data Workshop (load CSV/XLSX/JSON) | 🟡 | SQL Workshop → Load Data: CSV/TSV/XLSX/JSON into a new table (inferred types) or an existing one (append, merge, replace) with a per-row error report; `data_load` process for end users. **Missing:** XML, saved data load definitions, column transformations, unloading ([chapter 16](guide/16-files.md)) |
+| Large downloads without buffering (ORDS streams) | 🟡 | Pages hold only one page of rows in the server. CSV and Excel downloads (up to 100,000 rows), PDFs (5,000) and REST collections are read into memory before they are sent; **missing:** streaming with a cursor (`pg-query-stream`) so memory stays flat whatever the size |
 | REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | ❌ | Calling web services from SQL is possible with the `http` or `pg_net` extensions ([extensions](guide/15-extensions.md)) |
 | Printing, document generator (PDF) | ✅ | **Document templates**: a query (with JSON columns for lines) fills an HTML template with Mustache-style tags, drawn as PDF with a report layout; buttons and links download them. Report PDF with **report layouts** and a print stylesheet on every page. No Word/Excel templates or DOCX/XLSX output |
 | Data Reporter: self-service reports for business users (26.1) | ❌ | |
@@ -236,6 +240,8 @@ Done in 0.16.0: workflow branches and versions; the Page Designer with drag and 
 editor; the file-per-component export and CLI; template components and plug-ins.
 
 1. **AI features** (needs a decision on the provider and API keys).
+2. **Large tables**: pagination without a total and a maximum row count, row limits on cards,
+   charts and LOVs, lazy-loaded regions, streamed downloads.
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),
