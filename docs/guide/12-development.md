@@ -20,7 +20,7 @@ src/
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
-  workflow.ts              workflows: step checks, the runner (NOTIFY + polling), the diagram
+  workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
@@ -77,7 +77,7 @@ src/
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
     rest.ts                REST module endpoints list and curl example (Shared Components)
-    workflows.ts           workflow diagram and instance counts (Shared Components)
+    workflows.ts           workflow versions, diagram and instances (Shared Components)
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)

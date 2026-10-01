@@ -149,8 +149,9 @@ needed and grants access; deleting revokes access.
 | `ldap_directory` | LDAP directories: URL, service account (write-only password), user and group search | no |
 | `task_definition` | Approval and action task definitions per app | yes (read) |
 | `rest_module` | REST modules per app: `name`, `title`, `handlers` (JSON) | yes (read) |
-| `workflow_definition` | Workflow definitions per app (steps as JSON) | yes (read) |
-| `workflow`, `workflow_event` | Workflow instances (state, current step, variables, a copy of the steps) and their history; reached through `meta.workflows` / `meta.workflow_events` and the functions | no |
+| `workflow_definition` | Workflow definitions per app: the active version's steps as JSON, a development version and the inactive ones | yes (read) |
+| `workflow`, `workflow_event` | Workflow instances (state, current step, variables, their version and a copy of its steps) and their history; reached through `meta.workflows` / `meta.workflow_events` and the functions | no |
+| `workflow_branch` | The parallel branches of workflow instances (step, wait, task and state of each) | no |
 | `task`, `task_event` | Tasks and their history; reached only through `meta.tasks`, `meta.task_events` and the `meta.*_task` functions | no |
 | `document_template` | Document templates per app: `name`, `description`, `query`, `template`, `layout`, `filename`, `authz` | yes (read) |
 | `ldap_identity` | Links an account to a directory entry (`directory_id`, `subject` = entryUUID or DN) | no |
