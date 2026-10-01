@@ -836,6 +836,17 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .wf-arrowhead { fill: var(--muted); }
 .wf-label { fill: var(--muted); font-size: 10px; }
 
+/* ---- sprint 23: workflow parallel branches and versions ---- */
+.wf-parallel rect, .wf-join rect { stroke: #7b52c7; stroke-width: 2; }
+.wf-edge-branch { stroke-dasharray: 6 3; }
+.wf-active rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 3; }
+.wf-active .wf-name { fill: var(--text); }
+.wf-warnings { background: var(--warning-soft); color: var(--text); border-color: var(--border); }
+.wf-version-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; }
+.wf-version-diagram summary { cursor: pointer; }
+.wf-version-diagram[open] { min-width: min(320px, 80vw); }
+/* ---- end sprint 23 workflow ---- */
+
 /* Builder: search results and "Used in" */
 .hits { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .hits li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.25rem 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
