@@ -49,7 +49,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 20, released as **v0.13.0** (tags: v0.2.0, v0.6.0–v0.13.0; 0.3.0–0.5.0 were never tagged). Migrations 001–025 are released |
-| (sprint branches) | `sprint-17` … `sprint-20` were merged (v0.11.0–v0.13.0) and deleted. The next sprint starts `sprint-21` from `main` |
+| `sprint-21` | **Just started** from `main` (v0.13.0): more chart types, then several files per upload item. No code changes yet; see "Sprint 21" below |
+| (sprint branches) | `sprint-17` … `sprint-20` were merged (v0.11.0–v0.13.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -587,3 +588,22 @@ Verified: `npm test` 269/269, `npm run test:e2e` 30/30; upgrade from v0.12.0 in 
 
 Next on the roadmap: more chart types, several files per upload item, workflow parallel branches/versions,
 builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.
+
+## Sprint 21: more chart types, several files per upload (roadmap item 1, 2026-10-01): JUST STARTED
+
+Branch `sprint-21` from `main` (v0.13.0). Nothing changed yet. Plan:
+
+1. **Chart types** in `src/runtime/charts.ts` (server-rendered HTML/CSS + SVG, geometry as `PageCss` classes, no inline styles;
+   every chart keeps its data table and `data-tip` tooltips):
+   - `stacked`: stacked columns (positives up, negatives down; scale from the per-label sums); reuse `.col-group`/`.col`.
+   - `pie`: like `donut` but filled (SVG circle with r = 7.9577, stroke-width 15.9155, lengths × 0.5), same legend and "Other" folding.
+   - `scatter`: label column numeric = x, each series = y; `niceScale` on both axes; dots positioned with `left`/`bottom` classes.
+   - `combo`: first series as columns, the others as lines on the same axis (line x at slot centres `(i + 0.5) / n`, so
+     `line()` needs an x-function parameter).
+   - Add them to `ChartKind`/`CHART_KINDS`, i18n `chart.<kind>` (en, nl), `CHART_LABELS` in `src/builder/region-settings.ts`, CSS.
+   - The interactive report's chart view (`report.ts` lines ~155, ~225, ~737) has a single series and text labels: allow only
+     bar/column/line/area/donut/pie there (a separate `REPORT_CHART_KINDS`), not scatter/stacked/combo.
+2. **Several files per upload item** (APEX: multiple files): next after charts; not designed yet.
+3. Tests (unit for each kind's markup and CSP-safe classes, e2e screenshot/overflow at the four sizes in `test/e2e/responsive.test.ts`),
+   HR example charts, docs (chapter 4 chart section, parity "Charts" row, CHANGELOG), then the usual release (v0.14.0).
+
