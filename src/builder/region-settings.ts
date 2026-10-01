@@ -23,7 +23,7 @@ export interface Allowed {
   reports: Map<number, string[]>; // report regions on the same page → their columns
 }
 
-export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets'] as const;
+export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'tasks'] as const;
 type SettingsType = (typeof SETTINGS_TYPES)[number];
 
 const GRID_PAGE_SIZES = ['5', '10', '15', '25', '50', '100', '200'];
@@ -181,7 +181,17 @@ export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config
   return out;
 }
 
+export function mergeTasksSettings(config: Config, b: Body): Config {
+  const out = { ...config };
+  const set = setter(out);
+  set('context', b.context === 'initiated' || b.context === 'admin' ? b.context : undefined);
+  set('completed', b.completed === 'true' ? true : undefined);
+  set('empty', b.empty?.trim() || undefined);
+  return out;
+}
+
 const MERGES: Record<SettingsType, (c: Config, b: Body, a: Allowed) => Config> = {
+  tasks: (c, b) => mergeTasksSettings(c, b),
   grid: mergeGridSettings,
   chart: (c, b) => mergeChartSettings(c, b),
   cards: mergeCardsSettings,
@@ -323,6 +333,16 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
     case 'facets':
       title = 'Faceted search settings';
       body = await facetsFields(r, pageId, appId, id);
+      break;
+    case 'tasks':
+      title = 'Task list settings';
+      body = html`<p class="muted u-mt0">Tasks come from task definitions (Shared Components); application SQL creates them with <code>meta.create_task(…)</code>.</p>
+        <fieldset class="prop-group"><legend>Tasks</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('context')}">Show</label>
+            <select id="${id('context')}" name="context">${opt('', 'My tasks: to act on, claim, or assigned to me', cfg.context)}${opt('initiated', 'Tasks I requested', cfg.context)}${opt('admin', 'Tasks I administer', cfg.context)}</select></div>
+          ${emptyField(id, cfg)}
+        </div>
+        ${check('completed', 'Include completed and cancelled tasks', cfg.completed === true)}</fieldset>`;
       break;
   }
   return html`<h3 class="u-mt15">${title}</h3>

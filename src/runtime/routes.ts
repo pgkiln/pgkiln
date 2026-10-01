@@ -263,6 +263,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
     const flash = takeFlash(ctx.session);
     if (flash) ctx.messages.push(flash);
+    const flashError = takeFlash(ctx.session, '__FLASH_ERROR');
+    if (flashError) ctx.errors.page.push(flashError);
     // Actions → Download CSV / Excel / PDF: r<region id>_csv=1, _xlsx=1 or _pdf=1
     const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|xlsx|pdf)$/.test(k));
     // a document template: ?doc=NAME (see documents.ts)

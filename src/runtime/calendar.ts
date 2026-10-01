@@ -9,8 +9,8 @@ import { regionUrl } from './report.ts';
 
 // Calendar region (APEX's Calendar): the SELECT returns start_date,
 // optional end_date, title, and any columns referenced in config.link:
-//   select hiredate as start_date, ename as title, empno from hr.emp
-//   config: {"link": {"page": 3, "items": {"P3_EMPNO": "#empno#"}}}
+//   select starts_on as start_date, ends_on as end_date, name as title, id from events.booking
+//   config: {"link": {"page": 3, "items": {"P3_ID": "#id#"}}}
 // Month view on tablets and desktops; an agenda list on phones.
 // The month is ?r<id>_m=YYYY-MM.
 

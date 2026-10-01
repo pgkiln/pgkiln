@@ -6,7 +6,7 @@ In pgapex, as in Oracle APEX, **an application is not code but rows in tables.**
 in `meta.page`, a report on that page is a row in `meta.region` whose `source` column holds a
 SELECT, a text field is a row in `meta.item`, and so on. The builder is a friendly editor for
 those rows, but you can create and change applications with plain SQL, for example in a
-migration script. That is exactly how the HR sample (`db/seed/hr.sql`) and the tutorial app
+migration script. That is exactly how the HR sample (`examples/hr/hr.sql`) and the tutorial app
 (`examples/tasks-app.sql`) are built.
 
 Because definitions are read on every request (there is no cache), a change in the builder is

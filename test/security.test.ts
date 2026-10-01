@@ -645,3 +645,27 @@ describe('sprint 15: document templates', () => {
     assert.equal((await king.get(`/builder/apps/${appId}/documents/${t.id}/preview`)).statusCode, 302);
   });
 });
+
+describe('sprint 16: approvals', () => {
+  test('task functions check the user; meta.tasks shows only what the user may see', async () => {
+    const t = await owner.one(`select t.id from meta.task t where t.app_id = $1 order by t.id limit 1`, [appId]);
+    if (!t) return;
+    const run = (user: string, sql: string, params: unknown[] = []) =>
+      owner.tx(async (c) => {
+        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appId), user]);
+        await c.query('set local role hr_app');
+        return c.query(sql, params);
+      });
+    // no session roles and not a participant: nothing visible, every action refused
+    assert.equal((await run('smith', 'select count(*)::int as n from meta.tasks')).rows[0].n, 0);
+    for (const sql of ['select meta.claim_task($1)', `select meta.complete_task($1, 'approved')`, 'select meta.cancel_task($1)', `select meta.add_task_comment($1, 'x')`, `select meta.delegate_task($1, 'smith')`])
+      await assert.rejects(run('smith', sql, [t.id]), /cannot|not found/, sql);
+    // another application's tasks don't exist from here
+    await assert.rejects(owner.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', '-1', true), set_config('pgapex.app_user', 'king', true)`);
+      return c.query('select meta.claim_task($1)', [t.id]);
+    }), /not found/);
+    // the app role can't touch the tables themselves
+    await assert.rejects(run('king', 'update meta.task set state = $1', ['cancelled']), /permission denied/);
+  });
+});

@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML, "Keep me signed in", document templates and JSON loading).
+Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list).
 
 ## At a glance
 
@@ -21,9 +21,9 @@ Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML, "Keep me s
 | User interface | 4 | 4 | 2 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 3 | 2 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
-| Workflow, automation and AI | 0 | 1 | 5 | 0 | Scheduled automations; approvals are hand-built in PL/pgSQL (see the HR sample) |
+| Workflow, automation and AI | 1 | 1 | 4 | 0 | Scheduled automations, approvals and a task list; no multi-step workflow or AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **50** | **30** | **31** | **6** | 117 APEX features compared: 43% available, 26% partial |
+| **Total** | **51** | **30** | **30** | **6** | 117 APEX features compared: 44% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -177,7 +177,7 @@ Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML, "Keep me s
 
 | APEX | pgapex | Notes |
 |---|---|---|
-| Approvals and task list | ❌ | The HR sample builds an approval flow in PL/pgSQL with RLS |
+| Approvals and task list | ✅ | Task definitions (approval / action, owner roles and users, business administrators, priority, due date, details page), `meta.create_task` from application SQL, a task list region (claim, approve/reject/complete with comment, release, delegate, cancel, history), completion SQL in the same transaction. **Missing:** e-mail notifications (pgapex sends no mail), vacation rules, expiry/escalation policies |
 | Workflow (26.1: parallel flows, multi-tenancy) | ❌ | |
 | Automations (scheduled) | 🟡 | Shared Components → Automations: cron schedules with time zones, SQL/PL/pgSQL once or per row of a query, roles, run history and Run now, safe with several servers ([chapter 6](guide/06-processing.md#automations)). **Missing:** several actions per automation, error handling per row (skip and continue), on-demand runs from SQL (`APEX_AUTOMATION.EXECUTE`) |
 | AI assistant, natural-language reports (NL2IR), AI agents and tools (26.1) | ❌ | `pgvector` covers semantic search on the data side |
@@ -232,7 +232,7 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Approvals / workflow** built on the metadata model.
+1. **Workflow** (multi-step, parallel branches) on top of the task definitions.
 2. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
 3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
 4. **Template components and plug-ins.**

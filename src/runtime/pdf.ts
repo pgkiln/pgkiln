@@ -326,28 +326,29 @@ export async function tablePdf(tb: PdfTable, layout: PdfLayout): Promise<Buffer>
 /** A sample report in a layout (Shared Components → Report layouts → Preview). */
 export function layoutPreview(layout: PdfLayout, appName: string, user: string) {
   const now = new Date().toISOString();
-  const extra = { REPORT_TITLE: 'Employees', APP_NAME: appName, DATE: now.slice(0, 10), TIMESTAMP: `${now.slice(0, 16).replace('T', ' ')} UTC` };
+  const extra = { REPORT_TITLE: 'Orders (sample)', APP_NAME: appName, DATE: now.slice(0, 10), TIMESTAMP: `${now.slice(0, 16).replace('T', ' ')} UTC` };
   // items and &APP_USER. have no session here: show the names
   const text = (s: string) => printable(layoutText(s, extra).replace(/&APP_USER\./gi, user));
   const title = text(layout.title ?? '&REPORT_TITLE.');
-  const jobs = ['CLERK', 'SALESMAN', 'MANAGER', 'ANALYST', 'PRESIDENT'];
-  const names = ['SMITH', 'ALLEN', 'WARD', 'JONES', 'MARTIN', 'BLAKE', 'CLARK', 'SCOTT', 'KING', 'TURNER', 'ADAMS', 'JAMES', 'FORD', 'MILLER'];
+  // made-up sample rows, so the preview shows the layout without any application's data
+  const customers = ['Acme', 'Globex', 'Initech', 'Umbrella', 'Hooli', 'Stark', 'Wayne', 'Wonka', 'Tyrell', 'Soylent'];
+  const statuses = ['Open', 'Shipped', 'Invoiced', 'Paid'];
   const rows = Array.from({ length: 60 }, (_, i) => [
-    String(7369 + i * 7),
-    `${names[i % names.length]}${i >= names.length ? ` ${Math.floor(i / names.length) + 1}` : ''}`,
-    jobs[i % jobs.length],
-    `198${i % 10}-0${(i % 9) + 1}-1${i % 10}`,
-    (800 + ((i * 137) % 4200)).toFixed(2),
-    ['ACCOUNTING', 'RESEARCH', 'SALES', 'OPERATIONS'][i % 4],
+    String(1001 + i),
+    `${customers[i % customers.length]}${i >= customers.length ? ` ${Math.floor(i / customers.length) + 1}` : ''}`,
+    statuses[i % statuses.length],
+    `2026-0${(i % 9) + 1}-1${i % 10}`,
+    (80 + ((i * 1371) % 9200) / 3).toFixed(2),
+    ['North', 'South', 'East', 'West'][i % 4],
   ]);
   return tablePdf(
     {
       title,
       header: layout.header === null ? printable(`${appName} · ${extra.TIMESTAMP} · ${user}`) : text(layout.header),
       footer: layout.footer === null ? title : text(layout.footer),
-      filters: layout.show_filters ? ['Filters: Department = SALES (example)'] : [],
+      filters: layout.show_filters ? ['Filters: Region = North (example)'] : [],
       note: null,
-      headings: ['Empno', 'Name', 'Job', 'Hired', 'Salary', 'Department'],
+      headings: ['Order', 'Customer', 'Status', 'Ordered', 'Amount', 'Region'],
       rows,
       align: ['right', 'left', 'left', 'left', 'right', 'left'],
       widths: [null, null, null, null, null, null],

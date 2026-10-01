@@ -4,7 +4,7 @@ import { literal } from '../binds.ts';
 // Computed columns of an interactive report (APEX: Actions → Data → Compute).
 // The end user types a small expression over the report's columns:
 //
-//   sal * 12 + coalesce(comm, 0)        upper(ename) || ' (' || job || ')'
+//   price * quantity * (1 + vat / 100)        upper(name) || ' (' || city || ')'
 //
 // It is parsed here and turned into SQL that contains only quoted
 // identifiers of columns that exist, escaped literals, whitelisted

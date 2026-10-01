@@ -126,6 +126,7 @@ Components used by the whole application:
 | **Lists of values** | Reusable queries for select lists, referenced as `LOV:NAME` |
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
+| **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
 
 ## Users (the user directory)

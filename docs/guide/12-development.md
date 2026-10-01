@@ -45,6 +45,7 @@ src/
     files.ts               file items: multipart parsing, temporary files, signed downloads
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
+    tasks.ts               task list region and task actions (approvals)
     pdf.ts                 report PDFs with report layouts (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
@@ -132,9 +133,9 @@ PostgREST HTTP tests skip. To reproduce a CI failure, run the tests in a clean c
 To try the upgrade locally:
 
 ```bash
-mkdir -p /tmp/old && git archive v0.6.0 db | tar -x -C /tmp/old
+mkdir -p /tmp/old && git archive v0.8.0 | tar -x -C /tmp/old
 DATABASE_URL=<empty database> npx tsx scripts/migrate.ts --seed --root /tmp/old
-DATABASE_URL=<same database> npm run db:seed && npm test
+DATABASE_URL=<same database> npm run example:hr && npm test
 ```
 
 ## Adding a region type (example)

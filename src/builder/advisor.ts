@@ -66,6 +66,8 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
       return [{ name: 'query', shape: 'select' }, { name: 'code', shape: 'statements' }];
     case 'document_template':
       return [{ name: 'query', shape: 'select' }];
+    case 'task_definition':
+      return [{ name: 'action_code', shape: 'statements' }];
     default:
       return [];
   }

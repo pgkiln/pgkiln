@@ -227,7 +227,7 @@ alignment:
 ```
 
 Layouts are part of the application export. The HR sample prints its *Directory* (page 11) with
-the layout `HR_DIRECTORY` (seed `db/seed/hr_07_layouts.sql`).
+the layout `HR_DIRECTORY` (seed `examples/hr/hr_07_layouts.sql`).
 
 **Fonts:** the built-in PDF fonts cover Western European languages (Windows-1252). Characters
 outside that set are printed as `?`. For other scripts, point `PDF_FONT` and `PDF_FONT_BOLD` to
