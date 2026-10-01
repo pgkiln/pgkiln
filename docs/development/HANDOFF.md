@@ -36,6 +36,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
   logged in as an account without access to this repo: give the owner compare URLs instead of
   opening PRs.
 - The example app `examples/tasks-app.sql` (ann / ann-password) may be installed in the dev DB.
+- The dev DB loads `pg_stat_statements` (set with `ALTER SYSTEM` on 2026-10-01; `docker-compose.yml`
+  passes it for new containers). `plpgsql_check` is not in the `postgres:17` image.
 
 ## Branch state
 
@@ -44,6 +46,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | `main` | Everything up to sprint 10, released as **v0.8.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0; 0.3.0–0.5.0 were never tagged). Migrations 001–015 are released |
 | `sprint-11` | Merged into `main` (not released/tagged yet); can be deleted |
 | `sprint-12` | Merged into `main` (not released yet); can be deleted |
+| `sprint-13` | Builder search, where used, Advisor, Top SQL (see Sprint 13), pushed; not merged yet |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
 Older sprint branches were merged and deleted.
@@ -385,3 +388,31 @@ Branch `sprint-12` from `main` (which has sprint 11, unreleased).
    Also fixed: chart legend swatches were grey (sprint 10's `.swatch` rule; now `.chip .swatch`).
 
 Verified: `npm test` 190/190, `npm run test:e2e` 24/24.
+
+## Sprint 13: builder quality (owner: "yes please proceed", 2026-10-01)
+
+Branch `sprint-13` from `main` (sprints 11 and 12 merged, unreleased). Migrations 001–015 are released; 016 is new.
+
+1. **Search and "Used in": done.** `src/builder/search.ts`: `appEntries()` turns pages and every
+   COMPONENTS row into entries with their text fields; `search()`; `whereUsed()` for items (whole
+   words), `LOV:NAME`, authorization fields / `public_reports`, pages (page fields, `"page": n`,
+   `page_url(n`), report layouts. Route `/builder/apps/:id/search`; `usedInPanel()` in the designer
+   (items, page) and Shared Components (app items, LOVs, schemes, layouts). New icons `search`, `alert`.
+2. **Advisor: done.** `src/builder/advisor.ts`: per component kind, which fields hold SQL and their
+   shape (select / boolean / statements / regex); EXPLAIN as the app role in one rolled-back
+   transaction (savepoint per check, 5 s timeout); DO blocks → `create function pg_temp…`;
+   unplannable statements → notes. Reference checks; `plpgsql_check_function_tb` over the app role's
+   schemas when the extension exists. `splitStatements()` in `src/binds.ts` (shares `skipQuoted()`
+   with the bind scanner). Route `/builder/apps/:id/advisor`.
+3. **Top SQL: done.** `src/builder/top-sql.ts` (`topSql(role, sort)`, reset per role), link on the
+   Activity page; migration `016_top_sql.sql` creates the extension when available and allowed.
+   CI test job: `ALTER SYSTEM` + `docker restart` of the service container.
+4. Tests: `test/builder-quality.test.ts` (8; a scratch page 99 with planted mistakes), splitStatements
+   in `binds.test.ts`, sprint-13 block in `security.test.ts`; e2e covers search, advisor, top SQL and a
+   "Used in" page. Docs: chapter 3 (Search and "Used in", Advisor, Top SQL), 12, parity
+   (47 ✅ / 31 🟡 / 32 ❌ / 6 ➖), CHANGELOG.
+
+Verified: `npm test` 200/200 (dev DB), fresh postgres:17 install 196 + 4 skipped (Top SQL, PostgREST),
+`npm run test:e2e` 24/24.
+
+Next on the roadmap: LDAP and SAML authentication, "remember me"; then document printing.

@@ -20,7 +20,7 @@ src/
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
-  binds.ts                 :BIND scanner → escaped literals (unit tested)
+  binds.ts                 :BIND scanner → escaped literals, splitStatements (unit tested)
   dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
   xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
@@ -57,6 +57,9 @@ src/
     automations.ts         automations: next run, Run now, run history
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
     region-settings.ts     page designer: settings forms for grid, chart, cards, calendar, facets
+    search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
+    advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
+    top-sql.ts             Top SQL per app role from pg_stat_statements
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)

@@ -5,18 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Security
-- The Content-Security-Policy no longer allows inline styles: `style-src 'self' 'nonce-…'` with a
-  new nonce per response. Chart geometry and theme colours go into the page's one nonce'd
-  `<style>` as classes (`src/css.ts`); a refreshed region sends its rules along and `app.js` adds
-  them through the CSSOM. The builder uses CSS classes instead of `style` attributes.
-  **Upgrade note:** `style="…"` attributes and `<style>` blocks in your own static or dynamic
-  region HTML are now ignored by browsers; use the classes in `/static/app.css`.
-
-### Fixed
-- Chart legend swatches were grey since 0.8.0 (the highlight chip's swatch rule applied to them).
-
 ### Added
+- App Builder **Search** over every page and component of an application, and a **Used in** list
+  under items, pages, lists of values, authorization schemes and report layouts.
+- **Advisor**: plans every SQL fragment of an application with EXPLAIN as its database role
+  (rolled back, nothing runs), compiles PL/pgSQL blocks, finds references to missing pages,
+  items, lists of values, schemes and layouts, and checks PL/pgSQL functions with `plpgsql_check`
+  when that extension is installed.
+- **Top SQL** per application (Activity → Top SQL) from `pg_stat_statements`. Migration 016
+  creates the extension when possible; `docker-compose.yml` and CI load the module.
 - **Region settings** in the page designer for grid, chart, cards, calendar and faceted search
   regions, like the report settings: grid columns (heading, shown, read-only, required, list of
   values) and add/change/delete switches; chart type; cards style and link; calendar link; the
@@ -30,6 +27,17 @@ All notable changes to this project are documented here. The format follows
 - **Row selection** for report regions: `"selection": {"column": …, "item": …}` (also in the
   Report settings form) adds a checkbox per row and a *select all*; on submit the checked values
   reach the item, colon separated.
+
+### Security
+- The Content-Security-Policy no longer allows inline styles: `style-src 'self' 'nonce-…'` with a
+  new nonce per response. Chart geometry and theme colours go into the page's one nonce'd
+  `<style>` as classes (`src/css.ts`); a refreshed region sends its rules along and `app.js` adds
+  them through the CSSOM. The builder uses CSS classes instead of `style` attributes.
+  **Upgrade note:** `style="…"` attributes and `<style>` blocks in your own static or dynamic
+  region HTML are now ignored by browsers; use the classes in `/static/app.css`.
+
+### Fixed
+- Chart legend swatches were grey since 0.8.0 (the highlight chip's swatch rule applied to them).
 
 ## [0.8.0] - 2026-09-30
 

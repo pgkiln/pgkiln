@@ -7,13 +7,13 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection; CSP without `unsafe-inline`).
+Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection; CSP without `unsafe-inline`; builder search, where used, Advisor and Top SQL).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
-| App Builder and development | 2 | 6 | 7 | 0 | Solid builder and wizards; no drag-and-drop, no team/AI tooling |
+| App Builder and development | 4 | 5 | 6 | 0 | Solid builder and wizards, search, where used and an Advisor; no drag-and-drop, no team/AI tooling |
 | Regions | 6 | 5 | 6 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps missing |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
@@ -22,8 +22,8 @@ Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all regio
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 2 | 3 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX loading, report PDFs; no document templates or REST data sources |
 | Workflow, automation and AI | 0 | 1 | 5 | 0 | Scheduled automations; approvals are hand-built in PL/pgSQL (see the HR sample) |
-| Administration | 1 | 3 | 1 | 0 | Single workspace |
-| **Total** | **44** | **33** | **33** | **6** | 116 APEX features compared: 38% available, 28% partial |
+| Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
+| **Total** | **47** | **31** | **32** | **6** | 116 APEX features compared: 41% available, 27% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -42,8 +42,8 @@ Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all regio
 | Application lock (26.1), page locks, comments | ❌ | |
 | Supporting objects (install scripts) | ❌ | Put your schema in versioned SQL migrations next to the export |
 | Theme, library and boilerplate application types (26.1) | ❌ | |
-| Advisor | 🟡 | Security checklist per app. A PL/pgSQL linter can come from `plpgsql_check` ([extensions](guide/15-extensions.md)) |
-| Builder search, "where used" | ❌ | |
+| Advisor | ✅ | Per app: every SQL fragment planned (EXPLAIN, as the app's role, rolled back) for syntax, unknown objects, types and grants; PL/pgSQL blocks compiled; references to missing pages, items, lists of values, schemes and layouts; PL/pgSQL functions with `plpgsql_check` when installed. Plus the security checklist |
+| Builder search, "where used" | ✅ | Search over every page and component (names, SQL, settings, help); "Used in" under items, pages, lists of values, schemes and report layouts. No search and replace |
 | AI assistant, pages from natural language, describe tables for LLMs (26.1) | ❌ | |
 | Sample data source for development (26.1) | ❌ | |
 
@@ -190,7 +190,7 @@ Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all regio
 | Developer accounts | ✅ | |
 | Instance administration, install/upgrade logs (26.1) | 🟡 | Versioned migrations (`npm run db:migrate`) |
 | Debug messages | 🟡 | Per-app debug mode; server logs |
-| Monitoring (top SQL) | 🟡 | Activity per app; top SQL via `pg_stat_statements` outside the builder |
+| Monitoring (top SQL) | ✅ | Activity per app; Top SQL per app's database role from `pg_stat_statements` (sortable, resettable) |
 | Workspaces (multi-tenant) | ❌ | One installation = one workspace |
 
 ## Different on purpose
@@ -214,7 +214,7 @@ Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all regio
 | Map data | PostGIS | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
 | Semantic search / RAG | `pgvector` | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
 | Statement auditing | `pgaudit` | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
-| Code checks (Advisor for PL/pgSQL) | `plpgsql_check` | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
+| Code checks (Advisor for PL/pgSQL functions) | `plpgsql_check` (used by the Advisor when installed) | [chapter 15](guide/15-extensions.md#tier-2-third-party-widely-available) |
 | Pivot reports | `tablefunc` | [chapter 15](guide/15-extensions.md#tier-1-included-with-postgresql) |
 | Porting PL/SQL | `orafce` | [chapter 15](guide/15-extensions.md#tier-3-situational) |
 
@@ -231,14 +231,13 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Builder quality:** top SQL per app (`pg_stat_statements`), code checks (`plpgsql_check`), search and "where used".
-2. **LDAP and SAML** authentication; "remember me".
-3. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
-4. **Approvals / workflow** built on the metadata model.
-5. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-6. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-7. **Template components and plug-ins.**
-8. **AI features.**
+1. **LDAP and SAML** authentication; "remember me".
+2. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
+3. **Approvals / workflow** built on the metadata model.
+4. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+5. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+6. **Template components and plug-ins.**
+7. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),
