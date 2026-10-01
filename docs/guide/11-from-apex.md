@@ -11,7 +11,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Instance / workspace | One pgapex installation (one workspace) |
 | Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
 | Application, page, region, item, button | The same, stored in `meta.*` |
-| Page Designer | Builder page designer (component tree + property editor) |
+| Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |
 | Shared components | Navigation menu, authorization schemes, lists of values, application items, application processes |
 | `:P1_ITEM`, `:APP_USER`, `:REQUEST`, `&ITEM.` | The same syntax |
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |

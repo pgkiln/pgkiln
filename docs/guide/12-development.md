@@ -9,9 +9,15 @@ db/
   migrations/NNN_*.sql     the meta schema, roles and SQL API; applied once each, in order
   seed/*.sql               the HR sample (not for production)
 examples/                  example applications as SQL (the tutorial)
-scripts/migrate.ts         migration/seed runner
+examples/plugins/          plug-in files (template components) to import
+scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
+bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)
+  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate)
+  appfiles.ts              application export as one file per component (dir layout, static ids) and back
+  cli/                     the command line: main.ts (commands, help, exit codes), files.ts (directories,
+                           zip), diff.ts, replace.ts (import --replace in place)
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
@@ -20,7 +26,7 @@ src/
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
-  workflow.ts              workflows: step checks, the runner (NOTIFY + polling), the diagram
+  workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
@@ -51,16 +57,19 @@ src/
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution, OpenAPI
     tree.ts                tree region
+    template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
+    template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
     workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
-    ui.ts                  shell, form helpers, CSRF check, app tab bar
+    ui.ts                  IDE shell (icon rail, toolbar, breadcrumb), builder theme, form helpers, CSRF check, app tabs
     routes.ts              sign-in, workspace and app home, settings, activity, developers
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
-    designer.ts            page designer
+    designer.ts            page designer: component tree, layout canvas and gallery, property editor, toolbar
+    arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: SQL commands, object browser
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
@@ -77,10 +86,17 @@ src/
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
     rest.ts                REST module endpoints list and curl example (Shared Components)
-    workflows.ts           workflow diagram and instance counts (Shared Components)
+    workflows.ts           workflow versions, diagram and instances (Shared Components)
+    template-spec.ts       template component property form (Shared Components)
+    templates.ts           template components: preview, plug-in export/import, region settings, report column templates
+    code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
+  code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
+  builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
+  builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
+  builder-icons.svg        builder only: icons of the rail, toolbar and designer (b-*)
 test/
   binds.test.ts            unit tests
   security.test.ts         security regression tests (in-process, against the database)
@@ -92,8 +108,12 @@ test/
   dataload.test.ts         parsing, Load Data, the data_load process
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
+  template-components.test.ts  template language, escaping, plug-ins, regions and column templates
+  code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
+  e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
 ```
 
 ## Principles
@@ -178,6 +198,10 @@ differently.
   that test fails until you do. Redefine the functions with `create or replace` in the new
   migration; don't wrap them.
 - Never rename or remove a section of the `pgapex/2` format (see [chapter 3](03-builder.md#export-format)).
+- A new table that belongs to an application or references a component must also be listed in
+  `src/cli/replace.ts` (replaced with the application's definition, or kept as installation data);
+  `test/cli.test.ts` fails until it is. The directory format ([chapter 18](18-cli.md)) needs no
+  change: unknown sections and columns travel along.
 
 ## Releasing
 

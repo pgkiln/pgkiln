@@ -4,6 +4,7 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { BASE, csrf, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import { clearCompletions } from './code-editor.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection).
 
@@ -32,11 +33,12 @@ export async function sqlRoutes(app: FastifyInstance) {
       } catch (e) {
         result = html`<div class="alert alert-error"><strong>Error:</strong> ${(e as Error).message}</div>`;
       }
+      clearCompletions(); // the script may have changed tables or grants
     }
     const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sql')}
       <p class="muted">Runs as the builder's owner connection (not as an application role). Multiple statements are allowed; results of the last one are shown.</p>
       <form method="post">${csrf(s)}
-        <textarea name="sql" class="code sql-editor" rows="12" spellcheck="false" aria-label="SQL">${sql || 'select current_user, version();'}</textarea>
+        <textarea name="sql" class="code sql-editor" rows="12" spellcheck="false" aria-label="SQL" data-code="plpgsql">${sql || 'select current_user, version();'}</textarea>
         <div class="buttons"><button class="btn btn-hot">${icon('play')} Run (Ctrl+Enter)</button></div>
       </form>
       <div class="u-mt1">${result}</div>`;

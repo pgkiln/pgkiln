@@ -8,8 +8,9 @@ import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
 import { ICON_OPTIONS } from './components.ts';
-import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
+import { docToFiles, filesToZip } from '../appfiles.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -33,7 +34,10 @@ export async function builderRoutes(app: FastifyInstance) {
           ${input('password', 'Password', '', { type: 'password', required: true, auto: 'current-password' })}
           <button class="btn btn-hot">Sign in</button>
         </form></main>`,
-        'login-body',
+        'login-body ide-login',
+        {},
+        builderHead(),
+        { theme: validTheme(req.cookies?.[THEME_COOKIE]) ?? 'dark' },
       ),
     );
   });
@@ -66,6 +70,12 @@ export async function builderRoutes(app: FastifyInstance) {
     }
     await destroySession(reply, s, BASE);
     const ns = await createSession(reply, null, BASE, dev.username);
+    // the builder theme chosen earlier on this device
+    const theme = validTheme(req.cookies?.[THEME_COOKIE]);
+    if (theme) {
+      ns.state.__BTHEME = theme;
+      await saveState(ns);
+    }
     logActivity({ username: dev.username, event: 'login', ip, detail: 'builder' });
     if (password === 'admin' || password === dev.username) {
       ns.state.__WEAK = '1';
@@ -78,6 +88,26 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await getSession(req, reply, null, BASE);
     if (req.body?.__csrf === s.csrf_token) await destroySession(reply, s, BASE);
     return reply.redirect(`${BASE}/login`, 303);
+  });
+
+  // The builder's light/dark theme (the developer's menu in the icon rail).
+  app.post(`${BASE}/theme`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const theme = validTheme(req.body?.theme);
+    if (!theme) return reply.code(400).send('Unknown theme');
+    s.state.__BTHEME = theme;
+    reply.setCookie(THEME_COOKIE, theme, { path: BASE, httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600, secure: process.env.COOKIE_SECURE === 'true' });
+    const ref = String(req.headers.referer ?? '');
+    const back_to = (() => {
+      try {
+        const u = new URL(ref);
+        return u.host === req.headers.host && u.pathname.startsWith(BASE) ? u.pathname + u.search : BASE;
+      } catch {
+        return BASE;
+      }
+    })();
+    return back(reply, s, back_to);
   });
 
   // ---------------------------------------------------------------- workspace home
@@ -125,7 +155,7 @@ export async function builderRoutes(app: FastifyInstance) {
           </form></div></section>
         <section class="region region-standard" id="import"><header class="region-header"><h2>Import application</h2></header><div class="region-body">
           <form method="post" action="${BASE}/import">${csrf(s)}
-            <div class="field" data-wide><label class="label" for="f_doc">Export JSON</label><textarea id="f_doc" name="doc" class="code" rows="7" required></textarea></div>
+            <div class="field" data-wide><label class="label" for="f_doc">Export JSON</label><textarea id="f_doc" name="doc" class="code" rows="7" required data-code="json"></textarea></div>
             ${input('alias', 'New alias (optional)', '')}
             <div class="buttons"><button class="btn btn-hot">Import</button></div>
           </form></div></section>
@@ -313,6 +343,12 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.one('select meta.export_app($1) as doc', [a.alias]);
+    // ?format=dir: one file per component, as `pgapex export --format dir` writes it (docs/guide/18-cli.md)
+    if (req.query?.format === 'dir')
+      return reply
+        .header('content-disposition', `attachment; filename="${a.alias}.pgapex.zip"`)
+        .type('application/zip')
+        .send(Buffer.from(filesToZip(docToFiles(r.doc), a.alias)));
     return reply
       .header('content-disposition', `attachment; filename="${a.alias}.pgapex.json"`)
       .type('application/json')

@@ -1,0 +1,29 @@
+{
+  "format": "pgapex-plugin/1",
+  "type": "template_component",
+  "static_id": "status_badge",
+  "name": "Status badge",
+  "version": "1.0.0",
+  "description": "A coloured pill for a status. STATE picks the colour: success, warning, danger, info or neutral; common words like approved, pending, rejected and Y/N are understood too.",
+  "template": "<span class=\"tc-badge tc-badge-{case STATE/}{when success,ok,done,approved,active,completed,y,yes,true/}success{when warning,pending,open,waiting,in progress/}warning{when danger,error,failed,rejected,cancelled,late,n,no,false/}danger{when info,new,draft,planned/}info{otherwise/}neutral{endcase/}\">#LABEL#</span>",
+  "wrapper": null,
+  "css_classes": [
+    "tc-inline"
+  ],
+  "attributes": [
+    {
+      "name": "LABEL",
+      "label": "Label",
+      "type": "text",
+      "default": "#STATUS#",
+      "help": "The text; by default the status column."
+    },
+    {
+      "name": "STATE",
+      "label": "State",
+      "type": "text",
+      "default": "#STATUS#",
+      "help": "success, warning, danger, info or neutral (or approved, pending, rejected, Y, N…)."
+    }
+  ]
+}

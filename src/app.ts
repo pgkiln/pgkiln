@@ -11,7 +11,9 @@ import { designerRoutes } from './builder/designer.ts';
 import { sharedRoutes } from './builder/shared.ts';
 import { sqlRoutes } from './builder/sql.ts';
 import { automationRoutes } from './builder/automations.ts';
+import { workflowBuilderRoutes } from './builder/workflows.ts';
 import { regionSettingsRoutes } from './builder/region-settings.ts';
+import { templateRoutes } from './builder/templates.ts';
 import { searchRoutes } from './builder/search.ts';
 import { advisorRoutes } from './builder/advisor.ts';
 import { topSqlRoutes } from './builder/top-sql.ts';
@@ -23,6 +25,7 @@ import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
+import { codeEditorRoutes } from './builder/code-editor.ts';
 import { accountRoutes } from './runtime/account.ts';
 import { taskRoutes } from './runtime/tasks.ts';
 import { workflowRoutes } from './runtime/workflows.ts';
@@ -65,8 +68,10 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(dataLoadRoutes);
   await app.register(layoutRoutes);
   await app.register(automationRoutes);
+  await app.register(workflowBuilderRoutes);
   await app.register(reportSettingsRoutes);
   await app.register(regionSettingsRoutes);
+  await app.register(templateRoutes);
   await app.register(searchRoutes);
   await app.register(advisorRoutes);
   await app.register(topSqlRoutes);
@@ -76,6 +81,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(oauthRoutes);
   await app.register(apiRoutes);
   await app.register(globalizationRoutes);
+  await app.register(codeEditorRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));
   return app;
 }

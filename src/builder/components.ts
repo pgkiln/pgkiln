@@ -7,7 +7,9 @@ import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems } from '../workflow.ts';
+import { workflowBeforeSave } from './workflows.ts';
 import { handlerProblems } from '../runtime/rest.ts';
+import { TEMPLATE_COMPONENT_SPEC } from './template-spec.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -28,6 +30,8 @@ export interface Field {
   help?: string;
   wide?: boolean;
   group?: string;
+  /** shown, not editable (the form still posts it) */
+  readonly?: boolean;
 }
 
 export interface ComponentSpec {
@@ -41,6 +45,8 @@ export interface ComponentSpec {
   defaults?: Record<string, unknown>;
   /** checks the parsed values before saving; returns a message when they're not valid */
   validate?: (values: Record<string, any>) => string | null;
+  /** adjusts the parsed values before they are saved (cid: the row being edited); throws when they can't be */
+  beforeSave?: (values: Record<string, unknown>, cid: string | undefined) => Promise<void>;
 }
 
 const AUTHZ_HELP = 'Authorization scheme; prefix with ! to negate. MUST_NOT_BE_PUBLIC_USER is built in.';
@@ -57,9 +63,9 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     defaults: { type: 'report', columns: 12, template: 'standard' },
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree', 'static', 'dynamic'], group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'static', 'dynamic'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
-        help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
+        help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · template_component: any SELECT (its columns are #COLUMN# in the template), or empty for one instance · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
       { name: 'table_name', label: 'Table (form, grid)', kind: 'text', help: 'e.g. sales.orders', group: 'Source' },
       { name: 'pk_column', label: 'Primary key column (form, grid)', kind: 'text', group: 'Source' },
       { name: 'pk_item', label: 'Primary key item (form)', kind: 'upper', group: 'Source' },
@@ -273,7 +279,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       ],
     },
     validate: (v) => {
-      const problems = handlerProblems(v.handlers);
+      // parseFields gives the JSON as text
+      const problems = handlerProblems(typeof v.handlers === 'string' ? JSON.parse(v.handlers) : v.handlers);
       return problems.length ? problems.join(' ') : null;
     },
     fields: [
@@ -301,16 +308,18 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       ],
     },
     validate: (v) => {
-      const problems = stepProblems(v.steps);
+      // parseFields gives the JSON as text
+      const problems = stepProblems(typeof v.steps === 'string' ? JSON.parse(v.steps) : v.steps);
       return problems.length ? problems.join(' ') : null;
     },
+    beforeSave: workflowBeforeSave,
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: "Application SQL starts it with meta.start_workflow('NAME', :P1_ID, '{\"AMOUNT\": 100}')." },
       { name: 'title', label: 'Title', kind: 'text', wide: true, group: 'Identification', help: '&VAR. is replaced by a variable given at the start (and &DETAIL_PK.), e.g. Onboarding of &NAME.' },
       { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
       { name: 'admin_role', label: 'Administrator (role)', kind: 'text', group: 'Identification', help: 'Sees every instance, terminates them and retries a failed step.' },
       { name: 'steps', label: 'Steps (JSON)', kind: 'json', wide: true, group: 'Steps',
-        help: '[{"name": "CHECK", "type": "switch", "cases": [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}], "otherwise": "MANAGER"}, {"name": "MANAGER", "type": "task", "task": "EXPENSE_APPROVAL", "owners": "select manager from staff where id = :DETAIL_PK::int", "next": {"approved": "PAY", "rejected": "END"}}, {"name": "PAY", "type": "sql", "code": "select expenses.pay(:DETAIL_PK::int) as paid_on"}, {"name": "PAUSE", "type": "wait", "for": "2 days"}, {"name": "END", "type": "end"}] · "next" is optional (the following step). Binds: the variables, :DETAIL_PK, :WORKFLOW_ID, :INITIATOR, and after a task :TASK_OUTCOME and :TASK_APPROVER. Columns that sql steps return become variables.' },
+        help: '[{"name": "CHECK", "type": "switch", "cases": [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}], "otherwise": "MANAGER"}, {"name": "MANAGER", "type": "task", "task": "EXPENSE_APPROVAL", "owners": "select manager from staff where id = :DETAIL_PK::int", "next": {"approved": "PAY", "rejected": "END"}}, {"name": "PAY", "type": "sql", "code": "select expenses.pay(:DETAIL_PK::int) as paid_on"}, {"name": "PAUSE", "type": "wait", "for": "2 days"}, {"name": "END", "type": "end"}] · "next" is optional (the following step). Parallel branches: {"name": "SPLIT", "type": "parallel", "branches": ["BOOK", "NOTIFY"], "join": "BOTH"} runs the branches side by side until each reaches the join {"name": "BOTH", "type": "join", "wait_for": "all"} ("any": the first one, the others are cancelled). Binds: the variables, :DETAIL_PK, :WORKFLOW_ID, :INITIATOR, and after a task :TASK_OUTCOME and :TASK_APPROVER. Columns that sql steps return become variables.' },
     ],
   },
   task_definition: {
@@ -341,6 +350,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
         help: 'Runs as the application\'s role when the task is approved, rejected or completed, in the same transaction (an error undoes the decision). Binds: :TASK_ID, :DETAIL_PK, :OUTCOME (APPROVED, REJECTED, COMPLETED), :COMMENT, :APPROVER, :INITIATOR and the task parameters, e.g. select expenses.decide(:DETAIL_PK::int, :OUTCOME, :COMMENT)' },
     ],
   },
+  template_component: TEMPLATE_COMPONENT_SPEC,
   document_template: {
     table: 'meta.document_template',
     scope: 'app',

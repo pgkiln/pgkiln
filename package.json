@@ -27,6 +27,9 @@
     "node": ">=20"
   },
   "type": "module",
+  "bin": {
+    "pgapex": "bin/pgapex.js"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
@@ -36,6 +39,7 @@
     "pretest": "tsx scripts/migrate.ts --example hr",
     "test": "tsx --test --test-concurrency=1 test/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "pgapex": "tsx src/cli/main.ts",
     "example:hr": "tsx scripts/migrate.ts --example hr",
     "setup": "docker compose up -d db && tsx scripts/migrate.ts",
     "pretest:e2e": "tsx scripts/migrate.ts --example hr",

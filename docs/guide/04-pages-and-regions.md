@@ -42,6 +42,7 @@ only when true) and `authz` (an authorization scheme).
 | [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
 | [`map`](#map) | Places (markers) and shapes on an interactive map |
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
+| [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
@@ -410,6 +411,118 @@ Attributes: `expanded` (levels open at first, default 1), `link` (as for maps; `
 column), `empty`. The tree is drawn on the server with `<details>`: it works without JavaScript,
 and the browser's find-in-page opens closed branches. Clicking a label follows the link; the rest
 of the row opens and closes the branch. Up to 5000 nodes.
+
+### Template components
+
+A **template component** (APEX 23.1+) is a piece of HTML with placeholders, kept under **Shared
+Components → Template components** and used in two places:
+
+- as a region of type **`template_component`**: one instance per row of the region's query (or once,
+  without a query), or all rows inside the component's *wrapper*;
+- as a **column template** of a report: the cells of one column are drawn by the component.
+
+A component has a **static id** (e.g. `status_badge`; regions and columns refer to it by this id),
+a name, a version, the **template** of one instance, an optional **wrapper**, **layout classes**
+and **custom attributes**.
+
+#### The template language
+
+```html
+<span class="tc-badge tc-badge-{case STATE/}{when ok,approved/}success{when late/}danger{otherwise/}neutral{endcase/}">#LABEL#</span>
+```
+
+| Syntax | Meaning |
+|---|---|
+| `#NAME#` | a custom attribute, a column of the row, `#LINK#`, `#APEX$ROW_NUM#` (and in a wrapper `#APEX$ROW_COUNT#`). **Always HTML-escaped**; there is no raw form (`#NAME!RAW#` is refused) |
+| `#NAME!STRIPHTML#` | the value with tags removed, then escaped |
+| `{if NAME/}…{elsif ?NAME/}…{else/}…{endif/}` | `NAME`: true (not empty, not `N`/`no`/`false`); `?NAME`: not empty; `!NAME`: not true |
+| `{case NAME/}{when a/}…{when b,c/}…{otherwise/}…{endcase/}` | compare a value (ignoring case) with one or more values |
+| `{loop "," NAME/}#APEX$ITEM# #APEX$I#{endloop/}` | each part of a value split on a separator (default `:`) |
+| `#APEX$ROWS#` | in the wrapper only, exactly once: where the rows go |
+
+Templates may come from plug-in files someone else wrote, so they are held to more than "developer
+HTML is trusted". When a template is saved, imported and rendered, pgapex checks it against an
+allow-list:
+
+- only ordinary content elements (`div`, `span`, `p`, `a`, `img`, `ul`, `table`, `time`, …): no
+  `<script>`, `<style>`, forms, frames, `<svg>` or comments;
+- no event handler (`on…`), `style` or `data-*` attributes; every attribute value is quoted;
+- placeholders and directives only in text or inside a quoted attribute value, and a directive block
+  starts and ends in the same place, so leaving a branch out never leaves half a tag;
+- `href`, `src` and `cite` allow only http(s), `mailto:`, `tel:` and relative URLs. They are checked
+  again *after* substitution: a value like `javascript:alert(1)` drops the attribute.
+
+So whatever the data, the page gets exactly the template's elements and attributes. For links to
+pages of the application use `#LINK#`: pgapex fills it with a checksummed URL (and opens modal
+pages as a dialog). The look comes from classes (the Content-Security-Policy blocks inline styles):
+`tc-badge` (`-success`, `-warning`, `-danger`, `-info`, `-neutral`), `tc-card`, `tc-card-head`,
+`tc-avatar`, `tc-title`, `tc-meta`, `tc-body`, `tc-actions`, `tc-stack`, `tc-row`, `tc-muted`,
+`tc-timeline`, `tc-timeline-item` (`tc-state-success`, …), plus everything else in `app.css`.
+
+**Layout classes** set how a region lays out the instances: `tc-list` (default, one below the
+other), `tc-grid` (responsive columns), `tc-inline` (in a line), `tc-divided` (with rules),
+`tc-compact`.
+
+**Custom attributes** (JSON) are the component's settings, filled in where it is used:
+
+```json
+[{"name": "LABEL", "label": "Label", "type": "text", "default": "#STATUS#"},
+ {"name": "STATE", "type": "select", "options": ["ok", "late", "other"]},
+ {"name": "COMPACT", "type": "checkbox"}]
+```
+
+Types: `text`, `number`, `select` (with `options`), `checkbox` (`Y`/`N`). A value (or default) may
+contain `#column#` and `&ITEM.` substitutions, so `"default": "#STATUS#"` makes the component
+work on any query with a `status` column. `LINK` is reserved.
+
+The component's page in the builder shows its attributes, the columns it expects and a **preview**
+with sample rows (`NAME=value` per line, a blank line between rows).
+
+#### As a region
+
+Choose **Type** `template_component` and a **Source** SELECT (or none, for one instance from the
+attributes). Under the region, **Template component settings** writes its `config`:
+
+```json
+{"component": "contact_card",
+ "attributes": {"SUBTITLE": "#job#"},
+ "display": "multiple",
+ "link": {"page": 3, "items": {"P3_EMPNO": "#empno#"}},
+ "max_rows": 50, "empty": "No colleagues yet"}
+```
+
+`display`: `each` (default) or `multiple` (all rows in the component's wrapper, e.g. one
+`<ol class="tc-timeline">`). `link` fills `#LINK#` (empty for users who may not open the page).
+At most 500 rows.
+
+#### As a report column template
+
+Under a report region, **Column templates** picks a component per column, with attribute values
+(`NAME=value` per line). The template sees every column of the row as `#NAME#` (also hidden ones),
+and `#LINK#` is the report's link. Stored in the region's `config`:
+
+```json
+{"column_templates": {"status": {"component": "status_badge", "attributes": {"STATE": "#status#"}}}}
+```
+
+Column templates apply to the report view (not to downloads, which keep the plain value).
+
+#### Plug-ins
+
+A component travels as one JSON **plug-in file** (`"format": "pgapex-plugin/1"`, `"type":
+"template_component"`): **Download plug-in file** on its page, and **Import a plug-in** under
+Shared Components → Template components → Add (optionally replacing a component with the same
+static id). The template is checked before anything is saved. In SQL:
+
+```sql
+select meta.export_template_component(<app id>, 'status_badge');
+select meta.import_template_component(<app id>, '<plug-in json>'::jsonb, p_replace => false);
+```
+
+`examples/plugins/` has three to start from: `status-badge`, `contact-card` and `timeline-item`.
+The HR example installs them (`examples/hr/hr_19_template_components.sql`): page 19 (Team) shows
+contact cards linking to the employee form, recent hires on a timeline, and leave requests with a
+status badge. Template components are part of an application export (`template_components`).
 
 ### `static` and `dynamic` content
 

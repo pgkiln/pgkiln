@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–22 are merged into `main` and released as **v0.15.0** (migrations 001–026 are released: add 027+).
+Last updated: 2026-10-01. Sprints 3–23 are merged into `main` and released as **v0.16.0** (migrations 001–028 are released: add 029+).
 
 ## Project in one paragraph
 
@@ -48,8 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 22, released as **v0.15.0** (tags: v0.2.0, v0.6.0–v0.15.0; 0.3.0–0.5.0 were never tagged). Migrations 001–026 are released |
-| (sprint branches) | `sprint-17` … `sprint-22` were merged (v0.11.0–v0.15.0) and deleted |
+| `main` | Everything up to sprint 23, released as **v0.16.0** (tags: v0.2.0, v0.6.0–v0.16.0; 0.3.0–0.5.0 were never tagged). Migrations 001–028 are released |
+| (sprint branches) | `sprint-17` … `sprint-23` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.16.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -662,3 +662,56 @@ fresh 291 + 3 skipped, upgrade from v0.14.0 291 + 3 skipped. Released as **v0.15
 Next on the roadmap: workflow parallel branches and versions; builder (drag-and-drop layout, code editor with SQL
 autocomplete, file-per-component export, CLI); template components and plug-ins; AI features. Smaller open items
 seen this sprint: marker clustering and several layers per map; object storage and image cropping for files.
+
+## Sprint 23: the rest of the roadmap except AI, in five parallel work branches (2026-10-01)
+
+Branch `sprint-23` from `main` (v0.15.0). The work ran as five agents, each in its own git worktree under
+`../pgapex-wt/<name>` (branch `sprint-23-<name>`) with its own `postgres:17` container (`pgapex-<name>`, ports
+5441–5445, started with `docker run`, not compose) and app port (3111–3115) in the worktree's `.env`.
+**Pitfall:** `npm run db:reset` in a worktree runs `docker compose` against the main `docker-compose.yml` (container
+name `pgapex-db`); it fails on the name clash, but reset a worktree's database with `docker rm -f pgapex-<name> &&
+docker run …` and `npx tsx scripts/migrate.ts` instead. Migrations were reserved per branch (027 workflow, 028
+templates; 029/030 unused).
+
+1. **Workflow branches and versions** (migration 027, `hr_18`): step types `parallel` (`branches`, `join`) and
+   `join` (`wait_for: all|any`); `meta.workflow_branch` tracks each branch's position; an `any` join cancels the
+   other branches and their tasks; end steps and terminate cancel open branches; nested branches; a faulted branch
+   is retried by an admin. Versions: `version`/`steps` (active) plus `dev_version`/`dev_steps`, history;
+   `meta.new_workflow_version` / `activate_workflow_version` / `discard_workflow_version`; instances keep their
+   version's steps. A before-insert trigger fills version '1' for imports from older exports (`import_app` uses
+   `jsonb_populate_record`, which skips defaults). Builder: `src/builder/workflows.ts` (versions route
+   `POST …/shared/workflow_definition/:cid/versions`, read-only active steps, instance diagrams).
+2. **Template components and plug-ins** (migration 028, `hr_19` page 19 "Team"): `meta.template_component`
+   (static_id, template, wrapper, css_classes from a fixed set, attributes), allow-list trigger,
+   `meta.export_/import_template_component` (format `pgapex-plugin/1`), region type `template_component`, report
+   `config.column_templates`. 028 redefines `export_app` (from 024) and `import_app` (from 026): a later migration
+   that changes either must start from 028's. Runtime: `src/runtime/template-components.ts` (language, escaping),
+   `template-region.ts`; builder `src/builder/templates.ts`, `template-spec.ts`; examples in `examples/plugins/`.
+3. **Page Designer and builder chrome** (no migration): `shell()` in `src/builder/ui.ts` draws the rail, toolbar and
+   alerts; builder-only assets are listed in `BUILDER_STYLES` / `BUILDER_SCRIPTS` (add new ones there only);
+   icons in `public/builder-icons.svg` (`bicon()`); theme `POST /builder/theme` (session + cookie
+   `pgapex_btheme`). `src/builder/designer.ts` (panes, gallery, property tabs that remember the last one),
+   `src/builder/arrange.ts` (move, span, drop, undo snapshots; same-page checks), `public/builder.js` / `.css`.
+4. **Code editor** (no migration): `public/code-editor.js` / `.css` enhance `<textarea data-code>`;
+   `codeAttrs()` in `forms.ts` marks code/JSON fields by component type; `src/builder/code-editor.ts`:
+   `GET /builder/code/completions` (tables and columns as the app's role, cached 30 s per role,
+   `clearCompletions()` after SQL Workshop runs) and `/builder/code/check`.
+5. **CLI and file-per-component export** (no migration): `bin/pgapex.js` → `src/cli/main.ts`
+   (migrate, apps, export, import, diff, users); `src/migrate.ts` (the runner, also behind `scripts/migrate.ts`);
+   `src/appfiles.ts` (dir layout, keys from names; template components by static_id); `src/cli/replace.ts`
+   (`import --replace`; `checkSchema()` refuses to run when a new `meta` table is unknown: add new app tables to
+   `REPLACED` or `KEPT`). Chapter 18.
+
+Merge (into `sprint-23`, in the order cli, workflow, templates, editor, designer): conflicts only in
+`shared.ts`, `forms.ts`, `ui.ts`, `security.test.ts` and the code map. Fixed after merging: template components in
+the dir export and in `--replace`; the property editor remembers its tab (the templates e2e test opens Attributes);
+REST modules could not be saved in the builder (the same JSON-as-text bug the workflow agent fixed for steps).
+The parity matrix summary was recounted (117 rows: 56 ✅ / 32 🟡 / 23 ❌ / 6 ➖).
+
+Verified: dev DB `npm test` 357/357 (PostgREST and LDAP up) and `npm run test:e2e` 58/58; CI-style throwaway
+`postgres:17` without PostgREST: upgrades from v0.15.0 and from v0.6.0, each 354 + 3 skipped. Released as **v0.16.0**.
+
+Next: **AI features** (the last roadmap item) need the owner's decision on the provider and API keys. Smaller open
+items: the Advisor doesn't flag regions/columns pointing at a missing template component; column templates apply
+only to the normal report view (not downloads, group by or pivot); drag and drop needs a mouse (Arrange buttons on
+touch); item/process/dynamic-action plug-ins with their own code are not planned for now.

@@ -15,6 +15,7 @@ import { renderTasks } from './tasks.ts';
 import { renderWorkflows } from './workflows.ts';
 import { renderMap } from './maps.ts';
 import { renderTree } from './tree.ts';
+import { renderTemplateRegion } from './template-region.ts';
 import { cell, renderReport } from './report.ts';
 
 // ---------------------------------------------------------------- buttons
@@ -144,6 +145,9 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
       break;
     case 'tree':
       body = await renderTree(ctx, r);
+      break;
+    case 'template_component':
+      body = await renderTemplateRegion(ctx, r);
       break;
     case 'dynamic':
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The

@@ -1,0 +1,73 @@
+// Applies db/migrations/*.sql in order (each once, in a transaction): the
+// framework, then optionally an example application from examples/<name>/.
+// Used by scripts/migrate.ts (npm run db:migrate, …) and `pgapex migrate`.
+// Examples share one record of applied files (public.pgapex_seed, by file
+// name), so a database installed with db/seed/ carries on with examples/hr/.
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import pg from 'pg';
+
+export interface MigrateOptions {
+  /** connection string of the owner role */
+  databaseUrl?: string;
+  /** directory holding db/ and examples/ */
+  root: string;
+  /** install examples/<name>/ after the migrations */
+  example?: string | null;
+  /** releases up to 0.9 kept the HR sample in db/seed/: install that if present, else examples/hr */
+  seed?: boolean;
+  /** seconds to wait for the database to accept connections */
+  waitSeconds?: number;
+  log?: (s: string) => void;
+}
+
+/** Returns the names of the files applied. */
+export async function migrate(o: MigrateOptions): Promise<string[]> {
+  const log = o.log ?? ((s: string) => process.stdout.write(s));
+  if (o.example != null && !/^[a-z][a-z0-9_-]*$/.test(o.example)) throw new Error('--example needs the name of a directory in examples/, e.g. --example hr');
+  if (o.example && !existsSync(join(o.root, 'examples', o.example))) throw new Error(`no example named ${o.example} in ${join(o.root, 'examples')}`);
+  let client: pg.Client;
+  for (let attempt = 1; ; attempt++) {
+    // a pg.Client cannot be reused after a failed connect
+    client = new pg.Client({ connectionString: o.databaseUrl ?? process.env.DATABASE_URL, application_name: 'pgapex-migrate' });
+    try {
+      await client.connect();
+      break;
+    } catch (e) {
+      if (attempt >= (o.waitSeconds ?? 30)) throw e;
+      await new Promise((r) => setTimeout(r, 1000)); // database still starting
+    }
+  }
+  const applied: string[] = [];
+  async function apply(dir: string, table: string) {
+    await client.query(`create table if not exists public.${table} (name text primary key, applied_at timestamptz not null default now())`);
+    const done = new Set((await client.query(`select name from public.${table}`)).rows.map((r) => r.name));
+    for (const file of readdirSync(join(o.root, dir)).filter((f) => f.endsWith('.sql')).sort()) {
+      if (done.has(file)) continue;
+      log(`applying ${dir}/${file} ... `);
+      try {
+        await client.query('begin');
+        await client.query(readFileSync(join(o.root, dir, file), 'utf8'));
+        await client.query(`insert into public.${table} (name) values ($1)`, [file]);
+        await client.query('commit');
+        log('ok\n');
+        applied.push(`${dir}/${file}`);
+      } catch (e) {
+        await client.query('rollback');
+        log('FAILED\n');
+        throw e;
+      }
+    }
+  }
+  try {
+    await apply('db/migrations', 'pgapex_migration');
+    if (o.seed) {
+      if (existsSync(join(o.root, 'db/seed'))) await apply('db/seed', 'pgapex_seed');
+      else await apply('examples/hr', 'pgapex_seed');
+    }
+    if (o.example) await apply(`examples/${o.example}`, 'pgapex_seed');
+  } finally {
+    await client.end();
+  }
+  return applied;
+}

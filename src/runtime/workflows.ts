@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { appTx, savepoint } from '../db.ts';
+import { appTx, owner, savepoint } from '../db.ts';
+import { workflowDiagram, type Step } from '../workflow.ts';
 import { html, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { logActivity, saveState } from '../session.ts';
@@ -23,6 +24,8 @@ interface WfRow {
   ended_at: string | null;
   may_terminate: boolean;
   may_retry: boolean;
+  version: string | null;
+  active_steps: string[];
 }
 
 export async function renderWorkflows(ctx: PageContext, r: Region): Promise<Raw> {
@@ -34,7 +37,7 @@ export async function renderWorkflows(ctx: PageContext, r: Region): Promise<Raw>
   let events: { workflow_id: string; at: string; step: string | null; event: string; detail: string | null }[];
   try {
     rows = (await savepoint(c, () => c.query<WfRow>(
-      `select id::text, title, state, current_step, wait_until::text, error, initiator, started_at::text, ended_at::text, may_terminate, may_retry
+      `select id::text, title, state, current_step, wait_until::text, error, initiator, started_at::text, ended_at::text, may_terminate, may_retry, version, active_steps
          from meta.workflows where ${admin ? 'is_admin' : 'is_initiator'} ${r.config.completed === true ? '' : `and state in ('active', 'waiting', 'faulted')`}
         order by state = 'faulted' desc, started_at desc limit 200`))).rows;
     events = rows.length
@@ -43,6 +46,12 @@ export async function renderWorkflows(ctx: PageContext, r: Region): Promise<Raw>
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `workflows "${r.title ?? r.id}"`)}</div>`;
   }
+  // diagrams of the running instances, with the steps of their version (only names and types are
+  // drawn). Only for instances the view above let this user see: the steps hold SQL, so they aren't in the view.
+  const running = rows.filter((x) => ['active', 'waiting', 'faulted'].includes(x.state)).map((x) => x.id);
+  const stepsOf = new Map<string, Step[]>(
+    running.length ? (await owner.query('select id::text, steps from meta.workflow where id = any($1::bigint[]) and app_id = $2', [running, ctx.app.id])).rows.map((x) => [x.id, x.steps]) : [],
+  );
   if (!rows.length) return html`<p class="empty">${r.config.empty ?? t('workflows.none')}</p>`;
   const fmt = ctx.locale.format;
   const csrf = html`<input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="next" value="${`${ctx.base}/${ctx.page.page_no}`}">`;
@@ -53,7 +62,7 @@ export async function renderWorkflows(ctx: PageContext, r: Region): Promise<Raw>
     const state = t(`workflows.state.${w.state}`);
     return html`<li class="task${w.state === 'faulted' ? ' overdue' : ''}">
       <div class="task-head"><span class="task-subject">${w.title}</span> <span class="tag${w.state === 'faulted' ? ' tag-error' : w.state === 'completed' ? '' : ' tag-info'}">${state}</span></div>
-      <div class="task-meta muted">${t('workflows.started', { user: w.initiator, at: cell(w.started_at, 1184, fmt) })}${w.current_step && w.state !== 'completed' ? html` · ${t('workflows.at_step', { step: w.current_step })}` : ''}${w.wait_until ? html` · ${t('workflows.until', { at: cell(w.wait_until, 1184, fmt) })}` : ''}</div>
+      <div class="task-meta muted">${t('workflows.started', { user: w.initiator, at: cell(w.started_at, 1184, fmt) })}${w.version ? html` · ${t('workflows.version', { version: w.version })}` : ''}${w.active_steps.length > 1 ? html` · ${t('workflows.at_steps', { steps: w.active_steps.join(', ') })}` : w.current_step && w.state !== 'completed' ? html` · ${t('workflows.at_step', { step: w.active_steps[0] ?? w.current_step })}` : ''}${w.wait_until && w.active_steps.length <= 1 ? html` · ${t('workflows.until', { at: cell(w.wait_until, 1184, fmt) })}` : ''}</div>
       ${w.error ? html`<div class="alert alert-error u-mt075" role="alert">${w.error}</div>` : ''}
       ${w.may_terminate || w.may_retry
         ? html`<div class="task-actions">
@@ -61,6 +70,7 @@ export async function renderWorkflows(ctx: PageContext, r: Region): Promise<Raw>
             ${w.may_terminate ? html`<button class="btn btn-danger" form="${f}" name="action" value="terminate" data-confirm="${t('workflows.terminate_confirm')}">${t('workflows.terminate')}</button>` : ''}
           </div>`
         : ''}
+      ${stepsOf.get(w.id)?.length ? html`<details class="task-history wf-console-diagram"><summary>${t('workflows.diagram')}</summary><div class="wf-wrap">${workflowDiagram(stepsOf.get(w.id)!, { active: w.active_steps, id: `${r.id}-${w.id}` })}</div></details>` : ''}
       <details class="task-history"><summary>${t('tasks.history', { n: history.length })}</summary>
         <ol>${history.map((e) => html`<li><span class="muted">${cell(e.at, 1184, fmt)}</span> ${e.step ? html`<b>${e.step}</b> ` : ''}${t(`workflows.event.${e.event}`)}${e.detail ? html` <q>${e.detail}</q>` : ''}</li>`)}</ol>
       </details>

@@ -1,0 +1,45 @@
+{
+  "format": "pgapex-plugin/1",
+  "type": "template_component",
+  "static_id": "timeline_item",
+  "name": "Timeline item",
+  "version": "1.0.0",
+  "description": "Events on a vertical timeline: when, who, a title and a text. Show a region as \"multiple\" so the items sit in one list; STATE colours the marker.",
+  "template": "<li class=\"tc-timeline-item tc-state-{case STATE/}{when success,ok,done,approved,active,completed,y,yes,true/}success{when warning,pending,open,waiting,in progress/}warning{when danger,error,failed,rejected,cancelled,late,n,no,false/}danger{when info,new,draft,planned/}info{otherwise/}neutral{endcase/}\">\n  <p class=\"tc-meta\"><time datetime=\"#WHEN#\">#WHEN#</time>{if ?WHO/} · #WHO#{endif/}</p>\n  <p class=\"tc-title\">{if ?LINK/}<a href=\"#LINK#\">#TITLE#</a>{else/}#TITLE#{endif/}</p>\n  {if ?BODY/}<p class=\"tc-body\">#BODY#</p>{endif/}\n</li>",
+  "wrapper": "<ol class=\"tc-timeline\">#APEX$ROWS#</ol>",
+  "css_classes": [],
+  "attributes": [
+    {
+      "name": "TITLE",
+      "label": "Title",
+      "type": "text",
+      "default": "#TITLE#"
+    },
+    {
+      "name": "WHEN",
+      "label": "When",
+      "type": "text",
+      "default": "#WHEN#",
+      "help": "A date or time."
+    },
+    {
+      "name": "WHO",
+      "label": "Who",
+      "type": "text",
+      "default": "#WHO#"
+    },
+    {
+      "name": "BODY",
+      "label": "Text",
+      "type": "text",
+      "default": "#BODY#"
+    },
+    {
+      "name": "STATE",
+      "label": "State",
+      "type": "text",
+      "default": "#STATE#",
+      "help": "success, warning, danger, info or neutral (or approved, pending…)."
+    }
+  ]
+}

@@ -5,7 +5,7 @@ import { owner } from '../db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
-import { stepProblems } from '../workflow.ts';
+import { stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
@@ -35,7 +35,7 @@ export interface Finding {
   message: string;
 }
 
-type SqlShape = 'select' | 'boolean' | 'statements' | 'regex';
+export type SqlShape = 'select' | 'boolean' | 'statements' | 'regex';
 
 /** Which fields hold SQL, and of what shape, per component kind (null: decided by the row). */
 function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] {
@@ -87,7 +87,7 @@ const EXPLAINABLE = /^\s*(\(|select|with|values|table|insert|update|delete|merge
  * The problem with one piece of SQL, or null. Runs inside the caller's
  * transaction, each check in its own savepoint; nothing is executed.
  */
-async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): Promise<{ severity: Severity; message: string } | null> {
+export async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): Promise<{ severity: Severity; message: string } | null> {
   const plain = applyBinds(sql.trim().replace(/;+\s*$/, ''), {});
   const attempt = async (text: string) => {
     await c.query('savepoint advisor');
@@ -179,11 +179,13 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     // workflow steps: sql code, switch conditions, task owner queries
     for (const { kind, row } of all.filter((x) => x.kind === 'workflow_definition')) {
       const entry = byKey.get(`${kind}-${row.id}`) ?? null;
-      for (const st of Array.isArray(row.steps) ? row.steps : []) {
+      // the active version, and the one in development (migration 027)
+      const versions: [string, unknown][] = [['', row.steps], ...(row.dev_version ? [[`version ${row.dev_version}, `, row.dev_steps] as [string, unknown]] : [])];
+      for (const [v, steps] of versions) for (const st of Array.isArray(steps) ? steps : []) {
         const checks: [string, string, SqlShape][] = [];
-        if (st?.type === 'sql' && typeof st.code === 'string') checks.push([`step ${st.name}: code`, st.code, 'statements']);
-        if (st?.type === 'task' && typeof st.owners === 'string' && st.owners.trim()) checks.push([`step ${st.name}: owners`, st.owners, 'select']);
-        if (st?.type === 'switch' && Array.isArray(st.cases)) for (const cs of st.cases) if (typeof cs?.when === 'string') checks.push([`step ${st.name}: when`, cs.when, 'boolean']);
+        if (st?.type === 'sql' && typeof st.code === 'string') checks.push([`${v}step ${st.name}: code`, st.code, 'statements']);
+        if (st?.type === 'task' && typeof st.owners === 'string' && st.owners.trim()) checks.push([`${v}step ${st.name}: owners`, st.owners, 'select']);
+        if (st?.type === 'switch' && Array.isArray(st.cases)) for (const cs of st.cases) if (typeof cs?.when === 'string') checks.push([`${v}step ${st.name}: when`, cs.when, 'boolean']);
         for (const [field, sql, shape] of checks) {
           checked++;
           const problem = await checkSql(c, sql, shape);
@@ -244,8 +246,16 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');
     if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);
-    if (kind === 'workflow_definition')
-      for (const problem of stepProblems(row.steps, new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase())))) missing(e, 'Steps (JSON)', problem);
+    if (kind === 'workflow_definition') {
+      const tasks = new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase()));
+      for (const problem of stepProblems(row.steps, tasks)) missing(e, 'Steps (JSON)', problem);
+      for (const warning of stepWarnings(row.steps)) missing(e, 'Steps (JSON)', warning, 'warning');
+      if (row.dev_version) {
+        const field = `Steps of version ${row.dev_version} (development)`;
+        for (const problem of stepProblems(row.dev_steps, tasks)) missing(e, field, problem, 'warning');
+        for (const warning of stepWarnings(row.dev_steps)) missing(e, field, warning, 'warning');
+      }
+    }
     if (kind === 'document_template') {
       const problem = templateProblem(row.template ?? '');
       if (problem) missing(e, 'Template (HTML)', problem);

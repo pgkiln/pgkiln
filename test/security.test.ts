@@ -583,7 +583,8 @@ describe('sprint 12: Content-Security-Policy without inline styles', () => {
     await dev.get('/builder/login');
     await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
     for (const url of ['/builder', `/builder/apps/${appId}`, `/builder/apps/${appId}/shared`, `/builder/apps/${appId}/settings`, `/builder/apps/${appId}/api`,
-      `/builder/apps/${appId}/globalization`, '/builder/sql', '/builder/sql/load', '/builder/users', '/builder/users/providers']) {
+      `/builder/apps/${appId}/globalization`, '/builder/sql', '/builder/sql/load', '/builder/users', '/builder/users/providers',
+      `/builder/apps/${appId}/shared?new=template_component`, ...(await owner.query('select id from meta.template_component where app_id = $1', [appId])).rows.map((r) => `/builder/apps/${appId}/shared?c=template_component-${r.id}`)]) {
       const res = await dev.get(url);
       assert.equal(res.statusCode, 200, url);
       assert.doesNotMatch(policy(res), /unsafe-inline/);
@@ -839,3 +840,342 @@ describe('sprint 22: map areas and dropped files', () => {
   });
 });
 
+
+describe('sprint 23: workflow branches and versions', () => {
+  test('only developers manage versions (with CSRF); applications cannot call the version functions or read branches', async () => {
+    const d = await owner.one(`select id, version, dev_version from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId]);
+    const url = `/builder/apps/${appId}/shared/workflow_definition/${d.id}/versions`;
+    assert.equal((await new Browser().post(url, { action: 'new' })).statusCode, 302, 'not signed in');
+    const king = await as('king');
+    assert.equal((await king.post(url, { __csrf: king.lastCsrf, action: 'new' })).statusCode, 302, 'an application user is not a developer');
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal((await dev.post(url, { __csrf: 'forged', action: 'new' })).statusCode, 403);
+    // a label is checked before it reaches the database or the page
+    await dev.get(`/builder/apps/${appId}/shared?c=workflow_definition-${d.id}`);
+    await dev.post(url, { __csrf: dev.lastCsrf, action: 'new', version: "1'); drop table hr.emp; --" });
+    const page = (await dev.get(`/builder/apps/${appId}/shared?c=workflow_definition-${d.id}`)).body;
+    assert.match(page, /A version label is letters, digits/);
+    const after = await owner.one('select version, dev_version from meta.workflow_definition where id = $1', [d.id]);
+    assert.deepEqual(after, { version: d.version, dev_version: d.dev_version });
+
+    const run = (sql: string, params: unknown[] = []) =>
+      owner.tx(async (c) => {
+        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true)`, [String(appId)]);
+        await c.query('set local role hr_app');
+        return c.query(sql, params);
+      });
+    for (const sql of ['select meta.new_workflow_version($1)', 'select meta.activate_workflow_version($1)', 'select meta.discard_workflow_version($1)'])
+      await assert.rejects(run(sql, [d.id]), /permission denied/, sql);
+    await assert.rejects(run('select * from meta.workflow_branch'), /permission denied/);
+    await assert.rejects(run(`update meta.workflow_definition set version = '9'`), /permission denied/);
+  });
+});
+
+
+describe('sprint 23: template components and plug-ins', () => {
+  const pageId = async () => (await owner.one('select id from meta.page where app_id = $1 and page_no = 19', [appId])).id as number;
+
+  test('a value from the data cannot become a javascript: link or new markup', async () => {
+    const report = await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 19 and r.type = 'report'`, [appId]);
+    await owner.query(`insert into meta.template_component (app_id, static_id, name, template) values ($1, 'sec_link', 'Link', '<a href="#URL#" title="#EMPLOYEE#">#EMPLOYEE#</a>')`, [appId]);
+    await owner.query('update meta.region set config = $2 where id = $1', [report.id, JSON.stringify({ ...report.config, column_templates: { employee: { component: 'sec_link', attributes: { URL: '#employee#' } } } })]);
+    const ename = (await owner.one('select ename from hr.emp where empno = 7566')).ename;
+    try {
+      for (const evil of ['javascript:alert(1)', 'JAVA\tSCRIPT:alert(1)', '" onclick="alert(1)', '<svg onload=alert(1)>']) {
+        await owner.query('update hr.emp set ename = $1 where empno = 7566', [evil]);
+        const body = (await (await as('king')).get('/a/hr/19')).body;
+        assert.doesNotMatch(body, /href="\s*java\s*script:/i, evil);
+        assert.doesNotMatch(body, /<svg onload|" onclick="/i, evil);
+      }
+    } finally {
+      await owner.query('update hr.emp set ename = $1 where empno = 7566', [ename]);
+      await owner.query('update meta.region set config = $2 where id = $1', [report.id, JSON.stringify(report.config)]);
+      await owner.query(`delete from meta.template_component where app_id = $1 and static_id = 'sec_link'`, [appId]);
+    }
+  });
+
+  test('templates with scripts, handlers or styles are refused in the builder, in plug-ins and in SQL', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    const evil = ['<script>alert(1)</script>', '<img src="x" onerror="alert(1)">', '<svg onload="alert(1)"></svg>', '<a href="javascript:alert(1)">x</a>',
+      '<p style="background:url(x)">x</p>', '<iframe srcdoc="x"></iframe>', '<p>#X!RAW#</p>', '<form action="/x"><button>x</button></form>', '<a href="x" data-dialog>x</a>'];
+    for (const template of evil) {
+      const plugin = JSON.stringify({ format: 'pgapex-plugin/1', type: 'template_component', static_id: 'sec_evil', name: 'Evil', template });
+      assert.equal((await dev.post(`/builder/apps/${appId}/template-components/import`, { __csrf: dev.lastCsrf, plugin })).statusCode, 303, template);
+      assert.equal((await dev.post(`/builder/apps/${appId}/shared/template_component`, { __csrf: dev.lastCsrf, static_id: 'sec_evil', name: 'Evil', template, attributes: '[]' })).statusCode, 303);
+      assert.equal((await owner.one(`select count(*)::int as n from meta.template_component where static_id = 'sec_evil'`)).n, 0, template);
+    }
+    for (const template of evil.slice(0, 7))
+      await assert.rejects(owner.query(`insert into meta.template_component (app_id, static_id, name, template) values ($1, 'sec_evil', 'Evil', $2)`, [appId, template]), /not allowed/, template);
+    await assert.rejects(runtime.query(`update meta.template_component set template = '<p>x</p>'`), /permission denied/);
+    await assert.rejects(runtime.query(`select meta.import_template_component(1, '{}'::jsonb)`), /permission denied/);
+  });
+
+  test('plug-in and settings routes: developers only, with a CSRF token, within the application', async () => {
+    const pid = await pageId();
+    const { id: rid } = await owner.one(`select id from meta.region where page_id = $1 and type = 'template_component' order by seq limit 1`, [pid]);
+    const { id: tid } = await owner.one(`select id from meta.template_component where app_id = $1 and static_id = 'status_badge'`, [appId]);
+    const posts = [`/builder/apps/${appId}/template-components/import`, `/builder/pages/${pid}/region/${rid}/template-settings`, `/builder/pages/${pid}/region/${rid}/column-templates`];
+    const king = await as('king'); // an application session is not a builder session
+    for (const b of [new Browser(), king]) {
+      assert.equal((await b.get(`/builder/apps/${appId}/template-components/${tid}/export`)).statusCode, 302);
+      for (const url of posts) assert.equal((await b.post(url, { __csrf: b.lastCsrf, plugin: '{}' })).statusCode, 302, url);
+    }
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    for (const url of posts) assert.equal((await dev.post(url, { __csrf: 'forged', plugin: '{}' })).statusCode, 403, url);
+    const other = (await owner.one(`select id from meta.app where alias <> 'hr' order by id limit 1`))?.id ?? appId + 100000;
+    assert.equal((await dev.get(`/builder/apps/${other}/template-components/${tid}/export`)).statusCode, 404, "another app's id");
+    assert.equal((await dev.get(`/builder/apps/${appId}/template-components/1%20or%201=1/export`)).statusCode, 404);
+    assert.equal((await dev.post(`/builder/apps/0/template-components/import`, { __csrf: dev.lastCsrf, plugin: '{}' })).statusCode, 404);
+  });
+});
+
+
+describe('sprint 23: code editor', () => {
+  const developer = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    return dev;
+  };
+
+  test('completions are for developers only: no data without a builder session', async () => {
+    const anon = new Browser();
+    const king = await as('king');
+    for (const b of [anon, king]) {
+      const res = await b.get(`/builder/code/completions?app=${appId}`);
+      assert.equal(res.statusCode, 302);
+      assert.doesNotMatch(res.body, /empno|hr_app|relations/);
+    }
+    const dev = await developer();
+    assert.equal((await dev.get(`/builder/code/completions?app=${appId}`)).statusCode, 200);
+  });
+
+  test("completions list only what the app's role can reach, as JSON text", async () => {
+    await owner.query(`create table hr."<img src=x onerror=alert(1)>" ("<b>c</b>" int)`);
+    await owner.query(`create table hr.sec23_closed (secret text)`);
+    await owner.query(`revoke all on hr.sec23_closed from hr_app`);
+    await owner.query(`grant select on hr."<img src=x onerror=alert(1)>" to hr_app`);
+    const { clearCompletions } = await import('../src/builder/code-editor.ts');
+    clearCompletions();
+    try {
+      const dev = await developer();
+      const res = await dev.get(`/builder/code/completions?app=${appId}`);
+      assert.match(String(res.headers['content-type']), /^application\/json/);
+      assert.equal(res.headers['x-content-type-options'], 'nosniff');
+      const data = JSON.parse(res.body);
+      const names = data.relations.map((r: any) => `${r.schema}.${r.name}`);
+      assert.ok(names.includes('hr.<img src=x onerror=alert(1)>'), 'odd names are data');
+      assert.ok(!names.includes('hr.sec23_closed'), 'no ungranted tables');
+      assert.ok(!names.some((n: string) => /^meta\.(developer|account|session|instance_setting|app)$/.test(n)), 'no closed metadata');
+      assert.ok(!JSON.stringify(data).includes('password_hash'));
+      // the editor never parses suggestions or code as HTML
+      const js = (await app.inject({ method: 'GET', url: '/static/code-editor.js' })).body;
+      assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|setAttribute\('style'/);
+    } finally {
+      await owner.query(`drop table hr."<img src=x onerror=alert(1)>"`);
+      await owner.query('drop table hr.sec23_closed');
+      clearCompletions();
+    }
+  });
+
+  test('the inline check needs the CSRF token, plans as the app role and runs nothing', async () => {
+    const dev = await developer();
+    await dev.get(`/builder/apps/${appId}/shared`);
+    const csrf = dev.lastCsrf;
+    assert.equal((await dev.post('/builder/code/check', { app: String(appId), shape: 'statements', sql: 'delete from hr.emp' })).statusCode, 403);
+    const anon = new Browser();
+    const anonRes = await anon.post('/builder/code/check', { __csrf: 'x', app: String(appId), shape: 'select', sql: 'select 1' });
+    assert.equal(anonRes.statusCode, 302, 'no session: to the sign-in page');
+    assert.doesNotMatch(anonRes.body, /planned|No problems/);
+    const n = (await owner.one('select count(*)::int as n from hr.emp')).n;
+    for (const sql of ['delete from hr.emp', 'update hr.emp set sal = 0', 'do $$ begin delete from hr.emp; end $$', "select 1; delete from hr.emp", 'drop table hr.emp']) {
+      const res = await dev.post('/builder/code/check', { __csrf: csrf, app: String(appId), shape: 'statements', sql });
+      assert.equal(res.statusCode, 200, sql);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n, 'nothing ran');
+    const res = JSON.parse((await dev.post('/builder/code/check', { __csrf: csrf, app: String(appId), shape: 'select', sql: 'select password_hash from meta.account' })).body);
+    assert.equal(res.ok, false);
+    assert.match(res.message, /permission denied/);
+    // a GET can't check (or run) anything
+    assert.equal((await dev.get(`/builder/code/check?app=${appId}&shape=statements&sql=delete%20from%20hr.emp`)).statusCode, 404);
+    assert.equal((await dev.get(`/builder/code/completions?app=${appId}&sql=delete%20from%20hr.emp`)).statusCode, 200);
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n);
+  });
+
+  test("one app's completions never include another app's items or tables, nor what only the owner sees", async () => {
+    await owner.query('create schema sec23');
+    await owner.query('create table sec23.other_secret (other_col text)');
+    await owner.query('create role sec23_role nologin');
+    await owner.query('grant usage on schema sec23 to sec23_role');
+    await owner.query('grant select on sec23.other_secret to sec23_role');
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec23other', 'Other', 'sec23_role') returning id`)).id;
+    const noRole = (await owner.one(`insert into meta.app (alias, name) values ('sec23norole', 'No role') returning id`)).id;
+    const { clearCompletions } = await import('../src/builder/code-editor.ts');
+    clearCompletions();
+    try {
+      const dev = await developer();
+      const get = async (id: number) => JSON.parse((await dev.get(`/builder/code/completions?app=${id}`)).body);
+      const hr = await get(appId);
+      const o = await get(other);
+      // the other app: its own table, none of hr's; no hr items
+      assert.equal(o.role, 'sec23_role');
+      assert.ok(o.relations.some((r: any) => r.schema === 'sec23' && r.name === 'other_secret'));
+      assert.ok(!o.relations.some((r: any) => r.schema === 'hr'), "no hr tables for another app's role");
+      assert.ok(!o.items.some((i: any) => /^P\d+_|^AI_/.test(i.name)), "no hr items");
+      assert.ok(!o.schemas.includes('hr'));
+      // and the other way round
+      assert.ok(!hr.relations.some((r: any) => r.schema === 'sec23'), "hr doesn't see the other app's schema");
+      assert.ok(!JSON.stringify(hr).includes('other_col'));
+      // no role of its own: what the runtime connection may use, never the owner's view
+      const n = await get(noRole);
+      assert.equal(n.role, (await runtime.one('select current_user as u')).u);
+      assert.ok(!n.relations.some((r: any) => r.schema === 'sec23'));
+      assert.ok(!n.relations.some((r: any) => /^meta\.(developer|instance_setting)$/.test(`${r.schema}.${r.name}`)));
+      // only the columns granted to that role (never the password hash)
+      const account = n.relations.find((r: any) => r.schema === 'meta' && r.name === 'account');
+      assert.ok(!account || !account.columns.some((c: any) => c.name === 'password_hash'));
+      assert.ok(!JSON.stringify(n).includes('password_hash'));
+      assert.deepEqual(n.items, []);
+      // the cache is per app: asking for one app never answers for another
+      assert.notDeepEqual((await get(other)).relations, (await get(appId)).relations);
+    } finally {
+      await owner.query('delete from meta.app where id = any($1)', [[other, noRole]]);
+      await owner.query('drop schema sec23 cascade');
+      await owner.query('drop role sec23_role');
+      clearCompletions();
+    }
+  });
+});
+
+describe('sprint 23: page designer layout and builder theme', () => {
+  const devLogin = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    return dev;
+  };
+  // two scratch pages, so a component of one page can be aimed at the other
+  const scratch = async () => {
+    const page = async (no: number) => {
+      const p = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Layout test') returning id`, [appId, no])).id as number;
+      const r1 = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'One', 'static', '<p>1</p>') returning id`, [p])).id as number;
+      const r2 = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 20, 'Two', 'static', '<p>2</p>') returning id`, [p])).id as number;
+      const item = (await owner.one(`insert into meta.item (page_id, region_id, seq, name, label) values ($1, $2, 10, $3, 'Item') returning id`, [p, r1, `P${no}_A`])).id as number;
+      return { p, r1, r2, item };
+    };
+    return { a: await page(9101), b: await page(9102) };
+  };
+  const drop = () => owner.query('delete from meta.page where app_id = $1 and page_no in (9101, 9102)', [appId]);
+
+  test('layout changes need a signed-in developer and the CSRF token', async () => {
+    await drop();
+    const { a } = await scratch();
+    try {
+      const anon = new Browser();
+      const king = await as('king');
+      const dev = await devLogin();
+      for (const [op, form] of [
+        ['move', { kind: 'region', id: String(a.r1), dir: 'down' }],
+        ['span', { id: String(a.r1), columns: '6' }],
+        ['create', { kind: 'region', type: 'static' }],
+        ['undo', {}],
+        ['redo', {}],
+      ] as [string, Record<string, string>][]) {
+        const url = `/builder/pages/${a.p}/layout/${op}`;
+        assert.equal((await anon.post(url, { ...form, __csrf: 'x' })).statusCode, 302, `${op}: anonymous`);
+        assert.equal((await king.post(url, { ...form, __csrf: king.lastCsrf })).statusCode, 302, `${op}: an application user is not a developer`);
+        assert.equal((await dev.post(url, { ...form, __csrf: 'forged' })).statusCode, 403, `${op}: forged token`);
+      }
+      const r = await owner.one('select seq, columns from meta.region where id = $1', [a.r1]);
+      assert.deepEqual([r.seq, r.columns], [10, 12], 'nothing changed');
+      assert.equal((await owner.one('select count(*)::int as n from meta.region where page_id = $1', [a.p])).n, 2);
+      // the theme switch, too
+      assert.equal((await anon.post('/builder/theme', { __csrf: 'x', theme: 'light' })).statusCode, 302);
+      assert.equal((await dev.post('/builder/theme', { __csrf: 'forged', theme: 'light' })).statusCode, 403);
+    } finally {
+      await drop();
+    }
+  });
+
+  test('ids and target regions must belong to the page in the URL', async () => {
+    await drop();
+    const { a, b } = await scratch();
+    try {
+      const dev = await devLogin();
+      await dev.get(`/builder/pages/${a.p}`);
+      const post = (op: string, form: Record<string, string>) => dev.post(`/builder/pages/${a.p}/layout/${op}`, { ...form, __csrf: dev.lastCsrf });
+      // another page's components cannot be moved or resized through this page
+      assert.equal((await post('move', { kind: 'item', id: String(b.item), dir: 'up' })).statusCode, 404);
+      assert.equal((await post('span', { id: String(b.r1), columns: '3' })).statusCode, 404);
+      // nor can this page's item go into another page's region, before another page's item, or be created there
+      assert.equal((await post('move', { kind: 'item', id: String(a.item), region: String(b.r1), before: '' })).statusCode, 400);
+      assert.equal((await post('move', { kind: 'item', id: String(a.item), region: String(a.r2), before: String(b.item) })).statusCode, 400);
+      assert.equal((await post('create', { kind: 'item', type: 'text', region: String(b.r1) })).statusCode, 400);
+      // only known kinds, types and spans
+      assert.equal((await post('move', { kind: 'process', id: String(a.item), dir: 'up' })).statusCode, 400);
+      assert.equal((await post('create', { kind: 'region', type: "static'; drop table hr.emp; --" })).statusCode, 400);
+      assert.equal((await post('span', { id: String(a.r1), columns: '13' })).statusCode, 400);
+      assert.equal((await post('span', { id: String(a.r1), columns: '1 or 1=1' })).statusCode, 400);
+      // the JSON answer builder.js uses
+      const json = await app.inject({
+        method: 'POST', url: `/builder/pages/${a.p}/layout/move`,
+        payload: new URLSearchParams({ __csrf: dev.lastCsrf, kind: 'item', id: String(b.item), dir: 'up' }).toString(),
+        headers: { cookie: [...dev.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      });
+      assert.equal(json.statusCode, 404);
+      assert.equal(json.json().ok, false);
+      // nothing on the other page moved
+      const bi = await owner.one('select region_id, seq from meta.item where id = $1', [b.item]);
+      assert.deepEqual([bi.region_id, bi.seq], [b.r1, 10]);
+      const br = await owner.one('select columns from meta.region where id = $1', [b.r1]);
+      assert.equal(br.columns, 12);
+      // the property editor's region field only takes regions of this page, too
+      const res = await post('move', { kind: 'item', id: String(a.item), region: String(a.r2), before: '' });
+      assert.equal(res.statusCode, 303);
+      assert.equal((await owner.one('select region_id from meta.item where id = $1', [a.item])).region_id, a.r2);
+      const save = await dev.post(`/builder/pages/${a.p}/c/item/${a.item}`, { __csrf: dev.lastCsrf, name: 'P9101_A', label: 'Item', type: 'text', seq: '10', region_id: String(b.r1) });
+      assert.equal(save.statusCode, 303);
+      assert.equal((await owner.one('select region_id from meta.item where id = $1', [a.item])).region_id, a.r2, 'not saved into the other page');
+      // undo puts the move back
+      assert.equal((await post('undo', {})).statusCode, 303);
+      assert.equal((await owner.one('select region_id from meta.item where id = $1', [a.item])).region_id, a.r1);
+    } finally {
+      await drop();
+    }
+  });
+
+  test('the designer and the theme switch: no style attributes, no open redirect', async () => {
+    await drop();
+    const { a } = await scratch();
+    try {
+      const dev = await devLogin();
+      for (const url of [`/builder/pages/${a.p}`, `/builder/pages/${a.p}?c=region-${a.r1}`, `/builder/pages/${a.p}?new=item&type=text`]) {
+        const res = await dev.get(url);
+        assert.equal(res.statusCode, 200, url);
+        assert.doesNotMatch(res.body, /\sstyle="/, `${url} has a style attribute`);
+        assert.match(res.body, /src="\/static\/builder\.js"/);
+      }
+      // the runtime never loads the builder's assets
+      assert.doesNotMatch((await (await as('king')).get('/a/hr/1')).body, /builder\.(css|js)/);
+      assert.equal((await dev.post('/builder/theme', { __csrf: dev.lastCsrf, theme: '"><script>' })).statusCode, 400);
+      const res = await app.inject({
+        method: 'POST', url: '/builder/theme',
+        payload: new URLSearchParams({ __csrf: dev.lastCsrf, theme: 'light' }).toString(),
+        headers: { cookie: [...dev.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', referer: 'https://evil.example/builder/x' },
+      });
+      assert.equal(res.statusCode, 303);
+      assert.equal(res.headers.location, '/builder');
+      assert.match((await dev.get('/builder')).body, /<html lang="en" data-theme="light">/);
+    } finally {
+      await drop();
+    }
+  });
+});
