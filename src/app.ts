@@ -16,6 +16,7 @@ import { searchRoutes } from './builder/search.ts';
 import { advisorRoutes } from './builder/advisor.ts';
 import { topSqlRoutes } from './builder/top-sql.ts';
 import { ldapRoutes } from './builder/ldap.ts';
+import { documentRoutes } from './builder/documents.ts';
 import { reportSettingsRoutes } from './builder/report-settings.ts';
 import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
@@ -59,6 +60,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(advisorRoutes);
   await app.register(topSqlRoutes);
   await app.register(ldapRoutes);
+  await app.register(documentRoutes);
   await app.register(oauthRoutes);
   await app.register(apiRoutes);
   await app.register(globalizationRoutes);

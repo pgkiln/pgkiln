@@ -78,12 +78,12 @@ export async function dataLoadRoutes(app: FastifyInstance) {
     region(
       'Load data from a file',
       html`${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
-      <p class="muted">CSV or TSV (UTF-8 or Windows-1252; the delimiter is detected) or Excel .xlsx (the first sheet), up to ${MAX_MB} MB.
+      <p class="muted">CSV or TSV (UTF-8 or Windows-1252; the delimiter is detected), Excel .xlsx (the first sheet) or JSON (an array of objects, or JSON Lines), up to ${MAX_MB} MB.
         Next you choose a new or existing table. Loading runs as the builder's owner connection.</p>
       <form method="post" enctype="multipart/form-data">${csrf(s)}
         <div class="form-grid">
           <div class="field"><label class="label" for="f_file">File</label>
-            <input type="file" id="f_file" name="file" accept=".csv,.tsv,.txt,.xlsx,text/csv" required></div>
+            <input type="file" id="f_file" name="file" accept=".csv,.tsv,.txt,.xlsx,.json,.jsonl,text/csv,application/json" required></div>
           <div class="field"><span class="label" aria-hidden="true"></span>
             <label class="check"><input type="checkbox" name="headers" value="true" checked> First row contains column names</label></div>
         </div>
@@ -178,7 +178,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
         <select name="table" aria-label="Table"><option value="">- choose a table -</option>${tables.map((t) => html`<option${t === chosen ? raw(' selected') : ''}>${t}</option>`)}</select>
         <button class="btn">Map columns</button></form>${mapping}`;
 
-    const info = `${f.filename}: ${sheet.rows.length} row(s), ${sheet.headers.length} column(s)${sheet.format === 'xlsx' ? ', Excel' : `, delimiter ${sheet.delimiter === '\t' ? 'tab' : `“${sheet.delimiter}”`}`}`;
+    const info = `${f.filename}: ${sheet.rows.length} row(s), ${sheet.headers.length} column(s)${sheet.format === 'xlsx' ? ', Excel' : sheet.format === 'json' ? ', JSON' : `, delimiter ${sheet.delimiter === '\t' ? 'tab' : `“${sheet.delimiter}”`}`}`;
     return page(
       s,
       reply,

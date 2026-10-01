@@ -621,3 +621,27 @@ describe('sprint 13: builder search, Advisor and Top SQL', () => {
     assert.equal((await dev.post(`/builder/apps/${appId}/top-sql/reset`, { __csrf: 'forged' })).statusCode, 403);
   });
 });
+
+describe('sprint 15: document templates', () => {
+  test('data is never interpreted: tags and HTML in values print as text', async () => {
+    const { fillTemplate } = await import('../src/runtime/document.ts');
+    const out = fillTemplate('<p>{{name}}</p>{{#rows}}<td>{{x}}</td>{{/rows}}', {
+      name: '{{secret}}<img src="logo"><div class="page-break"></div>',
+      secret: 'LEAK',
+      rows: [{ x: '</td></tr></table><h1>forged</h1>' }],
+    });
+    assert.doesNotMatch(out, /LEAK/);
+    assert.doesNotMatch(out, /<img|<div|<h1>/);
+    assert.match(out, /\{\{secret\}\}&lt;img src=&quot;logo&quot;&gt;/);
+  });
+
+  test('downloads need a session with access to the page; the preview is for developers', async () => {
+    const anon = new Browser();
+    const res = await anon.get('/a/hr/3?doc=EMPLOYEE_SHEET');
+    assert.equal(res.statusCode, 302);
+    assert.match(String(res.headers.location), /\/a\/hr\/login/);
+    const king = await as('king');
+    const t = await owner.one(`select id from meta.document_template where app_id = $1 and name = 'EMPLOYEE_SHEET'`, [appId]);
+    assert.equal((await king.get(`/builder/apps/${appId}/documents/${t.id}/preview`)).statusCode, 302);
+  });
+});

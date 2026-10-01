@@ -5,6 +5,7 @@
 
 import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
+import { templateProblem } from '../runtime/document.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -104,7 +105,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     fields: [
       { name: 'name', label: 'Name (request)', kind: 'upper', group: 'Identification' },
       { name: 'label', label: 'Label', kind: 'text', group: 'Identification' },
-      { name: 'action', label: 'Action', kind: 'select', options: ['submit', 'redirect', 'da'], group: 'Behaviour', help: 'da = "Defined by dynamic action"' },
+      { name: 'action', label: 'Action', kind: 'select', options: ['submit', 'redirect', 'da', 'document'], group: 'Behaviour', help: 'da = "Defined by dynamic action"; document = download a document template (filled with the page\'s values as last loaded or saved)' },
+      { name: 'document', label: 'Document template (action document)', kind: 'upper', group: 'Behaviour', help: 'The name of a document template (Shared Components → Document templates).' },
       { name: 'target_page', label: 'Target / branch page', kind: 'page', group: 'Behaviour' },
       { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Behaviour', help: '{"P3_ID": "&P2_ID."}' },
       { name: 'confirm', label: 'Confirm message', kind: 'text', group: 'Behaviour' },
@@ -252,6 +254,30 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'code', label: 'Code (SQL)', kind: 'code', wide: true, help: 'Returned columns named like application items set them, e.g. select empno as ai_empno from …' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
+    ],
+  },
+  document_template: {
+    table: 'meta.document_template',
+    scope: 'app',
+    label: 'Document template',
+    plural: 'Document templates',
+    icon: 'file',
+    summary: (d) => d.name,
+    defaults: {
+      query: 'select e.ename, e.job, e.hiredate, e.sal\n  from hr.emp e\n where e.empno = :P3_EMPNO::int',
+      template: '<h1>{{ename}}</h1>\n<p>{{job}}, since {{hiredate|date}}.</p>\n<table>\n  <tr><th width="40%">Salary</th><td align="right">{{sal|number:2}}</td></tr>\n</table>',
+    },
+    validate: (v) => templateProblem(String(v.template ?? '')),
+    fields: [
+      { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: 'Pages download it with ?doc=NAME; buttons with action "document".' },
+      { name: 'description', label: 'Title', kind: 'text', wide: true, group: 'Identification', help: 'The PDF title (and &REPORT_TITLE. in the layout footer).' },
+      { name: 'query', label: 'Data (SQL)', kind: 'code', wide: true, group: 'Data',
+        help: 'A SELECT with :ITEM binds. The first row\'s columns are {{column}}; all rows are {{#rows}}…{{/rows}}; json columns (json_agg(…)) are lists for {{#name}}…{{/name}}. Built in: APP_USER, APP_NAME, TODAY, NOW.' },
+      { name: 'template', label: 'Template (HTML)', kind: 'code', wide: true, group: 'Template',
+        help: 'h1–h4, p, b, i, u, small, br, ul/ol/li, hr, table/tr/th/td (width="30%", align, colspan, class="plain"), img src="logo", class="page-break", align="right|center", class="muted". Tags: {{name}}, {{amount|number:2}}, {{date|date}}, {{#list}}…{{/list}}, {{^list}}none{{/list}}, {{@index}}. Values are always escaped.' },
+      { name: 'layout', label: 'Report layout', kind: 'upper', group: 'Output', help: 'Paper, margins, font size, colours, logo and footer (Shared Components → Report layouts). Empty: the default layout.' },
+      { name: 'filename', label: 'File name', kind: 'text', group: 'Output', help: 'e.g. employee-&P3_EMPNO. (".pdf" is added). Empty: the name.' },
+      { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
     ],
   },
   report_layout: {

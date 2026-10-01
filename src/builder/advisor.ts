@@ -4,6 +4,7 @@ import { applyBinds, splitStatements } from '../binds.ts';
 import { owner } from '../db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
+import { templateProblem } from '../runtime/document.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
@@ -63,6 +64,8 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
       return [{ name: 'code', shape: 'statements' }];
     case 'automation':
       return [{ name: 'query', shape: 'select' }, { name: 'code', shape: 'statements' }];
+    case 'document_template':
+      return [{ name: 'query', shape: 'select' }];
     default:
       return [];
   }
@@ -165,6 +168,7 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
   const schemes = new Set(all.filter((x) => x.kind === 'authz_scheme').map((x) => x.row.name));
   const layouts = new Set(all.filter((x) => x.kind === 'report_layout').map((x) => x.row.name.toUpperCase()));
   const regionIds = new Set(all.filter((x) => x.kind === 'region').map((x) => x.row.id));
+  const documents = new Set(all.filter((x) => x.kind === 'document_template').map((x) => x.row.name.toUpperCase()));
   const missing = (entry: Entry | null, field: string, message: string, severity: Severity = 'error') => findings.push({ severity, entry, field, message });
 
   for (const e of entries) {
@@ -202,6 +206,13 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
       missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
     if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);
     if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);
+    if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
+      missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');
+    if (kind === 'document_template') {
+      const problem = templateProblem(row.template ?? '');
+      if (problem) missing(e, 'Template (HTML)', problem);
+      if (row.layout && !layouts.has(String(row.layout).toUpperCase())) missing(e, 'Report layout', `Report layout ${row.layout} doesn't exist (the default layout is used).`, 'warning');
+    }
   }
 
   // ---- PL/pgSQL functions of the app's schemas, with plpgsql_check when installed

@@ -1,3 +1,4 @@
+import { inflateSync } from 'node:zlib';
 import type { FastifyInstance } from 'fastify';
 
 /** A tiny cookie-keeping browser on top of fastify.inject. */
@@ -63,4 +64,23 @@ export class Browser {
     await this.get(`/a/${alias}/login`);
     return this.post(`/a/${alias}/login`, { __csrf: this.lastCsrf, username: user, password });
   }
+}
+
+/** The text drawn in a PDF made by pdfkit with a standard font (hex strings in TJ operators). */
+export function pdfText(pdf: Buffer) {
+  let text = '';
+  const raw = pdf.toString('latin1');
+  for (const m of raw.matchAll(/stream\r?\n/g)) {
+    const start = m.index! + m[0].length;
+    const end = raw.indexOf('endstream', start);
+    let content: string;
+    try {
+      content = inflateSync(pdf.subarray(start, end)).toString('latin1');
+    } catch {
+      continue;
+    }
+    for (const s of content.matchAll(/<([0-9a-f]+)>/gi)) text += Buffer.from(s[1], 'hex').toString('latin1');
+    text += '\n';
+  }
+  return text;
 }

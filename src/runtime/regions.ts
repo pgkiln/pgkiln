@@ -27,6 +27,9 @@ export async function renderButton(ctx: PageContext, b: Button) {
     return html`<a class="${cls}" ${linkAttrs(ctx, target, b.target_items ?? {}, true)}${confirm}>${b.label}</a>`;
   }
   if (b.action === 'da') return html`<button type="button" class="${cls}" data-button="${b.name}"${confirm}>${b.label}</button>`;
+  // a document template filled with this page's session state (documents.ts)
+  if (b.action === 'document' && b.document)
+    return html`<a class="${cls}" href="${ctx.base}/${ctx.page.page_no}?${new URLSearchParams({ doc: b.document })}${ctx.dialog ? '&dialog=1' : ''}" download${confirm}>${b.label}</a>`;
   return html`<button type="submit" class="${cls}" name="__request" value="${b.name}" data-button="${b.name}"${confirm}>${b.label}</button>`;
 }
 

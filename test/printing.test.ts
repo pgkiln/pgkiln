@@ -1,12 +1,11 @@
 // Printing: report PDFs (Actions → Download PDF) and the print button.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inflateSync } from 'node:zlib';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools } from '../src/db.ts';
-import { Browser } from './helpers.ts';
+import { Browser, pdfText } from './helpers.ts';
 
 let app: FastifyInstance;
 
@@ -18,25 +17,6 @@ after(async () => {
   await app.close();
   await closePools();
 });
-
-/** The text drawn in a PDF made by pdfkit with a standard font (hex strings in TJ operators). */
-function pdfText(pdf: Buffer) {
-  let text = '';
-  const raw = pdf.toString('latin1');
-  for (const m of raw.matchAll(/stream\r?\n/g)) {
-    const start = m.index! + m[0].length;
-    const end = raw.indexOf('endstream', start);
-    let content: string;
-    try {
-      content = inflateSync(pdf.subarray(start, end)).toString('latin1');
-    } catch {
-      continue;
-    }
-    for (const s of content.matchAll(/<([0-9a-f]+)>/gi)) text += Buffer.from(s[1], 'hex').toString('latin1');
-    text += '\n';
-  }
-  return text;
-}
 
 async function as(user: string) {
   const b = new Browser(app);

@@ -21,6 +21,7 @@ import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts
 import { renderRegion } from './regions.ts';
 import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
 import { reportPdf } from './pdf.ts';
+import { renderDocument } from './documents.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
@@ -264,6 +265,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (flash) ctx.messages.push(flash);
     // Actions → Download CSV / Excel / PDF: r<region id>_csv=1, _xlsx=1 or _pdf=1
     const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|xlsx|pdf)$/.test(k));
+    // a document template: ?doc=NAME (see documents.ts)
+    const docName = ctx.params.get('doc');
 
     let result: { html?: string; csv?: string; file?: Buffer; type?: string; name?: string };
     try {
@@ -278,6 +281,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
           ctx.errors.page.push((e as Error).message);
         }
         await computeVisibility(ctx);
+        if (docName) return renderDocument(ctx, docName);
         if (downloadKey) {
           const format = downloadKey.slice(downloadKey.indexOf('_') + 1);
           const region = ctx.page.regions.find((r) => `r${r.id}_${format}` === downloadKey && r.type === 'report' && ctx.vis!.regions.has(r.id));
