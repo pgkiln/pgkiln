@@ -35,7 +35,7 @@ export interface Finding {
   message: string;
 }
 
-type SqlShape = 'select' | 'boolean' | 'statements' | 'regex';
+export type SqlShape = 'select' | 'boolean' | 'statements' | 'regex';
 
 /** Which fields hold SQL, and of what shape, per component kind (null: decided by the row). */
 function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] {
@@ -87,7 +87,7 @@ const EXPLAINABLE = /^\s*(\(|select|with|values|table|insert|update|delete|merge
  * The problem with one piece of SQL, or null. Runs inside the caller's
  * transaction, each check in its own savepoint; nothing is executed.
  */
-async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): Promise<{ severity: Severity; message: string } | null> {
+export async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): Promise<{ severity: Severity; message: string } | null> {
   const plain = applyBinds(sql.trim().replace(/;+\s*$/, ''), {});
   const attempt = async (text: string) => {
     await c.query('savepoint advisor');

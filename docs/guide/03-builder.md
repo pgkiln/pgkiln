@@ -80,6 +80,38 @@ The page designer has two panes:
 Click a component to edit it, use **+ Add** to create one, and use **Run page** to open the page in
 a new tab. Changes are saved per component with **Save** and are live immediately.
 
+### The code editor
+
+Every field that holds code (region sources, conditions, lists of values, validations,
+processes, dynamic actions, the JSON attributes, document templates, workflow steps, REST
+handlers, the SQL Workshop and the import box) opens in a small code editor:
+
+- **Syntax highlighting** for SQL and PL/pgSQL (keywords, types, strings, comments, `:ITEM`
+  binds, `&ITEM.` substitutions, `$$` bodies), JSON and HTML (tags, attributes, `&ITEM.` and
+  `{{tags}}`). The language follows the component type: a `static` region's source is HTML, a
+  `regex` validation is plain text, an `execute_sql` dynamic action is PL/pgSQL.
+- **Line numbers**, the line and column of the cursor, and the **matching bracket** marked.
+- **Tab / Shift+Tab** indent and outdent (the selected lines, too); **Enter** keeps the
+  indentation and indents after `(`, `begin`, `loop`, `then`; brackets and quotes are closed for
+  you and typing the closer steps over it. Press **Escape, then Tab** to move on to the next field.
+- **Suggestions**: press **Ctrl+Space** (or the **Suggest** button on a touch screen), or just
+  type: after `schema.` the schema's tables, after `alias.` or `table.` its columns, after `:` the
+  page's items, the application items and built-ins like `APP_USER`, after `&` the same as
+  substitutions. Tables named in `from`/`join` and their aliases put their columns first.
+  **Up/Down** choose, **Enter** or **Tab** insert, **Escape** closes.
+- **Check** plans the SQL like the [Advisor](#advisor) does, as the application's role
+  (`explain`, rolled back, nothing runs), and shows the problem under the field.
+
+Suggestions only list what the **application's database role** may use: schemas it has `usage`
+on, tables, views and columns it has a privilege on, and functions it may execute (an
+application without its own role uses the runtime connection's role). The SQL Workshop lists
+what the owner connection sees. The list is cached for 30 seconds and refreshed when you run
+something in the SQL Workshop.
+
+The editor only decorates the normal text field: the form posts the same text as before, undo,
+copy and paste work as usual, screen readers read the plain field (the suggestion list is
+announced as you move through it), and without JavaScript you get the plain field.
+
 **Report regions** also get a **Report settings** form under their properties, so the common
 settings need no JSON: rows per page, search, Actions menu, sorting, saved and public reports,
 and per column its heading, whether it's shown, whether it's printed and its PDF width, plus the
@@ -229,7 +261,8 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
 
 - **SQL Commands**: run any SQL as the **owner connection**, not as an application role. Multiple
   statements are allowed; the result of the last one is shown (up to 500 rows). Press
-  **Ctrl/Cmd + Enter** to run.
+  **Ctrl/Cmd + Enter** to run. The [code editor](#the-code-editor) suggests every schema, table,
+  column and function the owner sees.
 - **Object Browser**: tables, views and functions per schema. For a table you see columns, types
   and defaults, **row level security policies**, **grants** and the first 25 rows; for a
   function, its source.

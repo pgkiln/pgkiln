@@ -3,6 +3,7 @@ import { html, raw, type Raw } from '../html.ts';
 import type { Session } from '../session.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
 import { csrf, type Body } from './ui.ts';
+import { codeAttrs } from './code-editor.ts';
 
 // Shared helpers of the builder pages: lookups for select lists, the generic
 // component property form and saving it.
@@ -59,7 +60,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
         break;
       }
       case 'code':
-        control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 7 : 2}" spellcheck="false">${v ?? ''}</textarea>`;
+        control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 7 : 2}" spellcheck="false"${codeAttrs(kind, f, row)}>${v ?? ''}</textarea>`;
         break;
       case 'textarea':
         control = html`<textarea id="${id}" name="${f.name}" rows="3">${v ?? ''}</textarea>`;
@@ -72,7 +73,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
         break;
       case 'json': {
         const text = v && typeof v === 'object' && Object.keys(v).length ? JSON.stringify(v, null, 2) : '';
-        control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 4 : 2}" spellcheck="false"${f.readonly ? raw(' readonly') : ''}>${text}</textarea>`;
+        control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 4 : 2}" spellcheck="false"${f.readonly ? raw(' readonly') : ''}${codeAttrs(kind, f, row)}>${text}</textarea>`;
         break;
       }
       default:

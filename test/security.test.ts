@@ -936,3 +936,121 @@ describe('sprint 23: template components and plug-ins', () => {
     assert.equal((await dev.post(`/builder/apps/0/template-components/import`, { __csrf: dev.lastCsrf, plugin: '{}' })).statusCode, 404);
   });
 });
+
+
+describe('sprint 23: code editor', () => {
+  const developer = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    return dev;
+  };
+
+  test('completions are for developers only: no data without a builder session', async () => {
+    const anon = new Browser();
+    const king = await as('king');
+    for (const b of [anon, king]) {
+      const res = await b.get(`/builder/code/completions?app=${appId}`);
+      assert.equal(res.statusCode, 302);
+      assert.doesNotMatch(res.body, /empno|hr_app|relations/);
+    }
+    const dev = await developer();
+    assert.equal((await dev.get(`/builder/code/completions?app=${appId}`)).statusCode, 200);
+  });
+
+  test("completions list only what the app's role can reach, as JSON text", async () => {
+    await owner.query(`create table hr."<img src=x onerror=alert(1)>" ("<b>c</b>" int)`);
+    await owner.query(`create table hr.sec23_closed (secret text)`);
+    await owner.query(`revoke all on hr.sec23_closed from hr_app`);
+    await owner.query(`grant select on hr."<img src=x onerror=alert(1)>" to hr_app`);
+    const { clearCompletions } = await import('../src/builder/code-editor.ts');
+    clearCompletions();
+    try {
+      const dev = await developer();
+      const res = await dev.get(`/builder/code/completions?app=${appId}`);
+      assert.match(String(res.headers['content-type']), /^application\/json/);
+      assert.equal(res.headers['x-content-type-options'], 'nosniff');
+      const data = JSON.parse(res.body);
+      const names = data.relations.map((r: any) => `${r.schema}.${r.name}`);
+      assert.ok(names.includes('hr.<img src=x onerror=alert(1)>'), 'odd names are data');
+      assert.ok(!names.includes('hr.sec23_closed'), 'no ungranted tables');
+      assert.ok(!names.some((n: string) => /^meta\.(developer|account|session|instance_setting|app)$/.test(n)), 'no closed metadata');
+      assert.ok(!JSON.stringify(data).includes('password_hash'));
+      // the editor never parses suggestions or code as HTML
+      const js = (await app.inject({ method: 'GET', url: '/static/code-editor.js' })).body;
+      assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|setAttribute\('style'/);
+    } finally {
+      await owner.query(`drop table hr."<img src=x onerror=alert(1)>"`);
+      await owner.query('drop table hr.sec23_closed');
+      clearCompletions();
+    }
+  });
+
+  test('the inline check needs the CSRF token, plans as the app role and runs nothing', async () => {
+    const dev = await developer();
+    await dev.get(`/builder/apps/${appId}/shared`);
+    const csrf = dev.lastCsrf;
+    assert.equal((await dev.post('/builder/code/check', { app: String(appId), shape: 'statements', sql: 'delete from hr.emp' })).statusCode, 403);
+    const anon = new Browser();
+    const anonRes = await anon.post('/builder/code/check', { __csrf: 'x', app: String(appId), shape: 'select', sql: 'select 1' });
+    assert.equal(anonRes.statusCode, 302, 'no session: to the sign-in page');
+    assert.doesNotMatch(anonRes.body, /planned|No problems/);
+    const n = (await owner.one('select count(*)::int as n from hr.emp')).n;
+    for (const sql of ['delete from hr.emp', 'update hr.emp set sal = 0', 'do $$ begin delete from hr.emp; end $$', "select 1; delete from hr.emp", 'drop table hr.emp']) {
+      const res = await dev.post('/builder/code/check', { __csrf: csrf, app: String(appId), shape: 'statements', sql });
+      assert.equal(res.statusCode, 200, sql);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n, 'nothing ran');
+    const res = JSON.parse((await dev.post('/builder/code/check', { __csrf: csrf, app: String(appId), shape: 'select', sql: 'select password_hash from meta.account' })).body);
+    assert.equal(res.ok, false);
+    assert.match(res.message, /permission denied/);
+    // a GET can't check (or run) anything
+    assert.equal((await dev.get(`/builder/code/check?app=${appId}&shape=statements&sql=delete%20from%20hr.emp`)).statusCode, 404);
+    assert.equal((await dev.get(`/builder/code/completions?app=${appId}&sql=delete%20from%20hr.emp`)).statusCode, 200);
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n);
+  });
+
+  test("one app's completions never include another app's items or tables, nor what only the owner sees", async () => {
+    await owner.query('create schema sec23');
+    await owner.query('create table sec23.other_secret (other_col text)');
+    await owner.query('create role sec23_role nologin');
+    await owner.query('grant usage on schema sec23 to sec23_role');
+    await owner.query('grant select on sec23.other_secret to sec23_role');
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec23other', 'Other', 'sec23_role') returning id`)).id;
+    const noRole = (await owner.one(`insert into meta.app (alias, name) values ('sec23norole', 'No role') returning id`)).id;
+    const { clearCompletions } = await import('../src/builder/code-editor.ts');
+    clearCompletions();
+    try {
+      const dev = await developer();
+      const get = async (id: number) => JSON.parse((await dev.get(`/builder/code/completions?app=${id}`)).body);
+      const hr = await get(appId);
+      const o = await get(other);
+      // the other app: its own table, none of hr's; no hr items
+      assert.equal(o.role, 'sec23_role');
+      assert.ok(o.relations.some((r: any) => r.schema === 'sec23' && r.name === 'other_secret'));
+      assert.ok(!o.relations.some((r: any) => r.schema === 'hr'), "no hr tables for another app's role");
+      assert.ok(!o.items.some((i: any) => /^P\d+_|^AI_/.test(i.name)), "no hr items");
+      assert.ok(!o.schemas.includes('hr'));
+      // and the other way round
+      assert.ok(!hr.relations.some((r: any) => r.schema === 'sec23'), "hr doesn't see the other app's schema");
+      assert.ok(!JSON.stringify(hr).includes('other_col'));
+      // no role of its own: what the runtime connection may use, never the owner's view
+      const n = await get(noRole);
+      assert.equal(n.role, (await runtime.one('select current_user as u')).u);
+      assert.ok(!n.relations.some((r: any) => r.schema === 'sec23'));
+      assert.ok(!n.relations.some((r: any) => /^meta\.(developer|instance_setting)$/.test(`${r.schema}.${r.name}`)));
+      // only the columns granted to that role (never the password hash)
+      const account = n.relations.find((r: any) => r.schema === 'meta' && r.name === 'account');
+      assert.ok(!account || !account.columns.some((c: any) => c.name === 'password_hash'));
+      assert.ok(!JSON.stringify(n).includes('password_hash'));
+      assert.deepEqual(n.items, []);
+      // the cache is per app: asking for one app never answers for another
+      assert.notDeepEqual((await get(other)).relations, (await get(appId)).relations);
+    } finally {
+      await owner.query('delete from meta.app where id = any($1)', [[other, noRole]]);
+      await owner.query('drop schema sec23 cascade');
+      await owner.query('drop role sec23_role');
+      clearCompletions();
+    }
+  });
+});

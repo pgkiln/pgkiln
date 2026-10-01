@@ -88,9 +88,11 @@ src/
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     template-spec.ts       template component property form (Shared Components)
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
+    code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
+  code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
 test/
   binds.test.ts            unit tests
   security.test.ts         security regression tests (in-process, against the database)
@@ -103,8 +105,10 @@ test/
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates
+  code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
 ```
 
 ## Principles
