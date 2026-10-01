@@ -181,3 +181,82 @@ copy starts with them **switched off**, so a copy never runs the original's jobs
 
 If you prefer the database to schedule work, [pg_cron](15-extensions.md) still works next to this.
 
+## Approvals and the task list
+
+Approvals (APEX: Task Definitions, the Approvals component and the Unified Task List) let an
+application ask someone to approve, reject or complete something, and act on the answer.
+
+**1. A task definition** (Shared Components → Task definitions) describes one kind of task:
+
+| Field | Meaning |
+|---|---|
+| Name | `EXPENSE_APPROVAL`; application SQL refers to it by name |
+| Type | `approval` (Approve / Reject) or `action` (Complete) |
+| Subject | e.g. `Expense claim of &NAME.: &AMOUNT.` — `&KEY.` comes from the task's parameters, `&DETAIL_PK.` is the record key |
+| Potential owners (roles) | Users with one of these roles may act on the task (plus the users named when it is created) |
+| Business administrator (role) | Sees every task of this definition, delegates and cancels them |
+| The person who requested it may complete it | Off by default: nobody approves their own request |
+| Priority, Due in | 1 (urgent) – 5 (low); e.g. `2 days`. Overdue tasks are marked |
+| Details page, Details item | The subject links to this page, setting the item to the record key |
+| On completion (SQL) | Runs as the application's role when the task is approved, rejected or completed (below) |
+
+**2. Application SQL creates tasks**, for example in the process that saves a request or in a
+trigger:
+
+```sql
+select meta.create_task('EXPENSE_APPROVAL',            -- the definition
+                        :P5_ID,                        -- the record it is about (detail_pk)
+                        jsonb_build_object('NAME', :P5_NAME, 'AMOUNT', :P5_AMOUNT),
+                        array[:P5_MANAGER_USERNAME]);  -- users who may act, besides the roles
+```
+
+The signed-in user is the task's initiator.
+
+**3. Users act in a task list**, a region of type **`tasks`**. A task list region shows, depending
+on its settings, the tasks waiting for me (to act on, to claim, or assigned to me), the ones I
+requested, or the ones I administer, optionally with completed ones. Each task offers what the
+user may do:
+
+| Action | Who |
+|---|---|
+| Approve / Reject / Complete (with an optional comment) | The actual owner, or a potential owner while the task is unassigned |
+| Claim | A potential owner, while unassigned: it becomes theirs |
+| Release | The actual owner: unassigned again |
+| Delegate | The actual owner or an administrator, to any user of the application |
+| Cancel | The initiator or an administrator |
+| Comment | Everybody who sees the task |
+
+Every step is in the task's history.
+
+**4. On completion**, the definition's SQL runs **as the application's role, in the same
+transaction** as the decision, with these binds: `:TASK_ID`, `:DETAIL_PK`, `:OUTCOME`
+(`APPROVED`, `REJECTED` or `COMPLETED`), `:COMMENT`, `:APPROVER`, `:INITIATOR`, and the task
+parameters by name. An error in it (a business rule, row level security) shows the message and
+undoes the decision, so a task is never completed without its effect:
+
+```sql
+select expenses.decide(:DETAIL_PK::int, :OUTCOME, :COMMENT)
+```
+
+When a record is decided somewhere else (for example with buttons on its own page), close its
+open tasks so they don't linger: `select meta.close_tasks('EXPENSE_APPROVAL', :P5_ID::text,
+'approved')` (no completion SQL runs).
+
+**SQL API** (application code; `meta.app_user()` is the acting user):
+
+| Function | |
+|---|---|
+| `meta.create_task(name, detail_pk, params jsonb, owners text[], priority)` | Returns the task id |
+| `meta.close_tasks(name, detail_pk, outcome)` | Closes a record's open tasks; returns how many |
+| `meta.claim_task(id)`, `meta.release_task(id)`, `meta.delegate_task(id, username)`, `meta.cancel_task(id, comment)`, `meta.add_task_comment(id, text)` | The task list's actions, with the same checks |
+| `meta.tasks` | View: the tasks the user may see, with `may_act`, `may_claim`, `may_release`, `may_delegate`, `may_cancel` |
+| `meta.task_events` | View: the history and comments of those tasks |
+
+The task tables themselves are closed to the application's role: rights are checked by these
+functions and views, for every call. pgapex sends no e-mail; put a task list on the home page, or
+use an automation to remind owners of overdue tasks.
+
+**Example:** in the HR sample application, a leave request creates a `LEAVE_APPROVAL` task for the
+employee's manager; *My tasks* (page 14) approves or rejects it through `hr.decide_leave`, the same
+function as the leave request page's buttons, and a request decided there closes its task.
+

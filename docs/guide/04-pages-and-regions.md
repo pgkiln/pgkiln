@@ -40,6 +40,7 @@ only when true) and `authz` (an authorization scheme).
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month calendar of dated rows |
 | [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
+| [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
 

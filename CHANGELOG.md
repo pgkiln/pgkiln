@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Approvals and the task list** (migration 021): task definitions (Shared Components), tasks created
+  from application SQL with `meta.create_task(…)`, a `tasks` region type (claim, approve / reject /
+  complete with a comment, release, delegate, cancel, comments and history) and completion SQL that
+  runs as the application's role in the same transaction. Rights are checked by the `meta.*_task`
+  functions and the `meta.tasks` view. The HR example's leave requests use it (*My tasks*, page 14).
 - **Document templates** (Shared Components → Document templates, migration 020; APEX: Document
   Generator): a query fills an HTML template with Mustache-style tags (values always escaped;
   lists from JSON columns; number and date filters), drawn as a PDF with a report layout. Buttons
