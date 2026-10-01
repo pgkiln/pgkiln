@@ -11,7 +11,7 @@ import { linkAttrs } from './links.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
 import { writeXlsx, type XlsxCell } from '../xlsx.ts';
-import { CHART_KINDS } from './charts.ts';
+import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
 import { renderView, VIEWS, type View } from './report-views.ts';
 
@@ -153,7 +153,7 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
     })(),
     chart: (() => {
       const [kind, label, fn, value] = (p.get(key(r, 'ch')) ?? '').split('|');
-      return (CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value ? { kind, label, fn, value } : null;
+      return (REPORT_CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value ? { kind, label, fn, value } : null;
     })(),
   };
 }
@@ -222,7 +222,7 @@ export function normaliseReportParams(params: URLSearchParams): string | null {
     } else if ((m = /^r(\d+)_ck$/.exec(k))) {
       // chart: kind, label column, function, value column
       const [kind, label, fn, value] = take(m[1], ['ck', 'cl', 'cf', 'cv']);
-      if ((CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value) {
+      if ((REPORT_CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value) {
         params.set(`r${m[1]}_ch`, `${kind}|${label}|${fn}|${value}`);
         params.set(`r${m[1]}_v`, 'chart');
       }
@@ -734,7 +734,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
           <div class="menu-section">
             <strong>${t('report.chart')}</strong>
             <div class="filter-row">
-              <select name="${key(r, 'ck')}" form="${chartForm}" aria-label="${t('report.chart_type')}">${CHART_KINDS.map((k) => html`<option value="${k}"${k === st.chart?.kind ? raw(' selected') : ''}>${t(`chart.${k}`)}</option>`)}</select>
+              <select name="${key(r, 'ck')}" form="${chartForm}" aria-label="${t('report.chart_type')}">${REPORT_CHART_KINDS.map((k) => html`<option value="${k}"${k === st.chart?.kind ? raw(' selected') : ''}>${t(`chart.${k}`)}</option>`)}</select>
               <select name="${key(r, 'cl')}" form="${chartForm}" aria-label="${t('report.label_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.chart?.label ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
               <select name="${key(r, 'cf')}" form="${chartForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}"${fn === (st.chart?.fn ?? 'count') ? raw(' selected') : ''}>${t(`agg.${fn}`)}</option>`)}</select>
               <select name="${key(r, 'cv')}" form="${chartForm}" aria-label="${t('report.value_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.chart?.value ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>

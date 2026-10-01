@@ -12,6 +12,7 @@ This chapter covers three things that deal with files:
 |---|---|
 | File Browse item, storage "BLOB column specified in item source" | Item type `file` with a bytea `source_column` in a form region |
 | File Browse item, storage "Table APEX_APPLICATION_TEMP_FILES" | Item type `file` without a source column; read the file from `meta.temp_files` |
+| File Browse item, "Allow Multiple Files" | Item type `file` with `"multiple": true`: one row per file in a child table, or a list of temporary files |
 | SQL Workshop → Data Workshop → Load Data | SQL Workshop → **Load Data** |
 | Data Load Definition + "Execute Data Load" process | Process type `data_load` |
 | Interactive report → Download → CSV / Excel / PDF | Actions → **Download CSV / Excel / PDF** |
@@ -73,6 +74,59 @@ select meta.delete_temp_file(:P5_FILE::uuid);  -- optional: it is removed with t
 Temporary files are deleted with the session, at sign-out or when the session expires. A
 session keeps at most 20 of them.
 
+### Several files per item
+
+With `"multiple": true` the file input lets users choose several files at once (APEX: *Allow
+Multiple Files*). Each file is checked against `accept` and `max_mb`. If one file is refused, none
+of that request's files are kept. The item's value is the ids of its new temporary files,
+separated by `:`.
+
+**In a form region** the files go into a **child table**, one row per file, linked to the form's
+record. The item's `source_column` is the child table's content column:
+
+```sql
+create table hr.emp_document (
+  id        bigint generated always as identity primary key,
+  empno     int   not null references hr.emp on delete cascade,
+  filename  text  not null,
+  mime_type text  not null,
+  content   bytea not null
+);
+```
+
+| Attribute (`config`) | Meaning |
+|---|---|
+| `multiple` | `true`: several files per item |
+| `max_files` | Most files the item may hold, the stored ones included (default and at most 10) |
+| `table` | The child table |
+| `parent_column` | Its column that holds the form record's primary key |
+| `key_column` | Its primary key (default `id`) |
+| `filename_column`, `mime_column`, `accept`, `max_mb` | As for a single file |
+
+The form lists the record's files with download links (and a small preview for images), followed
+by the files that will be added on save. Every file has a **Remove file** box. Saving the form
+inserts a row per new file and deletes the ticked rows, in the same transaction as the record
+itself. A ticked new file is dropped at once. Deleting the record deletes its files first.
+`required` means at least one file. The HR sample's employee form has a **Documents** item set up
+this way (`examples/hr/hr_16_documents.sql`), with row level security on `hr.emp_document`:
+
+```json
+{"multiple": true, "max_files": 5, "max_mb": 5, "table": "hr.emp_document", "parent_column": "empno",
+ "key_column": "id", "filename_column": "filename", "mime_column": "mime_type", "accept": ".pdf,.docx,image/*"}
+```
+
+**Without a child table** the files stay temporary, as with a single file. Read them in a process:
+
+```sql
+insert into doc.attachment (ticket_id, name, mime_type, content)
+select :P5_TICKET_ID::int, filename, mime_type, content
+  from meta.temp_files
+ where id = any (string_to_array(:P5_FILES, ':')::uuid[]);
+```
+
+A session keeps at most 20 temporary files, so keep `max_files` at 10 or less (the server caps
+it at 10) and save the files before users upload many more.
+
 ### Downloads and security
 
 - **Download links** carry a checksum bound to the user, the page, the item and the record. A
@@ -84,7 +138,8 @@ session keeps at most 20 of them.
   GIF, WebP and PDF are shown inline (image previews). An uploaded HTML or SVG file can never run
   in your application's origin.
 - **A posted text value can't set a file item.** Only an upload can, and `meta.temp_files` only
-  shows the session's own files.
+  shows the session's own files. A **Remove file** box only removes rows of the form's own record
+  (and of the session's own temporary files), whatever value it posts.
 - **Audit trails:** keep file contents out of JSON audit logs. The HR sample's `hr.audit()`
   takes a list of columns to leave out: `hr.audit('empno', 'photo')`.
 

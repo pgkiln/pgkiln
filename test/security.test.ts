@@ -17,11 +17,12 @@ let appId: number;
 class Browser {
   cookies = new Map<string, string>();
   lastCsrf = '';
-  async request(method: 'GET' | 'POST', url: string, form?: Record<string, string>) {
+  async request(method: 'GET' | 'POST', url: string, form?: Record<string, string | string[]>) {
     const res = await app.inject({
       method,
       url,
-      payload: form ? new URLSearchParams(form).toString() : undefined,
+      // an array posts the field once per value (checkboxes with one name)
+      payload: form ? new URLSearchParams(Object.entries(form).flatMap(([k, v]) => [v].flat().map((x) => [k, x]))).toString() : undefined,
       headers: {
         cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
         ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
@@ -38,7 +39,7 @@ class Browser {
   get(url: string) {
     return this.request('GET', url);
   }
-  post(url: string, form: Record<string, string>) {
+  post(url: string, form: Record<string, string | string[]>) {
     return this.request('POST', url, form);
   }
   async login(user: string, password = user, alias = 'hr') {
@@ -765,6 +766,55 @@ describe('sprint 20: map and tree regions', () => {
       }
     } finally {
       await owner.query(`update hr.emp set ename = 'SCOTT', work_location = null where empno = 7788`);
+    }
+  });
+});
+
+describe('sprint 21: chart types and several files per upload item', () => {
+  test('a report chart view only takes single-series kinds; other kinds from the URL are ignored', async () => {
+    const king = await as('king');
+    const { id } = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
+    const view = (kind: string) => king.get(`/a/hr/2?${new URLSearchParams([[`r${id}_ch`, `${kind}|job|sum|sal`], [`r${id}_v`, 'chart']])}`);
+    const pie = await view('pie');
+    assert.match(pie.body, /class="chart chart-pie"/);
+    for (const kind of ['stacked', 'combo', 'scatter', 'pie"><script>', 'pie3d']) {
+      const res = await view(kind);
+      assert.equal(res.statusCode, 200, kind);
+      assert.doesNotMatch(res.body, /class="chart chart-/, `${kind}: no chart view`);
+      assert.doesNotMatch(res.body, /<script>|alert-error/, kind);
+    }
+  });
+
+  test('chart labels and series names from the data are text, not markup', async () => {
+    await owner.query(`update hr.emp set job = '<img src=x>' where empno = 7788`);
+    try {
+      const king = await as('king');
+      const res = await king.get('/a/hr/15');
+      assert.equal(res.statusCode, 200);
+      assert.match(res.body, /&lt;img src=x&gt;/i, 'the label is shown, escaped');
+      assert.doesNotMatch(res.body, /<img src=x>/i);
+    } finally {
+      await owner.query(`update hr.emp set job = 'ANALYST' where empno = 7788`);
+    }
+  });
+
+  test('a multiple file item takes only uploads: posted ids and remove boxes cannot reach other sessions or records', async () => {
+    const MILLER = { P3_ENAME: 'MILLER', P3_JOB: 'CLERK', P3_DEPTNO: '10', P3_MGR: '7782', P3_HIREDATE: '1982-01-23', P3_SAL: '1300', P3_ACTIVE: 'true' };
+    await as('blake'); // a session of someone else, with a temporary file
+    const foreign = (await owner.one(`insert into meta.temp_file (session_id, item_name, filename, mime_type, size, content)
+      select id, 'P3_DOCUMENTS', 'foreign.pdf', 'application/pdf', 1, '\\x00' from meta.session where username = 'blake' order by created_at desc limit 1 returning id`)).id;
+    const kings = (await owner.one(`insert into hr.emp_document (empno, filename, mime_type, content) values (7839, 'king.pdf', 'application/pdf', '\\x00') returning id`)).id;
+    try {
+      const king = await as('king');
+      await king.get(link('king', 3, { P3_EMPNO: '7934' }));
+      const res = await king.post('/a/hr/3', { __csrf: king.lastCsrf, __request: 'SAVE', ...MILLER, P3_DOCUMENTS: foreign, P3_DOCUMENTS__REMOVE: [`temp:${foreign}`, String(kings)] });
+      assert.equal(res.statusCode, 303);
+      assert.equal((await owner.one(`select count(*)::int as n from hr.emp_document where empno = 7934`)).n, 0, 'a posted id is not saved');
+      assert.equal((await owner.one(`select count(*)::int as n from meta.temp_file where id = $1`, [foreign])).n, 1, "another session's file is not removed");
+      assert.equal((await owner.one(`select count(*)::int as n from hr.emp_document where id = $1`, [kings])).n, 1, "another record's file is not removed");
+    } finally {
+      await owner.query('delete from meta.temp_file where id = $1', [foreign]);
+      await owner.query('delete from hr.emp_document where id = $1', [kings]);
     }
   });
 });

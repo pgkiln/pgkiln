@@ -16,6 +16,12 @@ import { resolveTable } from './engine.ts';
 // and config.mime_column); pages without such a column read it from
 // meta.temp_files in a process.
 //
+// With config.multiple the item takes several files (APEX "Allow Multiple
+// Files"). Its value is then a ':'-separated list of temporary file ids; a
+// form region saves them as rows of a child table (config.table, with
+// config.parent_column referring to the form's record, config.key_column its
+// primary key and the item's source column the content), one row per file.
+//
 // Downloads go through the application's database role, so row level
 // security applies, and their URLs carry a checksum bound to the user.
 
@@ -49,25 +55,44 @@ interface FileConfig {
   mime_column?: string;
   max_mb?: number;
   accept?: string;
+  multiple?: boolean;
+  max_files?: number;
+  table?: string;
+  parent_column?: string;
+  key_column?: string;
 }
 const cfg = (item: Item) => (item.config ?? {}) as FileConfig;
 export const maxMb = (item: Item) => Math.min(Number(cfg(item).max_mb) || MAX_UPLOAD_MB, MAX_UPLOAD_MB);
+/** At most this many files per item (a session keeps 20 temporary files). */
+export const MAX_FILES = 10;
+export const isMultiple = (item: Item) => item.type === 'file' && cfg(item).multiple === true;
+export const maxFiles = (item: Item) => Math.min(Math.max(Math.floor(Number(cfg(item).max_files)) || MAX_FILES, 1), MAX_FILES);
+/** The temporary file ids in a multiple file item's value. */
+export const tempIds = (v: string | null | undefined) => (v ?? '').split(':').filter(isTempId);
+/** The values of the "remove" checkboxes posted for an item. */
+export const removals = (ctx: PageContext, item: Item) =>
+  [ctx.body?.[`${item.name}__REMOVE`] ?? []].flat().filter((v): v is string => typeof v === 'string' && v !== '');
 
 /** Read a multipart body: fields as for urlencoded bodies, plus the files. */
 export async function readMultipart(req: FastifyRequest, maxFileMb = MAX_UPLOAD_MB) {
   const body: Record<string, string | string[]> = {};
+  // the first file per field, and all of them (an <input type="file" multiple>)
   const files = new Map<string, Upload>();
+  const lists = new Map<string, Upload[]>();
   for await (const part of req.parts({ limits: { fileSize: maxFileMb * 1024 * 1024 } })) {
     if (part.type === 'file') {
       const data = await part.toBuffer();
-      if (part.filename) files.set(part.fieldname, { filename: part.filename, mimetype: part.mimetype, data, truncated: part.file.truncated });
+      if (!part.filename) continue;
+      const u = { filename: part.filename, mimetype: part.mimetype, data, truncated: part.file.truncated };
+      if (!files.has(part.fieldname)) files.set(part.fieldname, u);
+      lists.set(part.fieldname, [...(lists.get(part.fieldname) ?? []), u]);
     } else {
       const v = String(part.value ?? '');
       const prev = body[part.fieldname];
       body[part.fieldname] = prev === undefined ? v : Array.isArray(prev) ? [...prev, v] : [prev, v];
     }
   }
-  return { body, files };
+  return { body, files, lists };
 }
 
 /** Does the file match the item's accept list ("image/*,.pdf")? */
@@ -84,31 +109,67 @@ function accepted(item: Item, u: Upload) {
     .some((a) => (a.startsWith('.') ? name.endsWith(a) : a.endsWith('/*') ? mime.startsWith(a.slice(0, -1)) : mime === a));
 }
 
+/** Why an upload is refused, if it is. */
+function refusal(ctx: PageContext, item: Item, u: Upload) {
+  if (u.truncated || u.data.length > maxMb(item) * 1024 * 1024) return ctx.locale.t('file.too_large', { max: String(maxMb(item)) });
+  if (!accepted(item, u)) return ctx.locale.t('file.wrong_type');
+  return null;
+}
+
+const cleanName = (u: Upload) => u.filename.replace(/^.*[\\/]/, '').replace(/[\u0000-\u001f"]/g, '_') || 'file';
+
 /**
  * Store the uploads of editable file items as temporary files and set the
  * items to their ids; "<ITEM>__REMOVE" marks a stored file for removal.
  */
-export async function applyUploads(ctx: PageContext, files: Map<string, Upload>, body: Record<string, unknown>, tx: Tx) {
+export async function applyUploads(ctx: PageContext, files: Map<string, Upload[]>, body: Record<string, unknown>, tx: Tx) {
   for (const item of ctx.page.items) {
     if (item.type !== 'file' || !ctx.vis!.editable.has(item.name)) continue;
-    const u = files.get(item.name);
+    if (isMultiple(item)) {
+      await applyMultiple(ctx, item, files.get(item.name) ?? [], tx);
+      continue;
+    }
+    const u = files.get(item.name)?.[0];
     if (u) {
-      if (u.truncated || u.data.length > maxMb(item) * 1024 * 1024) {
-        ctx.errors.items[item.name] = ctx.locale.t('file.too_large', { max: String(maxMb(item)) });
+      const refused = refusal(ctx, item, u);
+      if (refused) {
+        ctx.errors.items[item.name] = refused;
         continue;
       }
-      if (!accepted(item, u)) {
-        ctx.errors.items[item.name] = ctx.locale.t('file.wrong_type');
-        continue;
-      }
-      const filename = u.filename.replace(/^.*[\\/]/, '').replace(/[\u0000-\u001f"]/g, '_') || 'file';
       // committed on its own, so the upload survives a validation error
-      const r = await appTx(tx(ctx), (c) => c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, filename, u.mimetype || 'application/octet-stream', u.data]));
+      const r = await appTx(tx(ctx), (c) => c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, cleanName(u), u.mimetype || 'application/octet-stream', u.data]));
       ctx.session.state[item.name] = r.rows[0].id;
     } else if (body[`${item.name}__REMOVE`] === 'true') {
       ctx.session.state[item.name] = formRegion(ctx, item) ? REMOVE : null;
     }
   }
+}
+
+/**
+ * A multiple file item: drop the new files whose "remove" box is ticked,
+ * then add this request's uploads (all or none) while the item stays within
+ * max_files. Ticked stored files are removed by the form's save (formDml).
+ */
+async function applyMultiple(ctx: PageContext, item: Item, uploads: Upload[], tx: Tx) {
+  const t = ctx.locale.t;
+  const remove = new Set(removals(ctx, item));
+  const pending = tempIds(ctx.session.state[item.name]);
+  const dropped = pending.filter((id) => remove.has(`temp:${id}`));
+  const kept = pending.filter((id) => !remove.has(`temp:${id}`));
+  const added: string[] = [];
+  const refused = uploads.map((u) => refusal(ctx, item, u)).find(Boolean);
+  if (refused) ctx.errors.items[item.name] = refused;
+  else if (uploads.length) {
+    const stored = (await storedFiles(ctx, item)).filter((f) => !remove.has(f.key)).length;
+    if (stored + kept.length + uploads.length > maxFiles(item)) ctx.errors.items[item.name] = t('file.too_many', { max: String(maxFiles(item)) });
+  }
+  await appTx(tx(ctx), async (c) => {
+    for (const id of dropped) await c.query('select meta.delete_temp_file($1)', [id]);
+    if (ctx.errors.items[item.name]) return;
+    for (const u of uploads)
+      added.push((await c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, cleanName(u), u.mimetype || 'application/octet-stream', u.data])).rows[0].id);
+  });
+  ctx.session.state[item.name] = [...kept, ...added].join(':') || null;
 }
 
 /** The form region whose table stores this item's file, if any. */
@@ -119,6 +180,71 @@ export function formRegion(ctx: PageContext, item: Item): Region | undefined {
 }
 
 export const isTempId = (v: string | null | undefined): v is string => !!v && UUID.test(v);
+
+/** Where a multiple file item stores its files: a child table of its form's record. */
+export function childTable(ctx: PageContext, item: Item) {
+  const c = cfg(item);
+  const region = isMultiple(item) && c.table && c.parent_column ? formRegion(ctx, item) : undefined;
+  return region ? { region, table: c.table!, parent: c.parent_column!, key: c.key_column || 'id' } : undefined;
+}
+
+/** The files a multiple file item has stored for the form's current record. */
+export async function storedFiles(ctx: PageContext, item: Item): Promise<FileInfo[]> {
+  const child = childTable(ctx, item);
+  const pk = child ? ctx.session.state[child.region.pk_item!] : null;
+  if (!child || pk === null || pk === undefined) return [];
+  const c = ctx.client!;
+  const res = await savepoint(c, async () =>
+    c.query({
+      text: `select ${ident(child.key)}::text, ${fileColumns(item, 'size')} from ${await resolveTable(c, child.table)} where ${ident(child.parent)} = ${literal(pk)} order by ${ident(child.key)}`,
+      rowMode: 'array',
+    }),
+  );
+  return res.rows.map(([key, size, filename, mime]) => ({ filename: filename ?? item.name.toLowerCase(), mime: mime ?? 'application/octet-stream', size: Number(size ?? 0), key, pending: false }));
+}
+
+/** The files a multiple file item shows: the stored ones, then the new uploads. */
+export async function fileList(ctx: PageContext, item: Item): Promise<FileInfo[]> {
+  const ids = tempIds(ctx.session.state[item.name]);
+  const c = ctx.client!;
+  const pending = ids.length
+    ? (await savepoint(c, () => c.query('select id, filename, mime_type, size from meta.temp_files where id = any($1::uuid[]) order by created_at', [ids]))).rows.map(
+        (f) => ({ filename: f.filename, mime: f.mime_type, size: f.size, key: `temp:${f.id}`, pending: true }),
+      )
+    : [];
+  return [...(await storedFiles(ctx, item)), ...pending];
+}
+
+/**
+ * Save a form's multiple file items into their child tables (after the
+ * record's insert or update): one row per new file; ticked files of this
+ * record are deleted. On delete, all the record's files are deleted.
+ */
+export async function saveFileLists(ctx: PageContext, region: Region, op: 'insert' | 'update' | 'delete') {
+  const c = ctx.client!;
+  const pk = ctx.session.state[region.pk_item!];
+  for (const item of ctx.page.items) {
+    const child = childTable(ctx, item);
+    if (!child || child.region.id !== region.id || pk === null || pk === undefined) continue;
+    const table = await resolveTable(c, child.table);
+    const parent = `${ident(child.parent)} = ${literal(pk)}`;
+    if (op === 'delete') {
+      await c.query(`delete from ${table} where ${parent}`);
+      continue;
+    }
+    if (!ctx.vis!.editable.has(item.name)) continue;
+    const keys = removals(ctx, item).filter((k) => !k.startsWith('temp:'));
+    if (keys.length) await c.query(`delete from ${table} where ${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
+    const ids = tempIds(ctx.session.state[item.name]);
+    if (!ids.length) continue;
+    const conf = cfg(item);
+    const cols = [ident(child.parent), ident(item.source_column!), ...(conf.filename_column ? [ident(conf.filename_column)] : []), ...(conf.mime_column ? [ident(conf.mime_column)] : [])];
+    const vals = [literal(pk), 'content', ...(conf.filename_column ? ['filename'] : []), ...(conf.mime_column ? ['mime_type'] : [])];
+    await c.query(`insert into ${table} (${cols.join(', ')}) select ${vals.join(', ')} from meta.temp_files where id = any($1::uuid[]) order by created_at`, [ids]);
+    for (const id of ids) await c.query('select meta.delete_temp_file($1)', [id]);
+    ctx.session.state[item.name] = null;
+  }
+}
 
 async function tempInfo(ctx: PageContext, id: string): Promise<FileInfo | null> {
   const r = await ctx.client!.query('select filename, mime_type, size from meta.temp_files where id = $1', [id]);
@@ -195,8 +321,18 @@ export function fileRoutes(app: FastifyInstance, loadContext: Loader, txContext:
             const r = await c.query('select content, filename, mime_type as mime from meta.temp_files where id = $1', [key.slice(5)]);
             return r.rows[0] ?? null;
           }
+          const child = childTable(ctx, item);
+          if (child) {
+            const r = await c.query({
+              text: `select ${fileColumns(item, 'content')} from ${await resolveTable(c, child.table)} where ${ident(child.key)}::text = $1`,
+              values: [key],
+              rowMode: 'array',
+            });
+            const [content, filename, mime] = r.rows[0] ?? [];
+            return content ? { content, filename: filename ?? name.toLowerCase(), mime: mime ?? 'application/octet-stream' } : null;
+          }
           const region = formRegion(ctx, item);
-          if (!region) return null;
+          if (!region || isMultiple(item)) return null;
           const r = await c.query({
             text: `select ${fileColumns(item, 'content')} from ${await resolveTable(c, region.table_name!)} where ${ident(region.pk_column!)} = ${literal(key)}`,
             rowMode: 'array',

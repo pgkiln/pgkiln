@@ -1,6 +1,8 @@
 import { inflateSync } from 'node:zlib';
 import type { FastifyInstance } from 'fastify';
 
+type Upload = { name: string; type: string; data: Buffer };
+
 /** A tiny cookie-keeping browser on top of fastify.inject. */
 export class Browser {
   cookies = new Map<string, string>();
@@ -39,11 +41,12 @@ export class Browser {
     return this.request('POST', url, { __csrf: this.lastCsrf, ...form });
   }
   /** POST multipart/form-data (file items) with the CSRF token of the last page. */
-  async upload(url: string, form: Record<string, string>, files: Record<string, { name: string; type: string; data: Buffer }>) {
+  /** A multipart post; a list of files under one name is sent as an <input type="file" multiple>, a list of values as checkboxes. */
+  async upload(url: string, form: Record<string, string | string[]>, files: Record<string, Upload | Upload[]>) {
     const fd = new FormData();
     fd.set('__csrf', this.lastCsrf);
-    for (const [k, v] of Object.entries(form)) fd.set(k, v);
-    for (const [k, f] of Object.entries(files)) fd.set(k, new Blob([new Uint8Array(f.data)], { type: f.type }), f.name);
+    for (const [k, v] of Object.entries(form)) for (const x of [v].flat()) fd.append(k, x);
+    for (const [k, f] of Object.entries(files)) for (const x of [f].flat()) fd.append(k, new Blob([new Uint8Array(x.data)], { type: x.type }), x.name);
     const body = new Response(fd);
     const payload = Buffer.from(await body.arrayBuffer());
     const res = await this.app.inject({

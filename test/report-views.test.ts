@@ -72,6 +72,8 @@ describe('form parameters', () => {
     assert.equal(norm('r1_pr=job&r1_pp=job&r1_pf=sum&r1_pc=sal'), '', 'rows and columns differ');
     assert.equal(norm('r1_ck=donut&r1_cl=job&r1_cf=count&r1_cv=empno'), 'r1_ch=donut%7Cjob%7Ccount%7Cempno&r1_v=chart');
     assert.equal(norm('r1_ck=pie3d&r1_cl=job&r1_cf=count&r1_cv=empno'), '');
+    assert.equal(norm('r1_ck=pie&r1_cl=job&r1_cf=count&r1_cv=empno'), 'r1_ch=pie%7Cjob%7Ccount%7Cempno&r1_v=chart');
+    for (const kind of ['stacked', 'combo', 'scatter']) assert.equal(norm(`r1_ck=${kind}&r1_cl=job&r1_cf=count&r1_cv=empno`), '', `${kind} needs several series or a numeric x`);
   });
 });
 

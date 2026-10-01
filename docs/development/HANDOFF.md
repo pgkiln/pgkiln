@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–20 are merged into `main` and released as **v0.13.0** (migrations 001–025 are released: add 026+).
+Last updated: 2026-10-01. Sprints 3–21 are merged into `main` and released as **v0.14.0** (migrations 001–025 are released: add 026+).
 
 ## Project in one paragraph
 
@@ -48,8 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 20, released as **v0.13.0** (tags: v0.2.0, v0.6.0–v0.13.0; 0.3.0–0.5.0 were never tagged). Migrations 001–025 are released |
-| (sprint branches) | `sprint-17` … `sprint-20` were merged (v0.11.0–v0.13.0) and deleted. The next sprint starts `sprint-21` from `main` |
+| `main` | Everything up to sprint 21, released as **v0.14.0** (tags: v0.2.0, v0.6.0–v0.14.0; 0.3.0–0.5.0 were never tagged). Migrations 001–025 are released |
+| (sprint branches) | `sprint-17` … `sprint-21` were merged (v0.11.0–v0.14.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -587,3 +587,39 @@ Verified: `npm test` 269/269, `npm run test:e2e` 30/30; upgrade from v0.12.0 in 
 
 Next on the roadmap: more chart types, several files per upload item, workflow parallel branches/versions,
 builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.
+
+## Sprint 21: more chart types, several files per upload item (roadmap item 1, 2026-10-01)
+
+Branch `sprint-21` from `main` (v0.13.0). No migration (both features use jsonb config).
+
+1. **Chart types** (`src/runtime/charts.ts`): `stacked` (negatives stack down), `combo` (first series as columns, the
+   others as lines through the slot centres, shared `lineLayer`), `scatter` (numeric first column = x; `niceScale(min, max,
+   zero = true)` got a third parameter), `pie` (`donut(…, pie)`). `REPORT_CHART_KINDS` (bar, column, line, area, donut, pie)
+   limits the interactive report's chart view; region charts take all `CHART_KINDS`. i18n `chart.*`, `CHART_LABELS` in
+   the builder, CSS. HR page **15 "Analytics"** (`hr_15_charts.sql`) has one of each.
+2. **Several files per upload item** (`src/runtime/files.ts`): config `multiple: true`, `max_files` (≤ `MAX_FILES` = 10, a
+   session keeps 20 temp files). `readMultipart` returns `lists` (all files per field) next to `files` (first per field,
+   used by the builder uploads); `applyUploads` takes the lists. The value is `:`-separated temp ids (`tempIds()`).
+   With `table` + `parent_column` (+ `key_column`, default `id`) in a form region (`childTable()`), `saveFileLists()`
+   runs from `formDml` after insert/update (insert one row per temp file, delete ticked keys **only where
+   parent_column = the record**) and before delete (all the record's files). `formDml` skips multiple items as columns.
+   Remove boxes post `<ITEM>__REMOVE` = child key or `temp:<id>` (`removals()`, request-scoped from `ctx.body`); a ticked
+   pending file is deleted at once. All-or-none per request: one refused file → none kept. Required = at least one
+   file left. Downloads: key = child key (signed), read as the app role. Render: `fileListControl` in `items.ts`
+   (`.file-list`, `.file-thumb`), `fileInput()` shared. `app.js` `max_px` now resizes every chosen file.
+   HR: `hr_16_documents.sql` (`hr.emp_document` with RLS: own/team/admin; managers/admins insert/delete) and
+   `P3_DOCUMENTS` (`wide`) on the employee form.
+3. Tests: `test/charts.test.ts`, `report-views`, `region-settings`; `test/files.test.ts` "several files per upload item"
+   (8); `test/security.test.ts` sprint-21 block (report chart kinds from the URL, chart labels escaped, multiple file
+   item: posted ids and remove boxes can't reach other sessions/records; its `Browser` now posts arrays as repeated
+   fields, `test/helpers.ts` `upload()` takes lists); e2e `responsive.test.ts` picks two files in the dialog at all
+   four sizes (page 15 was already covered by the all-pages loop).
+4. Docs: chapter 4 (chart kinds, query shapes), chapter 16 (several files), parity (Charts row, File browse row,
+   roadmap), SECURITY (remove boxes), CHANGELOG, builder item config help.
+
+Verified: `npm test` 286/286 and `npm run test:e2e` 34/34 (dev DB); CI-style in a clean worktree against a throwaway
+`postgres:17` on port 5435 with only the workflow's env (+ `API_URL=http://127.0.0.1:1`): fresh install 283 + 3 skipped,
+and upgrade from v0.13.0 283 + 3 skipped. Released as **v0.14.0**.
+
+Next on the roadmap: file drag-and-drop and paste, map extras (heat maps, report filtering by map area), workflow
+parallel branches/versions, builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.

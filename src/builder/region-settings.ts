@@ -27,7 +27,17 @@ export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', '
 type SettingsType = (typeof SETTINGS_TYPES)[number];
 
 const GRID_PAGE_SIZES = ['5', '10', '15', '25', '50', '100', '200'];
-const CHART_LABELS: Record<string, string> = { bar: 'Bar (horizontal)', column: 'Column', line: 'Line', area: 'Area', donut: 'Donut' };
+const CHART_LABELS: Record<string, string> = {
+  bar: 'Bar (horizontal)',
+  column: 'Column',
+  stacked: 'Stacked column',
+  line: 'Line',
+  area: 'Area',
+  combo: 'Column and line (first series as columns)',
+  scatter: 'Scatter (first column is x)',
+  donut: 'Donut',
+  pie: 'Pie',
+};
 const CARD_COLUMNS = ['title', 'subtitle', 'body', 'badge', 'icon'];
 const FACET_LIMIT = 12;
 

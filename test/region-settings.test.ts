@@ -37,6 +37,7 @@ describe('region settings: merges', () => {
     assert.deepEqual(mergeChartSettings({ kind: 'donut', other: 1 }, { kind: 'bar', empty: ' ' }), { other: 1 });
     assert.deepEqual(mergeChartSettings({}, { kind: 'area', empty: 'Nothing yet' }), { kind: 'area', empty: 'Nothing yet' });
     assert.deepEqual(mergeChartSettings({}, { kind: 'pie3d' }), {});
+    for (const kind of ['stacked', 'combo', 'scatter', 'pie']) assert.deepEqual(mergeChartSettings({}, { kind }), { kind });
   });
 
   test('cards: style, empty and a link to a page of the app only', () => {
