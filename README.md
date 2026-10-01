@@ -23,7 +23,7 @@ npm run dev          # http://127.0.0.1:3100/builder (admin / admin)
 Then build an application on your own tables: *Create application* in the builder generates
 report and form pages from a table, and everything else (regions, items, processes, security,
 translations, documents, approvals) is added in the page designer and Shared Components. The
-[tutorial](docs/guide/05-tutorial.md) walks through one.
+[tutorial](docs/guide/10-tutorial.md) walks through one.
 
 ### The example application
 

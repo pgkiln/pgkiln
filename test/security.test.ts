@@ -701,3 +701,15 @@ describe('sprint 17: workflows', () => {
     }
   });
 });
+
+describe('sprint 18: Progressive Web App', () => {
+  test('camera and position only for the app itself; no PWA files for other apps or unknown ones', async () => {
+    const res = await new Browser().get('/a/hr/login');
+    assert.equal(res.headers['permissions-policy'], 'camera=(self), microphone=(), geolocation=(self)');
+    for (const url of ['/a/nope/sw.js', '/a/nope/manifest.webmanifest', '/a/nope/icon-512.png', '/a/nope/offline'])
+      assert.equal((await new Browser().get(url)).statusCode, 404, url);
+    // the service worker carries settings only, no session or user data
+    const settings = (await new Browser().get('/a/hr/sw.js')).body.split('\n')[0];
+    assert.deepEqual(Object.keys(JSON.parse(settings.replace(/^const PGAPEX = |;$/g, ''))), ['base', 'offlinePages', 'offlineSubmit', 'version']);
+  });
+});

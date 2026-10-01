@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { urlChecksum } from '../security.ts';
+import { pwaBody, pwaHead } from './pwa.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
@@ -157,7 +160,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       'data-base': ctx.base,
       'data-page': String(ctx.page.page_no),
       'data-dialog': '1',
-    }, pageStyle(ctx), root);
+    }, html`${pageStyle(ctx)}${pwaHead(ctx.app)}`, root);
 
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
@@ -195,11 +198,29 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <main class="t-main" id="main">${main}</main>
     </div>`,
     `t-app${topNav ? ' nav-top' : ''}`,
-    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no) },
-    pageStyle(ctx),
+    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user) },
+    html`${pageStyle(ctx)}${pwaHead(ctx.app)}`,
     root,
   );
 }
+
+/**
+ * The key of each form region, signed (bound to app, page and user), so a form sent later (an offline
+ * queue) updates the record it was opened for, whatever the session state says by then.
+ */
+function formKeys(ctx: PageContext) {
+  return ctx.page.regions
+    .filter((r) => r.type === 'form' && r.pk_item && ctx.vis!.regions.has(r.id))
+    .map((r) => {
+      const pk = ctx.session.state[r.pk_item!] ?? '';
+      return html`<input type="hidden" name="__pk_${r.id}" value="${pk}"><input type="hidden" name="__pkcs_${r.id}" value="${urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { [`F${r.id}`]: pk })}">`;
+    });
+}
+
+/** Texts app.js shows (offline banner and queue, location and scan buttons), in the page's language. */
+const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
+  'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close'] as const;
+const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
 
 /** The current page's URL (for returning after a preference change). */
 const here = (ctx: PageContext) => `${ctx.base}/${ctx.page.page_no}`;
@@ -232,6 +253,8 @@ export async function renderPage(ctx: PageContext) {
       </div>
       <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}"${ctx.page.items.some((i) => i.type === 'file') ? raw(' enctype="multipart/form-data"') : ''} novalidate>
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
+        <input type="hidden" name="__submit_id" value="${randomUUID()}">
+        ${formKeys(ctx)}
         ${ctx.dialog ? html`<input type="hidden" name="__dialog" value="1">` : ''}
         ${defaultButton ? html`<button type="submit" name="__request" value="${defaultButton.name}" class="default-submit" tabindex="-1" aria-hidden="true"></button>` : ''}
         ${pageItems.length ? html`<div class="page-items form-grid">${pageItems}</div>` : ''}
@@ -241,7 +264,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}
     </div>
     <script type="application/json" id="pgapex-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }

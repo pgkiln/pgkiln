@@ -84,3 +84,29 @@ export function pdfText(pdf: Buffer) {
   }
   return text;
 }
+
+/** The values a browser would post for the page form: inputs, checked boxes, selected options, textareas. */
+export function formFields(page: string): Record<string, string> {
+  const form = /<form method="post" class="page-form"[\s\S]*?<\/form>/.exec(page)?.[0] ?? page;
+  const out: Record<string, string> = {};
+  const attr = (tag: string, a: string) => new RegExp(`\\s${a}="([^"]*)"`).exec(tag)?.[1];
+  const decode = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  for (const [tag] of form.matchAll(/<input\b[^>]*>/g)) {
+    const name = attr(tag, 'name');
+    const type = attr(tag, 'type') ?? 'text';
+    if (!name || type === 'file' || type === 'submit' || type === 'button') continue;
+    if ((type === 'checkbox' || type === 'radio') && !/\schecked\b/.test(tag)) continue;
+    out[name] = decode(attr(tag, 'value') ?? '');
+  }
+  for (const m of form.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/g)) {
+    const name = attr(m[1], 'name');
+    const sel = /<option\b[^>]*\sselected\b[^>]*>/.exec(m[2])?.[0] ?? /<option\b[^>]*>/.exec(m[2])?.[0];
+    if (name) out[name] = decode((sel && attr(sel, 'value')) ?? '');
+  }
+  for (const m of form.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/g)) {
+    const name = attr(m[1], 'name');
+    if (name) out[name] = decode(m[2]);
+  }
+  return out;
+}
+

@@ -25,7 +25,8 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `multiselect` | multi-select list | **colon-separated** return values |
 | `display` | read-only text (shows the display value for list items) | whatever was set |
 | `hidden` | not rendered | set by URL (with checksum), fetch or processes |
-| `file` | file upload ([chapter 16](16-files.md)) | the id of the uploaded temporary file (a uuid) |
+| `file` | file upload ([chapter 16](16-files.md)); on phones the camera with `{"capture": "environment"}`, photos made smaller with `{"max_px": 1600}` ([chapter 17](17-mobile.md)) | the id of the uploaded temporary file (a uuid) |
+| `location` | a text field with *Use my location* ([chapter 17](17-mobile.md)) | `latitude,longitude`, e.g. `52.01160,4.35710` |
 
 Use multi-value items in SQL with `string_to_array`:
 

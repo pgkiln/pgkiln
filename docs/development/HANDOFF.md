@@ -50,6 +50,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | Everything up to sprint 16, released as **v0.10.0** (tags: v0.2.0, v0.6.0–v0.10.0; 0.3.0–0.5.0 were never tagged). Migrations 001–021 are released |
 | `sprint-17` | Merged into `main` (not released yet) |
+| `sprint-18` | Progressive Web App (see Sprint 18) |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -515,3 +516,26 @@ released and continued without asking.
 3. **Roadmap:** the owner prioritised a **Progressive Web App for field operations and logistics** next.
 
 Verified: `npm test` 249/249, `npm run test:e2e` 24/24.
+
+## Sprint 18: Progressive Web App for field work (owner's priority, 2026-10-01)
+
+Branch `sprint-18`. Migration 023 is new.
+
+1. **PWA: done.** `023_pwa.sql` (`meta.app.pwa`, `pwa_short_name`, `pwa_icon`, `pwa_offline_pages`, `pwa_offline_submit`;
+   item type `location`). `src/runtime/pwa.ts`: manifest, `sw.js` (= `const PGAPEX = {base, offlinePages, offlineSubmit, version}` +
+   `public/sw.js`), icons (own PNG encoder + 5×7 font letter tiles), offline page; `pwaHead`/`pwaBody` in render.ts and the
+   login page. `public/sw.js`: static precache, network-first pages with an opt-in page cache (wiped on POST login/logout),
+   offline fallback, **offline form queue** in IndexedDB (captured in the SW when a POST navigation fails; replay with a fresh
+   CSRF token from a GET of the page, only for the user app.js reported; 303 = sent, 422 = invalid). `public/app.js`: SW
+   registration, offline banner, queue panel, offline page list, location button, BarcodeDetector scan, photo downscale.
+   Server: `__submit_id` per page form (session `__SUBMITS`, last 50) and signed form keys `__pk_<region>`/`__pkcs_<region>`
+   (routes.ts POST). `Permissions-Policy` now `camera=(self), microphone=(), geolocation=(self)`. Builder: Settings →
+   Progressive Web App (`src/builder/pwa.ts`, icon must be a square PNG ≥ 512). HR example `hr_12_pwa.sql` (PWA on,
+   P3_WORK_LOCATION, camera photo). Tests: `test/pwa.test.ts` (6), `test/e2e/pwa.test.ts` (4, real Chromium: installability via
+   CDP, offline pages, offline queue → sent once, geolocation, downscale), sprint-18 security block; `formFields()` in
+   `test/helpers.ts` (posting a page form back as a browser would; a sloppy version blanked SCOTT's username once).
+   New chapter 17.
+
+Verified: `npm test` 256/256, `npm run test:e2e` 28/28.
+
+Next on the roadmap: REST endpoints in the builder (with OpenAPI), then map and tree regions.

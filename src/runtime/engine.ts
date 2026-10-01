@@ -113,6 +113,13 @@ export async function validate(ctx: PageContext) {
     }
     if (missing) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
   }
+  // a location is "latitude,longitude"
+  for (const i of ctx.page.items) {
+    const v = state[i.name];
+    if (i.type !== 'location' || !v || !vis.editable.has(i.name) || errors.items[i.name]) continue;
+    const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(v);
+    if (!m || Math.abs(Number(m[1])) > 90 || Math.abs(Number(m[2])) > 180) fail(i.name, ctx.locale.t('error.location', { label: i.label ?? i.name }));
+  }
 
   for (const v of ctx.page.validations) {
     if (v.when_button && v.when_button !== ctx.request) continue;

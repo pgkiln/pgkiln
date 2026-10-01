@@ -1,4 +1,5 @@
 import { applyBinds } from '../binds.ts';
+import { icon } from '../icons.ts';
 import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
@@ -49,6 +50,9 @@ export const MULTI_VALUE = new Set(['checkbox_group', 'multiselect']);
 /** Multi-value items store their values colon-separated, as in APEX. */
 export const splitValues = (v: string) => (v ? v.split(':') : []);
 
+/** "lat,lng" with decimals */
+const LOCATION = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+
 /** Render one item (field wrapper included). Hidden items are never rendered. */
 export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = false): Promise<Raw | ''> {
   if (item.type === 'hidden' || !ctx.vis!.items.has(item.name)) return '';
@@ -84,7 +88,10 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         : (options.find((o) => o.value === value)?.display ?? value);
     if (item.type === 'checkbox' || item.type === 'switch') shown = isTruthy(value) ? ctx.locale.t('item.yes') : ctx.locale.t('item.no');
     if (item.type === 'password') shown = value ? '••••••••' : '';
-    control = html`<div class="display-value" id="${id}">${shown || ' '}</div>`;
+    const at = item.type === 'location' ? LOCATION.exec(value) : null;
+    control = at
+      ? html`<div class="display-value" id="${id}">${value} <a href="https://www.openstreetmap.org/?mlat=${at[1]}&amp;mlon=${at[2]}#map=17/${at[1]}/${at[2]}" target="_blank" rel="noopener noreferrer">${ctx.locale.t('item.show_map')}</a></div>`
+      : html`<div class="display-value" id="${id}">${shown || ' '}</div>`;
   } else {
     switch (item.type) {
       case 'textarea':
@@ -138,6 +145,11 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       case 'datetime':
         control = html`<input type="datetime-local" id="${id}" name="${id}" value="${value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
         break;
+      case 'location':
+        // "lat,lng"; app.js fills it from the device (geolocation) with the button
+        control = html`<div class="input-with-button"><input type="text" id="${id}" name="${id}" value="${value}" inputmode="decimal" placeholder="52.01160,4.35710"${aria}>
+          <button type="button" class="btn" data-locate="${id}">${icon('map')} ${ctx.locale.t('item.locate')}</button></div>`;
+        break;
       default: {
         const typed: Record<string, string> = { number: 'number', date: 'date', password: 'password', email: 'email', tel: 'tel', url: 'url' };
         const type = typed[item.type] ?? 'text';
@@ -151,6 +163,9 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
           : type === 'url' ? ' inputmode="url"'
           : '';
         control = html`<input type="${type}" id="${id}" name="${id}" value="${shown}"${raw(extra)}${aria}>`;
+        // {"scan": true}: a button that reads a barcode or QR code with the camera (where the browser can: app.js)
+        if (item.config?.scan && type === 'text')
+          control = html`<div class="input-with-button">${control}<button type="button" class="btn" data-scan="${id}" hidden>${icon('scan')} ${ctx.locale.t('item.scan')}</button></div>`;
       }
     }
   }
@@ -201,8 +216,11 @@ async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria
       </div>`
     : '';
   if (!editable) return html`<div class="display-value" id="${id}">${current || t('file.none')}</div>`;
-  const accept = (item.config as { accept?: string } | null)?.accept;
-  return html`${current}<input type="file" id="${id}" name="${id}"${accept ? raw(` accept="${String(accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${aria}>`;
+  const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number };
+  // capture: open the camera on phones ("environment" = the back camera); max_px: photos are made smaller before upload (app.js)
+  const capture = conf.capture === 'user' || conf.capture === 'environment' ? raw(` capture="${conf.capture}"`) : '';
+  const maxPx = Number(conf.max_px) >= 200 && Number(conf.max_px) <= 8000 ? raw(` data-max-px="${Math.round(Number(conf.max_px))}"`) : '';
+  return html`${current}<input type="file" id="${id}" name="${id}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${capture}${maxPx}${aria}>`;
 }
 
 export async function renderItems(ctx: PageContext, items: Item[], hidden: Set<string> = new Set()) {

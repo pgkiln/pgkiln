@@ -22,6 +22,7 @@ import { renderRegion } from './regions.ts';
 import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
+import { pwaHead } from './pwa.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
@@ -325,6 +326,26 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const self = `${ctx.base}/${ctx.page.page_no}${ctx.dialog ? '?dialog=1' : ''}`;
     if (body.__csrf !== ctx.session.csrf_token)
       return simplePage(reply, 403, ctx.locale.t('error.session_changed_title'), ctx.locale.t('error.session_changed'), self, ctx.locale);
+    // Every page form carries a submission id. A form sent again (an offline queue resending after a
+    // dropped connection, a double click) is not processed twice in the same session.
+    const submitId = typeof body.__submit_id === 'string' && /^[0-9a-f-]{36}$/.test(body.__submit_id) ? body.__submit_id : null;
+    const submitted = (ctx.session.state.__SUBMITS ?? '').split(',').filter(Boolean);
+    if (submitId && submitted.includes(submitId)) {
+      ctx.session.state.__FLASH = ctx.locale.t('pwa.already_sent');
+      await saveState(ctx.session);
+      return reply.redirect(self, 303);
+    }
+    const remember = () => {
+      if (submitId) ctx.session.state.__SUBMITS = [...submitted, submitId].slice(-50).join(',');
+    };
+    // the record each form was opened for (signed when the page was rendered; see render.ts formKeys)
+    for (const r of ctx.page.regions) {
+      if (r.type !== 'form' || !r.pk_item) continue;
+      const pk = body[`__pk_${r.id}`];
+      const cs = body[`__pkcs_${r.id}`];
+      if (typeof pk === 'string' && typeof cs === 'string' && checksumValid(urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { [`F${r.id}`]: pk }), cs))
+        ctx.session.state[r.pk_item] = pk === '' ? null : pk;
+    }
 
     let messages: string[] = [];
     let button;
@@ -362,6 +383,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
 
     // A plain submit (e.g. a select list with submit_on_change) just stores state.
+    remember();
     if (!button) {
       await saveState(ctx.session);
       return reply.redirect(self, 303);
@@ -531,7 +553,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       </main>`,
       'login-body',
       {},
-      '',
+      pwaHead(app),
       rootAttrs(locale),
     );
   };

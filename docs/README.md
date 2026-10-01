@@ -23,7 +23,8 @@ deploying applications, and how to extend pgapex itself.
 | 13 | [REST APIs with PostgREST](guide/13-rest-api.md) | PostgREST next to pgapex, the `api` schema pattern, tokens, one set of RLS policies for UI and API |
 | 14 | [Globalization](guide/14-globalization.md) | Languages, translating an app (XLIFF/CSV), text messages, date formats, light/dark |
 | 15 | [Useful PostgreSQL extensions](guide/15-extensions.md) | Extensions for search, scheduling, auditing, maps, AI search, Oracle compatibility and web services, mapped to APEX features, with security notes |
-| 16 | [Files, data loading and printing](guide/16-files.md) | File upload items, loading CSV/Excel into tables (SQL Workshop and pages), report PDFs and printing |
+| 16 | [Files, data loading and printing](guide/16-files.md) | File upload items, loading CSV/Excel/JSON into tables (SQL Workshop and pages), report PDFs, document templates and printing |
+| 17 | [Mobile and field work](guide/17-mobile.md) | Progressive Web Apps: installing, offline pages, forms sent offline, location, camera and barcode items |
 
 ## Other documents
 
@@ -36,4 +37,4 @@ deploying applications, and how to extend pgapex itself.
 
 - `code` refers to SQL, file names, configuration keys or UI labels you type.
 - **Builder → App → Shared Components** describes a path through the builder's menus.
-- SQL examples assume the HR sample app (`/a/hr`), which `npm run setup` installs.
+- Examples often use the HR example application (`/a/hr`, `npm run example:hr`); it is not part of pgapex.
