@@ -78,9 +78,11 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow diagram and instance counts (Shared Components)
+    code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
+  code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
 test/
   binds.test.ts            unit tests
   security.test.ts         security regression tests (in-process, against the database)
@@ -92,8 +94,10 @@ test/
   dataload.test.ts         parsing, Load Data, the data_load process
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
+  code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
 ```
 
 ## Principles
