@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–21 are merged into `main` and released as **v0.14.0** (migrations 001–025 are released: add 026+).
+Last updated: 2026-10-01. Sprints 3–22 are merged into `main` and released as **v0.15.0** (migrations 001–026 are released: add 027+).
 
 ## Project in one paragraph
 
@@ -48,8 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 21, released as **v0.14.0** (tags: v0.2.0, v0.6.0–v0.14.0; 0.3.0–0.5.0 were never tagged). Migrations 001–025 are released |
-| (sprint branches) | `sprint-17` … `sprint-21` were merged (v0.11.0–v0.14.0) and deleted |
+| `main` | Everything up to sprint 22, released as **v0.15.0** (tags: v0.2.0, v0.6.0–v0.15.0; 0.3.0–0.5.0 were never tagged). Migrations 001–026 are released |
+| (sprint branches) | `sprint-17` … `sprint-22` were merged (v0.11.0–v0.15.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -621,5 +621,44 @@ Verified: `npm test` 286/286 and `npm run test:e2e` 34/34 (dev DB); CI-style in 
 `postgres:17` on port 5435 with only the workflow's env (+ `API_URL=http://127.0.0.1:1`): fresh install 283 + 3 skipped,
 and upgrade from v0.13.0 283 + 3 skipped. Released as **v0.14.0**.
 
-Next on the roadmap: file drag-and-drop and paste, map extras (heat maps, report filtering by map area), workflow
-parallel branches/versions, builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.
+## Sprint 22: drop and paste files, heat maps, filtering a report by the map area (roadmap item 1, 2026-10-01)
+
+Branch `sprint-22` from `main` (v0.14.0). Migration 026 is new. The parity matrix was reviewed first: its summary
+counts had drifted from the tables (now 114 rows: 53 ✅ / 29 🟡 / 26 ❌ / 6 ➖).
+
+1. **Drop and paste files**: `fileInput()` in `items.ts` adds `data-drop="<hint>"` (i18n `file.drop`, `file.drop_many`).
+   `public/app.js` wraps each such input in `.file-drop` (`dropZones()`, again on `pgapex:replaced`), delegated
+   drag events (`.dragover`), `addFiles()` (multiple: appended; single: first file) dispatches `change` (so `max_px`
+   runs). Paste: the focused field's file item, else the page's only one unless a text field has focus. A file
+   dropped outside a zone is blocked (`dropEffect = 'none'`) on pages with drop zones.
+2. **Heat maps**: map config `layer: "heat"`; `maps.ts` gives each point a `weight` (column `weight`, default 1,
+   ≤ 0 → 0). `app.js` `heatLayer()`: own `L.Layer` with a canvas in the overlay pane, radial alpha spots, colourised
+   with `HEAT_STOPS` (dataviz sequential blue 300→700, translucent at the low end; tiles are light in both themes);
+   `heatLegend()` (`.map-legend`, gradient in app.css).
+3. **Map filters a report**: map config `report: <report region id on the page>` (like facets). `report.ts`:
+   `parseArea()` (4 numbers, range-checked), `positionColumns()` (lat/lng, latitude/longitude/lon, or location),
+   `areaCondition()` (numbers only in SQL; `location` text via a regex-guarded cast; west > east = across the
+   antimeridian), `ReportState.area` from `r<id>_bb`, used in `filtered()` (so downloads too), a "Map area" chip
+   (`chip-error` when the report has no position columns). `maps.ts` passes `filter: {url (with __BB__), clear,
+   area}`; `app.js` `areaFilter()` shows "Show this area in the list" after the user moves the map, and "Show
+   everything" while filtered; a filtered page fits the map to the area.
+   **Migration 026**: `meta.import_app` (copy of 024's) remaps `config.report` for `type in ('facets', 'map')`.
+4. Builder: map settings "Show places as" (markers/heat) and "Filter a report" (`mapReportFieldset`, warns when the
+   report has no position columns); `mergeMapSettings` keeps `layer`/`report` (report must be on the page).
+   `headingOf()` now translates configured headings too.
+5. HR `hr_17_locations.sql`: page **16 "Locations"** (nav under Employees, icon `map`): heat map "Payroll by place"
+   (weight = salary), map "Offices" filtering the "Employees" report (lat/lng from work location or the office).
+6. Tests: `test/maps.test.ts` (heat data, filter URL, Chicago area rows + chip, bad areas ignored, location text and
+   antimeridian SQL, no position columns), `region-settings` (map merge), `export` (maps remapped on import),
+   `security.test.ts` sprint-22 block, e2e `test/e2e/maps.test.ts` (canvas painted, legend, button after moving,
+   filtered rows all Chicago, Show everything, no CSP violations), new `test/e2e/files.test.ts` (drop + paste saved,
+   single item takes one, text paste untouched, stray drop blocked).
+7. Docs: chapter 4 (map: layer, heat, report), chapter 16 (drop and paste), chapter 12 code map, parity (Map and
+   File browse rows, roadmap renumbered), SECURITY (map area parsing), CHANGELOG.
+
+Verified: `npm test` 294/294 and `npm run test:e2e` 37/37 (dev DB); CI-style clean worktree + throwaway `postgres:17`:
+fresh 291 + 3 skipped, upgrade from v0.14.0 291 + 3 skipped. Released as **v0.15.0**.
+
+Next on the roadmap: workflow parallel branches and versions; builder (drag-and-drop layout, code editor with SQL
+autocomplete, file-per-component export, CLI); template components and plug-ins; AI features. Smaller open items
+seen this sprint: marker clustering and several layers per map; object storage and image cropping for files.

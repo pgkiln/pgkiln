@@ -7,23 +7,23 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-01 (pgapex 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
-| App Builder and development | 4 | 5 | 6 | 0 | Solid builder and wizards, search, where used and an Advisor; no drag-and-drop, no team/AI tooling |
-| Regions | 7 | 6 | 4 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees |
-| Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
-| Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
-| Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
+| App Builder and development | 4 | 4 | 6 | 0 | Solid builder and wizards, search, where used and an Advisor; no drag-and-drop, no team/AI tooling |
+| Regions | 7 | 6 | 4 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees |
+| Items | 6 | 3 | 3 | 0 | All common items and file upload (several files per item); no rich text editor yet |
+| Logic and processing | 4 | 4 | 3 | 1 | Core APEX model complete; fewer declarative process types |
+| Security | 16 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 4 | 1 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and multi-step workflows; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **54** | **31** | **26** | **6** | 117 APEX features compared: 46% available, 26% partial |
+| **Total** | **53** | **29** | **26** | **6** | 114 APEX features compared: 46% available, 25% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -65,7 +65,7 @@ Last reviewed: 2026-10-01 (pgapex 0.13.0: map and tree regions; 0.12.0: REST mod
 | Navigation menu (side or top) | ✅ | Collapsible side menu or top bar; a drawer on tablets and phones |
 | Region display selector, tabs | ❌ | |
 | Tree | ✅ | `tree` region from id / parent id / label rows, with icons, links and the first levels open; works without JavaScript |
-| Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, configurable tile server. **Missing:** vector tiles, heat maps, bounding-box filtering of a report |
+| Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, heat maps (weighted), filtering a report by the visible map area (bounding box), configurable tile server. **Missing:** vector tiles, marker clustering, several layers per map, spatial queries on the server (PostGIS operators) |
 | Timeline, comments, media list, avatar template components | ❌ | Cards cover simple cases |
 | Template components and template directives | ❌ | `dynamic` regions can produce any HTML from SQL in the meantime |
 
@@ -81,7 +81,7 @@ Last reviewed: 2026-10-01 (pgapex 0.13.0: map and tree regions; 0.12.0: REST mod
 | E-mail, phone, URL, colour picker | ✅ | Typed inputs |
 | Read-only condition, required, help text, default | ✅ | |
 | BOOLEAN session state (26.1) | 🟡 | Stored as `true` / `false` text, which PostgreSQL casts to boolean; boolean columns map to switches |
-| File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), **several files per item** (one row per file in a child table, or a list of temporary files), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** drag-and-drop/paste, object storage, image cropping |
+| File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), **several files per item** (one row per file in a child table, or a list of temporary files), drag-and-drop and paste (26.1), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** object storage, image cropping |
 | Rich text / markdown editor | ❌ | |
 | Star rating, QR code, combobox (tags), date range | ❌ | |
 | Password reveal toggle (24.2) | ❌ | |
@@ -232,11 +232,10 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. File drag-and-drop and paste; map extras (heat maps, report filtering by map area).
-2. **Workflow:** parallel branches and versions.
-3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-4. **Template components and plug-ins.**
-5. **AI features.**
+1. **Workflow:** parallel branches and versions.
+2. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+3. **Template components and plug-ins.**
+4. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

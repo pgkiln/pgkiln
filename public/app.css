@@ -690,6 +690,11 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .file-list a { word-break: break-all; }
 .file-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; background: var(--surface-2); }
 .display-value .file-list { margin: 0; }
+.file-drop { display: grid; gap: 0.3rem; padding: 0.6rem; border: 1.5px dashed var(--border); border-radius: 8px; transition: border-color 0.15s, background-color 0.15s; }
+.file-drop input[type=file] { min-width: 0; max-width: 100%; }
+.file-drop-hint { color: var(--muted); font-size: 0.85rem; }
+.file-drop.dragover { border-color: var(--accent); background: var(--accent-soft); }
+@media (prefers-reduced-motion: reduce) { .file-drop { transition: none; } }
 
 /* ------------------------------------------------------------------ printing
    Every page prints without the navigation, toolbars and buttons; reports
@@ -802,6 +807,13 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .map-large { height: 560px; }
 @media (max-width: 600px) { .map-medium, .map-large { height: 300px; } }
 .map-list { margin-top: 0.5rem; font-size: 0.88rem; }
+.map-heat { pointer-events: none; }
+/* on the map's own (light) tiles in both themes, so fixed colours: the heat ramp of app.js */
+.map-legend { display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.5rem; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #1f2733; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); }
+.map-legend-ramp { width: 72px; height: 10px; border-radius: 3px; background: linear-gradient(to right, rgba(109, 167, 236, 0.2), rgba(109, 167, 236, 0.45) 25%, rgba(57, 135, 229, 0.65) 50%, rgba(28, 92, 171, 0.8) 75%, rgba(13, 54, 107, 0.9)); }
+.map-filter { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; max-width: calc(100vw - 6rem); }
+.map-filter .btn { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); text-decoration: none; }
+.map-filter .btn:not(.btn-hot) { background: var(--surface); }
 .map-list ul { margin: 0.4rem 0; padding-left: 1.2rem; }
 .tree-view, .tree-view ul { list-style: none; margin: 0; padding-left: 1.1rem; }
 .tree-view { padding-left: 0; }

@@ -818,3 +818,24 @@ describe('sprint 21: chart types and several files per upload item', () => {
     }
   });
 });
+
+describe('sprint 22: map areas and dropped files', () => {
+  test('a map area from the URL becomes numbers in SQL, never text', async () => {
+    const king = await as('king');
+    const { id } = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 16 and r.type = 'report'`, [appId]);
+    for (const bb of ["0,0,1,1) or (1=1", "0,0,1,1'; drop table hr.emp; --", '0,0,1,1 union select password_hash from meta.account', '1e2,0,1,1', 'NaN,0,1,1', 'Infinity,0,1,1']) {
+      const res = await king.get(`/a/hr/16?${new URLSearchParams([[`r${id}_bb`, bb]])}`);
+      assert.equal(res.statusCode, 200, bb);
+      assert.doesNotMatch(res.body, /Map area|syntax error|pgapex_runtime|\$2[aby]\$/, bb);
+    }
+    assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
+  });
+
+  test('the URLs a map uses to filter its report stay on this page', async () => {
+    const king = await as('king');
+    const page = (await king.get('/a/hr/16')).body;
+    const data = [...page.matchAll(/class="map-data">([^<]*)<\/script>/g)].map((m) => JSON.parse(m[1]));
+    for (const d of data) if (d.filter) for (const u of [d.filter.url, d.filter.clear]) assert.match(u, /^\/a\/hr\/16(\?|$)/);
+  });
+});
+

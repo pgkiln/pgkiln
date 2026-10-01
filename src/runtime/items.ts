@@ -200,13 +200,15 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
  * a remove option, and the file input.
  */
 /** The <input type="file"> of a file item, with its accept, capture and max_px attributes. */
-function fileInput(item: Item, aria: Raw) {
+function fileInput(ctx: PageContext, item: Item, aria: Raw) {
   const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number };
   // capture: open the camera on phones ("environment" = the back camera); max_px: photos are made smaller before upload (app.js)
   const capture = conf.capture === 'user' || conf.capture === 'environment' ? raw(` capture="${conf.capture}"`) : '';
   const maxPx = Number(conf.max_px) >= 200 && Number(conf.max_px) <= 8000 ? raw(` data-max-px="${Math.round(Number(conf.max_px))}"`) : '';
   const multiple = isMultiple(item) ? raw(' multiple') : '';
-  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx}${aria}>`;
+  // data-drop: app.js turns the field into a drop zone that also takes pasted files, with this hint
+  const drop = ctx.locale.t(isMultiple(item) ? 'file.drop_many' : 'file.drop');
+  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx} data-drop="${drop}"${aria}>`;
 }
 
 /** A multiple file item: its files (stored and new), each with a remove box, and the file input. */
@@ -229,7 +231,7 @@ async function fileListControl(ctx: PageContext, item: Item, editable: boolean, 
       )}</ul>`
     : '';
   if (!editable) return html`<div class="display-value" id="${item.name}">${list || t('file.none')}</div>`;
-  return html`${list}${fileInput(item, aria)}<small class="help">${t('file.max_files', { max: String(maxFiles(item)) })}</small>`;
+  return html`${list}${fileInput(ctx, item, aria)}<small class="help">${t('file.max_files', { max: String(maxFiles(item)) })}</small>`;
 }
 
 async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria: Raw) {
@@ -250,7 +252,7 @@ async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria
       </div>`
     : '';
   if (!editable) return html`<div class="display-value" id="${id}">${current || t('file.none')}</div>`;
-  return html`${current}${fileInput(item, aria)}`;
+  return html`${current}${fileInput(ctx, item, aria)}`;
 }
 
 export async function renderItems(ctx: PageContext, items: Item[], hidden: Set<string> = new Set()) {

@@ -368,6 +368,26 @@ The map zooms to fit all places. Attributes:
 | `height` | `small`, `medium` (default) or `large` |
 | `zoom` | Zoom level (1–19) when there is one place; default 14 |
 | `empty` | Text when no row has a position |
+| `layer` | `markers` (default) or `heat`: a heat map of the places, each weighted by its `weight` column (default 1) |
+| `report` | The id of a report region on the same page that the map filters (below) |
+
+**Heat map.** With `"layer": "heat"` the places are drawn as a heat map instead of markers: where
+places (or heavier weights) are close together, the colour is darker. It suits many points, such as
+visits, incidents or sales. A legend (fewer → more) sits in the corner. GeoJSON shapes are still drawn.
+
+```sql
+select lat, lng, sal as weight from hr.emp join hr.dept using (deptno)   -- {"layer": "heat"}
+```
+
+**Filtering a report by the map area** (APEX: map as a spatial filter). Give the map
+`"report": <region id>` of an [interactive report](#report-interactive-report) on the same page.
+When the user moves or zooms the map, a **Show this area in the list** button appears. It reloads
+the page with the report showing only the rows in the map's visible area, with a removable
+**Map area** chip and a **Show everything** button on the map. The report needs position columns
+like a map's (`lat`/`lng`, `latitude`/`longitude` or `location`). Without them the chip is marked
+and nothing is filtered. The area is in the URL (`r<id>_bb=south,west,north,east`), so it can be
+bookmarked and saved with a saved report. It also applies to the report's downloads. The HR example's
+page 16 (Locations) has a heat map of the payroll and an offices map that filters the employee list.
 
 Below the map a collapsed list names every place, so the data is reachable without JavaScript and
 by screen readers. The map uses [Leaflet](https://leafletjs.com) (shipped with pgapex, loaded only

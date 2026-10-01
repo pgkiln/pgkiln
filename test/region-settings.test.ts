@@ -6,7 +6,7 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import {
-  type Allowed, mergeCalendarSettings, mergeCardsSettings, mergeChartSettings, mergeFacetsSettings, mergeGridSettings,
+  type Allowed, mergeCalendarSettings, mergeCardsSettings, mergeChartSettings, mergeFacetsSettings, mergeGridSettings, mergeMapSettings,
 } from '../src/builder/region-settings.ts';
 import { Browser } from './helpers.ts';
 
@@ -142,5 +142,13 @@ describe('region settings: designer', () => {
     b.lastCsrf = 'forged';
     assert.equal((await b.submit(url(cards), {})).statusCode, 403);
     assert.equal((await new Browser(app).post(url(cards), {})).statusCode, 302, 'developers only');
+  });
+});
+
+describe('map settings', () => {
+  test('a heat layer and a report on the page to filter; other values are dropped', () => {
+    assert.deepEqual(mergeMapSettings({}, { layer: 'heat', report: '19' }, allowed), { layer: 'heat', report: 19 });
+    assert.deepEqual(mergeMapSettings({ layer: 'heat', report: 19 }, { layer: 'markers', report: '' }, allowed), {});
+    assert.deepEqual(mergeMapSettings({}, { layer: 'nuclear', report: '20' }, allowed), {}, 'only a report of this page');
   });
 });

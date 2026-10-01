@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Drop and paste files** (APEX 26.1: paste files): file items are drop zones, and a pasted file
+  (a screenshot, a copied file) goes into the focused file item, or the page's only one. Text
+  fields keep their normal paste; a file dropped next to a zone doesn't open in the browser.
+- **Heat maps** (`"layer": "heat"` on a map region): places drawn as a heat map, weighted by a
+  `weight` column, with a legend.
+- **Filter a report by the map area** (`"report": <id>` on a map region; APEX: map bounding box):
+  after moving the map, "Show this area in the list" filters the report on the same page to the
+  visible area (its lat/lng or location columns), with a "Map area" chip. Migration 026 keeps the
+  link when an application is imported. Both are in the builder's map settings.
+- HR example: page 16 "Locations" (a payroll heat map, and an offices map that filters the
+  employee list).
+
+### Changed
+- Report column headings set in the region's configuration are translated like generated ones.
+
 ## [0.14.0] - 2026-10-01
 
 ### Added

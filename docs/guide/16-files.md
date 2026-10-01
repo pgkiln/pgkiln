@@ -26,6 +26,17 @@ A `file` item shows a file input. When the page is submitted, the uploaded file 
 upload is kept when validation fails, so users don't have to choose the file again. Where the
 file goes next depends on the item.
 
+### Dropping and pasting files
+
+With JavaScript, every file item is also a **drop zone**: users can drag files from their desktop
+onto the field, or **paste** them (APEX 26.1: paste files), for example a screenshot or a file copied
+in the file manager. A paste goes to the file item that has focus, or to the page's only file item
+when no text field has focus, so pasting text into a text field works as usual. A multiple file
+item adds the dropped or pasted files to the ones already chosen; a single file item takes the
+first one. The files go into the file input, so they are checked and saved exactly like chosen
+files (and photos are made smaller first with `max_px`). A file dropped next to a drop zone doesn't
+open in the browser, so the form isn't lost.
+
 ### In a table column (form regions)
 
 Give the item a `source_column` of type `bytea` in a [form region](04-pages-and-regions.md#form).

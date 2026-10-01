@@ -69,6 +69,51 @@ describe('map and tree regions', () => {
     await context.close();
   });
 
+  test('a heat map paints its canvas with a legend; moving the other map offers to filter the list to that area', async () => {
+    const { context, page } = await signedIn();
+    await page.goto(`${base}/a/hr/16`);
+    const heat = page.locator('canvas.map-heat');
+    await heat.waitFor();
+    // some pixels of the heat layer are painted (in the ramp's blue)
+    const painted = await heat.evaluate((c: HTMLCanvasElement) => {
+      const px = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < px.length; i += 4) if (px[i] > 0 && px[i - 1] > px[i - 3]) n++;
+      return n;
+    });
+    assert.ok(painted > 100, `painted pixels: ${painted}`);
+    assert.equal(await page.locator('.map-legend').count(), 1);
+    // the offices map: no button until the user moves the map
+    const offices = page.locator('[data-map]').nth(1);
+    const go = page.locator('.map-filter-go');
+    assert.equal(await go.isVisible(), false);
+    await offices.scrollIntoViewIfNeeded();
+    // zoom in on Chicago (the marker west of the lakes)
+    const chicago = await page.evaluate(() => {
+      const maps = document.querySelectorAll('[data-map]');
+      const icons = [...maps[1].querySelectorAll('.leaflet-marker-icon')].map((m) => m.getAttribute('title'));
+      return icons.indexOf('SALES');
+    });
+    const marker = offices.locator('.leaflet-marker-icon').nth(chicago);
+    const box = (await marker.boundingBox())!;
+    const map = (await offices.boundingBox())!;
+    for (let i = 0; i < 3; i++) {
+      await offices.dblclick({ position: { x: box.x + box.width / 2 - map.x, y: box.y + box.height - 4 - map.y } });
+      await page.waitForTimeout(500);
+    }
+    await go.waitFor();
+    await Promise.all([page.waitForNavigation(), go.click()]);
+    assert.match(decodeURIComponent(page.url()), /\?r\d+_bb=-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?$/);
+    const rows = await page.locator('table.report tbody tr').allTextContents();
+    assert.ok(rows.length > 0 && rows.every((r) => r.includes('Chicago')), rows.join(' | '));
+    assert.equal(await page.locator('.chip', { hasText: 'Map area' }).count(), 1);
+    // "Show everything" takes the filter away again
+    await Promise.all([page.waitForNavigation(), page.locator('.map-filter-clear').click()]);
+    assert.equal(await page.locator('.chip', { hasText: 'Map area' }).count(), 0);
+    assert.deepEqual(await violations(page), []);
+    await context.close();
+  });
+
   test('the tree opens and closes; nodes link to the record', async () => {
     const { context, page } = await signedIn();
     await page.goto(`${base}/a/hr/8`);
