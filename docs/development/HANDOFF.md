@@ -47,7 +47,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 |---|---|
 | `main` | Everything up to sprint 13, released as **v0.9.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0, v0.9.0; 0.3.0–0.5.0 were never tagged). Migrations 001–016 are released |
 | `sprint-14` | Merged into `main` (not released yet); can be deleted |
-| `sprint-15` | Document templates, JSON loading (see Sprint 15), pushed; not merged yet |
+| `sprint-15` | Merged into `main` (not released yet); can be deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
