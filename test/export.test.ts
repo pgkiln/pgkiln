@@ -15,6 +15,7 @@ const NOT_EXPORTED = new Set([
   'activity_log',
   'sso_pending',
   'saved_report', // users' saved interactive reports
+  'persistent_login', // "Remember me" tokens of this installation's accounts
 ]);
 
 /** Where each exported table appears in the document. */

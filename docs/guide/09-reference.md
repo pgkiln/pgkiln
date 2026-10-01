@@ -58,7 +58,9 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `authentication` | text | `app_users` or `none` |
 | `access_control` | text | `assigned` (only accounts with access) or `any_user` |
 | `local_login` | boolean | Offer username and password sign-in |
-| `sso_providers` | text[] | Names of identity providers offered on the login page |
+| `sso_providers` | text[] | Names of identity providers (OpenID Connect or SAML) offered on the login page |
+| `ldap_directories` | text[] | LDAP directories the password form checks, after local accounts |
+| `remember_me_days` | int | Days a "Keep me signed in" sign-in lasts; NULL = not offered |
 | `db_role` | text | Database role every request runs as |
 | `api_role` | text | Database role of REST API tokens for this app (PostgREST switches to it) |
 | `language`, `languages`, `language_from` | text, text[], text | Primary language, translated languages, `browser` / `user` / `primary` |
@@ -139,9 +141,13 @@ needed and grants access; deleting revokes access.
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
 | `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
 | `developer` | Builder accounts | no |
-| `auth_provider` | OpenID Connect providers: `name`, `display_name`, `issuer`, `client_id`, `client_secret`, `scopes`, `username_claim`, `groups_claim`, `auto_create`, `enabled` | no |
+| `auth_provider` | OpenID Connect and SAML providers (`protocol`; SAML: `idp_sso_url`, `idp_cert`): `name`, `display_name`, `issuer`, `client_id`, `client_secret`, `scopes`, `username_claim`, `groups_claim`, `auto_create`, `enabled` | no |
 | `account_identity` | Links an account to a provider's subject (`provider_id`, `subject`, `account_id`) | no |
-| `sso_pending` | Sign-ins in progress (state, PKCE verifier, nonce; kept for 10 minutes) | no |
+| `sso_pending` | Sign-ins in progress (state, PKCE verifier, nonce or SAML request ID; kept for 10 minutes) | no |
+| `saml_request` | SAML AuthnRequest IDs awaiting their response (used once) | no |
+| `ldap_directory` | LDAP directories: URL, service account (write-only password), user and group search | no |
+| `ldap_identity` | Links an account to a directory entry (`directory_id`, `subject` = entryUUID or DN) | no |
+| `persistent_login` | "Keep me signed in" tokens: `token_hash`, `account_id`, `app_id`, `groups`, `method`, `expires_at` | no |
 | `instance_setting` | Secrets, e.g. the URL checksum key | no |
 | `setting` | Account settings: `password_min_length`, `password_require_mixed`, `password_lifetime_days` | yes (read) |
 | `text_message` | Per app: `name`, `language`, `text` | yes |
@@ -189,6 +195,9 @@ Usable in navigation entries and cards (`icon` column):
 | `GET/POST /a/:alias/login`, `POST /a/:alias/logout` | Sign in and out |
 | `GET /a/:alias/sso/:provider` | Start single sign-on with a provider |
 | `GET /sso/callback/:provider` | OpenID Connect redirect URI |
+| `POST /sso/saml/:provider`, `POST /sso/saml/:provider/finish` | SAML assertion consumer service (and the same-site step after it) |
+| `GET /sso/saml/:provider/metadata` | SAML service provider metadata |
+| `POST /a/:alias/account/devices` | Sign out on all devices ("Keep me signed in") |
 | `POST /a/:alias/password` | Change an expired password while signing in |
 | `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme` | My account, own password, the light/dark switch |
 | any page `?lang=xx` | Switch the language for the session |

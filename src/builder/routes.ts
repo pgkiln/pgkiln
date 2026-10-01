@@ -325,6 +325,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const providers = (await owner.query('select name, display_name, enabled from meta.auth_provider order by display_name')).rows;
+    const directories = (await owner.query('select name, display_name, enabled from meta.ldap_directory order by display_name')).rows;
     const main = html`${appHeader(a, 'settings')}
       <div class="columns">
         ${region('Application settings', html`
@@ -343,6 +344,11 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <h3>Sign-in methods</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
+            ${directories.length
+              ? directories.map((d) => html`<div class="field"><label class="check"><input type="checkbox" name="ldap_directories" value="${d.name}"${a.ldap_directories.includes(d.name) ? raw(' checked') : ''}> Passwords from LDAP: ${d.display_name}${d.enabled ? '' : ' (disabled)'}</label></div>`)
+              : html`<p class="muted">No LDAP directories configured. <a href="${BASE}/users/directories">Add one</a> to check passwords against LDAP or Active Directory.</p>`}
+            <small class="help">LDAP passwords are checked by the username and password form, after local accounts, so keep that method on.</small>
+            <div class="form-grid">${input('remember_me_days', '"Keep me signed in" for (days)', a.remember_me_days ?? '', { type: 'number', placeholder: 'empty: not offered', help: 'Offers a checkbox on the sign-in form (APEX: persistent authentication). The browser stays signed in for this many days after the sign-in, also when the session ends; signing out, a new password, deactivation or removed access ends it. 1 to 365.' })}</div>
             ${providers.length
               ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
               : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
@@ -371,7 +377,7 @@ export async function builderRoutes(app: FastifyInstance) {
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
-          ${a.authentication !== 'none' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
+          ${a.authentication !== 'none' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
           <li>Public pages: ${(await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n}</li>
@@ -388,7 +394,7 @@ export async function builderRoutes(app: FastifyInstance) {
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
-                date_format = $14, timestamp_format = $15, updated_at = now() where id = $1`,
+                date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
@@ -403,7 +409,9 @@ export async function builderRoutes(app: FastifyInstance) {
          [...new Set((b.languages ?? '').split(',').map((l) => l.trim().toLowerCase()).filter((l) => /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(l) && l !== (b.language?.trim().toLowerCase() || 'en')))],
          ['primary', 'user'].includes(b.language_from ?? '') ? b.language_from : 'browser',
          b.date_format?.trim() || null,
-         b.timestamp_format?.trim() || null],
+         b.timestamp_format?.trim() || null,
+         Number.isInteger(Number(b.remember_me_days)) && Number(b.remember_me_days) >= 1 && Number(b.remember_me_days) <= 365 ? Number(b.remember_me_days) : null,
+         ([] as string[]).concat((b.ldap_directories as unknown as string | string[] | undefined) ?? []).filter(Boolean)],
       );
       flash(s, 'Settings saved.');
     } catch (e) {

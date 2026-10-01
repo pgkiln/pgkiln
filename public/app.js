@@ -461,3 +461,9 @@ document.addEventListener('change', (e) => {
   head.checked = boxes.every((b) => b.checked);
   head.indeterminate = !head.checked && boxes.some((b) => b.checked);
 });
+
+// SAML: post the identity provider's response on to pgapex itself (same-site, so the
+// sign-in's browser cookie comes along). The button is there for browsers without script.
+document.addEventListener('DOMContentLoaded', () => {
+  for (const form of document.querySelectorAll('form[data-autosubmit]')) form.submit();
+});

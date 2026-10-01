@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.9.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection; CSP without `unsafe-inline`; builder search, where used, Advisor and Top SQL).
+Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML and "Keep me signed in").
 
 ## At a glance
 
@@ -17,13 +17,13 @@ Last reviewed: 2026-10-01 (pgapex 0.9.0: settings forms for all region types; re
 | Regions | 6 | 5 | 6 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps missing |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
-| Security | 15 | 1 | 3 | 2 | On par or stricter (CSP without `unsafe-inline`); no LDAP/SAML, no "remember me" |
+| Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 4 | 4 | 2 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 2 | 3 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX loading, report PDFs; no document templates or REST data sources |
 | Workflow, automation and AI | 0 | 1 | 5 | 0 | Scheduled automations; approvals are hand-built in PL/pgSQL (see the HR sample) |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **47** | **31** | **32** | **6** | 116 APEX features compared: 41% available, 27% partial |
+| **Total** | **49** | **31** | **31** | **6** | 117 APEX features compared: 42% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -125,9 +125,10 @@ Last reviewed: 2026-10-01 (pgapex 0.9.0: settings forms for all region types; re
 | Content Security Policy without `unsafe-inline` (26.1) | ✅ | Scripts and styles: `script-src 'self'`, `style-src 'self' 'nonce-…'`. No inline scripts or `style` attributes; theme colours and chart geometry are in one `<style>` with a fresh nonce per response |
 | Session sharing between applications | 🟡 | Each app has its own session; with OpenID Connect the second sign-in is silent. APEX: workspace sharing or a custom cookie |
 | Forgot password for end users | ➖ | pgapex sends no mail. As in APEX apps, users ask an administrator for a temporary password (change on first use) |
-| Database accounts, LDAP, SAML, HTTP-header authentication | ❌ | |
+| LDAP and SAML authentication | ✅ | LDAP / Active Directory (search + bind, StartTLS/LDAPS, groups → roles) and SAML 2.0 (signed assertions, SP metadata), next to local passwords and OpenID Connect |
+| Database accounts, HTTP-header authentication | ❌ | |
 | Custom authentication | ❌ | |
-| Persistent authentication ("remember me") | ❌ | APEX 22.1+ |
+| Persistent authentication ("remember me") | ✅ | Per app, 1–365 days; rotating one-time tokens, revoked on sign-out, new password, deactivation or removed access; "Sign out on all devices" |
 | App launcher / portal | ➖ | Not in APEX either; each app has its own URL |
 
 ## User interface
@@ -231,13 +232,12 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **LDAP and SAML** authentication; "remember me".
-2. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
-3. **Approvals / workflow** built on the metadata model.
-4. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
-5. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
-6. **Template components and plug-ins.**
-7. **AI features.**
+1. **Document printing:** document templates (e.g. HTML templates rendered to PDF) for letters and invoices, and JSON in data loading.
+2. **Approvals / workflow** built on the metadata model.
+3. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+4. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
+5. **Template components and plug-ins.**
+6. **AI features.**
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

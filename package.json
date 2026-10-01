@@ -44,9 +44,11 @@
     "@fastify/formbody": "^9.0.0",
     "@fastify/multipart": "^10.1.2",
     "@fastify/static": "^10.1.5",
+    "@node-saml/node-saml": "^5.1.0",
     "fastify": "^5.12.5",
     "fflate": "^0.8.3",
     "jose": "^6.2.12",
+    "ldapts": "^9.2.0",
     "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "read-excel-file": "^9.3.10"
@@ -57,6 +59,7 @@
     "@types/pg": "^8.23.1",
     "playwright": "^1.63.0",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "xml-crypto": "^6.3.2"
   }
 }

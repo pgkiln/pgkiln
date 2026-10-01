@@ -28,6 +28,9 @@ export interface Provider {
   groups_claim: string;
   auto_create: boolean;
   enabled: boolean;
+  protocol: 'oidc' | 'saml';
+  idp_sso_url: string | null;
+  idp_cert: string | null;
 }
 
 interface Discovery {
@@ -179,7 +182,8 @@ export async function finishSignIn(p: Provider, params: URLSearchParams, browser
 }
 
 /** Find the account for this identity, link it on first use, or create it (auto_create). */
-async function resolveAccount(p: Provider, payload: JWTPayload, username: string) {
+/** The account for an identity: linked by subject, else by username (once), else created when allowed. */
+export async function resolveAccount(p: Pick<Provider, 'id' | 'auto_create'>, payload: { sub?: string; name?: unknown; email?: unknown }, username: string) {
   return owner.tx(async (c) => {
     const linked = await c.query(
       `select a.username, a.active from meta.account_identity i join meta.account a on a.id = i.account_id

@@ -17,6 +17,9 @@ src/
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
+  saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
+  ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
+  remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
@@ -60,6 +63,7 @@ src/
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
+    ldap.ts                Users → LDAP directories
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)

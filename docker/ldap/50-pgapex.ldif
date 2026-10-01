@@ -1,0 +1,41 @@
+# Demo directory for LDAP sign-in (docker compose --profile ldap up -d ldap).
+# Base dc=example,dc=org; admin cn=admin,dc=example,dc=org / admin.
+# Users (password = username + "-ldap", so blake's differs from his local HR password): blake (an HR account: linked on first sign-in),
+# dora (no account: created when the directory has auto-create), eve (no groups).
+
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=org
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=blake,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: blake
+cn: Blake Manager
+sn: Blake
+mail: blake@example.org
+userPassword: blake-ldap
+
+dn: uid=dora,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: dora
+cn: Dora Directory
+sn: Directory
+mail: dora@example.org
+userPassword: dora-ldap
+
+dn: uid=eve,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: eve
+cn: Eve Nogroups
+sn: Nogroups
+userPassword: eve-ldap
+
+dn: cn=hr-managers,ou=groups,dc=example,dc=org
+objectClass: groupOfNames
+cn: hr-managers
+member: uid=blake,ou=people,dc=example,dc=org
+member: uid=dora,ou=people,dc=example,dc=org

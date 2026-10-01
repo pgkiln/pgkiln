@@ -28,6 +28,23 @@ services:
       - "8180:8180"
     volumes:
       - ./docker/keycloak:/opt/keycloak/data/import:ro
+  # Optional LDAP directory for trying LDAP sign-in locally:
+  #   docker compose --profile ldap up -d ldap     -> ldap://127.0.0.1:3890
+  #   psql "$DATABASE_URL" -f examples/ldap-directory.sql
+  # Admin cn=admin,dc=example,dc=org / admin; users in docker/ldap/50-pgapex.ldif.
+  ldap:
+    image: osixia/openldap:1.5.0
+    container_name: pgapex-ldap
+    profiles: [ldap]
+    command: --copy-service
+    environment:
+      LDAP_ORGANISATION: Example
+      LDAP_DOMAIN: example.org
+      LDAP_ADMIN_PASSWORD: admin
+    ports:
+      - "3890:389"
+    volumes:
+      - ./docker/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
   # Optional REST API for application schemas (PostgREST alongside pgapex):
   #   docker compose --profile api up -d postgrest     -> http://127.0.0.1:3000
   # Tokens are signed with API_JWT_SECRET (.env), which pgapex uses to issue them.

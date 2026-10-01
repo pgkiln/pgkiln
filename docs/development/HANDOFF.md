@@ -36,6 +36,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
   logged in as an account without access to this repo: give the owner compare URLs instead of
   opening PRs.
 - The example app `examples/tasks-app.sql` (ann / ann-password) may be installed in the dev DB.
+- Demo LDAP: `docker compose --profile ldap up -d ldap` on port **3890** (3389 clashes with Windows RDP under WSL).
+  The dev Keycloak has a SAML client; `examples/keycloak-saml.sql` registers it (reads Keycloak's certificate).
 - The dev DB loads `pg_stat_statements` (set with `ALTER SYSTEM` on 2026-10-01; `docker-compose.yml`
   passes it for new containers). `plpgsql_check` is not in the `postgres:17` image.
 
@@ -44,7 +46,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 13, released as **v0.9.0** (tags: v0.2.0, v0.6.0, v0.7.0, v0.8.0, v0.9.0; 0.3.0–0.5.0 were never tagged). Migrations 001–016 are released |
-| (sprint branches) | `sprint-11` … `sprint-13` are merged (in v0.9.0) and can be deleted. The next sprint starts `sprint-14` from `main` |
+| `sprint-14` | Remember me, LDAP, SAML (see Sprint 14), pushed; not merged yet |
+| (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
 Older sprint branches were merged and deleted.
@@ -414,3 +417,31 @@ Verified: `npm test` 200/200 (dev DB), fresh postgres:17 install 196 + 4 skipped
 `npm run test:e2e` 24/24.
 
 Next on the roadmap: LDAP and SAML authentication, "remember me"; then document printing.
+
+## Sprint 14: authentication (owner: "yes please proceed", 2026-10-01)
+
+Branch `sprint-14` from `main` (v0.9.0). Migrations 001–016 are released; 017–019 are new.
+
+1. **Keep me signed in: done.** `017_remember_me.sql` (`meta.app.remember_me_days`, `meta.persistent_login`
+   owner-only, triggers revoke on new password / deactivation / removed access), `src/remember.ts`
+   (issue, use = delete-and-return then re-issue with the same expiry, forget, count). `completeLogin()` is
+   now `signIn()` + redirect; `loadContext()` restores a remembered browser. My account → Sign out on all
+   devices. `test/remember.test.ts` (7).
+2. **LDAP: done.** `018_ldap.sql` (`meta.ldap_directory`, `meta.ldap_identity`, `meta.app.ldap_directories`),
+   `src/ldap.ts` (ldapts; only pass tlsOptions for ldaps://, it switches to TLS otherwise), login POST tries
+   directories after local accounts; builder `src/builder/ldap.ts`; compose profile `ldap` (osixia/openldap,
+   seed `docker/ldap/50-pgapex.ldif`); CI service `ldap`. `test/ldap.test.ts` (8; adds its own entries, skips
+   without a server; clears login failures so the throttle doesn't trip).
+3. **SAML: done.** `019_saml.sql` (auth_provider.protocol/idp_sso_url/idp_cert, `meta.saml_request`),
+   `src/saml.ts` (@node-saml/node-saml 5; CacheProvider on meta.saml_request, values must be ISO dates; the
+   assertion issuer is checked by us: node-saml only checks it for logout messages), routes: ACS relay page
+   (`data-autosubmit`, app.js) → `/finish` with the Lax cookie; `/metadata`. Builder provider form has a
+   protocol and SAML fields. `test/saml.test.ts` (6; mock IdP with openssl keys + xml-crypto signatures;
+   every refusal asserts its reason). Verified against the real Keycloak in a browser (carol → manager).
+
+Verified: `npm test` 221/221, `npm run test:e2e` 24/24. One earlier full run had a single failure in
+`security.test.ts` "accounts lock after repeated failures" (message not captured); it didn't come back in
+2 more full runs and 6 single runs. If it shows up again, capture the assertion (suspects: the per-IP
+throttle shared by all tests from 127.0.0.1, or a dev server on the same database).
+
+Next on the roadmap: document printing (templates → PDF), approvals / workflow.
