@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-01
+
+### Added
+- **Map region** (`map`, migration 025; APEX: Map region): markers from `lat`/`lng` columns or
+  `location` text, GeoJSON lines and areas, popups with links, sized small/medium/large. Leaflet
+  1.9 ships with pgapex and loads only on pages with a map; tiles come from OpenStreetMap or the
+  server in `MAP_TILE_URL`, the only image origin added to the Content-Security-Policy.
+- **Tree region** (`tree`; APEX: Tree): id/parent id/label rows as an expandable tree with icons
+  and links, drawn on the server (works without JavaScript).
+- Builder settings forms for both; the Advisor checks their SQL. The HR example maps its offices
+  and shows its reporting lines as a tree.
+
 ## [0.12.0] - 2026-10-01
 
 ### Added

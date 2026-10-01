@@ -77,7 +77,7 @@ export interface Region {
   id: number;
   seq: number;
   title: string | null;
-  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows';
+  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;

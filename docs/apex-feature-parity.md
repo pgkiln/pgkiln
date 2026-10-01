@@ -7,14 +7,14 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-01 (pgapex 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 4 | 5 | 6 | 0 | Solid builder and wizards, search, where used and an Advisor; no drag-and-drop, no team/AI tooling |
-| Regions | 6 | 5 | 6 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps missing |
+| Regions | 7 | 6 | 4 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees |
 | Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
 | Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
@@ -23,7 +23,7 @@ Last reviewed: 2026-10-01 (pgapex 0.12.0: REST modules in the builder; 0.11.0: w
 | Data and integration | 4 | 1 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and multi-step workflows; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **53** | **30** | **28** | **6** | 117 APEX features compared: 45% available, 26% partial |
+| **Total** | **54** | **31** | **26** | **6** | 117 APEX features compared: 46% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -34,7 +34,7 @@ Last reviewed: 2026-10-01 (pgapex 0.12.0: REST modules in the builder; 0.11.0: w
 | App Builder: create, edit, delete, run apps | ✅ | Builder at `/builder` |
 | Create application wizard | 🟡 | Blank app with a dedicated database role and schema. No "from a spreadsheet", no blueprints (26.1) |
 | Create page wizards | 🟡 | *Report and form* and *Interactive grid* from any table; other page types start blank |
-| Page Designer | 🟡 | Component tree and grouped property editor; settings forms for report, grid, chart, cards, calendar and faceted search regions. No drag-and-drop layout grid; no code editor with autocomplete |
+| Page Designer | 🟡 | Component tree and grouped property editor; settings forms for report, grid, chart, cards, calendar, faceted search, map and tree regions. No drag-and-drop layout grid; no code editor with autocomplete |
 | Shared components | 🟡 | Navigation menu, authorization schemes, lists of values, application items and processes, access control, globalization. No generic lists, templates, plug-ins or build options |
 | Export / import | ✅ | `meta.export_app()` / `meta.import_app()`: portable JSON, also in the builder |
 | APEXlang: human-readable, diffable app files; static IDs (26.1) | 🟡 | The JSON export is diffable, but there's no file-per-component layout, CLI or static IDs |
@@ -64,8 +64,8 @@ Last reviewed: 2026-10-01 (pgapex 0.12.0: REST modules in the builder; 0.11.0: w
 | Breadcrumb | ✅ | Automatic, from the page's breadcrumb parent |
 | Navigation menu (side or top) | ✅ | Collapsible side menu or top bar; a drawer on tablets and phones |
 | Region display selector, tabs | ❌ | |
-| Tree | ❌ | Recursive CTEs or `ltree` work in a report (see the org chart in the HR sample) |
-| Map region (26.1: vector tiles, bounding box) | ❌ | PostGIS provides the data side ([extensions](guide/15-extensions.md)) |
+| Tree | ✅ | `tree` region from id / parent id / label rows, with icons, links and the first levels open; works without JavaScript |
+| Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, configurable tile server. **Missing:** vector tiles, heat maps, bounding-box filtering of a report |
 | Timeline, comments, media list, avatar template components | ❌ | Cards cover simple cases |
 | Template components and template directives | ❌ | `dynamic` regions can produce any HTML from SQL in the meantime |
 
@@ -232,7 +232,7 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. **Map and tree regions**; more chart types; several files per upload item, drag-and-drop.
+1. More chart types; several files per upload item, drag-and-drop; map extras (heat maps, report filtering by map area).
 2. **Workflow:** parallel branches and versions.
 3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
 4. **Template components and plug-ins.**

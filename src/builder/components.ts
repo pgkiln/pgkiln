@@ -57,9 +57,9 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     defaults: { type: 'report', columns: 12, template: 'standard' },
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'static', 'dynamic'], group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree', 'static', 'dynamic'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
-        help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
+        help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
       { name: 'table_name', label: 'Table (form, grid)', kind: 'text', help: 'e.g. sales.orders', group: 'Source' },
       { name: 'pk_column', label: 'Primary key column (form, grid)', kind: 'text', group: 'Source' },
       { name: 'pk_item', label: 'Primary key item (form)', kind: 'upper', group: 'Source' },

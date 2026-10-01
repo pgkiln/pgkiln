@@ -777,6 +777,22 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
   .t-main { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 }
 
+/* Map and tree regions */
+.map { width: 100%; border-radius: 8px; border: 1px solid var(--border); z-index: 0; }
+.map-small { height: 240px; }
+.map-medium { height: 380px; }
+.map-large { height: 560px; }
+@media (max-width: 600px) { .map-medium, .map-large { height: 300px; } }
+.map-list { margin-top: 0.5rem; font-size: 0.88rem; }
+.map-list ul { margin: 0.4rem 0; padding-left: 1.2rem; }
+.tree-view, .tree-view ul { list-style: none; margin: 0; padding-left: 1.1rem; }
+.tree-view { padding-left: 0; }
+.tree-view li { margin: 0.15rem 0; }
+.tree-view summary { cursor: pointer; }
+.tree-view a, .tree-view summary > span, .tree-leaf > span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.tree-leaf { padding-left: 1rem; }
+.tree-count { font-size: 0.75rem; color: var(--muted); }
+
 /* Workflow diagram (inline SVG; no style attributes) */
 .wf-wrap { overflow-x: auto; padding: 0.5rem 0; }
 .wf-diagram { display: block; width: 100%; min-width: 320px; max-width: 900px; height: auto; margin: 0 auto; }

@@ -40,6 +40,8 @@ only when true) and `authz` (an authorization scheme).
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month calendar of dated rows |
 | [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
+| [`map`](#map) | Places (markers) and shapes on an interactive map |
+| [`tree`](#tree) | Rows with a parent as an expandable tree |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
@@ -320,6 +322,49 @@ Typical layout: facets region with `columns: 3` and template `collapsible`, repo
 `columns: 9`. On phones the facets stack above the report.
 
 ---
+
+### `map`
+
+**Source**: a SELECT with one row per place. The position comes from `lat` and `lng` (or
+`latitude`/`longitude`), or from a `location` column holding `latitude,longitude` text (what a
+[`location` item](05-items.md) stores). Optional columns: `title` and `body` (the popup), and
+`geojson` (a GeoJSON geometry or feature, e.g. PostGIS `st_asgeojson(geom)`) to draw lines and areas.
+
+```sql
+select dname as title, initcap(loc) as body, lat, lng, deptno
+  from hr.dept where lat is not null
+```
+
+The map zooms to fit all places. Attributes:
+
+| Key | Meaning |
+|---|---|
+| `link` | `{"page": 5, "items": {"P5_DEPTNO": "#deptno#"}}`: the popup links there (only when the user may open that page) |
+| `height` | `small`, `medium` (default) or `large` |
+| `zoom` | Zoom level (1–19) when there is one place; default 14 |
+| `empty` | Text when no row has a position |
+
+Below the map a collapsed list names every place, so the data is reachable without JavaScript and
+by screen readers. The map uses [Leaflet](https://leafletjs.com) (shipped with pgapex, loaded only
+on pages with a map) and tiles from OpenStreetMap. Their [tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
+suits light use; for production set `MAP_TILE_URL` (and `MAP_ATTRIBUTION`) to your own or a
+commercial tile server, e.g. `https://tiles.example.com/{z}/{x}/{y}.png`. The Content-Security-Policy
+allows images from that server only.
+
+### `tree`
+
+**Source**: a SELECT returning `id`, `parent_id` and `label`, and optionally `icon` (an icon name).
+Rows whose parent isn't in the result are the top level; no recursive query is needed.
+
+```sql
+select empno as id, mgr as parent_id, initcap(ename) || ' · ' || initcap(job) as label
+  from hr.emp
+```
+
+Attributes: `expanded` (levels open at first, default 1), `link` (as for maps; `#id#` and any other
+column), `empty`. The tree is drawn on the server with `<details>`: it works without JavaScript,
+and the browser's find-in-page opens closed branches. Clicking a label follows the link; the rest
+of the row opens and closes the branch. Up to 5000 nodes.
 
 ### `static` and `dynamic` content
 

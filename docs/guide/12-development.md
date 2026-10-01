@@ -31,6 +31,7 @@ src/
   html.ts                  auto-escaping html`` templates
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   metadata.ts              types + loaders for apps and pages
+  maptiles.ts              map tile server URL, attribution and CSP origin
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
@@ -46,8 +47,10 @@ src/
     files.ts               file items: multipart parsing, temporary files, signed downloads
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
+    maps.ts                map region (data for Leaflet, list fallback, head assets)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution, OpenAPI
+    tree.ts                tree region
     tasks.ts               task list region and task actions (approvals)
     workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit)
