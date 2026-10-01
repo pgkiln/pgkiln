@@ -57,7 +57,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       ${err ? html`<div class="alert alert-error" role="alert">${err}</div>` : ''}
       ${main}
     </main>`,
-    'builder-body',
+    'builder-body', {}, raw('<link rel="stylesheet" href="/static/code-editor.css"><script src="/static/code-editor.js" defer></script>'), // code editor (sprint 23)
   );
 }
 

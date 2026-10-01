@@ -125,7 +125,7 @@ export async function builderRoutes(app: FastifyInstance) {
           </form></div></section>
         <section class="region region-standard" id="import"><header class="region-header"><h2>Import application</h2></header><div class="region-body">
           <form method="post" action="${BASE}/import">${csrf(s)}
-            <div class="field" data-wide><label class="label" for="f_doc">Export JSON</label><textarea id="f_doc" name="doc" class="code" rows="7" required></textarea></div>
+            <div class="field" data-wide><label class="label" for="f_doc">Export JSON</label><textarea id="f_doc" name="doc" class="code" rows="7" required data-code="json"></textarea></div>
             ${input('alias', 'New alias (optional)', '')}
             <div class="buttons"><button class="btn btn-hot">Import</button></div>
           </form></div></section>
