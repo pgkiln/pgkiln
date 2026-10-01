@@ -768,3 +768,32 @@ describe('sprint 20: map and tree regions', () => {
     }
   });
 });
+
+describe('sprint 21: chart types', () => {
+  test('a report chart view only takes single-series kinds; other kinds from the URL are ignored', async () => {
+    const king = await as('king');
+    const { id } = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
+    const view = (kind: string) => king.get(`/a/hr/2?${new URLSearchParams([[`r${id}_ch`, `${kind}|job|sum|sal`], [`r${id}_v`, 'chart']])}`);
+    const pie = await view('pie');
+    assert.match(pie.body, /class="chart chart-pie"/);
+    for (const kind of ['stacked', 'combo', 'scatter', 'pie"><script>', 'pie3d']) {
+      const res = await view(kind);
+      assert.equal(res.statusCode, 200, kind);
+      assert.doesNotMatch(res.body, /class="chart chart-/, `${kind}: no chart view`);
+      assert.doesNotMatch(res.body, /<script>|alert-error/, kind);
+    }
+  });
+
+  test('chart labels and series names from the data are text, not markup', async () => {
+    await owner.query(`update hr.emp set job = '<img src=x>' where empno = 7788`);
+    try {
+      const king = await as('king');
+      const res = await king.get('/a/hr/15');
+      assert.equal(res.statusCode, 200);
+      assert.match(res.body, /&lt;img src=x&gt;/i, 'the label is shown, escaped');
+      assert.doesNotMatch(res.body, /<img src=x>/i);
+    } finally {
+      await owner.query(`update hr.emp set job = 'ANALYST' where empno = 7788`);
+    }
+  });
+});
