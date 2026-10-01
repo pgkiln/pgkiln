@@ -4,7 +4,7 @@ import { html } from './html.ts';
 export const ICONS = [
   'home', 'users', 'user', 'building', 'chart', 'table', 'list', 'calendar', 'shield', 'history',
   'settings', 'org', 'grid', 'file', 'check', 'menu', 'logout', 'plus', 'download', 'filter',
-  'database', 'code', 'activity', 'inbox', 'close', 'chevron', 'edit', 'layers', 'bolt', 'key', 'play', 'upload', 'printer', 'clock',
+  'database', 'code', 'activity', 'inbox', 'close', 'chevron', 'edit', 'layers', 'bolt', 'key', 'play', 'upload', 'printer', 'clock', 'search', 'alert',
 ] as const;
 
 export function icon(name: string | null | undefined, cls = 'icon') {
