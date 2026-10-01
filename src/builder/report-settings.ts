@@ -34,6 +34,19 @@ export async function reportColumns(appId: number, source: string | null): Promi
   }
 }
 
+/** "P3_EMPNO=#empno#, P3_X=a=b" → { P3_EMPNO: '#empno#', P3_X: 'a=b' } (item names upper case). */
+export function parseLinkItems(text: string | undefined): Record<string, string> {
+  return Object.fromEntries(
+    (text ?? '')
+      .split(',')
+      .map((x) => x.split('='))
+      .filter(([k, v]) => k?.trim() && v !== undefined)
+      .map(([k, ...v]) => [k.trim().toUpperCase(), v.join('=').trim()]),
+  );
+}
+
+export const linkItemsText = (items: Record<string, string> | undefined) => (items ? Object.entries(items).map(([k, v]) => `${k}=${v}`).join(', ') : '');
+
 interface ReportConfig {
   page_size?: number;
   searchable?: boolean;
@@ -80,7 +93,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
       <td data-label="PDF width (mm)"><input name="width_${i}" type="number" min="0" max="500" value="${cfg.pdf?.widths?.[n] ?? ''}" aria-label="PDF width of ${n}" style="max-width:6rem"></td>
     </tr>`);
 
-  const linkItems = cfg.link?.items ? Object.entries(cfg.link.items).map(([k, v]) => `${k}=${v}`).join(', ') : '';
+  const linkItems = linkItemsText(cfg.link?.items);
   return html`<h3 style="margin-top:1.5rem">Report settings</h3>
     <p class="muted" style="margin-top:0">These fields write the region's settings JSON above (other keys are kept).</p>
     ${'error' in cols ? html`<div class="alert alert-error" role="alert">The columns could not be read: ${cols.error}</div>` : ''}
@@ -168,13 +181,7 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
 
   const page = Number(b.link_page);
   if (b.link_column && cols.some((c) => c.name === b.link_column) && pages.has(page)) {
-    const items = Object.fromEntries(
-      (b.link_items ?? '')
-        .split(',')
-        .map((x) => x.split('='))
-        .filter(([k, v]) => k?.trim() && v !== undefined)
-        .map(([k, ...v]) => [k.trim().toUpperCase(), v.join('=').trim()]),
-    );
+    const items = parseLinkItems(b.link_items);
     set('link', { column: b.link_column, page, ...(Object.keys(items).length ? { items } : {}) });
   } else set('link', undefined);
   return out;

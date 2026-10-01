@@ -158,6 +158,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
           return `/builder/pages/${r.page_id}?c=region-${r.id}`;
         })(),
+        ...Object.fromEntries(
+          (await owner.query(`select distinct on (r.type) r.type, r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id
+                               where p.app_id = $1 and r.type in ('grid', 'chart', 'cards', 'calendar', 'facets') order by r.type, r.id`, [appId])).rows
+            .map((r) => [`${r.type}_region`, `/builder/pages/${r.page_id}?c=region-${r.id}`]),
+        ),
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',
