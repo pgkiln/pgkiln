@@ -11,6 +11,12 @@ All notable changes to this project are documented here. The format follows
   `scatter` (a numeric first column as the x axis) and `pie`, next to bar, column, line, area and
   donut. The interactive report's chart view also offers pie. The HR example has an "Analytics"
   page with one chart of each new kind.
+- **Several files per upload item** (`"multiple": true`; APEX: Allow Multiple Files): users choose
+  several files at once. In a form region each file becomes a row of a child table (`table`,
+  `parent_column`, `key_column`), listed with signed download links and a remove box per file;
+  without one the item holds a list of temporary files for a process. `max_files` (at most 10)
+  limits the number. The HR employee form has a "Documents" item (`hr.emp_document`, with row
+  level security). With `max_px`, every chosen photo is made smaller before upload.
 
 ## [0.13.0] - 2026-10-01
 

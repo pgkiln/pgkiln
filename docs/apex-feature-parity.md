@@ -81,7 +81,7 @@ Last reviewed: 2026-10-01 (pgapex 0.13.0: map and tree regions; 0.12.0: REST mod
 | E-mail, phone, URL, colour picker | ✅ | Typed inputs |
 | Read-only condition, required, help text, default | ✅ | |
 | BOOLEAN session state (26.1) | 🟡 | Stored as `true` / `false` text, which PostgreSQL casts to boolean; boolean columns map to switches |
-| File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** several files per item, drag-and-drop/paste, object storage, image cropping |
+| File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), **several files per item** (one row per file in a child table, or a list of temporary files), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** drag-and-drop/paste, object storage, image cropping |
 | Rich text / markdown editor | ❌ | |
 | Star rating, QR code, combobox (tags), date range | ❌ | |
 | Password reveal toggle (24.2) | ❌ | |
@@ -232,7 +232,7 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-1. Several files per upload item, drag-and-drop; map extras (heat maps, report filtering by map area).
+1. File drag-and-drop and paste; map extras (heat maps, report filtering by map area).
 2. **Workflow:** parallel branches and versions.
 3. **Builder:** drag-and-drop layout, a code editor with SQL autocomplete, a file-per-component export and CLI.
 4. **Template components and plug-ins.**
