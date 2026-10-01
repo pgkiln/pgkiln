@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-10-01
+
+### Fixed
+- Workspace Utilities → Password policy answered with a server error: it now opens the Users page
+  at Account settings.
+- A builder URL with an id that isn't a number (e.g. `/builder/apps/abc`) answered 500 with the
+  database's error message; it is now a 404.
+
 ## [0.17.0] - 2026-10-01
 
 ### Added
