@@ -42,7 +42,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
   switch (kind) {
     case 'region':
       return [
-        ...(['report', 'grid', 'chart', 'cards', 'calendar', 'dynamic'].includes(row.type) && row.source?.trim() ? [{ name: 'source', shape: 'select' as const }] : []),
+        ...(['report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() ? [{ name: 'source', shape: 'select' as const }] : []),
         { name: 'condition', shape: 'boolean' },
       ];
     case 'item':

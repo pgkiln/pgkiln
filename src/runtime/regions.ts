@@ -13,6 +13,8 @@ import { renderFacets } from './facets.ts';
 import { renderGrid } from './grid.ts';
 import { renderTasks } from './tasks.ts';
 import { renderWorkflows } from './workflows.ts';
+import { renderMap } from './maps.ts';
+import { renderTree } from './tree.ts';
 import { cell, renderReport } from './report.ts';
 
 // ---------------------------------------------------------------- buttons
@@ -136,6 +138,12 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
       break;
     case 'workflows':
       body = await renderWorkflows(ctx, r);
+      break;
+    case 'map':
+      body = await renderMap(ctx, r);
+      break;
+    case 'tree':
+      body = await renderTree(ctx, r);
       break;
     case 'dynamic':
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The

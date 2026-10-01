@@ -662,3 +662,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 })();
+
+// ------------------------------------------------------------------ map regions (Leaflet, loaded on pages with a map)
+// After DOMContentLoaded: every deferred script (Leaflet comes after app.js) has run by then.
+document.addEventListener('DOMContentLoaded', () => {
+  if (!window.L) return;
+  for (const el of document.querySelectorAll('[data-map]')) {
+    const data = JSON.parse(el.nextElementSibling.textContent);
+    const map = window.L.map(el, { scrollWheelZoom: false, tap: true });
+    window.L.tileLayer(data.tiles, { attribution: data.attribution, maxZoom: 19 }).addTo(map);
+    const popup = (p) => {
+      // built with the DOM, not HTML strings: titles and texts are data
+      const box = document.createElement('div');
+      const b = document.createElement('strong');
+      b.textContent = p.title || '';
+      box.append(b);
+      if (p.body) {
+        const d = document.createElement('div');
+        d.textContent = p.body;
+        box.append(d);
+      }
+      if (p.href) {
+        const a = document.createElement('a');
+        a.href = p.href;
+        a.textContent = data.open;
+        box.append(a);
+      }
+      return box;
+    };
+    const layers = [];
+    for (const p of data.points) layers.push(window.L.marker([p.lat, p.lng], { title: p.title || '' }).bindPopup(() => popup(p)));
+    if (data.shapes.length)
+      layers.push(window.L.geoJSON({ type: 'FeatureCollection', features: data.shapes }, { onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)) }));
+    const group = window.L.featureGroup(layers).addTo(map);
+    const bounds = group.getBounds();
+    if (data.points.length === 1 && !data.shapes.length) map.setView([data.points[0].lat, data.points[0].lng], data.zoom || 14);
+    else if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: data.zoom || 16 });
+    else map.setView([20, 0], 2);
+  }
+});

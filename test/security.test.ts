@@ -738,3 +738,33 @@ describe('sprint 19: REST modules', () => {
   });
 });
 
+
+describe('sprint 20: map and tree regions', () => {
+  test('images: only this server, data: and the tile server; no tile origin for a non-http template', async () => {
+    const { tileOrigin } = await import('../src/maptiles.ts');
+    const king = await as('king');
+    const csp = String((await king.get('/a/hr/4')).headers['content-security-policy']);
+    assert.match(csp, new RegExp(`img-src 'self' data: ${tileOrigin()!.replace(/[.*]/g, '\\$&')}(;|$)`));
+    const was = process.env.MAP_TILE_URL;
+    process.env.MAP_TILE_URL = 'javascript:alert(1)//{z}/{x}/{y}';
+    try {
+      assert.equal(tileOrigin(), null);
+    } finally {
+      if (was === undefined) delete process.env.MAP_TILE_URL;
+      else process.env.MAP_TILE_URL = was;
+    }
+  });
+
+  test('tree labels and map titles from the data are text, not markup', async () => {
+    await owner.query(`update hr.emp set ename = '<img src=x>', work_location = '1,1' where empno = 7788`);
+    try {
+      const king = await as('king');
+      for (const page of ['/a/hr/4', '/a/hr/8']) {
+        const body = (await king.get(page)).body;
+        assert.doesNotMatch(body, /<img src=x>/i, page);
+      }
+    } finally {
+      await owner.query(`update hr.emp set ename = 'SCOTT', work_location = null where empno = 7788`);
+    }
+  });
+});

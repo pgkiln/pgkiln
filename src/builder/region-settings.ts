@@ -23,7 +23,7 @@ export interface Allowed {
   reports: Map<number, string[]>; // report regions on the same page → their columns
 }
 
-export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows'] as const;
+export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree'] as const;
 type SettingsType = (typeof SETTINGS_TYPES)[number];
 
 const GRID_PAGE_SIZES = ['5', '10', '15', '25', '50', '100', '200'];
@@ -199,9 +199,32 @@ export function mergeWorkflowsSettings(config: Config, b: Body): Config {
   return out;
 }
 
+export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
+  const out = { ...config };
+  const set = setter(out);
+  set('height', b.height === 'small' || b.height === 'large' ? b.height : undefined);
+  const zoom = Number(b.zoom);
+  set('zoom', b.zoom && Number.isInteger(zoom) && zoom >= 1 && zoom <= 19 ? zoom : undefined);
+  set('empty', b.empty?.trim() || undefined);
+  set('link', mergeLink(b, a.pages));
+  return out;
+}
+
+export function mergeTreeSettings(config: Config, b: Body, a: Allowed): Config {
+  const out = { ...config };
+  const set = setter(out);
+  const levels = Number(b.expanded);
+  set('expanded', b.expanded !== undefined && b.expanded !== '' && Number.isInteger(levels) && levels >= 0 && levels <= 20 && levels !== 1 ? levels : undefined);
+  set('empty', b.empty?.trim() || undefined);
+  set('link', mergeLink(b, a.pages));
+  return out;
+}
+
 const MERGES: Record<SettingsType, (c: Config, b: Body, a: Allowed) => Config> = {
   tasks: (c, b) => mergeTasksSettings(c, b),
   workflows: (c, b) => mergeWorkflowsSettings(c, b),
+  map: mergeMapSettings,
+  tree: mergeTreeSettings,
   grid: mergeGridSettings,
   chart: (c, b) => mergeChartSettings(c, b),
   cards: mergeCardsSettings,
@@ -343,6 +366,30 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
     case 'facets':
       title = 'Faceted search settings';
       body = await facetsFields(r, pageId, appId, id);
+      break;
+    case 'map':
+      title = 'Map settings';
+      body = html`${columnsHint(await reportColumns(appId, r.source))}
+        <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas.</p>
+        <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('height')}">Height</label>
+            <select id="${id('height')}" name="height">${opt('small', 'Small', cfg.height)}${opt('', 'Medium', cfg.height)}${opt('large', 'Large', cfg.height)}</select></div>
+          <div class="field"><label class="label" for="${id('zoom')}">Zoom for a single place (1–19)</label>
+            <input id="${id('zoom')}" name="zoom" type="number" min="1" max="19" value="${cfg.zoom ?? ''}" placeholder="14"></div>
+          ${emptyField(id, cfg)}
+        </div></fieldset>
+        ${linkFieldset(id, cfg.link, await pages(), 'Each place')}`;
+      break;
+    case 'tree':
+      title = 'Tree settings';
+      body = html`${columnsHint(await reportColumns(appId, r.source), ['id', 'parent_id', 'label'])}
+        <p class="muted u-mt0">The query returns <code>id</code>, <code>parent_id</code> and <code>label</code> (and optionally <code>icon</code>); rows whose parent isn't in the result are the roots.</p>
+        <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('expanded')}">Levels open at first</label>
+            <input id="${id('expanded')}" name="expanded" type="number" min="0" max="20" value="${cfg.expanded ?? 1}"></div>
+          ${emptyField(id, cfg)}
+        </div></fieldset>
+        ${linkFieldset(id, cfg.link, await pages(), 'Each node')}`;
       break;
     case 'workflows':
       title = 'Workflow console settings';

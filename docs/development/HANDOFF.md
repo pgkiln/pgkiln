@@ -49,7 +49,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 19, released as **v0.12.0** (tags: v0.2.0, v0.6.0–v0.12.0; 0.3.0–0.5.0 were never tagged). Migrations 001–024 are released |
-| (sprint branches) | `sprint-17` … `sprint-19` were merged (v0.11.0, v0.12.0) and deleted. The next sprint starts `sprint-20` from `main` |
+| `sprint-20` | **In progress** (committed, not merged) (map and tree regions; see "Sprint 20" below). Migration 025 is new and applied to the dev DB |
+| (sprint branches) | `sprint-17` … `sprint-19` were merged (v0.11.0, v0.12.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
@@ -554,3 +555,36 @@ Branch `sprint-19`. Migration 024 is new.
 Verified: `npm test` 263/263, `npm run test:e2e` 28/28.
 
 Next on the roadmap: map and tree regions, more chart types, several files per upload item.
+
+## Sprint 20: map and tree regions (roadmap item, 2026-10-01)
+
+Branch `sprint-20`. Migration 025 is new.
+
+1. `025_map_tree.sql`: region types `map` and `tree` (only the type check; config is jsonb). Applied to the dev DB.
+2. **Map region**: `src/runtime/maps.ts` (`renderMap`: rows with `lat`/`lng` (or `latitude`/`longitude`, `lon`), or `location`
+   text "lat,lng" like the `location` item type; `title`, `body`, `geojson`; config `link`, `height` small/medium/large, `zoom`, `empty`).
+   It emits `<div data-map>` + `<script type="application/json" class="map-data">` (`<` escaped) + a `<details class="map-list">`
+   list that works without script. `mapHead(ctx)` adds Leaflet CSS/JS (deferred) only on pages with a visible map region
+   (wired into both heads in `render.ts`). Leaflet 1.9.4 (npm dependency, BSD-2) is served from `node_modules/leaflet/dist` at
+   `/static/vendor/leaflet/` (second `fastifyStatic` in `app.ts`, `decorateReply: false`). `public/app.js` draws it (markers,
+   GeoJSON, popups built with DOM, fitBounds). `src/maptiles.ts`: `MAP_TILE_URL` (default OpenStreetMap), `MAP_ATTRIBUTION`,
+   `tileOrigin()` which `security.ts` adds to CSP `img-src`.
+3. **Tree region**: `src/runtime/tree.ts` (`renderTree`: `id`, `parent_id`, `label`, optional `icon`; rows without a parent in the
+   result are roots; cycles drawn once; `<details>`, `expanded` levels open (default 1); `link`). The label is a link inside
+   `<summary>`; the rest of the row (e.g. `.tree-count`) toggles.
+4. Builder: types in `components.ts` (with column help), settings forms + merges in `region-settings.ts` (map: height, zoom,
+   empty, link; tree: expanded, empty, link), Advisor checks map/tree SQL as `select`. i18n `map.open`, `map.list`. CSS `.map*`, `.tree-view`.
+5. HR example `examples/hr/hr_14_maps.sql`: `hr.dept.lat/lng` for the 4 cities; map "Where we work" on page 4 (offices +
+   employees' `work_location`, links to page 5); tree "Organisation" on page 8 (links to page 3, a dialog; 2 levels open). Installed.
+6. Tests: `test/maps.test.ts` (4) passes. `test/e2e/maps.test.ts`: the map test passes (Leaflet, tiles stubbed with
+   `context.route` on the tile origin, markers, popup link, **no CSP violations**); the tree test opens a branch and a node's dialog
+   (`dialog.t-dialog[open] iframe`: page 3 opens as a dialog).
+7. Security tests (sprint-20 block: CSP `img-src` is exactly self, data: and the tile origin; a non-http `MAP_TILE_URL` adds
+   nothing; labels and titles are escaped). Docs: chapter 4 (map, tree), chapter 12 code map, `.env.example`, SECURITY, parity
+   (Tree ✅, Map 🟡: no vector tiles, heat maps or report filtering by map area), CHANGELOG.
+
+Verified: `npm test` 269/269, `npm run test:e2e` 30/30; upgrade from v0.12.0 in a throwaway `postgres:17` container on port 5435
+(`npm test` there passes, the PostgREST HTTP tests skipped with `API_URL=` as in CI); fresh framework-only install applies 001–025.
+
+Next on the roadmap: more chart types, several files per upload item, workflow parallel branches/versions,
+builder (drag-and-drop layout, code editor, CLI), template components and plug-ins, AI features.

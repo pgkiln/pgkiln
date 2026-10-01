@@ -49,6 +49,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: 20, fields: 2000, fieldSize: 1024 * 1024, parts: 2100 },
   });
   await app.register(fastifyStatic, { root: join(root, 'public'), prefix: '/static/' });
+  // Leaflet for map regions (BSD-2-Clause), served from the package itself
+  await app.register(fastifyStatic, { root: join(root, 'node_modules', 'leaflet', 'dist'), prefix: '/static/vendor/leaflet/', decorateReply: false });
   await app.register(runtimeRoutes);
   await app.register(accountRoutes);
   await app.register(taskRoutes);

@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { owner } from './db.ts';
+import { tileOrigin } from './maptiles.ts';
 
 let urlSecret = '';
 
@@ -46,6 +47,9 @@ declare module 'fastify' {
   }
 }
 
+// map regions load their tiles from this origin (MAP_TILE_URL)
+const MAP_TILES = tileOrigin();
+
 /** Security headers for every response. */
 export function securityHeaders(app: FastifyInstance) {
   app.decorateRequest('cspNonce', '');
@@ -65,7 +69,7 @@ export function securityHeaders(app: FastifyInstance) {
       // chart geometry) carries this response's nonce; style="" attributes are refused.
       reply.header(
         'Content-Security-Policy',
-        `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:; ` +
+        `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:${MAP_TILES ? ` ${MAP_TILES}` : ''}; ` +
           "frame-ancestors 'self'; form-action 'self'; base-uri 'none'; object-src 'none'",
       );
       // Pages contain user data: never cache them (e.g. back button after sign-out).
