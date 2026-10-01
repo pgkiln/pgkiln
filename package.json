@@ -31,12 +31,14 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "db:up": "docker compose up -d db",
-    "db:reset": "docker compose down -v && docker compose up -d db && tsx scripts/migrate.ts --seed",
+    "db:reset": "docker compose down -v && docker compose up -d db && tsx scripts/migrate.ts",
     "typecheck": "tsc --noEmit",
+    "pretest": "tsx scripts/migrate.ts --example hr",
     "test": "tsx --test --test-concurrency=1 test/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/migrate.ts --seed",
-    "setup": "docker compose up -d db && tsx scripts/migrate.ts --seed",
+    "example:hr": "tsx scripts/migrate.ts --example hr",
+    "setup": "docker compose up -d db && tsx scripts/migrate.ts",
+    "pretest:e2e": "tsx scripts/migrate.ts --example hr",
     "test:e2e": "tsx --test --test-concurrency=1 test/e2e/*.test.ts"
   },
   "dependencies": {

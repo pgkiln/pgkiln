@@ -217,7 +217,7 @@ describe('report layouts', () => {
       const raw = preview.rawPayload.toString('latin1');
       assert.match(raw, /\/MediaBox \[0 0 419\.53 595\.28\]/, 'A5');
       assert.match(raw, /\/Subtype \/Image/, 'with the logo');
-      assert.ok(pdfText(preview.rawPayload).includes('SMITH'), 'sample rows');
+      assert.ok(pdfText(preview.rawPayload).includes('Globex'), 'sample rows (made up, not from an application)');
 
       // other people get the sign-in page, not the preview or the logo
       for (const url of [`${base}/preview`, `${base}/logo`]) {

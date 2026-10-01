@@ -1,10 +1,16 @@
-// Applies db/migrations/*.sql in order (each once, in a transaction), then
-// optionally db/seed/*.sql (--seed). Uses DATABASE_URL (the owner role).
-// --root <dir> reads db/ from another directory, e.g. an older release for
-// the upgrade test: git archive v0.6.0 db | tar -x -C /tmp/old, then
-// migrate.ts --seed --root /tmp/old, then migrate.ts --seed.
+// Applies db/migrations/*.sql in order (each once, in a transaction): the
+// framework. Uses DATABASE_URL (the owner role).
+//   --example <name>  then installs the example application in examples/<name>/
+//                     (e.g. --example hr: the HR sample the tests use)
+//   --seed            releases up to 0.9 kept the HR sample in db/seed/; with --root
+//                     it installs that, otherwise it means --example hr
+//   --root <dir>      reads db/ (and db/seed/) from another directory, e.g. an older
+//                     release for the upgrade test: git archive v0.8.0 db | tar -x -C
+//                     /tmp/old; migrate.ts --seed --root /tmp/old; migrate.ts --example hr
+// Examples share one record of applied files (public.pgapex_seed, by file name),
+// so a database installed with db/seed/ carries on with examples/hr/.
 import '../src/env.ts';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import pg from 'pg';
 import { root as appRoot } from '../src/env.ts';
@@ -45,9 +51,17 @@ async function apply(dir: string, table: string) {
   }
 }
 
+const exampleArg = process.argv.indexOf('--example');
+const example = exampleArg > 0 ? process.argv[exampleArg + 1] : null;
+if (example !== null && !/^[a-z][a-z0-9_-]*$/.test(example ?? '')) throw new Error('--example needs the name of a directory in examples/, e.g. --example hr');
+
 try {
   await apply('db/migrations', 'pgapex_migration');
-  if (process.argv.includes('--seed')) await apply('db/seed', 'pgapex_seed');
+  if (process.argv.includes('--seed')) {
+    if (existsSync(join(root, 'db/seed'))) await apply('db/seed', 'pgapex_seed');
+    else await apply('examples/hr', 'pgapex_seed');
+  }
+  if (example) await apply(`examples/${example}`, 'pgapex_seed');
 } finally {
   await client.end();
 }

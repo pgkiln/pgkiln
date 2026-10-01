@@ -51,7 +51,7 @@ jobs:
           psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = 'pg_stat_statements'"
           docker restart ${{ job.services.postgres.id }}
           for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U pgapex && break; sleep 1; done
-      - run: npm run db:seed
+      # npm test installs the framework and the HR example app (the tests' fixture) first (pretest)
       - run: npm test
 
   e2e:
@@ -84,7 +84,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run db:seed
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: always()
@@ -130,8 +129,9 @@ jobs:
       - name: Install ${{ matrix.from }}
         run: |
           mkdir -p "$RUNNER_TEMP/old"
-          git archive "${{ matrix.from }}" db | tar -x -C "$RUNNER_TEMP/old"
+          # the whole release: its migrations and its HR sample (db/seed/ up to 0.9, examples/hr/ later)
+          git archive "${{ matrix.from }}" | tar -x -C "$RUNNER_TEMP/old"
           npx tsx scripts/migrate.ts --seed --root "$RUNNER_TEMP/old"
       - name: Upgrade to this commit
-        run: npm run db:seed
+        run: npm run example:hr
       - run: npm test
