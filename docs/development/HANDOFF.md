@@ -49,7 +49,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 | Branch | Status |
 |---|---|
 | `main` | Everything up to sprint 16, released as **v0.10.0** (tags: v0.2.0, v0.6.0–v0.10.0; 0.3.0–0.5.0 were never tagged). Migrations 001–021 are released |
-| (sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted. The next sprint starts `sprint-17` from `main` |
+| `sprint-17` | Workflows (see Sprint 17); merged when done |
+| (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
 | (older sprint branches) | `sprint-7` … `sprint-10` were merged and deleted |
 
@@ -493,3 +494,24 @@ Branch `sprint-16` from `main` (sprint 15 merged). Migration 021 is new.
 Verified: `npm test` 241/241, `npm run test:e2e` 24/24 (dev DB).
 
 Next on the roadmap: workflow (multi-step) on top of task definitions; map and tree regions.
+
+## Sprint 17: workflows (owner: "keep going with the next sprints, don't ask my permission", 2026-10-01)
+
+Branch `sprint-17` from `main` (v0.10.0). Migration 022 is new. The owner now wants sprints merged,
+released and continued without asking.
+
+1. **Workflows: done.** `022_workflows.sql` (`meta.workflow_definition` with steps jsonb, `meta.workflow` instances
+   with a copy of the steps, `meta.workflow_event`, `meta.task.workflow_id`, views `meta.workflows`/`workflow_events`,
+   `start_workflow`, `terminate_workflow`, `retry_workflow`, trigger `task_wakes_workflow`, region type `workflows`,
+   export section). `src/workflow.ts`: `stepProblems`, `runWorkflow`/`runWorkflows` (one step per owner transaction;
+   app SQL after `set local role`, bookkeeping after `reset role`; don't reset after an error: it masks it),
+   `startWorkflowRunner` (LISTEN pgapex_workflow + interval; started in server.ts), `workflowDiagram` (inline SVG,
+   CSS classes only). `src/runtime/workflows.ts` console + `POST /a/:alias/workflows/:id`. Builder spec + extras
+   (`src/builder/workflows.ts`), region settings, Advisor checks step SQL. HR example `hr_11_workflows.sql`
+   (ONBOARDING from the employee form's CREATE). `test/workflows.test.ts` (7; `settle()` because a running
+   `npm run dev` shares the database and its runner takes steps too), sprint-17 block in `security.test.ts`.
+2. **REST API check** (owner asked to double-check the "secure REST APIs" request): already covered by PostgREST,
+   tokens and OAuth clients; the gap is a builder for REST endpoints + OpenAPI, now roadmap item 2.
+3. **Roadmap:** the owner prioritised a **Progressive Web App for field operations and logistics** next.
+
+Verified: `npm test` 249/249, `npm run test:e2e` 24/24.

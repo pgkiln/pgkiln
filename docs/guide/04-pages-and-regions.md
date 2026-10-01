@@ -41,6 +41,7 @@ only when true) and `authz` (an authorization scheme).
 | [`calendar`](#calendar) | Month calendar of dated rows |
 | [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
+| [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
 

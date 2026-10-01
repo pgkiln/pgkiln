@@ -5,6 +5,7 @@ import { owner } from '../db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
+import { stepProblems } from '../workflow.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
@@ -68,6 +69,9 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
       return [{ name: 'query', shape: 'select' }];
     case 'task_definition':
       return [{ name: 'action_code', shape: 'statements' }];
+    case 'workflow_definition':
+      // checked step by step below
+      return [];
     default:
       return [];
   }
@@ -158,6 +162,21 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
         if (problem) findings.push({ ...problem, entry, field: label });
       }
     }
+    // workflow steps: sql code, switch conditions, task owner queries
+    for (const { kind, row } of all.filter((x) => x.kind === 'workflow_definition')) {
+      const entry = byKey.get(`${kind}-${row.id}`) ?? null;
+      for (const st of Array.isArray(row.steps) ? row.steps : []) {
+        const checks: [string, string, SqlShape][] = [];
+        if (st?.type === 'sql' && typeof st.code === 'string') checks.push([`step ${st.name}: code`, st.code, 'statements']);
+        if (st?.type === 'task' && typeof st.owners === 'string' && st.owners.trim()) checks.push([`step ${st.name}: owners`, st.owners, 'select']);
+        if (st?.type === 'switch' && Array.isArray(st.cases)) for (const cs of st.cases) if (typeof cs?.when === 'string') checks.push([`step ${st.name}: when`, cs.when, 'boolean']);
+        for (const [field, sql, shape] of checks) {
+          checked++;
+          const problem = await checkSql(c, sql, shape);
+          if (problem) findings.push({ ...problem, entry, field });
+        }
+      }
+    }
   } finally {
     await c.query('rollback').catch(() => {});
     c.release();
@@ -210,6 +229,8 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');
+    if (kind === 'workflow_definition')
+      for (const problem of stepProblems(row.steps, new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase())))) missing(e, 'Steps (JSON)', problem);
     if (kind === 'document_template') {
       const problem = templateProblem(row.template ?? '');
       if (problem) missing(e, 'Template (HTML)', problem);
