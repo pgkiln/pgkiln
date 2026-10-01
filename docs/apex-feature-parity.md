@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (unreleased, after 0.8.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection; CSP without `unsafe-inline`; builder search, where used, Advisor and Top SQL).
+Last reviewed: 2026-10-01 (pgapex 0.9.0: settings forms for all region types; report computed columns, group by, pivot, chart view and row selection; CSP without `unsafe-inline`; builder search, where used, Advisor and Top SQL).
 
 ## At a glance
 

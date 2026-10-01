@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-01
+
 ### Added
 - App Builder **Search** over every page and component of an application, and a **Used in** list
   under items, pages, lists of values, authorization schemes and report layouts.

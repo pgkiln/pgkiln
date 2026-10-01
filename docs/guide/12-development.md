@@ -114,7 +114,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0`, `v0.7.0`, `v0.8.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0`, `v0.7.0`, `v0.8.0`, `v0.9.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the
