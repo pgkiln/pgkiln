@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-01
+
 ### Added
 - **Drop and paste files** (APEX 26.1: paste files): file items are drop zones, and a pasted file
   (a screenshot, a copied file) goes into the focused file item, or the page's only one. Text
