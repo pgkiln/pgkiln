@@ -10,6 +10,7 @@ import { clientIp, createSession, destroySession, getSession, loginThrottled, lo
 import { ICON_OPTIONS } from './components.ts';
 import { APP_COLORS, appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
+import { docToFiles, filesToZip } from '../appfiles.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -313,6 +314,12 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.one('select meta.export_app($1) as doc', [a.alias]);
+    // ?format=dir: one file per component, as `pgapex export --format dir` writes it (docs/guide/18-cli.md)
+    if (req.query?.format === 'dir')
+      return reply
+        .header('content-disposition', `attachment; filename="${a.alias}.pgapex.zip"`)
+        .type('application/zip')
+        .send(Buffer.from(filesToZip(docToFiles(r.doc), a.alias)));
     return reply
       .header('content-disposition', `attachment; filename="${a.alias}.pgapex.json"`)
       .type('application/json')
