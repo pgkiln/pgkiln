@@ -266,9 +266,15 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         })(),
         ...Object.fromEntries(
           (await owner.query(`select distinct on (r.type) r.type, r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id
-                               where p.app_id = $1 and r.type in ('grid', 'chart', 'cards', 'calendar', 'facets') order by r.type, r.id`, [appId])).rows
+                               where p.app_id = $1 and r.type in ('grid', 'chart', 'cards', 'calendar', 'facets', 'template_component') order by r.type, r.id`, [appId])).rows
             .map((r) => [`${r.type}_region`, `/builder/pages/${r.page_id}?c=region-${r.id}`]),
         ),
+        template_component: `/builder/apps/${appId}/shared?c=template_component-${(await owner.one(`select id from meta.template_component where app_id = $1 and static_id = 'contact_card'`, [appId])).id}`,
+        template_import: `/builder/apps/${appId}/shared?new=template_component`,
+        column_templates: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 19 and r.type = 'report'`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',

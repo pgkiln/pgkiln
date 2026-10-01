@@ -583,7 +583,8 @@ describe('sprint 12: Content-Security-Policy without inline styles', () => {
     await dev.get('/builder/login');
     await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
     for (const url of ['/builder', `/builder/apps/${appId}`, `/builder/apps/${appId}/shared`, `/builder/apps/${appId}/settings`, `/builder/apps/${appId}/api`,
-      `/builder/apps/${appId}/globalization`, '/builder/sql', '/builder/sql/load', '/builder/users', '/builder/users/providers']) {
+      `/builder/apps/${appId}/globalization`, '/builder/sql', '/builder/sql/load', '/builder/users', '/builder/users/providers',
+      `/builder/apps/${appId}/shared?new=template_component`, ...(await owner.query('select id from meta.template_component where app_id = $1', [appId])).rows.map((r) => `/builder/apps/${appId}/shared?c=template_component-${r.id}`)]) {
       const res = await dev.get(url);
       assert.equal(res.statusCode, 200, url);
       assert.doesNotMatch(policy(res), /unsafe-inline/);
@@ -839,3 +840,66 @@ describe('sprint 22: map areas and dropped files', () => {
   });
 });
 
+
+describe('sprint 23: template components and plug-ins', () => {
+  const pageId = async () => (await owner.one('select id from meta.page where app_id = $1 and page_no = 19', [appId])).id as number;
+
+  test('a value from the data cannot become a javascript: link or new markup', async () => {
+    const report = await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 19 and r.type = 'report'`, [appId]);
+    await owner.query(`insert into meta.template_component (app_id, static_id, name, template) values ($1, 'sec_link', 'Link', '<a href="#URL#" title="#EMPLOYEE#">#EMPLOYEE#</a>')`, [appId]);
+    await owner.query('update meta.region set config = $2 where id = $1', [report.id, JSON.stringify({ ...report.config, column_templates: { employee: { component: 'sec_link', attributes: { URL: '#employee#' } } } })]);
+    const ename = (await owner.one('select ename from hr.emp where empno = 7566')).ename;
+    try {
+      for (const evil of ['javascript:alert(1)', 'JAVA\tSCRIPT:alert(1)', '" onclick="alert(1)', '<svg onload=alert(1)>']) {
+        await owner.query('update hr.emp set ename = $1 where empno = 7566', [evil]);
+        const body = (await (await as('king')).get('/a/hr/19')).body;
+        assert.doesNotMatch(body, /href="\s*java\s*script:/i, evil);
+        assert.doesNotMatch(body, /<svg onload|" onclick="/i, evil);
+      }
+    } finally {
+      await owner.query('update hr.emp set ename = $1 where empno = 7566', [ename]);
+      await owner.query('update meta.region set config = $2 where id = $1', [report.id, JSON.stringify(report.config)]);
+      await owner.query(`delete from meta.template_component where app_id = $1 and static_id = 'sec_link'`, [appId]);
+    }
+  });
+
+  test('templates with scripts, handlers or styles are refused in the builder, in plug-ins and in SQL', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    const evil = ['<script>alert(1)</script>', '<img src="x" onerror="alert(1)">', '<svg onload="alert(1)"></svg>', '<a href="javascript:alert(1)">x</a>',
+      '<p style="background:url(x)">x</p>', '<iframe srcdoc="x"></iframe>', '<p>#X!RAW#</p>', '<form action="/x"><button>x</button></form>', '<a href="x" data-dialog>x</a>'];
+    for (const template of evil) {
+      const plugin = JSON.stringify({ format: 'pgapex-plugin/1', type: 'template_component', static_id: 'sec_evil', name: 'Evil', template });
+      assert.equal((await dev.post(`/builder/apps/${appId}/template-components/import`, { __csrf: dev.lastCsrf, plugin })).statusCode, 303, template);
+      assert.equal((await dev.post(`/builder/apps/${appId}/shared/template_component`, { __csrf: dev.lastCsrf, static_id: 'sec_evil', name: 'Evil', template, attributes: '[]' })).statusCode, 303);
+      assert.equal((await owner.one(`select count(*)::int as n from meta.template_component where static_id = 'sec_evil'`)).n, 0, template);
+    }
+    for (const template of evil.slice(0, 7))
+      await assert.rejects(owner.query(`insert into meta.template_component (app_id, static_id, name, template) values ($1, 'sec_evil', 'Evil', $2)`, [appId, template]), /not allowed/, template);
+    await assert.rejects(runtime.query(`update meta.template_component set template = '<p>x</p>'`), /permission denied/);
+    await assert.rejects(runtime.query(`select meta.import_template_component(1, '{}'::jsonb)`), /permission denied/);
+  });
+
+  test('plug-in and settings routes: developers only, with a CSRF token, within the application', async () => {
+    const pid = await pageId();
+    const { id: rid } = await owner.one(`select id from meta.region where page_id = $1 and type = 'template_component' order by seq limit 1`, [pid]);
+    const { id: tid } = await owner.one(`select id from meta.template_component where app_id = $1 and static_id = 'status_badge'`, [appId]);
+    const posts = [`/builder/apps/${appId}/template-components/import`, `/builder/pages/${pid}/region/${rid}/template-settings`, `/builder/pages/${pid}/region/${rid}/column-templates`];
+    const king = await as('king'); // an application session is not a builder session
+    for (const b of [new Browser(), king]) {
+      assert.equal((await b.get(`/builder/apps/${appId}/template-components/${tid}/export`)).statusCode, 302);
+      for (const url of posts) assert.equal((await b.post(url, { __csrf: b.lastCsrf, plugin: '{}' })).statusCode, 302, url);
+    }
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    for (const url of posts) assert.equal((await dev.post(url, { __csrf: 'forged', plugin: '{}' })).statusCode, 403, url);
+    const other = (await owner.one(`select id from meta.app where alias <> 'hr' order by id limit 1`))?.id ?? appId + 100000;
+    assert.equal((await dev.get(`/builder/apps/${other}/template-components/${tid}/export`)).statusCode, 404, "another app's id");
+    assert.equal((await dev.get(`/builder/apps/${appId}/template-components/1%20or%201=1/export`)).statusCode, 404);
+    assert.equal((await dev.post(`/builder/apps/0/template-components/import`, { __csrf: dev.lastCsrf, plugin: '{}' })).statusCode, 404);
+  });
+});
