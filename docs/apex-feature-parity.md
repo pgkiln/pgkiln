@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.9.0, plus unreleased: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list).
+Last reviewed: 2026-10-01 (pgapex 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 

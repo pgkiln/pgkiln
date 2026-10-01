@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-01
+
 ### Changed
 - **pgapex installs no application.** The HR sample moved from `db/seed/` to `examples/hr/` as an
   example application built on pgapex: `npm run setup` and `npm run db:reset` install the framework
