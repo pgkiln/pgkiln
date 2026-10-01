@@ -64,11 +64,12 @@ src/
     pdf.ts                 report PDFs with report layouts (pdfkit)
   builder/
     components.ts          property spec of every component (drives the property editor)
-    ui.ts                  shell, form helpers, CSRF check, app tab bar
+    ui.ts                  IDE shell (icon rail, toolbar, breadcrumb), builder theme, form helpers, CSRF check, app tabs
     routes.ts              sign-in, workspace and app home, settings, activity, developers
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
-    designer.ts            page designer
+    designer.ts            page designer: component tree, layout canvas and gallery, property editor, toolbar
+    arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: SQL commands, object browser
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
@@ -93,6 +94,9 @@ public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
+  builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
+  builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
+  builder-icons.svg        builder only: icons of the rail, toolbar and designer (b-*)
 test/
   binds.test.ts            unit tests
   security.test.ts         security regression tests (in-process, against the database)
@@ -109,6 +113,7 @@ test/
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
+  e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
 ```
 
 ## Principles

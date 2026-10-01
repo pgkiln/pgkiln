@@ -1054,3 +1054,128 @@ describe('sprint 23: code editor', () => {
     }
   });
 });
+
+describe('sprint 23: page designer layout and builder theme', () => {
+  const devLogin = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    return dev;
+  };
+  // two scratch pages, so a component of one page can be aimed at the other
+  const scratch = async () => {
+    const page = async (no: number) => {
+      const p = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Layout test') returning id`, [appId, no])).id as number;
+      const r1 = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'One', 'static', '<p>1</p>') returning id`, [p])).id as number;
+      const r2 = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 20, 'Two', 'static', '<p>2</p>') returning id`, [p])).id as number;
+      const item = (await owner.one(`insert into meta.item (page_id, region_id, seq, name, label) values ($1, $2, 10, $3, 'Item') returning id`, [p, r1, `P${no}_A`])).id as number;
+      return { p, r1, r2, item };
+    };
+    return { a: await page(9101), b: await page(9102) };
+  };
+  const drop = () => owner.query('delete from meta.page where app_id = $1 and page_no in (9101, 9102)', [appId]);
+
+  test('layout changes need a signed-in developer and the CSRF token', async () => {
+    await drop();
+    const { a } = await scratch();
+    try {
+      const anon = new Browser();
+      const king = await as('king');
+      const dev = await devLogin();
+      for (const [op, form] of [
+        ['move', { kind: 'region', id: String(a.r1), dir: 'down' }],
+        ['span', { id: String(a.r1), columns: '6' }],
+        ['create', { kind: 'region', type: 'static' }],
+        ['undo', {}],
+        ['redo', {}],
+      ] as [string, Record<string, string>][]) {
+        const url = `/builder/pages/${a.p}/layout/${op}`;
+        assert.equal((await anon.post(url, { ...form, __csrf: 'x' })).statusCode, 302, `${op}: anonymous`);
+        assert.equal((await king.post(url, { ...form, __csrf: king.lastCsrf })).statusCode, 302, `${op}: an application user is not a developer`);
+        assert.equal((await dev.post(url, { ...form, __csrf: 'forged' })).statusCode, 403, `${op}: forged token`);
+      }
+      const r = await owner.one('select seq, columns from meta.region where id = $1', [a.r1]);
+      assert.deepEqual([r.seq, r.columns], [10, 12], 'nothing changed');
+      assert.equal((await owner.one('select count(*)::int as n from meta.region where page_id = $1', [a.p])).n, 2);
+      // the theme switch, too
+      assert.equal((await anon.post('/builder/theme', { __csrf: 'x', theme: 'light' })).statusCode, 302);
+      assert.equal((await dev.post('/builder/theme', { __csrf: 'forged', theme: 'light' })).statusCode, 403);
+    } finally {
+      await drop();
+    }
+  });
+
+  test('ids and target regions must belong to the page in the URL', async () => {
+    await drop();
+    const { a, b } = await scratch();
+    try {
+      const dev = await devLogin();
+      await dev.get(`/builder/pages/${a.p}`);
+      const post = (op: string, form: Record<string, string>) => dev.post(`/builder/pages/${a.p}/layout/${op}`, { ...form, __csrf: dev.lastCsrf });
+      // another page's components cannot be moved or resized through this page
+      assert.equal((await post('move', { kind: 'item', id: String(b.item), dir: 'up' })).statusCode, 404);
+      assert.equal((await post('span', { id: String(b.r1), columns: '3' })).statusCode, 404);
+      // nor can this page's item go into another page's region, before another page's item, or be created there
+      assert.equal((await post('move', { kind: 'item', id: String(a.item), region: String(b.r1), before: '' })).statusCode, 400);
+      assert.equal((await post('move', { kind: 'item', id: String(a.item), region: String(a.r2), before: String(b.item) })).statusCode, 400);
+      assert.equal((await post('create', { kind: 'item', type: 'text', region: String(b.r1) })).statusCode, 400);
+      // only known kinds, types and spans
+      assert.equal((await post('move', { kind: 'process', id: String(a.item), dir: 'up' })).statusCode, 400);
+      assert.equal((await post('create', { kind: 'region', type: "static'; drop table hr.emp; --" })).statusCode, 400);
+      assert.equal((await post('span', { id: String(a.r1), columns: '13' })).statusCode, 400);
+      assert.equal((await post('span', { id: String(a.r1), columns: '1 or 1=1' })).statusCode, 400);
+      // the JSON answer builder.js uses
+      const json = await app.inject({
+        method: 'POST', url: `/builder/pages/${a.p}/layout/move`,
+        payload: new URLSearchParams({ __csrf: dev.lastCsrf, kind: 'item', id: String(b.item), dir: 'up' }).toString(),
+        headers: { cookie: [...dev.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      });
+      assert.equal(json.statusCode, 404);
+      assert.equal(json.json().ok, false);
+      // nothing on the other page moved
+      const bi = await owner.one('select region_id, seq from meta.item where id = $1', [b.item]);
+      assert.deepEqual([bi.region_id, bi.seq], [b.r1, 10]);
+      const br = await owner.one('select columns from meta.region where id = $1', [b.r1]);
+      assert.equal(br.columns, 12);
+      // the property editor's region field only takes regions of this page, too
+      const res = await post('move', { kind: 'item', id: String(a.item), region: String(a.r2), before: '' });
+      assert.equal(res.statusCode, 303);
+      assert.equal((await owner.one('select region_id from meta.item where id = $1', [a.item])).region_id, a.r2);
+      const save = await dev.post(`/builder/pages/${a.p}/c/item/${a.item}`, { __csrf: dev.lastCsrf, name: 'P9101_A', label: 'Item', type: 'text', seq: '10', region_id: String(b.r1) });
+      assert.equal(save.statusCode, 303);
+      assert.equal((await owner.one('select region_id from meta.item where id = $1', [a.item])).region_id, a.r2, 'not saved into the other page');
+      // undo puts the move back
+      assert.equal((await post('undo', {})).statusCode, 303);
+      assert.equal((await owner.one('select region_id from meta.item where id = $1', [a.item])).region_id, a.r1);
+    } finally {
+      await drop();
+    }
+  });
+
+  test('the designer and the theme switch: no style attributes, no open redirect', async () => {
+    await drop();
+    const { a } = await scratch();
+    try {
+      const dev = await devLogin();
+      for (const url of [`/builder/pages/${a.p}`, `/builder/pages/${a.p}?c=region-${a.r1}`, `/builder/pages/${a.p}?new=item&type=text`]) {
+        const res = await dev.get(url);
+        assert.equal(res.statusCode, 200, url);
+        assert.doesNotMatch(res.body, /\sstyle="/, `${url} has a style attribute`);
+        assert.match(res.body, /src="\/static\/builder\.js"/);
+      }
+      // the runtime never loads the builder's assets
+      assert.doesNotMatch((await (await as('king')).get('/a/hr/1')).body, /builder\.(css|js)/);
+      assert.equal((await dev.post('/builder/theme', { __csrf: dev.lastCsrf, theme: '"><script>' })).statusCode, 400);
+      const res = await app.inject({
+        method: 'POST', url: '/builder/theme',
+        payload: new URLSearchParams({ __csrf: dev.lastCsrf, theme: 'light' }).toString(),
+        headers: { cookie: [...dev.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', referer: 'https://evil.example/builder/x' },
+      });
+      assert.equal(res.statusCode, 303);
+      assert.equal(res.headers.location, '/builder');
+      assert.match((await dev.get('/builder')).body, /<html lang="en" data-theme="light">/);
+    } finally {
+      await drop();
+    }
+  });
+});

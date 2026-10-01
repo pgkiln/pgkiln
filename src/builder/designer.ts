@@ -3,18 +3,52 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { COMPONENTS } from './components.ts';
-import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { back, BASE, bicon, csrf, developer, flash, input, select, send, shell, type Req } from './ui.ts';
 import { componentForm, lookups, saveComponent } from './forms.ts';
 import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
+import { arrangeRoutes, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, REGION_LABELS, REGION_TYPES, undoState } from './arrange.ts';
 
-// Page designer: a page's regions, items, buttons, dynamic actions,
-// validations and processes, edited with the generic component forms.
+// Page designer, laid out like APEX's Page Designer: the component tree on
+// the left (Rendering / Dynamic actions / Processing / Shared components),
+// the Layout in the middle (regions on the 12-column grid with their items
+// and buttons, plus a gallery to drag new components from), and the
+// property editor on the right. Layout changes go through arrange.ts.
+//
+// Without JavaScript the panes are stacked sections, every component is a
+// link, the gallery entries open the create form and the Arrange buttons
+// move things; builder.js adds tabs, the ARIA tree, drag and drop and the
+// property filter on top.
+
+const PAGE_KINDS = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process'];
+
+const regionIcon = (type: string) => REGION_LABELS[type]?.[1] ?? 'region';
+const itemIcon = (type: string) => ITEM_LABELS[type]?.[1] ?? 'item';
+const firstLine = (text: string | null | undefined, max = 90) => {
+  const t = (text ?? '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+};
+
+/** A titled panel that builder.js turns into a tab of the surrounding [data-tabs]. */
+const tab = (id: string, title: Raw | string, body: Raw | Raw[] | string, active = false, ic = '') =>
+  html`<section class="tab-panel" id="${id}" data-tab${active ? raw(' data-tab-active') : ''}><h2 class="tab-title">${ic ? bicon(ic) : ''}<span>${title}</span></h2>${body}</section>`;
 
 export async function designerRoutes(app: FastifyInstance) {
-  // ---------------------------------------------------------------- page designer
-  const PAGE_KINDS = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process'];
+  await arrangeRoutes(app);
 
+  // ---------------------------------------------------------------- go to page n of an app (toolbar page switcher)
+  app.get(`${BASE}/apps/:id/goto`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const appId = /^\d{1,9}$/.test(req.params.id) ? Number(req.params.id) : null;
+    const no = /^\d{1,9}$/.test(req.query.page ?? '') ? Number(req.query.page) : -1;
+    const p = appId === null ? null : await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, no]);
+    if (p) return reply.redirect(`${BASE}/pages/${p.id}`, 303);
+    flash(s, `There is no page ${req.query.page ?? ''}.`, 'error');
+    return back(reply, s, appId === null ? BASE : `${BASE}/apps/${appId}`);
+  });
+
+  // ---------------------------------------------------------------- page designer
   app.get(`${BASE}/pages/:pid`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
@@ -22,58 +56,216 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!p) return reply.code(404).send('Not found');
     const rows: Record<string, any[]> = {};
     for (const kind of PAGE_KINDS) rows[kind] = (await owner.query(`select * from ${COMPONENTS[kind].table} where page_id = $1 order by seq, id`, [p.id])).rows;
-    const lk = await lookups(p.app_id, p.id);
+    const [lk, pages, shared] = await Promise.all([
+      lookups(p.app_id, p.id),
+      owner.query('select id, page_no, name from meta.page where app_id = $1 order by page_no', [p.app_id]).then((r) => r.rows),
+      Promise.all([
+        owner.query('select id, name from meta.lov where app_id = $1 order by name', [p.app_id]),
+        owner.query('select id, name from meta.authz_scheme where app_id = $1 order by name', [p.app_id]),
+        owner.query('select id, label from meta.nav_entry where app_id = $1 order by seq, id', [p.app_id]),
+        owner.query('select id, name from meta.app_item where app_id = $1 order by name', [p.app_id]),
+      ]).then((r) => r.map((x) => x.rows)),
+    ]);
     const sel = req.query.c ?? '';
-    const newKind = req.query.new;
-    const url = (q: string) => `${BASE}/pages/${p.id}?${q}`;
-    const cur = (key: string) => (sel === key ? raw(' aria-current="page"') : '');
-    const tags = (r: any) => html`${r.authz ? html` <span class="tag" title="Authorization">${r.authz}</span>` : ''}${r.condition || r.readonly_condition ? html` <span class="tag" title="Condition">cond</span>` : ''}`;
-    const node = (kind: string, r: any, label: string, extra: Raw | string = '') =>
-      html`<li><a href="${url(`c=${kind}-${r.id}`)}"${cur(`${kind}-${r.id}`)}>${icon(COMPONENTS[kind].icon)}<span>${label}</span>${tags(r)}<span class="kind">${extra}</span></a></li>`;
-    const addLink = (kind: string, label: string, extra = '') => html`<a href="${url(`new=${kind}${extra}`)}">＋ ${label}</a>`;
-
-    const regionNodes = rows.region.map((r) => html`<li><a href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)}>${icon('layers')}<span>${r.title ?? '(untitled)'}</span>${tags(r)}<span class="kind">${r.type}</span></a>
-      <ul>
-        ${rows.item.filter((i) => i.region_id === r.id).map((i) => node('item', i, i.name, i.type))}
-        ${rows.button.filter((b) => b.region_id === r.id).map((b) => node('button', b, b.name, b.action))}
-        <li class="group">${addLink('item', 'item', `&region=${r.id}`)} ${addLink('button', 'button', `&region=${r.id}`)}</li>
-      </ul></li>`);
-
-    const tree = html`<ul class="tree">
-      <li><a href="${url('c=page')}"${cur('page') || (sel === '' && !newKind ? raw(' aria-current="page"') : '')}>${icon('file')}<span>Page ${p.page_no}: ${p.name}</span>${tags(p)}</a></li>
-      <li class="group">Rendering ${addLink('region', 'Region')}</li>
-      ${regionNodes}
-      <li class="group">Page-level items &amp; buttons ${addLink('item', 'item')}</li>
-      ${rows.item.filter((i) => i.region_id === null).map((i) => node('item', i, i.name, i.type))}
-      ${rows.button.filter((b) => b.region_id === null).map((b) => node('button', b, b.name, b.action))}
-      <li class="group">Dynamic actions ${addLink('dynamic_action', 'Add')}</li>
-      ${rows.dynamic_action.map((d) => node('dynamic_action', d, d.name, `${d.event} → ${d.action}`))}
-      <li class="group">Validations ${addLink('validation', 'Add')}</li>
-      ${rows.validation.map((v) => node('validation', v, v.name, v.type))}
-      <li class="group">Processes ${addLink('process', 'Add')}</li>
-      ${rows.process.map((x) => node('process', x, x.name, x.when_button ?? x.point))}
-    </ul>`;
-
-    let editor: Raw;
+    const newKind = PAGE_KINDS.includes(req.query.new ?? '') ? req.query.new : '';
     const [kind, cid] = sel.split('-');
-    if (newKind && PAGE_KINDS.includes(newKind)) {
+    const url = (q: string) => `${BASE}/pages/${p.id}${q ? `?${q}` : ''}`;
+    const isSel = (key: string) => sel === key || (key === 'page' && !sel && !newKind);
+    const cur = (key: string) => (isSel(key) ? raw(' aria-current="true"') : '');
+    const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="Authorization: ${r.authz}">${icon('shield')}<span class="sr-only">Authorization ${r.authz}</span></span>` : ''}${r.condition || r.readonly_condition ? html`<span class="pd-tag" title="Has a condition">${icon('filter')}<span class="sr-only">Has a condition</span></span>` : ''}`;
+    const regionTitle = (r: any) => r.title ?? `(${r.type})`;
+
+    // ------------------------------------------------------------ left: component tree
+    const leaf = (k: string, r: any, ic: Raw | '', label: string, note = '') =>
+      html`<li><a class="pd-node" href="${url(`c=${k}-${r.id}`)}"${cur(`${k}-${r.id}`)}>${ic}<span class="pd-label">${label}</span>${badges(r)}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
+    const folder = (label: string, children: Raw[] | Raw, open = true) =>
+      html`<li${open ? '' : raw(' data-collapsed')}><span class="pd-node pd-folder"><span class="pd-label">${label}</span></span><ul>${children}</ul></li>`;
+    const none = (text: string) => html`<li class="pd-empty">${text}</li>`;
+    const itemLeaf = (i: any) => leaf('item', i, bicon(itemIcon(i.type)), i.name, i.type);
+    const buttonLeaf = (b: any) => leaf('button', b, bicon('button'), b.name, b.action);
+    const regionLeaf = (r: any) => {
+      const items = rows.item.filter((i) => i.region_id === r.id);
+      const buttons = rows.button.filter((b) => b.region_id === r.id);
+      const kids = [...(items.length ? [folder('Items', items.map(itemLeaf))] : []), ...(buttons.length ? [folder('Buttons', buttons.map(buttonLeaf))] : [])];
+      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
+    };
+    const pageItems = rows.item.filter((i) => i.region_id === null);
+    const pageButtons = rows.button.filter((b) => b.region_id === null);
+    const loadProcs = rows.process.filter((x) => x.point === 'load');
+    const submitProcs = rows.process.filter((x) => x.point !== 'load');
+    const createBar = (links: [string, string][]) =>
+      html`<div class="pd-treebar">${links.map(([k, label]) => html`<a class="tb-btn tb-text" href="${url(`new=${k}`)}">${icon('plus')}<span>${label}</span></a>`)}</div>`;
+
+    const rendering = html`${createBar([['region', 'Region'], ['item', 'Item'], ['button', 'Button']])}
+      <ul class="pd-tree" aria-label="Rendering">
+        <li><a class="pd-node" href="${url('c=page')}"${cur('page')}>${icon('file')}<span class="pd-label">Page ${p.page_no}: ${p.name}</span>${badges(p)}</a>
+          <ul>
+            ${folder('Pre-Rendering', loadProcs.length ? loadProcs.map((x) => leaf('process', x, icon('code'), x.name)) : none('No processes before rendering'), loadProcs.length > 0)}
+            ${folder('Regions', rows.region.length ? rows.region.map(regionLeaf) : none('No regions yet'))}
+            ${pageItems.length ? folder('Page items', pageItems.map(itemLeaf)) : ''}
+            ${pageButtons.length ? folder('Page buttons', pageButtons.map(buttonLeaf)) : ''}
+          </ul></li>
+      </ul>`;
+    const events: [string, string][] = [['change', 'Change'], ['click', 'Click'], ['load', 'Page load']];
+    const dynamicActions = html`${createBar([['dynamic_action', 'Dynamic action']])}
+      <ul class="pd-tree" aria-label="Dynamic actions">
+        ${events.map(([ev, label]) => {
+          const list = rows.dynamic_action.filter((d) => d.event === ev);
+          return folder(`Events: ${label}`, list.length ? list.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.trigger_element ?? ''} → ${d.action}`)) : none('None'), list.length > 0);
+        })}
+      </ul>`;
+    const branches = rows.button.filter((b) => b.target_page);
+    const processing = html`${createBar([['validation', 'Validation'], ['process', 'Process']])}
+      <ul class="pd-tree" aria-label="Processing">
+        ${folder('Validating', rows.validation.length ? rows.validation.map((v) => leaf('validation', v, icon('check'), v.name, v.when_button ?? '')) : none('No validations'))}
+        ${folder('Processing', submitProcs.length ? submitProcs.map((x) => leaf('process', x, icon('code'), x.name, x.when_button ?? '')) : none('No processes'))}
+        ${folder('After processing (branches)', branches.length ? branches.map((b) => leaf('button', b, bicon('right'), `${b.name} → page ${b.target_page}`)) : none('No branches'), false)}
+      </ul>`;
+    const sharedLink = (k: string, id: number, ic: string, label: string) =>
+      html`<li><a class="pd-node" href="${BASE}/apps/${p.app_id}/shared?c=${k}-${id}">${icon(ic)}<span class="pd-label">${label}</span></a></li>`;
+    const [lovs, schemes, navs, appItems] = shared;
+    const sharedTree = html`<div class="pd-treebar"><a class="tb-btn tb-text" href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')}<span>All shared components</span></a></div>
+      <ul class="pd-tree" aria-label="Shared components">
+        ${folder('Lists of values', lovs.length ? lovs.map((l) => sharedLink('lov', l.id, 'list', l.name)) : none('None'), lovs.length > 0)}
+        ${folder('Authorization schemes', schemes.length ? schemes.map((a) => sharedLink('authz_scheme', a.id, 'shield', a.name)) : none('None'), false)}
+        ${folder('Navigation menu', navs.length ? navs.map((n) => sharedLink('nav_entry', n.id, 'menu', n.label)) : none('None'), false)}
+        ${folder('Application items', appItems.length ? appItems.map((n) => sharedLink('app_item', n.id, 'edit', n.name)) : none('None'), false)}
+      </ul>`;
+    const selProcess = kind === 'process' ? rows.process.find((x) => String(x.id) === cid) : null;
+    const leftTab = kind === 'dynamic_action' || newKind === 'dynamic_action' ? 'da'
+      : kind === 'validation' || newKind === 'validation' || newKind === 'process' || (selProcess && selProcess.point !== 'load') ? 'proc' : 'rend';
+    const left = html`<div class="pd-tabs pd-tabs-icons" data-tabs="pd-left" aria-label="Page components">
+      ${tab('pd-l-rendering', 'Rendering', rendering, leftTab === 'rend', 'rendering')}
+      ${tab('pd-l-da', 'Dynamic actions', dynamicActions, leftTab === 'da', 'bolt')}
+      ${tab('pd-l-processing', 'Processing', processing, leftTab === 'proc', 'processing')}
+      ${tab('pd-l-shared', 'Shared components', sharedTree, false, 'shapes')}
+    </div>`;
+
+    // ------------------------------------------------------------ center: layout + gallery
+    const chip = (k: 'item' | 'button', r: any) =>
+      html`<a class="pd-chip pd-chip-${k}${isSel(`${k}-${r.id}`) ? ' is-selected' : ''}${k === 'button' && r.hot ? ' is-hot' : ''}" href="${url(`c=${k}-${r.id}`)}" draggable="true" data-kind="${k}" data-id="${r.id}"${cur(`${k}-${r.id}`)} aria-describedby="pd-kbd">${k === 'item' ? bicon(itemIcon(r.type)) : ''}<span>${r.label || r.name}</span>${k === 'item' ? html`<small>${r.name}</small>` : ''}</a>`;
+    const slot = (k: 'item' | 'button', regionId: number | null, list: any[]) =>
+      html`<div class="pd-slot pd-slot-${k}" data-drop="${k}" data-region="${regionId ?? ''}">${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? 'Items' : 'Buttons'}</span>`}</div>`;
+    const block = (r: any) => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}">
+        <div class="pd-region-head" draggable="true" data-kind="region" data-id="${r.id}">
+          <span class="pd-grip" title="Drag to move">${bicon('grip')}</span>
+          <a class="pd-region-link" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} aria-describedby="pd-kbd">${bicon(regionIcon(r.type))}<span>${regionTitle(r)}</span></a>
+          <span class="pd-region-meta">${r.columns}/12</span>
+        </div>
+        <div class="pd-region-body">
+          <div class="pd-region-type">${REGION_LABELS[r.type]?.[0] ?? r.type}${r.template !== 'standard' ? ` · ${r.template}` : ''}</div>
+          ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
+          ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
+          ${slot('button', r.id, rows.button.filter((b) => b.region_id === r.id))}
+        </div>
+        <span class="pd-resize" title="Drag to change the column span" aria-hidden="true"></span>
+      </div>`;
+    const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>) =>
+      html`<ul class="pd-gallery-list" aria-label="${COMPONENTS[k].plural}">${types.map((t) => html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="Drag onto the layout, or open to create">${bicon(labels[t]?.[1] ?? k)}<span>${labels[t]?.[0] ?? t}</span></a></li>`)}</ul>`;
+    const layout = html`
+      <div class="pd-canvas-bar" role="toolbar" aria-label="Layout">
+        <button type="button" class="tb-btn" data-zoom="-1" title="Zoom out" hidden>${bicon('zoom-out')}<span class="sr-only">Zoom out</span></button>
+        <button type="button" class="tb-btn" data-zoom="1" title="Zoom in" hidden>${bicon('zoom-in')}<span class="sr-only">Zoom in</span></button>
+        <button type="button" class="tb-btn" data-maximize title="Maximize the layout" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">Maximize the layout</span></button>
+        <span class="pd-canvas-hint" id="pd-kbd">Drag to move. Keyboard: Alt+↑/↓ moves the focused component, Alt+Shift+←/→ changes a region's width.</span>
+      </div>
+      <div class="pd-canvas" id="pd-layout" data-page-id="${p.id}">
+        <div class="pd-page-label">${icon('file')} Page ${p.page_no}: ${p.name}${p.mode === 'modal' ? ' (modal dialog)' : ''}</div>
+        <div class="pd-grid" data-drop="region">
+          ${rows.region.map(block)}
+          <div class="pd-grid-end" data-end><a href="${url('new=region')}">${icon('plus')} Region</a></div>
+        </div>
+        <div class="pd-pagelevel">
+          <div class="pd-pagelevel-title">Page level (no region)</div>
+          ${slot('item', null, pageItems)}
+          ${slot('button', null, pageButtons)}
+        </div>
+      </div>
+      <div class="pd-gallery">
+        <div class="pd-tabs" data-tabs="pd-gallery" data-tabs-remember aria-label="Gallery">
+          ${tab('pd-g-regions', 'Regions', gallery('region', REGION_TYPES(), REGION_LABELS), true)}
+          ${tab('pd-g-items', 'Items', gallery('item', ITEM_TYPES(), ITEM_LABELS))}
+          ${tab('pd-g-buttons', 'Buttons', gallery('button', BUTTON_ACTIONS(), BUTTON_LABELS))}
+        </div>
+      </div>`;
+    const help = html`<div class="pd-help">
+      <h3>Layout</h3>
+      <p>Regions sit on a 12-column grid in sequence order; a region's <em>column span</em> sets its width, and regions wrap to a new row when the row is full.</p>
+      <ul>
+        <li>Drag a region by its header to move it, or drag its right edge to make it wider or narrower.</li>
+        <li>Drag items and buttons to another place or another region.</li>
+        <li>Drag a region, item or button from the gallery onto the layout to create it; or open a gallery entry to create one with a form.</li>
+        <li>Keyboard: focus a component on the layout and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> to move it, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd> to change a region's width. The <strong>Arrange</strong> buttons above the properties do the same.</li>
+        <li><strong>Undo</strong> and <strong>Redo</strong> in the toolbar take back layout changes.</li>
+      </ul>
+      <h3>Cheat sheet</h3>
+      <p><code>:P1_ITEM</code> binds an item value in any SQL (always escaped). <code>:APP_USER</code>, <code>:APP_PAGE_ID</code>, <code>:REQUEST</code> are built in.</p>
+      <p><code>&amp;P1_ITEM.</code> substitutes into titles, static HTML and link targets (HTML-escaped).</p>
+      <p>In SQL, PL/pgSQL and RLS policies: <code>meta.app_user()</code>, <code>meta.has_role('admin')</code>, <code>meta.v('P1_ITEM')</code>, <code>meta.page_url(3, '{"P3_ID": 7}')</code>.</p>
+      <p>A PL/pgSQL <code>raise exception 'Message' using column = 'sal'</code> shows the message on the item whose source column is <code>sal</code>.</p>
+    </div>`;
+    const pageSearch = html`<form method="get" action="${BASE}/apps/${p.app_id}/search" class="pd-search" role="search">
+        <label class="label" for="pd-q">Search the application's pages and components</label>
+        <div class="u-row"><input id="pd-q" name="q" type="search" placeholder="e.g. P${p.page_no}_ or a table name"><button class="btn btn-sm">${icon('search')} Search</button></div>
+      </form>`;
+    const center = html`<div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="Page">
+      ${tab('pd-c-layout', 'Layout', layout, true)}
+      ${tab('pd-c-search', 'Page search', pageSearch)}
+      ${tab('pd-c-help', 'Help', help)}
+    </div>`;
+
+    // ------------------------------------------------------------ right: property editor
+    let heading: Raw;
+    let props: Raw;
+    let arrange: Raw | '' = '';
+    const formId = 'pd-form';
+    let hasForm = true;
+    const peTabs = (panels: Raw[]) => html`<div class="pd-tabs" data-tabs="pd-right" aria-label="Properties">${panels}</div>`;
+    const moveForm = (k: string, id: number, fields: Raw, button: Raw, title: string) =>
+      html`<form method="post" action="${url('')}/layout/move" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="kind" value="${k}"><input type="hidden" name="id" value="${id}">${fields}<button class="tb-btn" title="${title}">${button}</button></form>`;
+    if (newKind) {
       const spec = COMPONENTS[newKind];
       const lastSeq = Math.max(0, ...rows[newKind].map((r) => r.seq));
-      const defaults = { seq: lastSeq + 10, ...spec.defaults, region_id: req.query.region ? Number(req.query.region) : null };
-      editor = region(`New ${spec.label.toLowerCase()}`, componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, `Create ${spec.label.toLowerCase()}`));
+      const typeField = newKind === 'button' ? 'action' : 'type';
+      const presetType = spec.fields.find((f) => f.name === typeField)?.options?.includes(req.query.type ?? '') ? { [typeField]: req.query.type } : {};
+      const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
+      heading = html`${icon(spec.icon)}<span>New ${spec.label.toLowerCase()}</span>`;
+      props = peTabs([tab('pd-r-props', spec.label, componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, `Create ${spec.label.toLowerCase()}`, { id: formId }), true)]);
     } else if (kind && kind !== 'page' && PAGE_KINDS.includes(kind)) {
       const spec = COMPONENTS[kind];
       const row = rows[kind].find((r) => String(r.id) === cid);
-      editor = row
-        ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, 'Save')}
-            ${kind === 'region' ? await regionSettingsForm(p.id, p.app_id, row, s) : ''}
-            ${await usedInPanel(p.app_id, kind, row)}
-            <form method="post" action="${BASE}/pages/${p.id}/c/${kind}/${row.id}/delete" class="danger-zone">${csrf(s)}
-              <button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete ${spec.label.toLowerCase()}</button></form>`)
-        : html`<p>Component not found.</p>`;
+      if (row) {
+        heading = html`${kind === 'region' ? bicon(regionIcon(row.type)) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${spec.label}: ${spec.summary(row)}</span>`;
+        const settings = kind === 'region' ? await regionSettingsForm(p.id, p.app_id, row, s) : '';
+        props = html`${peTabs([
+          tab('pd-r-props', spec.label, componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, 'Save', { id: formId }), true),
+          ...(settings ? [tab('pd-r-attrs', 'Attributes', settings)] : []),
+        ])}
+          ${await usedInPanel(p.app_id, kind, row)}
+          <form method="post" action="${BASE}/pages/${p.id}/c/${kind}/${row.id}/delete" class="danger-zone">${csrf(s)}
+            <button class="btn btn-sm btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete ${spec.label.toLowerCase()}</button></form>`;
+        if (kind === 'region' || kind === 'item' || kind === 'button') {
+          const regionOptions = html`<option value="">- page level -</option>${rows.region.map((r) => html`<option value="${r.id}"${row.region_id === r.id ? raw(' selected') : ''}>${regionTitle(r)}</option>`)}`;
+          arrange = html`<div class="pe-arrange" role="group" aria-label="Arrange">
+            <span class="pe-arrange-label">Arrange</span>
+            ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="up">`, html`${bicon('arrow-up')}<span class="sr-only">Move up</span>`, 'Move up (earlier in the sequence)')}
+            ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="down">`, html`${bicon('arrow-down')}<span class="sr-only">Move down</span>`, 'Move down (later in the sequence)')}
+            ${kind === 'region'
+              ? html`<form method="post" action="${url('')}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="-1"><button class="tb-btn" title="Narrower (one column less)"${row.columns <= 1 ? raw(' disabled') : ''}>${bicon('narrow')}<span class="sr-only">Narrower</span></button></form>
+                <span class="pe-span" title="Column span">${row.columns}/12</span>
+                <form method="post" action="${url('')}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="1"><button class="tb-btn" title="Wider (one column more)"${row.columns >= 12 ? raw(' disabled') : ''}>${bicon('wide')}<span class="sr-only">Wider</span></button></form>`
+              : moveForm(kind, row.id, html`<label class="sr-only" for="pe-move-region">Move to region</label><select id="pe-move-region" name="region">${regionOptions}</select>`, html`<span>Move</span>`, 'Move to the end of this region')}
+          </div>`;
+        }
+      } else {
+        heading = html`<span>Not found</span>`;
+        props = html`<p class="muted">Component not found.</p>`;
+        hasForm = false;
+      }
     } else {
-      editor = html`${region('Page', html`
-        <form method="post" action="${BASE}/pages/${p.id}">${csrf(s)}
+      heading = html`${icon('file')}<span>Page ${p.page_no}: ${p.name}</span>`;
+      props = html`${peTabs([tab('pd-r-props', 'Page', html`
+        <form method="post" action="${BASE}/pages/${p.id}" class="component-form" id="${formId}">${csrf(s)}
           <fieldset class="prop-group"><legend>Identification</legend><div class="form-grid">
             ${input('page_no', 'Page number', p.page_no, { type: 'number', required: true })}
             ${input('name', 'Name', p.name, { required: true })}
@@ -90,30 +282,67 @@ export async function designerRoutes(app: FastifyInstance) {
               'With checksum, item values in the URL (?P3_ID=…) are only accepted from links the runtime generated.')}
           </div></fieldset>
           <div class="buttons"><button class="btn btn-hot">Save page</button></div>
-        </form>
+        </form>`, true)])}
+        ${await usedInPanel(p.app_id, 'page', p)}
         <form method="post" action="${BASE}/pages/${p.id}/delete" class="danger-zone">${csrf(s)}
-          <button class="btn btn-danger" data-confirm="Delete page ${p.page_no} and all its components?">Delete page</button></form>
-        ${await usedInPanel(p.app_id, 'page', p)}`)}
-        <div class="u-spacer"></div>
-        ${region('Cheat sheet', html`<div class="cheat">
-          <p><code>:P1_ITEM</code> binds an item value in any SQL (always escaped). <code>:APP_USER</code>, <code>:APP_PAGE_ID</code>, <code>:REQUEST</code> are built in.</p>
-          <p><code>&amp;P1_ITEM.</code> substitutes into titles, static HTML and link targets (HTML-escaped).</p>
-          <p>In SQL, PL/pgSQL and RLS policies: <code>meta.app_user()</code>, <code>meta.has_role('admin')</code>, <code>meta.v('P1_ITEM')</code>, <code>meta.page_url(3, '{"P3_ID": 7}')</code>.</p>
-          <p>A PL/pgSQL <code>raise exception 'Message' using column = 'sal'</code> shows the message on the item whose source column is <code>sal</code>.</p>
-        </div>`)}`;
+          <button class="btn btn-sm btn-danger" data-confirm="Delete page ${p.page_no} and all its components?">Delete page</button></form>`;
     }
+    const right = html`
+      <div class="pe-head"><div class="pe-title">${heading}</div>
+        <div class="pe-filter-row" hidden><label class="sr-only" for="pe-filter">Filter properties</label>${icon('filter')}<input id="pe-filter" class="pe-filter" type="search" placeholder="Filter" autocomplete="off"></div>
+      </div>
+      ${arrange}
+      <div class="pe">${props}</div>`;
 
-    const main = html`
-      <div class="title-row"><h1>Page ${p.page_no}: ${p.name}</h1>
-        <div class="buttons">
-          ${p.page_no > 1 ? html`<a class="btn" href="${BASE}/apps/${p.app_id}">‹ All pages</a>` : ''}
-          <a class="btn btn-hot" href="/a/${p.alias}/${p.page_no}" target="_blank" rel="noopener">${icon('play')} Run page</a>
-        </div></div>
-      <div class="designer">
-        <aside class="region region-standard" aria-label="Page components">${tree}</aside>
-        <div>${editor}</div>
+    // ------------------------------------------------------------ toolbar
+    const idx = pages.findIndex((x) => x.id === p.id);
+    const prev = pages[idx - 1];
+    const next = pages[idx + 1];
+    const h = undoState(s, p.id);
+    const tbForm = (op: string, ic: string, label: string, title: string | null) =>
+      html`<form method="post" action="${url('')}/layout/${op}" class="tb-form">${csrf(s)}<button class="tb-btn" title="${title ? `${label}: ${title}` : `Nothing to ${label.toLowerCase()}`}"${title ? '' : raw(' disabled')}>${bicon(ic)}<span class="sr-only">${label}</span></button></form>`;
+    const createMenu = html`<details class="menu tb-menu">
+        <summary class="tb-btn" title="Create">${icon('plus')}${bicon('down', 'icon tb-caret')}<span class="sr-only">Create</span></summary>
+        <div class="menu-panel align-right"><div class="menu-section menu-links">
+          ${[['region', 'Region'], ['item', 'Page item'], ['button', 'Button'], ['dynamic_action', 'Dynamic action'], ['validation', 'Validation'], ['process', 'Process']].map(([k, label]) =>
+            html`<a href="${url(`new=${k}`)}">${icon(COMPONENTS[k].icon)} ${label}</a>`)}
+        </div><div class="menu-section menu-links">
+          <a href="${BASE}/apps/${p.app_id}#create-page">${icon('file')} Page…</a>
+        </div></div></details>`;
+    const utilMenu = html`<details class="menu tb-menu">
+        <summary class="tb-btn" title="Utilities">${bicon('wrench')}${bicon('down', 'icon tb-caret')}<span class="sr-only">Utilities</span></summary>
+        <div class="menu-panel align-right"><div class="menu-section menu-links">
+          <a href="${BASE}/apps/${p.app_id}/advisor">${icon('check')} Advisor</a>
+          <a href="${BASE}/apps/${p.app_id}/search?q=P${p.page_no}_">${icon('search')} Search this page's items</a>
+          <a href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')} Shared components</a>
+          <a href="${BASE}/apps/${p.app_id}">${bicon('pages')} All pages</a>
+          <a href="${BASE}/apps/${p.app_id}/export">${icon('download')} Export application</a>
+        </div></div></details>`;
+    const toolbar = html`
+      <div class="tb-group pd-pagenav" role="group" aria-label="Page">
+        ${prev ? html`<a class="tb-btn" href="${BASE}/pages/${prev.id}" title="Previous page: ${prev.page_no}. ${prev.name}">${bicon('left')}<span class="sr-only">Previous page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
+        <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto">
+          <label class="sr-only" for="pd-goto">Go to page</label>
+          <select id="pd-goto" name="page" data-autosubmit>${pages.map((x) => html`<option value="${x.page_no}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no} · ${x.name}</option>`)}</select>
+          <button class="tb-btn tb-text pd-goto-go">Go</button>
+        </form>
+        ${next ? html`<a class="tb-btn" href="${BASE}/pages/${next.id}" title="Next page: ${next.page_no}. ${next.name}">${bicon('right')}<span class="sr-only">Next page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('right')}</span>`}
+      </div>
+      <div class="tb-group tb-undo" role="group" aria-label="History">${tbForm('undo', 'undo', 'Undo', h.undo)}${tbForm('redo', 'redo', 'Redo', h.redo)}</div>
+      <div class="tb-group tb-menus">${createMenu}${utilMenu}</div>
+      <div class="tb-group tb-main">
+        ${hasForm ? html`<button class="btn btn-sm tb-save" form="${formId}" title="Save the properties">${bicon('save')}<span>Save</span></button>` : ''}
+        <a class="btn btn-sm btn-run" href="/a/${p.alias}/${p.page_no}" target="_blank" rel="noopener" title="Run page ${p.page_no}">${icon('play')}<span>Run</span></a>
       </div>`;
-    return send(reply, s, shell(s, `Page ${p.page_no}`, [['App Builder', BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [`Page ${p.page_no}`]], main));
+
+    const pane = newKind || sel ? 'pd-p-props' : 'pd-p-layout';
+    const main = html`<h1 class="sr-only">Page designer: page ${p.page_no}, ${p.name}</h1>
+      <div class="pd" data-tabs="pd-panes" data-tabs-media="(max-width: 1023px)" aria-label="Page designer">
+        <section class="pd-pane pd-left tab-panel" id="pd-p-tree" data-tab><h2 class="tab-title pd-pane-title"><span>Tree</span></h2>${left}</section>
+        <section class="pd-pane pd-center tab-panel" id="pd-p-layout" data-tab${pane === 'pd-p-layout' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>Layout</span></h2>${center}</section>
+        <section class="pd-pane pd-right tab-panel" id="pd-p-props" data-tab${pane === 'pd-p-props' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>Properties</span></h2>${right}</section>
+      </div>`;
+    return send(reply, s, shell(s, `Page ${p.page_no}`, [['App Builder', BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [`Page ${p.page_no}: ${p.name}`]], main, 'apps', { toolbar, full: true }));
   });
 
   app.post(`${BASE}/pages/:pid`, async (req: Req, reply) => {
@@ -164,5 +393,4 @@ export async function designerRoutes(app: FastifyInstance) {
     flash(s, `${COMPONENTS[kind].label} deleted.`);
     return back(reply, s, `${BASE}/pages/${pid}`);
   });
-
 }
