@@ -220,7 +220,7 @@ export async function designerRoutes(app: FastifyInstance) {
     let arrange: Raw | '' = '';
     const formId = 'pd-form';
     let hasForm = true;
-    const peTabs = (panels: Raw[]) => html`<div class="pd-tabs" data-tabs="pd-right" aria-label="Properties">${panels}</div>`;
+    const peTabs = (panels: Raw[]) => html`<div class="pd-tabs" data-tabs="pd-right" data-tabs-remember aria-label="Properties">${panels}</div>`;
     const moveForm = (k: string, id: number, fields: Raw, button: Raw, title: string) =>
       html`<form method="post" action="${url('')}/layout/move" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="kind" value="${k}"><input type="hidden" name="id" value="${id}">${fields}<button class="tb-btn" title="${title}">${button}</button></form>`;
     if (newKind) {

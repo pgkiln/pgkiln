@@ -166,7 +166,8 @@ The editor only decorates the normal text field: the form posts the same text as
 copy and paste work as usual, screen readers read the plain field (the suggestion list is
 announced as you move through it), and without JavaScript you get the plain field.
 
-**Report regions** also get a **Report settings** form under their properties, so the common
+**Report regions** also get a **Report settings** form on the property editor's **Attributes** tab
+(the editor reopens the tab you used last), so the common
 settings need no JSON: rows per page, search, Actions menu, sorting, saved and public reports,
 and per column its heading, whether it's shown, whether it's printed and its PDF width, plus the
 link column (page and items), row selection (value column and item) and the PDF layout. The columns are read from the region's query
