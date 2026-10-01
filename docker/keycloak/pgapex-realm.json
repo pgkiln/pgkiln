@@ -49,6 +49,28 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "http://127.0.0.1:3100/sso/saml/keycloak-saml/metadata",
+      "name": "pgapex (SAML, development)",
+      "protocol": "saml",
+      "enabled": true,
+      "redirectUris": ["http://127.0.0.1:3100/sso/saml/keycloak-saml"],
+      "frontchannelLogout": false,
+      "attributes": {
+        "saml.assertion.signature": "true", "saml.server.signature": "false", "saml.client.signature": "false",
+        "saml.authnstatement": "true", "saml.signature.algorithm": "RSA_SHA256",
+        "saml_force_name_id_format": "true", "saml_name_id_format": "username",
+        "saml_assertion_consumer_url_post": "http://127.0.0.1:3100/sso/saml/keycloak-saml"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "saml",
+          "protocolMapper": "saml-group-membership-mapper",
+          "config": { "attribute.name": "groups", "single": "false", "full.path": "false", "attribute.nameformat": "Basic" }
+        }
+      ]
     }
   ]
 }

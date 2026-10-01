@@ -3,7 +3,8 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { accountSettings, clearAccountSettings, passwordProblem } from '../accounts.ts';
 import { LOGIN_MAX_FAILURES_PER_USER, LOGIN_WINDOW_MINUTES } from '../security.ts';
-import { discover, redirectUri } from '../sso.ts';
+import { acsUrl, metadataUrl, spEntityId } from '../saml.ts';
+import { discover, publicUrl, redirectUri } from '../sso.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // The workspace user directory (like APEX's workspace users with
@@ -359,12 +360,17 @@ export async function usersRoutes(app: FastifyInstance) {
     <form method="post" action="${action}">${csrfField}
       <div class="form-grid">
         ${isNew ? input('name', 'Name (in URLs)', '', { required: true, help: 'lowercase, e.g. entra, google, keycloak' }) : ''}
+        ${isNew ? select('protocol', 'Protocol', 'oidc', [['oidc', 'OpenID Connect'], ['saml', 'SAML 2.0']]) : html`<div class="field"><span class="label">Protocol</span><span>${pr.protocol === 'saml' ? 'SAML 2.0' : 'OpenID Connect'}</span></div>`}
         ${input('display_name', 'Button label', pr.display_name, { required: true, help: 'Shown as "Sign in with …"' })}
-        ${input('issuer', 'Issuer URL', pr.issuer, { required: true, type: 'url', help: 'e.g. https://login.microsoftonline.com/<tenant>/v2.0 or https://keycloak.example.com/realms/acme' })}
-        ${input('client_id', 'Client ID', pr.client_id, { required: true })}
+        ${input('issuer', 'Issuer (OIDC: URL; SAML: the IdP entity ID)', pr.issuer, { required: true, help: 'e.g. https://login.microsoftonline.com/<tenant>/v2.0, https://keycloak.example.com/realms/acme, or for SAML the entityID of the IdP metadata' })}
+        ${input('client_id', 'Client ID (SAML: pgapex\'s entity ID)', pr.client_id, { help: 'OIDC: required. SAML: empty = the metadata URL of this provider.' })}
+        ${input('idp_sso_url', 'SAML: IdP sign-in URL', pr.idp_sso_url, { type: 'url', help: 'The SingleSignOnService location (HTTP-Redirect binding) from the IdP metadata.' })}
+        <div class="field" data-wide><label class="label" for="f_idp_cert">SAML: IdP signing certificate (PEM)</label>
+          <textarea id="f_idp_cert" name="idp_cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----">${pr.idp_cert ?? ''}</textarea>
+          <small class="help">From the IdP metadata (X509Certificate, wrapped in BEGIN/END CERTIFICATE lines). Assertions must be signed with it.</small></div>
         ${input('client_secret', 'Client secret', '', { type: 'password', auto: 'new-password', help: pr.has_secret ? 'A secret is stored. Leave empty to keep it.' : 'Leave empty for a public client (PKCE only).' })}
         ${input('scopes', 'Scopes', pr.scopes ?? 'openid profile email')}
-        ${input('username_claim', 'Username claim', pr.username_claim ?? 'preferred_username', { help: 'Use a claim users cannot change themselves (e.g. preferred_username, upn, email).' })}
+        ${input('username_claim', 'Username claim', pr.username_claim ?? 'preferred_username', { help: 'Use a claim users cannot change themselves (e.g. preferred_username, upn, email). SAML: an attribute name, or nameID.' })}
         ${input('groups_claim', 'Groups claim', pr.groups_claim ?? 'groups', { help: 'Dot paths work, e.g. realm_access.roles' })}
       </div>
       <div class="field u-mt075"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> Create accounts automatically on first sign-in</label>
@@ -374,10 +380,20 @@ export async function usersRoutes(app: FastifyInstance) {
       <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add provider' : 'Save'}</button></div>
     </form>`;
 
-  const providerValues = (b: Record<string, string | undefined>) => [
-    b.display_name?.trim(), b.issuer?.trim().replace(/\/+$/, ''), b.client_id?.trim(),
+  /** A PEM certificate: the base64 body alone (as in IdP metadata) gets its BEGIN/END lines. */
+  const pem = (v: string | undefined) => {
+    const t = (v ?? '').trim();
+    if (!t) return null;
+    if (t.includes('BEGIN CERTIFICATE')) return t;
+    return `-----BEGIN CERTIFICATE-----\n${t.replace(/\s+/g, '').replace(/(.{64})/g, '$1\n').trim()}\n-----END CERTIFICATE-----`;
+  };
+  const protocolOf = (v: string | undefined) => (v === 'saml' ? 'saml' : 'oidc');
+  const providerValues = (b: Record<string, string | undefined>, protocol: string, name: string) => [
+    b.display_name?.trim(), protocol === 'saml' ? b.issuer?.trim() : b.issuer?.trim().replace(/\/+$/, ''),
+    b.client_id?.trim() || (protocol === 'saml' ? `${publicUrl()}/sso/saml/${name}/metadata` : ''),
     b.scopes?.trim() || 'openid profile email', b.username_claim?.trim() || 'preferred_username', b.groups_claim?.trim() || 'groups',
     b.auto_create === 'true', b.enabled === 'true',
+    protocol === 'saml' ? b.idp_sso_url?.trim() || null : null, protocol === 'saml' ? pem(b.idp_cert) : null,
   ];
 
   app.get(`${BASE}/users/providers`, async (req: Req, reply) => {
@@ -411,9 +427,9 @@ export async function usersRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       const r = await owner.one(
-        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, client_secret)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
-        [b.name?.trim().toLowerCase(), ...providerValues(b), b.client_secret || null],
+        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, idp_sso_url, idp_cert, protocol, client_secret)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+        [b.name?.trim().toLowerCase(), ...providerValues(b, protocolOf(b.protocol), b.name?.trim().toLowerCase() ?? ''), protocolOf(b.protocol), b.client_secret || null],
       );
       flash(s, 'Provider added. Register the redirect URI at the provider, then test the connection.');
       return back(reply, s, `${BASE}/users/providers/${r.id}`);
@@ -435,7 +451,11 @@ export async function usersRoutes(app: FastifyInstance) {
         ${region('Settings', html`${providerForm(pr, `${BASE}/users/providers/${pr.id}`, csrf(s), false)}
           <form method="post" action="${BASE}/users/providers/${pr.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete ${pr.display_name}? Linked identities are removed; accounts stay.">Delete provider</button></form>`)}
-        ${region('Register at the provider', html`
+        ${pr.protocol === 'saml' ? region('Register at the identity provider', html`
+          <p>Service provider metadata (import it at the IdP):</p>
+          <p><a href="${metadataUrl(pr)}"><code>${metadataUrl(pr)}</code></a></p>
+          <p>Or by hand: entity ID <code>${spEntityId(pr)}</code>, assertion consumer service (HTTP-POST) <code>${acsUrl(pr)}</code>.</p>
+          <p class="muted">Based on <code>PUBLIC_URL</code>. Sign the assertions; send the groups in the <code>${pr.groups_claim}</code> attribute to map them to roles.</p>`) : region('Register at the provider', html`
           <p>Redirect URI (callback):</p>
           <p><code>${redirectUri(pr)}</code></p>
           <p class="muted">Based on <code>PUBLIC_URL</code>; set it to the address users see (e.g. https://apps.example.com).</p>
@@ -449,13 +469,15 @@ export async function usersRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const b = req.body ?? {};
+    const current = /^\d+$/.test(req.params.id) ? await owner.one('select name, protocol from meta.auth_provider where id = $1', [req.params.id]) : undefined;
+    if (!current) return reply.code(404).send('Not found');
     try {
       await owner.query(
         `update meta.auth_provider set display_name = $2, issuer = $3, client_id = $4, scopes = $5, username_claim = $6,
-                groups_claim = $7, auto_create = $8, enabled = $9,
-                client_secret = case when $11 then null when $10::text is null then client_secret else $10 end
+                groups_claim = $7, auto_create = $8, enabled = $9, idp_sso_url = $10, idp_cert = $11,
+                client_secret = case when $13 then null when $12::text is null then client_secret else $12 end
           where id = $1`,
-        [req.params.id, ...providerValues(b), b.client_secret || null, b.remove_secret === 'true'],
+        [req.params.id, ...providerValues(b, current.protocol, current.name), b.client_secret || null, b.remove_secret === 'true'],
       );
       flash(s, 'Provider saved.');
     } catch (e) {
