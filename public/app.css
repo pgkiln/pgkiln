@@ -761,6 +761,19 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .task-history ol { margin: 0.4rem 0; padding-left: 1.2rem; }
 .task-history q { color: var(--muted); }
 
+/* Workflow diagram (inline SVG; no style attributes) */
+.wf-wrap { overflow-x: auto; padding: 0.5rem 0; }
+.wf-diagram { display: block; width: 100%; min-width: 320px; max-width: 900px; height: auto; margin: 0 auto; }
+.wf-node rect { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+.wf-task rect { stroke: var(--accent); }
+.wf-switch rect { stroke: #b86e00; stroke-dasharray: 5 3; }
+.wf-end rect { fill: var(--surface-3, var(--surface)); }
+.wf-name { fill: var(--text); font-size: 12px; font-weight: 600; text-anchor: middle; }
+.wf-type { fill: var(--muted); font-size: 10px; text-anchor: middle; }
+.wf-edge { fill: none; stroke: var(--muted); stroke-width: 1.3; }
+.wf-arrowhead { fill: var(--muted); }
+.wf-label { fill: var(--muted); font-size: 10px; }
+
 /* Builder: search results and "Used in" */
 .hits { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .hits li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.25rem 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }

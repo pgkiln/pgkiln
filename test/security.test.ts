@@ -669,3 +669,35 @@ describe('sprint 16: approvals', () => {
     await assert.rejects(run('king', 'update meta.task set state = $1', ['cancelled']), /permission denied/);
   });
 });
+
+describe('sprint 17: workflows', () => {
+  const run = (user: string, sql: string, params: unknown[] = [], appIdOverride?: number) =>
+    owner.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appIdOverride ?? appId), user]);
+      await c.query('set local role hr_app');
+      return c.query(sql, params);
+    });
+
+  test('workflow functions check the app and the user; the tables are closed', async () => {
+    // a definition of another application can't be started from this one
+    await assert.rejects(run('king', `select meta.start_workflow('ONBOARDING', null, '{}')`, [], -1), /does not exist in this application/);
+    const id = (await run('allen', `select meta.start_workflow('ONBOARDING', '7499', '{"ENAME": "Allen", "SAL": 1}') as id`)).rows[0].id;
+    try {
+      // others don't see it and can't stop it; nobody without the admin role retries it
+      assert.equal((await run('smith', 'select count(*)::int as n from meta.workflows where id = $1', [id])).rows[0].n, 0);
+      await assert.rejects(run('smith', 'select meta.terminate_workflow($1)', [id]), /cannot terminate/);
+      await assert.rejects(run('allen', 'select meta.retry_workflow($1)', [id]), /cannot retry/);
+      await assert.rejects(run('king', 'update meta.workflow set state = $1', ['completed']), /permission denied/);
+      await assert.rejects(run('king', 'select * from meta.workflow_event'), /permission denied/);
+      // variables can't inject SQL: they are binds (escaped literals) in the steps
+      const { applyBinds } = await import('../src/binds.ts');
+      assert.equal(applyBinds(':SAL::numeric >= 2500', { SAL: "1; drop table hr.emp; --" }), "'1; drop table hr.emp; --'::numeric >= 2500");
+    } finally {
+      // a running pgapex server may have taken a step meanwhile: remove its task too
+      await owner.query('delete from meta.task where workflow_id = $1', [id]);
+      // a running pgapex server may have taken a step meanwhile: remove its task too
+      await owner.query('delete from meta.task where workflow_id = $1', [id]);
+      await owner.query('delete from meta.workflow where id = $1', [id]);
+    }
+  });
+});
