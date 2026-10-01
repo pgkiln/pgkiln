@@ -7,23 +7,23 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-01 (pgapex 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
-| App Builder and development | 4 | 5 | 6 | 0 | Solid builder and wizards, search, where used and an Advisor; no drag-and-drop, no team/AI tooling |
-| Regions | 7 | 6 | 4 | 0 | All everyday regions; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees |
-| Items | 6 | 3 | 3 | 0 | All common items and file upload; no rich text editor yet |
-| Logic and processing | 4 | 5 | 3 | 1 | Core APEX model complete; fewer declarative process types |
-| Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
+| App Builder and development | 4 | 4 | 6 | 0 | Solid builder and wizards, search, where used and an Advisor; no drag-and-drop, no team/AI tooling |
+| Regions | 7 | 6 | 4 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees |
+| Items | 6 | 3 | 3 | 0 | All common items and file upload (several files per item); no rich text editor yet |
+| Logic and processing | 4 | 4 | 3 | 1 | Core APEX model complete; fewer declarative process types |
+| Security | 16 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 4 | 1 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and multi-step workflows; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **54** | **31** | **26** | **6** | 117 APEX features compared: 46% available, 26% partial |
+| **Total** | **53** | **29** | **26** | **6** | 114 APEX features compared: 46% available, 25% partial |
 
 (Counts are of the rows in the tables below.)
 
