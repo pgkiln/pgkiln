@@ -33,6 +33,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | VPD | PostgreSQL row level security |
 | APEX collections | Temporary or unlogged tables, or `jsonb` |
 | File Browse item, `APEX_APPLICATION_TEMP_FILES` | Item type `file`; view `meta.temp_files` ([chapter 16](16-files.md)) |
+| Rich Text Editor, Markdown Editor, Star Rating, Combobox, QR Code | Item types `richtext` (sanitised HTML), `markdown`, `rating`, `combobox` (colon-separated), `qrcode`; plus `daterange` (`from:to`) and `{"reveal": true}` on password items ([chapter 5](05-items.md)) |
 | Data Workshop / Data Load Definition, *Execute Data Load* process | SQL Workshop → Load Data; process type `data_load` ([chapter 16](16-files.md#data-loading)) |
 | Interactive report *Download → PDF*, printing | Actions → Download PDF, Print ([chapter 16](16-files.md#printing)) |
 | `APEX_UTIL.CHANGE_CURRENT_USER_PW`, `RESET_PASSWORD`, `EXPIRE_END_USER_ACCOUNT` | My account page; `meta.set_password()`, `meta.expire_password()` ([chapter 8](08-security.md#passwords-and-my-account)) |

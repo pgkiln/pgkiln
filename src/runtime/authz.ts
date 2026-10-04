@@ -78,7 +78,7 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     if (i.region_id !== null && !vis.regions.has(i.region_id)) continue;
     if (!(await isAuthorized(ctx, i.authz))) continue;
     vis.items.add(i.name);
-    if (i.type === 'hidden' || i.type === 'display') continue;
+    if (i.type === 'hidden' || i.type === 'display' || i.type === 'qrcode') continue;
     // fail closed: a broken read-only condition makes the item read-only
     if (i.readonly_condition && (await sqlTrue(ctx, i.readonly_condition, `read-only condition of ${i.name}`, true))) continue;
     vis.editable.add(i.name);

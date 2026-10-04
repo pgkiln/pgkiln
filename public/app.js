@@ -20,6 +20,8 @@ document.documentElement.classList.add('js');
     const els = fieldsNamed(name);
     if (!els.length) return '';
     const el = els[0];
+    // a date range item: two date inputs with the same name, "from:to"
+    if (el.closest('[data-range]')) return els.some((e) => e.value) ? els.slice(0, 2).map((e) => e.value).join(':') : '';
     if (el.type === 'radio') return (els.find((e) => e.checked) || {}).value || '';
     if (el.type === 'checkbox') return el.checked ? 'true' : 'false';
     return el.value;
@@ -34,7 +36,10 @@ document.documentElement.classList.add('js');
       return;
     }
     const el = els[0];
-    if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
+    if (el.closest('[data-range]')) {
+      const parts = String(value ?? '').split(':');
+      els.slice(0, 2).forEach((e, i) => (e.value = parts[i] || ''));
+    } else if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
     else if (el.type === 'checkbox') el.checked = ['true', 't', 'on', '1', 'yes', 'y'].includes(String(value).toLowerCase());
     else el.value = value ?? '';
     if (depth < 5) {
@@ -1151,3 +1156,293 @@ function areaFilter(map, f) {
   });
   new Control({ position: 'topright' }).addTo(map);
 }
+
+// ------------------------------------------------------------------ rich text, Markdown, tags, date range, password items
+// Each works without JavaScript (a textarea, a text field, two dates, a password field); these only add comfort.
+(() => {
+  // Rich text: an editable area in place of the textarea, kept in sync with it. Content always goes in
+  // through a small allow-list (the server rebuilds it again on submit), never as raw HTML.
+  const ALLOWED = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'STRIKE', 'SUB', 'SUP', 'UL', 'OL', 'LI',
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'HR', 'DIV']);
+  const DROP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'SVG', 'MATH', 'TITLE', 'TEXTAREA', 'SELECT']);
+  const safeHref = (h) => {
+    const u = String(h || '').replace(/[\u0000-\u0020\u007f-\u00a0\u00ad\u200b-\u200f\u2028\u2029\ufeff]/g, '');
+    return /^(https?|mailto|tel):/i.test(u) || (u && !/^[^/?#]*:/.test(u)) ? u : null;
+  };
+  function cleanInto(target, source) {
+    for (const node of source.childNodes) {
+      if (node.nodeType === 3) target.append(node.textContent);
+      if (node.nodeType !== 1 || DROP.has(node.tagName)) continue;
+      if (!ALLOWED.has(node.tagName)) {
+        cleanInto(target, node); // unknown tag: keep its text
+        continue;
+      }
+      const el = document.createElement(node.tagName);
+      if (node.tagName === 'A') {
+        const href = safeHref(node.getAttribute('href'));
+        if (!href) {
+          cleanInto(target, node);
+          continue;
+        }
+        el.setAttribute('href', href);
+        el.setAttribute('rel', 'noopener noreferrer nofollow');
+      }
+      cleanInto(el, node);
+      target.append(el);
+    }
+  }
+  function setRich(editor, html) {
+    const doc = new DOMParser().parseFromString(`<body>${html}`, 'text/html'); // inert: nothing runs or loads
+    editor.replaceChildren();
+    cleanInto(editor, doc.body);
+  }
+  const COMMANDS = {
+    bold: ['bold'], italic: ['italic'], underline: ['underline'], strike: ['strikeThrough'], heading: ['formatBlock', 'h3'],
+    paragraph: ['formatBlock', 'p'], bullets: ['insertUnorderedList'], numbers: ['insertOrderedList'], quote: ['formatBlock', 'blockquote'],
+    code: ['formatBlock', 'pre'], unlink: ['unlink'], clear: ['removeFormat'],
+  };
+  function richText(box) {
+    const area = box.querySelector('textarea');
+    if (!area || box.querySelector('.rte-area')) return;
+    const editor = document.createElement('div');
+    editor.className = 'rte-area';
+    editor.contentEditable = 'true';
+    editor.setAttribute('role', 'textbox');
+    editor.setAttribute('aria-multiline', 'true');
+    const label = area.labels && area.labels[0];
+    if (label) {
+      label.id = label.id || `${area.id}_label`;
+      editor.setAttribute('aria-labelledby', label.id);
+      label.addEventListener('click', (e) => {
+        e.preventDefault();
+        editor.focus();
+      });
+    }
+    for (const a of ['aria-describedby', 'aria-invalid', 'aria-required']) if (area.hasAttribute(a)) editor.setAttribute(a, area.getAttribute(a));
+    setRich(editor, area.value);
+    area.hidden = true;
+    area.after(editor);
+    const sync = () => {
+      area.value = editor.innerHTML;
+    };
+    editor.addEventListener('input', sync);
+    // pasted or dropped content goes through the allow-list too: no styles, images or scripts from
+    // other pages reach the live document (they would load, or break the Content-Security-Policy)
+    const insert = (e, data) => {
+      if (!data) return;
+      const html = data.getData('text/html');
+      const text = data.getData('text/plain');
+      e.preventDefault(); // a pasted image alone would otherwise become an <img>
+      if (!html && !text) return;
+      const sel = getSelection();
+      const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+      if (!range || !editor.contains(range.commonAncestorContainer)) return;
+      if (html) {
+        // inserted as nodes: execCommand('insertHTML') adds style attributes of its own
+        const clean = document.createElement('div');
+        // style attributes are taken out first only so that parsing doesn't report them to the
+        // Content-Security-Policy (which blocks them anyway); cleanInto() is what keeps the content safe
+        const t = document.createElement('template');
+        t.innerHTML = html.replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
+        cleanInto(clean, t.content);
+        const fragment = document.createDocumentFragment();
+        fragment.append(...clean.childNodes);
+        const last = fragment.lastChild;
+        range.deleteContents();
+        range.insertNode(fragment);
+        if (last) {
+          range.setStartAfter(last);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      } else document.execCommand('insertText', false, text);
+      sync();
+    };
+    editor.addEventListener('paste', (e) => insert(e, e.clipboardData));
+    editor.addEventListener('drop', (e) => {
+      if (e.dataTransfer && e.dataTransfer.files.length) return e.preventDefault(); // files are not content
+      if (document.caretRangeFromPoint) {
+        const r = document.caretRangeFromPoint(e.clientX, e.clientY);
+        if (r) {
+          getSelection().removeAllRanges();
+          getSelection().addRange(r);
+        }
+      }
+      insert(e, e.dataTransfer);
+    });
+    editor.addEventListener('blur', () => area.dispatchEvent(new Event('change', { bubbles: true })));
+    // a dynamic action that sets the item's value
+    area.addEventListener('change', () => {
+      if (document.activeElement !== editor) setRich(editor, area.value);
+    });
+    toolbar(box, (cmd, btn) => {
+      editor.focus();
+      document.execCommand('styleWithCSS', false, false);
+      if (cmd === 'link') {
+        const url = safeHref(window.prompt(btn.dataset.prompt || 'URL', 'https://'));
+        if (url) document.execCommand('createLink', false, url);
+      } else if (COMMANDS[cmd]) document.execCommand(COMMANDS[cmd][0], false, COMMANDS[cmd][1]);
+      sync();
+    });
+  }
+  // Markdown: the toolbar puts the syntax around the selection in the textarea
+  const MD = {
+    bold: ['**', '**'], italic: ['_', '_'], strike: ['~~', '~~'], code: ['`', '`'],
+    heading: ['## ', '', true], bullets: ['- ', '', true], numbers: ['1. ', '', true], quote: ['> ', '', true],
+  };
+  function markdown(box) {
+    const area = box.querySelector('textarea');
+    if (!area) return;
+    toolbar(box, (cmd, btn) => {
+      const { selectionStart: a, selectionEnd: b, value } = area;
+      let before = '';
+      let after = '';
+      let start = a;
+      if (cmd === 'link') {
+        const url = window.prompt(btn.dataset.prompt || 'URL', 'https://');
+        if (!url) return;
+        before = '[';
+        after = `](${url.replace(/[()\s]/g, encodeURIComponent)})`;
+      } else if (MD[cmd]) {
+        [before, after] = MD[cmd];
+        if (MD[cmd][2]) start = value.lastIndexOf('\n', a - 1) + 1; // at the start of the line
+      } else return;
+      const sel = value.slice(a, b);
+      area.setRangeText(before + (start === a ? sel : value.slice(start, a) + sel) + after, start, b, 'end');
+      if (!sel && after) area.selectionStart = area.selectionEnd = area.selectionEnd - after.length;
+      area.focus();
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+  function toolbar(box, run) {
+    const bar = box.querySelector('.rte-toolbar');
+    if (!bar) return;
+    bar.hidden = false;
+    // keep the selection in the editor when a button is pressed
+    bar.addEventListener('mousedown', (e) => e.target.closest('button') && e.preventDefault());
+    bar.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-cmd]');
+      if (btn) run(btn.dataset.cmd, btn);
+    });
+    // one tab stop: the arrow keys move between the buttons
+    const buttons = [...bar.querySelectorAll('button')];
+    buttons.forEach((b, i) => (b.tabIndex = i ? -1 : 0));
+    bar.addEventListener('keydown', (e) => {
+      const i = buttons.indexOf(document.activeElement);
+      if (i < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const next = e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[i].tabIndex = -1;
+      buttons[next].tabIndex = 0;
+      buttons[next].focus();
+    });
+  }
+
+  // Combobox with several values: tags. A hidden input keeps the colon-separated value under the item's name.
+  function tags(box) {
+    const input = box.querySelector('input[list]');
+    if (!input || box.querySelector('.tag-list')) return;
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = input.name;
+    hidden.value = input.value;
+    input.removeAttribute('name');
+    input.value = '';
+    const list = document.createElement('ul');
+    list.className = 'tag-list';
+    box.prepend(list);
+    box.append(hidden);
+    box.querySelector('.tags-hint')?.setAttribute('hidden', '');
+    const labels = new Map([...(input.list?.options || [])].map((o) => [o.value, o.label || o.value]));
+    const values = () => hidden.value.split(':').filter(Boolean);
+    const draw = () => {
+      list.replaceChildren(
+        ...values().map((v) => {
+          const li = document.createElement('li');
+          li.className = 'tag';
+          li.append(labels.get(v) || v);
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'tag-remove';
+          x.textContent = '×';
+          x.setAttribute('aria-label', (box.dataset.removeLabel || 'Remove {value}').replace('{value}', labels.get(v) || v));
+          x.addEventListener('click', () => {
+            set(values().filter((w) => w !== v));
+            input.focus();
+          });
+          li.append(x);
+          return li;
+        }),
+      );
+    };
+    const set = (vs) => {
+      hidden.value = [...new Set(vs)].join(':');
+      draw();
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const add = () => {
+      const typed = input.value.split(':').map((v) => v.trim()).filter(Boolean);
+      input.value = '';
+      if (!typed.length) return;
+      // a label typed as shown becomes its value
+      const byLabel = new Map([...labels].map(([v, l]) => [l.toLowerCase(), v]));
+      set([...values(), ...typed.map((t) => (labels.has(t) ? t : byLabel.get(t.toLowerCase()) || t))]);
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',') {
+        if (!input.value.trim()) return;
+        e.preventDefault();
+        add();
+      } else if (e.key === 'Backspace' && !input.value && values().length) set(values().slice(0, -1));
+    });
+    // picking a suggestion from the list
+    input.addEventListener('input', (e) => {
+      if (!e.inputType || e.inputType === 'insertReplacementText') if (labels.has(input.value)) add();
+    });
+    input.addEventListener('change', (e) => {
+      e.stopPropagation(); // the item's value is the hidden input's
+      add();
+    });
+    input.form?.addEventListener('submit', add);
+    hidden.addEventListener('change', (e) => e.isTrusted || draw());
+    draw();
+  }
+
+  // Date range: the end date can't be before the start date
+  function range(box) {
+    const [from, to] = box.querySelectorAll('input[type=date]');
+    if (!from || !to) return;
+    const limit = () => {
+      to.min = from.value;
+      from.max = to.value;
+    };
+    from.addEventListener('change', limit);
+    to.addEventListener('change', limit);
+  }
+
+  function enhance(root) {
+    root.querySelectorAll('[data-richtext]').forEach(richText);
+    root.querySelectorAll('[data-markdown]').forEach(markdown);
+    root.querySelectorAll('[data-tags]').forEach(tags);
+    root.querySelectorAll('[data-range]').forEach(range);
+    root.querySelectorAll('[data-reveal]').forEach((b) => (b.hidden = false));
+  }
+  enhance(document);
+  document.addEventListener('pgapex:replaced', (e) => e.detail && enhance(e.detail.parentElement || document));
+
+  // Password reveal: show or hide what was typed; hidden again before the form is sent
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('[data-reveal]');
+    const input = btn && document.getElementById(btn.dataset.reveal);
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', String(show));
+    if (!btn.dataset.show) btn.dataset.show = btn.textContent;
+    btn.textContent = show ? btn.dataset.hide : btn.dataset.show;
+  });
+  document.addEventListener('submit', (e) => {
+    for (const btn of e.target.querySelectorAll('[data-reveal][aria-pressed="true"]')) btn.click();
+  }, true);
+})();
