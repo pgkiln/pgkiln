@@ -466,8 +466,11 @@ document.documentElement.classList.add('js');
         for (const f of [...tpl.content.children]) if (!f.id || !document.getElementById(f.id)) (form || document.querySelector('main') || body).after(f);
       }
       const wasHidden = region?.hidden;
+      const classes = region ? [...region.classList] : [];
       const node = region ? replaceHtml(region, json.html) : null;
+      // keep what scripts set on the placeholder's region (hidden, a display selector's classes)
       if (node && wasHidden) node.hidden = true;
+      if (node) for (const c of classes) node.classList.add(c);
     } catch (e) {
       region?.removeAttribute('aria-busy');
       if (loading) loading.hidden = true;

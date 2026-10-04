@@ -51,7 +51,7 @@ export function pageWindow(r: Region, st: { page: number; size: number }) {
   const max = maxRows(r, null);
   const page = Math.max(1, Math.min(st.page, max ? Math.ceil(max / st.size) : MAX_PAGE));
   const offset = (page - 1) * st.size;
-  return { page, offset, limit: max ? Math.max(1, Math.min(st.size + 1, max + 1 - offset)) : st.size + 1, max };
+  return { page, offset, limit: max ? Math.max(1, Math.min(st.size + 1, max - offset)) : st.size + 1, max };
 }
 
 export const OPERATORS: Record<string, { label: string; sql: (col: string, v: string) => string; noValue?: boolean }> = {

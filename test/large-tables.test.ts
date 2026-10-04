@@ -50,6 +50,15 @@ describe('pagination of large tables', () => {
     const last = sectionOf((await king.get(`/a/hr/25?r${id}_p=8000`)).body, id);
     assert.match(last, /Rows 199976–200000/);
     assert.doesNotMatch(last, />Next/);
+    // a maximum that is a whole number of pages: no Next on the last one
+    await owner.query(`update meta.region set config = config || '{"max_rows": 50}' where id = $1`, [id]);
+    try {
+      const capped = sectionOf((await king.get(`/a/hr/25?r${id}_p=2`)).body, id);
+      assert.match(capped, /Rows 26–50/);
+      assert.doesNotMatch(capped, />Next/);
+    } finally {
+      await owner.query(`update meta.region set config = config - 'max_rows' where id = $1`, [id]);
+    }
   });
 
   test('a maximum row count caps the total and the pages', async () => {
