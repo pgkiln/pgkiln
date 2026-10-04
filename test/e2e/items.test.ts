@@ -134,3 +134,24 @@ describe('sprint 26 item types', () => {
     assert.equal(row.period, '2025-07-01:2025-11-30');
   });
 });
+
+describe('popup LOV', () => {
+  test('search in the dialog, pick an employee and submit; no CSP violations', async () => {
+    const page = await open();
+    await page.goto(`${base}/a/hr/26`);
+    assert.equal(await page.locator('#P26_EMPNO').isHidden(), true);
+    await page.locator('[data-item="P26_EMPNO"] .popup-lov-open').click();
+    const dlg = page.locator('dialog.popup-lov-dialog[open]');
+    await dlg.locator('.popup-lov-table').waitFor();
+    assert.equal(await dlg.locator('tbody tr').count(), 5);
+    await dlg.locator('.popup-lov-search').fill('analyst');
+    await dlg.locator('tbody tr', { hasText: 'Scott' }).waitFor();
+    assert.equal(await dlg.locator('tbody tr').count(), 2);
+    await dlg.locator('.popup-lov-pick', { hasText: 'Scott' }).click();
+    assert.equal(await page.inputValue('[data-item="P26_EMPNO"] .popup-lov-display'), 'Scott');
+    await Promise.all([page.waitForNavigation(), page.locator('button', { hasText: 'Show' }).click()]);
+    assert.equal(await page.inputValue('#P26_EMPNO'), '7788');
+    assert.deepEqual(await violations(page), []);
+    await page.context().close();
+  });
+});
