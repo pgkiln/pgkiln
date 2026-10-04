@@ -857,7 +857,9 @@ and verify each workstream.
 
 **Merged state (2026-10-04):** views, regions, logic, data merged into `sprint-26` + migration **034** (export/import
 with 029's, 030's and 031's changes). `npm run db:reset && npm test`: 458 pass, 8 skipped, 0 fail. Still to do: items
-(agent running), e2e, CI-style upgrade test, docs/release steps below.
+(agent running), CI-style upgrade test, release steps below. Done since: e2e 70/70; parity rows (not yet the
+summary counts / "Last reviewed"), CHANGELOG Unreleased and SECURITY.md written for the four merged workstreams
+(add items' entries).
 
 **Merge note:** 029 (logic), 030 (data) and 031 (regions) each redefine `meta.export_app`/`meta.import_app`: after
 merging, write migration 034 combining all three changes. (Done: 034.)
