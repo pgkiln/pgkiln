@@ -95,7 +95,10 @@ which is read at startup; real environment variables take precedence.
 | `MAX_UPLOAD_MB` | `10` | Largest file a file item accepts (an item's `max_mb` can only lower it) |
 | `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data |
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
-| `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (the CSV download has all rows) |
+| `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF |
+| `DOWNLOAD_MAX_ROWS` | `1000000` | Most rows in a report's CSV or Excel download (streamed; at most 1,048,575) |
+| `REGION_CACHE_MAX_ENTRIES` | `1000` | Most regions in the [region cache](04-pages-and-regions.md#large-tables) of one server process (`0` turns caching off) |
+| `REGION_CACHE_MAX_MB` | `64` | Memory for the region cache of one server process |
 | `AUTOMATIONS` | on | `off` stops this server from running [automations](06-processing.md#automations) |
 | `SCHEDULER_INTERVAL_S` | `30` | How often the automation scheduler looks for due runs |
 | `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |

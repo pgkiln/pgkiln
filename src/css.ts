@@ -18,6 +18,16 @@ export class PageCss {
     return name;
   }
 
+  /** The rules as [class, declarations] pairs (region caching keeps them with the region). */
+  entries(): [string, string][] {
+    return [...this.rules];
+  }
+
+  /** Add rules made by cls() earlier (a cached or separately rendered region). */
+  addAll(entries: Iterable<[string, string]>) {
+    for (const [name, d] of entries) if (/^x[A-Za-z0-9]{10}$/.test(name) && !/[{}<>]/.test(d)) this.rules.set(name, d);
+  }
+
   get size() {
     return this.rules.size;
   }

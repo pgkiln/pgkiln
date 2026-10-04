@@ -50,6 +50,12 @@ export interface PageContext {
   body?: Record<string, unknown>;
   /** language, texts and theme of this request */
   locale: Locale;
+  /** set when a link with a per-user checksum was rendered (region caching for all users skips such regions) */
+  userBound?: boolean;
+  /** render cached regions anew (a dynamic action's Refresh region), storing the new result */
+  cacheRefresh?: boolean;
+  /** the lazy region the request renders (GET …/region/:id), not as a placeholder */
+  loadNow?: number;
 }
 
 /** Session state plus the built-in substitution strings. */

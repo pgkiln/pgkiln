@@ -7,7 +7,7 @@ import type { Button, Process, Region } from '../metadata.ts';
 import { checksumValid, urlChecksum } from '../security.ts';
 import { publicError, toState, type PageContext } from './context.ts';
 import { lovOptions, type LovOption } from './items.ts';
-import { buildSql, cell, headingOf, key, regionUrl, reportState, visibleColumns } from './report.ts';
+import { buildSql, cell, headingOf, key, pageInfo, pagerNav, regionUrl, reportState, visibleColumns } from './report.ts';
 
 // Interactive grid: an editable report on one table (APEX's Interactive
 // Grid). The region's SELECT must include the table's primary key column.
@@ -92,7 +92,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `grid "${r.title ?? r.id}"`)}</div>`;
   }
   const fields = res.fields.slice(0, -1);
-  const total = res.rows.length ? Number(res.rows[0][fields.length]) : 0;
+  const info = pageInfo(r, st, res.rows, fields.length);
   const pkIdx = fields.findIndex((f) => f.name === r.pk_column);
   if (pkIdx === -1) return html`<div class="alert alert-error">The grid query must select the primary key column ${r.pk_column}.</div>`;
 
@@ -127,7 +127,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     (col) => html`<th scope="col" class="${NUMERIC.has(col.typeOid) ? 'num' : null}">${headingOf(r, col.name, ctx.locale.tr)}${col.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}</th>`,
   );
 
-  const rows = res.rows.map((row, i) => {
+  const rows = info.rows.map((row, i) => {
     const pk = toState(row[pkIdx]) ?? '';
     const pi = postedByPk.get(pk);
     const orig: Record<string, string> = {};
@@ -173,8 +173,6 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       .filter(([k]) => ![key(r, 'q'), key(r, 'p'), 'clear', 'cs'].includes(k))
       .map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}</form>`,
   );
-  const pageNo = st.page;
-  const to = Math.min(total, pageNo * st.size);
 
   return html`<div class="grid" data-grid="${g}">
     <div class="report-toolbar grid-toolbar">
@@ -192,11 +190,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       <tbody>${rows}${postedNew}</tbody>
       ${insertable ? html`<tbody class="grid-template">${newRow(postedNew.length ? Math.max(...newRowIndexes(posted!, g)) + 1 : 0)}</tbody>` : ''}
     </table></div>
-    ${total > st.size || pageNo > 1
-      ? html`<nav class="pager" aria-label="${ctx.locale.t('report.pagination')}"><span>${ctx.locale.t('report.range', { from: (pageNo - 1) * st.size + 1, to, total })}</span>
-          ${pageNo > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo - 1)))}" data-grid-leave>‹ ${ctx.locale.t('report.previous')}</a>` : ''}
-          ${to < total ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo + 1)))}" data-grid-leave>${ctx.locale.t('report.next')} ›</a>` : ''}</nav>`
-      : html`<div class="pager"><span>${ctx.locale.t('report.rows')}: ${total}</span></div>`}
+    ${pagerNav(ctx, r, info, raw(' data-grid-leave'))}
   </div>`;
 }
 

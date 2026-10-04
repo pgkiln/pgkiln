@@ -50,6 +50,10 @@ export const linkItemsText = (items: Record<string, string> | undefined) => (ite
 
 interface ReportConfig {
   page_size?: number;
+  pagination?: 'range';
+  max_rows?: number;
+  lazy?: boolean;
+  cache?: { scope: 'user' | 'session' | 'all'; seconds: number };
   searchable?: boolean;
   sortable?: boolean;
   interactive?: boolean;
@@ -116,6 +120,20 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
         <div class="field"><label class="label" for="${id('public')}">Who may save public reports</label>
           <select id="${id('public')}" name="public_reports">${opt('', '- nobody -', cfg.public_reports)}${schemes.rows.map((x) => opt(x.name, x.name, cfg.public_reports))}</select></div>
       </div></fieldset>
+      <fieldset class="prop-group"><legend>Large tables</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('pagination')}">Pagination</label>
+          <select id="${id('pagination')}" name="pagination">${opt('', 'Rows X–Y of Z (counts the total)', cfg.pagination)}${opt('range', 'Row ranges X–Y (no total)', cfg.pagination)}</select>
+          <small class="help">Row ranges skip counting the rows: use them for large tables.</small></div>
+        <div class="field"><label class="label" for="${id('max_rows')}">Maximum row count</label>
+          <input id="${id('max_rows')}" name="max_rows" type="number" min="1" max="1000000" value="${cfg.max_rows ?? ''}" placeholder="no maximum">
+          <small class="help">The report (and its downloads) reads at most this many rows.</small></div>
+        ${check('lazy', 'Load after the page shows (lazy loading)', cfg.lazy === true)}
+        <div class="field"><label class="label" for="${id('cache_scope')}">Cache</label>
+          <select id="${id('cache_scope')}" name="cache_scope">${opt('', '- no cache -', cfg.cache?.scope)}${opt('user', 'Per user', cfg.cache?.scope)}${opt('session', 'Per session', cfg.cache?.scope)}${opt('all', 'For all users (with the same roles)', cfg.cache?.scope)}</select></div>
+        <div class="field"><label class="label" for="${id('cache_seconds')}">Cache for (seconds)</label>
+          <input id="${id('cache_seconds')}" name="cache_seconds" type="number" min="1" max="86400" value="${cfg.cache?.seconds ?? ''}" placeholder="300">
+          <small class="help">A submit of the page empties its cache.</small></div>
+      </div></fieldset>
       <fieldset class="prop-group"><legend>Columns</legend>
         ${all.length
           ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Shown</th><th>In PDF</th><th>PDF width (mm)</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
@@ -156,6 +174,13 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
   const size = Number(b.page_size);
   set('page_size', PAGE_SIZES.includes(String(size)) && size !== 15 ? size : undefined);
   set('mobile', b.mobile === 'scroll' ? 'scroll' : undefined);
+  set('pagination', b.pagination === 'range' ? 'range' : undefined);
+  const max = Math.floor(Number(b.max_rows));
+  set('max_rows', b.max_rows?.trim() && max >= 1 ? Math.min(max, 1_000_000) : undefined);
+  set('lazy', b.lazy === 'true' ? true : undefined);
+  const scope = b.cache_scope;
+  const seconds = Math.floor(Number(b.cache_seconds || 300));
+  set('cache', scope === 'user' || scope === 'session' || scope === 'all' ? { scope, seconds: Math.min(Math.max(seconds || 300, 1), 86_400) } : undefined);
   set('empty', b.empty?.trim() || undefined);
   set('searchable', b.searchable === 'true' ? undefined : false);
   set('interactive', b.interactive === 'true' ? undefined : false);

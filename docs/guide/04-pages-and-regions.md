@@ -150,7 +150,11 @@ Attributes (most of them are also in the page designer's **Report settings** for
 
 | Key | Default | Meaning |
 |---|---|---|
-| `page_size` | `15` | Rows per page (the user can change it) |
+| `page_size` | `15` | Rows per page (the user can change it, up to 500) |
+| `pagination` | X–Y of Z | `"range"`: "Rows X–Y" without a total, for large tables (see [large tables](#large-tables)) |
+| `max_rows` | none | Maximum row count: the report, its total and its downloads read at most this many rows (1 to 1,000,000) |
+| `lazy` | `false` | Load the region after the page shows (see [large tables](#large-tables)) |
+| `cache` | none | Keep the rendered region: `{"scope": "user" \| "session" \| "all", "seconds": 300}` |
 | `searchable` | `true` | Show the search box (`false` = a "classic report") |
 | `interactive` | `true` | Show the Actions menu (only when searchable) |
 | `sortable` | `true` | Allow sorting (`false` keeps the query's order, e.g. for trees) |
@@ -169,7 +173,8 @@ Items placed **in** a report region appear in its toolbar; that's how filter fie
 a department select list with `submit_on_change`) are made.
 
 The CSV and Excel downloads use the current search, filters and sort, grouped by the control
-break column when there is one (up to 100,000 rows). Text cells that start with `=`, `+`, `-` or
+break column when there is one (up to `DOWNLOAD_MAX_ROWS`, default 1,000,000, or the report's `max_rows`).
+They are streamed from a database cursor, so the server holds one batch of 1,000 rows at a time. Text cells that start with `=`, `+`, `-` or
 `@` are prefixed with `'` in CSV so spreadsheets don't execute them. The PDF uses them too; see
 [downloads and printing](16-files.md#downloads-and-printing). Computed columns are included in the
 downloads; highlights, aggregates and the group by, pivot and chart views are shown on screen only.
@@ -208,6 +213,7 @@ Attributes:
 | Key | Default | Meaning |
 |---|---|---|
 | `page_size` | `25` | Rows per page (max 200) |
+| `pagination`, `max_rows` | | As for reports |
 | `allow` | all `true` | `{"insert": false, "update": true, "delete": false}` |
 | `readonly` | `[]` | Columns that may not be edited |
 | `columns` | `{}` | Per column: `{"deptno": {"lov": "LOV:DEPARTMENTS", "required": true}}`. `lov` makes it a select list (any [list of values](05-items.md#lists-of-values)) |
@@ -365,6 +371,7 @@ Attributes:
 | `style` | `"metric"`: KPI tiles with a big value (`badge`) and a label (`title`) |
 | `link` | `{"page": 5, "items": {"P5_DEPTNO": "#deptno#"}}` makes each card a link |
 | `empty` | Text when there are no rows |
+| `max_rows` | Most cards shown (default 500); when there are more, "Showing the first 500 rows." follows |
 
 ---
 
@@ -740,7 +747,66 @@ select '<ul>' || string_agg('<li>' || meta.html_escape(ename) || '</li>', '') ||
   from hr.emp where job = 'MANAGER'
 ```
 
+A dynamic region outputs at most `max_rows` rows (default 1000).
+
 The content security policy blocks inline `<script>`, event handler attributes, `style="…"`
 attributes and `<style>` blocks in both: use the classes of `/static/app.css` (for example
 `muted`, `lead`, `alert alert-success`, `tag`, `btn`, `cards`/`card`) instead. A browser ignores
 blocked styles and reports them in its developer console.
+
+## Large tables
+
+pgapex is meant for tables of any size. Reports and grids page in the database (`limit` /
+`offset`), so only one page of rows reaches the server; the settings below keep the rest of the
+page fast too. The HR example's page 25 (*Large tables*, `examples/hr/hr_25_large_tables.sql`)
+shows them on 200,000 generated rows.
+
+**Pagination.** By default a report shows "1–15 of 2,345", which counts every row the search and
+filters leave. On a large table that count reads the whole result. With
+`"pagination": "range"` (page designer → Report settings → *Pagination*: *Row ranges*) the
+report shows "Rows 1–15" and reads one row more than it shows to know whether there is a next
+page, like APEX's "row ranges X to Y" pagination. Grids take the same setting.
+
+**Maximum row count.** `"max_rows": 10000` caps what a report reads: its total is counted over at
+most 10,001 rows ("1–15 of more than 10000"), the pager stops at the last page within the
+maximum, and the downloads hold at most that many rows. Page numbers beyond it show the last
+page; the server also limits page numbers (1,000,000) and page sizes (500, grids 200), whatever
+the URL says.
+
+**Row limits.** Regions without paging read at most `max_rows` rows:
+
+| Region | Default | When cut off |
+|---|---|---|
+| `cards` | 500 | "Showing the first 500 rows." |
+| `chart` | 1000 | the same note under the chart |
+| `dynamic` | 1000 | |
+| lists of values (an item's `max_rows`) | 5000 | (up to 50,000) |
+
+Calendars (2,000 events), maps (5,000 places) and trees have their own limits.
+
+**Lazy loading.** `"lazy": true` (report, chart, cards, dynamic, tree and template component
+regions) sends the page with a placeholder; the browser then fetches the region from
+`GET /a/<alias>/<page>/region/<id>` (with the page's query string, so paging and filters apply)
+and puts it in place. One slow chart no longer delays the whole page. The request is checked like
+the page: the session, page access, and the region's condition and authorization scheme. Without
+JavaScript the placeholder is a link that shows the page with the region in it (`r<id>_load=1`).
+
+**Region caching.** `"cache": {"scope": "user", "seconds": 300}` keeps the region's rendered HTML
+in the server's memory for 1 second to 1 day (same region types as lazy loading):
+
+| Scope | Shared by |
+|---|---|
+| `session` | one session |
+| `user` | the user's sessions |
+| `all` | all users with the same roles |
+
+The cache key also holds the application, page, region definition, language, the request's query
+string and the values of the items the region refers to (and of its own items), so a region is
+never shared across applications, and a changed region or item value renders anew. A **submit of
+the page** empties its cached regions; a dynamic action's *Refresh region* renders the region anew.
+Regions whose links carry per-user checksums are not cached for all users, the session's CSRF
+token is never cached, and a region that shows an error is not cached. A lazy region that is in
+the cache shows at once. Each server process has its own cache: `REGION_CACHE_MAX_ENTRIES`
+(default 1000) and `REGION_CACHE_MAX_MB` (default 64) bound it, and one region over 2 MB is
+not cached. Use it for regions that are expensive and may be a little old (dashboards, summaries).
+

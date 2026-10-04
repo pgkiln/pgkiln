@@ -25,7 +25,7 @@ export interface LovOption {
  * 'STATIC:Display;Return,Other;OTHER' (a lone entry is used for both), or a
  * shared list of values 'LOV:NAME'.
  */
-export async function lovOptions(ctx: PageContext, lov: string | null): Promise<LovOption[]> {
+export async function lovOptions(ctx: PageContext, lov: string | null, max = LOV_MAX_ROWS): Promise<LovOption[]> {
   if (!lov?.trim()) return [];
   const shared = /^LOV:([A-Z0-9_]+)$/i.exec(lov.trim());
   if (shared) {
@@ -44,9 +44,18 @@ export async function lovOptions(ctx: PageContext, lov: string | null): Promise<
         return { display: display.trim(), value: value.trim() };
       });
   const c = ctx.client!;
-  const res = await savepoint(c, () => c.query({ text: stripSemicolon(applyBinds(lov, bindValues(ctx))), rowMode: 'array' }));
+  // at most `max` rows (an item's config.max_rows), so a big table can't flood the page
+  const sql = `select * from (\n${stripSemicolon(applyBinds(lov, bindValues(ctx)))}\n) "__l" limit ${max}`;
+  const res = await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }));
   return res.rows.map((r: unknown[]) => ({ display: toState(r[0]) ?? '', value: toState(r.length > 1 ? r[1] : r[0]) ?? '' }));
 }
+
+/** Rows a list of values reads when its item sets no config.max_rows (1 to 50,000). */
+export const LOV_MAX_ROWS = 5000;
+export const lovMax = (item: Item) => {
+  const n = Math.floor(Number(item.config?.max_rows));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 50_000) : LOV_MAX_ROWS;
+};
 
 const LOV_TYPES = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov', 'combobox']);
 const hasLov = (item: Item) => LOV_TYPES.has(item.type) || (item.type === 'display' && !!item.lov);
@@ -84,7 +93,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   let lovError: Raw | '' = '';
   if (hasLov(item)) {
     try {
-      options = await lovOptions(ctx, item.lov);
+      options = await lovOptions(ctx, item.lov, lovMax(item));
     } catch (e) {
       lovError = html`<small class="error">${await publicError(ctx, e, `list of values of ${item.name}`)}</small>`;
     }

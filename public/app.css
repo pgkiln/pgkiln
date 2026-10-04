@@ -289,6 +289,10 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .null { color: var(--muted); font-style: italic; }
 .pager { display: flex; gap: 0.5rem; align-items: center; justify-content: flex-end; margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); }
 .pager span { margin-right: auto; }
+/* a region cut off at its row limit; a lazy region before it arrives */
+.region-limit { margin: 0.5rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.region-lazy { display: flex; align-items: center; justify-content: center; min-height: 5rem; max-width: 100%; color: var(--muted); font-size: 0.9rem; }
+.region-lazy-link { overflow-wrap: anywhere; }
 
 /* ---------- charts ----------
    Categorical palette (validated for colour-vision deficiency against both

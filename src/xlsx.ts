@@ -1,4 +1,4 @@
-import { strToU8, zipSync } from 'fflate';
+import { strToU8, Zip, ZipDeflate } from 'fflate';
 
 // A minimal Excel (.xlsx) writer: one sheet, a bold frozen heading row with
 // an autofilter, and typed cells (numbers, booleans, dates and timestamps
@@ -62,68 +62,116 @@ export function sheetName(name: string) {
   return name.replace(/[[\]:*?/\\]/g, ' ').replace(/^'+|'+$/g, '').trim().slice(0, 31) || 'Sheet1';
 }
 
-export function writeXlsx(sheet: XlsxSheet): Buffer {
-  const n = sheet.headings.length;
-  const widths =
-    sheet.widths ??
-    sheet.headings.map((h, ci) => {
-      let w = h.length;
-      for (const row of sheet.rows.slice(0, 500)) w = Math.max(w, displayLength(row[ci]));
-      return Math.min(Math.max(w + 2, 8), 60);
+/** Column widths in characters from the headings and the first rows. */
+export function xlsxWidths(headings: string[], rows: XlsxCell[][]) {
+  return headings.map((h, ci) => {
+    let w = h.length;
+    for (const row of rows.slice(0, 500)) w = Math.max(w, displayLength(row[ci]));
+    return Math.min(Math.max(w + 2, 8), 60);
+  });
+}
+
+const XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n`;
+const STATIC_FILES: Record<string, string> = {
+  '[Content_Types].xml':
+    `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>` +
+    `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+    `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+    `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
+  '_rels/.rels':
+    `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+  'xl/_rels/workbook.xml.rels':
+    `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+  // styles: 0 default, 1 bold heading, 2 date, 3 date and time
+  'xl/styles.xml':
+    `${XML}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+    `<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd hh:mm"/></numFmts>` +
+    `<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>` +
+    `<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>` +
+    `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
+    `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
+    `<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` +
+    `<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>` +
+    `<xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>` +
+    `<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>` +
+    `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
+};
+
+/**
+ * A streaming Excel writer: the sheet is compressed as its rows arrive and
+ * each compressed chunk goes to `out`, so a download of a million rows never
+ * holds more than one batch of rows (streamed report downloads).
+ */
+export class XlsxWriter {
+  private zip: Zip;
+  private sheet: ZipDeflate;
+  private n: number;
+  private row = 1;
+  private name: string;
+
+  constructor(out: (chunk: Uint8Array) => void, name: string, headings: string[], widths: number[]) {
+    this.zip = new Zip((err, chunk) => {
+      if (err) throw err;
+      out(chunk);
     });
-  const last = columnName(Math.max(n, 1) - 1);
-  const rowsXml = [sheet.headings as XlsxCell[], ...sheet.rows].map(
-    (row, ri) => `<row r="${ri + 1}">${row.slice(0, n).map((v, ci) => cellXml(`${columnName(ci)}${ri + 1}`, v, ri === 0)).join('')}</row>`,
-  );
-  const ws =
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
-    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-    `<dimension ref="A1:${last}${sheet.rows.length + 1}"/>` +
-    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
-    `<sheetFormatPr defaultRowHeight="15"/>` +
-    (n ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '') +
-    `<sheetData>${rowsXml.join('')}</sheetData>` +
-    (n ? `<autoFilter ref="A1:${last}${sheet.rows.length + 1}"/>` : '') +
-    `</worksheet>`;
-  const name = esc(sheetName(sheet.name));
-  const files: Record<string, Uint8Array> = {
-    '[Content_Types].xml': strToU8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-        `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>` +
-        `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-        `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
-        `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
-    ),
-    '_rels/.rels': strToU8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-    ),
-    'xl/workbook.xml': strToU8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-        `<sheets><sheet name="${name}" sheetId="1" r:id="rId1"/></sheets>` +
-        (n ? `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${name.replace(/'/g, "''")}'!$A$1:$${last}$${sheet.rows.length + 1}</definedName></definedNames>` : '') +
+    this.n = headings.length;
+    this.name = esc(sheetName(name));
+    for (const [path, text] of Object.entries(STATIC_FILES)) this.file(path, text);
+    this.sheet = new ZipDeflate('xl/worksheets/sheet1.xml', { level: 6 });
+    this.zip.add(this.sheet);
+    this.sheet.push(
+      strToU8(
+        `${XML}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+          `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+          `<sheetFormatPr defaultRowHeight="15"/>` +
+          (this.n ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '') +
+          `<sheetData>`,
+      ),
+    );
+    this.rows([headings], true);
+  }
+
+  private file(path: string, text: string) {
+    const f = new ZipDeflate(path, { level: 6 });
+    this.zip.add(f);
+    f.push(strToU8(text), true);
+  }
+
+  /** Add rows (the cells beyond the headings are left out). */
+  rows(rows: XlsxCell[][], head = false) {
+    let xml = '';
+    for (const row of rows) {
+      const r = this.row++;
+      xml += `<row r="${r}">${row.slice(0, this.n).map((v, ci) => cellXml(`${columnName(ci)}${r}`, v, head)).join('')}</row>`;
+    }
+    if (xml) this.sheet.push(strToU8(xml));
+  }
+
+  /** Finish the sheet (autofilter over all rows) and the workbook. */
+  end() {
+    const last = columnName(Math.max(this.n, 1) - 1);
+    const height = this.row - 1;
+    this.sheet.push(strToU8(`</sheetData>${this.n ? `<autoFilter ref="A1:${last}${height}"/>` : ''}</worksheet>`), true);
+    this.file(
+      'xl/workbook.xml',
+      `${XML}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+        `<sheets><sheet name="${this.name}" sheetId="1" r:id="rId1"/></sheets>` +
+        (this.n ? `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${this.name.replace(/'/g, "''")}'!$A$1:$${last}$${height}</definedName></definedNames>` : '') +
         `</workbook>`,
-    ),
-    'xl/_rels/workbook.xml.rels': strToU8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
-        `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
-    ),
-    // styles: 0 default, 1 bold heading, 2 date, 3 date and time
-    'xl/styles.xml': strToU8(
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-        `<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd hh:mm"/></numFmts>` +
-        `<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>` +
-        `<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>` +
-        `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
-        `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-        `<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` +
-        `<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>` +
-        `<xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>` +
-        `<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>` +
-        `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
-    ),
-    'xl/worksheets/sheet1.xml': strToU8(ws),
-  };
-  return Buffer.from(zipSync(files, { level: 6 }));
+    );
+    this.zip.end();
+  }
+}
+
+/** A whole sheet in memory (small downloads, tests). */
+export function writeXlsx(sheet: XlsxSheet): Buffer {
+  const chunks: Uint8Array[] = [];
+  const w = new XlsxWriter((c) => chunks.push(c), sheet.name, sheet.headings, sheet.widths ?? xlsxWidths(sheet.headings, sheet.rows));
+  w.rows(sheet.rows);
+  w.end();
+  return Buffer.concat(chunks);
 }

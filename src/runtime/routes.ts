@@ -22,7 +22,9 @@ import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { moveCalendarEvent } from './calendar.ts';
-import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
+import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
+import { invalidatePage, lazyOf } from './region-cache.ts';
+import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
 import { pwaHead } from './pwa.ts';
@@ -30,6 +32,22 @@ import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale }
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Write to a streamed response, waiting while the client is slow; fails once the client is gone. */
+async function writeOut(out: PassThrough, chunk: string | Uint8Array) {
+  if (out.destroyed) throw new Error('download aborted');
+  if (out.write(chunk)) return;
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      out.off('drain', done);
+      out.off('close', done);
+      resolve();
+    };
+    out.on('drain', done);
+    out.on('close', done);
+  });
+  if (out.destroyed) throw new Error('download aborted');
+}
 
 type Params = { alias: string; page?: string; id?: string; item?: string; sid?: string };
 type Body = Record<string, string | undefined>;
@@ -288,7 +306,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // a document template: ?doc=NAME (see documents.ts)
     const docName = ctx.params.get('doc');
 
-    let result: { html?: string; csv?: string; file?: Buffer; type?: string; name?: string; redirect?: string };
+    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -314,8 +332,23 @@ export async function runtimeRoutes(app: FastifyInstance) {
           if (!region) throw new Forbidden(ctx.locale.t('error.report_unavailable'));
           const name = (region.title ?? 'report').replace(/[^\w-]+/g, '_');
           if (format === 'pdf') return { file: await reportPdf(ctx, region), type: 'application/pdf', name: `${name}.pdf` };
-          if (format === 'xlsx') return { file: await reportXlsx(ctx, region), type: XLSX_TYPE, name: `${name}.xlsx` };
-          return { csv: await reportCsv(ctx, region), name: `${name}.csv` };
+          // CSV and Excel stream from a cursor while the transaction is open
+          const send = await openDownload(ctx, region, format as 'csv' | 'xlsx');
+          const out = new PassThrough();
+          reply
+            .header('content-disposition', `attachment; filename="${name}.${format}"`)
+            .header('cache-control', 'private, no-store')
+            .type(format === 'xlsx' ? XLSX_TYPE : 'text/csv; charset=utf-8')
+            .send(out);
+          try {
+            await send((chunk) => writeOut(out, chunk));
+            out.end();
+          } catch (e) {
+            // the client went away, or the query failed after the first rows: the download ends short
+            req.log.warn({ err: e }, 'report download stopped');
+            out.destroy();
+          }
+          return { streamed: true };
         }
         return { html: await renderPage(ctx) };
       });
@@ -326,10 +359,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     await saveState(ctx.session);
     if (result.redirect) return reply.redirect(result.redirect, 303);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
+    if (result.streamed) return reply;
     if (result.file)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type(result.type!).send(result.file);
-    if (result.csv !== undefined)
-      return reply.header('content-disposition', `attachment; filename="${result.name}"`).type('text/csv; charset=utf-8').send(result.csv);
     return reply.type('text/html').send(result.html);
   });
 
@@ -415,6 +447,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
       return renderResponse(ctx, reply, 422);
     }
 
+    // the page's cached regions may show what the submit changed
+    invalidatePage(ctx.app.id, ctx.page.page_no);
     // A plain submit (e.g. a select list with submit_on_change) just stores state.
     remember();
     if (!button) {
@@ -459,6 +493,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
             break;
           case 'refresh_region': {
             vis = await computeVisibility(ctx);
+            // a refresh shows current data: a cached region is rendered anew (and cached again)
+            ctx.cacheRefresh = true;
             const r = ctx.page.regions.find((x) => x.id === da.affected_region_id);
             if (r) out.regions[r.id] = (await renderRegion(ctx, r)).toString();
             out.css = ctx.css.text;
@@ -477,6 +513,35 @@ export async function runtimeRoutes(app: FastifyInstance) {
     } catch (e) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
       return reply.code(400).send({ error: await publicError(ctx, e, 'dynamic action') });
+    }
+  });
+
+  // ---------------------------------------------------------------- lazy regions
+  // A region with config.lazy, fetched by app.js once the page shows: the
+  // page's query string (report paging, filters) comes along. Page access,
+  // the region's condition and authorization are checked as for the page;
+  // session state is only read (several regions load at the same time).
+  app.get('/a/:alias/:page/region/:id', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    ctx.params.delete('cs');
+    ctx.dialog = ctx.params.get('dialog') === '1';
+    reply.header('cache-control', 'private, no-store');
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const r = ctx.page.regions.find((x) => x.id === Number(req.params.id));
+        if (!r || !lazyOf(r) || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        ctx.loadNow = r.id;
+        const markup = (await renderRegion(ctx, r)).toString();
+        return { html: markup, css: ctx.css.text, detached: ctx.detached.map(String).join('') };
+      });
+      return reply.send(out);
+    } catch (e) {
+      if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'region') });
     }
   });
 
