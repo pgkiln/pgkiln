@@ -1,3 +1,4 @@
+import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { owner } from '../db.ts';
@@ -326,11 +327,19 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <h3>Security</h3>
             <div class="form-grid">
-              ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
+              ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['header', 'HTTP header (reverse proxy)'], ['none', 'None (public)']])}
               ${input('db_role', 'Database role (parsing schema)', a.db_role, { help: 'All application SQL runs as this role (SET LOCAL ROLE), so grants and row level security apply. Leave empty only for trusted internal apps.' })}
               <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
                 <small class="help">Shows database error details to end users. Development only.</small></div>
             </div>
+            <h3>HTTP header authentication</h3>
+            <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgapex trusts it only from the proxy addresses in <code>PGAPEX_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
+            <div class="form-grid">
+              ${input('header_name', 'User name header', a.header_name ?? '', { placeholder: DEFAULT_HEADER, help: 'The request header with the user name (APEX: HTTP Header Variable). Empty: X-Remote-User. A changed or missing header ends the session.' })}
+              ${input('logout_url', 'Sign-out URL', a.logout_url ?? '', { placeholder: 'e.g. https://sso.example.com/logout', help: 'Where "Sign out" goes after the session ends, usually the proxy\'s own sign-out page. Empty: a "signed out" page.' })}
+            </div>
+            <div class="field"><label class="check"><input type="checkbox" name="header_auto_create" value="true"${a.header_auto_create ? raw(' checked') : ''}> Create accounts automatically</label>
+              <small class="help">An unknown user name gets a new account with access to this app. Otherwise the account must exist and have access.</small></div>
             <h3>Sign-in methods</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
             ${directories.length
@@ -367,7 +376,8 @@ export async function builderRoutes(app: FastifyInstance) {
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
-          ${a.authentication !== 'none' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
+          ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGAPEX_AUTH_HEADER_PROXIES' : html`<b>refused: PGAPEX_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
+          ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
           <li>Public pages: ${(await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n}</li>
@@ -384,7 +394,8 @@ export async function builderRoutes(app: FastifyInstance) {
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
-                date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17, updated_at = now() where id = $1`,
+                date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
+                header_name = $18, header_auto_create = $19, logout_url = $20, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
@@ -401,7 +412,10 @@ export async function builderRoutes(app: FastifyInstance) {
          b.date_format?.trim() || null,
          b.timestamp_format?.trim() || null,
          Number.isInteger(Number(b.remember_me_days)) && Number(b.remember_me_days) >= 1 && Number(b.remember_me_days) <= 365 ? Number(b.remember_me_days) : null,
-         ([] as string[]).concat((b.ldap_directories as unknown as string | string[] | undefined) ?? []).filter(Boolean)],
+         ([] as string[]).concat((b.ldap_directories as unknown as string | string[] | undefined) ?? []).filter(Boolean),
+         b.header_name?.trim() || null,
+         b.header_auto_create === 'true',
+         b.logout_url?.trim() || null],
       );
       flash(s, 'Settings saved.');
     } catch (e) {

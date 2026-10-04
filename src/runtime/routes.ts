@@ -2,6 +2,7 @@ import { PageCss } from '../css.ts';
 import { forgetRemember, issueRemember, useRemember } from '../remember.ts';
 import { appDirectories, ldapAuthenticate, LdapError, resolveLdapAccount } from '../ldap.ts';
 import { finishSamlSignIn, samlMetadata, startSamlSignIn } from '../saml.ts';
+import { headerValue, HeaderAuthError, peerAddress, resolveHeaderAccount, trustedPeer } from '../headerauth.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
@@ -143,6 +144,47 @@ export async function completeLogin(req: FastifyRequest, reply: FastifyReply, a:
   return reply.redirect(safeNext(a, opts.next), 303);
 }
 
+/**
+ * HTTP-header authentication: the session for the user the trusted proxy names,
+ * or null after sending an error page. The session is bound to the header value:
+ * a missing or changed header ends it.
+ */
+async function headerSession(req: FastifyRequest, reply: FastifyReply, a: App, session: Session, locale: Locale, json: boolean): Promise<Session | null> {
+  const ip = clientIp(req);
+  const base = `/a/${a.alias}`;
+  const t = locale.t;
+  const refuse = async (code: number, title: string, message: string, detail: string, username?: string, endSession = true) => {
+    if (endSession && session.username) {
+      logActivity({ appId: a.id, username: session.username, event: 'logout', ip, detail: `header: ${detail}` });
+      await destroySession(reply, session, base);
+    }
+    await logActivity({ appId: a.id, username: username ?? null, event: 'login_failed', ip, detail: `header: ${detail}` });
+    if (json) reply.code(code).send({ error: message });
+    else simplePage(reply, code, title, message, undefined, locale);
+    return null;
+  };
+  const peer = peerAddress(req);
+  if (!trustedPeer(peer)) return refuse(403, t('login.sso_failed'), t('login.header_untrusted'), `untrusted peer ${peer ?? '?'}`, undefined, false);
+  const value = headerValue(req, a);
+  if (value === undefined) return refuse(401, t('login.sso_failed'), t('login.header_missing'), 'no user header');
+  if (value === null) return refuse(400, t('login.sso_failed'), t('login.header_invalid'), 'invalid user header');
+  if (session.username && session.state.__HEADER_USER === value) return session;
+  if (session.username) logActivity({ appId: a.id, username: session.username, event: 'logout', ip, detail: 'header: user header changed' });
+  let account: string;
+  try {
+    account = await resolveHeaderAccount(a, value);
+  } catch (e) {
+    if (!(e instanceof HeaderAuthError)) throw e;
+    return refuse(403, t('login.no_access_title'), t(e.key, { user: value }), e.key === 'login.no_account' ? 'no account' : 'account disabled', value);
+  }
+  const access = await ssoAccess(a.id, account, []);
+  if (!access.allowed) return refuse(403, t('login.no_access_title'), t('login.no_access', { user: account, app: a.name }), 'no access', account);
+  const s = await signIn(req, reply, a, session, account, { method: 'header', detail: 'header' });
+  s.state.__HEADER_USER = value;
+  await saveState(s);
+  return s;
+}
+
 export const txContext = (ctx: PageContext) => ({
   appId: ctx.app.id,
   alias: ctx.app.alias,
@@ -159,7 +201,7 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   const base = `/a/${app.alias}`;
   let session = await getSession(req, reply, app.id, base);
   // the session ended, but the browser was remembered: sign in again silently (a new token each time)
-  if (app.authentication !== 'none' && !session.username) {
+  if (app.authentication === 'app_users' && !session.username) {
     const remembered = await useRemember(req, reply, app);
     if (remembered)
       session = await signIn(req, reply, app, session, remembered.username, {
@@ -168,8 +210,14 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
       });
   }
   const langBefore = session.state.__LANG;
-  const locale = await resolveLocale(req, app, session);
+  let locale = await resolveLocale(req, app, session);
   if (session.state.__LANG !== langBefore) await saveState(session);
+  if (app.authentication === 'header') {
+    const s = await headerSession(req, reply, app, session, locale, json);
+    if (!s) return null;
+    if (s !== session) locale = await resolveLocale(req, app, s);
+    session = s;
+  }
   if (locale.lang !== app.language) translateApp(app, locale.tr);
   const pageNo = fixedPage === 'home' ? app.home_page : Number(req.params.page);
   const page = Number.isInteger(pageNo) && pageNo > 0 ? await loadPage(app.id, pageNo) : undefined;
@@ -757,6 +805,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ip = clientIp(req);
     const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
     if (req.body?.__csrf !== session.csrf_token) return fail(locale.t('login.expired_session'), 403), null;
+    if (a.authentication === 'header') return fail(locale.t('login.method_unavailable'), 403), null;
     if (!a.local_login) return fail(locale.t('login.password_disabled'), 403), null;
     if (await loginThrottled(a.id, username, ip)) {
       logActivity({ appId: a.id, username, event: 'login_locked', ip });
@@ -769,6 +818,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const a0 = await loadApp(req.params.alias);
     if (!a0) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
     if (a0.authentication === 'none') return reply.redirect(`/a/${a0.alias}`);
+    // header authentication has no sign-in form: the proxy signs the user in on any page
+    if (a0.authentication === 'header') return reply.redirect(safeNext(a0, req.query.next));
     const session = await getSession(req, reply, a0.id, `/a/${a0.alias}`);
     const { app: a, locale } = (await appWithLocale(req, req.params.alias, session))!;
     const body = await loginPage(a, locale, session, safeNext(a, req.query.next));
@@ -855,7 +906,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const loaded = await appWithLocale(req, req.params.alias);
     if (!loaded) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
     const { app: a, locale } = loaded;
-    const p = a.sso_providers.includes(req.params.provider) ? await loadProvider(req.params.provider) : undefined;
+    const p = a.authentication === 'app_users' && a.sso_providers.includes(req.params.provider) ? await loadProvider(req.params.provider) : undefined;
     if (!p) return simplePage(reply, 404, locale.t('error.not_found'), locale.t('login.method_unavailable'), `/a/${a.alias}/login`, locale);
     try {
       const { url, browserKey } = p.protocol === 'saml' ? await startSamlSignIn(p, a.id, safeNext(a, req.query.next)) : await startSignIn(p, a.id, safeNext(a, req.query.next));
@@ -889,7 +940,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
   const finishSso = async (req: FastifyRequest, reply: FastifyReply, p: { name: string }, result: SsoResult, ip: string) => {
     const alias = (await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [result.appId]))?.alias;
     const loaded = alias ? await appWithLocale(req, alias) : undefined;
-    if (!loaded || !loaded.app.sso_providers.includes(p.name)) return simplePage(reply, 403, english('login.sso_failed'), english('login.method_unavailable'));
+    if (!loaded || loaded.app.authentication !== 'app_users' || !loaded.app.sso_providers.includes(p.name)) return simplePage(reply, 403, english('login.sso_failed'), english('login.method_unavailable'));
     const { app: a, locale } = loaded;
     const access = await ssoAccess(a.id, result.username, result.groups);
     if (!access.allowed) {
@@ -949,6 +1000,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (session.username) logActivity({ appId: a.id, username: session.username, event: 'logout', ip: clientIp(req) });
     await forgetRemember(req, reply, a);
     await destroySession(reply, session, base);
+    if (a.authentication === 'header') {
+      // the proxy would sign the user in again at once: go to its sign-out page, if any
+      if (a.logout_url) return reply.redirect(a.logout_url, 303);
+      const loaded = await appWithLocale(req, a.alias);
+      return simplePage(reply, 200, loaded?.locale.t('login.sign_out') ?? 'Sign out', loaded?.locale.t('login.signed_out') ?? 'You are signed out.', undefined, loaded?.locale);
+    }
     return reply.redirect(`${base}/login`, 303);
   });
 }

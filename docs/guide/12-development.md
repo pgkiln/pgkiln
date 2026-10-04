@@ -25,6 +25,7 @@ src/
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
+  headerauth.ts            HTTP-header authentication: trusted proxies (PGAPEX_AUTH_HEADER_PROXIES), header checks, accounts
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
   api.ts                   REST API tokens for PostgREST, API role checks
@@ -180,7 +181,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.20.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.21.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

@@ -58,7 +58,7 @@ The home page is laid out like APEX's App Builder:
 | Name | Display name, shown in the header |
 | Alias | Lowercase URL name: `inventory` gives `/a/inventory` |
 | Parsing schema | The database schema the app works with. Choose an existing schema, or leave it on "new schema" to create one named after the alias |
-| Authentication | *App users* (a login page and a user list) or *None* (a public app) |
+| Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)) or *None* (a public app) |
 | First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
 
 Creating the app also:

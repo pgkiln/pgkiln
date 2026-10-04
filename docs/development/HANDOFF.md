@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-04. Sprints 3–28 are merged into `main` and released as **v0.20.0** (migrations 001–034 are released: add 035+; 033 and 035 were never used). HR example files up to `hr_27` are released.
+Last updated: 2026-10-04. Sprints 3–29 are merged into `main` and released as **v0.21.0** (migrations 001–036 are released: add 037+; 033 and 035 were never used). HR example files up to `hr_27` are released.
 
 ## Project in one paragraph
 
@@ -48,7 +48,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 28, released as **v0.20.0** (tags: v0.2.0, v0.6.0–v0.20.0; 0.3.0–0.5.0 were never tagged). Migrations 001–034 are released |
+| `main` | Everything up to sprint 29, released as **v0.21.0** (tags: v0.2.0, v0.6.0–v0.21.0; 0.3.0–0.5.0 were never tagged). Migrations 001–034 are released |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
@@ -955,3 +955,16 @@ search link. The agent commits `wip:` checkpoints and pushes `sprint-28` after e
 chapter 12 version line, merge, tag, push, `gh run list` to check CI.
 
 **Result:** `popup_lov` (endpoint `POST /a/:alias/:page/lov/:item/search`, `searchLov`/`lovLookup` in items.ts); no migration (036 unused: the type was already allowed); HR `hr_27_popup_lov.sql` page 26. Tests 502 + 8 skipped, e2e 78/78. Next: AI features (owner's decision on provider/API keys), keyset paging, streaming PDFs.
+
+## Sprint 29 (DONE, v0.21.0): HTTP-header authentication (owner: "please continue", 1 agent, 2026-10-04)
+
+Branch `sprint-29` from `main` (v0.20.0); one agent in the main checkout, dev DB 5434; reserved migration 036, HR
+`hr_28` (only if useful). Scope (parity row "Database accounts, HTTP-header authentication"): an app authentication
+type `header` (APEX "HTTP Header Variable") for apps behind a reverse proxy / SSO gateway that sets a user header
+(e.g. `X-Remote-User`): header name per app, only trusted when the request comes from a proxy address listed in an
+env var (e.g. `PGAPEX_AUTH_HEADER_PROXIES`), otherwise refused; optional automatic account creation like OIDC;
+session bound to the header value (a changed header ends the session). Database accounts stay out of scope.
+**If a session ends:** `git log --oneline main..sprint-29`; finish tests, then parity row, CHANGELOG 0.21.0,
+SECURITY.md, `.env.example`, version, CI matrix + v0.21.0, chapter 12 version line, merge, tag, push, check CI.
+
+**Result:** app authentication `header` (`src/headerauth.ts`, `headerSession` in routes.ts; migration 036: `header_name`, `header_auto_create`, `logout_url`); env `PGAPEX_AUTH_HEADER_PROXIES`. Tests 511 + 8 skipped, e2e 78/78. Next: AI features (owner's decision), keyset paging, streaming PDFs/REST collections, database-account authentication.

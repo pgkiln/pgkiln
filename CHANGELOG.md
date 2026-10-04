@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-04
+
+### Added
+- **HTTP header authentication** (APEX: HTTP Header Variable; migration 036): an app type `header` for
+  apps behind a reverse proxy or SSO gateway that sets the user in a header (`X-Remote-User` by
+  default). The header is trusted only from the proxy addresses in `PGAPEX_AUTH_HEADER_PROXIES`; the
+  session is bound to its value; accounts can be created automatically; an optional sign-out URL.
+
 ## [0.20.0] - 2026-10-04
 
 ### Added
