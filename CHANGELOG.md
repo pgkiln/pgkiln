@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-04
+
 ### Added
 - **Calendar views** (APEX: calendar): month, week, day and list views, create on click (a
   checksummed link with the clicked slot) and drag and drop to move events through the region's
@@ -29,7 +31,12 @@ All notable changes to this project are documented here. The format follows
   basic, API-key, bearer and OAuth2 client-credentials sign-in with encrypted, write-only secrets;
   an **Invoke API** page process. Outgoing calls only to hosts on `PGAPEX_REST_ALLOWED_HOSTS`, with
   SSRF checks; secrets need `PGAPEX_SECRET_KEY`.
-- HR example pages 21 (Explore), 22 (Leave planner), 23 (Web services) and 24 (Planner).
+- **New item types** (migration 032): `richtext` (HTML rebuilt from an allow-list on the server
+  every time it is saved and shown; pasted HTML is cleaned), `markdown` (rendered on the server),
+  `rating` (stars), `combobox` (free text with suggestions, as tags), `daterange` (`from:to`) and
+  `qrcode` (SVG drawn on the server, no dependency), and a show/hide button on password items
+  (`{"reveal": true}`). All work without JavaScript.
+- HR example pages 20 (Reviews), 21 (Explore), 22 (Leave planner), 23 (Web services) and 24 (Planner).
 
 ### Changed
 - Report search terms, facet values and range bounds are sent to PostgreSQL as query parameters.

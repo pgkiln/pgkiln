@@ -7,23 +7,23 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-04 (pgapex 0.18.0: calendar week/day/list views with drag and drop, bubble/gauge/funnel/radar charts and drill-down, smart filters, a region display selector and more facet types, computations, conditional branches, build options, menu buttons, REST data sources and web credentials, rich text/Markdown, rating, combobox, date range and QR code items; 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 5 | 4 | 6 | 0 | Page Designer with drag-and-drop and a code editor, wizards, search, where used, an Advisor, a CLI with one file per component; no team/AI tooling |
-| Regions | 8 | 8 | 4 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; no lazy loading or region caching |
-| Items | 6 | 3 | 3 | 0 | All common items and file upload (several files per item); no rich text editor yet |
-| Logic and processing | 4 | 6 | 2 | 1 | Core APEX model complete; fewer declarative process types |
+| Regions | 12 | 6 | 2 | 0 | All everyday regions; thirteen chart types with drill-down; calendars with week/day/list views and drag and drop; faceted search, smart filters and a region display selector; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; no lazy loading or region caching |
+| Items | 9 | 3 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
+| Logic and processing | 7 | 5 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons; fewer declarative process types |
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
-| Data and integration | 4 | 2 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
+| Data and integration | 4 | 3 | 2 | 3 | REST APIs via PostgREST, REST data sources and web credentials, CSV/XLSX/JSON loading, report PDFs and document templates |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and workflows with parallel branches and versions; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **56** | **34** | **25** | **6** | 121 APEX features compared: 46% available, 28% partial |
+| **Total** | **66** | **32** | **17** | **6** | 121 APEX features compared: 55% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -85,9 +85,9 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | Read-only condition, required, help text, default | ✅ | |
 | BOOLEAN session state (26.1) | 🟡 | Stored as `true` / `false` text, which PostgreSQL casts to boolean; boolean columns map to switches |
 | File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), **several files per item** (one row per file in a child table, or a list of temporary files), drag-and-drop and paste (26.1), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** object storage, image cropping |
-| Rich text / markdown editor | ❌ | |
-| Star rating, QR code, combobox (tags), date range | ❌ | |
-| Password reveal toggle (24.2) | ❌ | |
+| Rich text / markdown editor | ✅ | `richtext` (HTML rebuilt from an allow-list on the server when saved and shown, pasted HTML cleaned in the browser) and `markdown` (rendered on the server, HTML typed in it shown as text); a toolbar with JavaScript, a plain text field without ([chapter 5](guide/05-items.md)) |
+| Star rating, QR code, combobox (tags), date range | ✅ | `rating` (radio buttons drawn as stars), `qrcode` (SVG drawn on the server, no dependency), `combobox` (free text with list-of-values suggestions, tags, colon-separated), `daterange` (`from:to`); all work without JavaScript and are checked on the server |
+| Password reveal toggle (24.2) | ✅ | `{"reveal": true}` on password items; the value is never sent back to the page |
 
 ## Logic and processing
 
@@ -236,8 +236,9 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-Done in 0.16.0: workflow branches and versions; the Page Designer with drag and drop and a code
-editor; the file-per-component export and CLI; template components and plug-ins.
+Done in 0.18.0: calendar views, more chart types and drill-down; smart filters, display selector
+and facet types; computations, branches, build options and menu buttons; REST data sources and web
+credentials; rich text and the other new item types.
 
 1. **AI features** (needs a decision on the provider and API keys).
 2. **Large tables**: pagination without a total and a maximum row count, row limits on cards,
