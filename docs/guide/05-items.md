@@ -27,6 +27,12 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `hidden` | not rendered | set by URL (with checksum), fetch or processes |
 | `file` | file upload ([chapter 16](16-files.md)); on phones the camera with `{"capture": "environment"}`, photos made smaller with `{"max_px": 1600}` ([chapter 17](17-mobile.md)) | the id of the uploaded temporary file (a uuid) |
 | `location` | a text field with *Use my location* ([chapter 17](17-mobile.md)) | `latitude,longitude`, e.g. `52.01160,4.35710` |
+| `richtext` | rich text editor (toolbar; a plain HTML textarea without JavaScript), full width | **sanitised HTML**, see [below](#rich-text-and-markdown) |
+| `markdown` | Markdown textarea with a toolbar; shown formatted when read-only | the Markdown text |
+| `rating` | star rating (radio buttons drawn as stars) | `1` … `max` (default 5) |
+| `combobox` | free text with suggestions from the list of values; several values become tags | **colon-separated** values, e.g. `SQL:Sales` |
+| `daterange` | two date pickers, *From* and *To* | `from:to`, e.g. `2026-01-01:2026-06-30` |
+| `qrcode` | display only: the value as a QR code (SVG drawn on the server) | whatever was set |
 
 Use multi-value items in SQL with `string_to_array`:
 
@@ -34,7 +40,13 @@ Use multi-value items in SQL with `string_to_array`:
 select * from hr.emp where deptno::text = any (string_to_array(:P11_DEPTS, ':'))
 ```
 
-`true`/`false` values cast directly to boolean (`:P3_ACTIVE::boolean`).
+`true`/`false` values cast directly to boolean (`:P3_ACTIVE::boolean`). A date range splits the
+same way (either date may be empty unless the item is required):
+
+```sql
+where hiredate between nullif(split_part(:P20_PERIOD, ':', 1), '')::date
+                   and coalesce(nullif(split_part(:P20_PERIOD, ':', 2), '')::date, 'infinity')
+```
 
 ## Properties
 
@@ -60,7 +72,60 @@ Attributes (`config`):
 | `null_label` | Text of the empty option in select lists (default `- Select -`); `false` removes the empty option |
 | `cascade_parents` | Comma-separated items this list depends on, see [cascading lists](#cascading-lists-of-values) |
 | `wide` | `true`: take the full width of the form |
-| `rows` | Number of lines of a textarea (default 4) |
+| `rows` | Number of lines of a textarea (default 4), rich text or Markdown editor (default 8) |
+| `max` | `rating`: the number of stars, 3 to 10 (default 5) |
+| `multiple` | `combobox`: `false` for a single free-text value with suggestions (default: several values, as tags) |
+| `ecc` | `qrcode`: error correction `L`, `M` (default), `Q` or `H` |
+| `size` | `qrcode`: width and height in pixels (64–1024; default 4 per module) |
+| `show_value` | `qrcode`: `true` also prints the text under the code |
+| `reveal` | `password`: `true` adds a *Show*/*Hide* button (shown only when JavaScript runs) |
+
+## Rich text and Markdown
+
+APEX's Rich Text Editor stores HTML; pgapex's `richtext` item does too, but never stores or shows
+HTML it did not rebuild itself. On submit and every time it is displayed, the HTML goes through a
+strict allow-list (`src/richtext.ts`): paragraphs, line breaks, headings, bold/italic/underline/
+strikethrough, sub/superscript, lists, quotes, code, horizontal rules and links. Text is always
+escaped; links keep only `href` (`http`, `https`, `mailto`, `tel` or a relative URL) and get
+`rel="noopener noreferrer nofollow"`; scripts, styles, event handlers, `style` attributes,
+`javascript:`/`data:` URLs, images, frames, SVG and comments are dropped. An empty editor stores
+nothing (NULL). The value may come from a table that other programs write: it is cleaned again
+when shown, so stored HTML is never trusted.
+
+With JavaScript the textarea becomes an editable area with a toolbar (bold, italic, underline,
+strikethrough, heading, paragraph, lists, quote, code, link, remove link, clear formatting); the
+toolbar is one tab stop (arrow keys move between its buttons). What it produces goes through the
+same allow-list, in the browser and again on the server. Pasted or dropped content is cleaned
+before it reaches the page: formatting within the allow-list is kept, and styles, images and
+scripts from the other page are left out (pasted files are ignored).
+
+The `markdown` item stores the Markdown text as typed. Read-only it is
+rendered on the server: headings, paragraphs, emphasis, ~~strikethrough~~, inline and
+fenced code, lists (nested), quotes, horizontal rules, links and bare `https://` addresses. HTML in
+the Markdown is shown as text, and the result passes through the same allow-list.
+
+## Star rating, combobox, date range, password reveal and QR code
+
+- **Star rating** (`rating`): radio buttons, so the keyboard (arrow keys) and screen readers work as
+  for any radio group (“3 of 5”); CSS draws stars. A required rating has no *No rating* choice. The
+  server accepts only whole numbers from 1 to `max`.
+- **Combobox** (`combobox`, APEX 23.2+): a text field with a `datalist` of the list of values. With
+  several values (the default) JavaScript shows them as tags with a remove button; type and press
+  Enter or comma, or pick a suggestion. Without JavaScript type the values separated by colons. The
+  server trims the values and removes duplicates. A suggestion stores its return value; free text is
+  stored as typed (a typed display value is turned into its return value in the browser).
+- **Date range** (`daterange`): two date pickers with the item's name, stored as `from:to`. The
+  server checks that both are real dates and that *from* is not after *to*; a required range needs
+  both. A dynamic action that sets the item uses the same `from:to` text.
+- **Password reveal**: `{"reveal": true}` on a `password` item adds a *Show*/*Hide* button
+  (`aria-pressed`). The field is hidden again before the form is sent; the value is never sent back
+  to the browser.
+- **QR code** (`qrcode`): shows the item's value (set by a computation, a process or a form fetch)
+  as an SVG QR code made on the server (byte mode, UTF-8, versions 1–40, no extra library), with
+  the value as its accessible name. It cannot be submitted. Text longer than a QR code holds
+  shows a message instead.
+
+The HR example's page 20 *Reviews* (`examples/hr/hr_20_items.sql`) uses all of them.
 
 ## Lists of values
 

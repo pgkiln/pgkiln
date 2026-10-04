@@ -35,6 +35,8 @@ src/
   xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
+  richtext.ts              rich text and Markdown items: allow-list HTML sanitiser, Markdown renderer
+  qrcode.ts                QR code encoder (byte mode, versions 1–40) and SVG output for the qrcode item
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   metadata.ts              types + loaders for apps and pages
   maptiles.ts              map tile server URL, attribution and CSP origin
@@ -106,6 +108,7 @@ test/
   accounts.test.ts         own password, expiry, admin reset, preferences
   i18n.test.ts             languages, translations, text messages, date masks, XLIFF/CSV
   files.test.ts            file items: storage, limits, downloads, temporary files
+  items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
@@ -115,6 +118,7 @@ test/
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
+  e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
 ```
 
@@ -186,7 +190,9 @@ DATABASE_URL=<same database> npm run example:hr && npm test
 
 Adding an item type follows the same path through `meta.item`'s constraint, `ItemType`,
 `renderItem()` in `items.ts`, and `applyPostedItems()` in `routes.ts` if it posts values
-differently.
+differently; server-side format checks go in `validate()` (`engine.ts`), the builder's lists in
+`components.ts` (type options, attribute help) and `ITEM_LABELS` in `arrange.ts` (gallery), and
+browser enhancements at the end of `public/app.js` (the item must work without them).
 
 ## Migrations
 
