@@ -1633,3 +1633,154 @@ describe('sprint 26 logic: computations, branches, menus, badges, dynamic action
       await assert.rejects(runtime.query(sql), /permission denied/, sql);
   });
 });
+
+describe('sprint 26 data: REST data sources, web credentials, invoke_api', () => {
+  const env = { ...process.env };
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { url: string; auth: string | null }[] = [];
+  const dev = new Browser();
+  const cleanup: string[] = [];
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      hits.push({ url: req.url!, auth: req.headers.authorization ?? null });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ host: req.headers.host, path: req.url, items: [{ v: "it's $$ \"x\" ); drop table hr.emp; --" }] }));
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name like 'SEC\\_%'`, [appId]);
+    await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC\\_%'`, [appId]);
+    for (const sql of cleanup) await owner.query(sql);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  test('a web credential secret is write-only: encrypted, never shown, exported or readable by the runtime role', async () => {
+    const { decryptSecret } = await import('../src/secrets.ts');
+    const secret = 'sec-test-Secret-value-4711';
+    // a forged secret_enc in the form is ignored; only "secret" is taken, and encrypted
+    const res = await dev.post(`/builder/apps/${appId}/shared/web_credential`, {
+      __csrf: dev.lastCsrf, name: 'SEC_CRED', type: 'bearer', secret, secret_enc: 'v1:forged', valid_for: `${mockBase}/`,
+    });
+    assert.equal(res.statusCode, 303);
+    const row = await owner.one(`select id, secret_enc from meta.web_credential where app_id = $1 and name = 'SEC_CRED'`, [appId]);
+    assert.match(row.secret_enc, /^v1:/);
+    assert.notEqual(row.secret_enc, 'v1:forged');
+    assert.ok(!row.secret_enc.includes(secret));
+    assert.equal(decryptSecret(row.secret_enc), secret);
+    // the builder shows that a secret is stored, never the secret or its ciphertext
+    const page = (await dev.get(`/builder/apps/${appId}/shared?c=web_credential-${row.id}`)).body;
+    assert.match(page, /A secret is stored/);
+    assert.ok(!page.includes(secret) && !page.includes(row.secret_enc), 'not in the builder page');
+    // saving without a secret keeps the stored one
+    assert.equal((await dev.post(`/builder/apps/${appId}/shared/web_credential/${row.id}`, { __csrf: dev.lastCsrf, name: 'SEC_CRED', type: 'bearer', secret: '', valid_for: `${mockBase}/` })).statusCode, 303);
+    assert.equal((await owner.one('select secret_enc from meta.web_credential where id = $1', [row.id])).secret_enc, row.secret_enc);
+    // exports (JSON, directory) and the search leave it out
+    const doc = JSON.stringify((await owner.one(`select meta.export_app('hr') as d`)).d);
+    assert.ok(doc.includes('SEC_CRED') && !doc.includes('secret_enc') && !doc.includes(row.secret_enc));
+    const zip = await dev.get(`/builder/apps/${appId}/export?format=dir`);
+    assert.ok(!zip.rawPayload.includes(Buffer.from(row.secret_enc)));
+    assert.ok(!(await dev.get(`/builder/apps/${appId}/search?q=${encodeURIComponent(row.secret_enc.slice(3, 20))}`)).body.includes(row.secret_enc));
+    // the runtime role (and so application SQL) can't read it
+    await assert.rejects(runtime.query('select secret_enc from meta.web_credential'), /permission denied/);
+    assert.ok((await runtime.query(`select name from meta.web_credential where name = 'SEC_CRED'`)).rowCount === 1, 'the other columns are readable');
+    // an imported document can't bring a secret along
+    const imported = await owner.one(`select meta.import_app(meta.export_app('hr') || jsonb_build_object('web_credentials',
+      jsonb_build_array(jsonb_build_object('name', 'SEC_IMPORTED', 'type', 'bearer', 'secret_enc', $1::text))), 'sec_import_26') as id`, [row.secret_enc]);
+    cleanup.push(`delete from meta.app where id = ${Number(imported.id)}`);
+    assert.equal((await owner.one(`select secret_enc from meta.web_credential where app_id = $1 and name = 'SEC_IMPORTED'`, [imported.id])).secret_enc, null);
+    // removing the secret needs a developer, the CSRF token and the right application
+    const anon = new Browser();
+    assert.equal((await anon.post(`/builder/apps/${appId}/web-credentials/${row.id}/clear`, { __csrf: 'x' })).statusCode, 302);
+    assert.equal((await dev.post(`/builder/apps/${appId}/web-credentials/${row.id}/clear`, { __csrf: 'wrong' })).statusCode, 403);
+    await dev.post(`/builder/apps/${imported.id}/web-credentials/${row.id}/clear`, { __csrf: dev.lastCsrf });
+    assert.ok((await owner.one('select secret_enc from meta.web_credential where id = $1', [row.id])).secret_enc, 'another app id: not removed');
+    await dev.post(`/builder/apps/${appId}/web-credentials/${row.id}/clear`, { __csrf: dev.lastCsrf });
+    assert.equal((await owner.one('select secret_enc from meta.web_credential where id = $1', [row.id])).secret_enc, null);
+  });
+
+  test('"Test" of a source: developers only, CSRF, the right application; the credential stays with its URLs', async () => {
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc, valid_for) values ($1, 'SEC_KEY', 'bearer', $2, $3)`,
+      [appId, encryptSecret('only-for-the-mock'), [`${mockBase}/ok/`]]);
+    const src = await owner.one(`insert into meta.rest_source (app_id, name, url, credential) values ($1, 'SEC_SRC', $2, 'SEC_KEY') returning id`, [appId, `${mockBase}/ok/data`]);
+    const url = `/builder/apps/${appId}/rest-sources/${src.id}/test`;
+    const n = hits.length;
+    assert.equal((await new Browser().post(url, { __csrf: 'x' })).statusCode, 302, 'not signed in: to the login page');
+    assert.equal((await dev.post(url, { __csrf: 'wrong' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/apps/${appId + 100000}/rest-sources/${src.id}/test`, { __csrf: dev.lastCsrf })).statusCode, 404);
+    assert.equal(hits.length, n, 'no request was made');
+    assert.equal((await dev.post(url, { __csrf: dev.lastCsrf })).statusCode, 303);
+    assert.deepEqual(hits.slice(n), [{ url: '/ok/data', auth: 'Bearer only-for-the-mock' }]);
+    // pointed elsewhere, the source fails instead of sending the secret
+    await owner.query('update meta.rest_source set url = $2 where id = $1', [src.id, `${mockBase}/other`]);
+    await dev.post(url, { __csrf: dev.lastCsrf });
+    assert.equal(hits.length, n + 1);
+    assert.match((await dev.get(`/builder/apps/${appId}/shared?c=rest_source-${src.id}`)).body, /not valid for this URL/);
+    // "Use these columns" checks the column names
+    await dev.post(`/builder/apps/${appId}/rest-sources/${src.id}/columns`, { __csrf: dev.lastCsrf, columns: '[{"name": "x\\"); drop table hr.emp; --"}]' });
+    assert.deepEqual((await owner.one('select columns from meta.rest_source where id = $1', [src.id])).columns, []);
+  });
+
+  test('parameter values can not change the host, add headers or break out of the SQL', async () => {
+    const ws = await import('../src/websources.ts');
+    const { invokeProblems } = await import('../src/runtime/rest-sources.ts');
+    const s = {
+      id: 0, app_id: appId, name: 'SEC', url: `${mockBase}/a/{p}`, method: 'GET', credential: null, headers: {}, body: null, row_selector: null,
+      params: [{ name: 'p', in: 'path' as const }, { name: 'q', in: 'query' as const }, { name: 'h', in: 'header' as const }], columns: [], cache_seconds: 0, timeout_s: 5, max_rows: 10,
+    };
+    for (const p of ['@evil.example/', '//evil.example/x', '../../admin', 'x?y=1#z', 'http://evil.example/'])
+      assert.equal(new URL(ws.buildRequest(s, { p }).url).host, new URL(mockBase).host, p);
+    for (const p of ['.', '..']) assert.throws(() => ws.buildRequest(s, { p }), /not a valid value/);
+    assert.throws(() => ws.buildRequest(s, { p: 'x', h: 'a\r\nX-Injected: 1' }), /one line/);
+    assert.throws(() => ws.buildRequest(s, { nope: 'x' }), /no parameter nope/);
+    // a definition written straight into the table is checked again before a call
+    assert.throws(() => ws.buildRequest({ ...s, url: 'http://{p}.example.com/' }, { p: 'x' }), /host is fixed/);
+    assert.throws(() => ws.buildRequest({ ...s, headers: { Authorization: 'Bearer x' } }, { p: 'x' }), /not allowed/);
+    assert.ok(invokeProblems({ url: 'https://&P1_HOST./x' }).length);
+    assert.ok(invokeProblems({ url: 'https://api.example.com&P1_X./x' }).length);
+    assert.ok(invokeProblems({ url: 'https://api.example.com/x', source: 'Y' }).length);
+    assert.deepEqual(invokeProblems({ url: 'https://api.example.com/x/&P1_X.' }), []);
+    // response values are data: one escaped literal, checked column names
+    const { json } = await ws.fetchSource({ ...s, url: `${mockBase}/rows`, params: [] }, {});
+    const { columns, rows } = ws.toRows(json, { row_selector: 'items', columns: [{ name: 'v', type: 'text' }], max_rows: 10 });
+    const sql = ws.withRest(ws.rowsSql(columns, rows), null);
+    assert.deepEqual((await runtime.query(sql)).rows, [{ v: "it's $$ \"x\" ); drop table hr.emp; --" }]);
+    assert.throws(() => ws.rowsSql([{ name: 'v" text); drop table hr.emp; --' }], []), /not a valid SQL name/);
+    // no calls to hosts outside the allow-list, metadata services or other loopback names
+    for (const u of ['http://169.254.169.254/latest/meta-data/', 'http://[::ffff:169.254.169.254]/', 'http://10.0.0.1/', 'https://example.com/', 'gopher://127.0.0.1/'])
+      await assert.rejects(ws.call({ url: u }), /allow-list|private|Only http/, u);
+  });
+
+  test('invoke_api only sets items of its page (or application items), and shows no details of a failure', async () => {
+    const { Browser: B, formFields } = await import('./helpers.ts');
+    const page = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 23`, [appId])).id;
+    const p = await owner.one(`insert into meta.process (page_id, seq, name, type, point, when_button, config)
+      values ($1, 5, 'sec invoke', 'invoke_api', 'submit', 'LOOKUP', $2) returning id`,
+      [page, JSON.stringify({ url: `${mockBase}/inv/&P23_DEPTNO.`, items: { P1_SECRET_FLAG: 'path' } })]);
+    cleanup.push(`delete from meta.process where id = ${Number(p.id)}`);
+    const b = new B(app);
+    await b.login('allen');
+    const form = formFields((await b.get('/a/hr/23')).body);
+    const n = hits.length;
+    await b.submit('/a/hr/23', { ...form, P23_DEPTNO: '../x?a=1', __request: 'LOOKUP' });
+    assert.deepEqual(hits.slice(n).map((h) => h.url), ['/inv/..%2Fx%3Fa%3D1'], 'the value is encoded into the path');
+    const after = (await b.get('/a/hr/23')).body;
+    assert.doesNotMatch(after, /P1_SECRET_FLAG is not an item/, 'the details go to the activity log');
+    assert.ok(await owner.one(`select 1 from meta.activity_log where event = 'error' and detail like '%P1_SECRET_FLAG is not an item%' and at > now() - interval '1 minute'`));
+  });
+});

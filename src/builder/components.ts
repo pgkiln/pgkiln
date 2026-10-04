@@ -10,6 +10,8 @@ import { stepProblems } from '../workflow.ts';
 import { workflowBeforeSave } from './workflows.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 import { TEMPLATE_COMPONENT_SPEC } from './template-spec.ts';
+import { REST_SOURCE_SPEC, WEB_CREDENTIAL_SPEC } from './websources.ts';
+import { invokeProblems } from '../runtime/rest-sources.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -21,6 +23,8 @@ export type FieldKind =
   | 'page'     // page of the app
   | 'nav'      // navigation entry of the app (parent)
   | 'build_option' // build option of the app (NAME or !NAME)
+  | 'rest_source' // REST data source of the app (by name)
+  | 'secret'   // write-only: never shown; empty keeps the stored value
   | 'icon';
 
 export interface Field {
@@ -84,6 +88,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'static', 'dynamic'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
         help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · template_component: any SELECT (its columns are #COLUMN# in the template), or empty for one instance · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
+      { name: 'rest_source', label: 'REST data source', kind: 'rest_source', group: 'Source',
+        help: 'Read the rows of a REST data source (Shared Components) instead of a table: the source above is then optional SQL over them, e.g. select * from rest where price > 10. Parameters: {"rest_params": {"city": "&P1_CITY."}} in the attributes.' },
       { name: 'table_name', label: 'Table (form, grid)', kind: 'text', help: 'e.g. sales.orders', group: 'Source' },
       { name: 'pk_column', label: 'Primary key column (form, grid)', kind: 'text', group: 'Source' },
       { name: 'pk_item', label: 'Primary key item (form)', kind: 'upper', group: 'Source' },
@@ -206,15 +212,20 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'code',
     summary: (p) => p.name,
     defaults: { type: 'sql', point: 'submit' },
+    validate: (v) => {
+      if (v.type !== 'invoke_api') return null;
+      const problems = invokeProblems(typeof v.config === 'string' ? JSON.parse(v.config) : v.config);
+      return problems.length ? problems.join(' ') : null;
+    },
     fields: [
       { name: 'name', label: 'Name', kind: 'text' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['sql', 'form_dml', 'grid_dml', 'data_load'] },
+      { name: 'type', label: 'Type', kind: 'select', options: ['sql', 'form_dml', 'grid_dml', 'data_load', 'invoke_api'] },
       { name: 'point', label: 'Point', kind: 'select', options: ['submit', 'load'] },
       { name: 'code', label: 'Code (SQL / PL/pgSQL call)', kind: 'code', wide: true,
         help: 'e.g. select sales.ship_order(:P3_ID::int) as p3_status — returned columns named like items set them. RAISE EXCEPTION messages are shown to the user; USING COLUMN = \'sal\' puts it on that field.' },
       { name: 'region_id', label: 'Form / grid region (form_dml, grid_dml)', kind: 'region' },
-      { name: 'config', label: 'Data load (data_load)', kind: 'json', wide: true,
-        help: '{"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped.' },
+      { name: 'config', label: 'Configuration (data_load, invoke_api)', kind: 'json', wide: true,
+        help: 'data_load: {"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped. · invoke_api: {"source":"WEATHER","params":{"city":"&P5_CITY."},"items":{"P5_TEMP":"current.temp"},"status_item":"P5_STATUS"} or {"url":"https://api.example.com/orders/&P5_ID.","method":"POST","credential":"SHOP_API","body":"{\\"note\\": &P5_NOTE.}","items":{…}} — without "items", the first row\'s columns set the items named like them.' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper' },
       { name: 'success_message', label: 'Success message', kind: 'text' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
@@ -307,7 +318,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     summary: (l) => l.name,
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', help: 'Use it in items and grid columns as LOV:NAME' },
-      { name: 'query', label: 'Query', kind: 'code', wide: true, help: 'select display_value, return_value from … (STATIC: lists work too)' },
+      { name: 'query', label: 'Query', kind: 'code', wide: true, help: 'select display_value, return_value from … (STATIC: lists work too). With a REST data source: select name, code from rest' },
+      { name: 'rest_source', label: 'REST data source', kind: 'rest_source', help: 'The query reads the source\'s rows from "rest".' },
     ],
   },
   app_item: {
@@ -440,6 +452,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     ],
   },
   template_component: TEMPLATE_COMPONENT_SPEC,
+  web_credential: WEB_CREDENTIAL_SPEC,
+  rest_source: REST_SOURCE_SPEC,
   document_template: {
     table: 'meta.document_template',
     scope: 'app',
@@ -548,7 +562,12 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'upper':
       case 'authz':
       case 'build_option':
+      case 'rest_source':
         values[f.name] = v === '' ? null : v.trim().toUpperCase();
+        break;
+      case 'secret':
+        // not trimmed: a secret is what was typed
+        values[f.name] = raw ? raw : null;
         break;
       default:
         values[f.name] = v === '' ? null : v;

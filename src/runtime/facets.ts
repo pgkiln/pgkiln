@@ -10,6 +10,7 @@ import {
   CUSTOM_RANGE, facetDefs, facetFilters, facetKeys, facetParamNames, facetWhere, rangeKind, rangeLabel, rangeSql, rangeValue,
   reportFacetDefs, searchSql, type FacetDef,
 } from './facet-state.ts';
+import { resolveRestRegion } from './rest-sources.ts';
 
 // Faceted search (APEX 19.2+): a region that filters a report region with
 // facets showing live counts. The counts of each facet take the search and
@@ -36,8 +37,9 @@ export async function facetSource(ctx: PageContext, r: Region): Promise<FacetSou
   const report = ctx.page.regions.find((x) => x.id === Number(r.config.report) && x.type === 'report');
   if (!report) return html`<div class="alert alert-error">${ctx.locale.t('facets.no_report')}</div>`;
   if (!ctx.vis!.regions.has(report.id)) return null;
-  const src = stripSemicolon(applyBinds(report.source ?? 'select 1', bindValues(ctx)));
   try {
+    await resolveRestRegion(ctx, report);
+    const src = stripSemicolon(applyBinds(report.source ?? 'select 1', bindValues(ctx)));
     const cols = new Map((await fieldsOf(ctx, src)).map((f) => [f.name, f.dataTypeID] as [string, number]));
     return { report, src, cols, all: reportFacetDefs(ctx.page.regions, report.id, ctx.vis?.regions), search: (ctx.params.get(`r${report.id}_q`) ?? '').trim() };
   } catch (e) {

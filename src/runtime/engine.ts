@@ -7,6 +7,7 @@ import { gridDml } from './grid.ts';
 import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, tempIds } from './files.ts';
 import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
+import { invokeApi } from './rest-sources.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
 const ident = pg.escapeIdentifier;
@@ -324,6 +325,7 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
         p.type === 'form_dml' ? await formDml(ctx, p)
         : p.type === 'grid_dml' ? await gridDml(ctx, p)
         : p.type === 'data_load' ? await dataLoad(ctx, p)
+        : p.type === 'invoke_api' ? await invokeApi(ctx, p, names)
         : (await runSql(ctx, p.code ?? '', names), p.success_message);
       if (msg) messages.push(msg);
     } catch (e) {

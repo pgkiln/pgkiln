@@ -38,6 +38,9 @@ src/
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here)
   maptiles.ts              map tile server URL, attribution and CSP origin
+  webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
+  secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
+  websources.ts            web credentials (incl. OAuth2 token cache) and REST data sources: requests, JSON paths, typed rows, response cache
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
@@ -64,6 +67,7 @@ src/
     maps.ts                map region (data for Leaflet: markers or heat, report filter; list fallback, head assets)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution, OpenAPI
+    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process
     tree.ts                tree region
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     template-region.ts     template_component region
@@ -97,6 +101,7 @@ src/
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     template-spec.ts       template component property form (Shared Components)
+    websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
 public/
@@ -123,6 +128,7 @@ test/
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
   charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
+  rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers

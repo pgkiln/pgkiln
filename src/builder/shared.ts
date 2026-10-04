@@ -10,6 +10,7 @@ import { COMPONENTS } from './components.ts';
 import { automationExtras } from './automations.ts';
 import { layoutExtras } from './layouts.ts';
 import { templateExtras, templateImport } from './templates.ts';
+import { credentialExtras, restSourceExtras } from './websources.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
@@ -19,7 +20,7 @@ import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -53,7 +54,7 @@ export async function sharedRoutes(app: FastifyInstance) {
       const [formSpec, formRow] = row && selKind === 'workflow_definition' ? workflowForm(spec, row) : [spec, row];
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(formSpec, selKind, formRow, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
-            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : ''}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : selKind === 'web_credential' ? credentialExtras(a.id, row, s) : selKind === 'rest_source' ? restSourceExtras(a.id, row, s) : ''}
             ${await usedInPanel(a.id, selKind, row)}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
@@ -117,7 +118,7 @@ export async function sharedRoutes(app: FastifyInstance) {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>
           ${rows[kind].map((r) => html`<li><a href="?c=${kind}-${r.id}"${selKind === kind && selId === String(r.id) ? raw(' aria-current="page"') : ''}>${icon(kind === 'nav_entry' ? (r.icon ?? 'chevron') : spec.icon)}<span>${r.parent_id ? '↳ ' : ''}${spec.summary(r)}</span>${
-            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : kind === 'automation' ? html`<span class="kind">${r.enabled ? (r.last_status === 'error' ? 'error' : r.schedule) : 'off'}</span>` : ''
+            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : kind === 'automation' ? html`<span class="kind">${r.enabled ? (r.last_status === 'error' ? 'error' : r.schedule) : 'off'}</span>` : kind === 'web_credential' ? html`<span class="kind">${r.type}${r.secret_enc ? '' : ' · no secret'}</span>` : kind === 'rest_source' ? html`<span class="kind">${r.method}</span>` : ''
           }</a></li>`)}`;
       })}
     </ul>`;

@@ -99,6 +99,10 @@ which is read at startup; real environment variables take precedence.
 | `AUTOMATIONS` | on | `off` stops this server from running [automations](06-processing.md#automations) |
 | `SCHEDULER_INTERVAL_S` | `30` | How often the automation scheduler looks for due runs |
 | `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |
+| `PGAPEX_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials; at least 32 characters (e.g. `openssl rand -base64 32`). Keep it outside the database; changing it means entering the secrets again ([chapter 19](19-rest-data-sources.md)) |
+| `PGAPEX_REST_ALLOWED_HOSTS` | *(none: no outgoing calls)* | Hosts REST data sources and `invoke_api` may call: `api.example.com`, `*.example.com`, `host:8443`, `*` (any public host) ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)) |
+| `PGAPEX_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (also allows them) |
+| `PGAPEX_REST_MAX_BYTES` | `5000000` | Largest web service response read (also after decompression) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
 ## npm scripts

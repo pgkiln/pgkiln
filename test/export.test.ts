@@ -37,6 +37,8 @@ const SECTIONS: Record<string, string> = {
   rest_module: 'rest_modules',
   template_component: 'template_components',
   build_option: 'build_options',
+  web_credential: 'web_credentials',
+  rest_source: 'rest_sources',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

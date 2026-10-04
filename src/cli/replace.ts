@@ -1,7 +1,7 @@
 // Import an application document *over* an existing application, keeping
 // what belongs to this installation: the application's id and alias, who has
 // access, API clients, sessions, saved reports, running tasks and workflows,
-// and the on/off state of automations. Components are matched by their static
+// the on/off state of automations, and the secrets of web credentials. Components are matched by their static
 // id (see src/appfiles.ts): saved reports follow their region (page number +
 // region key), tasks and workflows their definition (name), automation logs and
 // state their automation (name).
@@ -17,7 +17,7 @@ import { regionKeys } from '../appfiles.ts';
 export const REPLACED = [
   'authz_scheme', 'app_item', 'app_process', 'lov', 'app_group_role', 'text_message', 'translation',
   'report_layout', 'automation', 'document_template', 'task_definition', 'workflow_definition',
-  'rest_module', 'template_component', 'build_option', 'nav_entry', 'page',
+  'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'nav_entry', 'page',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow'];
@@ -70,6 +70,12 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
       [old, neu],
     );
   }
+  // web credentials keep this installation's secrets (an export has none), matched by name
+  await db.query(
+    `update meta.web_credential n set secret_enc = o.secret_enc
+       from meta.web_credential o where o.app_id = $1 and n.app_id = $2 and n.name = o.name and n.secret_enc is null`,
+    [old, neu],
+  );
   // automations keep this installation's switch and schedule state
   await db.query(
     `update meta.automation n set enabled = o.enabled, next_run_at = o.next_run_at, last_run_at = o.last_run_at, last_status = o.last_status

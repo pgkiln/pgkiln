@@ -7,6 +7,7 @@ import { Forbidden, isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { fillItems, linkAttrs } from './links.ts';
 import { regionUrl } from './report.ts';
+import { resolveRestRegion } from './rest-sources.ts';
 
 // Calendar region (APEX's Calendar): the SELECT returns start_date,
 // optional end_date, title, and any columns referenced in config.link:
@@ -368,6 +369,7 @@ export async function moveCalendarEvent(ctx: PageContext, r: Region, key: string
   const keyCol = typeof cfg.key === 'string' && cfg.key ? cfg.key : 'id';
   const c = ctx.client!;
   // the event must be one this user sees in the region (its query, as the app's role, with RLS)
+  await resolveRestRegion(ctx, r);
   const src = stripSemicolon(applyBinds(r.source ?? '', bindValues(ctx)));
   const res = await savepoint(c, () => c.query(`select * from (\n${src}\n) "__q" where "__q".${pg.escapeIdentifier(keyCol)}::text = ${literal(key)} limit 2`));
   if (res.rows.length !== 1) throw new Forbidden(t('calendar.cannot_move'));

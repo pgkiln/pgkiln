@@ -16,6 +16,7 @@ import { ComputeError, computeNameOk, computeSql, type Computation } from './com
 import { renderView, VIEWS, type View } from './report-views.ts';
 import { columnTemplates } from './template-components.ts';
 import { facetFilterSql, facetFilters, reportFacetDefs, searchSql } from './facet-state.ts';
+import { resolveRestRegion } from './rest-sources.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -329,6 +330,7 @@ export async function withComputations(ctx: PageContext, src: string, st: Report
  * up when a user-chosen column needs checking).
  */
 export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
+  await resolveRestRegion(ctx, r);
   const { src } = await withComputations(ctx, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st);
   const where: string[] = [];
   // the search term, facet values and range bounds are query parameters

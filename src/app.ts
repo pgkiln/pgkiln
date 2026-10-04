@@ -9,6 +9,7 @@ import { apiRoutes } from './builder/api.ts';
 import { globalizationRoutes } from './builder/globalization.ts';
 import { designerRoutes } from './builder/designer.ts';
 import { sharedRoutes } from './builder/shared.ts';
+import { webSourceRoutes } from './builder/websources.ts';
 import { sqlRoutes } from './builder/sql.ts';
 import { automationRoutes } from './builder/automations.ts';
 import { workflowBuilderRoutes } from './builder/workflows.ts';
@@ -78,6 +79,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(reportSettingsRoutes);
   await app.register(regionSettingsRoutes);
   await app.register(templateRoutes);
+  await app.register(webSourceRoutes);
   await app.register(searchRoutes);
   await app.register(advisorRoutes);
   await app.register(topSqlRoutes);

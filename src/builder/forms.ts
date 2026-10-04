@@ -14,17 +14,19 @@ export interface Lookups {
   authz: string[];
   nav: { id: number; label: string }[];
   buildOptions: { name: string; status: string }[];
+  restSources: string[];
 }
 
 export async function lookups(appId: number, pageId?: number): Promise<Lookups> {
-  const [regions, pages, authz, nav, buildOptions] = await Promise.all([
+  const [regions, pages, authz, nav, buildOptions, rest] = await Promise.all([
     pageId ? owner.query('select id, title, type from meta.region where page_id = $1 order by seq, id', [pageId]) : Promise.resolve({ rows: [] }),
     owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId]),
     owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId]),
     owner.query('select id, label from meta.nav_entry where app_id = $1 order by seq, id', [appId]),
     owner.query('select name, status from meta.build_option where app_id = $1 order by name', [appId]),
+    owner.query('select name from meta.rest_source where app_id = $1 order by name', [appId]),
   ]);
-  return { regions: regions.rows, pages: pages.rows, authz: authz.rows.map((r) => r.name), nav: nav.rows, buildOptions: buildOptions.rows };
+  return { regions: regions.rows, pages: pages.rows, authz: authz.rows.map((r) => r.name), nav: nav.rows, buildOptions: buildOptions.rows, restSources: rest.rows.map((r) => r.name) };
 }
 
 /** Choices of a build option field: each option and its negation, plus a missing current value. */
@@ -70,6 +72,16 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       }
       case 'build_option':
         control = opts(buildOptionChoices(lk, v));
+        break;
+      case 'rest_source': {
+        const list: [string, string][] = [['', '- none (SQL) -'], ...lk.restSources.map((n): [string, string] => [n, n])];
+        if (v && !lk.restSources.includes(v)) list.push([v, `${v} (missing!)`]);
+        control = opts(list);
+        break;
+      }
+      case 'secret':
+        // write-only: the stored value is never sent to the browser
+        control = html`<input id="${id}" name="${f.name}" type="password" value="" autocomplete="new-password" spellcheck="false" placeholder="${row?.secret_enc ? '•••••••• (stored; type to replace)' : ''}">`;
         break;
       case 'code':
         control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 7 : 2}" spellcheck="false"${codeAttrs(kind, f, row)}>${v ?? ''}</textarea>`;

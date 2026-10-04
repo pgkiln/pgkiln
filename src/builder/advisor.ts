@@ -42,7 +42,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
   switch (kind) {
     case 'region':
       return [
-        ...(['report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() ? [{ name: 'source', shape: 'select' as const }] : []),
+        ...(['report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() && !row.rest_source ? [{ name: 'source', shape: 'select' as const }] : []),
         { name: 'condition', shape: 'boolean' },
       ];
     case 'item':
@@ -68,7 +68,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
     case 'authz_scheme':
       return row.type === 'sql' ? [{ name: 'value', shape: 'boolean' }] : [];
     case 'lov':
-      return /^STATIC:/i.test(row.query?.trim() ?? '') ? [] : [{ name: 'query', shape: 'select' }];
+      return /^STATIC:/i.test(row.query?.trim() ?? '') || row.rest_source ? [] : [{ name: 'query', shape: 'select' }];
     case 'app_process':
       return [{ name: 'code', shape: 'statements' }];
     case 'automation':

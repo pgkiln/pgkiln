@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { designSql } from './websources.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { CALENDAR_VIEWS, calendarViews } from '../runtime/calendar.ts';
@@ -355,7 +356,7 @@ interface RegionRow {
 
 async function gridFields(appId: number, r: RegionRow, id: (n: string) => string) {
   const cfg = r.config ?? {};
-  const cols = await reportColumns(appId, r.source);
+  const cols = await reportColumns(appId, await designSql(appId, r));
   const lovs = (await owner.query('select name from meta.lov where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
   const colCfg: Config = cfg.columns ?? {};
   const { all, known } = withStale('columns' in cols ? cols.columns : [], [...(cfg.hidden ?? []), ...(cfg.readonly ?? []), ...Object.keys(cfg.headings ?? {}), ...Object.keys(colCfg)]);
@@ -399,9 +400,9 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
 /** A map can filter a report on its page to the visible area; the report needs position columns. */
 async function mapReportFieldset(r: RegionRow, pageId: number, appId: number, id: (n: string) => string) {
   const cfg = r.config ?? {};
-  const reports = (await owner.query(`select id, title, source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
+  const reports = (await owner.query(`select id, title, source, rest_source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
   const target = reports.find((x) => x.id === Number(cfg.report));
-  const cols = target ? await reportColumns(appId, target.source) : null;
+  const cols = target ? await reportColumns(appId, await designSql(appId, target)) : null;
   const noPosition = cols && 'columns' in cols && !positionColumns(cols.columns);
   return html`<fieldset class="prop-group"><legend>Filter a report</legend><div class="form-grid">
       <div class="field"><label class="label" for="${id('report')}">Report region</label>
@@ -416,9 +417,9 @@ const FACET_TYPE_LABELS: Record<string, string> = { checkbox: 'Checkboxes', rang
 
 async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n: string) => string, smart: boolean) {
   const cfg = r.config ?? {};
-  const reports = (await owner.query(`select id, title, source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
+  const reports = (await owner.query(`select id, title, source, rest_source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
   const target = reports.find((x) => x.id === Number(cfg.report));
-  const cols = target ? await reportColumns(appId, target.source) : null;
+  const cols = target ? await reportColumns(appId, await designSql(appId, target)) : null;
   const facets: Config[] = Array.isArray(cfg.facets) ? cfg.facets : [];
   const byCol = new Map(facets.map((f) => [f.column, f]));
   // configured facets first, in their order; then the report's other columns
@@ -471,7 +472,7 @@ async function calendarFields(appId: number, r: RegionRow, id: (n: string) => st
   const cfg = r.config ?? {};
   const views = calendarViews(cfg);
   const schemes = (await owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
-  return html`${columnsHint(await reportColumns(appId, r.source), ['start_date', 'title'])}
+  return html`${columnsHint(await reportColumns(appId, await designSql(appId, r)), ['start_date', 'title'])}
     <p class="muted u-mt0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code> (dates for all-day events, timestamps for events with a time).</p>
     <fieldset class="prop-group"><legend>Views</legend>
       <div class="form-grid">
@@ -543,7 +544,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'chart':
       title = 'Chart settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source))}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
         <p class="muted u-mt0">The first column is the label; each following numeric column is a series (up to 8).</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('kind')}">Chart type</label>
@@ -560,7 +561,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'cards':
       title = 'Cards settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source))}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
         <p class="muted u-mt0">Cards show the columns ${CARD_COLUMNS.map((c, i) => html`${i ? ', ' : ''}<code>${c}</code>`)}; KPI tiles show title, badge (the value) and icon.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('style')}">Style</label>
@@ -587,7 +588,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'map':
       title = 'Map settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source))}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
         <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas. A heat map weighs each place by a <code>weight</code> column.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('layer')}">Show places as</label>
@@ -603,7 +604,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'tree':
       title = 'Tree settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source), ['id', 'parent_id', 'label'])}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)), ['id', 'parent_id', 'label'])}
         <p class="muted u-mt0">The query returns <code>id</code>, <code>parent_id</code> and <code>label</code> (and optionally <code>icon</code>); rows whose parent isn't in the result are the roots.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('expanded')}">Levels open at first</label>
@@ -660,7 +661,7 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
     ]);
     const reportCols = new Map<number, string[]>();
     for (const x of reports.rows) {
-      const c = await reportColumns(r.app_id, x.source);
+      const c = await reportColumns(r.app_id, await designSql(r.app_id, x));
       reportCols.set(x.id, 'columns' in c ? c.columns : []);
     }
     const config = MERGES[r.type as SettingsType](r.config ?? {}, (req.body ?? {}) as Body, {
