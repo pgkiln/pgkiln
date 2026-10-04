@@ -793,6 +793,21 @@ commit), with only small uncommitted edits left (items: 05-items.md; regions: ex
 `test/regions-sprint26.test.ts`; logic: hr_22 + security.test.ts). A third round of agents was launched to finish
 and verify each workstream.
 
+**Workstream reports (collected for CHANGELOG / parity / SECURITY.md at the end):**
+
+- **views: DONE, merged into `sprint-26`** (2026-10-04). No migration (033 unused; settings in region config JSON),
+  HR `hr_24_planner.sql` page 24, export/import not redefined, no env vars. Tests: 388/396 (8 skipped LDAP/PostgREST),
+  e2e 62/62. Parity — Calendar: month/week/day/list views; create on click (checksummed slot link); drag and drop
+  moves events via developer `move` SQL run as the app role (CSRF, `move_authz`, row-level visibility); works without
+  JS. Charts: bubble, gauge, funnel, radar (server SVG, no inline styles); checksummed, authz-aware drill-down links.
+  Security: move route `POST /a/:alias/:page/calendar/:id/move` checks CSRF first, signed-in user, page/region
+  authz + conditions, `move_authz`; event must be in the region query for this user (app role, RLS); client sends only
+  an event key (≤200 chars) + a date-checked slot; start/end go to `move` SQL as literals; `key` is a plain column
+  name; refusals and moves logged (`forbidden`, `calendar_move`).
+
+**Merge note:** 029 (logic), 030 (data) and 031 (regions) each redefine `meta.export_app`/`meta.import_app`: after
+merging, write migration 034 combining all three changes.
+
 **How to resume after a session ends:**
 1. Containers: `docker start pgapex-items pgapex-regions pgapex-logic pgapex-data pgapex-views pgapex-db`.
 2. Per worktree: `git -C ../pgapex-wt/<n> log --oneline sprint-26..` and `git -C ../pgapex-wt/<n> status`.
