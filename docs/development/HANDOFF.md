@@ -942,3 +942,14 @@ Tests 496 + 8 skipped, e2e 77/77. The owner's local `.env` has `PGAPEX_REST_PRIV
 `PGAPEX_SECRET_KEY` (added 2026-10-04 so HR page 23 works).
 
 Next on the roadmap: **AI features** (needs the owner's decision on provider and API key storage).
+
+## Sprint 28 (IN PROGRESS): popup LOV with server-side search (owner: "keep going", 1 agent, low usage left, 2026-10-04)
+
+Branch `sprint-28` from `main` (v0.19.0). One agent in the main checkout, dev DB 5434; reserved migration 036 (only if
+needed), HR `hr_27` page 26. Scope: item type `popup_lov` (APEX Popup LOV): a modal/dialog with a search field that
+queries the LOV on the server (paged, clamped, as the app's role, item/page authorization re-checked; only the item's
+own LOV), several display columns, return value vs display value; without JavaScript a plain select list or a GET
+search link. The agent commits `wip:` checkpoints and pushes `sprint-28` after each commit.
+**If a session ends:** `git log --oneline main..sprint-28`; finish with tsc, `npm run db:reset && npm test`,
+`npm run test:e2e`; then parity row "Popup LOV", CHANGELOG 0.20.0, SECURITY.md, version, CI matrix + v0.20.0, the
+chapter 12 version line, merge, tag, push, `gh run list` to check CI.
