@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-04
+
+### Added
+- **Popup LOV** item (`popup_lov`): a dialog with a search field that searches the item's list of
+  values on the server, a page at a time (`page_size`, at most 100), with extra columns and a return
+  value separate from the shown one. The posted value is checked against the list. Without
+  JavaScript it is a select list.
+- HR example page 26 "Pick an employee".
+
 ## [0.19.0] - 2026-10-04
 
 ### Added

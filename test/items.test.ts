@@ -207,3 +207,31 @@ describe('item types on page 20', () => {
     assert.match(body, />Tonen</);
   });
 });
+
+describe('popup LOV', () => {
+  test('a select list without JavaScript; a value beyond max_rows still shows its name; the dialog pages', async () => {
+    const setConfig = (config: string) =>
+      owner.query(`update meta.item i set config = $2::jsonb from meta.page p where p.id = i.page_id and p.app_id = $1 and i.name = 'P26_EMPNO'`, [appId, config]);
+    try {
+      await setConfig('{"page_size": 5, "max_rows": 2}');
+      const b = new Browser(app);
+      await b.login('king');
+      const page = (await b.get('/a/hr/26')).body;
+      assert.match(page, /<select id="P26_EMPNO" name="P26_EMPNO" data-popup-lov="\/a\/hr\/26\/lov\/P26_EMPNO\/search"/);
+      assert.equal((page.match(/<option value="\d+"/g) ?? []).length, 2 + 4, 'two employees (max_rows) and the four departments');
+      const res = await b.post('/a/hr/26', { __csrf: b.lastCsrf, P26_EMPNO: '7934', P26_DEPTNO: '', __request: 'SHOW' });
+      const after = (await b.get(String(res.headers.location ?? '/a/hr/26'))).body;
+      assert.match(after, /<option value="7934" selected>Miller<\/option>/, 'looked up by its return value');
+      assert.match(after, /<td[^>]*>Miller<\/td>/);
+      const first = (await b.post('/a/hr/26/lov/P26_EMPNO/search', { __csrf: b.lastCsrf, q: '' })).json();
+      assert.equal(first.rows.length, 5);
+      assert.equal(first.more, true);
+      assert.deepEqual(first.headings, ['Employee', 'Job', 'Department']);
+      const last = (await b.post('/a/hr/26/lov/P26_EMPNO/search', { __csrf: b.lastCsrf, q: '', p: '2' })).json();
+      assert.equal(last.more, false);
+      assert.ok(last.rows.length >= 1);
+    } finally {
+      await setConfig('{"page_size": 5}');
+    }
+  });
+});

@@ -17,7 +17,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `password` | password field; never shown back, empty = unchanged | text |
 | `color` | colour picker | `#rrggbb` |
 | `select` | select list | the chosen return value |
-| `popup_lov` | select list with a search box above it | the chosen return value |
+| `popup_lov` | a field and a search button that opens a dialog searching the list of values on the server ([Popup LOV](#popup-lov)) | the chosen return value |
 | `radio` | radio group | the chosen return value |
 | `checkbox` | a single checkbox | `true` / `false` |
 | `switch` | on/off switch | `true` / `false` |
@@ -143,6 +143,29 @@ multi-selects, popup LOVs, grid columns and display items. Three forms:
    **Shared Components → Lists of values** and reusable in any item or grid column. A shared
    list can also read a web service: give it a **REST data source** and query the rows from
    `rest` ([chapter 19](19-rest-data-sources.md#lists-of-values)).
+
+## Popup LOV
+
+A `popup_lov` item shows the chosen value's display text and a **Search** button. The button
+opens a dialog with a search field: the server searches the item's own list of values (case
+insensitive, on the display column and any extra columns) and answers one page at a time.
+
+- **Several columns**: the first column is the display value, the second the return value, and
+  any further columns are shown in the dialog (and searched), for example:
+  ```sql
+  select ename as name, empno, job, dname as department
+    from hr.emp left join hr.dept using (deptno) order by 1
+  ```
+- **Attributes**: `{"page_size": 25}` rows per dialog page (at most 100); `max_rows` limits
+  the select list the page itself renders (see below); `null_label` and `cascade_parents`
+  work as for a select list.
+- **Without JavaScript** the item is a plain select list of the first `max_rows` rows. A value
+  beyond them is still shown, looked up by its return value.
+- **Security**: the search runs as the application's database role, with the term as a bind
+  parameter (never SQL text), only for an item the user may see and change on a page they may
+  open. A submitted value must be one the list of values returns, or the page shows an error.
+
+The HR example's page 26 (*Pick an employee*) has one with name, job and department columns.
 
 ## Cascading lists of values
 

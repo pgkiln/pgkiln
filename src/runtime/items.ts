@@ -26,7 +26,19 @@ export interface LovOption {
  * shared list of values 'LOV:NAME'.
  */
 export async function lovOptions(ctx: PageContext, lov: string | null, max = LOV_MAX_ROWS): Promise<LovOption[]> {
-  if (!lov?.trim()) return [];
+  const src = await lovSource(ctx, lov);
+  if (!src) return [];
+  if (Array.isArray(src)) return src;
+  const c = ctx.client!;
+  // at most `max` rows (an item's config.max_rows), so a big table can't flood the page
+  const sql = `select * from (\n${src}\n) "__l" limit ${max}`;
+  const res = await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }));
+  return res.rows.map((r: unknown[]) => ({ display: toState(r[0]) ?? '', value: toState(r.length > 1 ? r[1] : r[0]) ?? '' }));
+}
+
+/** A list of values as static options, or as SQL with the binds applied (null: none). */
+async function lovSource(ctx: PageContext, lov: string | null): Promise<LovOption[] | string | null> {
+  if (!lov?.trim()) return null;
   const shared = /^LOV:([A-Z0-9_]+)$/i.exec(lov.trim());
   if (shared) {
     const def = ctx.app.lovs.find((l) => l.name === shared[1].toUpperCase());
@@ -43,11 +55,79 @@ export async function lovOptions(ctx: PageContext, lov: string | null, max = LOV
         const [display, value = display] = entry.split(';');
         return { display: display.trim(), value: value.trim() };
       });
+  return stripSemicolon(applyBinds(lov, bindValues(ctx)));
+}
+
+/**
+ * The LOV query with its columns renamed "c0", "c1", … (so a filter never
+ * depends on the developer's column names) and the original headings.
+ */
+async function lovColumns(ctx: PageContext, sql: string) {
   const c = ctx.client!;
-  // at most `max` rows (an item's config.max_rows), so a big table can't flood the page
-  const sql = `select * from (\n${stripSemicolon(applyBinds(lov, bindValues(ctx)))}\n) "__l" limit ${max}`;
-  const res = await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }));
-  return res.rows.map((r: unknown[]) => ({ display: toState(r[0]) ?? '', value: toState(r.length > 1 ? r[1] : r[0]) ?? '' }));
+  const probe = await savepoint(c, () => c.query({ text: `select * from (\n${sql}\n) "__l" limit 0`, rowMode: 'array' }));
+  const names = probe.fields.map((f: { name: string }) => f.name);
+  const from = `(\n${sql}\n) "__l"(${names.map((_: string, i: number) => `"c${i}"`).join(', ')})`;
+  return { names, from };
+}
+
+/** Rows of a popup LOV's dialog: at most 100 per page. */
+export const POPUP_PAGE_MAX = 100;
+export const popupPageSize = (item: Item, asked?: unknown) => {
+  const n = Math.floor(Number(asked ?? item.config?.page_size ?? 25));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, POPUP_PAGE_MAX) : 25;
+};
+
+export interface LovPage {
+  headings: string[];
+  rows: { value: string; display: string; columns: string[] }[];
+  more: boolean;
+}
+
+/**
+ * Search a popup LOV: the term (a parameter, never SQL text) matched with
+ * ILIKE against the display column and any extra columns (the return column
+ * is the second one), one page of `size` rows.
+ */
+export async function searchLov(ctx: PageContext, item: Item, term: string, page: number, size: number): Promise<LovPage> {
+  const src = await lovSource(ctx, item.lov);
+  const q = term.trim().toLowerCase();
+  const offset = Math.max(0, page) * size;
+  if (!src) return { headings: [], rows: [], more: false };
+  if (Array.isArray(src)) {
+    const hits = src.filter((o) => !q || o.display.toLowerCase().includes(q));
+    return {
+      headings: [item.label ?? heading(item.name)],
+      rows: hits.slice(offset, offset + size).map((o) => ({ ...o, columns: [o.display] })),
+      more: hits.length > offset + size,
+    };
+  }
+  const c = ctx.client!;
+  const { names, from } = await lovColumns(ctx, src);
+  const shown = names.map((_: string, i: number) => i).filter((i: number) => i !== 1 || names.length === 1);
+  const where = q ? `where ${shown.map((i: number) => `"c${i}"::text ilike $1`).join(' or ')}` : '';
+  const pattern = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+  const res = await savepoint(c, () =>
+    c.query({ text: `select * from ${from} ${where} offset ${offset} limit ${size + 1}`, values: q ? [pattern] : [], rowMode: 'array' }),
+  );
+  const rows = res.rows.slice(0, size).map((r: unknown[]) => ({
+    display: toState(r[0]) ?? '',
+    value: toState(r.length > 1 ? r[1] : r[0]) ?? '',
+    columns: shown.map((i: number) => toState(r[i]) ?? ''),
+  }));
+  return { headings: shown.map((i: number) => (i === 0 ? (item.label ?? heading(item.name)) : ctx.locale.tr(heading(names[i])))), rows, more: res.rows.length > size };
+}
+
+/** The LOV entry with this return value (a bind parameter), or null when the LOV doesn't return it. */
+export async function lovLookup(ctx: PageContext, item: Item, value: string): Promise<LovOption | null> {
+  const src = await lovSource(ctx, item.lov);
+  if (!src) return null;
+  if (Array.isArray(src)) return src.find((o) => o.value === value) ?? null;
+  const c = ctx.client!;
+  const { names, from } = await lovColumns(ctx, src);
+  const ret = names.length > 1 ? 'c1' : 'c0';
+  const res = await savepoint(c, () => c.query({ text: `select "c0", "${ret}" from ${from} where "${ret}"::text = $1 limit 1`, values: [value], rowMode: 'array' }));
+  const r = res.rows[0] as unknown[] | undefined;
+  return r ? { display: toState(r[0]) ?? '', value: toState(r[1]) ?? '' } : null;
 }
 
 /** Rows a list of values reads when its item sets no config.max_rows (1 to 50,000). */
@@ -96,6 +176,11 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       options = await lovOptions(ctx, item.lov, lovMax(item));
     } catch (e) {
       lovError = html`<small class="error">${await publicError(ctx, e, `list of values of ${item.name}`)}</small>`;
+    }
+    // a popup LOV's value may be beyond the rows the page reads: look it up
+    if (item.type === 'popup_lov' && value && !lovError && !options.some((o) => o.value === value)) {
+      const current = await lovLookup(ctx, item, value).catch(() => null);
+      if (current) options = [current, ...options];
     }
   }
 
@@ -158,13 +243,16 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         </select>`;
         break;
       }
-      case 'popup_lov':
-        // a select list; app.js adds a search box that filters the options
-        control = html`<select id="${id}" name="${id}" data-searchable${aria}>
-          <option value="">${item.config?.null_label ?? ctx.locale.t('lov.none')}</option>
+      case 'popup_lov': {
+        // a select list (the LOV's first max_rows rows) that works without JavaScript; app.js
+        // turns it into a field with a button that searches the whole LOV on the server
+        const t = ctx.locale.t;
+        control = html`<select id="${id}" name="${id}" data-popup-lov="${ctx.base}/${ctx.page.page_no}/lov/${id}/search" data-search-label="${t('lov.search')}" data-choose-label="${t('lov.choose')}" data-close-label="${t('lov.close')}" data-more-label="${t('lov.more')}" data-none-label="${t('lov.no_rows')}"${aria}>
+          <option value="">${item.config?.null_label ?? t('lov.none')}</option>
           ${options.map((o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`)}
         </select>`;
         break;
+      }
       case 'color':
         control = html`<input type="color" id="${id}" name="${id}" value="${/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'}"${aria}>`;
         break;

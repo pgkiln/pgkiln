@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-04 (pgapex 0.19.0: row-range pagination, maximum row counts and row limits, lazy loading and caching of regions, streamed CSV/Excel downloads; 0.18.0: calendar week/day/list views with drag and drop, bubble/gauge/funnel/radar charts and drill-down, smart filters, a region display selector and more facet types, computations, conditional branches, build options, menu buttons, REST data sources and web credentials, rich text/Markdown, rating, combobox, date range and QR code items; 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-04 (pgapex 0.20.0: a popup list of values with server-side search; 0.19.0: row-range pagination, maximum row counts and row limits, lazy loading and caching of regions, streamed CSV/Excel downloads; 0.18.0: calendar week/day/list views with drag and drop, bubble/gauge/funnel/radar charts and drill-down, smart filters, a region display selector and more facet types, computations, conditional branches, build options, menu buttons, REST data sources and web credentials, rich text/Markdown, rating, combobox, date range and QR code items; 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
@@ -15,7 +15,7 @@ Last reviewed: 2026-10-04 (pgapex 0.19.0: row-range pagination, maximum row coun
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 5 | 4 | 6 | 0 | Page Designer with drag-and-drop and a code editor, wizards, search, where used, an Advisor, a CLI with one file per component; no team/AI tooling |
 | Regions | 15 | 5 | 0 | 0 | All everyday regions; thirteen chart types with drill-down; calendars with week/day/list views and drag and drop; faceted search, smart filters and a region display selector; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; row ranges, lazy loading and region caching for large tables |
-| Items | 9 | 3 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
+| Items | 10 | 2 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
 | Logic and processing | 7 | 5 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons; fewer declarative process types |
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
@@ -23,7 +23,7 @@ Last reviewed: 2026-10-04 (pgapex 0.19.0: row-range pagination, maximum row coun
 | Data and integration | 4 | 3 | 2 | 3 | REST APIs via PostgREST, REST data sources and web credentials, CSV/XLSX/JSON loading, report PDFs and document templates |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and workflows with parallel branches and versions; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **69** | **31** | **15** | **6** | 121 APEX features compared: 57% available, 26% partial |
+| **Total** | **70** | **30** | **15** | **6** | 121 APEX features compared: 58% available, 25% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -68,7 +68,7 @@ Last reviewed: 2026-10-04 (pgapex 0.19.0: row-range pagination, maximum row coun
 | Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, heat maps (weighted), filtering a report by the visible map area (bounding box), configurable tile server. **Missing:** vector tiles, marker clustering, several layers per map, spatial queries on the server (PostGIS operators) |
 | Timeline, comments, media list, avatar template components | 🟡 | Example plug-ins to import: timeline item, contact card (avatar) and status badge (`examples/plugins`); none built in |
 | Pagination of large tables (row ranges, maximum row count) | ✅ | Reports and grids page in the database; `"pagination": "range"` shows APEX's "row ranges X to Y" without a total (it reads one row more for *Next*); `max_rows` is a maximum row count (the total is counted over at most max+1 rows: "of more than N"; downloads are capped too); page numbers and sizes are clamped on the server. Cards (500), charts (1000), dynamic content (1000) and lists of values (5000) have configurable row limits. **Missing:** keyset ("seek") paging |
-| Lazy loading of regions | ✅ | `"lazy": true` on report, chart, cards, dynamic, tree and template component regions: a placeholder, fetched after the page shows (page, condition and authorization re-checked); without JavaScript a link shows the region ([chapter 4](guide/04-pages-and-regions.md#large-tables)). Popup LOV with server-side search is still open (see *Items*) |
+| Lazy loading of regions | ✅ | `"lazy": true` on report, chart, cards, dynamic, tree and template component regions: a placeholder, fetched after the page shows (page, condition and authorization re-checked); without JavaScript a link shows the region ([chapter 4](guide/04-pages-and-regions.md#large-tables)) |
 | Region caching (per user, per session, for a duration) | ✅ | `"cache": {"scope": "user" \| "session" \| "all", "seconds": N}` keeps rendered regions in server memory, keyed by app, region, roles, language, the query string and the item values the region uses; a page submit empties it. CSRF tokens and per-user links are never shared. Per server process |
 | Template components and template directives | ✅ | Shared Components → Template components: `#PLACEHOLDERS#` (always escaped), `{if}`, `{case}` and `{loop}` directives, custom attributes, a wrapper; as a region type and as report column templates, with a preview. Templates are checked against an allow-list (no scripts, styles, event handlers or `javascript:` links) ([chapter 4](guide/04-pages-and-regions.md#template-components)) |
 
@@ -79,7 +79,7 @@ Last reviewed: 2026-10-04 (pgapex 0.19.0: row-range pagination, maximum row coun
 | Text field, textarea, number, date picker, password, hidden, display only | ✅ | Native inputs, with the right phone keyboard (`inputmode`) |
 | Select list, radio group, checkbox, switch | ✅ | |
 | Checkbox group, shuttle / multi-select | ✅ | Colon-separated values, as in APEX |
-| Popup LOV | 🟡 | Searchable select list; no modal popup with several columns |
+| Popup LOV | ✅ | `popup_lov`: a dialog with server-side search (paged, at most 100 rows a page) of the item's own shared, static or SQL list of values, extra display columns, return vs display value; the posted value is checked against the list; a select list without JavaScript ([chapter 5](guide/05-items.md)) |
 | Cascading, shared and static lists of values | ✅ | `cascade_parents`, `LOV:NAME`, `STATIC:` |
 | E-mail, phone, URL, colour picker | ✅ | Typed inputs |
 | Read-only condition, required, help text, default | ✅ | |

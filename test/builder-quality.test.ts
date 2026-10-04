@@ -100,7 +100,7 @@ describe('search and where used', () => {
     assert.ok(empno.includes('region:Employees'), 'link items in a report');
     assert.ok(empno.some((x) => x.startsWith('button:')), 'button conditions');
     assert.ok(!labels(whereUsed(entries, { type: 'item', name: 'P3_EMP' })).includes('region:Employees'), 'whole words only');
-    assert.deepEqual(labels(whereUsed(entries, { type: 'lov', name: 'DEPARTMENTS' })).sort(), ['item:P2_DEPTNO', 'item:P3_DEPTNO']);
+    assert.deepEqual(labels(whereUsed(entries, { type: 'lov', name: 'DEPARTMENTS' })).sort(), ['item:P26_DEPTNO', 'item:P2_DEPTNO', 'item:P3_DEPTNO']);
     assert.ok(whereUsed(entries, { type: 'authz', name: 'ADMIN' }).length > 0);
     assert.ok(labels(whereUsed(entries, { type: 'page', pageNo: 3 })).includes('region:Employees'));
   });
@@ -118,7 +118,7 @@ describe('search and where used', () => {
     const advisor = (await b.get(`/builder/apps/${appId}/advisor`)).body;
     assert.match(advisor, /column &quot;nope&quot; does not exist|column "nope" does not exist/);
     const lov = await owner.one(`select id from meta.lov where app_id = $1 and name = 'DEPARTMENTS'`, [appId]);
-    assert.match((await b.get(`/builder/apps/${appId}/shared?c=lov-${lov.id}`)).body, /Used in \(2\)/);
+    assert.match((await b.get(`/builder/apps/${appId}/shared?c=lov-${lov.id}`)).body, /Used in \(3\)/);
     const item = await owner.one(`select i.id, i.page_id from meta.item i where i.page_id = (select id from meta.page where app_id = $1 and page_no = 3) and i.name = 'P3_EMPNO'`, [appId]);
     assert.match((await b.get(`/builder/pages/${item.page_id}?c=item-${item.id}`)).body, /Used in \(\d+\)/);
     assert.equal((await b.get('/builder/apps/999999/advisor')).statusCode, 404);
