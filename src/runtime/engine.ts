@@ -8,7 +8,7 @@ import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, stor
 import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { invokeApi } from './rest-sources.ts';
-import { ratingMax } from './items.ts';
+import { lovLookup, ratingMax } from './items.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
 const ident = pg.escapeIdentifier;
@@ -125,6 +125,8 @@ export async function validate(ctx: PageContext) {
     const label = i.label ?? i.name;
     if (i.type === 'rating' && !(/^\d{1,2}$/.test(v) && Number(v) >= 1 && Number(v) <= ratingMax(i)))
       fail(i.name, ctx.locale.t('error.rating', { label, max: ratingMax(i) }));
+    // a popup LOV posts a return value: it must be one its list of values returns
+    if (i.type === 'popup_lov' && !(await lovLookup(ctx, i, v))) fail(i.name, ctx.locale.t('error.lov_value', { label }));
     if (i.type === 'daterange') {
       const m = /^(\d{4}-\d{2}-\d{2})?:(\d{4}-\d{2}-\d{2})?$/.exec(v);
       const valid = (d: string | undefined) => {

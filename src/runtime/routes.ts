@@ -17,7 +17,7 @@ import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './a
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
-import { comboMultiple, MULTI_VALUE, renderItem } from './items.ts';
+import { comboMultiple, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
@@ -612,6 +612,33 @@ export async function runtimeRoutes(app: FastifyInstance) {
         return { html: (await renderItem(ctx, item)).toString() };
       });
       await saveState(ctx.session);
+      return reply.send(out);
+    } catch (e) {
+      if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'list of values') });
+    }
+  });
+
+  // Popup LOV search: one page of the item's own list of values, matched on the
+  // server. Page access and the item's condition and authorization are checked
+  // as for the page; a cascading LOV reads its parents' posted values (not saved).
+  app.post('/a/:alias/:page/lov/:item/search', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    const body = req.body ?? {};
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
+    reply.header('cache-control', 'private, no-store');
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const item = ctx.page.items.find((i) => i.name === req.params.item && i.type === 'popup_lov');
+        if (!item || !vis.editable.has(item.name)) throw new Forbidden(ctx.locale.t('error.unknown_item'));
+        if (item.config?.cascade_parents) applyPostedItems(ctx, body, list(item.config.cascade_parents));
+        const page = Math.min(Math.max(Math.floor(Number(body.p)) || 0, 0), 10_000);
+        return searchLov(ctx, item, String(body.q ?? '').slice(0, 200), page, popupPageSize(item, body.n));
+      });
       return reply.send(out);
     } catch (e) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
