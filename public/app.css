@@ -368,6 +368,59 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .lg-label { color: var(--text); }
 .lg-value { margin-left: auto; font-variant-numeric: tabular-nums; }
 
+/* drill-down: marks that link to a page (the data table holds the same links for the keyboard) */
+.chart a.drill { color: inherit; text-decoration: none; cursor: pointer; }
+.chart a.drill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a.bar-row.drill:hover .bar-label, .donut-legend a.drill:hover .lg-label { color: var(--accent); text-decoration: underline; }
+.donut-legend a.drill { display: flex; align-items: center; gap: 0.5rem; flex: 1; }
+a.drill > .slice:hover, a.col-slot.drill:hover .col, a.col.drill:hover, a.bar-track.drill:hover .bar { filter: brightness(1.12); }
+
+/* bubble: a scatter whose area encodes a third value */
+.bubble { position: absolute; border-radius: 50%; background: color-mix(in srgb, var(--c) 45%, transparent); border: 1.5px solid var(--c); box-shadow: 0 0 0 1px var(--surface); }
+.bubble:hover, .bubble:focus-visible { background: color-mix(in srgb, var(--c) 70%, transparent); }
+.bubble-plot { margin-right: 1rem; margin-top: 0.75rem; }
+.chart-axes { margin: 0 0 0 2.6rem; font-size: 0.75rem; color: var(--muted); }
+
+/* gauge: status colours are reserved (never a series) and always come with an icon and a label */
+:root { --status-good: #0ca30c; --status-warning: #fab219; --status-critical: #d03b3b; }
+.status-good { --sc: var(--status-good); } .status-warning { --sc: var(--status-warning); } .status-critical { --sc: var(--status-critical); }
+.chart-gauges { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); gap: 1rem; }
+.gauge { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; padding: 0.5rem; border-radius: var(--radius); text-align: center; outline-offset: -2px; }
+.gauge:hover { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
+.gauge-figure { position: relative; width: 100%; max-width: 200px; }
+.gauge-figure svg { display: block; width: 100%; height: auto; }
+.gauge-track { fill: none; stroke: var(--chart-grid); stroke-width: 10; }
+.gauge-value { fill: none; stroke: var(--c); stroke-width: 10; }
+.gauge-value[class*="status-"] { stroke: var(--sc); }
+.gauge-band { fill: none; stroke: var(--sc); stroke-width: 2.5; }
+.gauge-number { position: absolute; left: 0; right: 0; bottom: 0; font-size: 1.35rem; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
+.gauge-scale { display: flex; justify-content: space-between; width: 100%; max-width: 200px; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gauge-label { font-size: 0.88rem; font-weight: 600; }
+.gauge-status { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; color: var(--muted); }
+.status-icon { display: inline-grid; place-items: center; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: var(--sc); color: #fff; font-size: 0.7rem; font-weight: 700; }
+.status-warning .status-icon { color: #1b2330; }
+
+/* funnel: stages in the query's order, centred bars of one hue */
+.chart-funnel { display: flex; flex-direction: column; gap: 0.35rem; }
+.funnel-row { display: grid; grid-template-columns: minmax(70px, 25%) 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.88rem; border-radius: 4px; outline-offset: 2px; }
+.funnel-track { display: flex; justify-content: center; height: 1.7rem; }
+.funnel-bar { display: block; height: 100%; background: var(--c); border-radius: 4px; min-width: 2px; }
+.funnel-row:hover .funnel-bar { filter: brightness(1.12); }
+.funnel-row .bar-value small { color: var(--muted); font-size: 0.75rem; }
+
+/* radar: one axis per row, one polygon per series */
+.chart-radar { display: flex; justify-content: center; }
+.radar-figure { position: relative; width: min(380px, 100%); aspect-ratio: 1; }
+.radar-figure svg { display: block; width: 100%; height: 100%; }
+.radar-ring, .radar-spoke { fill: none; stroke: var(--chart-grid); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.radar-area { fill: var(--c); fill-opacity: 0.14; stroke: var(--c); stroke-width: 2px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.radar-dot { fill: var(--c); stroke: var(--surface); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.radar-label { position: absolute; max-width: 28%; font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: translate(-50%, -50%); border-radius: 3px; outline-offset: 1px; }
+.radar-label.left { transform: translate(-100%, -50%); text-align: right; }
+.radar-label.right { transform: translate(0, -50%); }
+a.radar-label:hover { color: var(--accent); text-decoration: underline; }
+.radar-tick { position: absolute; left: 50%; font-size: 0.65rem; color: var(--muted); transform: translate(3px, -50%); font-variant-numeric: tabular-nums; pointer-events: none; }
+
 /* data table + tooltip */
 .chart-data > summary { cursor: pointer; font-size: 0.82rem; color: var(--muted); width: fit-content; }
 .chart-data[open] > summary { margin-bottom: 0.5rem; }
@@ -613,9 +666,54 @@ a.cal-event:hover { background: color-mix(in srgb, var(--accent) 20%, var(--surf
 .cal-agenda h3 { font-size: 0.85rem; margin: 0.75rem 0 0.3rem; color: var(--muted); }
 .cal-agenda-events { display: flex; flex-direction: column; gap: 0.3rem; }
 .cal-agenda .cal-event { padding: 0.45rem 0.6rem; font-size: 0.9rem; white-space: normal; }
+/* views: switcher, week and day by hour, list */
+.cal-views { margin-left: auto; }
+.cal-views .btn.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.cal-hint { display: none; margin: 0 0 0.5rem; font-size: 0.8rem; color: var(--muted); }
+.js .cal-hint { display: block; }
+.cal-grid { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.85rem; }
+.cal-grid th { font-size: 0.75rem; color: var(--muted); padding: 0.35rem; font-weight: 650; text-align: center; }
+.cal-grid thead th:first-child, .cal-grid tbody th { width: 4.2rem; }
+.cal-grid thead a { color: inherit; text-decoration: none; }
+.cal-grid thead a:hover { text-decoration: underline; }
+.cal-grid thead th.today a, .cal-grid thead th.today { color: var(--accent); }
+.cal-grid tbody th { text-align: right; vertical-align: top; font-variant-numeric: tabular-nums; font-weight: 500; }
+.cal-grid td { border: 1px solid var(--border); vertical-align: top; height: 2.6rem; padding: 0.2rem 0.3rem; overflow: hidden; }
+.cal-grid tr.cal-allday td { background: var(--surface-2); height: auto; min-height: 2rem; }
+.cal-slot-event { display: flex; flex-direction: column; margin-top: 2px; }
+.cal-slot-event .cal-when, .cal-agenda-events .cal-when { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cal-time { font-variant-numeric: tabular-nums; font-weight: 600; }
+.cal-event.timed { background: var(--surface); border-left-style: solid; }
+.cal-list { list-style: none; margin: 0; padding: 0; }
+.cal-list > li { border-bottom: 1px solid var(--border); padding: 0.4rem 0 0.6rem; }
+.cal-list h3 { font-size: 0.9rem; margin: 0.5rem 0 0.4rem; }
+.cal-agenda-events { list-style: none; margin: 0; padding: 0; }
+.cal-agenda-events li { display: flex; gap: 0.6rem; align-items: baseline; }
+.cal-agenda-events li .cal-event { flex: 1; min-width: 0; }
+.cal-agenda-events .cal-when { flex: none; min-width: 5.5rem; }
+/* create on click: a "+" link per day and hour slot; with JS the whole empty slot is clickable */
+td[data-add] { position: relative; }
+.cal-add { position: absolute; top: 2px; right: 2px; z-index: 1; width: 1.4rem; height: 1.4rem; display: grid; place-items: center; border-radius: 4px; background: var(--surface); color: var(--muted); text-decoration: none; font-weight: 600; line-height: 1; opacity: 0; }
+td[data-add]:hover > .cal-add, .cal-add:focus-visible { opacity: 1; }
+.cal-add:hover, .cal-add:focus-visible { background: var(--accent-soft); color: var(--accent); }
+/* touch screens have no hover: the "+" stays visible and keeps its own room */
+@media (hover: none) {
+  .cal-add { opacity: 1; }
+  td[data-add] { padding-right: 1.7rem; }
+}
+.js td[data-add] { cursor: pointer; }
+.js td[data-add]:hover { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+/* drag and drop */
+.calendar [draggable="true"] { cursor: grab; }
+.calendar .dragging { opacity: 0.5; }
+.calendar td.drop-over { outline: 2px dashed var(--accent); outline-offset: -3px; background: var(--accent-soft); }
+.calendar[aria-busy="true"] { opacity: 0.7; }
 @media (max-width: 640px) {
   .cal-month { display: none; }
+  .cal-view-week .cal-scroll { display: none; }
   .cal-agenda { display: block; }
+  .cal-views { margin-left: 0; }
+  .js .cal-hint { display: none; }
 }
 
 /* ---------- faceted search ---------- */

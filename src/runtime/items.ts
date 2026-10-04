@@ -143,7 +143,8 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         )}</div>`;
         break;
       case 'datetime':
-        control = html`<input type="datetime-local" id="${id}" name="${id}" value="${value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
+        // a date alone (e.g. from a calendar's create link) is midnight
+        control = html`<input type="datetime-local" id="${id}" name="${id}" value="${/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00` : value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
         break;
       case 'location':
         // "lat,lng"; app.js fills it from the device (geolocation) with the button

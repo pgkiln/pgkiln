@@ -13,15 +13,48 @@ import { cell } from './report.ts';
 // non-scaling strokes). Every chart carries a data table view, and marks
 // have hover/focus tooltips (public/app.js). Colors come from the validated
 // categorical palette in app.css (--series-1..8), assigned in fixed order.
+//
+// Drill-down: with a link (config.link), every mark is an <a> to a page with
+// item values from its row (checksummed URLs, built by the caller), and the
+// data table carries the same links for the keyboard. Marks that are not
+// focusable themselves (SVG slices, line hit areas) take tabindex="-1": the
+// data table or the legend is their keyboard path.
 
-export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie';
-export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie'];
+export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar';
+export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar'];
+
+/** A gauge's scale and thresholds (config.gauge): warning above critical means low values are bad. */
+export interface GaugeConfig {
+  min?: number;
+  max?: number;
+  warning?: number;
+  critical?: number;
+}
+
+export interface ChartOptions {
+  /** Drill-down: the href attributes for row i (series si, or null for the whole row), or null for no link. */
+  link?: (i: number, si: number | null) => Raw | null;
+  /** columns only the link uses: left out of the series */
+  hidden?: string[];
+  gauge?: GaugeConfig;
+}
 /** The interactive report's chart view has one series with text labels: no stacked, combo or scatter. */
 export const REPORT_CHART_KINDS: ChartKind[] = ['bar', 'column', 'line', 'area', 'donut', 'pie'];
 
 interface Series {
   name: string;
   values: number[];
+}
+
+let link: ChartOptions['link'];
+/** A mark: an <a> when the chart drills down (row i, series si), else `tag` (focusable when asked). */
+function mark(tag: 'div' | 'span', i: number, si: number | null, cls: string, tip: string | null, inner: unknown, focusable = true): Raw {
+  const href = link?.(i, si) ?? null;
+  const tipAttr = tip === null ? '' : html` data-tip="${tip}" aria-label="${tip}"`;
+  if (href) return html`<a class="${cls} drill" ${href}${tipAttr}${focusable ? '' : raw(' tabindex="-1"')}>${inner}</a>`;
+  return tag === 'div'
+    ? html`<div class="${cls}"${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</div>`
+    : html`<span class="${cls}"${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</span>`;
 }
 
 const MAX_SERIES = 8;
@@ -36,6 +69,13 @@ let texts = {
   label: 'Label',
   noSeries: 'The chart query must return a label column and at least one numeric column.',
   noScatter: 'A scatter chart needs a numeric first column (the x value).',
+  noBubble: 'A bubble chart needs a label column and three numeric columns: x, y and size.',
+  noRadar: 'A radar chart needs at least three rows, one per axis.',
+  good: 'On target',
+  warning: 'Warning',
+  critical: 'Critical',
+  ofFirst: 'of the first stage',
+  size: 'size',
 };
 const pct = (v: number) => `${Math.max(0, Math.min(100, v)).toFixed(3)}%`;
 
@@ -60,12 +100,15 @@ export function niceScale(min: number, max: number, zero = true) {
   return { lo: niceLo, hi: niceHi, ticks };
 }
 
-function parse(rows: unknown[][], fields: { name: string }[]) {
+function parse(rows: unknown[][], fields: { name: string }[], hidden: string[] = []) {
   const labels = rows.map((r) => cell(r[0]));
-  const series: Series[] = fields.slice(1, 1 + MAX_SERIES).map((f, i) => ({
-    name: f.name,
-    values: rows.map((r) => Number(r[i + 1]) || 0),
-  }));
+  const skip = new Set(hidden.map((h) => h.toLowerCase()));
+  const series: Series[] = fields
+    .map((f, i) => ({ f, i }))
+    .slice(1)
+    .filter(({ f }) => !skip.has(f.name.toLowerCase()))
+    .slice(0, MAX_SERIES)
+    .map(({ f, i }) => ({ name: f.name, values: rows.map((r) => Number(r[i]) || 0) }));
   return { labels, series };
 }
 
@@ -74,12 +117,19 @@ function legend(series: Series[]) {
   return html`<ul class="chart-legend">${series.map((s, i) => html`<li><span class="swatch s${i + 1}"></span>${s.name}</li>`)}</ul>`;
 }
 
-function dataTable(title: string, labels: string[], series: Series[], labelHeading: string) {
+function dataTable(title: string, labels: string[], series: Series[], labelHeading: string, wholeRows = false) {
   return html`<details class="chart-data"><summary>${texts.table}</summary>
     <div class="table-wrap"><table class="report">
       <caption class="sr-only">${title}</caption>
       <thead><tr><th scope="col">${labelHeading}</th>${series.map((s) => html`<th scope="col" class="num">${s.name}</th>`)}</tr></thead>
-      <tbody>${labels.map((l, i) => html`<tr><th scope="row">${l}</th>${series.map((s) => html`<td class="num">${fmt.format(s.values[i])}</td>`)}</tr>`)}</tbody>
+      <tbody>${labels.map((l, i) => {
+        // one series (or a chart of whole rows): the label links; several: each value links with its series
+        const rowLink = series.length === 1 || wholeRows ? link?.(i, wholeRows ? null : 0) : null;
+        return html`<tr><th scope="row">${rowLink ? html`<a ${rowLink}>${l}</a>` : l}</th>${series.map((s, si) => {
+          const cellLink = series.length > 1 && !wholeRows ? link?.(i, si) : null;
+          return html`<td class="num">${cellLink ? html`<a ${cellLink}>${fmt.format(s.values[i])}</a>` : fmt.format(s.values[i])}</td>`;
+        })}</tr>`;
+      })}</tbody>
     </table></div></details>`;
 }
 
@@ -90,15 +140,17 @@ const tip = (label: string, series: Series[], i: number) =>
 function bar(labels: string[], series: Series[]) {
   const all = series.flatMap((s) => s.values);
   const max = Math.max(...all.map(Math.abs), 1);
-  return html`<div class="chart-bar${series.length > 1 ? ' multi' : ''}">${labels.map(
-    (l, i) => html`<div class="bar-row" data-tip="${tip(l, series, i)}">
-      <span class="bar-label" title="${l}">${l}</span>
-      <span class="bar-stack">${series.map(
-        (s, si) => html`<span class="bar-track"><span class="bar s${si + 1} ${css.cls(`width:${pct((Math.abs(s.values[i]) / max) * 100)}`)}"></span></span>`,
-      )}</span>
-      <span class="bar-value">${series.length === 1 ? fmt.format(series[0].values[i]) : ''}</span>
-    </div>`,
-  )}</div>`;
+  const multi = series.length > 1;
+  return html`<div class="chart-bar${multi ? ' multi' : ''}">${labels.map((l, i) => {
+    const inner = html`<span class="bar-label" title="${l}">${l}</span>
+      <span class="bar-stack">${series.map((s, si) => {
+        const b = html`<span class="bar s${si + 1} ${css.cls(`width:${pct((Math.abs(s.values[i]) / max) * 100)}`)}"></span>`;
+        // several series: each bar is its own link
+        return multi && link ? mark('span', i, si, 'bar-track', `${l} · ${s.name}: ${fmt.format(s.values[i])}`, b, false) : html`<span class="bar-track">${b}</span>`;
+      })}</span>
+      <span class="bar-value">${multi ? '' : fmt.format(series[0].values[i])}</span>`;
+    return !multi && link ? mark('div', i, 0, 'bar-row', tip(l, series, i), inner) : html`<div class="bar-row" data-tip="${tip(l, series, i)}">${inner}</div>`;
+  })}</div>`;
 }
 
 // ---------------------------------------------------------------- shared y axis
@@ -128,16 +180,19 @@ function column(labels: string[], series: Series[]) {
   const zero = y(0);
   return html`<div class="chart-plot">
     ${grid}
-    <div class="chart-cols">${labels.map(
-      (l, i) => html`<div class="col-group" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}">${series.map((s, si) => {
+    <div class="chart-cols">${labels.map((l, i) => {
+      const multi = series.length > 1;
+      const inner = html`${series.map((s, si) => {
         const v = s.values[i];
         const top = y(Math.max(v, 0));
         const bottom = y(Math.min(v, 0));
-        return html`<span class="col-slot"><span class="col s${si + 1}${v < 0 ? ' neg' : ''} ${css.cls(`bottom:${pct(bottom)};height:${pct(top - bottom)}`)}"></span></span>`;
-      })}${series.length === 1 && labels.length <= 12
+        const col = html`<span class="col s${si + 1}${v < 0 ? ' neg' : ''} ${css.cls(`bottom:${pct(bottom)};height:${pct(top - bottom)}`)}"></span>`;
+        return multi && link ? mark('span', i, si, 'col-slot', `${l} · ${s.name}: ${fmt.format(v)}`, col, false) : html`<span class="col-slot">${col}</span>`;
+      })}${!multi && labels.length <= 12
         ? html`<span class="col-value ${css.cls(`bottom:${pct(Math.max(y(series[0].values[i]), zero))}`)}">${compact.format(series[0].values[i])}</span>`
-        : ''}</div>`,
-    )}</div>
+        : ''}`;
+      return multi ? html`<div class="col-group" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}">${inner}</div>` : mark('div', i, 0, 'col-group', tip(l, series, i), inner);
+    })}</div>
   </div>${xLabels(labels)}`;
 }
 
@@ -163,7 +218,8 @@ function stacked(labels: string[], series: Series[]) {
         if (v > 0) up += v;
         else down += v;
         const edge = si === top ? ' top' : si === end ? ' neg' : '';
-        return html`<span class="col seg${edge} s${si + 1} ${css.cls(`bottom:${pct(y(from))};height:${pct(y(from + Math.abs(v)) - y(from))}`)}"></span>`;
+        const cls = `col seg${edge} s${si + 1} ${css.cls(`bottom:${pct(y(from))};height:${pct(y(from + Math.abs(v)) - y(from))}`)}`;
+        return link ? mark('span', i, si, cls, `${l} · ${s.name}: ${fmt.format(v)}`, '', false) : html`<span class="${cls}"></span>`;
       });
       return html`<div class="col-group" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}"><span class="col-slot stack">${segments}</span></div>`;
     })}</div>
@@ -203,7 +259,9 @@ function line(labels: string[], series: Series[], area: boolean) {
       // each hit area is centred on its point (the plot clips the outer halves)
       (l, i) => {
         const w = n === 1 ? 100 : 100 / (n - 1);
-        return html`<div class="hit ${css.cls(`left:${(x(i) - w / 2).toFixed(3)}%;width:${w.toFixed(3)}%`)}" data-tip="${tip(l, series, i)}"><span class="guide"></span></div>`;
+        const cls = `hit ${css.cls(`left:${(x(i) - w / 2).toFixed(3)}%;width:${w.toFixed(3)}%`)}`;
+        if (link) return mark('div', i, series.length === 1 ? 0 : null, cls, tip(l, series, i), html`<span class="guide"></span>`, false);
+        return html`<div class="${cls}" data-tip="${tip(l, series, i)}"><span class="guide"></span></div>`;
       },
     )}</div>
   </div>${xLabels(labels)}`;
@@ -224,7 +282,7 @@ function combo(labels: string[], series: Series[]) {
       const v = bars.values[i];
       const top = y(Math.max(v, 0));
       const bottom = y(Math.min(v, 0));
-      return html`<div class="col-group" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}"><span class="col-slot"><span class="col s1${v < 0 ? ' neg' : ''} ${css.cls(`bottom:${pct(bottom)};height:${pct(top - bottom)}`)}"></span></span></div>`;
+      return mark('div', i, series.length === 1 ? 0 : null, 'col-group', tip(l, series, i), html`<span class="col-slot"><span class="col s1${v < 0 ? ' neg' : ''} ${css.cls(`bottom:${pct(bottom)};height:${pct(top - bottom)}`)}"></span></span>`);
     })}</div>
     ${rest.length ? lineLayer(rest, 1, n, x, y, scale, false) : ''}
   </div>${xLabels(labels)}`;
@@ -247,7 +305,7 @@ function scatter(rows: unknown[][], fields: { name: string }[], series: Series[]
     ${series.map((s, si) =>
       keep.map((i) => {
         const t = `${s.name} · ${xName}: ${fmt.format(xs[i])} · ${fmt.format(s.values[i])}`;
-        return html`<span class="pt s${si + 1} ${css.cls(`left:${pct(x(xs[i]))};bottom:${pct(y(s.values[i]))}`)}" data-tip="${t}" tabindex="0" aria-label="${t}"></span>`;
+        return mark('span', i, si, `pt s${si + 1} ${css.cls(`left:${pct(x(xs[i]))};bottom:${pct(y(s.values[i]))}`)}`, t, '');
       }),
     )}
   </div><div class="chart-xs" aria-hidden="true">${xScale.ticks.map(
@@ -258,12 +316,14 @@ function scatter(rows: unknown[][], fields: { name: string }[], series: Series[]
 // ---------------------------------------------------------------- donut / pie
 function donut(labels: string[], series: Series[], pie: boolean) {
   // Part-to-whole of the first series; more than 6 slices fold into "Other".
-  let entries = labels.map((l, i) => ({ label: l, value: Math.max(0, series[0].values[i]) })).filter((e) => e.value > 0);
+  let entries = labels.map((l, i) => ({ label: l, value: Math.max(0, series[0].values[i]), i })).filter((e) => e.value > 0);
   if (entries.length > 6) {
     entries.sort((a, b) => b.value - a.value);
     const rest = entries.slice(5).reduce((a, e) => a + e.value, 0);
-    entries = [...entries.slice(0, 5), { label: texts.other, value: rest }];
+    // "Other" is no row: it has no link
+    entries = [...entries.slice(0, 5), { label: texts.other, value: rest, i: -1 }];
   }
+  const href = (e: { i: number }) => (e.i >= 0 ? (link?.(e.i, 0) ?? null) : null);
   const total = entries.reduce((a, e) => a + e.value, 0) || 1;
   // A donut is a ring of circumference 100; a pie is a stroke as wide as the
   // radius around a circle of half that, so its lengths are halved.
@@ -274,7 +334,10 @@ function donut(labels: string[], series: Series[], pie: boolean) {
   const arcs = entries.map((e, i) => {
     const len = (e.value / total) * 100;
     const dash = Math.max(len - gap, 0.1) * scale;
-    const arc = html`<circle class="slice s${i + 1}" cx="21" cy="21" r="${R}" stroke-dasharray="${dash} ${100 * scale - dash}" stroke-dashoffset="${offset}"><title>${e.label}: ${fmt.format(e.value)} (${((e.value / total) * 100).toFixed(1)}%)</title></circle>`;
+    let arc = html`<circle class="slice s${i + 1}" cx="21" cy="21" r="${R}" stroke-dasharray="${dash} ${100 * scale - dash}" stroke-dashoffset="${offset}"><title>${e.label}: ${fmt.format(e.value)} (${((e.value / total) * 100).toFixed(1)}%)</title></circle>`;
+    // a slice links too (by mouse); the legend below is the keyboard path
+    const h = href(e);
+    if (h) arc = html`<a class="drill" ${h} tabindex="-1">${arc}</a>`;
     offset -= len * scale;
     return arc;
   });
@@ -283,23 +346,165 @@ function donut(labels: string[], series: Series[], pie: boolean) {
       <svg viewBox="0 0 42 42" aria-hidden="true">${arcs}</svg>
       ${pie ? '' : html`<div class="donut-center"><b>${compact.format(total)}</b><span>${series[0].name}</span></div>`}
     </div>
-    <ul class="chart-legend donut-legend">${entries.map(
-      (e, i) => html`<li data-tip="${e.label}: ${fmt.format(e.value)}"><span class="swatch s${i + 1}"></span><span class="lg-label">${e.label}</span><span class="lg-value">${fmt.format(e.value)} · ${((e.value / total) * 100).toFixed(0)}%</span></li>`,
-    )}</ul>
+    <ul class="chart-legend donut-legend">${entries.map((e, i) => {
+      const inner = html`<span class="swatch s${i + 1}"></span><span class="lg-label">${e.label}</span><span class="lg-value">${fmt.format(e.value)} · ${((e.value / total) * 100).toFixed(0)}%</span>`;
+      const h = href(e);
+      return html`<li data-tip="${e.label}: ${fmt.format(e.value)}">${h ? html`<a class="drill" ${h}>${inner}</a>` : inner}</li>`;
+    })}</ul>
   </div>`;
 }
 
+// ---------------------------------------------------------------- bubble
+function bubble(labels: string[], series: Series[]) {
+  // label, x, y, size: one series (slot 1); the area of a bubble is proportional to its size
+  if (series.length < 3) return html`<p class="empty">${texts.noBubble}</p>`;
+  const [xs, ys, zs] = series;
+  const xScale = niceScale(Math.min(...xs.values), Math.max(...xs.values), false);
+  const scale = niceScale(Math.min(...ys.values), Math.max(...ys.values), false);
+  const { y, grid } = yAxis(scale);
+  const x = (v: number) => ((v - xScale.lo) / (xScale.hi - xScale.lo)) * 100;
+  const zMax = Math.max(...zs.values.map(Math.abs), 1e-9);
+  const MAX_R = 22;
+  const MIN_R = 4;
+  // the largest first, so smaller bubbles stay on top and can be pointed at
+  const order = labels.map((_, i) => i).sort((a, b) => Math.abs(zs.values[b]) - Math.abs(zs.values[a]));
+  return html`<div class="chart-plot scatter-plot bubble-plot">
+    ${grid}
+    ${order.map((i) => {
+      const r = Math.max(MIN_R, MAX_R * Math.sqrt(Math.abs(zs.values[i]) / zMax));
+      const t = `${labels[i]} · ${xs.name}: ${fmt.format(xs.values[i])} · ${ys.name}: ${fmt.format(ys.values[i])} · ${zs.name}: ${fmt.format(zs.values[i])}`;
+      const geo = css.cls(`left:${pct(x(xs.values[i]))};bottom:${pct(y(ys.values[i]))};width:${(2 * r).toFixed(1)}px;height:${(2 * r).toFixed(1)}px;margin:0 0 -${r.toFixed(1)}px -${r.toFixed(1)}px`);
+      return mark('span', i, null, `bubble s1 ${geo}`, t, '');
+    })}
+  </div><div class="chart-xs" aria-hidden="true">${xScale.ticks.map(
+    (t) => html`<span class="${css.cls(`left:${pct(x(t))}`)}">${compact.format(t)}</span>`,
+  )}</div><p class="chart-axes">${xs.name} → · ${ys.name} ↑ · ${texts.size}: ${zs.name}</p>`;
+}
+
+// ---------------------------------------------------------------- gauge
+type Status = 'good' | 'warning' | 'critical';
+
+/** The status of a value against the thresholds: warning above critical means low values are bad. */
+export function gaugeStatus(v: number, g: GaugeConfig): Status | null {
+  const { warning: w, critical: c } = g;
+  if (w === undefined && c === undefined) return null;
+  const down = w !== undefined && c !== undefined && w > c;
+  const hit = (th: number | undefined) => th !== undefined && (down ? v <= th : v >= th);
+  return hit(c) ? 'critical' : hit(w) ? 'warning' : 'good';
+}
+
+function gauge(labels: string[], series: Series[], g: GaugeConfig) {
+  // One gauge per row (up to 12): the value of the first series on a half circle from min to max.
+  const values = series[0].values.slice(0, 12);
+  const min = Number.isFinite(g.min) ? g.min! : 0;
+  const top = Math.max(...values, g.warning ?? -Infinity, g.critical ?? -Infinity);
+  const max = Number.isFinite(g.max) && g.max! > min ? g.max! : niceScale(min, top > min ? top : min + 1).hi;
+  const at = (v: number) => Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
+  const ARC = 'M10,50 A40,40 0 0 1 90,50';
+  // the threshold bands, as a thin ring outside the track
+  const bands: { from: number; to: number; status: Status }[] = [];
+  const status0 = gaugeStatus(min, g);
+  if (status0) {
+    const cuts = [g.warning, g.critical].filter((x): x is number => x !== undefined && x > min && x < max).sort((a, b) => a - b);
+    let from = min;
+    for (const cut of [...cuts, max]) {
+      bands.push({ from, to: cut, status: gaugeStatus((from + cut) / 2, g)! });
+      from = cut;
+    }
+  }
+  const ring = bands.map(
+    (b) => html`<path class="gauge-band status-${b.status}" d="M5,50 A45,45 0 0 1 95,50" pathLength="100" stroke-dasharray="${(at(b.to) - at(b.from)).toFixed(3)} 200" stroke-dashoffset="${(-at(b.from)).toFixed(3)}"></path>`,
+  );
+  return html`<div class="chart-gauges">${values.map((v, i) => {
+    const status = gaugeStatus(v, g);
+    const t = `${labels[i]}: ${fmt.format(v)}${status ? ` · ${texts[status]}` : ''}`;
+    const inner = html`<span class="gauge-figure">
+        <svg viewBox="0 0 100 56" aria-hidden="true">
+          ${ring}
+          <path class="gauge-track" d="${ARC}" pathLength="100"></path>
+          <path class="gauge-value ${status ? `status-${status}` : 's1'}" d="${ARC}" pathLength="100" stroke-dasharray="${Math.max(at(v), 0.5).toFixed(3)} 200"></path>
+        </svg>
+        <span class="gauge-number">${compact.format(v)}</span>
+      </span>
+      <span class="gauge-scale" aria-hidden="true"><span>${compact.format(min)}</span><span>${compact.format(max)}</span></span>
+      <span class="gauge-label">${labels[i]}</span>
+      ${status ? html`<span class="gauge-status status-${status}"><span class="status-icon" aria-hidden="true">${status === 'good' ? '✓' : '!'}</span>${texts[status]}</span>` : ''}`;
+    return mark('div', i, 0, 'gauge', t, inner);
+  })}</div>`;
+}
+
+// ---------------------------------------------------------------- funnel
+function funnel(labels: string[], series: Series[]) {
+  // Stages in the query's order, centred bars of one hue; the share of the first stage on the right.
+  const values = series[0].values.map((v) => Math.max(0, v));
+  const max = Math.max(...values, 1e-9);
+  const first = values[0] || 0;
+  return html`<div class="chart-funnel">${labels.map((l, i) => {
+    const share = first ? `${((values[i] / first) * 100).toFixed(0)}%` : '';
+    const t = `${l}: ${fmt.format(series[0].values[i])}${share && i ? ` · ${share} ${texts.ofFirst}` : ''}`;
+    return mark('div', i, 0, 'funnel-row', t, html`<span class="bar-label" title="${l}">${l}</span>
+      <span class="funnel-track"><span class="funnel-bar s1 ${css.cls(`width:${pct((values[i] / max) * 100)}`)}"></span></span>
+      <span class="bar-value">${fmt.format(series[0].values[i])}${i && share ? html` <small>${share}</small>` : ''}</span>`);
+  })}</div>`;
+}
+
+// ---------------------------------------------------------------- radar
+function radar(labels: string[], series: Series[]) {
+  // One axis per row (3-12), one polygon per series, rings at the value axis' ticks.
+  const n = Math.min(labels.length, 12);
+  if (n < 3) return html`<p class="empty">${texts.noRadar}</p>`;
+  const all = series.flatMap((s) => s.values.slice(0, n));
+  const scale = niceScale(0, Math.max(...all, 0));
+  const R = 34;
+  const point = (k: number, v: number) => {
+    const a = (2 * Math.PI * k) / n - Math.PI / 2; // the first axis points up
+    const r = (Math.max(0, v - scale.lo) / (scale.hi - scale.lo)) * R;
+    return [50 + r * Math.cos(a), 50 + r * Math.sin(a)];
+  };
+  const poly = (vs: number[]) => vs.map((v, k) => point(k, v).map((c) => c.toFixed(3)).join(',')).join(' ');
+  const rings = scale.ticks.filter((t) => t > 0).map((t) => html`<polygon class="radar-ring" points="${poly(Array(n).fill(t))}"></polygon>`);
+  const spokes = Array.from({ length: n }, (_, k) => {
+    const [x, y] = point(k, scale.hi);
+    return html`<line class="radar-spoke" x1="50" y1="50" x2="${x.toFixed(3)}" y2="${y.toFixed(3)}"></line>`;
+  });
+  const shapes = series.map(
+    (s, si) => html`<polygon class="radar-area s${si + 1}" points="${poly(s.values.slice(0, n))}"></polygon>${s.values.slice(0, n).map((v, k) => {
+      const [x, y] = point(k, v);
+      return html`<circle class="radar-dot s${si + 1}" cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="1.3"></circle>`;
+    })}`,
+  );
+  const axisLabels = labels.slice(0, n).map((l, k) => {
+    const [x, y] = point(k, scale.hi * 1.2);
+    const side = Math.abs(x - 50) < 2 ? 'mid' : x < 50 ? 'left' : 'right';
+    return mark('span', k, series.length === 1 ? 0 : null, `radar-label ${side} ${css.cls(`left:${pct(x)};top:${pct(y)}`)}`, tip(l, series, k), l);
+  });
+  const ticks = scale.ticks.filter((t) => t > 0).map((t) => {
+    const [, y] = point(0, t);
+    return html`<span class="radar-tick ${css.cls(`top:${pct(y)}`)}">${compact.format(t)}</span>`;
+  });
+  return html`<div class="chart-radar"><div class="radar-figure">
+    <svg viewBox="0 0 100 100" aria-hidden="true">${rings}${spokes}${shapes}</svg>
+    <span aria-hidden="true">${ticks}</span>
+    ${axisLabels}
+  </div></div>`;
+}
+
 /** A chart's markup; its geometry goes into `sheet` as classes (no inline styles: see css.ts). */
-export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], sheet: PageCss, lang = 'en', t?: Translate): Raw {
+export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], sheet: PageCss, lang = 'en', t?: Translate, opts: ChartOptions = {}): Raw {
   css = sheet;
+  link = opts.link;
   try {
     fmt = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
     compact = new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 });
   } catch {
     // unknown locale: keep the previous formats
   }
-  if (t) texts = { ...texts, table: t('chart.table'), other: t('chart.other'), label: t('chart.label') };
-  const { labels, series } = parse(rows, fields);
+  if (t)
+    texts = {
+      ...texts, table: t('chart.table'), other: t('chart.other'), label: t('chart.label'), noBubble: t('chart.no_bubble'), noRadar: t('chart.no_radar'),
+      good: t('chart.status_good'), warning: t('chart.status_warning'), critical: t('chart.status_critical'), ofFirst: t('chart.of_first'), size: t('chart.size'),
+    };
+  const { labels, series } = parse(rows, fields, opts.hidden);
   if (!series.length) return html`<p class="empty">${texts.noSeries}</p>`;
   let body: Raw;
   switch (kind) {
@@ -323,12 +528,24 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
     case 'pie':
       body = donut(labels, series, kind === 'pie');
       break;
+    case 'bubble':
+      body = bubble(labels, series);
+      break;
+    case 'gauge':
+      body = gauge(labels, series, opts.gauge ?? {});
+      break;
+    case 'funnel':
+      body = funnel(labels, series);
+      break;
+    case 'radar':
+      body = radar(labels, series);
+      break;
     default:
       body = bar(labels, series);
   }
   return html`<figure class="chart chart-${kind}" aria-label="${title}">
-    ${kind === 'donut' || kind === 'pie' ? '' : legend(series)}
+    ${['donut', 'pie', 'bubble', 'gauge', 'funnel'].includes(kind) ? '' : legend(series)}
     ${body}
-    ${dataTable(title, labels, series, fields[0]?.name ?? texts.label)}
+    ${dataTable(title, labels, kind === 'gauge' || kind === 'funnel' ? series.slice(0, 1) : series, fields[0]?.name ?? texts.label, kind === 'bubble')}
   </figure>`;
 }

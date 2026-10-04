@@ -297,6 +297,63 @@ document.documentElement.classList.add('js');
     if (e.data.reload) location.reload();
   });
 
+  // ------------------------------------------------------------ calendar
+  // Create on click: a click on an empty day or hour slot follows its "+" link.
+  document.addEventListener('click', (e) => {
+    const cell = e.target.closest?.('.calendar [data-add]');
+    if (!cell || e.target.closest('a, button')) return;
+    cell.querySelector(':scope > .cal-add')?.click();
+  });
+  // Drag and drop (mouse): drop an event on a day or hour slot; the server moves it
+  // and sends the calendar back. Without JS (and from the keyboard) the event's
+  // edit link changes its dates.
+  let dragged = null;
+  document.addEventListener('dragstart', (e) => {
+    const ev = e.target.closest?.('.calendar[data-calendar] [data-move]');
+    if (!ev) return;
+    dragged = ev;
+    ev.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ev.title || ev.textContent.trim());
+  });
+  document.addEventListener('dragend', () => {
+    dragged?.classList.remove('dragging');
+    dragged = null;
+    document.querySelectorAll('.calendar .drop-over').forEach((el) => el.classList.remove('drop-over'));
+  });
+  const dropCell = (e) => {
+    const cell = dragged && e.target.closest?.('[data-drop]');
+    return cell && cell.closest('.calendar') === dragged.closest('.calendar') ? cell : null;
+  };
+  document.addEventListener('dragover', (e) => {
+    const cell = dropCell(e);
+    if (!cell) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.calendar .drop-over').forEach((el) => el !== cell && el.classList.remove('drop-over'));
+    cell.classList.add('drop-over');
+  });
+  document.addEventListener('drop', async (e) => {
+    const cell = dropCell(e);
+    if (!cell) return;
+    e.preventDefault();
+    const cal = cell.closest('.calendar');
+    const region = cal.closest('.region');
+    const key = dragged.dataset.move;
+    cal.setAttribute('aria-busy', 'true');
+    try {
+      const res = await post(`/calendar/${cal.dataset.calendar}/move`, { key, to: cell.dataset.drop });
+      const sheet = document.getElementById('pgapex-css')?.sheet;
+      if (sheet && res.css) for (const rule of res.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
+      const node = region ? replaceHtml(region, res.region) : null;
+      const status = node?.querySelector('.cal-status');
+      if (status) status.textContent = res.message;
+    } catch (err) {
+      cal.removeAttribute('aria-busy');
+      showError(err.message);
+    }
+  });
+
   // Inside a dialog: close on success or cancel.
   if (window.parent !== window) {
     const tell = (reload) => window.parent.postMessage({ type: 'pgapex:close', reload }, location.origin);
