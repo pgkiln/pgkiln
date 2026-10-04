@@ -7,7 +7,7 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-04 (pgapex 0.20.0: a popup list of values with server-side search; 0.19.0: row-range pagination, maximum row counts and row limits, lazy loading and caching of regions, streamed CSV/Excel downloads; 0.18.0: calendar week/day/list views with drag and drop, bubble/gauge/funnel/radar charts and drill-down, smart filters, a region display selector and more facet types, computations, conditional branches, build options, menu buttons, REST data sources and web credentials, rich text/Markdown, rating, combobox, date range and QR code items; 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-04 (pgapex 0.21.0: HTTP-header authentication behind a reverse proxy; 0.20.0: a popup list of values with server-side search; 0.19.0: row-range pagination, maximum row counts and row limits, lazy loading and caching of regions, streamed CSV/Excel downloads; 0.18.0: calendar week/day/list views with drag and drop, bubble/gauge/funnel/radar charts and drill-down, smart filters, a region display selector and more facet types, computations, conditional branches, build options, menu buttons, REST data sources and web credentials, rich text/Markdown, rating, combobox, date range and QR code items; 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
@@ -17,13 +17,13 @@ Last reviewed: 2026-10-04 (pgapex 0.20.0: a popup list of values with server-sid
 | Regions | 15 | 5 | 0 | 0 | All everyday regions; thirteen chart types with drill-down; calendars with week/day/list views and drag and drop; faceted search, smart filters and a region display selector; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; row ranges, lazy loading and region caching for large tables |
 | Items | 10 | 2 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
 | Logic and processing | 7 | 5 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons; fewer declarative process types |
-| Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
+| Security | 17 | 2 | 1 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; no database-account authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
 | Data and integration | 4 | 3 | 2 | 3 | REST APIs via PostgREST, REST data sources and web credentials, CSV/XLSX/JSON loading, report PDFs and document templates |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and workflows with parallel branches and versions; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **70** | **30** | **15** | **6** | 121 APEX features compared: 58% available, 25% partial |
+| **Total** | **70** | **31** | **14** | **6** | 121 APEX features compared: 58% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -129,7 +129,7 @@ Last reviewed: 2026-10-04 (pgapex 0.20.0: a popup list of values with server-sid
 | Session sharing between applications | 🟡 | Each app has its own session; with OpenID Connect the second sign-in is silent. APEX: workspace sharing or a custom cookie |
 | Forgot password for end users | ➖ | pgapex sends no mail. As in APEX apps, users ask an administrator for a temporary password (change on first use) |
 | LDAP and SAML authentication | ✅ | LDAP / Active Directory (search + bind, StartTLS/LDAPS, groups → roles) and SAML 2.0 (signed assertions, SP metadata), next to local passwords and OpenID Connect |
-| Database accounts, HTTP-header authentication | ❌ | |
+| Database accounts, HTTP-header authentication | 🟡 | HTTP header variable (`header`): the user from a header set by a reverse proxy or SSO gateway, trusted only from proxy addresses in `PGAPEX_AUTH_HEADER_PROXIES`, session bound to the header value, optional automatic accounts, sign-out URL ([chapter 8](guide/08-security.md)). **Missing:** database accounts |
 | Custom authentication | ❌ | |
 | Persistent authentication ("remember me") | ✅ | Per app, 1–365 days; rotating one-time tokens, revoked on sign-out, new password, deactivation or removed access; "Sign out on all devices" |
 | App launcher / portal | ➖ | Not in APEX either; each app has its own URL |
