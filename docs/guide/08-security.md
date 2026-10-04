@@ -341,6 +341,12 @@ matures. Privileges show up in **SQL Workshop → Object Browser**.
 - **Submitted values**: only editable, visible items are taken from a submit. Hidden, display-only,
   read-only and unauthorized items keep their server-side values.
 - **Grid rows**: every row's primary key is signed the same way.
+- **Calendar drag and drop**: the browser only names an event (its key) and a slot. The server
+  checks the token, the page's and region's authorization and condition and the region's
+  `move_authz`, and that the event is in the region's query for this user (as the application's
+  database role, with RLS), validates the slot as a date, and passes the new start and end to the
+  `move` SQL as literals. Your function still decides who may move what (e.g. only the organizer).
+- **Chart and calendar links** (drill-down, create on click) are checksummed like report links.
 - **CSRF**: every POST carries a per-session token.
 
 Checksums prevent tampering but aren't a substitute for RLS. A user who legitimately received a
