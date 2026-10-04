@@ -97,6 +97,17 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     vis.buttons.set(b.name, b);
   }
 
+  // A menu button's submit entries are requests of their own (id 0: not rendered as buttons). A request
+  // that is also a page button's name follows that button's visibility only.
+  for (const b of [...vis.buttons.values()]) {
+    if (b.action !== 'menu' || !Array.isArray(b.menu)) continue;
+    for (const e of b.menu) {
+      if (!e.request || vis.buttons.has(e.request) || ctx.page.buttons.some((x) => x.name === e.request)) continue;
+      if (!(await isAuthorized(ctx, e.authz))) continue;
+      vis.buttons.set(e.request, { ...b, id: 0, name: e.request, label: e.label, action: 'submit', target_page: null, target_items: {}, menu: null, hot: false, confirm: e.confirm ?? null, badge: null, badge_query: null });
+    }
+  }
+
   // an editable grid brings its own Save button
   for (const r of ctx.page.regions)
     if (r.type === 'grid' && vis.regions.has(r.id) && ctx.page.processes.some((p) => p.type === 'grid_dml' && p.region_id === r.id))

@@ -3,7 +3,7 @@ import { savepoint } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Button, Region } from '../metadata.ts';
-import { pageAllowed } from './authz.ts';
+import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { fillItems, linkAttrs, linkColumns } from './links.ts';
@@ -22,22 +22,66 @@ import { cell, renderReport } from './report.ts';
 
 // ---------------------------------------------------------------- buttons
 
+/** A button's badge: the badge query's first value, or the badge text with &ITEM. substitutions. */
+async function badgeOf(ctx: PageContext, b: Button): Promise<Raw | ''> {
+  let value: string | null = null;
+  if (b.badge_query?.trim()) {
+    const c = ctx.client!;
+    const sql = stripSemicolon(applyBinds(b.badge_query, bindValues(ctx)));
+    try {
+      const res = await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }));
+      const v = res.rows[0]?.[0];
+      value = v === null || v === undefined ? null : String(v);
+    } catch (e) {
+      ctx.errors.page.push(await publicError(ctx, e, `badge of button ${b.name}`));
+    }
+  } else if (b.badge) value = substitute(b.badge, ctx, (x) => x);
+  value = value?.trim().slice(0, 100) || null;
+  return value ? html` <span class="btn-badge">${value}</span>` : '';
+}
+
+/**
+ * A menu button: a <details> dropdown (works without JavaScript) with links
+ * to pages (signed item values, only pages the user may open) and submit
+ * requests (only those computeVisibility allowed).
+ */
+async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw | '') {
+  const entries = [];
+  for (const e of b.menu ?? []) {
+    if (!(await isAuthorized(ctx, e.authz))) continue;
+    const ic = e.icon ? html`${icon(e.icon)} ` : '';
+    const confirm = e.confirm ? raw(` data-confirm="${esc(e.confirm)}"`) : '';
+    if (e.page) {
+      if (!(await pageAllowed(ctx, e.page))) continue;
+      entries.push(html`<a ${linkAttrs(ctx, e.page, e.items ?? {})}${confirm}>${ic}${e.label}</a>`);
+    } else if (e.request && ctx.vis!.buttons.get(e.request)?.action === 'submit')
+      entries.push(html`<button type="submit" name="__request" value="${e.request}" data-button="${e.request}"${confirm}>${ic}${e.label}</button>`);
+  }
+  if (!entries.length) return '';
+  return html`<details class="menu btn-menu" data-button="${b.name}">
+    <summary class="${cls}">${b.label}${badge}${icon('chevron', 'icon btn-caret')}</summary>
+    <div class="menu-panel"><div class="menu-section menu-links">${entries}</div></div>
+  </details>`;
+}
+
 export async function renderButton(ctx: PageContext, b: Button) {
   const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}`;
   const confirm = b.confirm ? raw(` data-confirm="${esc(b.confirm)}"`) : '';
+  const badge = b.badge || b.badge_query ? await badgeOf(ctx, b) : '';
+  if (b.action === 'menu') return renderMenu(ctx, b, cls, badge);
   if (b.action === 'redirect') {
     const target = b.target_page ?? ctx.page.page_no;
     // Cancel/close in a dialog returning to the page that opened it just closes the dialog.
     if (!(await pageAllowed(ctx, target))) return '';
     if (ctx.dialog && !(ctx.app.pages.find((p) => p.page_no === target)?.mode === 'modal'))
-      return html`<a class="${cls}" href="${ctx.base}/${target}" data-dialog-cancel>${b.label}</a>`;
-    return html`<a class="${cls}" ${linkAttrs(ctx, target, b.target_items ?? {}, true)}${confirm}>${b.label}</a>`;
+      return html`<a class="${cls}" href="${ctx.base}/${target}" data-dialog-cancel>${b.label}${badge}</a>`;
+    return html`<a class="${cls}" ${linkAttrs(ctx, target, b.target_items ?? {}, true)}${confirm}>${b.label}${badge}</a>`;
   }
-  if (b.action === 'da') return html`<button type="button" class="${cls}" data-button="${b.name}"${confirm}>${b.label}</button>`;
+  if (b.action === 'da') return html`<button type="button" class="${cls}" data-button="${b.name}"${confirm}>${b.label}${badge}</button>`;
   // a document template filled with this page's session state (documents.ts)
   if (b.action === 'document' && b.document)
-    return html`<a class="${cls}" href="${ctx.base}/${ctx.page.page_no}?${new URLSearchParams({ doc: b.document })}${ctx.dialog ? '&dialog=1' : ''}" download${confirm}>${b.label}</a>`;
-  return html`<button type="submit" class="${cls}" name="__request" value="${b.name}" data-button="${b.name}"${confirm}>${b.label}</button>`;
+    return html`<a class="${cls}" href="${ctx.base}/${ctx.page.page_no}?${new URLSearchParams({ doc: b.document })}${ctx.dialog ? '&dialog=1' : ''}" download${confirm}>${b.label}${badge}</a>`;
+  return html`<button type="submit" class="${cls}" name="__request" value="${b.name}" data-button="${b.name}"${confirm}>${b.label}${badge}</button>`;
 }
 
 export async function buttonsFor(ctx: PageContext, regionId: number | null) {

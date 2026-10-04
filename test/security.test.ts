@@ -1465,3 +1465,171 @@ describe('sprint 26 regions: smart filters, facet kinds, display selector', () =
     assert.deepEqual((await owner.query('select id, config from meta.region where page_id = $1 order by id', [sel.page_id])).rows, before);
   });
 });
+
+describe('sprint 26 logic: computations, branches, menus, badges, dynamic actions, build options', () => {
+  const page22 = async () => (await owner.one(`select p.id from meta.page p where p.app_id = $1 and p.page_no = 22`, [appId])).id as number;
+  const king = async () => {
+    const b = await as('king');
+    await b.get('/a/hr/22');
+    return b;
+  };
+
+  test('computation SQL and function bodies run as the application role; item values stay literals', async () => {
+    const pid = await page22();
+    const ids = (
+      await owner.query(
+        `insert into meta.computation (page_id, seq, item_name, point, type, expression) values
+           ($1, 95, 'P22_NAME', 'after_submit', 'function_body', 'return current_user || '':'' || :P22_DAYS;'),
+           ($1, 96, 'P22_PENDING', 'after_submit', 'sql_query', 'select session_user = current_user') returning id`,
+        [pid],
+      )
+    ).rows.map((r) => r.id);
+    // (the example's rounding computation would refuse this value: left out with a build option)
+    await owner.query(`update meta.computation set build_option = 'LEAVE_FORECAST' where page_id = $1 and seq = 40 and point = 'after_submit'`, [pid]);
+    try {
+      const b = await king();
+      const evil = `1'; drop table hr.emp; --$pgapex_x$ $$`;
+      assert.equal((await b.post('/a/hr/22', { __csrf: b.lastCsrf, P22_EMPNO: '7839', P22_DAYS: evil, __request: 'PLAN' })).statusCode, 303);
+      const state = (await owner.one(`select state from meta.session where username = 'king' order by last_seen desc limit 1`)).state;
+      assert.equal(state.P22_NAME, `hr_app:${evil}`);
+      assert.equal(state.P22_PENDING, 'false', 'not the connection role');
+      assert.ok(await owner.one(`select to_regclass('hr.emp') as t`).then((r) => r.t));
+      // the temporary function does not outlive the request
+      assert.equal((await owner.one(`select count(*)::int as n from pg_proc where proname like 'pgapex_computation_%'`)).n, 0);
+    } finally {
+      await owner.query('delete from meta.computation where id = any($1)', [ids]);
+      await owner.query(`update meta.computation set build_option = null where page_id = $1`, [pid]);
+    }
+  });
+
+  test('the database checks computation and branch definitions', async () => {
+    const pid = await page22();
+    const bad: [string, string][] = [
+      ['computation', `(page_id, item_name, type, expression) values (${pid}, 'p22_x', 'static', 'x')`],
+      ['computation', `(page_id, item_name, type, expression) values (${pid}, 'P22_X', 'item', 'P22_X; drop')`],
+      ['computation', `(page_id, item_name, type, expression) values (${pid}, 'P22_X', 'sql_query', ' ')`],
+      ['computation', `(page_id, item_name, condition_type, condition_expr) values (${pid}, 'P22_X', 'item_null', 'x or 1=1')`],
+      ['computation', `(page_id, item_name, condition_type, condition_value) values (${pid}, 'P22_X', 'request_in', 'SAVE; x')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', 'https://evil.example')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '//evil.example')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '/\\\\evil.example')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '../other/1')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', 'javascript:alert(1)')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '1?a=b//evil')`],
+      ['branch', `(page_id, name, target_type) values (${pid}, 'x', 'url')`],
+      ['branch', `(page_id, name, when_button) values (${pid}, 'x', 'save')`],
+    ];
+    for (const [table, values] of bad) await assert.rejects(owner.query(`insert into meta.${table} ${values}`), /violates check constraint/, values);
+  });
+
+  test('a URL branch encodes substituted values, so an item cannot leave the application', async () => {
+    const pid = await page22();
+    const b = await owner.one(`insert into meta.branch (page_id, seq, name, when_button, target_type, target_url) values ($1, 4, 'u', 'CHECK', 'url', '&P22_NAME.') returning id`, [pid]);
+    const c = await owner.one(`insert into meta.computation (page_id, seq, item_name, point, type, expression) values ($1, 97, 'P22_NAME', 'after_submit', 'static', '//evil.example/x') returning id`, [pid]);
+    try {
+      const k = await king();
+      const res = await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_EMPNO: '7839', P22_DAYS: '3', __request: 'CHECK' });
+      assert.equal(res.headers.location, `/a/hr/${encodeURIComponent('//evil.example/x')}`);
+    } finally {
+      await owner.query('delete from meta.branch where id = $1', [b.id]);
+      await owner.query('delete from meta.computation where id = $1', [c.id]);
+    }
+  });
+
+  test('menu requests: only entries the user is authorized for, never a hidden button of the same name', async () => {
+    const pid = await page22();
+    const before = (await owner.one(`select menu from meta.button where page_id = $1 and name = 'MORE'`, [pid])).menu;
+    try {
+      await owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'MORE'`,
+        [pid, JSON.stringify([{ label: 'Admins', request: 'ADMIN_ONLY', authz: 'ADMIN' }, { label: 'Plan', request: 'PLAN' }])]);
+      await owner.query(`update meta.button set condition = 'false' where page_id = $1 and name = 'PLAN'`, [pid]);
+      const scott = await as('scott');
+      const body = (await scott.get('/a/hr/22')).body;
+      assert.doesNotMatch(body, /value="ADMIN_ONLY"/);
+      assert.doesNotMatch(body, /value="PLAN"/);
+      for (const request of ['ADMIN_ONLY', 'PLAN', 'NOT_IN_ANY_MENU'])
+        assert.equal((await scott.post('/a/hr/22', { __csrf: scott.lastCsrf, P22_DAYS: '3', __request: request })).statusCode, 403, request);
+      // an authorized user may send the entry's request
+      const k = await king();
+      assert.match((await k.get('/a/hr/22')).body, /value="ADMIN_ONLY"/);
+      assert.equal((await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_EMPNO: '7839', P22_DAYS: '3', __request: 'ADMIN_ONLY' })).statusCode, 303);
+      // the database checks entries
+      for (const menu of [[{ label: 'x' }], [{ label: 'x', page: 1, request: 'X' }], [{ label: 'x', request: 'x; drop' }], [{ label: 'x', page: 'javascript:1' }], [{ label: 'x', page: 1, authz: 'a b' }], { label: 'x' }])
+        await assert.rejects(owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'MORE'`, [pid, JSON.stringify(menu)]), /violates check constraint/, JSON.stringify(menu));
+    } finally {
+      await owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'MORE'`, [pid, JSON.stringify(before)]);
+      await owner.query(`update meta.button set condition = null where page_id = $1 and name = 'PLAN'`, [pid]);
+    }
+  });
+
+  test('menu labels and badges are escaped; a badge query runs as the application role', async () => {
+    const pid = await page22();
+    const before = (await owner.one(`select menu from meta.button where page_id = $1 and name = 'MORE'`, [pid])).menu;
+    try {
+      await owner.query(`update meta.button set menu = $2, badge = '<b>&APP_USER.</b>' where page_id = $1 and name = 'MORE'`,
+        [pid, JSON.stringify([{ label: '<img src=x onerror=alert(1)>', page: 6, confirm: '"><script>' }])]);
+      await owner.query(`update meta.button set badge_query = 'select current_user' where page_id = $1 and name = 'PLAN'`, [pid]);
+      const body = (await (await king()).get('/a/hr/22')).body;
+      assert.ok(!body.includes('<img src=x'));
+      assert.ok(body.includes('&lt;img src=x onerror=alert(1)&gt;'));
+      assert.ok(!body.includes('"><script>'));
+      assert.ok(body.includes('&lt;b&gt;king&lt;/b&gt;'));
+      assert.match(body, /value="PLAN"[^>]*>Plan <span class="btn-badge">hr_app<\/span>/);
+    } finally {
+      await owner.query(`update meta.button set menu = $2, badge = null where page_id = $1 and name = 'MORE'`, [pid, JSON.stringify(before)]);
+      await owner.query(`update meta.button set badge_query = null where page_id = $1 and name = 'PLAN'`, [pid]);
+    }
+  });
+
+  test('dynamic action CSS classes: only safe names, in the database, the builder and the page', async () => {
+    const pid = await page22();
+    for (const bad of ['Upper', 'a"b', 'x onclick=1', 'a{color:red}', '-x', 'a b c d e f', 'a  b', ' a'])
+      await assert.rejects(owner.query(`update meta.dynamic_action set css_classes = $2 where page_id = $1 and action = 'add_class'`, [pid, bad]), /violates check constraint/, bad);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const da = await owner.one(`select * from meta.dynamic_action where page_id = $1 and action = 'add_class'`, [pid]);
+    await dev.get(`/builder/pages/${pid}?c=dynamic_action-${da.id}`);
+    await dev.post(`/builder/pages/${pid}/c/dynamic_action/${da.id}`, { __csrf: dev.lastCsrf, name: da.name, event: 'click', action: 'add_class', css_classes: 'x" onmouseover="alert(1)', seq: '40' });
+    assert.equal((await owner.one('select css_classes from meta.dynamic_action where id = $1', [da.id])).css_classes, 'is-highlight');
+    assert.match(await import('node:fs').then((fs) => fs.readFileSync('public/app.js', 'utf8')), /CLASS_NAME = \/\^\[a-z\]\[a-z0-9_-\]\{0,39\}\$\//);
+  });
+
+  test('build options: excluded buttons, dynamic actions and pages cannot be used by forged requests', async () => {
+    const pid = await page22();
+    const da = await owner.one(`select id from meta.dynamic_action where page_id = $1 and action = 'show_success'`, [pid]);
+    await owner.query(`update meta.button set build_option = 'LEAVE_FORECAST' where page_id = $1 and name = 'CHECK'`, [pid]);
+    await owner.query(`update meta.dynamic_action set build_option = 'LEAVE_FORECAST' where id = $1`, [da.id]);
+    try {
+      const k = await king();
+      assert.doesNotMatch((await k.get('/a/hr/22')).body, /value="CHECK"/);
+      assert.equal((await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_DAYS: '3', __request: 'CHECK' })).statusCode, 403);
+      assert.equal((await k.post(`/a/hr/22/da/${da.id}`, { __csrf: k.lastCsrf })).statusCode, 403);
+      await owner.query(`update meta.page set build_option = 'NO_SUCH_OPTION' where id = $1`, [pid]);
+      assert.equal((await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_DAYS: '3', __request: 'PLAN' })).statusCode, 404);
+      // the database checks the reference
+      await assert.rejects(owner.query(`update meta.page set build_option = 'lower' where id = $1`, [pid]), /violates check constraint/);
+      await assert.rejects(owner.query(`update meta.page set build_option = '!!X' where id = $1`, [pid]), /violates check constraint/);
+    } finally {
+      await owner.query(`update meta.page set build_option = null where id = $1`, [pid]);
+      await owner.query(`update meta.button set build_option = null where page_id = $1`, [pid]);
+      await owner.query(`update meta.dynamic_action set build_option = null where id = $1`, [da.id]);
+    }
+  });
+
+  test('build options, computations and branches: developers only, with CSRF; the runtime role cannot change them', async () => {
+    const pid = await page22();
+    const k = await king();
+    for (const url of [`/builder/pages/${pid}/c/computation`, `/builder/pages/${pid}/c/branch`, `/builder/apps/${appId}/shared/build_option`]) {
+      const res = await k.post(url, { __csrf: k.lastCsrf, name: 'X', item_name: 'P22_X' });
+      assert.notEqual(res.statusCode, 303, url);
+    }
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal((await dev.post(`/builder/apps/${appId}/shared/build_option`, { __csrf: 'wrong', name: 'CSRF_TEST' })).statusCode, 403);
+    assert.equal(await owner.one(`select 1 from meta.build_option where name = 'CSRF_TEST'`), undefined);
+    for (const sql of [`update meta.build_option set status = 'include'`, `insert into meta.computation (page_id, item_name) values (${pid}, 'P22_X')`, `delete from meta.branch`])
+      await assert.rejects(runtime.query(sql), /permission denied/, sql);
+  });
+});

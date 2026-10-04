@@ -1,0 +1,165 @@
+import { randomBytes } from 'node:crypto';
+import { applyBinds } from '../binds.ts';
+import { savepoint } from '../db.ts';
+import type { Branch, Computation, Condition } from '../metadata.ts';
+import { isAuthorized, sqlTrue } from './authz.ts';
+import { bindValues, publicError, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
+import { pageHref } from './links.ts';
+
+// Declarative page logic (migration 029): conditions, computations and
+// branches. Everything runs inside the request's transaction as the
+// application's database role (appTx), each piece of developer SQL in its
+// own savepoint.
+
+const list = (s: string | null | undefined) => (s ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+
+/** Does a computation's or branch's condition hold? Broken SQL counts as false (and shows a message). */
+export async function conditionHolds(ctx: PageContext, cond: Condition, where: string): Promise<boolean> {
+  const value = (name: string | null) => {
+    const v = name ? bindValues(ctx)[name.toUpperCase()] : null;
+    return v === undefined || v === null ? '' : v;
+  };
+  switch (cond.condition_type) {
+    case null:
+    case undefined:
+      return true;
+    case 'sql':
+      return sqlTrue(ctx, cond.condition_expr, where);
+    case 'exists':
+    case 'not_exists': {
+      const c = ctx.client!;
+      const sql = `select exists (${stripSemicolon(applyBinds(cond.condition_expr ?? '', bindValues(ctx)))}) as ok`;
+      try {
+        const found = (await savepoint(c, () => c.query(sql))).rows[0]?.ok === true;
+        return cond.condition_type === 'exists' ? found : !found;
+      } catch (e) {
+        ctx.errors.page.push(await publicError(ctx, e, where));
+        return false; // fail closed either way
+      }
+    }
+    case 'item_null':
+      return value(cond.condition_expr) === '';
+    case 'item_not_null':
+      return value(cond.condition_expr) !== '';
+    case 'item_equals':
+      return value(cond.condition_expr) === (cond.condition_value ?? '');
+    case 'item_not_equals':
+      return value(cond.condition_expr) !== (cond.condition_value ?? '');
+    case 'request_in':
+      return list(cond.condition_value).includes(ctx.request);
+    default:
+      return false; // unknown type: fail closed
+  }
+}
+
+/**
+ * Run a PL/pgSQL function body and return its value as text. The body
+ * ("return …;", or a block with declare/begin … end) becomes a temporary
+ * function of this session, created and dropped inside the caller's
+ * savepoint, as the application's role (binds are substituted first, as
+ * escaped literals). It never outlives the transaction's savepoint.
+ */
+async function functionBody(ctx: PageContext, body: string): Promise<string | null> {
+  const c = ctx.client!;
+  const code = applyBinds(body, bindValues(ctx)).trim();
+  const block = /^(declare|begin)\b/i.test(code) ? code : `begin\n${code}\nend`;
+  const id = randomBytes(8).toString('hex');
+  const tag = `$pgapex_${id}$`;
+  if (block.includes(tag)) throw new Error('The function body contains the generated quote tag.');
+  const fn = `pg_temp.pgapex_computation_${id}`;
+  await c.query(`create function ${fn}() returns text language plpgsql as ${tag}\n${block}\n${tag}`);
+  const res = await c.query(`select ${fn}() as v`);
+  await c.query(`drop function ${fn}()`);
+  return toState(res.rows[0]?.v);
+}
+
+/** The value of a computation. */
+export async function computeValue(ctx: PageContext, comp: Pick<Computation, 'type' | 'expression'>): Promise<string | null> {
+  const c = ctx.client!;
+  const expr = comp.expression ?? '';
+  switch (comp.type) {
+    case 'static': {
+      const v = substitute(expr, ctx, (x) => x);
+      return v === '' ? null : v;
+    }
+    case 'item': {
+      const v = bindValues(ctx)[expr.trim().toUpperCase()];
+      return v === undefined || v === '' ? null : v;
+    }
+    case 'sql_query': {
+      const sql = stripSemicolon(applyBinds(expr, bindValues(ctx)));
+      const res = await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }));
+      return toState(res.rows[0]?.[0]);
+    }
+    case 'sql_expression': {
+      const sql = `select (${stripSemicolon(applyBinds(expr, bindValues(ctx)))}) as v`;
+      const res = await savepoint(c, () => c.query(sql));
+      return toState(res.rows[0]?.v);
+    }
+    case 'function_body':
+      return savepoint(c, () => functionBody(ctx, expr));
+    default:
+      throw new Error(`Unknown computation type ${comp.type as string}`);
+  }
+}
+
+export class ComputationFailed extends Error {}
+
+/**
+ * Computations of a point, in sequence. They set page items and application
+ * items only. Before the page is shown, an error becomes a message on the
+ * page; after a submit, it stops the submit (ComputationFailed).
+ */
+export async function runComputations(ctx: PageContext, point: Computation['point']) {
+  const names = new Set([...ctx.app.app_items, ...ctx.page.items.map((i) => i.name)]);
+  for (const comp of ctx.page.computations ?? []) {
+    if (comp.point !== point) continue;
+    const where = `computation of ${comp.item_name}`;
+    if (!names.has(comp.item_name)) {
+      ctx.errors.page.push(ctx.locale.t('logic.unknown_item', { item: comp.item_name }));
+      continue;
+    }
+    if (!(await isAuthorized(ctx, comp.authz))) continue;
+    if (!(await conditionHolds(ctx, comp, `condition of the ${where}`))) continue;
+    try {
+      ctx.session.state[comp.item_name] = await computeValue(ctx, comp);
+    } catch (e) {
+      const message = await publicError(ctx, e, where);
+      if (point === 'after_submit') throw new ComputationFailed(message);
+      ctx.errors.page.push(message);
+    }
+  }
+}
+
+/** The page number a path inside the application starts with ("10?x=1" → 10). */
+const leadingPage = (path: string) => {
+  const m = /^(\d+)(?:[?#]|$)/.exec(path);
+  return m ? Number(m[1]) : null;
+};
+
+/**
+ * Where the first branch of a point whose button, authorization and condition
+ * match sends the browser, or null. A page target is a signed URL (items get
+ * the checksum); a URL target is a path inside the application, with &ITEM.
+ * values URL-encoded. A before_header branch to the page itself is ignored
+ * (it would loop).
+ */
+export async function branchTarget(ctx: PageContext, point: Branch['point']): Promise<string | null> {
+  for (const b of ctx.page.branches ?? []) {
+    if (b.point !== point) continue;
+    if (point === 'after_processing' && b.when_button && b.when_button !== ctx.request) continue;
+    if (!(await isAuthorized(ctx, b.authz))) continue;
+    if (!(await conditionHolds(ctx, b, `condition of branch "${b.name}"`))) continue;
+    if (b.target_type === 'url') {
+      const path = substitute(b.target_url ?? '', ctx, encodeURIComponent);
+      if (point === 'before_header' && leadingPage(path) === ctx.page.page_no) continue;
+      // the database refuses schemes, "//", "\" and ".." in target_url; a substituted value is encoded
+      return `${ctx.base}/${path}`;
+    }
+    const target = b.target_page ?? ctx.page.page_no;
+    if (point === 'before_header' && target === ctx.page.page_no) continue;
+    const items = b.target_items ?? {};
+    return pageHref(ctx, target, items);
+  }
+  return null;
+}

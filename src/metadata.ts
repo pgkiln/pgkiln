@@ -117,7 +117,7 @@ export interface Button {
   seq: number;
   name: string;
   label: string;
-  action: 'submit' | 'redirect' | 'da' | 'document';
+  action: 'submit' | 'redirect' | 'da' | 'document' | 'menu';
   target_page: number | null;
   /** action = document: the document template to download */
   document?: string | null;
@@ -126,6 +126,51 @@ export interface Button {
   authz: string | null;
   hot: boolean;
   confirm: string | null;
+  /** action = menu: links ({label, page, items}) and submit requests ({label, request}) */
+  menu?: MenuEntry[] | null;
+  /** a badge: static text with &ITEM. substitutions, or a query's first value (badge_query wins) */
+  badge?: string | null;
+  badge_query?: string | null;
+}
+
+export interface MenuEntry {
+  label: string;
+  page?: number;
+  items?: Record<string, string>;
+  request?: string;
+  confirm?: string;
+  authz?: string;
+  icon?: string;
+}
+
+/** A condition of a computation or branch (see migration 029). */
+export interface Condition {
+  condition_type: 'sql' | 'exists' | 'not_exists' | 'item_null' | 'item_not_null' | 'item_equals' | 'item_not_equals' | 'request_in' | null;
+  condition_expr: string | null;
+  condition_value: string | null;
+}
+
+export interface Computation extends Condition {
+  id: number;
+  seq: number;
+  item_name: string;
+  point: 'before_header' | 'after_submit';
+  type: 'static' | 'item' | 'sql_query' | 'sql_expression' | 'function_body';
+  expression: string | null;
+  authz: string | null;
+}
+
+export interface Branch extends Condition {
+  id: number;
+  seq: number;
+  name: string;
+  point: 'before_header' | 'after_processing';
+  when_button: string | null;
+  target_type: 'page' | 'url';
+  target_page: number | null;
+  target_items: Record<string, string> | null;
+  target_url: string | null;
+  authz: string | null;
 }
 
 export interface DynamicAction {
@@ -136,12 +181,15 @@ export interface DynamicAction {
   trigger_element: string | null;
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
   condition_value: string | null;
-  action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit';
+  action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit'
+    | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors';
   affected_items: string | null;
   affected_region_id: number | null;
   code: string | null;
   items_to_submit: string | null;
   message: string | null;
+  /** add_class / remove_class: space separated class names (checked by the database) */
+  css_classes?: string | null;
   authz: string | null;
 }
 
@@ -178,10 +226,14 @@ export interface Page extends PageSummary {
   dynamic_actions: DynamicAction[];
   validations: Validation[];
   processes: Process[];
+  computations: Computation[];
+  branches: Branch[];
 }
 
-const agg = (table: string, fk: string, parent: string, order = 'x.seq, x.id') =>
-  `coalesce((select jsonb_agg(to_jsonb(x) order by ${order}) from ${table} x where x.${fk} = ${parent}.id), '[]')`;
+// Components whose build option is excluded are left out here, so the runtime
+// neither renders nor runs them (meta.build_option_on, migration 029).
+const agg = (table: string, fk: string, parent: string, appId: string) =>
+  `coalesce((select jsonb_agg(to_jsonb(x) order by x.seq, x.id) from ${table} x where x.${fk} = ${parent}.id and meta.build_option_on(${appId}, x.build_option)), '[]')`;
 
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
@@ -191,12 +243,12 @@ export async function loadApp(alias: string) {
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
                        'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth))
-                        from meta.page p where p.app_id = a.id), '[]') as pages,
-            ${agg('meta.nav_entry', 'app_id', 'a')} as nav,
+                        from meta.page p where p.app_id = a.id and meta.build_option_on(a.id, p.build_option)), '[]') as pages,
+            ${agg('meta.nav_entry', 'app_id', 'a', 'a.id')} as nav,
             coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message))
                         from meta.authz_scheme s where s.app_id = a.id), '[]') as authz_schemes,
             coalesce((select jsonb_agg(i.name) from meta.app_item i where i.app_id = a.id), '[]') as app_items,
-            ${agg('meta.app_process', 'app_id', 'a')} as app_processes
+            ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes
        from meta.app a
       where a.alias = $1`,
     [alias],
@@ -207,14 +259,16 @@ export async function loadPage(appId: number, pageNo: number) {
   return runtime.one<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
             p.protection, p.authz,
-            ${agg('meta.region', 'page_id', 'p')} as regions,
-            ${agg('meta.item', 'page_id', 'p')} as items,
-            ${agg('meta.button', 'page_id', 'p')} as buttons,
-            ${agg('meta.dynamic_action', 'page_id', 'p')} as dynamic_actions,
-            ${agg('meta.validation', 'page_id', 'p')} as validations,
-            ${agg('meta.process', 'page_id', 'p')} as processes
+            ${agg('meta.region', 'page_id', 'p', 'p.app_id')} as regions,
+            ${agg('meta.item', 'page_id', 'p', 'p.app_id')} as items,
+            ${agg('meta.button', 'page_id', 'p', 'p.app_id')} as buttons,
+            ${agg('meta.dynamic_action', 'page_id', 'p', 'p.app_id')} as dynamic_actions,
+            ${agg('meta.validation', 'page_id', 'p', 'p.app_id')} as validations,
+            ${agg('meta.process', 'page_id', 'p', 'p.app_id')} as processes,
+            ${agg('meta.computation', 'page_id', 'p', 'p.app_id')} as computations,
+            ${agg('meta.branch', 'page_id', 'p', 'p.app_id')} as branches
        from meta.page p
-      where p.app_id = $1 and p.page_no = $2`,
+      where p.app_id = $1 and p.page_no = $2 and meta.build_option_on(p.app_id, p.build_option)`,
     [appId, pageNo],
   );
 }

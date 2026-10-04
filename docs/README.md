@@ -13,7 +13,7 @@ deploying applications, and how to extend pgapex itself.
 | 3 | [Using the builder](guide/03-builder.md) | Creating apps, the page wizards, the page designer, shared components, SQL Workshop, export/import |
 | 4 | [Pages and regions](guide/04-pages-and-regions.md) | Page properties and every region type (reports, grids, forms, charts, cards, calendar, facets, static/dynamic content) with all attributes |
 | 5 | [Items](guide/05-items.md) | Every item type, lists of values, cascading lists, read-only conditions, multi-value items |
-| 6 | [Buttons, validations and processes](guide/06-processing.md) | What happens when a page is submitted, form and grid DML, calling PL/pgSQL, error handling, branches, application processes |
+| 6 | [Buttons, validations, processes and page logic](guide/06-processing.md) | Menu buttons and badges, what happens when a page is submitted, form and grid DML, calling PL/pgSQL, error handling, computations, conditional branches, build options, application processes |
 | 7 | [Dynamic actions](guide/07-dynamic-actions.md) | Client-side behaviour: show/hide, set values from SQL, refresh regions, cascading lists |
 | 8 | [Users, authentication and authorization](guide/08-security.md) | Sign-in, users and roles, passwords and My account, authorization schemes, row level security, session state protection |
 | 9 | [SQL API and metadata reference](guide/09-reference.md) | `meta.*` functions, every metadata table and column, URL parameters |

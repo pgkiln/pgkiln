@@ -191,6 +191,20 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      const res = await page.goto(`${base}/a/hr/22`);
+      assert.equal(res?.status(), 200);
+      assert.equal(await page.locator('.btn-badge').count(), 1, 'the Check button has a badge');
+      await page.click('details.btn-menu > summary');
+      await page.locator('details.btn-menu .menu-panel').waitFor({ state: 'visible' });
+      await check(page, 'app-22-menu', vp);
+      const box = await page.locator('details.btn-menu .menu-panel').boundingBox();
+      assert.ok(box && box.x >= 0 && box.x + box.width <= size.width + 1, `the menu fits: ${JSON.stringify(box)}`);
+      await page.context().close();
+    });
+
     test('account pages fit; the theme switch and Dutch work', async () => {
       const anon = await (await newContext({ viewport: size, locale: 'nl-NL' })).newPage();
       await anon.goto(`${base}/a/hr/login`);
@@ -321,6 +335,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 19 and r.type = 'report'`, [appId]);
           return `/builder/pages/${r.page_id}?c=region-${r.id}`;
         })(),
+        build_option: `/builder/apps/${appId}/shared?c=build_option-${(await owner.one(`select id from meta.build_option where app_id = $1 and name = 'LEAVE_FORECAST'`, [appId])).id}`,
+        ...Object.fromEntries(
+          await Promise.all(['computation', 'branch'].map(async (k) => {
+            const r = await owner.one(`select x.id, x.page_id from meta.${k} x join meta.page p on p.id = x.page_id where p.app_id = $1 and p.page_no = 22 order by x.seq limit 1`, [appId]);
+            return [k, `/builder/pages/${r.page_id}?c=${k}-${r.id}`];
+          })),
+        ),
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',

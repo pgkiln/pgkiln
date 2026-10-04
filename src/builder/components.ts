@@ -20,6 +20,7 @@ export type FieldKind =
   | 'authz'    // authorization scheme of the app
   | 'page'     // page of the app
   | 'nav'      // navigation entry of the app (parent)
+  | 'build_option' // build option of the app (NAME or !NAME)
   | 'icon';
 
 export interface Field {
@@ -50,6 +51,23 @@ export interface ComponentSpec {
 }
 
 const AUTHZ_HELP = 'Authorization scheme; prefix with ! to negate. MUST_NOT_BE_PUBLIC_USER is built in.';
+const BUILD_HELP = 'Build option (Shared Components): the component exists only while the option is included; "Not" only while it is excluded.';
+const buildOption = (group?: string): Field => ({ name: 'build_option', label: 'Build option', kind: 'build_option', help: BUILD_HELP, ...(group ? { group } : {}) });
+
+const CONDITION_TYPES = ['', 'sql', 'exists', 'not_exists', 'item_null', 'item_not_null', 'item_equals', 'item_not_equals', 'request_in'];
+const CONDITION_HELP = 'sql: a boolean expression · exists / not_exists: a query · item_*: the item\'s name below · request_in: the button(s) pressed, in Value.';
+const conditionFields = (group: string): Field[] => [
+  { name: 'condition_type', label: 'Condition', kind: 'select', options: CONDITION_TYPES, group, help: CONDITION_HELP },
+  { name: 'condition_expr', label: 'Expression / item', kind: 'code', group, help: 'e.g. :P3_STATUS = \'OPEN\' (sql) · select 1 from sales.orders where id = :P3_ID (exists) · P3_ID (item_*)' },
+  { name: 'condition_value', label: 'Value', kind: 'text', group, help: 'item_equals / item_not_equals: the value · request_in: e.g. SAVE,CREATE' },
+];
+
+/** JSON "menu" field: empty means no menu (null), not {}. */
+const menuBeforeSave = async (v: Record<string, unknown>) => {
+  if (v.menu === '{}' || v.menu === '[]') v.menu = null;
+  if (typeof v.menu === 'string' && !Array.isArray(JSON.parse(v.menu))) throw new Error('Menu entries: a JSON array, e.g. [{"label": "Details", "page": 3, "items": {"P3_ID": "&P2_ID."}}, {"label": "Archive", "request": "ARCHIVE"}]');
+};
+const CLASS_LIST = /^[a-z][a-z0-9_-]{0,39}( [a-z][a-z0-9_-]{0,39}){0,4}$/;
 
 export const COMPONENTS: Record<string, ComponentSpec> = {
   // ------------------------------------------------------------ page level
@@ -74,6 +92,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'template', label: 'Template', kind: 'select', options: ['standard', 'plain', 'collapsible'], group: 'Layout' },
       { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'Boolean expression; the region renders only when true.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
         help: 'report: {"page_size":15,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut"} · cards: {"style":"metric","link":{...}} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true}; any region: {"display_selector":true} puts it in the page\'s display selector' },
     ],
@@ -99,6 +118,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'help', label: 'Help text', kind: 'text', group: 'Validation' },
       { name: 'readonly_condition', label: 'Read-only condition (SQL)', kind: 'code', group: 'Security', help: 'When true the item is shown read-only and ignored on submit.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. File items: {"filename_column":"photo_name","mime_column":"photo_mime","accept":"image/*,.pdf","max_mb":2,"capture":"environment","max_px":1600} (capture opens the camera on phones; max_px makes photos smaller before upload). Several files: {"multiple":true,"max_files":5,"table":"doc.attachment","parent_column":"ticket_id","key_column":"id"} with the content column as source (one row per file). Text items: {"scan":true} adds a barcode/QR scan button where the browser can read codes. Location items hold "lat,lng" with a "Use my location" button.' },
     ],
   },
@@ -110,19 +130,25 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'play',
     summary: (b) => b.name,
     defaults: { action: 'submit' },
+    beforeSave: menuBeforeSave,
     fields: [
       { name: 'name', label: 'Name (request)', kind: 'upper', group: 'Identification' },
       { name: 'label', label: 'Label', kind: 'text', group: 'Identification' },
-      { name: 'action', label: 'Action', kind: 'select', options: ['submit', 'redirect', 'da', 'document'], group: 'Behaviour', help: 'da = "Defined by dynamic action"; document = download a document template (filled with the page\'s values as last loaded or saved)' },
+      { name: 'action', label: 'Action', kind: 'select', options: ['submit', 'redirect', 'da', 'document', 'menu'], group: 'Behaviour', help: 'menu = a menu of links and submit requests (Menu entries) · da = "Defined by dynamic action"; document = download a document template (filled with the page\'s values as last loaded or saved)' },
       { name: 'document', label: 'Document template (action document)', kind: 'upper', group: 'Behaviour', help: 'The name of a document template (Shared Components → Document templates).' },
       { name: 'target_page', label: 'Target / branch page', kind: 'page', group: 'Behaviour' },
       { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Behaviour', help: '{"P3_ID": "&P2_ID."}' },
       { name: 'confirm', label: 'Confirm message', kind: 'text', group: 'Behaviour' },
+      { name: 'menu', label: 'Menu entries (action menu, JSON)', kind: 'json', wide: true, group: 'Behaviour',
+        help: '[{"label": "Details", "page": 3, "items": {"P3_ID": "&P2_ID."}}, {"label": "Archive", "request": "ARCHIVE", "confirm": "Archive it?", "authz": "ADMIN", "icon": "inbox"}] — a link to a page, or a submit with that request (processes and branches see it as the button pressed). At most 20.' },
       { name: 'hot', label: 'Primary (hot) button', kind: 'bool', group: 'Appearance' },
+      { name: 'badge', label: 'Badge', kind: 'text', group: 'Appearance', help: 'A short value shown on the button, e.g. &P2_OPEN_COUNT. (empty value: no badge).' },
+      { name: 'badge_query', label: 'Badge (SQL)', kind: 'code', group: 'Appearance', help: 'Instead: a SELECT whose first value is the badge, e.g. select count(*) from sales.orders where status = \'OPEN\'. Runs as the application\'s role.' },
       { name: 'region_id', label: 'Region', kind: 'region', group: 'Layout' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Layout' },
       { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'e.g. :P3_ID is not null — also re-checked when the button is pressed.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
     ],
   },
   dynamic_action: {
@@ -133,21 +159,24 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'bolt',
     summary: (d) => d.name,
     defaults: { event: 'change', action: 'show' },
+    validate: (v) => (v.css_classes && !CLASS_LIST.test(String(v.css_classes)) ? 'CSS classes: up to five names of lower case letters, digits, - and _, separated by spaces.' : null),
     fields: [
       { name: 'name', label: 'Name', kind: 'text', group: 'When' },
       { name: 'event', label: 'Event', kind: 'select', options: ['change', 'click', 'load'], group: 'When' },
       { name: 'trigger_element', label: 'Item(s) / button', kind: 'upper', group: 'When', help: 'Comma separated item names, or a button name for click.' },
       { name: 'condition_type', label: 'Client-side condition', kind: 'select', options: ['', 'equals', 'not_equals', 'in_list', 'is_null', 'is_not_null'], group: 'When' },
       { name: 'condition_value', label: 'Condition value', kind: 'text', group: 'When' },
-      { name: 'action', label: 'Action', kind: 'select', options: ['show', 'hide', 'enable', 'disable', 'set_value', 'execute_sql', 'refresh_region', 'refresh_item', 'alert', 'submit'], group: 'Action',
-        help: 'show/hide/enable/disable reverse automatically when the condition is false.' },
+      { name: 'action', label: 'Action', kind: 'select', options: ['show', 'hide', 'enable', 'disable', 'set_value', 'execute_sql', 'refresh_region', 'refresh_item', 'alert', 'submit', 'set_focus', 'add_class', 'remove_class', 'show_success', 'show_error', 'clear_errors'], group: 'Action',
+        help: 'show/hide/enable/disable reverse automatically when the condition is false. set_focus: the first affected item (or the region). show_error: on the affected items, or at the top. clear_errors: of the affected items, or all.' },
       { name: 'affected_items', label: 'Affected items', kind: 'upper', group: 'Action' },
       { name: 'affected_region_id', label: 'Affected region', kind: 'region', group: 'Action' },
       { name: 'code', label: 'SQL', kind: 'code', wide: true, group: 'Action', help: 'set_value: a SELECT whose columns set the affected items · execute_sql: any SQL; returned columns named like items set them.' },
       { name: 'items_to_submit', label: 'Items to submit', kind: 'upper', group: 'Action' },
-      { name: 'message', label: 'Message (alert)', kind: 'text', group: 'Action' },
+      { name: 'message', label: 'Message (alert, show_success, show_error)', kind: 'text', group: 'Action' },
+      { name: 'css_classes', label: 'CSS classes (add_class, remove_class)', kind: 'text', group: 'Action', help: 'Up to five class names, e.g. is-highlight is-muted (lower case letters, digits, - and _).' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Security' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
     ],
   },
   validation: {
@@ -166,6 +195,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'message', label: 'Error message', kind: 'text' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
+      buildOption(),
     ],
   },
   process: {
@@ -189,6 +219,49 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'success_message', label: 'Success message', kind: 'text' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
+      buildOption(),
+    ],
+  },
+  computation: {
+    table: 'meta.computation',
+    scope: 'page',
+    label: 'Computation',
+    plural: 'Computations',
+    icon: 'activity',
+    summary: (c) => `${c.item_name} (${c.type})`,
+    defaults: { point: 'before_header', type: 'static' },
+    fields: [
+      { name: 'item_name', label: 'Item', kind: 'upper', group: 'Identification', help: 'A page item or an application item, e.g. P3_TOTAL' },
+      { name: 'point', label: 'Point', kind: 'select', options: ['before_header', 'after_submit'], group: 'Identification', help: 'before_header: when the page is shown (after the form fetch) · after_submit: after a submit, before the validations' },
+      { name: 'seq', label: 'Sequence', kind: 'int', group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['static', 'item', 'sql_query', 'sql_expression', 'function_body'], group: 'Computation' },
+      { name: 'expression', label: 'Expression', kind: 'code', wide: true, group: 'Computation',
+        help: 'static: a value, &ITEM. allowed · item: an item name · sql_query: a SELECT (first column of the first row) · sql_expression: e.g. :P3_PRICE::numeric * :P3_QTY::int · function_body: PL/pgSQL, e.g. begin return upper(:P3_NAME); end. Runs as the application\'s role.' },
+      ...conditionFields('Condition'),
+      { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
+    ],
+  },
+  branch: {
+    table: 'meta.branch',
+    scope: 'page',
+    label: 'Branch',
+    plural: 'Branches',
+    icon: 'chevron',
+    summary: (b) => b.name,
+    defaults: { point: 'after_processing', target_type: 'page' },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'text', group: 'Identification' },
+      { name: 'point', label: 'Point', kind: 'select', options: ['after_processing', 'before_header'], group: 'Identification', help: 'after_processing: after a submit\'s processes · before_header: before the page is shown (a branch to the page itself is ignored)' },
+      { name: 'seq', label: 'Sequence', kind: 'int', group: 'Identification', help: 'The first branch whose button and condition match is taken; without one, the button\'s target page.' },
+      { name: 'when_button', label: 'When button pressed', kind: 'upper', group: 'Identification', help: 'after_processing only; empty = any button' },
+      { name: 'target_type', label: 'Target', kind: 'select', options: ['page', 'url'], group: 'Target' },
+      { name: 'target_page', label: 'Page', kind: 'page', group: 'Target', help: 'Empty: this page.' },
+      { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Target', help: '{"P3_ID": "&P2_ID."} — sent with a checksum.' },
+      { name: 'target_url', label: 'URL (inside the application)', kind: 'text', group: 'Target', help: 'A path after /a/<alias>/, e.g. 10?tab=open or account; &ITEM. values are URL-encoded. No other sites.' },
+      ...conditionFields('Condition'),
+      { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
     ],
   },
 
@@ -207,6 +280,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'parent_id', label: 'Parent entry', kind: 'nav' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
+      buildOption(),
     ],
   },
   authz_scheme: {
@@ -262,6 +336,21 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'code', label: 'Code (SQL)', kind: 'code', wide: true, help: 'Returned columns named like application items set them, e.g. select id as ai_customer_id from sales.customer where lower(username) = lower(:APP_USER)' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
+      buildOption(),
+    ],
+  },
+  build_option: {
+    table: 'meta.build_option',
+    scope: 'app',
+    label: 'Build option',
+    plural: 'Build options',
+    icon: 'settings',
+    summary: (o) => `${o.name} (${o.status})`,
+    defaults: { status: 'include' },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'upper', help: 'e.g. FEATURE_EXPORT; components name it in their Build option property.' },
+      { name: 'status', label: 'Status', kind: 'select', options: ['include', 'exclude'], help: 'exclude: every component with this option is left out of the running application (and those with "Not" are included).' },
+      { name: 'description', label: 'Description', kind: 'text', wide: true },
     ],
   },
   rest_module: {
@@ -458,6 +547,7 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
         break;
       case 'upper':
       case 'authz':
+      case 'build_option':
         values[f.name] = v === '' ? null : v.trim().toUpperCase();
         break;
       default:

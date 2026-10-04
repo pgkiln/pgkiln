@@ -17,12 +17,12 @@ import { regionKeys } from '../appfiles.ts';
 export const REPLACED = [
   'authz_scheme', 'app_item', 'app_process', 'lov', 'app_group_role', 'text_message', 'translation',
   'report_layout', 'automation', 'document_template', 'task_definition', 'workflow_definition',
-  'rest_module', 'template_component', 'nav_entry', 'page',
+  'rest_module', 'template_component', 'build_option', 'nav_entry', 'page',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow'];
 /** Children of pages (replaced with their page). */
-const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process'];
+const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
 const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.definition_id', 'automation_log.automation_id'];
 

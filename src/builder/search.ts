@@ -29,12 +29,13 @@ export interface Hit {
   snippet: Raw;
 }
 
-const TEXT_KINDS = new Set<string>(['text', 'code', 'json', 'select', 'upper', 'textarea', 'list', 'authz', 'page', 'icon']);
+const TEXT_KINDS = new Set<string>(['text', 'code', 'json', 'select', 'upper', 'textarea', 'list', 'authz', 'page', 'icon', 'build_option']);
 const PAGE_FIELDS = [
   { name: 'name', label: 'Name', kind: 'text' as const },
   { name: 'title', label: 'Title', kind: 'text' as const },
   { name: 'parent_page', label: 'Breadcrumb parent', kind: 'page' as const },
   { name: 'authz', label: 'Authorization', kind: 'authz' as const },
+  { name: 'build_option', label: 'Build option', kind: 'build_option' as const },
 ];
 
 const asText = (v: unknown) => (v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v));
@@ -91,6 +92,7 @@ export type Target =
   | { type: 'item'; name: string }
   | { type: 'lov'; name: string }
   | { type: 'authz'; name: string }
+  | { type: 'build_option'; name: string }
   | { type: 'page'; pageNo: number }
   | { type: 'layout'; name: string }
   | { type: 'document'; name: string }
@@ -124,6 +126,9 @@ export function whereUsed(entries: Entry[], target: Target, self?: { kind: strin
           if (f.kind === 'authz') add(entry, f.label, f.value, f.value.replace(/^!/, '') === target.name ? /.+/.exec(f.value) : null);
           else if (f.kind === 'json') add(entry, f.label, f.value, new RegExp(`"public_reports"\\s*:\\s*"${escapeRe(target.name)}"`).exec(f.value));
           break;
+        case 'build_option':
+          if (f.kind === 'build_option') add(entry, f.label, f.value, f.value.replace(/^!/, '') === target.name ? /.+/.exec(f.value) : null);
+          break;
         case 'page':
           if (f.kind === 'page') add(entry, f.label, f.value, f.value === String(target.pageNo) ? /.+/.exec(f.value) : null);
           else if (f.kind === 'json') add(entry, f.label, f.value, new RegExp(`"page"\\s*:\\s*${target.pageNo}(?![0-9])`).exec(f.value));
@@ -152,6 +157,7 @@ export function targetOf(kind: string, row: any): Target | null {
   if ((kind === 'item' || kind === 'app_item') && row?.name) return { type: 'item', name: row.name };
   if (kind === 'lov' && row?.name) return { type: 'lov', name: row.name };
   if (kind === 'authz_scheme' && row?.name) return { type: 'authz', name: row.name };
+  if (kind === 'build_option' && row?.name) return { type: 'build_option', name: row.name };
   if (kind === 'report_layout' && row?.name) return { type: 'layout', name: row.name };
   if (kind === 'document_template' && row?.name) return { type: 'document', name: row.name };
   if (kind === 'template_component' && row?.static_id) return { type: 'template_component', name: row.static_id };
