@@ -443,6 +443,40 @@ document.documentElement.classList.add('js');
     }
   });
 
+  // ------------------------------------------------------------ lazy regions
+  // A lazy region arrives as a placeholder with a "Show" link (which works
+  // without JavaScript); fetch the region now and put it in place, with its
+  // styles and the forms that live outside the page form (report search).
+  async function loadLazy(holder) {
+    const region = holder.closest('.region');
+    const link = holder.querySelector('.region-lazy-link');
+    const loading = holder.querySelector('.region-loading');
+    if (link) link.hidden = true;
+    if (loading) loading.hidden = false;
+    region?.setAttribute('aria-busy', 'true');
+    try {
+      const res = await fetch(holder.dataset.lazy, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      const json = await res.json().catch(() => ({ error: res.statusText }));
+      if (!res.ok) throw new Error(json.error || res.statusText);
+      const sheet = document.getElementById('pgapex-css')?.sheet;
+      if (sheet && json.css) for (const rule of json.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
+      if (json.detached) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = json.detached;
+        for (const f of [...tpl.content.children]) if (!f.id || !document.getElementById(f.id)) (form || document.querySelector('main') || body).after(f);
+      }
+      const wasHidden = region?.hidden;
+      const node = region ? replaceHtml(region, json.html) : null;
+      if (node && wasHidden) node.hidden = true;
+    } catch (e) {
+      region?.removeAttribute('aria-busy');
+      if (loading) loading.hidden = true;
+      if (link) link.hidden = false;
+      showError(e.message);
+    }
+  }
+  document.querySelectorAll('[data-lazy]').forEach(loadLazy);
+
   // Inside a dialog: close on success or cancel.
   if (window.parent !== window) {
     const tell = (reload) => window.parent.postMessage({ type: 'pgapex:close', reload }, location.origin);

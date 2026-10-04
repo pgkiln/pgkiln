@@ -10,7 +10,7 @@ import { heading, splitValues } from './items.ts';
 import { linkAttrs } from './links.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
-import { writeXlsx, type XlsxCell } from '../xlsx.ts';
+import { XlsxWriter, xlsxWidths, type XlsxCell } from '../xlsx.ts';
 import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
 import { renderView, VIEWS, type View } from './report-views.ts';
@@ -478,20 +478,58 @@ export const visibleColumns = (r: Region, fields: pg.FieldDef[]) => {
 
 export const headingOf = (r: Region, name: string, tr: (s: string) => string = (s) => s) => tr(r.config.headings?.[name] ?? heading(name));
 
-/** CSV download (Actions → Download). Cells that look like formulas are neutralised. */
-export async function reportCsv(ctx: PageContext, r: Region) {
+/** Rows fetched from the download cursor at a time. */
+const DOWNLOAD_BATCH = 1000;
+
+/** A CSV field: quoted when needed; text that looks like a formula is neutralised. */
+const csvField = (s: string, numeric: boolean) => {
+  if (!numeric && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/**
+ * A CSV or Excel download (Actions → Download), streamed: the query runs as a
+ * cursor (DECLARE … FETCH) in the request's transaction and each batch of
+ * rows is written out before the next is read, so memory stays flat whatever
+ * the size (up to DOWNLOAD_MAX_ROWS or the report's max_rows). The query and
+ * the first batch run before anything is sent, so a failing query is still
+ * an error page; `write` waits while the client is slow (back pressure).
+ */
+export async function openDownload(ctx: PageContext, r: Region, format: 'csv' | 'xlsx') {
   const st = reportState(ctx, r);
   const c = ctx.client!;
-  const res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'csv')), rowMode: 'array' }));
-  const cols = visibleColumns(r, res.fields);
-  const esc = (s: string, numeric: boolean) => {
-    if (!numeric && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const query = await buildSql(ctx, r, st, format);
+  const cursor = 'pgapex_download';
+  await savepoint(c, () => c.query({ text: `declare ${cursor} no scroll cursor for ${query.text}`, values: query.values }));
+  const next = () => savepoint(c, () => c.query({ text: `fetch ${DOWNLOAD_BATCH} from ${cursor}`, rowMode: 'array' }));
+  const first = await next();
+  const cols = visibleColumns(r, first.fields);
+  const headings = cols.map(({ f }) => headingOf(r, f.name, ctx.locale.tr));
+  return async (write: (chunk: string | Uint8Array) => Promise<void>) => {
+    let batch = first.rows;
+    let xlsx: XlsxWriter | null = null;
+    const pending: Uint8Array[] = [];
+    if (format === 'csv') await write(`\ufeff${headings.map((h) => csvField(h, false)).join(',')}\r\n`);
+    else xlsx = new XlsxWriter((chunk) => pending.push(chunk), r.title ?? ctx.page.title ?? ctx.page.name, headings,
+      xlsxWidths(headings, batch.slice(0, 500).map((row) => cols.map(({ f, i }) => xlsxCell(row[i], f.dataTypeID)))));
+    const flush = async () => {
+      for (const chunk of pending.splice(0)) await write(chunk);
+    };
+    for (;;) {
+      if (xlsx) {
+        xlsx.rows(batch.map((row) => cols.map(({ f, i }) => xlsxCell(row[i], f.dataTypeID))));
+        await flush();
+      } else if (batch.length)
+        await write(batch.map((row) => `${cols.map(({ f, i }) => csvField(cell(row[i], f.dataTypeID), NUMERIC_OIDS.has(f.dataTypeID))).join(',')}\r\n`).join(''));
+      if (batch.length < DOWNLOAD_BATCH) break;
+      batch = (await next()).rows;
+    }
+    await c.query(`close ${cursor}`);
+    if (xlsx) {
+      xlsx.end();
+      await flush();
+    }
   };
-  const lines = [cols.map(({ f }) => esc(headingOf(r, f.name, ctx.locale.tr), false)).join(',')];
-  for (const row of res.rows)
-    lines.push(cols.map(({ f, i }) => esc(cell(row[i], f.dataTypeID), NUMERIC_OIDS.has(f.dataTypeID))).join(','));
-  return `﻿${lines.join('\r\n')}\r\n`;
 }
 
 /** A value as an Excel cell: numbers, booleans and dates keep their type. */
@@ -507,24 +545,11 @@ export function xlsxCell(v: unknown, typeOid: number): XlsxCell {
   return s;
 }
 
-/** Excel download (Actions → Download Excel): same rows and columns as the CSV. */
-export async function reportXlsx(ctx: PageContext, r: Region) {
-  const st = reportState(ctx, r);
-  const c = ctx.client!;
-  const res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'xlsx')), rowMode: 'array' }));
-  const cols = visibleColumns(r, res.fields);
-  return writeXlsx({
-    name: r.title ?? ctx.page.title ?? ctx.page.name,
-    headings: cols.map(({ f }) => headingOf(r, f.name, ctx.locale.tr)),
-    rows: res.rows.map((row) => cols.map(({ f, i }) => xlsxCell(row[i], f.dataTypeID))),
-  });
-}
-
 /** The report's own state parameters (r<id>_*), as saved in a saved report. */
 export function reportParams(r: Region, params: URLSearchParams) {
   const out = new URLSearchParams();
   const prefix = `r${r.id}_`;
-  for (const [k, v] of params) if (k.startsWith(prefix) && !/_(p|csv|xlsx|pdf)$/.test(k)) out.append(k, v);
+  for (const [k, v] of params) if (k.startsWith(prefix) && !/_(p|csv|xlsx|pdf|load)$/.test(k)) out.append(k, v);
   return out;
 }
 
