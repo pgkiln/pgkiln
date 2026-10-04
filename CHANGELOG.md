@@ -5,6 +5,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-04
+
+### Added
+- **Row ranges** for reports and grids (`"pagination": "range"`): "Rows X–Y" without counting every
+  row, and a **maximum row count** (`max_rows`: "of more than N", downloads capped too).
+- **Row limits** for cards (500), charts (1000), dynamic content (1000) and lists of values (5000),
+  configurable with `max_rows`; "Showing the first N rows." when cut off.
+- **Lazy loading of regions** (`"lazy": true`): a placeholder, fetched after the page shows, with a
+  link when JavaScript is off.
+- **Region caching** per user, session or all users for a duration (`"cache"`), emptied when the page
+  is submitted; `REGION_CACHE_MAX_ENTRIES` and `REGION_CACHE_MAX_MB`.
+- Page Designer → Report settings: a *Large tables* section.
+- HR example page 25 "Large tables" (200,000 rows).
+
+### Changed
+- CSV and Excel downloads stream from a database cursor, so memory stays flat; the limit is
+  `DOWNLOAD_MAX_ROWS` (default 1,000,000, was 100,000).
+- Page numbers and page sizes are clamped on the server; a select list shows at most 5,000 options
+  unless the item sets `max_rows`.
+- The grid no longer shows "Rows: 0" when it is empty.
+
+### Fixed
+- The App Builder home's table was wider than a tablet screen with some fonts (CI e2e failure).
+- HR page 23's hint now names `PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1:3100`.
+
 ## [0.18.0] - 2026-10-04
 
 ### Added

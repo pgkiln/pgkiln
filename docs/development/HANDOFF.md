@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-04. Sprints 3–26 are merged into `main` and released as **v0.18.0** (migrations 001–034 are released: add 035+; 033 was never used).
+Last updated: 2026-10-04. Sprints 3–27 are merged into `main` and released as **v0.19.0** (migrations 001–034 are released: add 035+; 033 and 035 were never used). HR example files up to `hr_26` are released.
 
 ## Project in one paragraph
 
@@ -48,8 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 26, released as **v0.18.0** (tags: v0.2.0, v0.6.0–v0.18.0; 0.3.0–0.5.0 were never tagged). Migrations 001–034 are released |
-| (sprint branches) | `sprint-25`, `sprint-26` and the five `sprint-26-*` work branches were merged (v0.17.1, v0.18.0) and deleted |
+| `main` | Everything up to sprint 27, released as **v0.19.0** (tags: v0.2.0, v0.6.0–v0.19.0; 0.3.0–0.5.0 were never tagged). Migrations 001–034 are released |
+| (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
@@ -916,7 +916,7 @@ Still open for the owner: **AI features** (provider and API key storage); an opt
 Brave keeps getting OpenStreetMap's "Access blocked"; leftovers `../pgapex-wt/designer-shots`, `editor-shots`, the docker
 network `templates_default` and volume `templates_pgdata` (can be deleted).
 
-## Sprint 27 (IN PROGRESS): large tables (owner, 2026-10-04: "move on with large tables, only one agent")
+## Sprint 27 (DONE, v0.19.0): large tables (owner, 2026-10-04: "move on with large tables, only one agent")
 
 Branch `sprint-27` from `main` (v0.18.0 + the CI fix 1519757: the App Builder home table overflowed at 768px on the
 GitHub runner because `.sr-only` labels escaped the table's scroll area). One agent works **in the main checkout**
@@ -931,3 +931,14 @@ large tables", "Lazy loading of regions", "Region caching", "Large downloads wit
 5. Streamed CSV/Excel downloads with a cursor (DECLARE/FETCH, no new dependency) so memory stays flat.
 The agent commits `wip:` checkpoints often. CI is readable now: `gh run list -R NickVrgr/Postgresql_APEX` /
 `gh run view <id> --log-failed` (owner logged gh in as NickVrgr on 2026-10-04).
+
+**Result (2026-10-04, v0.19.0):** row ranges (`"pagination": "range"`) and `max_rows` for reports and grids; row limits
+for cards/charts/dynamic/LOVs; `"lazy": true` (endpoint `GET /a/:alias/:page/region/:id`, no-JS link `r<id>_load=1`);
+`"cache": {scope, seconds}` in `src/runtime/region-cache.ts` (in memory, per process); CSV/Excel streamed with
+DECLARE/FETCH and a streaming `XlsxWriter`. No migration; HR `hr_25_large_tables.sql` page 25 (`hr.reading`, 200,000
+rows), `hr_26_web_services_hint.sql` (page 23 hint text). Env: `DOWNLOAD_MAX_ROWS`, `REGION_CACHE_MAX_ENTRIES`,
+`REGION_CACHE_MAX_MB`. Deferred: keyset paging, streaming PDFs and REST collections, popup LOV with server search.
+Tests 496 + 8 skipped, e2e 77/77. The owner's local `.env` has `PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1:3100` and a
+`PGAPEX_SECRET_KEY` (added 2026-10-04 so HR page 23 works).
+
+Next on the roadmap: **AI features** (needs the owner's decision on provider and API key storage).
