@@ -659,29 +659,171 @@ document.querySelectorAll('[data-rds]').forEach((nav) => {
   });
 });
 
-// Popup list of values: a search box that filters the options of a select.
-function enhanceSearchable(root) {
-  const selects = root.matches?.('select[data-searchable]') ? [root] : [...root.querySelectorAll('select[data-searchable]')];
-  selects.forEach(addLovSearch);
+// Popup list of values: the select (which works without JavaScript) is hidden
+// behind a read-only field and a button that opens a dialog searching the
+// item's list of values on the server, page by page.
+function enhancePopupLovs(root) {
+  const selects = root.matches?.('select[data-popup-lov]') ? [root] : [...(root.querySelectorAll?.('select[data-popup-lov]') ?? [])];
+  selects.forEach(popupLov);
 }
-document.addEventListener('pgapex:replaced', (e) => enhanceSearchable(e.detail));
-enhanceSearchable(document);
-function addLovSearch(sel) {
-  const box = document.createElement('input');
-  box.type = 'search';
-  box.className = 'lov-search';
-  box.placeholder = 'Search…';
-  box.setAttribute('aria-label', `Search ${sel.labels?.[0]?.textContent?.trim() ?? 'list'}`);
-  sel.before(box);
-  box.addEventListener('input', () => {
-    const q = box.value.toLowerCase();
-    let firstMatch = null;
-    for (const o of sel.options) {
-      const match = !o.value || o.text.toLowerCase().includes(q);
-      o.hidden = !match;
-      if (match && o.value && !firstMatch) firstMatch = o;
+document.addEventListener('pgapex:replaced', (e) => e.detail && enhancePopupLovs(e.detail));
+enhancePopupLovs(document);
+function popupLov(sel) {
+  if (sel.dataset.enhanced) return;
+  sel.dataset.enhanced = '1';
+  const d = sel.dataset;
+  const metaEl = document.getElementById('pgapex-meta');
+  const csrf = metaEl ? JSON.parse(metaEl.textContent).csrf : '';
+  const label = sel.labels?.[0]?.textContent?.trim() || sel.name;
+  const wrap = document.createElement('div');
+  wrap.className = 'popup-lov';
+  const shown = document.createElement('input');
+  shown.type = 'text';
+  shown.readOnly = true;
+  shown.className = 'popup-lov-display';
+  shown.setAttribute('aria-label', label);
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'btn popup-lov-open';
+  open.textContent = d.searchLabel || 'Search…';
+  open.setAttribute('aria-haspopup', 'dialog');
+  open.setAttribute('aria-label', `${d.searchLabel || 'Search'} ${label}`);
+  sel.hidden = true;
+  sel.after(wrap);
+  wrap.append(shown, open);
+  const sync = () => (shown.value = sel.value ? (sel.selectedOptions[0]?.text ?? '') : '');
+  sync();
+  sel.addEventListener('change', sync);
+  shown.addEventListener('click', () => open.click());
+
+  let dlg = null;
+  let page = 0;
+  let timer = 0;
+  const build = () => {
+    dlg = document.createElement('dialog');
+    dlg.className = 't-dialog popup-lov-dialog';
+    dlg.setAttribute('aria-label', label);
+    const head = document.createElement('div');
+    head.className = 't-dialog-head';
+    const h = document.createElement('h2');
+    h.textContent = label;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'icon-button t-dialog-x';
+    x.setAttribute('aria-label', d.closeLabel || 'Close');
+    x.textContent = '×';
+    x.addEventListener('click', () => dlg.close());
+    head.append(h, x);
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'popup-lov-body';
+    const q = document.createElement('input');
+    q.type = 'search';
+    q.className = 'popup-lov-search';
+    q.placeholder = d.searchLabel || 'Search…';
+    q.setAttribute('aria-label', d.searchLabel || 'Search');
+    const results = document.createElement('div');
+    results.className = 'popup-lov-results';
+    results.setAttribute('aria-live', 'polite');
+    bodyEl.append(q, results);
+    dlg.append(head, bodyEl);
+    document.body.appendChild(dlg);
+    q.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => load(0), 250);
+    });
+    dlg.addEventListener('close', () => open.focus());
+  };
+  const choose = (value, display) => {
+    let opt = [...sel.options].find((o) => o.value === value);
+    if (!opt) {
+      opt = new Option(display, value);
+      sel.add(opt);
     }
-    if (q && firstMatch && sel.selectedOptions[0]?.hidden) sel.value = firstMatch.value;
+    sel.value = value;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    dlg.close();
+  };
+  async function load(p) {
+    page = p;
+    const results = dlg.querySelector('.popup-lov-results');
+    const params = new URLSearchParams({ q: dlg.querySelector('.popup-lov-search').value, p: String(p), __csrf: csrf });
+    // a cascading LOV sends its parents' current values
+    const wrapper = sel.closest('[data-cascade]');
+    for (const parent of (wrapper?.dataset.cascade || '').split(',').filter(Boolean)) {
+      const el = document.getElementsByName(parent)[0];
+      if (el) params.set(parent, el.value);
+    }
+    let json;
+    try {
+      const res = await fetch(d.popupLov, { method: 'POST', body: params, headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      json = await res.json();
+      if (!res.ok) throw new Error(json.error || res.statusText);
+    } catch (e) {
+      results.textContent = e.message;
+      return;
+    }
+    results.replaceChildren();
+    if (!json.rows.length) {
+      const none = document.createElement('p');
+      none.textContent = d.noneLabel || 'Nothing found.';
+      results.append(none);
+      return;
+    }
+    const table = document.createElement('table');
+    table.className = 'popup-lov-table';
+    const tr = table.createTHead().insertRow();
+    for (const hd of json.headings) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = hd;
+      tr.append(th);
+    }
+    const tb = table.createTBody();
+    for (const r of json.rows) {
+      const row = tb.insertRow();
+      r.columns.forEach((v, i) => {
+        const cell = row.insertCell();
+        if (i === 0) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'popup-lov-pick';
+          b.textContent = v;
+          b.addEventListener('click', () => choose(r.value, r.display));
+          cell.append(b);
+        } else cell.textContent = v;
+      });
+      if (r.value === sel.value) row.className = 'is-current';
+    }
+    results.append(table);
+    if (json.more || page > 0) {
+      const nav = document.createElement('div');
+      nav.className = 'popup-lov-pages';
+      if (page > 0) {
+        const prev = document.createElement('button');
+        prev.type = 'button';
+        prev.className = 'btn';
+        prev.textContent = '‹';
+        prev.setAttribute('aria-label', 'Previous');
+        prev.addEventListener('click', () => load(page - 1));
+        nav.append(prev);
+      }
+      if (json.more) {
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.className = 'btn';
+        next.textContent = d.moreLabel || 'More';
+        next.addEventListener('click', () => load(page + 1));
+        nav.append(next);
+      }
+      results.append(nav);
+    }
+  }
+  open.addEventListener('click', () => {
+    if (!dlg) build();
+    dlg.querySelector('.popup-lov-search').value = '';
+    dlg.showModal();
+    dlg.querySelector('.popup-lov-search').focus();
+    load(0);
   });
 }
 
