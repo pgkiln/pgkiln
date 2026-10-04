@@ -29,7 +29,30 @@ export const isNumeric = (typeOid: number) => NUMERIC_OIDS.has(typeOid);
 const PDF_MAX_ROWS = Number(process.env.PDF_MAX_ROWS ?? 5000);
 const TIMESTAMP_OIDS = new Set([1114, 1184]);
 export const PAGE_SIZES = [5, 10, 15, 25, 50, 100];
-const CSV_MAX_ROWS = 100_000;
+/** Rows in a CSV or Excel download (streamed with a cursor, so memory stays flat); Excel's own limit is 1,048,575. */
+export const DOWNLOAD_MAX_ROWS = Math.max(1, Math.min(1_048_575, Number(process.env.DOWNLOAD_MAX_ROWS) || 1_000_000));
+/** The highest page number a report or grid accepts from the URL. */
+export const MAX_PAGE = 1_000_000;
+
+/**
+ * A region's row limit (config.max_rows): a whole number from 1 to 1,000,000,
+ * or the fallback when it is missing or not a positive number.
+ */
+export function maxRows(r: { config: Record<string, any> }, fallback: number | null): number | null {
+  const n = Math.floor(Number(r.config?.max_rows));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 1_000_000) : fallback;
+}
+
+/** "Row ranges X to Y" without a total (config.pagination = "range"), as in APEX; otherwise "X–Y of N". */
+export const rangePaging = (r: Region) => r.config.pagination === 'range';
+
+/** The rows of one page: offset and limit (one row more than shown, so the pager knows whether there is a next page). */
+export function pageWindow(r: Region, st: { page: number; size: number }) {
+  const max = maxRows(r, null);
+  const page = Math.max(1, Math.min(st.page, max ? Math.ceil(max / st.size) : MAX_PAGE));
+  const offset = (page - 1) * st.size;
+  return { page, offset, limit: max ? Math.max(1, Math.min(st.size + 1, max + 1 - offset)) : st.size + 1, max };
+}
 
 export const OPERATORS: Record<string, { label: string; sql: (col: string, v: string) => string; noValue?: boolean }> = {
   eq: { label: '=', sql: (c, v) => `${c} = ${literal(v)}` },
@@ -166,7 +189,7 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
     search: (p.get(key(r, 'q')) ?? '').trim(),
     sort: r.config.sortable === false ? 0 : Math.max(0, Math.min(1000, parseInt(p.get(key(r, 's')) ?? '0', 10) || 0)),
     desc: p.get(key(r, 'd')) === 'desc',
-    page: Math.max(1, parseInt(p.get(key(r, 'p')) ?? '1', 10) || 1),
+    page: Math.max(1, Math.min(MAX_PAGE, parseInt(p.get(key(r, 'p')) ?? '1', 10) || 1)),
     size: Math.max(1, Math.min(500, size)),
     filters: p.getAll(key(r, 'f')).flatMap((raw) => {
       const [column, op, ...rest] = raw.split('|');
@@ -350,25 +373,70 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols, values: queryValues(p.values) };
 }
 
-/** The report's rows as a query: its text and parameter values (for c.query({...sql, rowMode})). */
+/**
+ * The report's rows as a query: its text and parameter values (for c.query({...sql, rowMode})).
+ * A page asks for one row more than it shows (see pageInfo). With a maximum row
+ * count (config.max_rows) and a total, the total is counted over at most
+ * max_rows + 1 rows, so a huge table never has to be read to the end.
+ */
 export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
   const { src, where, cols, values } = await filtered(ctx, r, st);
   const extra: string[] = [];
+  const range = rangePaging(r);
+  const win = pageWindow(r, st);
   if (mode === 'page') {
-    extra.push('count(*) over () as "__total"');
+    extra.push(range ? 'null::int8 as "__total"' : 'count(*) over () as "__total"');
     // highlights: one boolean per rule, the first true one colors the row
     st.highlights.forEach((h, i) => {
       if (cols.has(h.column)) extra.push(`coalesce(${OPERATORS[h.op].sql(q(h.column), h.value)}, false) as "__h${i}"`);
     });
   }
-  let sql = `select "__q".*${extra.map((x) => `, ${x}`).join('')} from (\n${src}\n) "__q"${where}`;
   const order: string[] = [];
   if (st.breakCol && cols.has(st.breakCol)) order.push(`${q(st.breakCol)} asc nulls last`);
   if (st.sort) order.push(`${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`);
-  if (order.length) sql += ` order by ${order.join(', ')}`;
+  const orderBy = order.length ? ` order by ${order.join(', ')}` : '';
+  let from = `(\n${src}\n) "__q"${where}`;
+  if (mode === 'page' && win.max && !range) from = `(select "__q".* from ${from}${orderBy} limit ${win.max + 1}) "__q"`;
+  let sql = `select "__q".*${extra.map((x) => `, ${x}`).join('')} from ${from}${orderBy}`;
   // one row more than a PDF shows, so it can say it was cut off
-  sql += mode === 'page' ? ` limit ${st.size} offset ${(st.page - 1) * st.size}` : ` limit ${mode === 'pdf' ? PDF_MAX_ROWS + 1 : CSV_MAX_ROWS}`;
+  const cap = (n: number) => (win.max ? Math.min(win.max, n) : n);
+  sql += mode === 'page' ? ` limit ${win.limit} offset ${win.offset}` : ` limit ${mode === 'pdf' ? cap(PDF_MAX_ROWS) + 1 : cap(DOWNLOAD_MAX_ROWS)}`;
   return { text: sql, values };
+}
+
+/**
+ * What a page of rows shows: the rows (without the extra one), the range and
+ * whether there are more; total is null for "row ranges" pagination, capped
+ * when the maximum row count was reached.
+ */
+export function pageInfo(r: Region, st: { page: number; size: number }, rows: unknown[][], totalIdx: number) {
+  const win = pageWindow(r, st);
+  const shown = rows.slice(0, Math.max(0, win.max ? Math.min(st.size, win.max - win.offset) : st.size));
+  let total: number | null = null;
+  let capped = false;
+  if (!rangePaging(r) && rows.length) {
+    total = Number(rows[0][totalIdx]);
+    if (win.max && total > win.max) (total = win.max), (capped = true);
+  }
+  const from = shown.length ? win.offset + 1 : 0;
+  const to = win.offset + shown.length;
+  const more = total === null ? rows.length > shown.length : to < total;
+  return { rows: shown, page: win.page, from, to, total, capped, more };
+}
+export type PageInfo = ReturnType<typeof pageInfo>;
+
+/** The pager under a report or grid: "X–Y of N" (or "Rows X–Y"), Previous and Next. */
+export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: Raw | '' = '') {
+  const t = ctx.locale.t;
+  if (!info.more && info.page <= 1) return info.total ? html`<div class="pager"><span>${t('report.rows')}: ${info.total}</span></div>` : '';
+  const text =
+    info.total === null ? t('report.range_open', { from: info.from, to: info.to })
+    : t(info.capped ? 'report.range_more' : 'report.range', { from: info.from, to: info.to, total: info.total });
+  return html`<nav class="pager" aria-label="${t('report.pagination')}">
+    <span>${text}</span>
+    ${info.page > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(info.page - 1)))}"${linkAttr}>‹ ${t('report.previous')}</a>` : ''}
+    ${info.more ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(info.page + 1)))}"${linkAttr}>${t('report.next')} ›</a>` : ''}
+  </nav>`;
 }
 
 /**
@@ -516,6 +584,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     const run = async (p: number) => savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, { ...st, page: p }, 'page')), rowMode: 'array' }));
     res = await run(pageNo);
     if (res.rows.length === 0 && pageNo > 1) res = await run((pageNo = 1));
+    pageNo = pageWindow(r, { ...st, page: pageNo }).page;
   } catch (e) {
     failure = await publicError(ctx, e, `report "${r.title ?? r.id}"`);
     res = { rows: [], fields: [] } as any;
@@ -524,7 +593,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   // the source's columns come first, then __total and the highlight flags
   const totalIdx = res.fields.findIndex((f) => f.name === '__total');
   const fields = totalIdx >= 0 ? res.fields.slice(0, totalIdx) : [];
-  const total = res.rows.length ? Number(res.rows[0][totalIdx]) : 0;
+  const info = pageInfo(r, { ...st, page: pageNo }, res.rows, totalIdx);
   const hlIdx = st.highlights.map((_, i) => res.fields.findIndex((f) => f.name === `__h${i}`));
   const breakIdx = st.breakCol ? fields.findIndex((f) => f.name === st.breakCol) : -1;
   const allCols = visibleColumns(r, fields);
@@ -586,11 +655,11 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     })}</tr>`;
   const breakKey = (v: unknown) => (v === null || v === undefined ? '\u0000' : String(v));
   const breakField = breakIdx >= 0 ? fields[breakIdx] : undefined;
-  const lastPage = pageNo * st.size >= total;
+  const lastPage = !info.more;
 
   const body: Raw[] = [];
   let group: string | undefined;
-  for (const row of res.rows) {
+  for (const row of info.rows) {
     if (breakField) {
       const k = breakKey(row[breakIdx]);
       if (k !== group) {
@@ -842,22 +911,12 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const errors = computeErrors.map((x) => html`<div class="alert alert-error" role="alert">${t('report.compute_error', { name: x.c.name, message: x.message })}</div>`);
   if (st.view !== 'report') return html`${toolbar}${switcher}${errors}${await renderView(ctx, r, st)}`;
 
-  const from = total ? (pageNo - 1) * st.size + 1 : 0;
-  const to = Math.min(total, pageNo * st.size);
   const empty = r.config.empty ?? t('report.no_data');
   return html`${toolbar}${switcher}${errors}
     <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
       <thead><tr>${header}</tr></thead>
       <tbody>${body.length ? body : html`<tr><td colspan="${cols.length + lead || 1}" class="empty">${empty}</td></tr>`}</tbody>
-      ${res.rows.length ? foot : ''}
+      ${info.rows.length ? foot : ''}
     </table></div>
-    ${total > st.size || pageNo > 1
-      ? html`<nav class="pager" aria-label="${t('report.pagination')}">
-          <span>${t('report.range', { from, to, total })}</span>
-          ${pageNo > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo - 1)))}">‹ ${t('report.previous')}</a>` : ''}
-          ${to < total ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(pageNo + 1)))}">${t('report.next')} ›</a>` : ''}
-        </nav>`
-      : total && searchable
-        ? html`<div class="pager"><span>${t('report.rows')}: ${total}</span></div>`
-        : ''}`;
+    ${info.more || info.page > 1 || searchable ? pagerNav(ctx, r, info) : ''}`;
 }
