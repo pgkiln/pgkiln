@@ -855,7 +855,19 @@ and verify each workstream.
   and cache are per process. Coordinator fixes at merge: facet/map report pickers now select `rest_source` (the
   column list of a REST-backed report was wrong), calendar drag and drop resolves a REST-backed region.
 
-**Merged state (2026-10-04):** views, regions, logic, data merged into `sprint-26` + migration **034** (export/import
+- **items: DONE, merged** (2026-10-04). Migration 032 (only widens `meta.item` type check), HR `hr_20_items.sql` page 20
+  "Reviews" (`hr.review`). Item types `richtext`, `markdown`, `rating`, `combobox`, `daterange`, `qrcode`, password
+  `{"reveal": true}`; all work without JS; no env vars, no deps; export/import unchanged. Parity: Rich text / markdown
+  editor ✅, Star rating, QR code, combobox (tags), date range ✅, Password reveal ✅. Security: rich text rebuilt from an
+  allow-list on the server when saved and every time shown (links only http/https/mailto/tel/relative with
+  `rel="noopener noreferrer nofollow"`; scripts, styles, handlers, images, SVG, frames, comments dropped; obfuscated
+  `javascript:` refused); Markdown input HTML shown as text, output through the same allow-list; Markdown rendering is
+  linear time (headings/links regexes rewritten, timing test); pasted HTML sanitised in the browser; QR SVG on the
+  server, ≤2000 chars, display only; rating/date range validated server side (422); password never echoed.
+
+**Merged state (2026-10-04):** ALL FIVE merged. After items: `npm run db:reset && npm test` 480 pass, 8 skipped.
+Upgrade test from v0.17.1 (container `pgapex-upg`, port 5446, before items was merged): 457 pass, 9 skipped.
+Earlier: views, regions, logic, data merged into `sprint-26` + migration **034** (export/import
 with 029's, 030's and 031's changes). `npm run db:reset && npm test`: 458 pass, 8 skipped, 0 fail. Still to do: items
 (agent running), CI-style upgrade test, release steps below. Done since: e2e 70/70; parity rows (not yet the
 summary counts / "Last reviewed"), CHANGELOG Unreleased and SECURITY.md written for the four merged workstreams
