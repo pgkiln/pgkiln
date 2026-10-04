@@ -103,14 +103,17 @@ side by side; on phones and portrait tablets they are tabs (**Tree**, **Layout**
 choosing a component opens the Properties tab.
 
 - **Left: the component tree**, with four tabs:
-  - **Rendering**: the page, *Pre-Rendering* (processes that run before the page is shown), the
+  - **Rendering**: the page, *Pre-Rendering* (branches, computations and processes that run
+    before the page is shown), the
     **Regions** with their items and buttons, and page-level items and buttons;
   - **Dynamic actions**, grouped by event (change, click, page load);
-  - **Processing**: validations, processes and the branches (buttons that go to another page);
+  - **Processing**: computations after submit, validations, processes and the branches (the
+    [branch components](06-processing.md#branches) in sequence, then the buttons that go to
+    another page);
   - **Shared components** the page can use (lists of values, authorization schemes, navigation,
     application items), linking to Shared Components.
 
-  Icons show which components have an authorization scheme or a condition. Folders open and close
+  Icons show which components have an authorization scheme, a condition or a build option. Folders open and close
   with a click; with the keyboard, the arrow keys walk the tree (Left / Right close and open a
   folder), Enter opens a component.
 - **Middle: the Layout**: the page's regions on the 12-column grid, each with its items and
@@ -124,8 +127,8 @@ choosing a component opens the Properties tab.
   (remembered on this device).
 
 The toolbar has the page switcher (previous, a list of all pages, next), **Undo** / **Redo** of
-layout changes, the **Create** menu (region, item, button, dynamic action, validation, process, or a
-new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
+layout changes, the **Create** menu (region, item, button, dynamic action, computation, validation,
+process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
 **Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
 (opens the page in a new tab). Changes are live as soon as they are saved.
 
@@ -198,10 +201,12 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | Region | Settings form |
 |---|---|
 | `grid` | Rows per page; whether users may add, change and delete rows; per column its heading, shown, read-only, required and "Edit as" (a shared list of values) |
-| `chart` | Chart type and the text when there are no rows; lists the query's columns |
+| `chart` | Chart type, the text when there are no rows, the gauge's range and thresholds, and the drill-down link (page and items, `#column#` and `#series#`); lists the query's columns |
 | `cards` | Cards or KPI tiles, the text when there are no rows, and the link (page and items) |
-| `calendar` | The link of each event (page and items); warns when the query lacks `start_date` or `title` |
-| `facets` | The report region it filters, and per column of that report: facet on/off, label, values shown and order |
+| `calendar` | The views and the one shown first, the hours of the week and day views, the edit link of each event, the create-on-click link (`#start#`, `#end#`, `#date#`), and drag and drop (the SQL with `:EVENT_ID`, `:NEW_START`, `:NEW_END`, the key column, who may drag); warns when the query lacks `start_date` or `title` |
+| `facets` | The report region it filters and a search field on/off; per column of that report: facet on/off, label, type (checkboxes, ranges, star rating), values shown, exclude, ranges (`..1000; 1000..3000 = Middle; 3000..`), from/to and order |
+| `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
+| `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to
 pages and shared lists of values of the same application, and to report regions on the same page.
@@ -235,6 +240,9 @@ Components used by the whole application:
 | **Workflows** | Multi-step processes of tasks, SQL, decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
+| **Build options** | Include / exclude switches for features; pages and their components name one in their *Build option* property, and *Used in* lists them ([chapter 6](06-processing.md#build-options)) |
+| **Web credentials** | How the application signs in to web services (basic, API key header, bearer token, OAuth2 client credentials); the secret is write-only and encrypted ([chapter 19](19-rest-data-sources.md#web-credentials)) |
+| **REST data sources** | Web service endpoints whose JSON becomes rows for regions and lists of values, with a **Test** button and suggested columns ([chapter 19](19-rest-data-sources.md#rest-data-sources)) |
 | **Template components** | HTML templates with placeholders and directives, used as a region type and as report column templates, with a preview; shared as plug-in files ([chapter 4](04-pages-and-regions.md#template-components)) |
 
 ## Users (the user directory)
@@ -288,14 +296,16 @@ Database code (views, functions, RLS policies) isn't part of the application, so
 
 **Advisor** (in the application's header) checks the application without running it:
 
-- **SQL:** every region source, list of values, condition, validation, process, dynamic action,
+- **SQL:** every region source, list of values, condition, validation, process, computation,
+  branch condition, button badge query, dynamic action,
   authorization scheme, application process and automation is planned with `EXPLAIN` as the
   application's database role, with binds as NULL, in a transaction that is rolled back. That
   finds syntax errors, unknown tables, columns and functions, type errors and missing grants.
   `DO` blocks are compiled into a temporary function (syntax). Statements that can't be planned
   without running them (`notify`, `call`, `set`, …) are listed as notes.
 - **References:** pages, items, lists of values, authorization schemes, report layouts and
-  regions that a component names but that don't exist; grids without a key or a save process.
+  regions that a component names but that don't exist (also build options, which leave the
+  component out, and the items computations set or copy); grids without a key or a save process.
 - **PL/pgSQL functions:** when the `plpgsql_check` extension is installed, the functions in the
   schemas the application's role can use are checked with `plpgsql_check_function_tb` (see
   [extensions](15-extensions.md)).
@@ -370,6 +380,7 @@ imports as empty. Import refuses other formats.
 | `text_messages`, `translations` | globalization |
 | `report_layouts` | report layouts; the logo as base64 |
 | `template_components` | template components (regions and report columns refer to them by static id) |
+| `web_credentials`, `rest_sources` | web credentials **without their secrets**, and REST data sources ([chapter 19](19-rest-data-sources.md)) |
 | `nav` | navigation menu (with ids, so parents can be linked again) |
 | `pages` | every page with its `regions`, `items`, `buttons`, `dynamic_actions`, `validations` and `processes` |
 
@@ -377,7 +388,8 @@ Rows appear as they are in the `meta` tables (without their ids and the id of th
 new column travels along automatically.
 
 **Not exported, on purpose:** accounts and who has access (they belong to an installation, not to
-an app), OAuth clients and their secrets, sessions, activity logs, temporary files, and your
+an app), OAuth clients and their secrets, the secrets of web credentials (enter them again after an
+import), sessions, activity logs, temporary files, and your
 database objects (tables, views, functions: keep those in your own migration scripts). After an
 import, check the app's database role under **Settings** and grant access under **Shared
 Components**.

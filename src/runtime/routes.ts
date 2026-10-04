@@ -16,9 +16,12 @@ import { clientIp, createSession, destroySession, getSession, loginThrottled, lo
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
-import { MULTI_VALUE, renderItem } from './items.ts';
+import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
+import { comboMultiple, MULTI_VALUE, renderItem } from './items.ts';
+import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
+import { moveCalendarEvent } from './calendar.ts';
 import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
@@ -101,7 +104,7 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   await saveState(s);
 
   if (a.app_processes.some((p) => p.point === 'after_login')) {
-    const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [] } as unknown as Page);
+    const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [], computations: [], branches: [] } as unknown as Page);
     const ctx: PageContext = {
       app: a, page: home, session: s, base, params: new URLSearchParams(), request: '', user: username,
       roles, ip: clientIp(req), errors: { page: [], items: {} }, messages: [],
@@ -226,8 +229,22 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
       ctx.session.state[item.name] = values.length ? values.join(':') : null;
       continue;
     }
+    if (item.type === 'daterange') {
+      // two date inputs with the item's name (or "from:to" from a dynamic action); format checked in validate()
+      const parts = (Array.isArray(raw) ? raw : raw ? String(raw).split(':') : []).map((v) => String(v).trim());
+      ctx.session.state[item.name] = parts.some(Boolean) ? (parts.length === 1 ? `${parts[0]}:` : parts.join(':')) : null;
+      continue;
+    }
+    if (item.type === 'combobox' && comboMultiple(item)) {
+      // tags: colon-separated, trimmed, each once
+      const tags = [...new Set((Array.isArray(raw) ? raw : [raw ?? '']).flatMap((v) => String(v).split(':')).map((v) => v.trim()).filter(Boolean))];
+      ctx.session.state[item.name] = tags.length ? tags.join(':') : null;
+      continue;
+    }
     const posted = Array.isArray(raw) ? raw[raw.length - 1] : raw;
-    if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
+    if (item.type === 'richtext') ctx.session.state[item.name] = cleanRichText(posted) || null;
+    else if (item.type === 'markdown') ctx.session.state[item.name] = posted ? String(posted).replace(/\r\n?/g, '\n') : null;
+    else if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
     else if (item.type === 'password' && !posted) continue;
     else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
   }
@@ -271,13 +288,19 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // a document template: ?doc=NAME (see documents.ts)
     const docName = ctx.params.get('doc');
 
-    let result: { html?: string; csv?: string; file?: Buffer; type?: string; name?: string };
+    let result: { html?: string; csv?: string; file?: Buffer; type?: string; name?: string; redirect?: string };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
         await checkPageAccess(ctx);
         await runAppProcesses(ctx, 'before_page');
+        // before header (as in APEX): branches, then computations and processes
+        if (!docName && !downloadKey) {
+          const to = await branchTarget(ctx, 'before_header');
+          if (to) return { redirect: to };
+        }
         await fetchForms(ctx);
+        await runComputations(ctx, 'before_header');
         try {
           await runProcesses(ctx, 'load');
         } catch (e) {
@@ -301,6 +324,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       throw e;
     }
     await saveState(ctx.session);
+    if (result.redirect) return reply.redirect(result.redirect, 303);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
     if (result.file)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type(result.type!).send(result.file);
@@ -349,6 +373,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
 
     let messages: string[] = [];
     let button;
+    let branchTo: string | null = null;
     let snapshot: Session['state'] = {};
     try {
       button = await appTx(txContext(ctx), async (c) => {
@@ -367,8 +392,16 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (!pressed) return undefined;
         ctx.request = pressed.name;
         snapshot = { ...ctx.session.state };
+        try {
+          await runComputations(ctx, 'after_submit');
+        } catch (e) {
+          if (e instanceof ComputationFailed) throw new ProcessFailed(e.message, null);
+          throw e;
+        }
         if (ctx.request !== 'DELETE') await validate(ctx);
         messages = await runProcesses(ctx, 'submit');
+        // after processing: the first branch that applies; else the button's target page
+        branchTo = await branchTarget(ctx, 'after_processing');
         return pressed;
       });
     } catch (e) {
@@ -391,7 +424,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     await saveState(ctx.session);
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx));
-    return reply.redirect(button.target_page ? `${ctx.base}/${button.target_page}` : self, 303);
+    return reply.redirect(branchTo ?? (button.target_page ? `${ctx.base}/${button.target_page}` : self), 303);
   });
 
   // ---------------------------------------------------------------- file downloads
@@ -518,6 +551,43 @@ export async function runtimeRoutes(app: FastifyInstance) {
     } catch (e) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
       return reply.code(400).send({ error: await publicError(ctx, e, 'list of values') });
+    }
+  });
+
+  // Calendar drag and drop (calendar.ts): move an event, answer with the re-rendered region.
+  app.post('/a/:alias/:page/calendar/:id/move', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    const body = req.body ?? {};
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
+    ctx.params = new URLSearchParams(typeof body.__url_params === 'string' ? body.__url_params : '');
+    const key = typeof body.key === 'string' ? body.key : '';
+    const to = typeof body.to === 'string' ? body.to : '';
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'calendar');
+        if (!r || !vis.regions.has(r.id) || !key || key.length > 200) throw new Forbidden(ctx.locale.t('calendar.cannot_move'));
+        const moved = await moveCalendarEvent(ctx, r, key, to);
+        await computeVisibility(ctx);
+        return {
+          region: (await renderRegion(ctx, r)).toString(),
+          css: ctx.css.text,
+          message: ctx.locale.t('calendar.moved', { title: moved.title, date: moved.start }),
+        };
+      });
+      await saveState(ctx.session);
+      await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'calendar_move', ip: ctx.ip, detail: `region ${req.params.id}, key ${key} to ${to}` });
+      return reply.send(out);
+    } catch (e) {
+      if (e instanceof Forbidden) {
+        await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail: `calendar move: region ${req.params.id}` });
+        return reply.code(403).send({ error: e.message });
+      }
+      if (e instanceof RangeError) return reply.code(400).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'calendar move') });
     }
   });
 

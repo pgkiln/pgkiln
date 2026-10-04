@@ -36,10 +36,12 @@ only when true) and `authz` (an authorization scheme).
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
-| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, donut or pie chart from a SELECT |
+| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel or radar chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
-| [`calendar`](#calendar) | Month calendar of dated rows |
-| [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
+| [`calendar`](#calendar) | Month, week, day and list views of dated rows, with create on click and drag and drop |
+| [`facets`](#facets-faceted-search) | Checkbox, range and star filters with counts and a search field for a report |
+| [`smart_filters`](#smart_filters) | One search field with filter chips and suggestions for a report |
+| [`display_selector`](#display_selector-region-display-selector) | Tabs or a select list that show one region (or group of regions) of the page at a time |
 | [`map`](#map) | Places (markers) and shapes on an interactive map |
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
@@ -51,6 +53,14 @@ only when true) and `authz` (an authorization scheme).
 Region-specific options go in the region's **attributes** (`config`, a JSON object).
 
 ---
+
+### Regions on a REST data source
+
+Every region type that reads a query (report, grid without saving, chart, cards, calendar, map,
+tree, template component) can read a **REST data source** instead of a table: set the region's
+**REST data source** property. Its **Source** is then optional SQL over a CTE named `rest`
+(`select * from rest where …`), and parameters go into `{"rest_params": {"city": "&P1_CITY."}}`
+in the attributes. See [chapter 19](19-rest-data-sources.md#regions-on-a-rest-data-source).
 
 ### `report` (interactive report)
 
@@ -245,8 +255,14 @@ select d.dname as department,
  group by d.dname order by 1
 ```
 
-Attributes: `{"kind": "bar" | "column" | "stacked" | "line" | "area" | "combo" | "scatter" | "donut" | "pie"}`
-(default `bar`).
+Attributes:
+
+| Key | Meaning |
+|---|---|
+| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel` or `radar` |
+| `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
+| `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
+| `empty` | Text when there are no rows |
 
 | Kind | Best for | Notes |
 |---|---|---|
@@ -257,6 +273,10 @@ Attributes: `{"kind": "bar" | "column" | "stacked" | "line" | "area" | "combo" |
 | `combo` | two measures with one shared label | the **first series is drawn as columns**, the other series as lines over them |
 | `scatter` | the relation between two numbers | the **first column must be numeric** (the x axis); each further column is a y value. Rows with an empty or non-numeric x are left out. The axes don't have to start at zero |
 | `donut` / `pie` | parts of a whole (≤ 6 slices) | uses the first series; more than 6 slices fold into "Other"; zero and negative values are left out. The donut shows the total in the middle |
+| `bubble` | three measures per item | label, then **x, y and size** columns; the bubble's area is proportional to the size. The axes don't have to start at zero |
+| `gauge` | one value against a target, per row | a half dial per row (up to 12) from `min` (default 0) to `max` (default: rounded up from the values). With `warning` and/or `critical` thresholds each dial shows a status (*On target*, *Warning*, *Critical*) with an icon and a label, and the thresholds as a coloured ring. A `warning` above `critical` means low values are bad |
+| `funnel` | stages of a process | the first series, in the query's order (sort it); each stage shows its share of the first stage |
+| `radar` | several measures per series, side by side | **one axis per row** (3 to 12 rows), one polygon per series, all on one scale from zero |
 
 A stacked chart, a combination of columns and a line, and a scatter plot:
 
@@ -278,9 +298,52 @@ select extract(year from age(current_date, hiredate))::int as "Years of service"
   from hr.emp where active order by 1
 ```
 
+A bubble chart, gauges, a funnel and a radar (HR page 24 "Planner"):
+
+```sql
+-- bubble: x = years of service, y = average salary, size = headcount (deptno only for the link)
+select d.dname as department,
+       round(avg(extract(year from age(current_date, e.hiredate)))::numeric, 1) as "Years of service",
+       round(avg(e.sal)) as "Average salary", count(*) as "Employees", d.deptno
+  from hr.emp e join hr.dept d using (deptno) group by d.deptno, d.dname
+
+-- gauge, {"gauge": {"max": 120, "warning": 80, "critical": 100}}: one dial per department
+select d.dname, round(100.0 * coalesce(sum(e.sal), 0) / 10000) as "Budget used", d.deptno
+  from hr.dept d left join hr.emp e on e.deptno = d.deptno group by d.deptno, d.dname
+
+-- funnel: stages in order
+select 'Requested' as stage, count(*) as "Requests" from hr.leave_request
+union all select 'Approved', count(*) filter (where status = 'APPROVED') from hr.leave_request
+
+-- radar: an axis per job, a polygon per department
+select initcap(job) as job,
+       count(*) filter (where deptno = 10) as "Accounting",
+       count(*) filter (where deptno = 20) as "Research"
+  from hr.emp group by job order by 1
+```
+
 Up to 8 series; two or more get a legend. Every chart has hover/focus **tooltips** and a
 **Data table** toggle (the accessible alternative). Colours come from a palette checked for
-colour-vision deficiency, in light and dark mode. Charts resize with the screen.
+colour-vision deficiency, in light and dark mode; the gauge's status colours are reserved for
+status and always come with an icon and a label. Charts resize with the screen.
+
+#### Drill-down links
+
+With `link`, every data point is a link to a page, like a report link: `#column#` in the item
+values is replaced by the value of the point's row, and `#series#` by the name of its series (the
+column alias). The URL carries a checksum, so pages with session state protection accept it, and
+there are no links when the user may not open the target page.
+
+```json
+{"kind": "column", "link": {"page": 9, "items": {"P9_DEPTNO": "#deptno#", "P9_JOB": "#series#"}}}
+```
+
+Columns that only the link refers to (here `deptno`) are **not drawn** as a series, so the query
+can return a key next to the label. What links: bars, columns and stacked segments (per series),
+line and area points, scatter dots and bubbles, gauge dials, funnel stages, radar axis labels, pie
+and donut slices and their legend entries (not "Other"). The marks are for the mouse; from the
+keyboard the **data table** has the same links (the labels, or each value when there are several
+series), and so do the radar labels and donut legend.
 
 ---
 
@@ -315,37 +378,178 @@ select l.start_date, l.end_date, initcap(e.ename) as title, l.id
   from hr.leave_request l join hr.emp e using (empno)
 ```
 
-Attributes: `{"link": {"page": 7, "items": {"P7_ID": "#id#"}}}`.
+`start_date` and `end_date` can be dates (all-day events) or timestamps (events with a time; a
+timestamp at midnight without an end time counts as all-day).
 
-Tablets and desktops see a month grid (Monday first, up to 4 events per day plus "+n more");
-phones see an agenda list of the days with events. Users move between months with ‹, *Today*
-and › (`?r<id>_m=2026-10`).
+Attributes:
+
+| Key | Meaning |
+|---|---|
+| `link` | `{"page": 7, "items": {"P7_ID": "#id#"}}`: each event links to a page (the edit link) |
+| `views` | The views users can switch between, from `["month", "week", "day", "list"]` (default: all four) |
+| `view` | The view shown first (default: the first of `views`) |
+| `day_start`, `day_end` | The hours of the week and day views (default 8 to 18); widened when an event needs it |
+| `create` | Create on click: `{"page": 7, "items": {"P7_START": "#start#", "P7_END": "#end#"}}` |
+| `move` | Drag and drop: SQL that moves an event (see below) |
+| `key` | The column that identifies an event for `move` (default `id`) |
+| `move_authz` | An authorization scheme for dragging (default: everyone who sees the calendar) |
+
+**Views.** *Month*: a grid, Monday first, up to 4 events per day plus "+n more" (a link to that
+day); phones see an agenda list of the days with events. *Week* and *Day*: an "All day" row and a
+row per hour, each timed event in the hour it starts, with its times; on phones the week view is
+an agenda list too. *List*: the month's events per day. The buttons ‹, *Today* and › move by a
+month, week or day; *Month / Week / Day / List* switch views. Everything is a plain link
+(`?r<id>_v=week&r<id>_d=2026-10-05`, `?r<id>_m=2026-10` for month and list), so it works without
+JavaScript and can be bookmarked.
+
+**Create on click.** With `create`, every day (month view, "All day" row) and every hour slot has a
+**+** link to the page, with `#start#`, `#end#` and `#date#` filled in: `2026-10-05` for a day,
+`2026-10-05 09:00` and `2026-10-05 10:00` for an hour. The link carries a checksum like every
+link (so the target page can keep session state protection on); with JavaScript a click anywhere
+on an empty part of the slot follows it. A date item takes the date; a date-time item shows a day
+as midnight.
+
+**Drag and drop.** With `move`, users drag events with the mouse to another day or hour slot. The
+browser sends the event's key and the slot; the server checks the CSRF token, the page's and the
+region's authorization and condition, `move_authz`, and that the event is **in the region's query
+for this user** (as the application's database role, so row level security applies), works out the
+new start and end (an event keeps its length; a timed event dropped on an hour starts there, else
+it moves by whole days and keeps its time of day) and runs `move` as the application's role with
+three binds:
+
+| Bind | Value |
+|---|---|
+| `:EVENT_ID` | the key column's value |
+| `:NEW_START` | `2026-10-07` or `2026-10-07 14:00` (the same form as the old start) |
+| `:NEW_END` | the new end, or NULL when the event has none |
+
+```json
+{"move": "select hr.move_meeting(:EVENT_ID::int, :NEW_START::timestamp, :NEW_END::timestamp)"}
+```
+
+Put your own rules in the function (raise an exception with a message for the user, e.g. "Only
+the organizer can move this meeting."); the calendar redraws itself after a move and shows the
+error otherwise. Binds are replaced as literals outside quotes, so call a function rather than
+using them inside a `DO` block. Without a mouse (keyboard, touch, no JavaScript), the event's edit
+link is the way to change its dates.
 
 ---
 
 ### `facets` (faceted search)
 
-A panel of checkbox filters, each with a live count, that filters a **report region on the same
-page**. Counts take the search and all *other* facets into account.
+A panel of filters, each with a live count, that filters a **report region on the same page**.
+Counts take the search and all *other* facets into account. Three kinds of facet:
+
+- **checkbox** (the default): the most frequent values of a column, each with a checkbox. With
+  `"exclude": true` the facet gets an *Exclude the selected values* switch: the chosen values are
+  then left out instead (rows where the column is empty stay).
+- **range**: a number or date column in ranges, as radio buttons ("Any", then each range). A
+  range includes its `from` and excludes its `to`, so `..1500`, `1500..3000` and `3000..` don't
+  overlap. With `"custom": true` (the default when no `ranges` are given) users can type their own
+  *from* and *to*; those are inclusive (a date *to* includes the whole day).
+- **star**: a rating column as "5 stars and up", "4 stars and up", … down to 1 (`max`, default 5).
+
+With `"search": true` the panel starts with a search field: the same search as the report's own
+(`r<id>_q`, the row as text contains the term).
 
 Attributes:
 
 ```json
 {"report": 57,
- "facets": [{"column": "job", "label": "Job"},
+ "search": true,
+ "facets": [{"column": "job", "label": "Job", "exclude": true},
             {"column": "department"},
-            {"column": "status", "limit": 5}]}
+            {"column": "status", "limit": 5},
+            {"column": "sal", "label": "Salary", "type": "range", "custom": true,
+             "ranges": [{"to": 1500, "label": "Below 1500"}, {"from": 1500, "to": 3000}, {"from": 3000}]},
+            {"column": "hiredate", "label": "Hired", "type": "range"},
+            {"column": "rating", "type": "star", "max": 5}]}
 ```
 
 | Key | Meaning |
 |---|---|
 | `report` | The id of the report region to filter |
+| `search` | `true`: a search field at the top |
 | `facets[].column` | A column of the report's SELECT |
 | `facets[].label` | Heading (default: the column name) |
-| `facets[].limit` | Most frequent values shown (default 12, max 50) |
+| `facets[].type` | `checkbox` (default), `range` or `star` |
+| `facets[].limit` | checkbox: most frequent values shown (default 12, max 50) |
+| `facets[].exclude` | checkbox: `true` lets users exclude the chosen values |
+| `facets[].ranges` | range: `[{"from": …, "to": …, "label": …}]`, numbers or `YYYY-MM-DD` dates; either bound may be left out (at most 20) |
+| `facets[].custom` | range: `true` adds *from*/*to* fields (default: only when there are no `ranges`) |
+| `facets[].max` | star: the highest rating, 2–10 (default 5) |
+
+Only filters that a facet on the page allows are read from the URL: a value for a column without a
+facet, a range that isn't one of the facet's own, or a *from*/*to* on a facet without `custom`
+is ignored. Values and bounds are sent as query parameters, never as SQL text. A range facet on a
+column that is neither a number nor a date shows a message instead.
 
 Typical layout: facets region with `columns: 3` and template `collapsible`, report with
-`columns: 9`. On phones the facets stack above the report.
+`columns: 9`. On phones the facets stack above the report. Without JavaScript an *Apply* button
+submits the panel; with JavaScript every change applies at once.
+
+---
+
+### `smart_filters`
+
+The compact alternative to a facets panel (APEX *smart filters*): one search field above a report,
+with the filters in use as **chips** (each with a × to remove it) and **suggestions** below it.
+Without a search term the suggestions are each facet's most frequent values (or its ranges); while
+the user types they are the values that contain the term, and choosing one replaces the term by
+that filter. If nothing matches, the term searches all columns of the report.
+
+```json
+{"report": 57,
+ "placeholder": "Search or filter employees…",
+ "suggestions": 3,
+ "facets": [{"column": "job", "label": "Job"},
+            {"column": "department"},
+            {"column": "sal", "label": "Salary", "type": "range",
+             "ranges": [{"to": 1500}, {"from": 1500, "to": 3000}, {"from": 3000}]}]}
+```
+
+| Key | Meaning |
+|---|---|
+| `report` | The id of the report region to filter |
+| `facets` | As for [`facets`](#facets-faceted-search) (checkbox, range and star; `exclude` and `custom` are for the facets panel) |
+| `suggestions` | Suggestions per facet, 0–10 (default 3) |
+| `placeholder` | The text in the empty search field (translatable) |
+
+Everything is a link or a GET form on the report's own URL parameters, so it works without
+JavaScript, can be bookmarked and is kept in saved reports. A facets panel and smart filters may
+filter the same report; the first definition of a column on the page wins. Give the region
+template `plain` and `columns: 12` above the report.
+
+---
+
+### `display_selector` (region display selector)
+
+A bar of **tabs** (or a **select list**) that shows one region of the page at a time, like APEX's
+region display selector. Regions take part through their own attributes:
+
+- `"display_selector": true`: a tab named after the region's title;
+- `"display_selector": "Tab name"`: regions with the same name share one tab (e.g. a smart filters
+  region and its report). The name is translatable.
+
+```json
+{"style": "tabs", "show_all": true, "remember": true}
+```
+
+| Key | Meaning |
+|---|---|
+| `style` | `tabs` (default) or `select` |
+| `show_all` | `false` hides the *Show all* tab (default: shown) |
+| `remember` | `false`: don't remember the chosen tab for the browser session (default: remembered per page) |
+
+Regions stay where the page puts them; regions hidden by a condition or authorization get no tab.
+Without JavaScript the bar is a list of links to the regions (`#R<id>`) and every region shows.
+With JavaScript the links become accessible tabs (arrow keys, Home and End), the other regions are
+hidden, and a link to `#R<id>` opens the tab of that region. In the page designer the display
+selector's settings list the page's regions with a checkbox and a tab name each.
+
+The HR example's page 21 (*Explore*, `examples/hr/hr_21_regions.sql`) has a display selector with
+three tabs: smart filters over an employee report, a faceted search with a search field, an
+excludable job facet, salary ranges with from/to, a hire date range and a star rating, and a chart.
 
 ---
 

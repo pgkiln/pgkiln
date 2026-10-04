@@ -36,6 +36,9 @@ const SECTIONS: Record<string, string> = {
   workflow_definition: 'workflow_definitions',
   rest_module: 'rest_modules',
   template_component: 'template_components',
+  build_option: 'build_options',
+  web_credential: 'web_credentials',
+  rest_source: 'rest_sources',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',
@@ -44,6 +47,8 @@ const SECTIONS: Record<string, string> = {
   dynamic_action: 'pages[].dynamic_actions',
   validation: 'pages[].validations',
   process: 'pages[].processes',
+  computation: 'pages[].computations',
+  branch: 'pages[].branches',
 };
 
 /** A document without ids and the references between them (they change on import). */
@@ -91,10 +96,12 @@ describe('application export', () => {
   test('export → import → export gives the same document', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     assert.equal(doc.format, 'pgapex/2');
-    for (const key of ['app', 'authz_schemes', 'app_items', 'app_processes', 'lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations', 'document_templates', 'task_definitions', 'workflow_definitions', 'rest_modules', 'template_components', 'nav', 'pages'])
+    for (const key of ['app', 'authz_schemes', 'app_items', 'app_processes', 'lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations', 'document_templates', 'task_definitions', 'workflow_definitions', 'rest_modules', 'template_components', 'build_options', 'nav', 'pages'])
       assert.ok(key in doc, `section ${key}`);
     assert.ok(doc.report_layouts.length && doc.pages.some((p: any) => p.regions.some((r: any) => r.type === 'facets')), 'the HR sample covers layouts and facets');
     assert.ok(doc.template_components.length >= 3, 'the HR sample covers template components');
+    assert.ok(doc.build_options.length >= 1, 'the HR sample covers build options');
+    assert.ok(doc.pages.some((p: any) => p.computations.length && p.branches.length), 'the HR sample covers computations and branches');
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_roundtrip') as id`, [JSON.stringify(doc)])).id;
     try {
       const again = (await owner.one(`select meta.export_app('hr_roundtrip') as d`)).d;
@@ -103,10 +110,10 @@ describe('application export', () => {
       const facets = await owner.query(
         `select r.config->>'report' as report,
                 (select p2.app_id from meta.region r2 join meta.page p2 on p2.id = r2.page_id where r2.id = (r.config->>'report')::int) as report_app
-           from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type in ('facets', 'map') and r.config ? 'report'`,
+           from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type in ('facets', 'smart_filters', 'map') and r.config ? 'report'`,
         [id],
       );
-      assert.ok(facets.rows.length >= 2, 'the HR sample has facets and a map that filters a report');
+      assert.ok(facets.rows.length >= 3, 'the HR sample has facets, smart filters and a map that filters a report');
       for (const f of facets.rows) assert.equal(f.report_app, id, 'facets and maps point at the copied report');
       const parents = await owner.one(
         `select count(*)::int as n from meta.nav_entry c join meta.nav_entry p on p.id = c.parent_id where c.app_id = $1 and p.app_id <> $1`,

@@ -15,8 +15,10 @@ that needs JavaScript; without it, pages still work, just without these convenie
 | `affected_items`, `affected_region_id` | What it acts on |
 | `code` | SQL for server-side actions |
 | `items_to_submit` | Items whose current browser values are sent to the server first |
-| `message` | Text for `alert` |
+| `message` | Text for `alert`, `show_success` and `show_error` |
+| `css_classes` | Class names for `add_class` / `remove_class` |
 | `authz` | Only for authorized users |
+| `build_option` | Only while the [build option](06-processing.md#build-options) is included |
 
 ## Actions
 
@@ -30,6 +32,11 @@ that needs JavaScript; without it, pages still work, just without these convenie
 | `refresh_item` | server | Re-renders the affected items (e.g. a list whose LOV depends on another item) |
 | `alert` | browser | Shows `message` |
 | `submit` | browser | Submits the page |
+| `set_focus` | browser | Puts the cursor in the first affected item (or the first control of the affected region) |
+| `add_class` / `remove_class` | browser | Adds or removes `css_classes` (up to five names of lower case letters, digits, `-` and `_`, checked by the database and again in the browser) on the affected items and region. The theme has `is-highlight`, `is-muted`, `is-success` and `is-danger`; your own go in the application's CSS |
+| `show_success` | browser | Shows `message` as a success message at the top of the page |
+| `show_error` | browser | Shows `message` as an inline error on each affected item, or at the top of the page without affected items |
+| `clear_errors` | browser | Removes the error messages of the affected items, or all of them |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's
 database role like everything else, and check the page's and the dynamic action's authorization.
@@ -65,6 +72,18 @@ select hr.business_days(:P7_START_DATE::date, :P7_END_DATE::date)
 
 **A "Refresh" button for a region**: a button with action `da`, and a dynamic action with
 event `click`, trigger the button's name, action `refresh_region`.
+
+**Inline checks without a round trip** (page 22, *Leave planner*):
+
+| event | trigger | condition | action | affected | message / classes |
+|---|---|---|---|---|---|
+| load | | | set_focus | `P22_DAYS` | |
+| change | `P22_DAYS` | equals `0` | show_error | `P22_DAYS` | Zero days is not a leave. |
+| change | `P22_DAYS` | not_equals `0` | clear_errors | `P22_DAYS` | |
+| click | `HIGHLIGHT` | | add_class | region *Plan your leave* | `is-highlight` |
+| click | `HIGHLIGHT` | | show_success | | The form is highlighted. |
+
+These are conveniences: the server still validates on submit.
 
 ## Cascading lists without a dynamic action
 

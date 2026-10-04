@@ -22,3 +22,17 @@ export const isModal = (ctx: PageContext, pageNo: number) => ctx.app.pages.find(
 export function linkAttrs(ctx: PageContext, pageNo: number, items: Record<string, string> = {}, clear = false) {
   return html`href="${pageHref(ctx, pageNo, items, clear)}"${isModal(ctx, pageNo) ? raw(' data-dialog') : ''}`;
 }
+
+/**
+ * Link item values with #column# replaced by a row's values (`value` returns
+ * undefined for an unknown column, which stays as written).
+ */
+export function fillItems(items: Record<string, string> | undefined, value: (column: string) => string | undefined) {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(items ?? {})) out[k] = v.replace(/#([A-Za-z0-9_$]+)#/g, (m, col: string) => value(col) ?? m);
+  return out;
+}
+
+/** The columns a link's item values refer to (#column#), lower case. */
+export const linkColumns = (items: Record<string, string> | undefined) =>
+  [...new Set(Object.values(items ?? {}).flatMap((v) => [...v.matchAll(/#([A-Za-z0-9_$]+)#/g)].map((m) => m[1].toLowerCase())))];

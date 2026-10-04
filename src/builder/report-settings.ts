@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { designSql } from './websources.ts';
 import pg from 'pg';
 import { applyBinds } from '../binds.ts';
 import { owner } from '../db.ts';
@@ -67,7 +68,7 @@ interface ReportConfig {
 /** The Report settings form of a report region. */
 export async function reportSettingsForm(pageId: number, appId: number, r: { id: number; source: string | null; config: ReportConfig }, s: Session) {
   const cfg = r.config ?? {};
-  const cols = await reportColumns(appId, r.source);
+  const cols = await reportColumns(appId, await designSql(appId, r));
   const [layouts, schemes, pages, items] = await Promise.all([
     owner.query('select name, is_default from meta.report_layout where app_id = $1 order by name', [appId]),
     owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId]),

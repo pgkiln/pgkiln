@@ -12,7 +12,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
 | Application, page, region, item, button | The same, stored in `meta.*` |
 | Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |
-| Shared components | Navigation menu, authorization schemes, lists of values, application items, application processes |
+| Shared components | Navigation menu, authorization schemes, lists of values, application items, application processes, build options |
 | `:P1_ITEM`, `:APP_USER`, `:REQUEST`, `&ITEM.` | The same syntax |
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
 | `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
@@ -24,10 +24,16 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | PL/SQL process | Process type `sql` calling PL/pgSQL (`select my_fn(:P1_X)`) |
 | `apex_error.add_error` / raising errors | `raise exception '…' using column = 'col'` |
 | Before-header processes | Process `point = 'load'` |
+| Page computations (static, item, SQL query, SQL expression, PL/SQL function body) | Computations `before_header` / `after_submit`; function bodies are PL/pgSQL ([chapter 6](06-processing.md#computations)) |
+| Branches (page or URL, *When button pressed*, server-side condition), before header and after processing | Branches with `when_button` and a condition; URLs stay inside the application ([chapter 6](06-processing.md#branches)) |
+| Build options (include / exclude) | Build options; `!NAME` for APEX's "exclude when the option is included" ([chapter 6](06-processing.md#build-options)) |
+| Menu button, button badge | Button action `menu`; `badge` / `badge_query` |
+| Dynamic actions *Set Focus*, *Add / Remove Class*, *Show Success / Error Message*, *Clear Errors* | `set_focus`, `add_class` / `remove_class`, `show_success` / `show_error`, `clear_errors` |
 | Application computation / process on new session | Application process (`after_login`, `before_page`) |
 | VPD | PostgreSQL row level security |
 | APEX collections | Temporary or unlogged tables, or `jsonb` |
 | File Browse item, `APEX_APPLICATION_TEMP_FILES` | Item type `file`; view `meta.temp_files` ([chapter 16](16-files.md)) |
+| Rich Text Editor, Markdown Editor, Star Rating, Combobox, QR Code | Item types `richtext` (sanitised HTML), `markdown`, `rating`, `combobox` (colon-separated), `qrcode`; plus `daterange` (`from:to`) and `{"reveal": true}` on password items ([chapter 5](05-items.md)) |
 | Data Workshop / Data Load Definition, *Execute Data Load* process | SQL Workshop → Load Data; process type `data_load` ([chapter 16](16-files.md#data-loading)) |
 | Interactive report *Download → PDF*, printing | Actions → Download PDF, Print ([chapter 16](16-files.md#printing)) |
 | `APEX_UTIL.CHANGE_CURRENT_USER_PW`, `RESET_PASSWORD`, `EXPIRE_END_USER_ACCOUNT` | My account page; `meta.set_password()`, `meta.expire_password()` ([chapter 8](08-security.md#passwords-and-my-account)) |

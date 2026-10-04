@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–24 are merged into `main` and released as **v0.17.1** (migrations 001–028 are released: add 029+).
+Last updated: 2026-10-04. Sprints 3–26 are merged into `main` and released as **v0.18.0** (migrations 001–034 are released: add 035+; 033 was never used).
 
 ## Project in one paragraph
 
@@ -48,7 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 25, released as **v0.17.1** (tags: v0.2.0, v0.6.0–v0.17.1; 0.3.0–0.5.0 were never tagged). Migrations 001–028 are released |
+| `main` | Everything up to sprint 26, released as **v0.18.0** (tags: v0.2.0, v0.6.0–v0.18.0; 0.3.0–0.5.0 were never tagged). Migrations 001–034 are released |
+| (sprint branches) | `sprint-25`, `sprint-26` and the five `sprint-26-*` work branches were merged (v0.17.1, v0.18.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
@@ -754,3 +755,163 @@ src/server.ts` restarted it. Map tiles: verified in Chromium against :3100 (Refe
 browser (Brave) still gets "Access blocked", Shields may strip the Referer: a server-side tile proxy is the option
 offered. Verified: `npm test` 367/367 (fresh DB), `npm run test:e2e` 58/58. Released as **v0.17.1**.
 
+
+## Sprint 26 (DONE, v0.18.0): five parity workstreams in parallel (owner: "move on with the parity list", 2026-10-01)
+
+Branch `sprint-26` from `main` (v0.17.1). Five agents work in git worktrees under `../pgapex-wt/<name>`, branch
+`sprint-26-<name>`, each with its own `postgres:17` container (made with `docker run`, NOT compose), migrated with the
+HR example, and its own app port in the worktree's `.env` (`node_modules` is a symlink to the main checkout's: remove
+the symlink with `rm`, never `rm -r`, before `git worktree remove`).
+
+| Worktree / branch | Gaps (parity matrix) | Container, ports | Reserved |
+|---|---|---|---|
+| `items` / `sprint-26-items` | rich text / markdown editor, star rating, combobox (tags), date range, password reveal (QR only without a dependency) | `pgapex-items`, 5441, app 3111 | migration 032, `hr_20`, HR page 20 |
+| `regions` / `sprint-26-regions` | region display selector and tabs, smart filters, faceted search range/search facets and exclude | `pgapex-regions`, 5442, 3112 | 031, `hr_21`, page 21 |
+| `logic` / `sprint-26-logic` | conditional branches, computations, DA set focus/class, success/error message, clear errors, menu buttons and badges, build options | `pgapex-logic`, 5443, 3113 | 029, `hr_22`, page 22 |
+| `data` / `sprint-26-data` | REST data sources + web credentials (SSRF allow-list, write-only secrets), invoke API process; new chapter 19 | `pgapex-data`, 5444, 3114 | 030, `hr_23`, page 23 |
+| `views` / `sprint-26-views` | calendar week/day/list, create on click, drag and drop; bubble, gauge, funnel, radar charts; drill-down links | `pgapex-views`, 5445, 3115 | 033, `hr_24`, page 24 |
+
+Reset a worktree DB: `docker rm -f pgapex-<n> && docker run -d --name pgapex-<n> -e POSTGRES_USER=pgapex -e
+POSTGRES_PASSWORD=pgapex -e POSTGRES_DB=pgapex -p <port>:5432 postgres:17 -c shared_preload_libraries=pg_stat_statements`,
+wait for `pg_isready`, then `npx tsx scripts/migrate.ts`. **Never** `npm run db:reset` in a worktree.
+
+The agents commit on their own branch (trailer `Co-Authored-By` + `Claude-Session`), don't push, and don't edit
+CHANGELOG, the parity matrix, SECURITY.md or this file. If a session ends while they run: check each worktree with
+`git -C ../pgapex-wt/<n> log --oneline sprint-26..` and `git status`; uncommitted work can be finished by a new agent
+told to continue from it (as was done in sprint 23).
+
+**2026-10-04:** the first five agents had stopped with only uncommitted partial work (items: `src/richtext.ts`;
+regions: `facet-state.ts` + report.ts; logic: `029_logic.sql`; views: charts.ts; data: nothing). The containers were
+restarted and five new agents were launched to continue from that work, same branches, ports and reservations.
+
+**State at the last handoff (2026-10-04):** the five relaunched agents were still running, each with substantial
+uncommitted work (new migrations 029/030/032, `src/secrets.ts`, `src/webclient.ts`, `src/websources.ts`,
+`src/runtime/rest-sources.ts`, `src/qrcode.ts`, `examples/hr/hr_20_items.sql`, `hr_24_planner.sql`, edits across
+runtime/builder/i18n) and had been asked to commit `wip:` checkpoints. Nothing is merged into `sprint-26` yet.
+
+**2026-10-04 (later):** the session ended again; all five branches now have `wip:` commits (views also a docs
+commit), with only small uncommitted edits left (items: 05-items.md; regions: export.test.ts + new
+`test/regions-sprint26.test.ts`; logic: hr_22 + security.test.ts). A third round of agents was launched to finish
+and verify each workstream.
+
+**Workstream reports (collected for CHANGELOG / parity / SECURITY.md at the end):**
+
+- **views: DONE, merged into `sprint-26`** (2026-10-04). No migration (033 unused; settings in region config JSON),
+  HR `hr_24_planner.sql` page 24, export/import not redefined, no env vars. Tests: 388/396 (8 skipped LDAP/PostgREST),
+  e2e 62/62. Parity — Calendar: month/week/day/list views; create on click (checksummed slot link); drag and drop
+  moves events via developer `move` SQL run as the app role (CSRF, `move_authz`, row-level visibility); works without
+  JS. Charts: bubble, gauge, funnel, radar (server SVG, no inline styles); checksummed, authz-aware drill-down links.
+  Security: move route `POST /a/:alias/:page/calendar/:id/move` checks CSRF first, signed-in user, page/region
+  authz + conditions, `move_authz`; event must be in the region query for this user (app role, RLS); client sends only
+  an event key (≤200 chars) + a date-checked slot; start/end go to `move` SQL as literals; `key` is a plain column
+  name; refusals and moves logged (`forbidden`, `calendar_move`).
+
+- **regions: DONE, merged** (2026-10-04). Migration 031 (region types `smart_filters`, `display_selector`; redefines
+  only `meta.import_app` from 028, adding `smart_filters` to the types whose `config.report` is remapped), HR
+  `hr_21_regions.sql` page 21, no env vars. Tests 383/391 (8 skipped), e2e 62/62. Behaviour change: a facet filter in
+  the URL (`r<id>_x_<col>`) only applies if a facet on that column exists on the page; report queries now take facet
+  and search values as query parameters (`SqlParams` in binds.ts, `buildSql` returns `{text, values}`). Parity —
+  Faceted search: checkbox, range (predefined + custom from/to, numbers and dates), star rating and search facets;
+  exclude on checkbox facets. Smart filters: search field with chips and suggestions, URL-based, no JS needed. Region
+  display selector: tabs or select list, shared tabs, Show all, session memory, `#R<id>` links, no-JS fallback.
+  Security: facet/search input never becomes SQL text; bounds checked against the column type; only a facet's own
+  ranges unless custom allowed; column names checked and quoted; NUL bytes dropped; limits 50 filters, 100 values
+  ≤500 chars, 20 ranges; facets of regions the user can't see don't filter, such regions get no tab; settings routes
+  are developer + CSRF, same page only.
+- **logic: DONE, merged** (2026-10-04). Migration 029 (`meta.build_option`, `build_option` columns, `meta.computation`,
+  `meta.branch`, DA `css_classes`, menu buttons, badges; **redefines export_app and import_app** from 028 adding
+  `build_options` and per-page `computations`/`branches`), HR `hr_22_logic.sql` page 22, build option
+  `LEAVE_FORECAST`. Tests 386/394, e2e 62/62. Chapter 6 renamed "Buttons, validations, processes and page logic".
+  Parity — Computations ✅ (static, item, SQL query/expression, PL/pgSQL body; before header / after submit; condition,
+  authz, build option). Branches ✅ before header / after processing, page or in-app URL, when button pressed,
+  conditions; missing: branch to another app, function-returning-URL. Build options ✅ (include/exclude, `!NAME`,
+  fail closed, Advisor/Used in, exported). DAs: Set Focus, Add/Remove Class, Show Success/Error, Clear Errors. Buttons:
+  menu button (no JS needed) and badges (static or SQL). Security: computation/branch/badge SQL runs as the app role
+  in savepoints with literal binds; PL/pgSQL bodies become `pg_temp` functions with a random dollar-quote tag (a body
+  containing it is refused); URL branches DB-checked (no scheme, `//`, `\`, `..`, control chars; item values
+  URL-encoded); a menu `request` counts as a button only if the menu button is visible and the entry's authz passes
+  (a real button of that name keeps its own checks); menu links only to openable pages, signed; `css_classes` checked
+  `^[a-z][a-z0-9_-]{0,39}` (≤5) in DB, builder and app.js; excluded build options fail closed (404 for pages); runtime
+  role has SELECT only on the new tables. Note: `examples/hr/README.md` file table stops at hr_10.
+
+- **data: DONE, merged** (2026-10-04). Migration 030 (`meta.web_credential`, `meta.rest_source`, region
+  `rest_source`, process type `invoke_api`; redefines export/import adding `web_credentials` without `secret_enc` and
+  `rest_sources`), HR `hr_23_rest_sources.sql` page 23 (credential `HR_API`, sources `DEPARTMENTS`, `DEPARTMENT`,
+  `EMPLOYEES_API`, LOV `DEPARTMENTS_REST`, public `departments/:deptno` handler in REST module v1), new chapter 19.
+  **Env vars** (all optional; unset = no outgoing calls, no secrets): `PGAPEX_REST_ALLOWED_HOSTS` (`api.example.com`,
+  `*.example.com`, `host:8443`, `*`), `PGAPEX_REST_PRIVATE_HOSTS`, `PGAPEX_SECRET_KEY` (≥32 chars),
+  `PGAPEX_REST_MAX_BYTES` (default 5000000). Parity row: "REST Data Sources / Web Credentials / Invoke API ✅/🟡 —
+  JSON endpoints with path/query/header/body params, row selector, typed columns, response cache, feeding reports,
+  cards, charts, calendars, maps, trees, template components and shared LOVs as SQL over `rest`; web credentials basic,
+  API-key header, bearer, OAuth2 client credentials, encrypted write-only secrets; `invoke_api` process; SSRF-checked
+  allow-list (chapter 19). Not covered: XML/SOAP, DML write-back, sync into local tables, OAuth2 authorization code."
+  Security (SECURITY.md): http/https only, no userinfo; host allow-list; resolved address checked at connect time and
+  used (no DNS rebinding); private/loopback/link-local/CGNAT/multicast/doc ranges refused incl. IPv4-mapped, NAT64,
+  6to4 unless in PRIVATE_HOSTS; ≤3 redirects re-checked, credential headers dropped cross-origin; ≤60 s, size limit
+  after decompression. Secrets AES-256-GCM with a key outside the DB, write-only, never exported/logged; runtime role
+  has a column grant without `secret_enc`; changing the key means re-entering secrets. Parameter values URL-encoded
+  after a fixed host, `.`/`..` refused, one-line headers, no Authorization/Cookie/Host/transport headers on a source.
+  Response values go into SQL as one escaped literal via `jsonb_to_recordset`, checked column names, app role.
+  Residual: cached responses shared by all users of the app; `*` lets developers call any public host; OAuth tokens
+  and cache are per process. Coordinator fixes at merge: facet/map report pickers now select `rest_source` (the
+  column list of a REST-backed report was wrong), calendar drag and drop resolves a REST-backed region.
+
+- **items: DONE, merged** (2026-10-04). Migration 032 (only widens `meta.item` type check), HR `hr_20_items.sql` page 20
+  "Reviews" (`hr.review`). Item types `richtext`, `markdown`, `rating`, `combobox`, `daterange`, `qrcode`, password
+  `{"reveal": true}`; all work without JS; no env vars, no deps; export/import unchanged. Parity: Rich text / markdown
+  editor ✅, Star rating, QR code, combobox (tags), date range ✅, Password reveal ✅. Security: rich text rebuilt from an
+  allow-list on the server when saved and every time shown (links only http/https/mailto/tel/relative with
+  `rel="noopener noreferrer nofollow"`; scripts, styles, handlers, images, SVG, frames, comments dropped; obfuscated
+  `javascript:` refused); Markdown input HTML shown as text, output through the same allow-list; Markdown rendering is
+  linear time (headings/links regexes rewritten, timing test); pasted HTML sanitised in the browser; QR SVG on the
+  server, ≤2000 chars, display only; rating/date range validated server side (422); password never echoed.
+
+**Released 2026-10-04 as v0.18.0.** Final checks on `sprint-26`: `npm run db:reset && npm test` 480 pass + 8 skipped;
+`npm run test:e2e` 73/73; upgrade from v0.17.1 (throwaway `postgres:17` on 5446) 479 pass + 9 skipped. Parity matrix
+recounted (66 ✅ / 32 🟡 / 17 ❌ / 6 ➖ of 121), CHANGELOG 0.18.0, SECURITY.md (five new layers rows, residual risks,
+checklist item 8), CI upgrade matrix + v0.18.0. Worktrees, branches and containers of sprint 26 removed.
+Follow-ups: `examples/hr/README.md` file table stops at hr_10; the old dev DB on 5434 was reset (owner's `npm run dev`
+shares it).
+
+**Merged state (2026-10-04):** ALL FIVE merged. After items: `npm run db:reset && npm test` 480 pass, 8 skipped.
+Upgrade test from v0.17.1 (container `pgapex-upg`, port 5446, before items was merged): 457 pass, 9 skipped.
+Earlier: views, regions, logic, data merged into `sprint-26` + migration **034** (export/import
+with 029's, 030's and 031's changes). `npm run db:reset && npm test`: 458 pass, 8 skipped, 0 fail. Still to do: items
+(agent running), CI-style upgrade test, release steps below. Done since: e2e 70/70; parity rows (not yet the
+summary counts / "Last reviewed"), CHANGELOG Unreleased and SECURITY.md written for the four merged workstreams
+(add items' entries).
+
+**Merge note:** 029 (logic), 030 (data) and 031 (regions) each redefine `meta.export_app`/`meta.import_app`: after
+merging, write migration 034 combining all three changes. (Done: 034.)
+
+**How to resume after a session ends:**
+1. Containers: `docker start pgapex-items pgapex-regions pgapex-logic pgapex-data pgapex-views pgapex-db`.
+2. Per worktree: `git -C ../pgapex-wt/<n> log --oneline sprint-26..` and `git -C ../pgapex-wt/<n> status`.
+   A workstream is finished only when its agent reported tests green and the tree is clean.
+3. For each unfinished one, launch a new agent with: "Read `docs/development/sprint-26-agent-rules.md` (in the main
+   checkout) and follow it. Worktree `../pgapex-wt/<n>`, branch `sprint-26-<n>`, DB `pgapex-<n>` port <db>, app port
+   <app>, reserved migration <m>, HR `hr_<x>` page <x>. Continue the uncommitted/wip work for the gaps in the table
+   above; commit `wip:` checkpoints often." Scratch files like `test/zz-*.ts` (views) must not be committed.
+4. Then follow "To finish the sprint" below.
+
+**To finish the sprint** (coordinator):
+1. Merge the branches into `sprint-26` (suggested order: items, views, regions, data, logic; logic and data and
+   regions may each redefine `meta.export_app` / `meta.import_app` (028's are the last released): the highest-numbered
+   migration must carry all changes, so check 029–033 and write a follow-up migration if needed). Expect conflicts in
+   `public/app.js`, `public/app.css`, `src/i18n.ts`, `src/builder/components.ts`, `src/builder/region-settings.ts`,
+   `src/builder/arrange.ts`, `src/cli/replace.ts`, `src/appfiles.ts`, `test/security.test.ts` (appended blocks: keep
+   all, check the closing braces), `test/e2e/responsive.test.ts`, `docs/guide/12-development.md`, `docs/README.md`.
+2. `npx tsc --noEmit`; `npm run db:reset && npm test`; `npm run test:e2e` in the main checkout (the owner's
+   `npm run dev` on :3100 shares the dev DB and runs workflows: a stray failure may come from it).
+3. CI-style: a throwaway `postgres:17` (e.g. port 5446) without PostgREST, install `v0.17.1` with
+   `npx tsx scripts/migrate.ts --seed --root <git archive of the tag>`, then `npm run example:hr` and `npm test`
+   with DATABASE_URL/RUNTIME_DATABASE_URL pointing at it (the script used before: install tag, upgrade, test).
+4. Update the parity matrix (rows + recount the summary from the tables), CHANGELOG (0.18.0), SECURITY.md
+   (from the agents' security notes), this file, `.env.example` (data agent's env vars), package version, CI upgrade
+   matrix (+ v0.18.0), the `v0.6.0 … v0.x` line in chapter 12; merge `sprint-26` into `main`, tag `v0.18.0`, push.
+5. Clean up: remove the worktrees, branches `sprint-26-*` and `sprint-26`, and containers `pgapex-items`,
+   `pgapex-regions`, `pgapex-logic`, `pgapex-data`, `pgapex-views`.
+
+Still open for the owner: **AI features** (provider and API key storage); an optional server-side map tile proxy if
+Brave keeps getting OpenStreetMap's "Access blocked"; leftovers `../pgapex-wt/designer-shots`, `editor-shots`, the docker
+network `templates_default` and volume `templates_pgdata` (can be deleted).

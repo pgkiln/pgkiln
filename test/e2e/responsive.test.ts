@@ -88,6 +88,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(res?.status(), 200, `page ${p}`);
         await check(page, `app-${p}`, vp);
       }
+      // a review on page 20: the rich text and Markdown editors, tags, stars, date range and QR code
+      await page.goto(`${base}/a/hr/20`);
+      await Promise.all([page.waitForNavigation(), page.locator('table a', { hasText: /^\d+$/ }).first().click()]);
+      await page.locator('svg.qr-code').waitFor();
+      await check(page, 'app-20-review', vp);
       // the report's Actions menu fits
       await page.goto(`${base}/a/hr/2`);
       await page.click('summary:has-text("Actions")');
@@ -106,6 +111,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(await page.locator('.alert-error').count(), 0, `${name}: no errors`);
         await check(page, `app-2-${name}`, vp);
       }
+      // the planner's calendar views (page 24; the week view is its first, already checked above)
+      const cal = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 24 and r.type = 'calendar'`)).id;
+      for (const v of ['month', 'day', 'list']) {
+        const res = await page.goto(`${base}/a/hr/24?r${cal}_v=${v}`);
+        assert.equal(res?.status(), 200, `calendar ${v}`);
+        await check(page, `app-24-${v}`, vp);
+      }
       // row selection: select all checks every row
       const before = (await owner.one('select config from meta.region where id = $1', [rid])).config;
       const pageId = (await owner.one('select page_id from meta.region where id = $1', [rid])).page_id;
@@ -122,6 +134,40 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query('update meta.region set config = $2 where id = $1', [rid, JSON.stringify(before)]);
         await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_SELECTED'`, [pageId]);
       }
+      await page.context().close();
+    });
+
+    test('page 21: display selector tabs, smart filters and range facets', async () => {
+      const ids = Object.fromEntries((await owner.query(`select r.title, r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                                                          where a.alias = 'hr' and p.page_no = 21`)).rows.map((r) => [r.title, r.id]));
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      await page.goto(`${base}/a/hr/21`);
+      await page.evaluate(() => sessionStorage.clear());
+      await page.goto(`${base}/a/hr/21`);
+      // JavaScript turns the links into tabs; "Show all" is first and shows everything
+      assert.equal(await page.locator('.rds-list[role="tablist"] [role="tab"]').count(), 4);
+      assert.equal(await page.locator('.rds-hidden').count(), 0);
+      await page.click('.rds-tab:has-text("Faceted search")');
+      assert.equal(await page.locator(`#R${ids['Employee list']}`).isVisible(), true);
+      assert.equal(await page.locator(`#R${ids['Employees']}`).isVisible(), false, 'the other tab is hidden');
+      assert.equal(await page.locator('.rds-tab:has-text("Faceted search")').getAttribute('aria-selected'), 'true');
+      await check(page, 'app-21-facets', vp);
+      // arrow keys move between tabs
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.locator(`#R${ids['Average salary by job']}`).isVisible(), true);
+      // the choice is remembered; a predefined range applies on change
+      await page.goto(`${base}/a/hr/21`);
+      assert.equal(await page.locator(`#R${ids['Average salary by job']}`).isVisible(), true, 'remembered');
+      await page.click('.rds-tab:has-text("Faceted search")');
+      await Promise.all([page.waitForNavigation(), page.locator(`#R${ids['Filter']} input[type="radio"][value="3000|"]`).check()]);
+      assert.equal(await page.locator(`#R${ids['Employee list']} tbody tr`).count(), 3);
+      assert.equal(await page.locator(`#R${ids['Employee list']}`).isVisible(), true, 'the tab stays after the reload');
+      // smart filters: a suggestion becomes a chip
+      await page.click('.rds-tab:has-text("Smart filters")');
+      await Promise.all([page.waitForNavigation(), page.click(`#R${ids['Find employees']} .chip-suggest >> nth=0`)]);
+      assert.equal(await page.locator(`#R${ids['Find employees']} .sf-chip`).count(), 1);
+      await check(page, 'app-21-smart', vp);
       await page.context().close();
     });
 
@@ -148,6 +194,20 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       } finally {
         await owner.query('delete from meta.dynamic_action where id = $1', [da.id]);
       }
+    });
+
+    test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      const res = await page.goto(`${base}/a/hr/22`);
+      assert.equal(res?.status(), 200);
+      assert.equal(await page.locator('.btn-badge').count(), 1, 'the Check button has a badge');
+      await page.click('details.btn-menu > summary');
+      await page.locator('details.btn-menu .menu-panel').waitFor({ state: 'visible' });
+      await check(page, 'app-22-menu', vp);
+      const box = await page.locator('details.btn-menu .menu-panel').boundingBox();
+      assert.ok(box && box.x >= 0 && box.x + box.width <= size.width + 1, `the menu fits: ${JSON.stringify(box)}`);
+      await page.context().close();
     });
 
     test('account pages fit; the theme switch and Dutch work', async () => {
@@ -276,10 +336,23 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         ),
         template_component: `/builder/apps/${appId}/shared?c=template_component-${(await owner.one(`select id from meta.template_component where app_id = $1 and static_id = 'contact_card'`, [appId])).id}`,
         template_import: `/builder/apps/${appId}/shared?new=template_component`,
+        web_credential: `/builder/apps/${appId}/shared?c=web_credential-${(await owner.one(`select id from meta.web_credential where app_id = $1 and name = 'HR_API'`, [appId])).id}`,
+        rest_source: `/builder/apps/${appId}/shared?c=rest_source-${(await owner.one(`select id from meta.rest_source where app_id = $1 and name = 'DEPARTMENT'`, [appId])).id}`,
+        rest_region: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 23 and r.rest_source is not null and r.type = 'report'`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
         column_templates: await (async () => {
           const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 19 and r.type = 'report'`, [appId]);
           return `/builder/pages/${r.page_id}?c=region-${r.id}`;
         })(),
+        build_option: `/builder/apps/${appId}/shared?c=build_option-${(await owner.one(`select id from meta.build_option where app_id = $1 and name = 'LEAVE_FORECAST'`, [appId])).id}`,
+        ...Object.fromEntries(
+          await Promise.all(['computation', 'branch'].map(async (k) => {
+            const r = await owner.one(`select x.id, x.page_id from meta.${k} x join meta.page p on p.id = x.page_id where p.app_id = $1 and p.page_no = 22 order by x.seq limit 1`, [appId]);
+            return [k, `/builder/pages/${r.page_id}?c=${k}-${r.id}`];
+          })),
+        ),
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',

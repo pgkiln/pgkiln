@@ -7,23 +7,23 @@ open item and open an issue or pull request; see [CONTRIBUTING.md](../CONTRIBUTI
 Legend: ✅ available · 🟡 partial (see notes) · ❌ not yet · ➖ not planned (a deliberate choice,
 or better served by the PostgreSQL ecosystem; see the notes and [extensions](guide/15-extensions.md))
 
-Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
+Last reviewed: 2026-10-04 (pgapex 0.18.0: calendar week/day/list views with drag and drop, bubble/gauge/funnel/radar charts and drill-down, smart filters, a region display selector and more facet types, computations, conditional branches, build options, menu buttons, REST data sources and web credentials, rich text/Markdown, rating, combobox, date range and QR code items; 0.17.0: an App Builder home, workspace dashboard and utilities like APEX's; 0.16.0: a Page Designer with drag-and-drop layout, a code editor with autocomplete, template components and plug-ins, parallel branches and versions of workflows, the `pgapex` command line with one file per component; 0.15.0: drop and paste files, heat maps, filtering a report by the map area; 0.14.0: stacked, combo, scatter and pie charts, several files per upload item; 0.13.0: map and tree regions; 0.12.0: REST modules in the builder; 0.11.0: workflows and Progressive Web Apps; 0.10.0: LDAP, SAML, "Keep me signed in", document templates, JSON loading, approvals and the task list; pgapex installs no application, HR is an example).
 
 ## At a glance
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
 | App Builder and development | 5 | 4 | 6 | 0 | Page Designer with drag-and-drop and a code editor, wizards, search, where used, an Advisor, a CLI with one file per component; no team/AI tooling |
-| Regions | 8 | 7 | 2 | 0 | All everyday regions; nine chart types; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components |
-| Items | 6 | 3 | 3 | 0 | All common items and file upload (several files per item); no rich text editor yet |
-| Logic and processing | 4 | 6 | 2 | 1 | Core APEX model complete; fewer declarative process types |
+| Regions | 12 | 6 | 2 | 0 | All everyday regions; thirteen chart types with drill-down; calendars with week/day/list views and drag and drop; faceted search, smart filters and a region display selector; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; no lazy loading or region caching |
+| Items | 9 | 3 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
+| Logic and processing | 7 | 5 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons; fewer declarative process types |
 | Security | 17 | 1 | 2 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; no database-account or header authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 4 | 2 | 0 | 0 | One translated app like 26.1; two built-in languages |
-| Data and integration | 4 | 1 | 3 | 3 | REST APIs via PostgREST, CSV/XLSX/JSON loading, report PDFs and document templates; no REST data sources |
+| Data and integration | 4 | 3 | 2 | 3 | REST APIs via PostgREST, REST data sources and web credentials, CSV/XLSX/JSON loading, report PDFs and document templates |
 | Workflow, automation and AI | 1 | 2 | 3 | 0 | Scheduled automations, approvals, a task list and workflows with parallel branches and versions; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **56** | **32** | **23** | **6** | 117 APEX features compared: 48% available, 27% partial |
+| **Total** | **66** | **32** | **17** | **6** | 121 APEX features compared: 55% available, 26% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -34,8 +34,8 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | App Builder: create, edit, delete, run apps | ✅ | Builder at `/builder` |
 | Create application wizard | 🟡 | Blank app with a dedicated database role and schema. No "from a spreadsheet", no blueprints (26.1) |
 | Create page wizards | 🟡 | *Report and form* and *Interactive grid* from any table; other page types start blank |
-| Page Designer | ✅ | IDE-style window (dark or light): component tree, a layout canvas with drag and drop (with keyboard and button alternatives) and a gallery of regions, items and buttons, a filterable property editor; undo/redo; panes become tabs on phones. Settings forms for report, grid, chart, cards, calendar, faceted search, map, tree and template component regions. A code editor for SQL, PL/pgSQL, JSON and HTML with highlighting and autocomplete of tables, columns and `:ITEM` binds (no extra libraries). Drag and drop needs a mouse; on touch screens the Arrange buttons move components |
-| Shared components | 🟡 | Navigation menu, authorization schemes, lists of values, application items and processes, access control, globalization, template components and plug-ins. No generic lists or build options |
+| Page Designer | ✅ | IDE-style window (dark or light): component tree, a layout canvas with drag and drop (with keyboard and button alternatives) and a gallery of regions, items and buttons, a filterable property editor; undo/redo; panes become tabs on phones. Settings forms for report, grid, chart, cards, calendar, faceted search, smart filters, display selector, map, tree and template component regions. A code editor for SQL, PL/pgSQL, JSON and HTML with highlighting and autocomplete of tables, columns and `:ITEM` binds (no extra libraries). Drag and drop needs a mouse; on touch screens the Arrange buttons move components |
+| Shared components | 🟡 | Navigation menu, authorization schemes, build options, lists of values, application items and processes, access control, globalization, template components and plug-ins, web credentials and REST data sources. No generic lists |
 | Export / import | ✅ | `meta.export_app()` / `meta.import_app()`: portable JSON, also in the builder |
 | APEXlang: human-readable, diffable app files; static IDs (26.1) | 🟡 | `pgapex export --format dir`: one JSON file per component with sorted keys, SQL and HTML in sibling files, references by static id instead of database ids; `pgapex import --replace` updates an app in place, `pgapex diff` compares ([chapter 18](guide/18-cli.md)). Static ids are derived from names (template components have stored ones), and the files are JSON rather than a language of their own |
 | Working copies, merge, team development | ❌ | Use git on exports |
@@ -55,18 +55,21 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | Interactive report | 🟡 | Search, column filters, sort, rows per page, control break, aggregates (with subtotals), highlight, saved private and public reports, computed columns, group by, pivot, chart view, row selection into a page item, CSV, Excel (typed cells) and PDF download, print, reset, reflow on phones. **Missing:** flashback, maximum rows (26.1), natural-language control (26.1), selection across pages |
 | Interactive grid | 🟡 | Inline edit, add and delete rows, lists of values, required columns, per-row errors, all-or-nothing save, signed row keys, search and paging. **Missing:** copy/paste (26.1), column reorder/resize/freeze, master-detail, aggregates, row actions menu, saved reports |
 | Form (automatic row processing) | ✅ | Fetch, insert, update, delete, in a page or a modal dialog. Detects rows deleted meanwhile, but no optimistic locking of concurrent edits yet |
-| Charts | 🟡 | Bar, column, stacked, line, area, combination (columns + lines), scatter, donut, pie; multi-series, tooltips, data table, palette checked for colour-vision deficiency. **Missing:** bubble, gauge, Gantt, funnel, radar, drill-down links |
+| Charts | 🟡 | Bar, column, stacked, line, area, combination (columns + lines), scatter, bubble, donut, pie, gauge, funnel and radar; multi-series, tooltips, data table, palette checked for colour-vision deficiency; drill-down links on chart marks (checksummed, only to pages the user may open). Drawn on the server as SVG without inline styles. **Missing:** Gantt, pyramid, polar and other Oracle JET types |
 | Cards and metric cards (26.1 metric card template) | ✅ | Cards from SQL, with a KPI "metric" style |
-| Calendar | 🟡 | Month view with links; agenda list on phones. **Missing:** week/day/list views, drag-and-drop, create on click |
-| Faceted search | 🟡 | Checkbox facets with live counts. **Missing:** range, search and star facets, facet charts, exclude option (26.1) |
-| Smart filters | ❌ | |
+| Calendar | ✅ | Month, week, day and list views (agenda list on phones); create on click (a checksummed link with the slot); drag and drop to move events through the developer's move SQL, run as the app's role (CSRF, a *who may drag* authorization, only events the user sees). Works without JavaScript; dragging adds on top ([chapter 4](guide/04-pages-and-regions.md#calendar)) |
+| Faceted search | ✅ | Checkbox, range (predefined, or a custom from/to on numbers and dates), star rating and search facets with live counts that honour the other facets; exclude on checkbox facets (26.1). Values travel as query parameters, never as SQL text. **Missing:** facet charts |
+| Smart filters | ✅ | One search field with filter chips and suggestions over a report, the same facet types; URL-based, works without JavaScript ([chapter 4](guide/04-pages-and-regions.md#smart_filters)) |
 | Static content, dynamic content | ✅ | `static` (HTML with substitutions) and `dynamic` (a SELECT returning HTML) |
 | Breadcrumb | ✅ | Automatic, from the page's breadcrumb parent |
 | Navigation menu (side or top) | ✅ | Collapsible side menu or top bar; a drawer on tablets and phones |
-| Region display selector, tabs | ❌ | |
+| Region display selector, tabs | ✅ | Tabs or a select list; regions can share a tab, *Show all*, the choice remembered in the session, `#R<id>` links. Accessible tabs with JavaScript; without it every region shows with links to each |
 | Tree | ✅ | `tree` region from id / parent id / label rows, with icons, links and the first levels open; works without JavaScript |
 | Map region (26.1: vector tiles, bounding box) | 🟡 | `map` region: markers from latitude/longitude or `location` items, GeoJSON lines and areas (e.g. PostGIS), popups with links, heat maps (weighted), filtering a report by the visible map area (bounding box), configurable tile server. **Missing:** vector tiles, marker clustering, several layers per map, spatial queries on the server (PostGIS operators) |
 | Timeline, comments, media list, avatar template components | 🟡 | Example plug-ins to import: timeline item, contact card (avatar) and status badge (`examples/plugins`); none built in |
+| Pagination of large tables (row ranges, maximum row count) | 🟡 | Reports and grids page in the database (`limit` / `offset`), so only one page of rows reaches the server. **But** every page also runs `count(*) over ()` for "x–y of N", which reads the whole filtered result (slow on 100M+ rows), and deep pages pay the full `offset`. **Missing:** APEX's "row ranges X to Y" pagination without a total (fetch `size + 1` rows for *Next*), a maximum row count, optionally keyset ("seek") paging on an indexed sort. Cards, charts, dynamic content and select-list LOVs have **no row limit** at all (calendar 2000, map 5000, tree and template components are capped) |
+| Lazy loading of regions | ❌ | Every region is queried before the page is sent, so one slow chart delays the whole page. The *Refresh region* endpoint already renders a single region; lazy loading would send a placeholder and fetch it after the page shows, falling back to the normal render without JavaScript. Popup LOV with server-side search belongs here too (see *Items*) |
+| Region caching (per user, per session, for a duration) | ❌ | No cache of rendered regions; PostgreSQL's own caches and materialized views are the workaround |
 | Template components and template directives | ✅ | Shared Components → Template components: `#PLACEHOLDERS#` (always escaped), `{if}`, `{case}` and `{loop}` directives, custom attributes, a wrapper; as a region type and as report column templates, with a preview. Templates are checked against an allow-list (no scripts, styles, event handlers or `javascript:` links) ([chapter 4](guide/04-pages-and-regions.md#template-components)) |
 
 ## Items
@@ -82,9 +85,9 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | Read-only condition, required, help text, default | ✅ | |
 | BOOLEAN session state (26.1) | 🟡 | Stored as `true` / `false` text, which PostgreSQL casts to boolean; boolean columns map to switches |
 | File browse / image upload, paste files (26.1) | 🟡 | Item type `file`: into a bytea column (with name and type) or a session temporary file (`meta.temp_files`), **several files per item** (one row per file in a child table, or a list of temporary files), drag-and-drop and paste (26.1), image preview, signed downloads through RLS ([chapter 16](guide/16-files.md)). **Missing:** object storage, image cropping |
-| Rich text / markdown editor | ❌ | |
-| Star rating, QR code, combobox (tags), date range | ❌ | |
-| Password reveal toggle (24.2) | ❌ | |
+| Rich text / markdown editor | ✅ | `richtext` (HTML rebuilt from an allow-list on the server when saved and shown, pasted HTML cleaned in the browser) and `markdown` (rendered on the server, HTML typed in it shown as text); a toolbar with JavaScript, a plain text field without ([chapter 5](guide/05-items.md)) |
+| Star rating, QR code, combobox (tags), date range | ✅ | `rating` (radio buttons drawn as stars), `qrcode` (SVG drawn on the server, no dependency), `combobox` (free text with list-of-values suggestions, tags, colon-separated), `daterange` (`from:to`); all work without JavaScript and are checked on the server |
+| Password reveal toggle (24.2) | ✅ | `{"reveal": true}` on password items; the value is never sent back to the page |
 
 ## Logic and processing
 
@@ -94,14 +97,14 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | Application items and processes | ✅ | `after_login`, `before_page` |
 | Validations | ✅ | Not null, SQL expression, regex, required items; `RAISE … USING COLUMN` in PL/pgSQL targets a field |
 | Conditions and authorization on components | ✅ | Pages, regions, items, buttons, processes, dynamic actions, navigation entries; re-checked on submit |
-| Computations | 🟡 | Use processes (returned columns set items) |
-| Page processes | 🟡 | SQL / PL/pgSQL, form DML, grid DML, data loading (`data_load`). **Missing:** invoke API, download, workflow, execution chains, *Generate Text with AI* (26.1) |
-| Branches | 🟡 | Per-button target page; no conditional branches |
-| Dynamic actions | 🟡 | Show, hide, enable, disable, set value (SQL), execute SQL, refresh region or item, alert, submit. **Missing:** custom JavaScript, set focus/class, dialog events, show success/error message and clear errors (26.1), plug-ins |
+| Computations | ✅ | Static, item, SQL query, SQL expression and PL/pgSQL function body; before header and after submit; with a condition, authorization and build option ([chapter 6](guide/06-processing.md#computations)) |
+| Page processes | 🟡 | SQL / PL/pgSQL, form DML, grid DML, data loading (`data_load`), **invoke API** (a REST data source or URL, response values into items). **Missing:** download, workflow, execution chains, *Generate Text with AI* (26.1) |
+| Branches | 🟡 | Before header and after processing, to a page (with items) or a URL inside the app, *When button pressed*, server-side conditions (SQL, exists, item null/equals, request); the button's target page stays the fallback ([chapter 6](guide/06-processing.md#branches)). **Missing:** branch to another application, function returning a URL |
+| Dynamic actions | 🟡 | Show, hide, enable, disable, set value (SQL), execute SQL, refresh region or item, alert, submit, set focus, add/remove class, show success/error message and clear errors (26.1). **Missing:** custom JavaScript, dialog events, plug-ins |
 | APEX PL/SQL APIs | 🟡 | `meta.app_user()`, `meta.has_role()`, `meta.v()`, `meta.page_url()`, `meta.message()`, `meta.html_escape()`, password functions. No equivalents of `APEX_WEB_SERVICE`, `APEX_DATA_PARSER`, `APEX_ZIP`, … |
-| Declarative menu buttons, button badges (26.1) | ❌ | |
+| Declarative menu buttons, button badges (26.1) | ✅ | Menu buttons with links and submit requests (a hidden button can't be reached through a menu), works without JavaScript; badges as text with `&ITEM.` or from SQL ([chapter 6](guide/06-processing.md#menu-buttons-and-badges)) |
 | Plug-ins | 🟡 | Template component plug-ins: one JSON file to export and import, three examples. **Missing:** item, region, process and dynamic action plug-ins with their own code (pgapex runs no third-party JavaScript or server code) |
-| Build options | ❌ | |
+| Build options | ✅ | Include / exclude (and `!NAME` for the reverse) on pages, regions, items, buttons, dynamic actions, validations, processes, computations, branches, navigation entries and application processes; fail closed; *Used in*, Advisor and export ([chapter 6](guide/06-processing.md#build-options)) |
 | Collections (`APEX_COLLECTION`) | ➖ | Temporary or unlogged tables, or `jsonb` in session state |
 
 ## Security
@@ -166,7 +169,8 @@ Last reviewed: 2026-10-01 (pgapex 0.17.0: an App Builder home, workspace dashboa
 | REST handler editor, REST-enabled SQL | ✅ | **REST modules** in the builder: handlers (method, path with parameters, SQL as collection, item or statements, roles, public) served by pgapex with bearer tokens and an OpenAPI description; plus PostgREST for schema-wide APIs. **Missing:** REST-enabled SQL (rarely desirable) |
 | SQL scripts, query builder, Quick SQL | ❌ | |
 | Data Workshop (load CSV/XLSX/JSON) | 🟡 | SQL Workshop → Load Data: CSV/TSV/XLSX/JSON into a new table (inferred types) or an existing one (append, merge, replace) with a per-row error report; `data_load` process for end users. **Missing:** XML, saved data load definitions, column transformations, unloading ([chapter 16](guide/16-files.md)) |
-| REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | ❌ | Calling web services from SQL is possible with the `http` or `pg_net` extensions ([extensions](guide/15-extensions.md)) |
+| Large downloads without buffering (ORDS streams) | 🟡 | Pages hold only one page of rows in the server. CSV and Excel downloads (up to 100,000 rows), PDFs (5,000) and REST collections are read into memory before they are sent; **missing:** streaming with a cursor (`pg-query-stream`) so memory stays flat whatever the size |
+| REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | 🟡 | Shared Components → REST data sources: JSON endpoints with path, query, header and body parameters, a row selector, typed columns and a response cache feed reports, cards, charts, calendars, maps, trees, template components and shared lists of values as SQL over `rest`. Web credentials: basic, API-key header, bearer and OAuth2 client credentials, secrets encrypted and write-only. Outgoing calls only to an allow-list of hosts, with SSRF checks ([chapter 19](guide/19-rest-data-sources.md)). **Missing:** XML/SOAP, writing back from forms and grids, synchronisation into tables, OAuth2 authorization code and password flows |
 | Printing, document generator (PDF) | ✅ | **Document templates**: a query (with JSON columns for lines) fills an HTML template with Mustache-style tags, drawn as PDF with a report layout; buttons and links download them. Report PDF with **report layouts** and a print stylesheet on every page. No Word/Excel templates or DOCX/XLSX output |
 | Data Reporter: self-service reports for business users (26.1) | ❌ | |
 | Sending e-mail (`APEX_MAIL`), e-mail templates, *Send E-Mail* process | ➖ | Deliberately not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` |
@@ -232,10 +236,13 @@ Small but real differences, for teams comparing the two:
 
 ## Roadmap (proposed priority)
 
-Done in 0.16.0: workflow branches and versions; the Page Designer with drag and drop and a code
-editor; the file-per-component export and CLI; template components and plug-ins.
+Done in 0.18.0: calendar views, more chart types and drill-down; smart filters, display selector
+and facet types; computations, branches, build options and menu buttons; REST data sources and web
+credentials; rich text and the other new item types.
 
 1. **AI features** (needs a decision on the provider and API keys).
+2. **Large tables**: pagination without a total and a maximum row count, row limits on cards,
+   charts and LOVs, lazy-loaded regions, streamed downloads.
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

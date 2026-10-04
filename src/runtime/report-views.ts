@@ -31,7 +31,7 @@ const notice = (text: string) => html`<p class="muted view-note">${text}</p>`;
 
 async function groupBy(ctx: PageContext, r: Region, st: ReportState): Promise<Raw> {
   const t = ctx.locale.t;
-  const { src, where, cols } = await filtered(ctx, r, st);
+  const { src, where, cols, values } = await filtered(ctx, r, st);
   const groupCols = st.groupBy.columns.filter((c) => cols.has(c));
   if (!groupCols.length) return notice(t('report.view_not_set'));
   const fns = st.groupBy.functions.flatMap((f) => {
@@ -47,6 +47,7 @@ async function groupBy(ctx: PageContext, r: Region, st: ReportState): Promise<Ra
               group by ${groupCols.map((_, i) => i + 1).join(', ')}
               order by ${groupCols.map((_, i) => `${i + 1} nulls last`).join(', ')}
               limit ${MAX_GROUPS + 1}`,
+      values,
       rowMode: 'array',
     }),
   );
@@ -67,13 +68,13 @@ async function groupBy(ctx: PageContext, r: Region, st: ReportState): Promise<Ra
 async function pivot(ctx: PageContext, r: Region, st: ReportState): Promise<Raw> {
   const t = ctx.locale.t;
   const pv = st.pivot;
-  const { src, where, cols } = await filtered(ctx, r, st);
+  const { src, where, cols, values: params } = await filtered(ctx, r, st);
   const measure = pv && cols.has(pv.row) && cols.has(pv.column) ? aggSql(pv.fn, pv.value, cols) : null;
   if (!pv || !measure) return notice(t('report.view_not_set'));
   const c = ctx.client!;
   const values = (
     await savepoint(c, () =>
-      c.query<{ v: string | null }>(`select distinct ${q(pv.column)}::text as v from (\n${src}\n) "__q"${where} order by 1 nulls last limit ${MAX_PIVOT_VALUES + 1}`),
+      c.query<{ v: string | null }>({ text: `select distinct ${q(pv.column)}::text as v from (\n${src}\n) "__q"${where} order by 1 nulls last limit ${MAX_PIVOT_VALUES + 1}`, values: params }),
     )
   ).rows.map((x) => x.v);
   const shown = values.slice(0, MAX_PIVOT_VALUES);
@@ -85,6 +86,7 @@ async function pivot(ctx: PageContext, r: Region, st: ReportState): Promise<Raw>
       text: `select ${q(pv.row)}, ${conds.map(cellSql).join(', ')}${conds.length ? ', ' : ''}${measure}
                from (\n${src}\n) "__q"${where}
               group by 1 order by 1 nulls last limit ${MAX_GROUPS + 1}`,
+      values: params,
       rowMode: 'array',
     }),
   );
@@ -108,7 +110,7 @@ async function pivot(ctx: PageContext, r: Region, st: ReportState): Promise<Raw>
 async function chart(ctx: PageContext, r: Region, st: ReportState): Promise<Raw> {
   const t = ctx.locale.t;
   const ch = st.chart;
-  const { src, where, cols } = await filtered(ctx, r, st);
+  const { src, where, cols, values } = await filtered(ctx, r, st);
   const measure = ch && cols.has(ch.label) ? aggSql(ch.fn, ch.value, cols) : null;
   if (!ch || !measure) return notice(t('report.view_not_set'));
   const series = `${t(`agg.${ch.fn}`)}: ${headingOf(r, ch.value, ctx.locale.tr)}`;
@@ -118,6 +120,7 @@ async function chart(ctx: PageContext, r: Region, st: ReportState): Promise<Raw>
       text: `select coalesce(${q(ch.label)}::text, '—') as ${pg.escapeIdentifier(headingOf(r, ch.label, ctx.locale.tr))}, ${measure} as ${pg.escapeIdentifier(series)}
                from (\n${src}\n) "__q"${where}
               group by 1 order by 1 limit ${MAX_CHART_LABELS + 1}`,
+      values,
       rowMode: 'array',
     }),
   );

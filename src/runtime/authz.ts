@@ -78,7 +78,7 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     if (i.region_id !== null && !vis.regions.has(i.region_id)) continue;
     if (!(await isAuthorized(ctx, i.authz))) continue;
     vis.items.add(i.name);
-    if (i.type === 'hidden' || i.type === 'display') continue;
+    if (i.type === 'hidden' || i.type === 'display' || i.type === 'qrcode') continue;
     // fail closed: a broken read-only condition makes the item read-only
     if (i.readonly_condition && (await sqlTrue(ctx, i.readonly_condition, `read-only condition of ${i.name}`, true))) continue;
     vis.editable.add(i.name);
@@ -95,6 +95,17 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     if (!(await isAuthorized(ctx, b.authz))) continue;
     if (!(await sqlTrue(ctx, b.condition, `condition of button ${b.name}`))) continue;
     vis.buttons.set(b.name, b);
+  }
+
+  // A menu button's submit entries are requests of their own (id 0: not rendered as buttons). A request
+  // that is also a page button's name follows that button's visibility only.
+  for (const b of [...vis.buttons.values()]) {
+    if (b.action !== 'menu' || !Array.isArray(b.menu)) continue;
+    for (const e of b.menu) {
+      if (!e.request || vis.buttons.has(e.request) || ctx.page.buttons.some((x) => x.name === e.request)) continue;
+      if (!(await isAuthorized(ctx, e.authz))) continue;
+      vis.buttons.set(e.request, { ...b, id: 0, name: e.request, label: e.label, action: 'submit', target_page: null, target_items: {}, menu: null, hot: false, confirm: e.confirm ?? null, badge: null, badge_query: null });
+    }
   }
 
   // an editable grid brings its own Save button

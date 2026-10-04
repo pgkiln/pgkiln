@@ -121,7 +121,7 @@ describe('REST module v1', () => {
   test('the OpenAPI description, the builder page and the Advisor', async () => {
     const doc = (await app.inject({ url: '/a/hr/rest/v1/openapi.json' })).json();
     assert.equal(doc.openapi, '3.0.3');
-    assert.deepEqual(Object.keys(doc.paths).sort(), ['/departments', '/employees', '/employees/{empno}', '/leave', '/my/leave', '/reports/payroll']);
+    assert.deepEqual(Object.keys(doc.paths).sort(), ['/departments', '/departments/{deptno}', '/employees', '/employees/{empno}', '/leave', '/my/leave', '/reports/payroll']);
     assert.deepEqual(doc.paths['/departments'].get.security, [], 'public');
     assert.equal(doc.paths['/employees/{empno}'].get.parameters[0].name, 'empno');
     assert.ok(!JSON.stringify(doc).includes('hr.emp'), 'no SQL in the description');

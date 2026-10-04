@@ -20,6 +20,8 @@ document.documentElement.classList.add('js');
     const els = fieldsNamed(name);
     if (!els.length) return '';
     const el = els[0];
+    // a date range item: two date inputs with the same name, "from:to"
+    if (el.closest('[data-range]')) return els.some((e) => e.value) ? els.slice(0, 2).map((e) => e.value).join(':') : '';
     if (el.type === 'radio') return (els.find((e) => e.checked) || {}).value || '';
     if (el.type === 'checkbox') return el.checked ? 'true' : 'false';
     return el.value;
@@ -34,7 +36,10 @@ document.documentElement.classList.add('js');
       return;
     }
     const el = els[0];
-    if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
+    if (el.closest('[data-range]')) {
+      const parts = String(value ?? '').split(':');
+      els.slice(0, 2).forEach((e, i) => (e.value = parts[i] || ''));
+    } else if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
     else if (el.type === 'checkbox') el.checked = ['true', 't', 'on', '1', 'yes', 'y'].includes(String(value).toLowerCase());
     else el.value = value ?? '';
     if (depth < 5) {
@@ -94,6 +99,71 @@ document.documentElement.classList.add('js');
     }
   }
 
+  // ------------------------------------------------------------ messages and errors (dynamic actions)
+  // class names a dynamic action may add or remove (the database checks the same pattern)
+  const CLASS_NAME = /^[a-z][a-z0-9_-]{0,39}$/;
+
+  function showMessage(message, kind) {
+    const box = document.querySelector('.messages');
+    if (!box) return window.alert(message);
+    const div = document.createElement('div');
+    div.className = `alert alert-${kind}`;
+    div.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    div.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'alert-close';
+    close.setAttribute('aria-label', (meta.texts && meta.texts['common.dismiss']) || 'Dismiss');
+    close.textContent = '×';
+    div.append(close);
+    box.append(div);
+  }
+
+  /** An error shown on an item, like the server's validation errors. */
+  function itemError(name, message) {
+    const w = wrapperOf(name);
+    if (!w) return showMessage(message, 'error');
+    w.classList.add('has-error');
+    let small = w.querySelector(':scope > small.error');
+    if (!small) {
+      small = document.createElement('small');
+      small.className = 'error';
+      small.id = `${name}_error`;
+      w.append(small);
+    }
+    small.textContent = message;
+    for (const c of w.querySelectorAll('input, select, textarea')) {
+      c.setAttribute('aria-invalid', 'true');
+      const ids = (c.getAttribute('aria-describedby') || '').split(' ').filter(Boolean);
+      if (!ids.includes(small.id)) c.setAttribute('aria-describedby', [...ids, small.id].join(' '));
+    }
+  }
+
+  /** Remove error messages: of the given items, or all of them (page and items). */
+  function clearErrors(items) {
+    const wrappers = items.length ? items.map(wrapperOf).filter(Boolean) : [...document.querySelectorAll('[data-item].has-error')];
+    if (!items.length) document.querySelectorAll('.messages .alert-error').forEach((el) => el.remove());
+    for (const w of wrappers) {
+      w.classList.remove('has-error');
+      const small = w.querySelector(':scope > small.error');
+      if (small) small.remove();
+      for (const c of w.querySelectorAll('[aria-invalid]')) {
+        c.removeAttribute('aria-invalid');
+        const ids = (c.getAttribute('aria-describedby') || '').split(' ').filter((id) => id && id !== `${w.dataset.item}_error`);
+        if (ids.length) c.setAttribute('aria-describedby', ids.join(' '));
+        else c.removeAttribute('aria-describedby');
+      }
+    }
+  }
+
+  function focusTarget(el) {
+    if (!el) return;
+    const control = el.matches('input, select, textarea, button, a[href]') ? el : el.querySelector('input:not([type=hidden]), select, textarea, button, a[href]');
+    if (control) return control.focus();
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus();
+  }
+
   const targets = (da) => [
     ...da.items.map(wrapperOf).filter(Boolean),
     ...(da.region ? [document.getElementById(`R${da.region}`)].filter(Boolean) : []),
@@ -119,6 +189,25 @@ document.documentElement.classList.add('js');
     switch (da.action) {
       case 'alert':
         window.alert(da.message || '');
+        return;
+      case 'set_focus':
+        focusTarget(targets(da)[0]);
+        return;
+      case 'add_class':
+      case 'remove_class': {
+        const names = (da.classes || []).filter((c) => CLASS_NAME.test(c));
+        targets(da).forEach((el) => (da.action === 'add_class' ? el.classList.add(...names) : el.classList.remove(...names)));
+        return;
+      }
+      case 'show_success':
+        showMessage(da.message || '', 'success');
+        return;
+      case 'show_error':
+        if (da.items.length) da.items.forEach((n) => itemError(n, da.message || ''));
+        else showMessage(da.message || '', 'error');
+        return;
+      case 'clear_errors':
+        clearErrors(da.items);
         return;
       case 'submit':
         form && form.requestSubmit();
@@ -297,6 +386,63 @@ document.documentElement.classList.add('js');
     if (e.data.reload) location.reload();
   });
 
+  // ------------------------------------------------------------ calendar
+  // Create on click: a click on an empty day or hour slot follows its "+" link.
+  document.addEventListener('click', (e) => {
+    const cell = e.target.closest?.('.calendar [data-add]');
+    if (!cell || e.target.closest('a, button')) return;
+    cell.querySelector(':scope > .cal-add')?.click();
+  });
+  // Drag and drop (mouse): drop an event on a day or hour slot; the server moves it
+  // and sends the calendar back. Without JS (and from the keyboard) the event's
+  // edit link changes its dates.
+  let dragged = null;
+  document.addEventListener('dragstart', (e) => {
+    const ev = e.target.closest?.('.calendar[data-calendar] [data-move]');
+    if (!ev) return;
+    dragged = ev;
+    ev.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ev.title || ev.textContent.trim());
+  });
+  document.addEventListener('dragend', () => {
+    dragged?.classList.remove('dragging');
+    dragged = null;
+    document.querySelectorAll('.calendar .drop-over').forEach((el) => el.classList.remove('drop-over'));
+  });
+  const dropCell = (e) => {
+    const cell = dragged && e.target.closest?.('[data-drop]');
+    return cell && cell.closest('.calendar') === dragged.closest('.calendar') ? cell : null;
+  };
+  document.addEventListener('dragover', (e) => {
+    const cell = dropCell(e);
+    if (!cell) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.calendar .drop-over').forEach((el) => el !== cell && el.classList.remove('drop-over'));
+    cell.classList.add('drop-over');
+  });
+  document.addEventListener('drop', async (e) => {
+    const cell = dropCell(e);
+    if (!cell) return;
+    e.preventDefault();
+    const cal = cell.closest('.calendar');
+    const region = cal.closest('.region');
+    const key = dragged.dataset.move;
+    cal.setAttribute('aria-busy', 'true');
+    try {
+      const res = await post(`/calendar/${cal.dataset.calendar}/move`, { key, to: cell.dataset.drop });
+      const sheet = document.getElementById('pgapex-css')?.sheet;
+      if (sheet && res.css) for (const rule of res.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
+      const node = region ? replaceHtml(region, res.region) : null;
+      const status = node?.querySelector('.cal-status');
+      if (status) status.textContent = res.message;
+    } catch (err) {
+      cal.removeAttribute('aria-busy');
+      showError(err.message);
+    }
+  });
+
   // Inside a dialog: close on success or cancel.
   if (window.parent !== window) {
     const tell = (reload) => window.parent.postMessage({ type: 'pgapex:close', reload }, location.origin);
@@ -385,9 +531,95 @@ document.documentElement.classList.add('js');
   });
 })();
 
-// Faceted search: apply on change.
+// Faceted search: apply on change. A range facet's own from/to: typing picks
+// "Custom"; choosing another range clears them (Apply sends them).
 document.addEventListener('change', (e) => {
-  if (e.target.matches?.('[data-facet]')) e.target.form?.requestSubmit();
+  if (!e.target.matches?.('[data-facet]')) return;
+  if (e.target.type === 'radio') {
+    const custom = e.target.closest('fieldset')?.querySelector('[data-facet-range]');
+    custom?.querySelectorAll('input').forEach((i) => (i.value = ''));
+  }
+  e.target.form?.requestSubmit();
+});
+document.addEventListener('input', (e) => {
+  const box = e.target.closest?.('[data-facet-range]');
+  const custom = box?.closest('fieldset')?.querySelector('[data-facet-custom]');
+  if (custom) custom.checked = true;
+});
+
+// Region display selector: the links to the regions become ARIA tabs (or a
+// select list) that show one tab's regions at a time; "Show all" shows them
+// all. The choice follows #R<id> in the URL and is remembered for the session.
+document.querySelectorAll('[data-rds]').forEach((nav) => {
+  const tabs = [...nav.querySelectorAll('.rds-tab')];
+  const panelsOf = (tab) => (tab.dataset.rdsTarget || '').split(' ').filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
+  const panels = tabs.flatMap(panelsOf);
+  if (!panels.length) return;
+  const key = `pgapex.rds.${location.pathname}.${nav.dataset.rds}`;
+  const remember = nav.hasAttribute('data-rds-remember');
+  const select = nav.querySelector('.rds-select');
+  const list = nav.querySelector('.rds-list');
+  if (!select) {
+    list.setAttribute('role', 'tablist');
+    list.setAttribute('aria-label', nav.getAttribute('aria-label') || '');
+    tabs.forEach((tab) => {
+      tab.parentElement.setAttribute('role', 'presentation');
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-controls', (tab.hasAttribute('data-rds-all') ? panels : panelsOf(tab)).map((p) => p.id).join(' '));
+      panelsOf(tab).forEach((p) => {
+        p.setAttribute('role', 'tabpanel');
+        p.setAttribute('aria-labelledby', tab.id);
+        if (!p.hasAttribute('tabindex')) p.tabIndex = 0;
+      });
+    });
+  }
+  panels.forEach((p) => p.classList.add('rds-panel'));
+  const show = (tab, focus) => {
+    const shown = tab.hasAttribute('data-rds-all') ? panels : panelsOf(tab);
+    tabs.forEach((t) => {
+      const on = t === tab;
+      if (!select) {
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+      }
+      t.classList.toggle('is-current', on);
+    });
+    panels.forEach((p) => p.classList.toggle('rds-hidden', !shown.includes(p)));
+    if (select) select.value = tab.hasAttribute('data-rds-all') ? '*' : String(tabs.filter((t) => !t.hasAttribute('data-rds-all')).indexOf(tab));
+    if (remember) try { sessionStorage.setItem(key, tab.id); } catch {}
+    if (focus) tab.focus();
+  };
+  // #R<id> of any region in a tab, or the id of a tab
+  const byHash = (h) => (h ? tabs.find((t) => (t.dataset.rdsTarget || '').split(' ').includes(h)) : null);
+  let stored = null;
+  if (remember) try { stored = sessionStorage.getItem(key); } catch {}
+  show(byHash(location.hash.slice(1)) || tabs.find((t) => t.id === stored) || tabs[0], false);
+  nav.addEventListener('click', (e) => {
+    const tab = e.target.closest('.rds-tab');
+    if (!tab) return;
+    e.preventDefault();
+    show(tab, true);
+  });
+  list.addEventListener('keydown', (e) => {
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    show(tabs[(next + tabs.length) % tabs.length], true);
+  });
+  if (select) {
+    list.hidden = true;
+    select.closest('label').hidden = false;
+    select.addEventListener('change', () => {
+      const own = tabs.filter((t) => !t.hasAttribute('data-rds-all'));
+      show(select.value === '*' ? tabs[0] : own[Number(select.value)] || tabs[0], false);
+    });
+  }
+  window.addEventListener('hashchange', () => {
+    const tab = byHash(location.hash.slice(1));
+    if (tab) show(tab, false);
+  });
 });
 
 // Popup list of values: a search box that filters the options of a select.
@@ -924,3 +1156,293 @@ function areaFilter(map, f) {
   });
   new Control({ position: 'topright' }).addTo(map);
 }
+
+// ------------------------------------------------------------------ rich text, Markdown, tags, date range, password items
+// Each works without JavaScript (a textarea, a text field, two dates, a password field); these only add comfort.
+(() => {
+  // Rich text: an editable area in place of the textarea, kept in sync with it. Content always goes in
+  // through a small allow-list (the server rebuilds it again on submit), never as raw HTML.
+  const ALLOWED = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'STRIKE', 'SUB', 'SUP', 'UL', 'OL', 'LI',
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'HR', 'DIV']);
+  const DROP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'SVG', 'MATH', 'TITLE', 'TEXTAREA', 'SELECT']);
+  const safeHref = (h) => {
+    const u = String(h || '').replace(/[\u0000-\u0020\u007f-\u00a0\u00ad\u200b-\u200f\u2028\u2029\ufeff]/g, '');
+    return /^(https?|mailto|tel):/i.test(u) || (u && !/^[^/?#]*:/.test(u)) ? u : null;
+  };
+  function cleanInto(target, source) {
+    for (const node of source.childNodes) {
+      if (node.nodeType === 3) target.append(node.textContent);
+      if (node.nodeType !== 1 || DROP.has(node.tagName)) continue;
+      if (!ALLOWED.has(node.tagName)) {
+        cleanInto(target, node); // unknown tag: keep its text
+        continue;
+      }
+      const el = document.createElement(node.tagName);
+      if (node.tagName === 'A') {
+        const href = safeHref(node.getAttribute('href'));
+        if (!href) {
+          cleanInto(target, node);
+          continue;
+        }
+        el.setAttribute('href', href);
+        el.setAttribute('rel', 'noopener noreferrer nofollow');
+      }
+      cleanInto(el, node);
+      target.append(el);
+    }
+  }
+  function setRich(editor, html) {
+    const doc = new DOMParser().parseFromString(`<body>${html}`, 'text/html'); // inert: nothing runs or loads
+    editor.replaceChildren();
+    cleanInto(editor, doc.body);
+  }
+  const COMMANDS = {
+    bold: ['bold'], italic: ['italic'], underline: ['underline'], strike: ['strikeThrough'], heading: ['formatBlock', 'h3'],
+    paragraph: ['formatBlock', 'p'], bullets: ['insertUnorderedList'], numbers: ['insertOrderedList'], quote: ['formatBlock', 'blockquote'],
+    code: ['formatBlock', 'pre'], unlink: ['unlink'], clear: ['removeFormat'],
+  };
+  function richText(box) {
+    const area = box.querySelector('textarea');
+    if (!area || box.querySelector('.rte-area')) return;
+    const editor = document.createElement('div');
+    editor.className = 'rte-area';
+    editor.contentEditable = 'true';
+    editor.setAttribute('role', 'textbox');
+    editor.setAttribute('aria-multiline', 'true');
+    const label = area.labels && area.labels[0];
+    if (label) {
+      label.id = label.id || `${area.id}_label`;
+      editor.setAttribute('aria-labelledby', label.id);
+      label.addEventListener('click', (e) => {
+        e.preventDefault();
+        editor.focus();
+      });
+    }
+    for (const a of ['aria-describedby', 'aria-invalid', 'aria-required']) if (area.hasAttribute(a)) editor.setAttribute(a, area.getAttribute(a));
+    setRich(editor, area.value);
+    area.hidden = true;
+    area.after(editor);
+    const sync = () => {
+      area.value = editor.innerHTML;
+    };
+    editor.addEventListener('input', sync);
+    // pasted or dropped content goes through the allow-list too: no styles, images or scripts from
+    // other pages reach the live document (they would load, or break the Content-Security-Policy)
+    const insert = (e, data) => {
+      if (!data) return;
+      const html = data.getData('text/html');
+      const text = data.getData('text/plain');
+      e.preventDefault(); // a pasted image alone would otherwise become an <img>
+      if (!html && !text) return;
+      const sel = getSelection();
+      const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+      if (!range || !editor.contains(range.commonAncestorContainer)) return;
+      if (html) {
+        // inserted as nodes: execCommand('insertHTML') adds style attributes of its own
+        const clean = document.createElement('div');
+        // style attributes are taken out first only so that parsing doesn't report them to the
+        // Content-Security-Policy (which blocks them anyway); cleanInto() is what keeps the content safe
+        const t = document.createElement('template');
+        t.innerHTML = html.replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
+        cleanInto(clean, t.content);
+        const fragment = document.createDocumentFragment();
+        fragment.append(...clean.childNodes);
+        const last = fragment.lastChild;
+        range.deleteContents();
+        range.insertNode(fragment);
+        if (last) {
+          range.setStartAfter(last);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      } else document.execCommand('insertText', false, text);
+      sync();
+    };
+    editor.addEventListener('paste', (e) => insert(e, e.clipboardData));
+    editor.addEventListener('drop', (e) => {
+      if (e.dataTransfer && e.dataTransfer.files.length) return e.preventDefault(); // files are not content
+      if (document.caretRangeFromPoint) {
+        const r = document.caretRangeFromPoint(e.clientX, e.clientY);
+        if (r) {
+          getSelection().removeAllRanges();
+          getSelection().addRange(r);
+        }
+      }
+      insert(e, e.dataTransfer);
+    });
+    editor.addEventListener('blur', () => area.dispatchEvent(new Event('change', { bubbles: true })));
+    // a dynamic action that sets the item's value
+    area.addEventListener('change', () => {
+      if (document.activeElement !== editor) setRich(editor, area.value);
+    });
+    toolbar(box, (cmd, btn) => {
+      editor.focus();
+      document.execCommand('styleWithCSS', false, false);
+      if (cmd === 'link') {
+        const url = safeHref(window.prompt(btn.dataset.prompt || 'URL', 'https://'));
+        if (url) document.execCommand('createLink', false, url);
+      } else if (COMMANDS[cmd]) document.execCommand(COMMANDS[cmd][0], false, COMMANDS[cmd][1]);
+      sync();
+    });
+  }
+  // Markdown: the toolbar puts the syntax around the selection in the textarea
+  const MD = {
+    bold: ['**', '**'], italic: ['_', '_'], strike: ['~~', '~~'], code: ['`', '`'],
+    heading: ['## ', '', true], bullets: ['- ', '', true], numbers: ['1. ', '', true], quote: ['> ', '', true],
+  };
+  function markdown(box) {
+    const area = box.querySelector('textarea');
+    if (!area) return;
+    toolbar(box, (cmd, btn) => {
+      const { selectionStart: a, selectionEnd: b, value } = area;
+      let before = '';
+      let after = '';
+      let start = a;
+      if (cmd === 'link') {
+        const url = window.prompt(btn.dataset.prompt || 'URL', 'https://');
+        if (!url) return;
+        before = '[';
+        after = `](${url.replace(/[()\s]/g, encodeURIComponent)})`;
+      } else if (MD[cmd]) {
+        [before, after] = MD[cmd];
+        if (MD[cmd][2]) start = value.lastIndexOf('\n', a - 1) + 1; // at the start of the line
+      } else return;
+      const sel = value.slice(a, b);
+      area.setRangeText(before + (start === a ? sel : value.slice(start, a) + sel) + after, start, b, 'end');
+      if (!sel && after) area.selectionStart = area.selectionEnd = area.selectionEnd - after.length;
+      area.focus();
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+  function toolbar(box, run) {
+    const bar = box.querySelector('.rte-toolbar');
+    if (!bar) return;
+    bar.hidden = false;
+    // keep the selection in the editor when a button is pressed
+    bar.addEventListener('mousedown', (e) => e.target.closest('button') && e.preventDefault());
+    bar.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-cmd]');
+      if (btn) run(btn.dataset.cmd, btn);
+    });
+    // one tab stop: the arrow keys move between the buttons
+    const buttons = [...bar.querySelectorAll('button')];
+    buttons.forEach((b, i) => (b.tabIndex = i ? -1 : 0));
+    bar.addEventListener('keydown', (e) => {
+      const i = buttons.indexOf(document.activeElement);
+      if (i < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const next = e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[i].tabIndex = -1;
+      buttons[next].tabIndex = 0;
+      buttons[next].focus();
+    });
+  }
+
+  // Combobox with several values: tags. A hidden input keeps the colon-separated value under the item's name.
+  function tags(box) {
+    const input = box.querySelector('input[list]');
+    if (!input || box.querySelector('.tag-list')) return;
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = input.name;
+    hidden.value = input.value;
+    input.removeAttribute('name');
+    input.value = '';
+    const list = document.createElement('ul');
+    list.className = 'tag-list';
+    box.prepend(list);
+    box.append(hidden);
+    box.querySelector('.tags-hint')?.setAttribute('hidden', '');
+    const labels = new Map([...(input.list?.options || [])].map((o) => [o.value, o.label || o.value]));
+    const values = () => hidden.value.split(':').filter(Boolean);
+    const draw = () => {
+      list.replaceChildren(
+        ...values().map((v) => {
+          const li = document.createElement('li');
+          li.className = 'tag';
+          li.append(labels.get(v) || v);
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'tag-remove';
+          x.textContent = '×';
+          x.setAttribute('aria-label', (box.dataset.removeLabel || 'Remove {value}').replace('{value}', labels.get(v) || v));
+          x.addEventListener('click', () => {
+            set(values().filter((w) => w !== v));
+            input.focus();
+          });
+          li.append(x);
+          return li;
+        }),
+      );
+    };
+    const set = (vs) => {
+      hidden.value = [...new Set(vs)].join(':');
+      draw();
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const add = () => {
+      const typed = input.value.split(':').map((v) => v.trim()).filter(Boolean);
+      input.value = '';
+      if (!typed.length) return;
+      // a label typed as shown becomes its value
+      const byLabel = new Map([...labels].map(([v, l]) => [l.toLowerCase(), v]));
+      set([...values(), ...typed.map((t) => (labels.has(t) ? t : byLabel.get(t.toLowerCase()) || t))]);
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',') {
+        if (!input.value.trim()) return;
+        e.preventDefault();
+        add();
+      } else if (e.key === 'Backspace' && !input.value && values().length) set(values().slice(0, -1));
+    });
+    // picking a suggestion from the list
+    input.addEventListener('input', (e) => {
+      if (!e.inputType || e.inputType === 'insertReplacementText') if (labels.has(input.value)) add();
+    });
+    input.addEventListener('change', (e) => {
+      e.stopPropagation(); // the item's value is the hidden input's
+      add();
+    });
+    input.form?.addEventListener('submit', add);
+    hidden.addEventListener('change', (e) => e.isTrusted || draw());
+    draw();
+  }
+
+  // Date range: the end date can't be before the start date
+  function range(box) {
+    const [from, to] = box.querySelectorAll('input[type=date]');
+    if (!from || !to) return;
+    const limit = () => {
+      to.min = from.value;
+      from.max = to.value;
+    };
+    from.addEventListener('change', limit);
+    to.addEventListener('change', limit);
+  }
+
+  function enhance(root) {
+    root.querySelectorAll('[data-richtext]').forEach(richText);
+    root.querySelectorAll('[data-markdown]').forEach(markdown);
+    root.querySelectorAll('[data-tags]').forEach(tags);
+    root.querySelectorAll('[data-range]').forEach(range);
+    root.querySelectorAll('[data-reveal]').forEach((b) => (b.hidden = false));
+  }
+  enhance(document);
+  document.addEventListener('pgapex:replaced', (e) => e.detail && enhance(e.detail.parentElement || document));
+
+  // Password reveal: show or hide what was typed; hidden again before the form is sent
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('[data-reveal]');
+    const input = btn && document.getElementById(btn.dataset.reveal);
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', String(show));
+    if (!btn.dataset.show) btn.dataset.show = btn.textContent;
+    btn.textContent = show ? btn.dataset.hide : btn.dataset.show;
+  });
+  document.addEventListener('submit', (e) => {
+    for (const btn of e.target.querySelectorAll('[data-reveal][aria-pressed="true"]')) btn.click();
+  }, true);
+})();

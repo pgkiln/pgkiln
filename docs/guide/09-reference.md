@@ -84,11 +84,23 @@ needed and grants access; deleting revokes access.
 
 **`nav_entry`**: `app_id`, `parent_id` (sub-menu), `seq`, `label`, `icon`, `target_page`, `authz`.
 
-**`lov`**: `app_id`, `name` (uppercase; used as `LOV:NAME`), `query`.
+**`lov`**: `app_id`, `name` (uppercase; used as `LOV:NAME`), `query`, `rest_source` (the query then reads the source's rows from `rest`).
+
+**`web_credential`**: `app_id`, `name` (uppercase), `description`, `type` (`basic` / `header` / `bearer` / `oauth2`), `username` (or client id),
+`header_name`, `token_url`, `scope`, `valid_for` (text[] of URL prefixes), `secret_enc` (encrypted by the server; not readable by the
+runtime role, never exported) ([chapter 19](19-rest-data-sources.md#web-credentials)).
+
+**`rest_source`**: `app_id`, `name` (uppercase), `description`, `url` (with `{param}`), `method`, `credential`, `headers` (jsonb),
+`params` (jsonb), `body`, `row_selector`, `columns` (jsonb), `cache_seconds`, `timeout_s`, `max_rows`
+([chapter 19](19-rest-data-sources.md#rest-data-sources)).
 
 **`app_item`**: `app_id`, `name`, `description`.
 
 **`app_process`**: `app_id`, `seq`, `name`, `point` (`after_login` / `before_page`), `code`, `authz`.
+
+**`build_option`**: `app_id`, `name` (uppercase, unique per app), `status` (`include` / `exclude`),
+`description` ([chapter 6](06-processing.md#build-options)). `meta.build_option_on(app_id, ref)`
+tells whether a component with that `build_option` value is part of the application.
 
 ### Page level
 
@@ -103,13 +115,17 @@ needed and grants access; deleting revokes access.
 | `mode` | `normal` / `modal` |
 | `protection` | `checksum` / `unrestricted` |
 | `authz` | Authorization scheme |
+| `build_option` | `NAME` / `!NAME`: only while the [build option](06-processing.md#build-options) is included / excluded |
+
+Regions, items, buttons, dynamic actions, validations, processes, computations, branches,
+navigation entries and application processes have the same `build_option` column.
 
 **`region`**
 
 | Column | Description |
 |---|---|
 | `page_id`, `seq`, `title` | |
-| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `static`, `dynamic` |
+| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `tasks`, `workflows`, `static`, `dynamic` |
 | `source` | SELECT (or HTML for `static`) |
 | `table_name`, `pk_column` | For `form` and `grid` |
 | `pk_item` | For `form`: the item holding the key |
@@ -117,23 +133,34 @@ needed and grants access; deleting revokes access.
 | `template` | `standard`, `plain`, `collapsible` |
 | `condition`, `authz` | Visibility |
 | `config` | Attributes per type ([chapter 4](04-pages-and-regions.md)) |
+| `rest_source` | A REST data source the region reads; `source` is then SQL over `rest` ([chapter 19](19-rest-data-sources.md)) |
 
 **`item`**: `page_id`, `region_id`, `seq`, `name`, `label`, `type`, `lov`, `source_column`,
 `default_value`, `required`, `help`, `readonly_condition`, `authz`, `config` ([chapter 5](05-items.md)).
 
-**`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da`),
-`target_page`, `target_items` (jsonb), `condition`, `authz`, `hot`, `confirm` ([chapter 6](06-processing.md)).
+**`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da` /
+`document` / `menu`), `target_page`, `target_items` (jsonb), `condition`, `authz`, `hot`, `confirm`,
+`menu` (jsonb, for `menu`), `badge`, `badge_query` ([chapter 6](06-processing.md)).
 
 **`dynamic_action`**: `page_id`, `seq`, `name`, `event`, `trigger_element`, `condition_type`,
 `condition_value`, `action`, `affected_items`, `affected_region_id`, `code`, `items_to_submit`,
-`message`, `authz` ([chapter 7](07-dynamic-actions.md)).
+`message`, `css_classes`, `authz` ([chapter 7](07-dynamic-actions.md)).
 
 **`validation`**: `page_id`, `seq`, `name`, `item_name`, `type` (`not_null` / `sql` / `regex`),
 `expression`, `message`, `when_button`.
 
-**`process`**: `page_id`, `seq`, `name`, `type` (`form_dml` / `grid_dml` / `sql` / `data_load`),
-`region_id`, `code`, `config` (jsonb, for `data_load`), `point` (`submit` / `load`), `when_button`,
+**`process`**: `page_id`, `seq`, `name`, `type` (`form_dml` / `grid_dml` / `sql` / `data_load` / `invoke_api`),
+`region_id`, `code`, `config` (jsonb, for `data_load` and `invoke_api`), `point` (`submit` / `load`), `when_button`,
 `authz`, `success_message`.
+
+**`computation`**: `page_id`, `seq`, `item_name`, `point` (`before_header` / `after_submit`), `type`
+(`static` / `item` / `sql_query` / `sql_expression` / `function_body`), `expression`,
+`condition_type`, `condition_expr`, `condition_value`, `authz`
+([chapter 6](06-processing.md#computations)).
+
+**`branch`**: `page_id`, `seq`, `name`, `point` (`after_processing` / `before_header`), `when_button`,
+`condition_type`, `condition_expr`, `condition_value`, `target_type` (`page` / `url`), `target_page`,
+`target_items` (jsonb), `target_url`, `authz` ([chapter 6](06-processing.md#branches)).
 
 ### Runtime and instance
 
@@ -179,7 +206,10 @@ from it, for example with a scheduled
 | `r<id>_p` | report, grid | Page number |
 | `r<id>_n` | report | Rows per page |
 | `r<id>_f=column\|op\|value` | report | Column filter (repeatable); `op` is `eq`, `ne`, `contains`, `not_contains`, `gt`, `ge`, `lt`, `le`, `null`, `not_null` |
-| `r<id>_x_<column>=value` | report + facets | Facet selection (repeatable) |
+| `r<id>_x_<column>=value` | report + facets, smart filters | Facet selection (repeatable) |
+| `r<id>_xn_<column>=1` | report + facets | Exclude the selected values (facet with `exclude`) |
+| `r<id>_rg_<column>=from\|to` | report + facets, smart filters | One of a range or star facet's ranges (`~`: the custom range) |
+| `r<id>_rf_<column>`, `r<id>_rt_<column>` | report + facets | Custom range from / to, inclusive (facet with `custom`) |
 | `r<id>_csv=1` | report | Download CSV |
 | `r<id>_pdf=1` | report | Download PDF |
 | `r<id>_m=YYYY-MM` | calendar | Month shown |

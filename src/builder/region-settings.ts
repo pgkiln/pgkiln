@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
+import { designSql } from './websources.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
+import { CALENDAR_VIEWS, calendarViews } from '../runtime/calendar.ts';
 import { CHART_KINDS } from '../runtime/charts.ts';
 import { heading } from '../runtime/items.ts';
 import { positionColumns } from '../runtime/report.ts';
+import { anyBound, MAX_RANGES, type Range } from '../runtime/facet-state.ts';
 import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
@@ -23,9 +26,10 @@ export interface Allowed {
   pages: Set<number>;
   lovs: Set<string>;
   reports: Map<number, string[]>; // report regions on the same page → their columns
+  authz?: Set<string>; // the app's authorization scheme names (upper case)
 }
 
-export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree'] as const;
+export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree'] as const;
 type SettingsType = (typeof SETTINGS_TYPES)[number];
 
 const GRID_PAGE_SIZES = ['5', '10', '15', '25', '50', '100', '200'];
@@ -39,7 +43,12 @@ const CHART_LABELS: Record<string, string> = {
   scatter: 'Scatter (first column is x)',
   donut: 'Donut',
   pie: 'Pie',
+  bubble: 'Bubble (label, x, y and size columns)',
+  gauge: 'Gauge (one dial per row)',
+  funnel: 'Funnel (stages in the query order)',
+  radar: 'Radar (one axis per row)',
 };
+const GAUGE_KEYS = ['min', 'max', 'warning', 'critical'] as const;
 const CARD_COLUMNS = ['title', 'subtitle', 'body', 'badge', 'icon'];
 const FACET_LIMIT = 12;
 
@@ -50,10 +59,10 @@ const check = (name: string, label: string, on: boolean) =>
   html`<div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label></div>`;
 
 /** A {page, items} link from the form, or undefined (no page, or a page of another app). */
-function mergeLink(b: Body, pages: Set<number>) {
-  const page = Number(b.link_page);
-  if (!b.link_page || !pages.has(page)) return undefined;
-  const items = parseLinkItems(b.link_items);
+function mergeLink(b: Body, pages: Set<number>, prefix = 'link') {
+  const page = Number(b[`${prefix}_page`]);
+  if (!b[`${prefix}_page`] || !pages.has(page)) return undefined;
+  const items = parseLinkItems(b[`${prefix}_items`]);
   return { page, ...(Object.keys(items).length ? { items } : {}) };
 }
 
@@ -72,13 +81,16 @@ function columnsHint(cols: { columns: string[] } | { error: string }, expected?:
     ${missing.length ? html`<div class="alert alert-error" role="alert">The query has no column ${missing.map((m, i) => html`${i ? ' or ' : ''}<code>${m}</code>`)}.</div>` : ''}`;
 }
 
-function linkFieldset(id: (n: string) => string, link: { page?: number; items?: Record<string, string> } | undefined, pages: { page_no: number; name: string }[], what: string) {
-  return html`<fieldset class="prop-group"><legend>Link</legend><div class="form-grid">
-    <div class="field"><label class="label" for="${id('link_page')}">${what} links to page</label>
-      <select id="${id('link_page')}" name="link_page">${opt('', '- no link -', link?.page)}${pages.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, link?.page))}</select></div>
-    <div class="field" data-wide><label class="label" for="${id('link_items')}">Set items</label>
-      <input id="${id('link_items')}" name="link_items" value="${linkItemsText(link?.items)}" placeholder="P3_ID=#id#">
-      <small class="help">ITEM=#column#, comma separated; #column# is replaced by the row's value.</small></div>
+function linkFieldset(
+  id: (n: string) => string, link: { page?: number; items?: Record<string, string> } | undefined, pages: { page_no: number; name: string }[], what: string,
+  { prefix = 'link', legend = 'Link', placeholder = 'P3_ID=#id#', help = "ITEM=#column#, comma separated; #column# is replaced by the row's value." } = {},
+) {
+  return html`<fieldset class="prop-group"><legend>${legend}</legend><div class="form-grid">
+    <div class="field"><label class="label" for="${id(`${prefix}_page`)}">${what} links to page</label>
+      <select id="${id(`${prefix}_page`)}" name="${prefix}_page">${opt('', '- no link -', link?.page)}${pages.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, link?.page))}</select></div>
+    <div class="field" data-wide><label class="label" for="${id(`${prefix}_items`)}">Set items</label>
+      <input id="${id(`${prefix}_items`)}" name="${prefix}_items" value="${linkItemsText(link?.items)}" placeholder="${placeholder}">
+      <small class="help">${help}</small></div>
   </div></fieldset>`;
 }
 
@@ -95,11 +107,19 @@ const staleTag = (known: Set<string>, n: string) => (known.has(n) ? '' : html` <
 
 // ---------------------------------------------------------------- merges (pure, unit tested)
 
-export function mergeChartSettings(config: Config, b: Body): Config {
+export function mergeChartSettings(config: Config, b: Body, a: Allowed): Config {
   const out = { ...config };
   const set = setter(out);
   set('kind', b.kind && (CHART_KINDS as string[]).includes(b.kind) && b.kind !== 'bar' ? b.kind : undefined);
   set('empty', b.empty?.trim() || undefined);
+  set('link', mergeLink(b, a.pages));
+  const gauge: Config = {};
+  for (const k of GAUGE_KEYS) {
+    const raw = b[`gauge_${k}`]?.trim();
+    const v = Number(raw);
+    if (raw && Number.isFinite(v)) gauge[k] = v;
+  }
+  set('gauge', Object.keys(gauge).length ? gauge : undefined);
   return out;
 }
 
@@ -114,7 +134,27 @@ export function mergeCardsSettings(config: Config, b: Body, a: Allowed): Config 
 
 export function mergeCalendarSettings(config: Config, b: Body, a: Allowed): Config {
   const out = { ...config };
-  setter(out)('link', mergeLink(b, a.pages));
+  const set = setter(out);
+  set('link', mergeLink(b, a.pages));
+  set('create', mergeLink(b, a.pages, 'create'));
+  // views: all four is the default (left out); none ticked means all four too
+  const views = CALENDAR_VIEWS.filter((v) => b[`view_${v}`] === 'true');
+  const enabled = views.length ? views : CALENDAR_VIEWS;
+  set('views', views.length && views.length < CALENDAR_VIEWS.length ? views : undefined);
+  set('view', b.view && (enabled as string[]).includes(b.view) && b.view !== enabled[0] ? b.view : undefined);
+  const hour = (v: string | undefined, lo: number, hi: number) => {
+    const n = Number(v);
+    return v?.trim() && Number.isInteger(n) && n >= lo && n <= hi ? n : undefined;
+  };
+  const start = hour(b.day_start, 0, 23);
+  const end = hour(b.day_end, 1, 24);
+  set('day_start', start !== undefined && start !== 8 ? start : undefined);
+  set('day_end', end !== undefined && end !== 18 && end > (start ?? 8) ? end : undefined);
+  set('move', b.move?.trim() || undefined);
+  const key = b.key?.trim();
+  set('key', key && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(key) && key.toLowerCase() !== 'id' ? key : undefined);
+  const authz = b.move_authz?.trim().toUpperCase();
+  set('move_authz', authz && (authz === 'MUST_NOT_BE_PUBLIC_USER' || a.authz?.has(authz)) ? authz : undefined);
   return out;
 }
 
@@ -162,13 +202,33 @@ export function mergeGridSettings(config: Config, b: Body, a: Allowed): Config {
   return out;
 }
 
-export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config {
-  const out = { ...config };
+/** "from..to = label; …" (either bound may be empty; numbers or ISO dates) → ranges; malformed parts are left out. */
+export function parseRanges(text: string | undefined): Range[] {
+  const out: Range[] = [];
+  for (const part of (text ?? '').split(';')) {
+    const m = /^\s*(.*?)\s*\.\.\s*(.*?)\s*(?:=\s*(.*?)\s*)?$/.exec(part);
+    if (!m || (!m[1] && !m[2]) || !anyBound(m[1]) || !anyBound(m[2])) continue;
+    out.push({ from: m[1], to: m[2], ...(m[3] ? { label: m[3].slice(0, 80) } : {}) });
+    if (out.length >= MAX_RANGES) break;
+  }
+  return out;
+}
+
+/** Ranges as the settings form shows them. */
+export const rangesText = (ranges: unknown) =>
+  (Array.isArray(ranges) ? ranges : [])
+    .map((r: any) => `${r?.from ?? ''}..${r?.to ?? ''}${r?.label ? ` = ${r.label}` : ''}`)
+    .join('; ');
+
+const FACET_FORM_KEYS = ['label', 'limit', 'type', 'ranges', 'custom', 'exclude'];
+
+/** The facets table of a faceted search or smart filters form (and the report it filters). */
+function mergeFacetList(out: Config, config: Config, b: Body, a: Allowed) {
   const set = setter(out);
   const report = Number(b.report);
   const columns = a.reports.get(report);
   set('report', columns ? report : undefined);
-  if (!columns) return out;
+  if (!columns) return false;
   const n = Math.min(Number(b.n) || 0, 500);
   const old = new Map<string, Config>((config.facets ?? []).map((f: Config) => [f.column, f]));
   const facets = Array.from({ length: n }, (_, i) => ({
@@ -176,20 +236,56 @@ export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config
     on: b[`on_${i}`] === 'true',
     label: (b[`label_${i}`] ?? '').trim(),
     limit: Number(b[`limit_${i}`]),
+    type: b[`type_${i}`] === 'range' || b[`type_${i}`] === 'star' ? b[`type_${i}`] : 'checkbox',
+    ranges: parseRanges(b[`ranges_${i}`]),
+    custom: b[`custom_${i}`] === 'true',
+    exclude: b[`exclude_${i}`] === 'true',
     seq: Number(b[`seq_${i}`]) || (i + 1) * 10,
   }))
     .filter((f) => f.on && columns.includes(f.column))
     .sort((x, y) => x.seq - y.seq)
     .map((f) => {
-      const { label: _l, limit: _n, ...rest } = old.get(f.column) ?? {};
+      const rest = Object.fromEntries(Object.entries(old.get(f.column) ?? {}).filter(([key]) => !FACET_FORM_KEYS.includes(key)));
+      if (f.type !== 'star') delete rest.max;
       return {
         ...rest,
         column: f.column,
         ...(f.label ? { label: f.label } : {}),
-        ...(Number.isInteger(f.limit) && f.limit >= 1 && f.limit <= 50 && f.limit !== FACET_LIMIT ? { limit: f.limit } : {}),
+        ...(f.type !== 'checkbox' ? { type: f.type } : {}),
+        ...(f.type === 'checkbox' && Number.isInteger(f.limit) && f.limit >= 1 && f.limit <= 50 && f.limit !== FACET_LIMIT ? { limit: f.limit } : {}),
+        ...(f.type === 'checkbox' && f.exclude ? { exclude: true } : {}),
+        ...(f.type === 'range' && f.ranges.length ? { ranges: f.ranges } : {}),
+        // a range facet without ranges has from/to fields unless switched off; with ranges, only when switched on
+        ...(f.type === 'range' && f.custom !== !f.ranges.length ? { custom: f.custom } : {}),
       };
     });
   set('facets', facets.length ? facets : undefined);
+  return true;
+}
+
+export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config {
+  const out = { ...config };
+  if (!mergeFacetList(out, config, b, a)) return out;
+  setter(out)('search', b.search === 'true' ? true : undefined);
+  return out;
+}
+
+export function mergeSmartFiltersSettings(config: Config, b: Body, a: Allowed): Config {
+  const out = { ...config };
+  if (!mergeFacetList(out, config, b, a)) return out;
+  const set = setter(out);
+  const n = Number(b.suggestions);
+  set('suggestions', b.suggestions !== undefined && b.suggestions !== '' && Number.isInteger(n) && n >= 0 && n <= 10 && n !== 3 ? n : undefined);
+  set('placeholder', b.placeholder?.trim().slice(0, 100) || undefined);
+  return out;
+}
+
+export function mergeDisplaySelectorSettings(config: Config, b: Body): Config {
+  const out = { ...config };
+  const set = setter(out);
+  set('style', b.style === 'select' ? 'select' : undefined);
+  set('show_all', b.show_all === 'true' ? undefined : false);
+  set('remember', b.remember === 'true' ? undefined : false);
   return out;
 }
 
@@ -241,10 +337,12 @@ const MERGES: Record<SettingsType, (c: Config, b: Body, a: Allowed) => Config> =
   map: mergeMapSettings,
   tree: mergeTreeSettings,
   grid: mergeGridSettings,
-  chart: (c, b) => mergeChartSettings(c, b),
+  chart: mergeChartSettings,
   cards: mergeCardsSettings,
   calendar: mergeCalendarSettings,
   facets: mergeFacetsSettings,
+  smart_filters: mergeSmartFiltersSettings,
+  display_selector: (c, b) => mergeDisplaySelectorSettings(c, b),
 };
 
 // ---------------------------------------------------------------- forms
@@ -258,7 +356,7 @@ interface RegionRow {
 
 async function gridFields(appId: number, r: RegionRow, id: (n: string) => string) {
   const cfg = r.config ?? {};
-  const cols = await reportColumns(appId, r.source);
+  const cols = await reportColumns(appId, await designSql(appId, r));
   const lovs = (await owner.query('select name from meta.lov where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
   const colCfg: Config = cfg.columns ?? {};
   const { all, known } = withStale('columns' in cols ? cols.columns : [], [...(cfg.hidden ?? []), ...(cfg.readonly ?? []), ...Object.keys(cfg.headings ?? {}), ...Object.keys(colCfg)]);
@@ -302,9 +400,9 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
 /** A map can filter a report on its page to the visible area; the report needs position columns. */
 async function mapReportFieldset(r: RegionRow, pageId: number, appId: number, id: (n: string) => string) {
   const cfg = r.config ?? {};
-  const reports = (await owner.query(`select id, title, source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
+  const reports = (await owner.query(`select id, title, source, rest_source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
   const target = reports.find((x) => x.id === Number(cfg.report));
-  const cols = target ? await reportColumns(appId, target.source) : null;
+  const cols = target ? await reportColumns(appId, await designSql(appId, target)) : null;
   const noPosition = cols && 'columns' in cols && !positionColumns(cols.columns);
   return html`<fieldset class="prop-group"><legend>Filter a report</legend><div class="form-grid">
       <div class="field"><label class="label" for="${id('report')}">Report region</label>
@@ -315,12 +413,14 @@ async function mapReportFieldset(r: RegionRow, pageId: number, appId: number, id
     </fieldset>`;
 }
 
-async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n: string) => string) {
+const FACET_TYPE_LABELS: Record<string, string> = { checkbox: 'Checkboxes', range: 'Ranges', star: 'Star rating' };
+
+async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n: string) => string, smart: boolean) {
   const cfg = r.config ?? {};
-  const reports = (await owner.query(`select id, title, source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
+  const reports = (await owner.query(`select id, title, source, rest_source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
   const target = reports.find((x) => x.id === Number(cfg.report));
-  const cols = target ? await reportColumns(appId, target.source) : null;
-  const facets: Config[] = cfg.facets ?? [];
+  const cols = target ? await reportColumns(appId, await designSql(appId, target)) : null;
+  const facets: Config[] = Array.isArray(cfg.facets) ? cfg.facets : [];
   const byCol = new Map(facets.map((f) => [f.column, f]));
   // configured facets first, in their order; then the report's other columns
   const { all, known } = withStale(
@@ -329,11 +429,17 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
   );
   const rows = all.map((n, i) => {
     const f = byCol.get(n);
+    const type = f?.type === 'range' || f?.type === 'star' ? f.type : 'checkbox';
+    const custom = type === 'range' && (f?.custom === true || (f?.custom !== false && !(Array.isArray(f?.ranges) && f.ranges.length)));
     return html`<tr>
       <td data-label="Column"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="Facet"><input type="checkbox" name="on_${i}" value="true"${f ? raw(' checked') : ''} aria-label="Facet on ${n}"></td>
       <td data-label="Label"><input name="label_${i}" value="${f?.label ?? ''}" placeholder="${heading(n)}" aria-label="Label of ${n}"></td>
+      <td data-label="Type"><select name="type_${i}" aria-label="Type of the facet on ${n}">${Object.entries(FACET_TYPE_LABELS).map(([k, l]) => opt(k, l, type))}</select></td>
       <td data-label="Values shown"><input name="limit_${i}" type="number" min="1" max="50" value="${f?.limit ?? ''}" placeholder="${FACET_LIMIT}" aria-label="Values shown for ${n}" class="u-mw6"></td>
+      <td data-label="Exclude"><input type="checkbox" name="exclude_${i}" value="true"${f?.exclude === true ? raw(' checked') : ''} aria-label="Users may exclude values of ${n}"></td>
+      <td data-label="Ranges"><input name="ranges_${i}" value="${rangesText(f?.ranges)}" placeholder="..1000; 1000..3000 = Middle; 3000.." aria-label="Ranges of ${n}"></td>
+      <td data-label="From/to"><input type="checkbox" name="custom_${i}" value="true"${custom ? raw(' checked') : ''} aria-label="Users may type a range for ${n}"></td>
       <td data-label="Order"><input name="seq_${i}" type="number" value="${(i + 1) * 10}" aria-label="Order of ${n}" class="u-mw6"></td>
     </tr>`;
   });
@@ -341,16 +447,84 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
     <fieldset class="prop-group"><legend>Filters</legend><div class="form-grid">
       <div class="field"><label class="label" for="${id('report')}">Report region</label>
         <select id="${id('report')}" name="report">${opt('', '- choose -', target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? '(untitled)'} (#${x.id})`, cfg.report))}</select>
-        <small class="help">${reports.length ? 'The report on this page that the facets filter. Save to list its columns.' : 'Add a report region to this page first.'}</small></div>
+        <small class="help">${reports.length ? `The report on this page that the ${smart ? 'smart filters' : 'facets'} filter. Save to list its columns.` : 'Add a report region to this page first.'}</small></div>
+      ${smart
+        ? html`<div class="field"><label class="label" for="${id('suggestions')}">Suggestions per facet (0–10)</label>
+            <input id="${id('suggestions')}" name="suggestions" type="number" min="0" max="10" value="${cfg.suggestions ?? 3}"></div>
+          <div class="field" data-wide><label class="label" for="${id('placeholder')}">Placeholder of the search field</label>
+            <input id="${id('placeholder')}" name="placeholder" maxlength="100" value="${cfg.placeholder ?? ''}" placeholder="Search or filter…"></div>`
+        : html`${check('search', 'A search field (searches all columns of the report)', cfg.search === true)}`}
     </div></fieldset>
     ${cols && 'error' in cols ? columnsHint(cols) : ''}
     ${target
       ? html`<fieldset class="prop-group"><legend>Facets</legend>
           ${all.length
-            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Facet</th><th>Label</th><th>Values shown</th><th>Order</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Facet</th><th>Label</th><th>Type</th><th>Values shown</th><th>Exclude</th><th>Ranges</th><th>From/to</th><th>Order</th></tr></thead><tbody>${rows}</tbody></table></div>
+              <small class="help">Checkboxes list the most frequent values (Exclude lets users filter them out instead). Ranges and From/to need a number or date column: ranges are <code>from..to = label</code> separated by <code>;</code>, an open end left empty (<code>..1000</code>, <code>2020-01-01..</code>); a range includes its start, not its end. A star rating offers "4 stars and up" and so on (up to 5; <code>"max"</code> in the JSON changes it).</small>`
             : html`<p class="muted">The report has no columns.</p>`}
         </fieldset>`
       : ''}`;
+}
+
+const VIEW_LABELS: Record<string, string> = { month: 'Month', week: 'Week', day: 'Day', list: 'List' };
+
+async function calendarFields(appId: number, r: RegionRow, id: (n: string) => string, pages: { page_no: number; name: string }[]) {
+  const cfg = r.config ?? {};
+  const views = calendarViews(cfg);
+  const schemes = (await owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
+  return html`${columnsHint(await reportColumns(appId, await designSql(appId, r)), ['start_date', 'title'])}
+    <p class="muted u-mt0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code> (dates for all-day events, timestamps for events with a time).</p>
+    <fieldset class="prop-group"><legend>Views</legend>
+      <div class="form-grid">
+        ${CALENDAR_VIEWS.map((v) => check(`view_${v}`, VIEW_LABELS[v], views.includes(v)))}
+        <div class="field"><label class="label" for="${id('view')}">Shown first</label>
+          <select id="${id('view')}" name="view">${CALENDAR_VIEWS.map((v) => opt(v, VIEW_LABELS[v], cfg.view ?? views[0]))}</select></div>
+        <div class="field"><label class="label" for="${id('day_start')}">Week and day views from hour</label>
+          <input id="${id('day_start')}" name="day_start" type="number" min="0" max="23" value="${cfg.day_start ?? ''}" placeholder="8"></div>
+        <div class="field"><label class="label" for="${id('day_end')}">Until hour</label>
+          <input id="${id('day_end')}" name="day_end" type="number" min="1" max="24" value="${cfg.day_end ?? ''}" placeholder="18"></div>
+      </div>
+      <small class="help">Users switch between the ticked views. Hours outside the range are added when an event needs them.</small></fieldset>
+    ${linkFieldset(id, cfg.link, pages, 'Each event', { legend: 'Edit link' })}
+    ${linkFieldset(id, cfg.create, pages, 'An empty day or hour slot', {
+      prefix: 'create', legend: 'Create on click', placeholder: 'P3_START=#start#,P3_END=#end#',
+      help: 'ITEM=#start#, #end# or #date#: the slot clicked (YYYY-MM-DD, or YYYY-MM-DD HH:MI for an hour slot).',
+    })}
+    <fieldset class="prop-group"><legend>Drag and drop</legend><div class="form-grid">
+      <div class="field" data-wide><label class="label" for="${id('move')}">SQL that moves an event</label>
+        <textarea id="${id('move')}" name="move" rows="3" data-code="sql" placeholder="update my_schema.event set starts_at = :NEW_START::timestamp, ends_at = :NEW_END::timestamp where id = :EVENT_ID::int">${cfg.move ?? ''}</textarea>
+        <small class="help">Runs as the application's database role (row level security applies) with <code>:EVENT_ID</code> (the key column's value), <code>:NEW_START</code> and <code>:NEW_END</code> (same duration as before). Empty: events can't be dragged.</small></div>
+      <div class="field"><label class="label" for="${id('key')}">Key column</label>
+        <input id="${id('key')}" name="key" value="${cfg.key ?? ''}" placeholder="id"></div>
+      <div class="field"><label class="label" for="${id('move_authz')}">Who may drag</label>
+        <select id="${id('move_authz')}" name="move_authz">${opt('', 'Everyone who sees the calendar', cfg.move_authz)}${opt('MUST_NOT_BE_PUBLIC_USER', 'Signed-in users', cfg.move_authz)}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.move_authz))}</select></div>
+    </div>
+    <small class="help">Only events the user sees in this calendar can be moved; without a mouse, the edit link changes the dates.</small></fieldset>`;
+}
+
+/** The display selector's settings: style and options, and which regions of the page take part. */
+async function displaySelectorFields(r: RegionRow, pageId: number, id: (n: string) => string) {
+  const cfg = r.config ?? {};
+  const others = (await owner.query(`select id, title, type, config->'display_selector' as flag from meta.region
+                                     where page_id = $1 and id <> $2 and type <> 'display_selector' order by seq, id`, [pageId, r.id])).rows;
+  return html`<fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('style')}">Show as</label>
+        <select id="${id('style')}" name="style">${opt('', 'Tabs', cfg.style)}${opt('select', 'Select list', cfg.style)}</select></div>
+    </div>
+    ${check('show_all', '"Show all" choice (shows every region)', cfg.show_all !== false)}
+    ${check('remember', 'Remember the choice during the session', cfg.remember !== false)}</fieldset>
+    <fieldset class="prop-group"><legend>Regions</legend>
+      <input type="hidden" name="members" value="1">
+      ${others.length
+        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Region</th><th>In a tab</th><th>Tab name</th></tr></thead><tbody>
+            ${others.map((x) => html`<tr>
+              <td data-label="Region">${x.title || '(untitled)'} <span class="muted">(${x.type} #${x.id})</span></td>
+              <td data-label="In a tab"><input type="checkbox" name="member_${x.id}" value="true"${x.flag === true || (typeof x.flag === 'string' && x.flag.trim()) ? raw(' checked') : ''} aria-label="Show ${x.title || `region ${x.id}`} in the display selector"></td>
+              <td data-label="Tab name"><input name="tab_${x.id}" maxlength="60" value="${typeof x.flag === 'string' ? x.flag : ''}" placeholder="${x.title || ''}" aria-label="Tab name of ${x.title || `region ${x.id}`}"></td>
+            </tr>`)}</tbody></table></div>`
+        : html`<p class="muted">There are no other regions on this page.</p>`}
+      <small class="help">A chosen region gets <code>"display_selector": true</code> in its settings (a tab named after it), or the tab name: regions with the same tab name share one tab (e.g. smart filters and their report). Without JavaScript every region shows, with links to each.</small>
+    </fieldset>`;
 }
 
 /** The settings form under a region in the page designer, or '' for types without one. */
@@ -370,17 +544,24 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'chart':
       title = 'Chart settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source))}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
         <p class="muted u-mt0">The first column is the label; each following numeric column is a series (up to 8).</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('kind')}">Chart type</label>
             <select id="${id('kind')}" name="kind">${CHART_KINDS.map((k) => opt(k, CHART_LABELS[k], cfg.kind ?? 'bar'))}</select></div>
           ${emptyField(id, cfg)}
-        </div></fieldset>`;
+        </div></fieldset>
+        <fieldset class="prop-group"><legend>Gauge</legend><div class="form-grid">
+          ${GAUGE_KEYS.map((k) => html`<div class="field"><label class="label" for="${id(`gauge_${k}`)}">${{ min: 'Minimum', max: 'Maximum', warning: 'Warning from', critical: 'Critical from' }[k]}</label>
+            <input id="${id(`gauge_${k}`)}" name="gauge_${k}" type="number" step="any" value="${cfg.gauge?.[k] ?? ''}" placeholder="${k === 'min' ? '0' : k === 'max' ? 'automatic' : ''}"></div>`)}
+        </div>
+        <small class="help">Gauge charts only. A warning threshold above the critical one means low values are bad (e.g. warning 50, critical 20).</small></fieldset>
+        ${linkFieldset(id, cfg.link, await pages(), 'Each data point')}
+        <small class="help">Drill-down: <code>#column#</code> takes the value from the point's row, <code>#series#</code> the name of its series. Columns only the link refers to are not drawn.</small>`;
       break;
     case 'cards':
       title = 'Cards settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source))}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
         <p class="muted u-mt0">Cards show the columns ${CARD_COLUMNS.map((c, i) => html`${i ? ', ' : ''}<code>${c}</code>`)}; KPI tiles show title, badge (the value) and icon.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('style')}">Style</label>
@@ -391,17 +572,23 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'calendar':
       title = 'Calendar settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source), ['start_date', 'title'])}
-        <p class="muted u-mt0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code>.</p>
-        ${linkFieldset(id, cfg.link, await pages(), 'Each event')}`;
+      body = await calendarFields(appId, r, id, await pages());
       break;
     case 'facets':
       title = 'Faceted search settings';
-      body = await facetsFields(r, pageId, appId, id);
+      body = await facetsFields(r, pageId, appId, id, false);
+      break;
+    case 'smart_filters':
+      title = 'Smart filters settings';
+      body = await facetsFields(r, pageId, appId, id, true);
+      break;
+    case 'display_selector':
+      title = 'Display selector settings';
+      body = await displaySelectorFields(r, pageId, id);
       break;
     case 'map':
       title = 'Map settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source))}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
         <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas. A heat map weighs each place by a <code>weight</code> column.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('layer')}">Show places as</label>
@@ -417,7 +604,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'tree':
       title = 'Tree settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source), ['id', 'parent_id', 'label'])}
+      body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)), ['id', 'parent_id', 'label'])}
         <p class="muted u-mt0">The query returns <code>id</code>, <code>parent_id</code> and <code>label</code> (and optionally <code>icon</code>); rows whose parent isn't in the result are the roots.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('expanded')}">Levels open at first</label>
@@ -466,22 +653,40 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
       ? await owner.one(`select r.id, r.type, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2`, [rid, pid])
       : undefined;
     if (!r || !(SETTINGS_TYPES as readonly string[]).includes(r.type)) return reply.code(404).send('Not found');
-    const [pages, lovs, reports] = await Promise.all([
+    const [pages, lovs, reports, schemes] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.lov where app_id = $1', [r.app_id]),
-      r.type === 'facets' || r.type === 'map' ? owner.query(`select id, source from meta.region where page_id = $1 and type = 'report'`, [pid]) : Promise.resolve({ rows: [] as any[] }),
+      r.type === 'facets' || r.type === 'smart_filters' || r.type === 'map' ? owner.query(`select id, source from meta.region where page_id = $1 and type = 'report'`, [pid]) : Promise.resolve({ rows: [] as any[] }),
+      owner.query('select name from meta.authz_scheme where app_id = $1', [r.app_id]),
     ]);
     const reportCols = new Map<number, string[]>();
     for (const x of reports.rows) {
-      const c = await reportColumns(r.app_id, x.source);
+      const c = await reportColumns(r.app_id, await designSql(r.app_id, x));
       reportCols.set(x.id, 'columns' in c ? c.columns : []);
     }
     const config = MERGES[r.type as SettingsType](r.config ?? {}, (req.body ?? {}) as Body, {
       pages: new Set(pages.rows.map((x) => x.page_no)),
       lovs: new Set(lovs.rows.map((x) => x.name)),
       reports: reportCols,
+      authz: new Set(schemes.rows.map((x) => String(x.name).toUpperCase())),
     });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
+    // the display selector's form also says which regions of the page take part
+    const b = (req.body ?? {}) as Body;
+    if (r.type === 'display_selector' && b.members === '1') {
+      // {region id: true or the tab name}, for the regions of this page only (checked in the update)
+      const flags: Record<string, string | boolean> = {};
+      for (const k of Object.keys(b)) {
+        const m = /^member_(\d{1,9})$/.exec(k);
+        if (m && b[k] === 'true') flags[m[1]] = (b[`tab_${m[1]}`] ?? '').trim().slice(0, 60) || true;
+      }
+      await owner.query(
+        `update meta.region set config = case when $3::jsonb ? id::text then jsonb_set(config, '{display_selector}', $3::jsonb -> id::text) else config - 'display_selector' end
+          where page_id = $1 and id <> $2 and type <> 'display_selector'
+            and ($3::jsonb -> id::text) is distinct from (config -> 'display_selector')`,
+        [pid, r.id, JSON.stringify(flags)],
+      );
+    }
     flash(s, 'Settings saved.');
     return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
   });

@@ -5,6 +5,45 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-04
+
+### Added
+- **Calendar views** (APEX: calendar): month, week, day and list views, create on click (a
+  checksummed link with the clicked slot) and drag and drop to move events through the region's
+  move SQL, run as the application's role. Works without JavaScript; dragging adds on top.
+- **Bubble, gauge, funnel and radar charts**, and **drill-down links** on chart marks
+  (checksummed, only to pages the user may open).
+- **Smart filters** region (APEX 22.2+): one search field with filter chips and suggestions over a
+  report, URL-based, no JavaScript needed.
+- **Region display selector** (migration 031): tabs or a select list over the regions of a page,
+  shared tabs, *Show all*, the choice remembered in the session, `#R<id>` links.
+- **Faceted search**: range facets (predefined, or a custom from/to on numbers and dates), star
+  rating and search facets, and *exclude* on checkbox facets (26.1).
+- **Computations** and **conditional branches** (migration 029): computations before header and
+  after submit (static, item, SQL query, SQL expression, PL/pgSQL), branches before header and
+  after processing to a page or a URL in the app, with conditions and *When button pressed*.
+- **Build options**: include/exclude switches on pages and every component, navigation entries and
+  application processes, with *Used in*, the Advisor and export.
+- **Menu buttons and button badges** (26.1), and the dynamic actions **Set Focus**, **Add/Remove
+  Class**, **Show Success/Error Message** and **Clear Errors** (26.1).
+- **REST data sources and web credentials** (migration 030, new chapter 19): JSON web services as
+  rows for reports, cards, charts, calendars, maps, trees, template components and lists of values;
+  basic, API-key, bearer and OAuth2 client-credentials sign-in with encrypted, write-only secrets;
+  an **Invoke API** page process. Outgoing calls only to hosts on `PGAPEX_REST_ALLOWED_HOSTS`, with
+  SSRF checks; secrets need `PGAPEX_SECRET_KEY`.
+- **New item types** (migration 032): `richtext` (HTML rebuilt from an allow-list on the server
+  every time it is saved and shown; pasted HTML is cleaned), `markdown` (rendered on the server),
+  `rating` (stars), `combobox` (free text with suggestions, as tags), `daterange` (`from:to`) and
+  `qrcode` (SVG drawn on the server, no dependency), and a show/hide button on password items
+  (`{"reveal": true}`). All work without JavaScript.
+- HR example pages 20 (Reviews), 21 (Explore), 22 (Leave planner), 23 (Web services) and 24 (Planner).
+
+### Changed
+- Report search terms, facet values and range bounds are sent to PostgreSQL as query parameters.
+- A facet filter in a report's URL (`r<id>_x_<column>`) only applies when the page has a facet on
+  that column.
+- Migration 034 brings the export and import functions of migrations 029–031 together.
+
 ## [0.17.1] - 2026-10-01
 
 ### Fixed

@@ -42,7 +42,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
   switch (kind) {
     case 'region':
       return [
-        ...(['report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() ? [{ name: 'source', shape: 'select' as const }] : []),
+        ...(['report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() && !row.rest_source ? [{ name: 'source', shape: 'select' as const }] : []),
         { name: 'condition', shape: 'boolean' },
       ];
     case 'item':
@@ -51,7 +51,14 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
         { name: 'readonly_condition', shape: 'boolean' },
       ];
     case 'button':
-      return [{ name: 'condition', shape: 'boolean' }];
+      return [{ name: 'condition', shape: 'boolean' }, { name: 'badge_query', shape: 'select' }];
+    case 'computation':
+      return [
+        ...(row.type === 'sql_query' ? [{ name: 'expression', shape: 'select' as const }] : []),
+        ...conditionSql(row),
+      ];
+    case 'branch':
+      return conditionSql(row);
     case 'dynamic_action':
       return row.action === 'set_value' ? [{ name: 'code', shape: 'select' }] : row.action === 'execute_sql' ? [{ name: 'code', shape: 'statements' }] : [];
     case 'validation':
@@ -61,7 +68,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
     case 'authz_scheme':
       return row.type === 'sql' ? [{ name: 'value', shape: 'boolean' }] : [];
     case 'lov':
-      return /^STATIC:/i.test(row.query?.trim() ?? '') ? [] : [{ name: 'query', shape: 'select' }];
+      return /^STATIC:/i.test(row.query?.trim() ?? '') || row.rest_source ? [] : [{ name: 'query', shape: 'select' }];
     case 'app_process':
       return [{ name: 'code', shape: 'statements' }];
     case 'automation':
@@ -80,6 +87,10 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
       return [];
   }
 }
+
+/** The SQL of a computation's or branch's condition (migration 029). */
+const conditionSql = (row: any): { name: string; shape: SqlShape }[] =>
+  row.condition_type === 'sql' ? [{ name: 'condition_expr', shape: 'boolean' }] : row.condition_type === 'exists' || row.condition_type === 'not_exists' ? [{ name: 'condition_expr', shape: 'select' }] : [];
 
 const EXPLAINABLE = /^\s*(\(|select|with|values|table|insert|update|delete|merge)\b/i;
 
@@ -203,6 +214,7 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
   const items = new Set(all.filter((x) => x.kind === 'item' || x.kind === 'app_item').map((x) => x.row.name.toUpperCase()));
   const lovs = new Set(all.filter((x) => x.kind === 'lov').map((x) => x.row.name.toUpperCase()));
   const schemes = new Set(all.filter((x) => x.kind === 'authz_scheme').map((x) => x.row.name));
+  const buildOptions = new Set(all.filter((x) => x.kind === 'build_option').map((x) => x.row.name));
   const layouts = new Set(all.filter((x) => x.kind === 'report_layout').map((x) => x.row.name.toUpperCase()));
   const regionIds = new Set(all.filter((x) => x.kind === 'region').map((x) => x.row.id));
   const documents = new Set(all.filter((x) => x.kind === 'document_template').map((x) => x.row.name.toUpperCase()));
@@ -212,6 +224,8 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     for (const f of e.fields) {
       if (!f.value) continue;
       if (f.kind === 'page' && f.value && !pageNos.has(Number(f.value))) missing(e, f.label, `Page ${f.value} doesn't exist.`);
+      if (f.kind === 'build_option' && !buildOptions.has(f.value.replace(/^!/, '')))
+        missing(e, f.label, `Build option ${f.value.replace(/^!/, '')} doesn't exist, so the component is always left out.`);
       if (f.kind === 'authz') {
         const name = f.value.replace(/^!/, '');
         if (!schemes.has(name) && !BUILT_IN.has(name)) missing(e, f.label, `Authorization scheme ${name} doesn't exist (nobody passes it).`);
@@ -242,6 +256,8 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     if (kind === 'region' && row.type === 'grid' && !all.some((x) => x.kind === 'process' && x.row.type === 'grid_dml' && x.row.region_id === row.id))
       missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
     if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);
+    if (kind === 'computation' && !items.has(String(row.item_name).toUpperCase())) missing(e, 'Item', `Item ${row.item_name} doesn't exist (the computation sets nothing).`);
+    if (kind === 'computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
     if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');

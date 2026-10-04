@@ -9,6 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { closePools, owner, runtime } from '../src/db.ts';
 import { urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
+import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -1225,6 +1226,682 @@ describe('sprint 25: malformed ids in builder URLs', () => {
       const res = await dev.get(url);
       assert.equal(res.statusCode, 404, url);
       assert.doesNotMatch(res.body, /invalid input syntax|22P02|out of range/, url);
+    }
+  });
+});
+
+
+describe('sprint 26 views: calendar drag and drop, create links, chart drill-down', () => {
+  const page24 = async (type: string, title?: string) =>
+    (await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 24 and r.type = $2${title ? ' and r.title = $3' : ''}`, title ? [appId, type, title] : [appId, type])) as { id: number; config: any };
+  const meetingRow = async (title: string) => (await owner.one(`select id, starts_at::text as s, ends_at::text as e from hr.meeting where title = $1`, [title])) as { id: number; s: string; e: string };
+  const move = (b: Browser, rid: number, form: Record<string, string>, csrf = b.lastCsrf) => b.post(`/a/hr/24/calendar/${rid}/move`, { __csrf: csrf, ...form });
+  const day = (m: { s: string }) => m.s.slice(0, 10);
+
+  test('moving needs the session\'s CSRF token and a signed-in user', async () => {
+    const cal = await page24('calendar');
+    const m = await meetingRow('Team stand-up');
+    const king = await as('king');
+    await king.get('/a/hr/24');
+    for (const csrf of ['', 'forged']) assert.equal((await move(king, cal.id, { key: String(m.id), to: `${day(m)}T12:00` }, csrf)).statusCode, 403, csrf);
+    const anon = new Browser();
+    await anon.get('/a/hr/login');
+    const res = await move(anon, cal.id, { key: String(m.id), to: `${day(m)}T12:00` });
+    assert.equal(res.statusCode, 401);
+    assert.deepEqual(await meetingRow('Team stand-up'), m);
+  });
+
+  test('only events the user sees in the calendar can be moved (the region query, as the app role, with RLS)', async () => {
+    const cal = await page24('calendar');
+    const secret = await meetingRow('One-to-one with Jones'); // king's private meeting
+    const blake = await as('blake');
+    const body = (await blake.get('/a/hr/24')).body;
+    assert.doesNotMatch(body, /One-to-one/);
+    // an event outside the region's query (or a key crafted to widen it) is refused before the move SQL runs
+    for (const key of [String(secret.id), `${secret.id}' or '1'='1`, `0 or true`, 'x'.repeat(201)]) {
+      const res = await move(blake, cal.id, { key, to: `${day(secret)}T08:00` });
+      assert.equal(res.statusCode, 403, key);
+      assert.match(res.json().error, /can no longer be moved/);
+    }
+    assert.deepEqual(await meetingRow('One-to-one with Jones'), secret);
+    const log = await owner.one(`select detail from meta.activity_log where event = 'forbidden' and detail like 'calendar move%' order by id desc limit 1`);
+    assert.equal(log.detail, `calendar move: region ${cal.id}`);
+  });
+
+  test('the drop target is validated and never becomes SQL text', async () => {
+    const cal = await page24('calendar');
+    const m = await meetingRow('Team stand-up');
+    const king = await as('king');
+    await king.get('/a/hr/24');
+    for (const to of [`${day(m)}'); delete from hr.meeting; --`, '2026-02-30', `${day(m)}T25:00`, `${day(m)} 10:00`, '']) {
+      const res = await move(king, cal.id, { key: String(m.id), to });
+      assert.equal(res.statusCode, 400, to);
+      assert.match(res.json().error, /not a valid date/);
+    }
+    assert.deepEqual(await meetingRow('Team stand-up'), m);
+    assert.ok((await owner.one('select count(*)::int as n from hr.meeting')).n >= 7);
+  });
+
+  test('regions without drag and drop, other region types, hidden regions and move_authz are refused', async () => {
+    const cal = await page24('calendar');
+    const chart = await page24('chart', 'Jobs per department');
+    const leave = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 12`, [appId])).id;
+    const m = await meetingRow('Team stand-up');
+    const king = await as('king');
+    await king.get('/a/hr/24');
+    for (const rid of [chart.id, leave, 999999]) assert.equal((await move(king, rid, { key: String(m.id), to: `${day(m)}T12:00` })).statusCode, 403, String(rid));
+    // the leave calendar on its own page: no move SQL configured
+    await king.get('/a/hr/12');
+    assert.equal((await king.post(`/a/hr/12/calendar/${leave}/move`, { __csrf: king.lastCsrf, key: '1', to: '2026-10-05' })).statusCode, 403);
+    const allen = await as('allen');
+    try {
+      // an authorization scheme for dragging: allen is no manager
+      await owner.query(`update meta.region set config = config || '{"move_authz": "MANAGER"}' where id = $1`, [cal.id]);
+      const body = (await allen.get('/a/hr/24')).body;
+      assert.doesNotMatch(body, /data-calendar=|draggable=|data-drop=/);
+      assert.equal((await move(allen, cal.id, { key: String(m.id), to: `${day(m)}T12:00` })).statusCode, 403);
+      // a region hidden by its condition can't be used either
+      await owner.query(`update meta.region set config = config - 'move_authz', condition = 'false' where id = $1`, [cal.id]);
+      await king.get('/a/hr/24');
+      assert.equal((await move(king, cal.id, { key: String(m.id), to: `${day(m)}T12:00` })).statusCode, 403);
+    } finally {
+      await owner.query(`update meta.region set config = $2, condition = null where id = $1`, [cal.id, JSON.stringify(cal.config)]);
+    }
+    assert.deepEqual(await meetingRow('Team stand-up'), m);
+  });
+
+  test('the move SQL runs as the application role with the values as literals', async () => {
+    const cal = await page24('calendar');
+    const m = await meetingRow('Research demo');
+    const king = await as('king');
+    try {
+      await owner.query(`update meta.region set config = config || $2::jsonb where id = $1`, [cal.id, JSON.stringify({
+        move: `update hr.meeting set title = current_user || ':' || :EVENT_ID || ':' || :NEW_START, starts_at = :NEW_START::timestamp, ends_at = :NEW_END::timestamp where id = :EVENT_ID::int`,
+      })]);
+      await king.get('/a/hr/24');
+      const res = await move(king, cal.id, { key: String(m.id), to: `${day(m)}T08:00` });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal((await owner.one('select title from hr.meeting where id = $1', [m.id])).title, `hr_app:${m.id}:${day(m)} 08:00`);
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [cal.id, JSON.stringify(cal.config)]);
+      await owner.query('update hr.meeting set title = $2, starts_at = $3, ends_at = $4 where id = $1', [m.id, 'Research demo', m.s, m.e]);
+    }
+  });
+
+  test('create links are checksummed: a changed slot is refused', async () => {
+    const king = await as('king');
+    const body = (await king.get('/a/hr/24')).body;
+    const href = /<a class="cal-add" href="([^"]+)"/.exec(body)![1].replace(/&amp;/g, '&');
+    assert.equal((await king.get(href)).statusCode, 200);
+    const forged = href.replace(/P24_STARTS_AT=[^&]+/, 'P24_STARTS_AT=2000-01-01');
+    assert.equal((await king.get(forged)).statusCode, 403);
+    // another user can't reuse king's link either (the checksum includes the user)
+    assert.equal((await (await as('allen')).get(href)).statusCode, 403);
+  });
+
+  test('chart drill-down: checksummed links, escaped values, none to pages the user may not open', async () => {
+    const chart = await page24('chart', 'Departments: service, pay and size');
+    const { source } = await owner.one('select source from meta.region where id = $1', [chart.id]);
+    const allen = await as('allen');
+    const body = (await allen.get('/a/hr/24')).body;
+    const href = /<a class="bubble s1 \w+ drill" href="([^"]+)"/.exec(body)![1].replace(/&amp;/g, '&');
+    const q = new URLSearchParams(href.split('?')[1]);
+    assert.equal(q.get('cs'), urlChecksum(appId, 2, 'allen', { P2_DEPTNO: q.get('P2_DEPTNO')! }));
+    assert.equal((await allen.get(href)).statusCode, 200);
+    try {
+      // a label with markup, a link item from it, and a target page allen may not open
+      await owner.query(`update meta.region set source = $2, config = config || '{"link": {"page": 2, "items": {"P2_DEPTNO": "#department#"}}}' where id = $1`,
+        [chart.id, `select '"><img src=x onerror=alert(1)>' as department, 1 as x, 2 as y, 3 as z`]);
+      const page = (await allen.get('/a/hr/24')).body;
+      assert.ok(!page.includes('<img src=x'));
+      assert.match(page, /P2_DEPTNO=%22%3E%3Cimg/);
+      await owner.query(`update meta.region set config = config || '{"link": {"page": 3, "items": {"P3_EMPNO": "#x#"}}}' where id = $1`, [chart.id]);
+      const none = (await allen.get('/a/hr/24')).body;
+      assert.doesNotMatch(none, /\/a\/hr\/3\?/, 'page 3 needs MANAGER');
+      assert.match(none, /class="bubble s1 \w+" data-tip=/);
+    } finally {
+      await owner.query(`update meta.region set config = $2, source = $3 where id = $1`, [chart.id, JSON.stringify(chart.config), source]);
+    }
+  });
+});
+
+describe('sprint 26 regions: smart filters, facet kinds, display selector', () => {
+  const region = async (title: string) =>
+    (await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                       where a.alias = 'hr' and p.page_no = 21 and r.title = $1`, [title])) as { id: number; page_id: number };
+  const rows = (body: string, rid: number) => (new RegExp(`id="R${rid}"[\\s\\S]*?<tbody>([\\s\\S]*?)</tbody>`).exec(body)?.[1].match(/data-label="Name"/g) ?? []).length;
+  const url = (params: [string, string][]) => `/a/hr/21?${new URLSearchParams(params)}`;
+
+  test('facet values, range bounds and search terms are query parameters: injection finds nothing', async () => {
+    const { id: rid } = await region('Employee list');
+    const king = await as('king');
+    const n: [string, string] = [`r${rid}_n`, '50'];
+    const all = rows((await king.get(url([n]))).body, rid);
+    for (const params of [
+      [[`r${rid}_x_job`, "Clerk' or '1'='1"]],
+      [[`r${rid}_q`, "%' or 1=1 --"]],
+      [[`r${rid}_rf_salary`, '0 or 1=1'], [`r${rid}_rt_salary`, "1); drop table hr.emp; --"]],
+      [[`r${rid}_rg_salary`, "3000|' or 1=1 --"]],
+      [[`r${rid}_rf_hiredate`, '1980-02-30']],
+      [[`r${rid}_x_job"; drop table hr.emp; --`, 'x']],
+      [[`r${rid}_rg_rating`, '0|']], // not one of the star facet's ranges
+    ] as [string, string][][]) {
+      const res = await king.get(url([n, ...params]));
+      assert.equal(res.statusCode, 200, JSON.stringify(params));
+      assert.doesNotMatch(res.body, /alert-error/, JSON.stringify(params));
+      const shown = rows(res.body, rid);
+      assert.ok(shown === 0 || shown === all, `${JSON.stringify(params)}: no rows, or the filter ignored (${shown})`);
+    }
+    // a malformed exclude switch is just "not excluded": the four clerks
+    assert.equal(rows((await king.get(url([n, [`r${rid}_x_job`, 'Clerk'], [`r${rid}_xn_job`, "1' or '1'='1"]]))).body, rid), 4);
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, 14);
+  });
+
+  test('a NUL byte, huge and repeated values do not fail the page', async () => {
+    const { id: rid } = await region('Employee list');
+    const king = await as('king');
+    const res = await king.get(`/a/hr/21?r${rid}_x_job=a%00b&r${rid}_q=x%00&${Array.from({ length: 300 }, (_, i) => `r${rid}_x_job=v${i}`).join('&')}&r${rid}_rf_salary=${'9'.repeat(400)}`);
+    assert.ok([200, 400].includes(res.statusCode), String(res.statusCode));
+    assert.doesNotMatch(res.body, /invalid byte sequence|22021|stack/);
+  });
+
+  test('values typed by users are escaped in chips, suggestions and the search field', async () => {
+    const { id: rid } = await region('Employees');
+    const king = await as('king');
+    const body = (await king.get(url([[`r${rid}_q`, '<script>alert(1)</script>'], [`r${rid}_x_job`, '"><img src=x onerror=alert(1)>']]))).body;
+    assert.doesNotMatch(body, /<script>alert\(1\)|<img src=x/);
+    assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  });
+
+  test('only facets of regions the user may see filter a report', async () => {
+    const sf = await region('Find employees');
+    const { id: rid } = await region('Employees');
+    const king = await as('king');
+    const filtered = url([[`r${rid}_n`, '50'], [`r${rid}_x_department`, 'SALES']]);
+    assert.equal(rows((await king.get(filtered)).body, rid), 6);
+    try {
+      await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [sf.id]);
+      const blake = await as('blake');
+      assert.equal(rows((await blake.get(filtered)).body, rid), 14, 'the smart filters are hidden from blake: their facets do not apply');
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [sf.id]);
+    }
+  });
+
+  test('the display selector lists no tab for a region the user may not see', async () => {
+    const chart = await region('Average salary by job');
+    try {
+      await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [chart.id]);
+      const body = (await (await as('blake')).get('/a/hr/21')).body;
+      assert.doesNotMatch(body, />Salaries</);
+      assert.doesNotMatch(body, new RegExp(`R${chart.id}\\b`));
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [chart.id]);
+    }
+  });
+
+  test('settings routes: developers only, with a CSRF token, on the region\'s own page', async () => {
+    const sel = await region('Views');
+    const sf = await region('Find employees');
+    const before = (await owner.query('select id, config from meta.region where page_id = $1 order by id', [sel.page_id])).rows;
+    const king = await as('king');
+    for (const b of [new Browser(), king])
+      assert.equal((await b.post(`/builder/pages/${sel.page_id}/region/${sel.id}/settings`, { __csrf: b.lastCsrf, style: 'select', members: '1' })).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/pages/${sel.page_id}`);
+    assert.equal((await dev.post(`/builder/pages/${sel.page_id}/region/${sel.id}/settings`, { __csrf: 'forged', style: 'select', members: '1' })).statusCode, 403);
+    const otherPage = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2`)).id;
+    assert.equal((await dev.post(`/builder/pages/${otherPage}/region/${sel.id}/settings`, { __csrf: dev.lastCsrf, style: 'select', members: '1' })).statusCode, 404, 'a region of another page');
+    // a smart filters region can only point at a report region of its own page
+    const otherReport = (await owner.one(`select r.id from meta.region r where r.page_id = $1 and r.type = 'report'`, [otherPage])).id;
+    try {
+      await dev.post(`/builder/pages/${sf.page_id}/region/${sf.id}/settings`, { __csrf: dev.lastCsrf, report: String(otherReport), n: '1', col_0: 'job', on_0: 'true' });
+      const cfg = (await owner.one('select config from meta.region where id = $1', [sf.id])).config;
+      assert.notEqual(Number(cfg.report), otherReport);
+    } finally {
+      for (const r of before) await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
+    }
+    assert.deepEqual((await owner.query('select id, config from meta.region where page_id = $1 order by id', [sel.page_id])).rows, before);
+  });
+});
+
+describe('sprint 26 logic: computations, branches, menus, badges, dynamic actions, build options', () => {
+  const page22 = async () => (await owner.one(`select p.id from meta.page p where p.app_id = $1 and p.page_no = 22`, [appId])).id as number;
+  const king = async () => {
+    const b = await as('king');
+    await b.get('/a/hr/22');
+    return b;
+  };
+
+  test('computation SQL and function bodies run as the application role; item values stay literals', async () => {
+    const pid = await page22();
+    const ids = (
+      await owner.query(
+        `insert into meta.computation (page_id, seq, item_name, point, type, expression) values
+           ($1, 95, 'P22_NAME', 'after_submit', 'function_body', 'return current_user || '':'' || :P22_DAYS;'),
+           ($1, 96, 'P22_PENDING', 'after_submit', 'sql_query', 'select session_user = current_user') returning id`,
+        [pid],
+      )
+    ).rows.map((r) => r.id);
+    // (the example's rounding computation would refuse this value: left out with a build option)
+    await owner.query(`update meta.computation set build_option = 'LEAVE_FORECAST' where page_id = $1 and seq = 40 and point = 'after_submit'`, [pid]);
+    try {
+      const b = await king();
+      const evil = `1'; drop table hr.emp; --$pgapex_x$ $$`;
+      assert.equal((await b.post('/a/hr/22', { __csrf: b.lastCsrf, P22_EMPNO: '7839', P22_DAYS: evil, __request: 'PLAN' })).statusCode, 303);
+      const state = (await owner.one(`select state from meta.session where username = 'king' order by last_seen desc limit 1`)).state;
+      assert.equal(state.P22_NAME, `hr_app:${evil}`);
+      assert.equal(state.P22_PENDING, 'false', 'not the connection role');
+      assert.ok(await owner.one(`select to_regclass('hr.emp') as t`).then((r) => r.t));
+      // the temporary function does not outlive the request
+      assert.equal((await owner.one(`select count(*)::int as n from pg_proc where proname like 'pgapex_computation_%'`)).n, 0);
+    } finally {
+      await owner.query('delete from meta.computation where id = any($1)', [ids]);
+      await owner.query(`update meta.computation set build_option = null where page_id = $1`, [pid]);
+    }
+  });
+
+  test('the database checks computation and branch definitions', async () => {
+    const pid = await page22();
+    const bad: [string, string][] = [
+      ['computation', `(page_id, item_name, type, expression) values (${pid}, 'p22_x', 'static', 'x')`],
+      ['computation', `(page_id, item_name, type, expression) values (${pid}, 'P22_X', 'item', 'P22_X; drop')`],
+      ['computation', `(page_id, item_name, type, expression) values (${pid}, 'P22_X', 'sql_query', ' ')`],
+      ['computation', `(page_id, item_name, condition_type, condition_expr) values (${pid}, 'P22_X', 'item_null', 'x or 1=1')`],
+      ['computation', `(page_id, item_name, condition_type, condition_value) values (${pid}, 'P22_X', 'request_in', 'SAVE; x')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', 'https://evil.example')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '//evil.example')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '/\\\\evil.example')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '../other/1')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', 'javascript:alert(1)')`],
+      ['branch', `(page_id, name, target_type, target_url) values (${pid}, 'x', 'url', '1?a=b//evil')`],
+      ['branch', `(page_id, name, target_type) values (${pid}, 'x', 'url')`],
+      ['branch', `(page_id, name, when_button) values (${pid}, 'x', 'save')`],
+    ];
+    for (const [table, values] of bad) await assert.rejects(owner.query(`insert into meta.${table} ${values}`), /violates check constraint/, values);
+  });
+
+  test('a URL branch encodes substituted values, so an item cannot leave the application', async () => {
+    const pid = await page22();
+    const b = await owner.one(`insert into meta.branch (page_id, seq, name, when_button, target_type, target_url) values ($1, 4, 'u', 'CHECK', 'url', '&P22_NAME.') returning id`, [pid]);
+    const c = await owner.one(`insert into meta.computation (page_id, seq, item_name, point, type, expression) values ($1, 97, 'P22_NAME', 'after_submit', 'static', '//evil.example/x') returning id`, [pid]);
+    try {
+      const k = await king();
+      const res = await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_EMPNO: '7839', P22_DAYS: '3', __request: 'CHECK' });
+      assert.equal(res.headers.location, `/a/hr/${encodeURIComponent('//evil.example/x')}`);
+    } finally {
+      await owner.query('delete from meta.branch where id = $1', [b.id]);
+      await owner.query('delete from meta.computation where id = $1', [c.id]);
+    }
+  });
+
+  test('menu requests: only entries the user is authorized for, never a hidden button of the same name', async () => {
+    const pid = await page22();
+    const before = (await owner.one(`select menu from meta.button where page_id = $1 and name = 'MORE'`, [pid])).menu;
+    try {
+      await owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'MORE'`,
+        [pid, JSON.stringify([{ label: 'Admins', request: 'ADMIN_ONLY', authz: 'ADMIN' }, { label: 'Plan', request: 'PLAN' }])]);
+      await owner.query(`update meta.button set condition = 'false' where page_id = $1 and name = 'PLAN'`, [pid]);
+      const scott = await as('scott');
+      const body = (await scott.get('/a/hr/22')).body;
+      assert.doesNotMatch(body, /value="ADMIN_ONLY"/);
+      assert.doesNotMatch(body, /value="PLAN"/);
+      for (const request of ['ADMIN_ONLY', 'PLAN', 'NOT_IN_ANY_MENU'])
+        assert.equal((await scott.post('/a/hr/22', { __csrf: scott.lastCsrf, P22_DAYS: '3', __request: request })).statusCode, 403, request);
+      // an authorized user may send the entry's request
+      const k = await king();
+      assert.match((await k.get('/a/hr/22')).body, /value="ADMIN_ONLY"/);
+      assert.equal((await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_EMPNO: '7839', P22_DAYS: '3', __request: 'ADMIN_ONLY' })).statusCode, 303);
+      // the database checks entries
+      for (const menu of [[{ label: 'x' }], [{ label: 'x', page: 1, request: 'X' }], [{ label: 'x', request: 'x; drop' }], [{ label: 'x', page: 'javascript:1' }], [{ label: 'x', page: 1, authz: 'a b' }], { label: 'x' }])
+        await assert.rejects(owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'MORE'`, [pid, JSON.stringify(menu)]), /violates check constraint/, JSON.stringify(menu));
+    } finally {
+      await owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'MORE'`, [pid, JSON.stringify(before)]);
+      await owner.query(`update meta.button set condition = null where page_id = $1 and name = 'PLAN'`, [pid]);
+    }
+  });
+
+  test('menu labels and badges are escaped; a badge query runs as the application role', async () => {
+    const pid = await page22();
+    const before = (await owner.one(`select menu from meta.button where page_id = $1 and name = 'MORE'`, [pid])).menu;
+    try {
+      await owner.query(`update meta.button set menu = $2, badge = '<b>&APP_USER.</b>' where page_id = $1 and name = 'MORE'`,
+        [pid, JSON.stringify([{ label: '<img src=x onerror=alert(1)>', page: 6, confirm: '"><script>' }])]);
+      await owner.query(`update meta.button set badge_query = 'select current_user' where page_id = $1 and name = 'PLAN'`, [pid]);
+      const body = (await (await king()).get('/a/hr/22')).body;
+      assert.ok(!body.includes('<img src=x'));
+      assert.ok(body.includes('&lt;img src=x onerror=alert(1)&gt;'));
+      assert.ok(!body.includes('"><script>'));
+      assert.ok(body.includes('&lt;b&gt;king&lt;/b&gt;'));
+      assert.match(body, /value="PLAN"[^>]*>Plan <span class="btn-badge">hr_app<\/span>/);
+    } finally {
+      await owner.query(`update meta.button set menu = $2, badge = null where page_id = $1 and name = 'MORE'`, [pid, JSON.stringify(before)]);
+      await owner.query(`update meta.button set badge_query = null where page_id = $1 and name = 'PLAN'`, [pid]);
+    }
+  });
+
+  test('dynamic action CSS classes: only safe names, in the database, the builder and the page', async () => {
+    const pid = await page22();
+    for (const bad of ['Upper', 'a"b', 'x onclick=1', 'a{color:red}', '-x', 'a b c d e f', 'a  b', ' a'])
+      await assert.rejects(owner.query(`update meta.dynamic_action set css_classes = $2 where page_id = $1 and action = 'add_class'`, [pid, bad]), /violates check constraint/, bad);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const da = await owner.one(`select * from meta.dynamic_action where page_id = $1 and action = 'add_class'`, [pid]);
+    await dev.get(`/builder/pages/${pid}?c=dynamic_action-${da.id}`);
+    await dev.post(`/builder/pages/${pid}/c/dynamic_action/${da.id}`, { __csrf: dev.lastCsrf, name: da.name, event: 'click', action: 'add_class', css_classes: 'x" onmouseover="alert(1)', seq: '40' });
+    assert.equal((await owner.one('select css_classes from meta.dynamic_action where id = $1', [da.id])).css_classes, 'is-highlight');
+    assert.match(await import('node:fs').then((fs) => fs.readFileSync('public/app.js', 'utf8')), /CLASS_NAME = \/\^\[a-z\]\[a-z0-9_-\]\{0,39\}\$\//);
+  });
+
+  test('build options: excluded buttons, dynamic actions and pages cannot be used by forged requests', async () => {
+    const pid = await page22();
+    const da = await owner.one(`select id from meta.dynamic_action where page_id = $1 and action = 'show_success'`, [pid]);
+    await owner.query(`update meta.button set build_option = 'LEAVE_FORECAST' where page_id = $1 and name = 'CHECK'`, [pid]);
+    await owner.query(`update meta.dynamic_action set build_option = 'LEAVE_FORECAST' where id = $1`, [da.id]);
+    try {
+      const k = await king();
+      assert.doesNotMatch((await k.get('/a/hr/22')).body, /value="CHECK"/);
+      assert.equal((await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_DAYS: '3', __request: 'CHECK' })).statusCode, 403);
+      assert.equal((await k.post(`/a/hr/22/da/${da.id}`, { __csrf: k.lastCsrf })).statusCode, 403);
+      await owner.query(`update meta.page set build_option = 'NO_SUCH_OPTION' where id = $1`, [pid]);
+      assert.equal((await k.post('/a/hr/22', { __csrf: k.lastCsrf, P22_DAYS: '3', __request: 'PLAN' })).statusCode, 404);
+      // the database checks the reference
+      await assert.rejects(owner.query(`update meta.page set build_option = 'lower' where id = $1`, [pid]), /violates check constraint/);
+      await assert.rejects(owner.query(`update meta.page set build_option = '!!X' where id = $1`, [pid]), /violates check constraint/);
+    } finally {
+      await owner.query(`update meta.page set build_option = null where id = $1`, [pid]);
+      await owner.query(`update meta.button set build_option = null where page_id = $1`, [pid]);
+      await owner.query(`update meta.dynamic_action set build_option = null where id = $1`, [da.id]);
+    }
+  });
+
+  test('build options, computations and branches: developers only, with CSRF; the runtime role cannot change them', async () => {
+    const pid = await page22();
+    const k = await king();
+    for (const url of [`/builder/pages/${pid}/c/computation`, `/builder/pages/${pid}/c/branch`, `/builder/apps/${appId}/shared/build_option`]) {
+      const res = await k.post(url, { __csrf: k.lastCsrf, name: 'X', item_name: 'P22_X' });
+      assert.notEqual(res.statusCode, 303, url);
+    }
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal((await dev.post(`/builder/apps/${appId}/shared/build_option`, { __csrf: 'wrong', name: 'CSRF_TEST' })).statusCode, 403);
+    assert.equal(await owner.one(`select 1 from meta.build_option where name = 'CSRF_TEST'`), undefined);
+    for (const sql of [`update meta.build_option set status = 'include'`, `insert into meta.computation (page_id, item_name) values (${pid}, 'P22_X')`, `delete from meta.branch`])
+      await assert.rejects(runtime.query(sql), /permission denied/, sql);
+  });
+});
+
+describe('sprint 26 data: REST data sources, web credentials, invoke_api', () => {
+  const env = { ...process.env };
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { url: string; auth: string | null }[] = [];
+  const dev = new Browser();
+  const cleanup: string[] = [];
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      hits.push({ url: req.url!, auth: req.headers.authorization ?? null });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ host: req.headers.host, path: req.url, items: [{ v: "it's $$ \"x\" ); drop table hr.emp; --" }] }));
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name like 'SEC\\_%'`, [appId]);
+    await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC\\_%'`, [appId]);
+    for (const sql of cleanup) await owner.query(sql);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  test('a web credential secret is write-only: encrypted, never shown, exported or readable by the runtime role', async () => {
+    const { decryptSecret } = await import('../src/secrets.ts');
+    const secret = 'sec-test-Secret-value-4711';
+    // a forged secret_enc in the form is ignored; only "secret" is taken, and encrypted
+    const res = await dev.post(`/builder/apps/${appId}/shared/web_credential`, {
+      __csrf: dev.lastCsrf, name: 'SEC_CRED', type: 'bearer', secret, secret_enc: 'v1:forged', valid_for: `${mockBase}/`,
+    });
+    assert.equal(res.statusCode, 303);
+    const row = await owner.one(`select id, secret_enc from meta.web_credential where app_id = $1 and name = 'SEC_CRED'`, [appId]);
+    assert.match(row.secret_enc, /^v1:/);
+    assert.notEqual(row.secret_enc, 'v1:forged');
+    assert.ok(!row.secret_enc.includes(secret));
+    assert.equal(decryptSecret(row.secret_enc), secret);
+    // the builder shows that a secret is stored, never the secret or its ciphertext
+    const page = (await dev.get(`/builder/apps/${appId}/shared?c=web_credential-${row.id}`)).body;
+    assert.match(page, /A secret is stored/);
+    assert.ok(!page.includes(secret) && !page.includes(row.secret_enc), 'not in the builder page');
+    // saving without a secret keeps the stored one
+    assert.equal((await dev.post(`/builder/apps/${appId}/shared/web_credential/${row.id}`, { __csrf: dev.lastCsrf, name: 'SEC_CRED', type: 'bearer', secret: '', valid_for: `${mockBase}/` })).statusCode, 303);
+    assert.equal((await owner.one('select secret_enc from meta.web_credential where id = $1', [row.id])).secret_enc, row.secret_enc);
+    // exports (JSON, directory) and the search leave it out
+    const doc = JSON.stringify((await owner.one(`select meta.export_app('hr') as d`)).d);
+    assert.ok(doc.includes('SEC_CRED') && !doc.includes('secret_enc') && !doc.includes(row.secret_enc));
+    const zip = await dev.get(`/builder/apps/${appId}/export?format=dir`);
+    assert.ok(!zip.rawPayload.includes(Buffer.from(row.secret_enc)));
+    assert.ok(!(await dev.get(`/builder/apps/${appId}/search?q=${encodeURIComponent(row.secret_enc.slice(3, 20))}`)).body.includes(row.secret_enc));
+    // the runtime role (and so application SQL) can't read it
+    await assert.rejects(runtime.query('select secret_enc from meta.web_credential'), /permission denied/);
+    assert.ok((await runtime.query(`select name from meta.web_credential where name = 'SEC_CRED'`)).rowCount === 1, 'the other columns are readable');
+    // an imported document can't bring a secret along
+    const imported = await owner.one(`select meta.import_app(meta.export_app('hr') || jsonb_build_object('web_credentials',
+      jsonb_build_array(jsonb_build_object('name', 'SEC_IMPORTED', 'type', 'bearer', 'secret_enc', $1::text))), 'sec_import_26') as id`, [row.secret_enc]);
+    cleanup.push(`delete from meta.app where id = ${Number(imported.id)}`);
+    assert.equal((await owner.one(`select secret_enc from meta.web_credential where app_id = $1 and name = 'SEC_IMPORTED'`, [imported.id])).secret_enc, null);
+    // removing the secret needs a developer, the CSRF token and the right application
+    const anon = new Browser();
+    assert.equal((await anon.post(`/builder/apps/${appId}/web-credentials/${row.id}/clear`, { __csrf: 'x' })).statusCode, 302);
+    assert.equal((await dev.post(`/builder/apps/${appId}/web-credentials/${row.id}/clear`, { __csrf: 'wrong' })).statusCode, 403);
+    await dev.post(`/builder/apps/${imported.id}/web-credentials/${row.id}/clear`, { __csrf: dev.lastCsrf });
+    assert.ok((await owner.one('select secret_enc from meta.web_credential where id = $1', [row.id])).secret_enc, 'another app id: not removed');
+    await dev.post(`/builder/apps/${appId}/web-credentials/${row.id}/clear`, { __csrf: dev.lastCsrf });
+    assert.equal((await owner.one('select secret_enc from meta.web_credential where id = $1', [row.id])).secret_enc, null);
+  });
+
+  test('"Test" of a source: developers only, CSRF, the right application; the credential stays with its URLs', async () => {
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc, valid_for) values ($1, 'SEC_KEY', 'bearer', $2, $3)`,
+      [appId, encryptSecret('only-for-the-mock'), [`${mockBase}/ok/`]]);
+    const src = await owner.one(`insert into meta.rest_source (app_id, name, url, credential) values ($1, 'SEC_SRC', $2, 'SEC_KEY') returning id`, [appId, `${mockBase}/ok/data`]);
+    const url = `/builder/apps/${appId}/rest-sources/${src.id}/test`;
+    const n = hits.length;
+    assert.equal((await new Browser().post(url, { __csrf: 'x' })).statusCode, 302, 'not signed in: to the login page');
+    assert.equal((await dev.post(url, { __csrf: 'wrong' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/apps/${appId + 100000}/rest-sources/${src.id}/test`, { __csrf: dev.lastCsrf })).statusCode, 404);
+    assert.equal(hits.length, n, 'no request was made');
+    assert.equal((await dev.post(url, { __csrf: dev.lastCsrf })).statusCode, 303);
+    assert.deepEqual(hits.slice(n), [{ url: '/ok/data', auth: 'Bearer only-for-the-mock' }]);
+    // pointed elsewhere, the source fails instead of sending the secret
+    await owner.query('update meta.rest_source set url = $2 where id = $1', [src.id, `${mockBase}/other`]);
+    await dev.post(url, { __csrf: dev.lastCsrf });
+    assert.equal(hits.length, n + 1);
+    assert.match((await dev.get(`/builder/apps/${appId}/shared?c=rest_source-${src.id}`)).body, /not valid for this URL/);
+    // "Use these columns" checks the column names
+    await dev.post(`/builder/apps/${appId}/rest-sources/${src.id}/columns`, { __csrf: dev.lastCsrf, columns: '[{"name": "x\\"); drop table hr.emp; --"}]' });
+    assert.deepEqual((await owner.one('select columns from meta.rest_source where id = $1', [src.id])).columns, []);
+  });
+
+  test('parameter values can not change the host, add headers or break out of the SQL', async () => {
+    const ws = await import('../src/websources.ts');
+    const { invokeProblems } = await import('../src/runtime/rest-sources.ts');
+    const s = {
+      id: 0, app_id: appId, name: 'SEC', url: `${mockBase}/a/{p}`, method: 'GET', credential: null, headers: {}, body: null, row_selector: null,
+      params: [{ name: 'p', in: 'path' as const }, { name: 'q', in: 'query' as const }, { name: 'h', in: 'header' as const }], columns: [], cache_seconds: 0, timeout_s: 5, max_rows: 10,
+    };
+    for (const p of ['@evil.example/', '//evil.example/x', '../../admin', 'x?y=1#z', 'http://evil.example/'])
+      assert.equal(new URL(ws.buildRequest(s, { p }).url).host, new URL(mockBase).host, p);
+    for (const p of ['.', '..']) assert.throws(() => ws.buildRequest(s, { p }), /not a valid value/);
+    assert.throws(() => ws.buildRequest(s, { p: 'x', h: 'a\r\nX-Injected: 1' }), /one line/);
+    assert.throws(() => ws.buildRequest(s, { nope: 'x' }), /no parameter nope/);
+    // a definition written straight into the table is checked again before a call
+    assert.throws(() => ws.buildRequest({ ...s, url: 'http://{p}.example.com/' }, { p: 'x' }), /host is fixed/);
+    assert.throws(() => ws.buildRequest({ ...s, headers: { Authorization: 'Bearer x' } }, { p: 'x' }), /not allowed/);
+    assert.ok(invokeProblems({ url: 'https://&P1_HOST./x' }).length);
+    assert.ok(invokeProblems({ url: 'https://api.example.com&P1_X./x' }).length);
+    assert.ok(invokeProblems({ url: 'https://api.example.com/x', source: 'Y' }).length);
+    assert.deepEqual(invokeProblems({ url: 'https://api.example.com/x/&P1_X.' }), []);
+    // response values are data: one escaped literal, checked column names
+    const { json } = await ws.fetchSource({ ...s, url: `${mockBase}/rows`, params: [] }, {});
+    const { columns, rows } = ws.toRows(json, { row_selector: 'items', columns: [{ name: 'v', type: 'text' }], max_rows: 10 });
+    const sql = ws.withRest(ws.rowsSql(columns, rows), null);
+    assert.deepEqual((await runtime.query(sql)).rows, [{ v: "it's $$ \"x\" ); drop table hr.emp; --" }]);
+    assert.throws(() => ws.rowsSql([{ name: 'v" text); drop table hr.emp; --' }], []), /not a valid SQL name/);
+    // no calls to hosts outside the allow-list, metadata services or other loopback names
+    for (const u of ['http://169.254.169.254/latest/meta-data/', 'http://[::ffff:169.254.169.254]/', 'http://10.0.0.1/', 'https://example.com/', 'gopher://127.0.0.1/'])
+      await assert.rejects(ws.call({ url: u }), /allow-list|private|Only http/, u);
+  });
+
+  test('invoke_api only sets items of its page (or application items), and shows no details of a failure', async () => {
+    const { Browser: B, formFields } = await import('./helpers.ts');
+    const page = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 23`, [appId])).id;
+    const p = await owner.one(`insert into meta.process (page_id, seq, name, type, point, when_button, config)
+      values ($1, 5, 'sec invoke', 'invoke_api', 'submit', 'LOOKUP', $2) returning id`,
+      [page, JSON.stringify({ url: `${mockBase}/inv/&P23_DEPTNO.`, items: { P1_SECRET_FLAG: 'path' } })]);
+    cleanup.push(`delete from meta.process where id = ${Number(p.id)}`);
+    const b = new B(app);
+    await b.login('allen');
+    const form = formFields((await b.get('/a/hr/23')).body);
+    const n = hits.length;
+    await b.submit('/a/hr/23', { ...form, P23_DEPTNO: '../x?a=1', __request: 'LOOKUP' });
+    assert.deepEqual(hits.slice(n).map((h) => h.url), ['/inv/..%2Fx%3Fa%3D1'], 'the value is encoded into the path');
+    const after = (await b.get('/a/hr/23')).body;
+    assert.doesNotMatch(after, /P1_SECRET_FLAG is not an item/, 'the details go to the activity log');
+    assert.ok(await owner.one(`select 1 from meta.activity_log where event = 'error' and detail like '%P1_SECRET_FLAG is not an item%' and at > now() - interval '1 minute'`));
+  });
+});
+
+describe('sprint 26 items: rich text, Markdown, rating, combobox, date range, password reveal, QR code', () => {
+  const page20 = (user: string, id: string) => `/a/hr/20?${new URLSearchParams({ P20_ID: id, cs: urlChecksum(appId, 20, user, { P20_ID: id }) })}`;
+  const base = { __request: 'SAVE', P20_EMPNO: '7698', P20_PERIOD: ['2026-01-01', '2026-06-30'], P20_RATING: '3', P20_SKILLS: 'Sales', P20_NOTES: '' };
+  const XSS = [
+    '<img src=x onerror=alert(1)>', '<script>alert(1)</script>', '<a href="javascript:alert(1)">a</a>', '<a href="java&#x09;script:alert(1)">b</a>',
+    '<svg onload=alert(1)>', '<p style="background:url(javascript:alert(1))" onmouseover="alert(1)">p</p>', '<iframe src="https://evil.example"></iframe>',
+    '<math><mi xlink:href="javascript:alert(1)">m</mi></math>', '<a href="data:text/html,<script>alert(1)</script>">d</a>', '"><script>alert(1)</script>',
+    '<<script>script>alert(1)<</script>/script>', '<!--><script>alert(1)</script>-->', '<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+  ].join('');
+  // unsafe = any real tag outside the allow-list, or any attribute but a safe link's href and rel
+  const ALLOWED = new Set(['p', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'del', 'strike', 'sub', 'sup', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'a', 'hr', 'div']);
+  const unsafe = (html: string) =>
+    [...html.matchAll(/<\/?([a-zA-Z][\w-]*)([^>]*)>/g)].some(([, tag, attrs]) => {
+      if (!ALLOWED.has(tag.toLowerCase())) return true;
+      const rest = attrs.replace(/\s(href)="(https?:|mailto:|tel:|\/|#)[^"]*"/, '').replace(' rel="noopener noreferrer nofollow"', '');
+      return rest.trim() !== '';
+    }) || /<!--/.test(html);
+  let id: string;
+
+  before(async () => {
+    id = String((await owner.one(`insert into hr.review (empno, period, rating, created_by) values (7698, '2026-01-01:2026-06-30', 3, 'sec-test') returning id`)).id);
+  });
+  after(async () => {
+    await owner.query(`delete from hr.review where created_by = 'sec-test'`);
+    await owner.query(`update meta.item i set readonly_condition = null from meta.page p join meta.app a on a.id = p.app_id
+                        where i.page_id = p.id and a.alias = 'hr' and p.page_no = 20 and i.name like 'P20_%'`);
+  });
+
+  test('posted rich text is rebuilt from the allow-list before it is stored', async () => {
+    const b = await as('king');
+    await b.get(page20('king', id));
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_SUMMARY: XSS });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    const { summary } = await owner.one('select summary from hr.review where id = $1', [id]);
+    assert.ok(!unsafe(summary), summary);
+    const body = (await b.get(page20('king', id))).body;
+    const area = /<textarea id="P20_SUMMARY"[^>]*>([\s\S]*?)<\/textarea>/.exec(body)![1];
+    assert.ok(!/</.test(area), 'textarea content is escaped');
+  });
+
+  test('stored hostile HTML and Markdown are made safe when shown read-only', async () => {
+    await owner.query('update hr.review set summary = $2, notes = $3 where id = $1', [id, XSS, `[x](javascript:alert(1)) <img src=x onerror=alert(1)> ${XSS}`]);
+    await owner.query(`update meta.item i set readonly_condition = 'true' from meta.page p join meta.app a on a.id = p.app_id
+                        where i.page_id = p.id and a.alias = 'hr' and p.page_no = 20 and i.name in ('P20_SUMMARY', 'P20_NOTES')`);
+    const b = await as('king');
+    const body = (await b.get(page20('king', id))).body;
+    for (const name of ['P20_SUMMARY', 'P20_NOTES']) {
+      const shown = new RegExp(`<div class="display-value rich-text" id="${name}">([\\s\\S]*?)</div>\\s*(?:<small|</div>|</fieldset>)`).exec(body)?.[1];
+      assert.ok(shown !== undefined, name);
+      assert.ok(!unsafe(shown!), `${name}: ${shown}`);
+    }
+    // editable again: the textarea gets the sanitised HTML, never the raw value
+    await owner.query(`update meta.item i set readonly_condition = null from meta.page p join meta.app a on a.id = p.app_id
+                        where i.page_id = p.id and a.alias = 'hr' and p.page_no = 20 and i.name like 'P20_%'`);
+    const edit = (await b.get(page20('king', id))).body;
+    const area = /<textarea id="P20_SUMMARY"[^>]*>([\s\S]*?)<\/textarea>/.exec(edit)![1];
+    assert.ok(!unsafe(area.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')), area);
+  });
+
+  test('combobox, date range and QR code values are escaped', async () => {
+    const evil = '"><script>alert(1)</script>';
+    await owner.query('update hr.review set skills = $2 where id = $1', [id, `${evil}:x`]);
+    const b = await as('king');
+    const body = (await b.get(page20('king', id))).body;
+    assert.ok(!body.includes('<script>alert(1)'), 'combobox value');
+    assert.match(body, /value="&quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;:x"/);
+    // a QR code's text comes from session state: a load process here; check the label escaping directly
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_PERIOD: [`2026-01-01${evil}`, '2026-06-30'] });
+    assert.equal(res.statusCode, 422);
+    assert.ok(!res.body.includes('<script>alert(1)'), 'date range value');
+  });
+
+  test('a QR code item is display only: a posted value is ignored', async () => {
+    const b = await as('king');
+    await b.get(page20('king', id));
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_RATING: '99', P20_SHARE: 'INJECTED' });
+    assert.equal(res.statusCode, 422);
+    assert.doesNotMatch(res.body, /QR code: INJECTED/);
+  });
+
+  test('malformed rating and date range values are refused and not stored', async () => {
+    for (const change of [{ P20_RATING: '0' }, { P20_RATING: '1e1' }, { P20_RATING: '-1' }, { P20_PERIOD: ['x', 'y'] },
+      { P20_PERIOD: ["2026-01-01'; drop table hr.review; --", '2026-06-30'] }, { P20_PERIOD: ['2026-01-01', '2026-06-30', '2026-07-01'] }, { P20_PERIOD: '2026-01-01:2026-06-30:x' }]) {
+      const b = await as('king');
+      await b.get(page20('king', id));
+      const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, ...change });
+      assert.equal(res.statusCode, 422, JSON.stringify(change));
+    }
+    const row = await owner.one('select period, rating from hr.review where id = $1', [id]);
+    assert.equal(row.period, '2026-01-01:2026-06-30');
+  });
+
+  test('the password item never echoes its value, reveal button or not', async () => {
+    const b = await as('king');
+    await b.get(page20('king', id));
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_RATING: '99', P20_PIN: 'topsecret' });
+    assert.equal(res.statusCode, 422);
+    assert.doesNotMatch(res.body, /topsecret/);
+    assert.match(res.body, /<input type="password" id="P20_PIN" name="P20_PIN" value="" autocomplete="new-password"/);
+  });
+
+  test('the new item types need the app\'s session like any item (no page for anonymous users)', async () => {
+    const res = await new Browser().get(page20('king', id));
+    assert.equal(res.statusCode, 302);
+  });
+
+  test('rich text and Markdown take linear time on hostile input (no regular-expression backtracking)', () => {
+    const hostile = [
+      '# ' + ' #'.repeat(100_000) + 'x', '[a]('.repeat(100_000), '['.repeat(400_000), ('[a](' + 'x'.repeat(1990)).repeat(200),
+      '**a'.repeat(100_000), '-' + ' -'.repeat(100_000) + 'x', '>'.repeat(200_000), '<a '.repeat(100_000), '<b>'.repeat(100_000),
+    ];
+    for (const input of hostile) {
+      const t = performance.now();
+      markdownHtml(input);
+      sanitizeHtml(input);
+      assert.ok(performance.now() - t < 2000, `${input.slice(0, 20)}… took ${Math.round(performance.now() - t)} ms`);
     }
   });
 });

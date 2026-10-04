@@ -13,7 +13,7 @@ deploying applications, and how to extend pgapex itself.
 | 3 | [Using the builder](guide/03-builder.md) | Creating apps, the page wizards, the page designer, shared components, SQL Workshop, export/import |
 | 4 | [Pages and regions](guide/04-pages-and-regions.md) | Page properties and every region type (reports, grids, forms, charts, cards, calendar, facets, static/dynamic content) with all attributes |
 | 5 | [Items](guide/05-items.md) | Every item type, lists of values, cascading lists, read-only conditions, multi-value items |
-| 6 | [Buttons, validations and processes](guide/06-processing.md) | What happens when a page is submitted, form and grid DML, calling PL/pgSQL, error handling, branches, application processes |
+| 6 | [Buttons, validations, processes and page logic](guide/06-processing.md) | Menu buttons and badges, what happens when a page is submitted, form and grid DML, calling PL/pgSQL, error handling, computations, conditional branches, build options, application processes |
 | 7 | [Dynamic actions](guide/07-dynamic-actions.md) | Client-side behaviour: show/hide, set values from SQL, refresh regions, cascading lists |
 | 8 | [Users, authentication and authorization](guide/08-security.md) | Sign-in, users and roles, passwords and My account, authorization schemes, row level security, session state protection |
 | 9 | [SQL API and metadata reference](guide/09-reference.md) | `meta.*` functions, every metadata table and column, URL parameters |
@@ -26,6 +26,7 @@ deploying applications, and how to extend pgapex itself.
 | 16 | [Files, data loading and printing](guide/16-files.md) | File upload items, loading CSV/Excel/JSON into tables (SQL Workshop and pages), report PDFs, document templates and printing |
 | 17 | [Mobile and field work](guide/17-mobile.md) | Progressive Web Apps: installing, offline pages, forms sent offline, location, camera and barcode items |
 | 18 | [The command line and application files](guide/18-cli.md) | `pgapex` CLI: migrate, export/import, one file per component for git, static ids, diff, updating an app in place |
+| 19 | [REST data sources and web credentials](guide/19-rest-data-sources.md) | Regions and lists of values on web services, web credentials (basic, API key, bearer, OAuth2) with write-only secrets, the `invoke_api` process, the server's allow-list |
 
 ## Other documents
 

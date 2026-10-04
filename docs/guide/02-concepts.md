@@ -17,13 +17,16 @@ meta.app ─┬─ meta.page ─┬─ meta.region        (reports, forms, grids
           │             ├─ meta.item          (form fields, filters; session state variables)
           │             ├─ meta.button
           │             ├─ meta.dynamic_action
+          │             ├─ meta.computation
           │             ├─ meta.validation
-          │             └─ meta.process
+          │             ├─ meta.process
+          │             └─ meta.branch
           ├─ meta.nav_entry     (navigation menu)
           ├─ meta.authz_scheme  (authorization schemes)
           ├─ meta.lov           (shared lists of values)
           ├─ meta.app_item      (application items)
           ├─ meta.app_process   (application processes)
+          ├─ meta.build_option  (build options: include / exclude switches)
           └─ meta.app_user      (users of this application)
 
 meta.session, meta.activity_log, meta.developer, meta.instance_setting
@@ -83,12 +86,16 @@ The report, grid, calendar and facet regions add their own parameters (search, s
    visible to SQL (`meta.app_user()`, `meta.v()`).
 5. Check the **page's authorization scheme** (403 if it fails).
 6. Run **application processes** of type *before page*.
-7. **Fetch form rows**: for every form region whose primary-key item has a value, read the row
+7. Take the first **branch** with point *before header* that applies, if any: redirect there.
+8. **Fetch form rows**: for every form region whose primary-key item has a value, read the row
    into the items.
-8. Run page processes with point **load**.
-9. Compute **visibility**: which regions, items, buttons and dynamic actions this user may see
-   (authorization schemes + server-side conditions + read-only conditions).
-10. **Render** the page, then commit and save the session state.
+9. Run the **computations** with point *before header*, then page processes with point **load**.
+10. Compute **visibility**: which regions, items, buttons and dynamic actions this user may see
+    (authorization schemes + server-side conditions + read-only conditions).
+11. **Render** the page, then commit and save the session state.
+
+Components whose [build option](06-processing.md#build-options) is excluded are left out when the
+page is loaded, as if they did not exist.
 
 ### Submitting a page (POST)
 
@@ -101,10 +108,12 @@ The report, grid, calendar and facet regions add their own parameters (search, s
       forged requests for hidden buttons);
    4. copy the posted values of **editable** items into session state. Hidden, display-only,
       read-only and unauthorized items are ignored;
-   5. run **validations** (except for `DELETE`); any failure re-shows the page with messages;
-   6. run the **processes** for this button, in sequence.
-3. On success, commit, store the success message and **redirect** to the button's target page
-   (POST-redirect-GET). In a modal dialog, the dialog closes and the page below reloads. On an
+   5. run the **computations** with point *after submit*;
+   6. run **validations** (except for `DELETE`); any failure re-shows the page with messages;
+   7. run the **processes** for this button, in sequence;
+   8. pick the first **branch** (point *after processing*) for this button whose condition holds.
+3. On success, commit, store the success message and **redirect** to the branch's target, or else
+   the button's target page (POST-redirect-GET). In a modal dialog, the dialog closes and the page below reloads. On an
    error, everything is rolled back and the page is shown again with the entered values and the
    error.
 
@@ -132,7 +141,7 @@ another one (`pgapex_dev`).
   submitted by the browser if they're editable. By convention their names start with
   `P<page number>_`.
 - **Application items** (e.g. `AI_EMPNO`) are not on any page and **can never be set by the
-  browser**, only by server-side code (application processes and page processes). Use them for
+  browser**, only by server-side code (application processes, page processes and computations). Use them for
   per-session facts such as "the employee number of the signed-in user".
 
 ## Bind variables: `:NAME`

@@ -4,7 +4,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { COMPONENTS } from './components.ts';
 import { back, BASE, bicon, csrf, developer, flash, input, select, send, shell, type Req } from './ui.ts';
-import { componentForm, lookups, saveComponent } from './forms.ts';
+import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
 import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
 import { arrangeRoutes, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, REGION_LABELS, REGION_TYPES, undoState } from './arrange.ts';
@@ -20,7 +20,7 @@ import { arrangeRoutes, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, 
 // move things; builder.js adds tabs, the ARIA tree, drag and drop and the
 // property filter on top.
 
-const PAGE_KINDS = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process'];
+const PAGE_KINDS = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 
 const regionIcon = (type: string) => REGION_LABELS[type]?.[1] ?? 'region';
 const itemIcon = (type: string) => ITEM_LABELS[type]?.[1] ?? 'item';
@@ -72,7 +72,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const url = (q: string) => `${BASE}/pages/${p.id}${q ? `?${q}` : ''}`;
     const isSel = (key: string) => sel === key || (key === 'page' && !sel && !newKind);
     const cur = (key: string) => (isSel(key) ? raw(' aria-current="true"') : '');
-    const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="Authorization: ${r.authz}">${icon('shield')}<span class="sr-only">Authorization ${r.authz}</span></span>` : ''}${r.condition || r.readonly_condition ? html`<span class="pd-tag" title="Has a condition">${icon('filter')}<span class="sr-only">Has a condition</span></span>` : ''}`;
+    const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="Authorization: ${r.authz}">${icon('shield')}<span class="sr-only">Authorization ${r.authz}</span></span>` : ''}${r.condition || r.readonly_condition || r.condition_type ? html`<span class="pd-tag" title="Has a condition">${icon('filter')}<span class="sr-only">Has a condition</span></span>` : ''}${r.build_option ? html`<span class="pd-tag" title="Build option: ${r.build_option}">${icon('settings')}<span class="sr-only">Build option ${r.build_option}</span></span>` : ''}`;
     const regionTitle = (r: any) => r.title ?? `(${r.type})`;
 
     // ------------------------------------------------------------ left: component tree
@@ -93,6 +93,13 @@ export async function designerRoutes(app: FastifyInstance) {
     const pageButtons = rows.button.filter((b) => b.region_id === null);
     const loadProcs = rows.process.filter((x) => x.point === 'load');
     const submitProcs = rows.process.filter((x) => x.point !== 'load');
+    const headerComps = rows.computation.filter((x) => x.point === 'before_header');
+    const submitComps = rows.computation.filter((x) => x.point !== 'before_header');
+    const headerBranches = rows.branch.filter((x) => x.point === 'before_header');
+    const branchNote = (b: any) => `${b.when_button ? `${b.when_button}: ` : ''}→ ${b.target_type === 'url' ? b.target_url : `page ${b.target_page ?? p.page_no}`}`;
+    const compLeaf = (x: any) => leaf('computation', x, icon('activity'), x.item_name, x.type);
+    const branchLeaf = (x: any) => leaf('branch', x, bicon('right'), x.name, branchNote(x));
+    const preRendering = [...headerBranches.map(branchLeaf), ...headerComps.map(compLeaf), ...loadProcs.map((x) => leaf('process', x, icon('code'), x.name))];
     const createBar = (links: [string, string][]) =>
       html`<div class="pd-treebar">${links.map(([k, label]) => html`<a class="tb-btn tb-text" href="${url(`new=${k}`)}">${icon('plus')}<span>${label}</span></a>`)}</div>`;
 
@@ -100,7 +107,7 @@ export async function designerRoutes(app: FastifyInstance) {
       <ul class="pd-tree" aria-label="Rendering">
         <li><a class="pd-node" href="${url('c=page')}"${cur('page')}>${icon('file')}<span class="pd-label">Page ${p.page_no}: ${p.name}</span>${badges(p)}</a>
           <ul>
-            ${folder('Pre-Rendering', loadProcs.length ? loadProcs.map((x) => leaf('process', x, icon('code'), x.name)) : none('No processes before rendering'), loadProcs.length > 0)}
+            ${folder('Pre-Rendering (before header)', preRendering.length ? preRendering : none('No branches, computations or processes before rendering'), preRendering.length > 0)}
             ${folder('Regions', rows.region.length ? rows.region.map(regionLeaf) : none('No regions yet'))}
             ${pageItems.length ? folder('Page items', pageItems.map(itemLeaf)) : ''}
             ${pageButtons.length ? folder('Page buttons', pageButtons.map(buttonLeaf)) : ''}
@@ -114,12 +121,16 @@ export async function designerRoutes(app: FastifyInstance) {
           return folder(`Events: ${label}`, list.length ? list.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.trigger_element ?? ''} → ${d.action}`)) : none('None'), list.length > 0);
         })}
       </ul>`;
-    const branches = rows.button.filter((b) => b.target_page);
-    const processing = html`${createBar([['validation', 'Validation'], ['process', 'Process']])}
+    // after processing: the branches in sequence, then (when none applies) the pressed button's target page
+    const afterBranches = rows.branch.filter((x) => x.point !== 'before_header');
+    const buttonTargets = rows.button.filter((b) => b.target_page && b.action === 'submit');
+    const afterProcessing = [...afterBranches.map(branchLeaf), ...buttonTargets.map((b) => leaf('button', b, bicon('right'), `${b.name} → page ${b.target_page}`, 'button target'))];
+    const processing = html`${createBar([['computation', 'Computation'], ['validation', 'Validation'], ['process', 'Process'], ['branch', 'Branch']])}
       <ul class="pd-tree" aria-label="Processing">
+        ${folder('After submit (computations)', submitComps.length ? submitComps.map(compLeaf) : none('No computations'), submitComps.length > 0)}
         ${folder('Validating', rows.validation.length ? rows.validation.map((v) => leaf('validation', v, icon('check'), v.name, v.when_button ?? '')) : none('No validations'))}
         ${folder('Processing', submitProcs.length ? submitProcs.map((x) => leaf('process', x, icon('code'), x.name, x.when_button ?? '')) : none('No processes'))}
-        ${folder('After processing (branches)', branches.length ? branches.map((b) => leaf('button', b, bicon('right'), `${b.name} → page ${b.target_page}`)) : none('No branches'), false)}
+        ${folder('After processing (branches)', afterProcessing.length ? afterProcessing : none('No branches'), afterProcessing.length > 0)}
       </ul>`;
     const sharedLink = (k: string, id: number, ic: string, label: string) =>
       html`<li><a class="pd-node" href="${BASE}/apps/${p.app_id}/shared?c=${k}-${id}">${icon(ic)}<span class="pd-label">${label}</span></a></li>`;
@@ -132,8 +143,11 @@ export async function designerRoutes(app: FastifyInstance) {
         ${folder('Application items', appItems.length ? appItems.map((n) => sharedLink('app_item', n.id, 'edit', n.name)) : none('None'), false)}
       </ul>`;
     const selProcess = kind === 'process' ? rows.process.find((x) => String(x.id) === cid) : null;
+    const selComp = kind === 'computation' ? rows.computation.find((x) => String(x.id) === cid) : null;
+    const selBranch = kind === 'branch' ? rows.branch.find((x) => String(x.id) === cid) : null;
     const leftTab = kind === 'dynamic_action' || newKind === 'dynamic_action' ? 'da'
-      : kind === 'validation' || newKind === 'validation' || newKind === 'process' || (selProcess && selProcess.point !== 'load') ? 'proc' : 'rend';
+      : kind === 'validation' || ['validation', 'process', 'computation', 'branch'].includes(newKind ?? '') || (selProcess && selProcess.point !== 'load')
+        || (selComp && selComp.point !== 'before_header') || (selBranch && selBranch.point !== 'before_header') ? 'proc' : 'rend';
     const left = html`<div class="pd-tabs pd-tabs-icons" data-tabs="pd-left" aria-label="Page components">
       ${tab('pd-l-rendering', 'Rendering', rendering, leftTab === 'rend', 'rendering')}
       ${tab('pd-l-da', 'Dynamic actions', dynamicActions, leftTab === 'da', 'bolt')}
@@ -280,6 +294,8 @@ export async function designerRoutes(app: FastifyInstance) {
             ${select('authz', 'Authorization scheme', p.authz ?? '', [['', '- none -'], ...['MUST_NOT_BE_PUBLIC_USER', ...lk.authz].flatMap((n): [string, string][] => [[n, n], [`!${n}`, `Not ${n}`]])])}
             ${select('protection', 'Page access protection', p.protection, [['checksum', 'Arguments must have checksum'], ['unrestricted', 'Unrestricted']],
               'With checksum, item values in the URL (?P3_ID=…) are only accepted from links the runtime generated.')}
+            ${select('build_option', 'Build option', p.build_option ?? '', buildOptionChoices(lk, p.build_option),
+              'While the option is excluded (or "Not": included) the page does not exist in the running application.')}
           </div></fieldset>
           <div class="buttons"><button class="btn btn-hot">Save page</button></div>
         </form>`, true)])}
@@ -304,7 +320,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const createMenu = html`<details class="menu tb-menu">
         <summary class="tb-btn" title="Create">${icon('plus')}${bicon('down', 'icon tb-caret')}<span class="sr-only">Create</span></summary>
         <div class="menu-panel align-right"><div class="menu-section menu-links">
-          ${[['region', 'Region'], ['item', 'Page item'], ['button', 'Button'], ['dynamic_action', 'Dynamic action'], ['validation', 'Validation'], ['process', 'Process']].map(([k, label]) =>
+          ${[['region', 'Region'], ['item', 'Page item'], ['button', 'Button'], ['dynamic_action', 'Dynamic action'], ['computation', 'Computation'], ['validation', 'Validation'], ['process', 'Process'], ['branch', 'Branch']].map(([k, label]) =>
             html`<a href="${url(`new=${k}`)}">${icon(COMPONENTS[k].icon)} ${label}</a>`)}
         </div><div class="menu-section menu-links">
           <a href="${BASE}/apps/${p.app_id}#create-page">${icon('file')} Page…</a>
@@ -351,8 +367,8 @@ export async function designerRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       await owner.query(
-        `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9 where id = $1`,
-        [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection],
+        `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10 where id = $1`,
+        [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null],
       );
       flash(s, 'Page saved.');
     } catch (e) {
