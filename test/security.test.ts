@@ -10,6 +10,9 @@ import { closePools, owner, runtime } from '../src/db.ts';
 import { urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
 import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
+import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/runtime/region-cache.ts';
+import { maxRows } from '../src/runtime/report.ts';
+import { lovMax } from '../src/runtime/items.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -1902,6 +1905,141 @@ describe('sprint 26 items: rich text, Markdown, rating, combobox, date range, pa
       markdownHtml(input);
       sanitizeHtml(input);
       assert.ok(performance.now() - t < 2000, `${input.slice(0, 20)}… took ${Math.round(performance.now() - t)} ms`);
+    }
+  });
+});
+
+describe('sprint 27 large tables', () => {
+  const page25 = async () => (await owner.one(`select id from meta.page where app_id = $1 and page_no = 25`, [appId])).id as number;
+  const regionId = async (title: string) => (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 25 and r.title = $2`, [appId, title])).id as number;
+  const addRegion = async (pageNo: number, fields: Record<string, unknown>) => {
+    const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = $2`, [appId, pageNo])).id;
+    const f = { seq: 95, title: 'Test region', type: 'dynamic', source: `select '<p>' || clock_timestamp() || '</p>'`, ...fields };
+    const cols = Object.keys(f);
+    return (await owner.one(`insert into meta.region (page_id, ${cols.join(', ')}) values ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')}) returning id`,
+      [pid, ...cols.map((c) => (c === 'config' ? JSON.stringify((f as any)[c]) : (f as any)[c]))])).id as number;
+  };
+  const section = (body: string, id: number) => {
+    const at = body.indexOf(`id="R${id}"`);
+    return at < 0 ? '' : body.slice(at, body.indexOf('</section>', at));
+  };
+
+  test('page numbers, page sizes and row limits are clamped on the server', async () => {
+    const king = await as('king');
+    const all = await regionId('All readings');
+    for (const p of ['99999999999999999999', '1e30', '-7', 'x', '1000001']) {
+      const res = await king.get(`/a/hr/25?r${all}_p=${p}`);
+      assert.equal(res.statusCode, 200, p);
+      assert.match(section(res.body, all), /Rows 1–25/, `page ${p} falls back to the first page`);
+    }
+    assert.match(section((await king.get(`/a/hr/25?r${all}_n=1000000`)).body, all), /Rows 1–500/, 'at most 500 rows per page');
+    assert.equal(maxRows({ config: { max_rows: 1e12 } }, null), 1_000_000);
+    assert.equal(maxRows({ config: { max_rows: '5; drop table hr.emp' } }, 7), 7);
+    assert.equal(maxRows({ config: { max_rows: -3 } }, null), null);
+    assert.equal(lovMax({ config: { max_rows: 1e9 } } as any), 50_000);
+    assert.equal(lovMax({ config: { max_rows: 'all' } } as any), 5000);
+    const r = { id: 1, type: 'report', config: {} } as any;
+    assert.deepEqual(cacheOf({ ...r, config: { cache: { scope: 'all', seconds: 1e9 } } }), { scope: 'all', seconds: 86_400 });
+    assert.equal(cacheOf({ ...r, config: { cache: { scope: 'everyone', seconds: 60 } } }), null);
+    assert.equal(cacheOf({ ...r, type: 'form', config: { cache: { scope: 'user', seconds: 60 } } }), null, 'forms are never cached');
+  });
+
+  test('the lazy region endpoint checks the session, page access, the region and its condition and authorization', async () => {
+    const king = await as('king');
+    const allen = await as('allen');
+    const lazy = await regionId('Readings of sensor A');
+    assert.equal((await king.get(`/a/hr/25/region/${lazy}`)).statusCode, 200);
+    assert.equal((await new Browser().get(`/a/hr/25/region/${lazy}`)).statusCode, 401, 'no session');
+    assert.equal((await king.get(`/a/hr/2/region/${lazy}`)).statusCode, 403, 'a region of another page');
+    assert.equal((await king.get(`/a/hr/25/region/${await regionId('All readings')}`)).statusCode, 403, 'not a lazy region');
+    assert.equal((await king.get(`/a/hr/25/region/abc`)).statusCode, 403);
+    const hidden = await addRegion(25, { condition: 'false', config: { lazy: true } });
+    const admin = await addRegion(25, { seq: 96, authz: 'ADMIN', config: { lazy: true } });
+    const onAdminPage = await addRegion(5, { config: { lazy: true } });
+    const form = await addRegion(25, { seq: 97, type: 'form', source: null, config: { lazy: true } });
+    try {
+      assert.equal((await king.get(`/a/hr/25/region/${hidden}`)).statusCode, 403, 'condition false');
+      assert.equal((await allen.get(`/a/hr/25/region/${admin}`)).statusCode, 403, 'region authorization');
+      assert.equal((await king.get(`/a/hr/25/region/${admin}`)).statusCode, 200);
+      assert.equal((await allen.get(`/a/hr/5/region/${onAdminPage}`)).statusCode, 403, 'page authorization');
+      assert.equal((await king.get(`/a/hr/25/region/${form}`)).statusCode, 403, 'forms are never lazy');
+      assert.doesNotMatch(section((await allen.get('/a/hr/25')).body, admin), /./, 'no placeholder for a region the user may not see');
+    } finally {
+      await owner.query('delete from meta.region where id = any($1)', [[hidden, admin, onAdminPage, form]]);
+    }
+  });
+
+  test('cached regions never cross sessions or users where their scope says so', async () => {
+    clearRegionCache();
+    const perSession = await addRegion(25, { config: { cache: { scope: 'session', seconds: 300 } } });
+    const perUser = await addRegion(25, { seq: 96, type: 'report', source: 'select empno, ename from hr.emp', config: { cache: { scope: 'user', seconds: 300 } } });
+    const forAll = await addRegion(25, { seq: 97, type: 'report', source: 'select empno, ename from hr.emp',
+      config: { cache: { scope: 'all', seconds: 300 }, link: { column: 'ename', page: 3, items: { P3_EMPNO: '#empno#' } } } });
+    try {
+      const a = await as('king');
+      const b = await as('king');
+      const ts = (body: string) => /<p>([^<]+)<\/p>/.exec(section(body, perSession))![1];
+      const first = (await a.get('/a/hr/25')).body;
+      assert.equal(ts((await a.get('/a/hr/25')).body), ts(first), 'the same session hits the cache');
+      const other = (await b.get('/a/hr/25')).body;
+      assert.notEqual(ts(other), ts(first), 'another session of the same user does not');
+      // the per-user report holds the session's CSRF token (saved reports): each session gets its own
+      assert.ok(a.lastCsrf && b.lastCsrf && a.lastCsrf !== b.lastCsrf);
+      assert.doesNotMatch(other, new RegExp(a.lastCsrf), 'no CSRF token of another session');
+      assert.match(other, new RegExp(`action="/a/hr/25/report/${perUser}/save"><input type="hidden" name="__csrf" value="${b.lastCsrf}"`));
+      // links with per-user checksums are not cached for all users
+      const blake = await as('blake');
+      const blakes = section((await blake.get('/a/hr/25')).body, forAll);
+      const kings = section(first, forAll);
+      const cs = (html: string) => [...html.matchAll(/cs=([\w-]+)/g)].map((m) => m[1]);
+      assert.ok(cs(kings).length && cs(blakes).length);
+      assert.ok(!cs(blakes).some((x) => cs(kings).includes(x)), 'blake never sees links signed for king');
+      assert.ok(regionCacheStats().entries > 0);
+    } finally {
+      await owner.query('delete from meta.region where id = any($1)', [[perSession, perUser, forAll]]);
+      clearRegionCache();
+    }
+  });
+
+  test('a cache key always holds the application, page, region, user and language', () => {
+    const ctx = (over: Record<string, any> = {}) => ({
+      app: { id: 1, alias: 'x' }, page: { page_no: 1, items: [] }, session: { id: 's1', state: {}, csrf_token: 't' },
+      user: 'king', roles: ['admin'], params: new URLSearchParams(), request: '', dialog: false, locale: { lang: 'en' },
+      vis: { regions: new Set([1]) }, ...over,
+    }) as any;
+    const r = { id: 1, type: 'dynamic', source: 'select :P1_X', title: 'T', config: {} } as any;
+    const all = { scope: 'all', seconds: 60 } as const;
+    const user = { scope: 'user', seconds: 60 } as const;
+    const base = cacheKey(ctx(), r, all);
+    assert.notEqual(cacheKey(ctx({ app: { id: 2, alias: 'y' } }), r, all), base, 'another application');
+    assert.notEqual(cacheKey(ctx({ roles: [] }), r, all), base, 'other roles');
+    assert.notEqual(cacheKey(ctx({ locale: { lang: 'nl' } }), r, all), base, 'another language');
+    assert.notEqual(cacheKey(ctx({ session: { id: 's1', state: { P1_X: '2' }, csrf_token: 't' } }), r, all), base, 'an item the source uses');
+    assert.notEqual(cacheKey(ctx({ params: new URLSearchParams('r1_p=2') }), r, all), base, 'the query string');
+    assert.notEqual(cacheKey(ctx({ user: 'blake' }), r, user), cacheKey(ctx(), r, user), 'per user');
+    assert.notEqual(cacheKey(ctx(), { ...r, source: 'select 2' }, all), base, 'a changed region');
+    assert.ok(base.startsWith('1:1:1:'));
+  });
+
+  test('a submit of the page drops its cached regions; downloads keep the access checks', async () => {
+    clearRegionCache();
+    const cached = await addRegion(25, { config: { cache: { scope: 'all', seconds: 300 } } });
+    const hidden = await addRegion(25, { seq: 96, type: 'report', source: 'select 1 as x', condition: 'false' });
+    try {
+      const king = await as('king');
+      const ts = (body: string) => /<p>([^<]+)<\/p>/.exec(section(body, cached))![1];
+      const jones = await as('jones');
+      const before = ts((await jones.get('/a/hr/25')).body);
+      const blake = await as('blake');
+      assert.equal(ts((await blake.get('/a/hr/25')).body), before, 'shared by all users with the same roles');
+      assert.notEqual(ts((await king.get('/a/hr/25')).body), before, 'not with other roles');
+      assert.equal((await blake.post('/a/hr/25', { __csrf: blake.lastCsrf })).statusCode, 303);
+      assert.notEqual(ts((await jones.get('/a/hr/25')).body), before);
+      for (const f of ['csv', 'xlsx']) assert.equal((await king.get(`/a/hr/25?r${hidden}_${f}=1`)).statusCode, 403, f);
+      assert.equal((await new Browser().get(`/a/hr/25?r${await regionId('All readings')}_csv=1`)).statusCode, 302, 'no session, no download');
+    } finally {
+      await owner.query('delete from meta.region where id = any($1)', [[cached, hidden]]);
+      clearRegionCache();
     }
   });
 });
