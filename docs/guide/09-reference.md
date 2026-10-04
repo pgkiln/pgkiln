@@ -90,6 +90,10 @@ needed and grants access; deleting revokes access.
 
 **`app_process`**: `app_id`, `seq`, `name`, `point` (`after_login` / `before_page`), `code`, `authz`.
 
+**`build_option`**: `app_id`, `name` (uppercase, unique per app), `status` (`include` / `exclude`),
+`description` ([chapter 6](06-processing.md#build-options)). `meta.build_option_on(app_id, ref)`
+tells whether a component with that `build_option` value is part of the application.
+
 ### Page level
 
 **`page`**
@@ -103,6 +107,10 @@ needed and grants access; deleting revokes access.
 | `mode` | `normal` / `modal` |
 | `protection` | `checksum` / `unrestricted` |
 | `authz` | Authorization scheme |
+| `build_option` | `NAME` / `!NAME`: only while the [build option](06-processing.md#build-options) is included / excluded |
+
+Regions, items, buttons, dynamic actions, validations, processes, computations, branches,
+navigation entries and application processes have the same `build_option` column.
 
 **`region`**
 
@@ -121,12 +129,13 @@ needed and grants access; deleting revokes access.
 **`item`**: `page_id`, `region_id`, `seq`, `name`, `label`, `type`, `lov`, `source_column`,
 `default_value`, `required`, `help`, `readonly_condition`, `authz`, `config` ([chapter 5](05-items.md)).
 
-**`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da`),
-`target_page`, `target_items` (jsonb), `condition`, `authz`, `hot`, `confirm` ([chapter 6](06-processing.md)).
+**`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da` /
+`document` / `menu`), `target_page`, `target_items` (jsonb), `condition`, `authz`, `hot`, `confirm`,
+`menu` (jsonb, for `menu`), `badge`, `badge_query` ([chapter 6](06-processing.md)).
 
 **`dynamic_action`**: `page_id`, `seq`, `name`, `event`, `trigger_element`, `condition_type`,
 `condition_value`, `action`, `affected_items`, `affected_region_id`, `code`, `items_to_submit`,
-`message`, `authz` ([chapter 7](07-dynamic-actions.md)).
+`message`, `css_classes`, `authz` ([chapter 7](07-dynamic-actions.md)).
 
 **`validation`**: `page_id`, `seq`, `name`, `item_name`, `type` (`not_null` / `sql` / `regex`),
 `expression`, `message`, `when_button`.
@@ -134,6 +143,15 @@ needed and grants access; deleting revokes access.
 **`process`**: `page_id`, `seq`, `name`, `type` (`form_dml` / `grid_dml` / `sql` / `data_load`),
 `region_id`, `code`, `config` (jsonb, for `data_load`), `point` (`submit` / `load`), `when_button`,
 `authz`, `success_message`.
+
+**`computation`**: `page_id`, `seq`, `item_name`, `point` (`before_header` / `after_submit`), `type`
+(`static` / `item` / `sql_query` / `sql_expression` / `function_body`), `expression`,
+`condition_type`, `condition_expr`, `condition_value`, `authz`
+([chapter 6](06-processing.md#computations)).
+
+**`branch`**: `page_id`, `seq`, `name`, `point` (`after_processing` / `before_header`), `when_button`,
+`condition_type`, `condition_expr`, `condition_value`, `target_type` (`page` / `url`), `target_page`,
+`target_items` (jsonb), `target_url`, `authz` ([chapter 6](06-processing.md#branches)).
 
 ### Runtime and instance
 

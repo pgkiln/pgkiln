@@ -1,4 +1,4 @@
-# 6. Buttons, validations and processes
+# 6. Buttons, validations, processes and page logic
 
 ## Buttons
 
@@ -6,14 +6,17 @@
 |---|---|
 | `name` | The **request** (`SAVE`, `CREATE`, `APPROVE`, …); uppercase. Processes and validations can run "when button pressed" |
 | `label` | Button text |
-| `action` | `submit`: submit the page with this request. `redirect`: go to `target_page` without submitting. `da`: do nothing except trigger [dynamic actions](07-dynamic-actions.md) |
-| `target_page` | For `redirect`: where to go. For `submit`: where to go **after** success (the *branch*); empty = stay on the page |
+| `action` | `submit`: submit the page with this request. `redirect`: go to `target_page` without submitting. `da`: do nothing except trigger [dynamic actions](07-dynamic-actions.md). `document`: download a document template. `menu`: a [menu](#menu-buttons-and-badges) of links and submit requests |
+| `target_page` | For `redirect`: where to go. For `submit`: where to go **after** success when no [branch](#branches) applies; empty = stay on the page |
 | `target_items` | For `redirect`: items to set on the target page, e.g. `{"P3_ID": "&P2_ID."}` |
 | `condition` | SQL expression; the button only exists when it is true |
 | `authz` | Authorization scheme |
 | `hot` | Primary styling. The first visible hot submit button is also the one **Enter** presses |
 | `confirm` | A confirmation question before the action (e.g. "Delete this record?") |
 | `region_id`, `seq` | Placement: region header (reports, cards, …), region footer (forms, static) or page bottom |
+| `menu` | For `menu`: the entries (JSON), see below |
+| `badge`, `badge_query` | A small count or label on the button, see below |
+| `build_option` | Only part of the application while the [build option](#build-options) is included |
 
 The **condition and authorization are checked again when the button is pressed**: a request for a
 button that isn't visible to this user in this state is refused (403) and logged. So a condition
@@ -22,16 +25,52 @@ like `:P3_ID is null` on *Create* really does prevent creating from an existing 
 In a modal dialog, a `redirect` button whose target is not a modal page (typically *Cancel*)
 simply closes the dialog.
 
+### Menu buttons and badges
+
+A button with action `menu` opens a dropdown (an HTML `<details>` element, so it works without
+JavaScript). `menu` is a JSON array of at most 20 entries; each is either a **link** to a page of
+the application or a **submit request**:
+
+```json
+[{"label": "Leave requests", "page": 6, "icon": "list"},
+ {"label": "Details", "page": 3, "items": {"P3_EMPNO": "&P22_EMPNO."}},
+ {"label": "Start over", "request": "RESET", "confirm": "Clear the form?", "authz": "ADMIN"}]
+```
+
+| Key | Meaning |
+|---|---|
+| `label` | The entry's text (1–100 characters) |
+| `page`, `items` | A link: the page and the items to set (signed with a checksum, like any link) |
+| `request` | A submit: the page is submitted with this request, as if a button of that name was pressed. Validations, processes and branches with `when_button` see it |
+| `confirm` | A confirmation question first |
+| `authz` | The entry only exists for users who pass this authorization scheme |
+| `icon` | An [icon](09-reference.md#icons) name |
+
+A request entry is allowed on submit only when the menu button itself is visible to the user and
+the entry's authorization passes; a request that is also the name of a real button on the page
+follows that button's condition and authorization instead.
+
+A **badge** is a short value shown on the button (a count of open items, "new", …). `badge` is
+text with `&ITEM.` substitutions (an empty result shows no badge); `badge_query` is a SELECT whose
+first column of the first row is shown, and wins when both are set. The query runs as the
+application's database role with bind variables, like any region source.
+
 ## What happens on submit
 
 ```
 POST ──> CSRF check ──> page authorization ──> "before page" app processes
      ──> visibility (with the state as rendered) ──> button allowed?
      ──> copy posted values of editable items into session state
+     ──> computations (after_submit)       ── error ──> roll back, re-show page with message
      ──> validations (not for DELETE)      ── error ──> re-show page with messages (422)
      ──> processes, in sequence            ── error ──> roll back, re-show page with message
-     ──> COMMIT ──> success message ──> redirect to the button's target page
+     ──> branches (after_processing): the first that applies
+     ──> COMMIT ──> success message ──> redirect to the branch's target,
+                                        else to the button's target page, else to the page
 ```
+
+When the page is shown (GET), the order is: `before_header` branches (one that applies redirects
+at once), form fetch, `before_header` computations, `load` processes, rendering.
 
 Everything from the first validation to the last process runs in **one transaction**: if a later
 process fails, earlier inserts and updates are rolled back too.
@@ -116,12 +155,92 @@ end if;
 All changes of the submit are rolled back, and the page is shown again with the entered
 values so the user can correct them.
 
+## Computations
+
+A computation sets a page item or an application item without a process: a default, a value
+looked up by SQL, a derived value.
+
+| Property | Meaning |
+|---|---|
+| `item_name` | The page item or application item it sets |
+| `point` | `before_header`: when the page is shown (after the form fetch, before the `load` processes). `after_submit`: after the posted values are stored, before the validations |
+| `type` | How `expression` is read, see below |
+| `expression` | The value, item, query, expression or function body |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-and-branches) holds |
+| `authz` | Only for users who pass this authorization scheme |
+| `seq` | Order; later computations see the values of earlier ones |
+
+| `type` | `expression` |
+|---|---|
+| `static` | A value; `&ITEM.` substitutions allowed. An empty result clears the item |
+| `item` | The name of another item whose value is copied |
+| `sql_query` | A SELECT; the first column of the first row (empty without rows) |
+| `sql_expression` | A SQL expression, e.g. `round(:P22_DAYS::numeric)` |
+| `function_body` | A PL/pgSQL function body that returns the value: `return upper(:P3_NAME);`, or a whole `declare … begin … end` block |
+
+SQL runs as the application's database role with bind variables, each computation in its own
+savepoint. A failing computation before the page is shown leaves the item as it was and shows the
+error on the page; after a submit it stops the submit (everything is rolled back) and shows the
+error, like a failing process.
+
 ## Branches
 
-After a successful submit pgapex redirects (POST-redirect-GET) to the pressed button's
-`target_page`, or back to the same page. In a modal dialog, the dialog closes instead, and the
-calling page reloads. Conditional branches are not supported yet; use separate buttons or a
-process that sets an item and a page that reacts to it.
+After a successful submit pgapex redirects (POST-redirect-GET). **Branches** decide where to: the
+first branch, in sequence, whose button, authorization and condition match is taken; when none
+applies, the pressed button's `target_page`, or back to the same page. In a modal dialog, the
+dialog closes instead, and the calling page reloads.
+
+| Property | Meaning |
+|---|---|
+| `name` | A description, shown in the page designer |
+| `point` | `after_processing` (after a submit's processes) or `before_header` (before the page is shown: a redirect instead of the page, e.g. "nothing to do here, go to the list") |
+| `when_button` | `after_processing` only: the request (button) it is for; empty = any |
+| `target_type` | `page` or `url` |
+| `target_page`, `target_items` | A page of the application (empty = this page) and the items to set there, e.g. `{"P7_EMPNO": "&P22_EMPNO."}`; the link is signed with a checksum |
+| `target_url` | A path inside the application (after `/a/<alias>/`), e.g. `12?view=month` or `account`; `&ITEM.` values are URL-encoded. Other sites are refused (no scheme, `//`, `\` or `..`) |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-and-branches) holds |
+| `authz`, `seq`, `build_option` | As for other components |
+
+A `before_header` branch to the page itself is skipped (it would loop).
+
+### Conditions of computations and branches
+
+| `condition_type` | Holds when |
+|---|---|
+| (empty) | always |
+| `sql` | `condition_expr`, a boolean SQL expression, is true |
+| `exists` / `not_exists` | the query in `condition_expr` returns a row / no row |
+| `item_null` / `item_not_null` | the item named in `condition_expr` is empty / has a value |
+| `item_equals` / `item_not_equals` | that item's value is / is not `condition_value` |
+| `request_in` | the request (the button pressed) is one of `condition_value`, comma separated |
+
+A condition whose SQL fails counts as false and shows the error.
+
+**HR example, page 22 (Leave planner).** Computations fill the employee (yours, when none is
+chosen: `sql_query` with condition `item_null`), the name (`function_body`) and the pending
+requests before the page is shown, and round the days after a submit (`sql_expression`). Branches:
+*Check* with more than 10 days goes to the leave calendar (`sql` condition); *Plan* goes to a new
+leave request for the employee (`target_items`); the *More* menu's *Start over* request comes back
+to the page with the days cleared (`request_in`).
+
+## Build options
+
+**Shared Components → Build options** are named switches (`include` or `exclude`) for features
+that are not ready, or only for some installations. Pages, regions, items, buttons, dynamic
+actions, validations, processes, computations, branches, navigation entries and application
+processes have a `build_option` property:
+
+| `build_option` | The component is part of the application |
+|---|---|
+| (empty) | always |
+| `NAME` | while the option is included |
+| `!NAME` | while the option is excluded (shown as "Not" in the builder) |
+
+An excluded component is left out when the runtime loads the application: it is not rendered, not
+run, and not accepted on submit (a page left out answers 404). A name that does not exist leaves
+the component out (fail closed); the Advisor reports it. Build options are part of an application
+export. On HR page 22, the *Forecast* region needs `LEAVE_FORECAST` (excluded), and *Planner tips*
+(`!LEAVE_FORECAST`) takes its place until it is included.
 
 ## Application processes
 

@@ -36,16 +36,17 @@ src/
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
-  metadata.ts              types + loaders for apps and pages
+  metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here)
   maptiles.ts              map tile server URL, attribution and CSP origin
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
     context.ts             PageContext, bind values, substitutions, public error messages
-    authz.ts               authorization schemes, conditions, visibility
+    authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
     engine.ts              form fetch, validations, processes, application processes
+    logic.ts               computations, branches and their conditions (before header / after submit)
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
-    regions.ts             region shell + chart/cards/dynamic dispatch, buttons
+    regions.ts             region shell + chart/cards/dynamic dispatch, buttons (menu buttons, badges)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, charts.ts, calendar.ts, facets.ts, items.ts, links.ts
     account.ts             My account (details, own password, preferences)
     locale.ts              language, theme, text messages and translations of a request
@@ -69,7 +70,7 @@ src/
     home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
-    designer.ts            page designer: component tree, layout canvas and gallery, property editor, toolbar
+    designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: SQL commands, object browser
     users.ts               user directory and identity providers
@@ -93,7 +94,7 @@ src/
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
 public/
   app.css                  theme (light/dark, responsive)
-  app.js                   client runtime: dialogs, dynamic actions, grids, menus (no inline JS)
+  app.js                   client runtime: dialogs, dynamic actions (focus, classes, messages), grids, menus (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
@@ -110,6 +111,7 @@ test/
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates
+  logic.test.ts            computations, branches, menu buttons and badges, new dynamic actions, build options, export
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
   helpers.ts               a cookie-keeping test browser

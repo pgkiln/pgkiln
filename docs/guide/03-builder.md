@@ -103,14 +103,17 @@ side by side; on phones and portrait tablets they are tabs (**Tree**, **Layout**
 choosing a component opens the Properties tab.
 
 - **Left: the component tree**, with four tabs:
-  - **Rendering**: the page, *Pre-Rendering* (processes that run before the page is shown), the
+  - **Rendering**: the page, *Pre-Rendering* (branches, computations and processes that run
+    before the page is shown), the
     **Regions** with their items and buttons, and page-level items and buttons;
   - **Dynamic actions**, grouped by event (change, click, page load);
-  - **Processing**: validations, processes and the branches (buttons that go to another page);
+  - **Processing**: computations after submit, validations, processes and the branches (the
+    [branch components](06-processing.md#branches) in sequence, then the buttons that go to
+    another page);
   - **Shared components** the page can use (lists of values, authorization schemes, navigation,
     application items), linking to Shared Components.
 
-  Icons show which components have an authorization scheme or a condition. Folders open and close
+  Icons show which components have an authorization scheme, a condition or a build option. Folders open and close
   with a click; with the keyboard, the arrow keys walk the tree (Left / Right close and open a
   folder), Enter opens a component.
 - **Middle: the Layout**: the page's regions on the 12-column grid, each with its items and
@@ -124,8 +127,8 @@ choosing a component opens the Properties tab.
   (remembered on this device).
 
 The toolbar has the page switcher (previous, a list of all pages, next), **Undo** / **Redo** of
-layout changes, the **Create** menu (region, item, button, dynamic action, validation, process, or a
-new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
+layout changes, the **Create** menu (region, item, button, dynamic action, computation, validation,
+process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
 **Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
 (opens the page in a new tab). Changes are live as soon as they are saved.
 
@@ -235,6 +238,7 @@ Components used by the whole application:
 | **Workflows** | Multi-step processes of tasks, SQL, decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
+| **Build options** | Include / exclude switches for features; pages and their components name one in their *Build option* property, and *Used in* lists them ([chapter 6](06-processing.md#build-options)) |
 | **Template components** | HTML templates with placeholders and directives, used as a region type and as report column templates, with a preview; shared as plug-in files ([chapter 4](04-pages-and-regions.md#template-components)) |
 
 ## Users (the user directory)
@@ -288,14 +292,16 @@ Database code (views, functions, RLS policies) isn't part of the application, so
 
 **Advisor** (in the application's header) checks the application without running it:
 
-- **SQL:** every region source, list of values, condition, validation, process, dynamic action,
+- **SQL:** every region source, list of values, condition, validation, process, computation,
+  branch condition, button badge query, dynamic action,
   authorization scheme, application process and automation is planned with `EXPLAIN` as the
   application's database role, with binds as NULL, in a transaction that is rolled back. That
   finds syntax errors, unknown tables, columns and functions, type errors and missing grants.
   `DO` blocks are compiled into a temporary function (syntax). Statements that can't be planned
   without running them (`notify`, `call`, `set`, …) are listed as notes.
 - **References:** pages, items, lists of values, authorization schemes, report layouts and
-  regions that a component names but that don't exist; grids without a key or a save process.
+  regions that a component names but that don't exist (also build options, which leave the
+  component out, and the items computations set or copy); grids without a key or a save process.
 - **PL/pgSQL functions:** when the `plpgsql_check` extension is installed, the functions in the
   schemas the application's role can use are checked with `plpgsql_check_function_tb` (see
   [extensions](15-extensions.md)).
