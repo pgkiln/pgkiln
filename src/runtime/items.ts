@@ -5,6 +5,8 @@ import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, maxFiles, removals } from './files.ts';
+import { markdownHtml, sanitizeHtml } from '../richtext.ts';
+import { qrSvg, type Ecc } from '../qrcode.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -44,11 +46,21 @@ export async function lovOptions(ctx: PageContext, lov: string | null): Promise<
   return res.rows.map((r: unknown[]) => ({ display: toState(r[0]) ?? '', value: toState(r.length > 1 ? r[1] : r[0]) ?? '' }));
 }
 
-const LOV_TYPES = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov']);
+const LOV_TYPES = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov', 'combobox']);
 const hasLov = (item: Item) => LOV_TYPES.has(item.type) || (item.type === 'display' && !!item.lov);
 export const MULTI_VALUE = new Set(['checkbox_group', 'multiselect']);
 /** Multi-value items store their values colon-separated, as in APEX. */
 export const splitValues = (v: string) => (v ? v.split(':') : []);
+
+/** A combobox holds several values (colon-separated) unless {"multiple": false}. */
+export const comboMultiple = (item: Item) => item.config?.multiple !== false;
+/** The highest star of a rating item ({"max": 5}, 3 to 10). */
+export const ratingMax = (item: Item) => Math.min(Math.max(Math.round(Number(item.config?.max)) || 5, 3), 10);
+/** A date range item's value "from:to" (ISO dates, either may be empty). */
+export const splitRange = (v: string | null | undefined): [string, string] => {
+  const [from = '', to = ''] = (v ?? '').split(':');
+  return [from, to];
+};
 
 /** "lat,lng" with decimals */
 const LOCATION = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
@@ -80,6 +92,22 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   let useLegend = false;
   if (item.type === 'file') {
     control = await fileControl(ctx, item, editable, aria);
+  } else if (item.type === 'qrcode') {
+    control = qrControl(ctx, item, value);
+  } else if (!editable && (item.type === 'richtext' || item.type === 'markdown')) {
+    // rebuilt from the allow-list every time: the value may come from the table, not from this form
+    control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value)) || ' ')}</div>`;
+  } else if (!editable && item.type === 'rating') {
+    const n = /^\d+$/.test(value) ? Math.min(Number(value), ratingMax(item)) : 0;
+    control = n
+      ? html`<div class="display-value rating-value" id="${id}"><span aria-hidden="true">${'★'.repeat(n)}<span class="rating-off">${'★'.repeat(ratingMax(item) - n)}</span></span><span class="sr-only">${ctx.locale.t('item.rating_of', { n, max: ratingMax(item) })}</span></div>`
+      : html`<div class="display-value" id="${id}"> </div>`;
+  } else if (!editable && item.type === 'combobox') {
+    const values = comboMultiple(item) ? splitValues(value) : value ? [value] : [];
+    control = html`<div class="display-value" id="${id}">${values.length ? values.map((v) => html`<span class="tag">${options.find((o) => o.value === v)?.display ?? v}</span> `) : ' '}</div>`;
+  } else if (!editable && item.type === 'daterange') {
+    const [from, to] = splitRange(value);
+    control = html`<div class="display-value" id="${id}">${value ? `${from} – ${to}` : ' '}</div>`;
   } else if (!editable) {
     let shown = value;
     if (hasLov(item))
@@ -145,6 +173,65 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       case 'datetime':
         control = html`<input type="datetime-local" id="${id}" name="${id}" value="${value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
         break;
+      case 'richtext':
+      case 'markdown': {
+        // a plain textarea (HTML or Markdown) that works without JavaScript; app.js adds the
+        // toolbar (and, for rich text, an editable area in place of the textarea)
+        const rich = item.type === 'richtext';
+        const t = ctx.locale.t;
+        const tool = (cmd: string, key: string, glyph: string) =>
+          html`<button type="button" class="btn rte-btn" data-cmd="${cmd}" title="${t(key)}" aria-label="${t(key)}">${glyph}</button>`;
+        control = html`<div class="rte" data-${rich ? 'richtext' : 'markdown'}="${id}">
+          <div class="rte-toolbar" role="toolbar" aria-label="${t('editor.toolbar')}" aria-controls="${id}" hidden>
+            ${tool('bold', 'editor.bold', 'B')}${tool('italic', 'editor.italic', 'I')}${rich ? tool('underline', 'editor.underline', 'U') : ''}${tool('strike', 'editor.strike', 'S')}
+            ${tool('heading', 'editor.heading', 'H')}${rich ? tool('paragraph', 'editor.paragraph', '¶') : ''}${tool('bullets', 'editor.bullets', '•')}${tool('numbers', 'editor.numbers', '1.')}
+            ${tool('quote', 'editor.quote', '❝')}${tool('code', 'editor.code', '</>')}
+            <button type="button" class="btn rte-btn" data-cmd="link" data-prompt="${t('editor.link_prompt')}" title="${t('editor.link')}" aria-label="${t('editor.link')}">↗</button>
+            ${rich ? html`${tool('unlink', 'editor.unlink', '⊘')}${tool('clear', 'editor.clear', 'Tx')}` : ''}
+          </div>
+          <textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 8}"${aria}>${rich ? sanitizeHtml(value) : value}</textarea>
+          <small class="help rte-hint">${t(rich ? 'item.richtext_hint' : 'item.markdown_hint')}</small>
+        </div>`;
+        break;
+      }
+      case 'rating': {
+        // radio buttons (keyboard and screen readers as usual); CSS draws them as stars
+        useLegend = true;
+        const max = ratingMax(item);
+        const stars = [];
+        for (let n = 1; n <= max; n++)
+          stars.push(
+            html`<input type="radio" id="${n === 1 ? id : `${id}_${n}`}" name="${id}" value="${n}"${value === String(n) ? raw(' checked') : ''}${aria}><label class="star" for="${n === 1 ? id : `${id}_${n}`}"><span aria-hidden="true">★</span><span class="sr-only">${ctx.locale.t('item.rating_of', { n, max })}</span></label>`,
+          );
+        // the "no rating" choice comes first, so CSS can dim the stars after the checked one (it is shown last)
+        control = html`<div class="rating">${
+          item.required
+            ? ''
+            : html`<input type="radio" id="${id}_0" name="${id}" value=""${value === '' ? raw(' checked') : ''}${aria}><label class="rating-clear" for="${id}_0">${ctx.locale.t('item.rating_none')}</label>`
+        }${stars}</div>`;
+        break;
+      }
+      case 'combobox': {
+        // free text with suggestions (a datalist); app.js turns a multiple combobox into tags
+        const multiple = comboMultiple(item);
+        control = html`<div class="combobox"${multiple ? html` data-tags="${id}" data-remove-label="${ctx.locale.t('item.tag_remove')}"` : ''}>
+          <input type="text" id="${id}" name="${id}" value="${value}" list="${id}_list" autocomplete="off"${aria}>
+          <datalist id="${id}_list">${options.map((o) => html`<option value="${o.value}">${o.display === o.value ? '' : o.display}</option>`)}</datalist>
+          ${multiple ? html`<small class="help tags-hint">${ctx.locale.t('item.tags_hint')}</small>` : ''}
+        </div>`;
+        break;
+      }
+      case 'daterange': {
+        // two date inputs with the same name: posted in order, stored as "from:to"
+        useLegend = true;
+        const [from, to] = splitRange(value);
+        const t = ctx.locale.t;
+        control = html`<div class="date-range" data-range="${id}">
+          <span class="range-part"><label class="sub" for="${id}">${t('item.range_from')}</label><input type="date" id="${id}" name="${id}" value="${from}"${to ? html` max="${to}"` : ''}${aria}></span>
+          <span class="range-part"><label class="sub" for="${id}_TO">${t('item.range_to')}</label><input type="date" id="${id}_TO" name="${id}" value="${to}"${from ? html` min="${from}"` : ''}${aria}></span>
+        </div>`;
+        break;
+      }
       case 'location':
         // "lat,lng"; app.js fills it from the device (geolocation) with the button
         control = html`<div class="input-with-button"><input type="text" id="${id}" name="${id}" value="${value}" inputmode="decimal" placeholder="52.01160,4.35710"${aria}>
@@ -164,6 +251,9 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
           : '';
         control = html`<input type="${type}" id="${id}" name="${id}" value="${shown}"${raw(extra)}${aria}>`;
         // {"scan": true}: a button that reads a barcode or QR code with the camera (where the browser can: app.js)
+        // {"reveal": true}: a button that shows the password while typing (app.js shows the button)
+        if (item.type === 'password' && item.config?.reveal)
+          control = html`<div class="input-with-button">${control}<button type="button" class="btn" data-reveal="${id}" aria-controls="${id}" aria-pressed="false" data-hide="${ctx.locale.t('item.password_hide')}" hidden>${ctx.locale.t('item.password_show')}</button></div>`;
         if (item.config?.scan && type === 'text')
           control = html`<div class="input-with-button">${control}<button type="button" class="btn" data-scan="${id}" hidden>${icon('scan')} ${ctx.locale.t('item.scan')}</button></div>`;
       }
@@ -181,7 +271,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       item.config?.submit_on_change ? 'data-submit-on-change' : '',
       item.config?.cascade_parents ? `data-cascade="${String(item.config.cascade_parents).replace(/[^A-Z0-9_,]/gi, '')}"` : '',
       hiddenByDa ? 'hidden' : '',
-      item.config?.wide || item.type === 'textarea' ? 'data-wide' : '',
+      item.config?.wide || item.type === 'textarea' || item.type === 'richtext' || item.type === 'markdown' ? 'data-wide' : '',
     ]
       .filter(Boolean)
       .map((a) => ` ${a}`)
@@ -193,6 +283,16 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     ${item.help ? html`<small class="help" id="${id}_help">${item.help}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}
   ${raw(`</${tag}>`)}`;
+}
+
+/** A QR code of the item's value ({"ecc": "L|M|Q|H", "size": 200}), drawn on the server as SVG. */
+function qrControl(ctx: PageContext, item: Item, value: string) {
+  if (!value) return html`<div class="display-value" id="${item.name}"> </div>`;
+  const ecc: Ecc = ['L', 'M', 'Q', 'H'].includes(item.config?.ecc) ? item.config.ecc : 'M';
+  const size = Number(item.config?.size) || undefined;
+  const svg = value.length <= 2000 ? qrSvg(value, { ecc, px: size, label: ctx.locale.t('item.qr_label', { value: value.slice(0, 200) }) }) : null;
+  if (!svg) return html`<div class="display-value" id="${item.name}"><small class="error">${ctx.locale.t('item.qr_too_long')}</small></div>`;
+  return html`<div class="qr" id="${item.name}">${raw(svg)}${item.config?.show_value ? html`<small class="help">${value}</small>` : ''}</div>`;
 }
 
 /**

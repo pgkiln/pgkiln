@@ -7,6 +7,7 @@ import { gridDml } from './grid.ts';
 import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, tempIds } from './files.ts';
 import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
+import { ratingMax } from './items.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
 const ident = pg.escapeIdentifier;
@@ -116,7 +117,24 @@ export async function validate(ctx: PageContext) {
     }
     if (missing) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
   }
-  // a location is "latitude,longitude"
+  // a location is "latitude,longitude"; a rating a whole number of stars; a date range "from:to"
+  for (const i of ctx.page.items) {
+    const v = state[i.name];
+    if (!v || !vis.editable.has(i.name) || errors.items[i.name]) continue;
+    const label = i.label ?? i.name;
+    if (i.type === 'rating' && !(/^\d{1,2}$/.test(v) && Number(v) >= 1 && Number(v) <= ratingMax(i)))
+      fail(i.name, ctx.locale.t('error.rating', { label, max: ratingMax(i) }));
+    if (i.type === 'daterange') {
+      const m = /^(\d{4}-\d{2}-\d{2})?:(\d{4}-\d{2}-\d{2})?$/.exec(v);
+      const valid = (d: string | undefined) => {
+        const t = d ? Date.parse(`${d}T00:00:00Z`) : 0;
+        return !d || (!Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d);
+      };
+      if (!m || !valid(m[1]) || !valid(m[2])) fail(i.name, ctx.locale.t('error.daterange', { label }));
+      else if (m[1] && m[2] && m[1] > m[2]) fail(i.name, ctx.locale.t('error.daterange_order', { label }));
+      else if (i.required && (!m[1] || !m[2])) fail(i.name, ctx.locale.t('error.required', { label }));
+    }
+  }
   for (const i of ctx.page.items) {
     const v = state[i.name];
     if (i.type !== 'location' || !v || !vis.editable.has(i.name) || errors.items[i.name]) continue;

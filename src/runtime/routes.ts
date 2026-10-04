@@ -16,7 +16,8 @@ import { clientIp, createSession, destroySession, getSession, loginThrottled, lo
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
-import { MULTI_VALUE, renderItem } from './items.ts';
+import { comboMultiple, MULTI_VALUE, renderItem } from './items.ts';
+import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
@@ -226,8 +227,22 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
       ctx.session.state[item.name] = values.length ? values.join(':') : null;
       continue;
     }
+    if (item.type === 'daterange') {
+      // two date inputs with the item's name (or "from:to" from a dynamic action); format checked in validate()
+      const parts = (Array.isArray(raw) ? raw : raw ? String(raw).split(':') : []).map((v) => String(v).trim());
+      ctx.session.state[item.name] = parts.some(Boolean) ? (parts.length === 1 ? `${parts[0]}:` : parts.join(':')) : null;
+      continue;
+    }
+    if (item.type === 'combobox' && comboMultiple(item)) {
+      // tags: colon-separated, trimmed, each once
+      const tags = [...new Set((Array.isArray(raw) ? raw : [raw ?? '']).flatMap((v) => String(v).split(':')).map((v) => v.trim()).filter(Boolean))];
+      ctx.session.state[item.name] = tags.length ? tags.join(':') : null;
+      continue;
+    }
     const posted = Array.isArray(raw) ? raw[raw.length - 1] : raw;
-    if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
+    if (item.type === 'richtext') ctx.session.state[item.name] = cleanRichText(posted) || null;
+    else if (item.type === 'markdown') ctx.session.state[item.name] = posted ? String(posted).replace(/\r\n?/g, '\n') : null;
+    else if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
     else if (item.type === 'password' && !posted) continue;
     else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
   }

@@ -950,3 +950,58 @@ td.tc-cell { overflow-wrap: anywhere; }
   .tc-preview { padding: 0.6rem; }
   .tc-columns textarea { min-width: 0; }
 }
+
+/* ------------------------------------------------------------------ rich text, Markdown, rating, tags, date range, QR code items */
+.rte { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.rte-toolbar { display: flex; flex-wrap: wrap; gap: 0.2rem; }
+.rte-btn { min-width: 2.1rem; padding: 0.2rem 0.5rem; font-size: 0.85rem; justify-content: center; }
+.rte-btn[data-cmd=bold] { font-weight: 700; }
+.rte-btn[data-cmd=italic] { font-style: italic; }
+.rte-btn[data-cmd=underline] { text-decoration: underline; }
+.rte-btn[data-cmd=strike] { text-decoration: line-through; }
+.rte-area {
+  min-height: 9rem; max-height: 32rem; overflow: auto; padding: 0.5rem 0.65rem; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere;
+}
+.rte-area:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.has-error .rte-area { border-color: var(--danger); }
+.js .rte[data-richtext] .rte-hint { display: none; }
+.rich-text { white-space: normal; overflow-wrap: anywhere; }
+.rich-text > :first-child, .rte-area > :first-child { margin-top: 0; }
+.rich-text > :last-child, .rte-area > :last-child { margin-bottom: 0; }
+.rich-text pre, .rte-area pre { white-space: pre-wrap; background: var(--surface-2); padding: 0.5rem; border-radius: 6px; }
+.rich-text blockquote, .rte-area blockquote { margin: 0.5rem 0; padding-left: 0.8rem; border-left: 3px solid var(--border); color: var(--muted); }
+
+.rating { position: relative; display: flex; align-items: center; gap: 0.1rem; padding: 0.2rem 0; flex-wrap: wrap; }
+.rating input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }
+.rating .star { font-size: 1.6rem; line-height: 1; padding: 0.15rem; cursor: pointer; color: var(--accent); border-radius: 4px; }
+/* stars up to the checked one are filled; the ones after it (and all, with "no rating") are dimmed */
+.rating input:checked + label ~ .star, .rating:not(:has(input:checked)) .star { color: var(--muted); opacity: 0.4; }
+.rating:hover input + label.star { color: var(--accent); opacity: 1; }
+.rating:hover .star:hover ~ input + label.star { color: var(--muted); opacity: 0.4; }
+.rating input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rating-clear { order: 99; margin-left: 0.6rem; font-size: 0.82rem; color: var(--muted); cursor: pointer; text-decoration: underline; }
+.rating input:checked + .rating-clear { text-decoration: none; font-weight: 600; }
+.rating-value { font-size: 1.2rem; color: var(--accent); letter-spacing: 0.05rem; }
+.rating-off { color: var(--muted); opacity: 0.4; }
+
+.combobox { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0; padding: 0; list-style: none; }
+.tag-list:empty { display: none; }
+.tag {
+  display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.25rem 0.1rem 0.55rem; border-radius: 99px;
+  background: var(--accent-soft); font-size: 0.85rem; max-width: 100%; overflow-wrap: anywhere;
+}
+.display-value .tag { padding-right: 0.55rem; margin: 0.1rem 0; }
+.tag-remove {
+  border: 0; background: none; color: inherit; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0.1rem 0.3rem; border-radius: 99px;
+}
+.tag-remove:hover, .tag-remove:focus-visible { background: var(--surface-3); }
+
+.date-range { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; }
+.range-part { display: flex; align-items: center; gap: 0.4rem; flex: 1 1 12rem; min-width: 0; }
+.range-part .sub { font-size: 0.85rem; color: var(--muted); min-width: 2.2rem; }
+.range-part input { flex: 1; min-width: 0; }
+
+.qr { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding: 0.3rem 0; }
+.qr-code { max-width: 100%; height: auto; border-radius: 4px; }
