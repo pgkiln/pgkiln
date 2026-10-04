@@ -26,6 +26,7 @@ src/
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   headerauth.ts            HTTP-header authentication: trusted proxies (PGAPEX_AUTH_HEADER_PROXIES), header checks, accounts
+  dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
   api.ts                   REST API tokens for PostgREST, API role checks

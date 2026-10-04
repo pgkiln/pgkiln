@@ -2,6 +2,7 @@ import { PageCss } from '../css.ts';
 import { forgetRemember, issueRemember, useRemember } from '../remember.ts';
 import { appDirectories, ldapAuthenticate, LdapError, resolveLdapAccount } from '../ldap.ts';
 import { finishSamlSignIn, samlMetadata, startSamlSignIn } from '../saml.ts';
+import { dbAuthenticate } from '../dbauth.ts';
 import { headerValue, HeaderAuthError, peerAddress, resolveHeaderAccount, trustedPeer } from '../headerauth.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { applyBinds } from '../binds.ts';
@@ -718,7 +719,10 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- login / logout
   const loginPage = async (app: App, locale: Locale, session: Session, next: string, error?: string) => {
     const t = locale.t;
-    const providers = await enabledProviders(app.sso_providers ?? []);
+    // database accounts: the role name and password form only
+    const dbAuth = app.authentication === 'database';
+    if (dbAuth) app = { ...app, local_login: true, remember_me_days: null };
+    const providers = dbAuth ? [] : await enabledProviders(app.sso_providers ?? []);
     const nextQs = next ? `?next=${encodeURIComponent(next)}` : '';
     return documentShell(
       `${t('login.title')} · ${app.name}`,
@@ -790,7 +794,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
     if (req.body?.__csrf !== session.csrf_token) return fail(locale.t('login.expired_session'), 403), null;
     if (a.authentication === 'header') return fail(locale.t('login.method_unavailable'), 403), null;
-    if (!a.local_login) return fail(locale.t('login.password_disabled'), 403), null;
+    if (!a.local_login && a.authentication !== 'database') return fail(locale.t('login.password_disabled'), 403), null;
+    // a NUL byte can't be a user name (and PostgreSQL text refuses it)
+    if (username.includes('\0')) return fail(locale.t('login.invalid'), 400), null;
     if (await loginThrottled(a.id, username, ip)) {
       logActivity({ appId: a.id, username, event: 'login_locked', ip });
       return fail(locale.t('login.throttled', { minutes: LOGIN_WINDOW_MINUTES }), 429), null;
@@ -817,6 +823,15 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const { a, locale, session, username, next, ip, fail } = r0;
     const password = (req.body?.password ?? '').slice(0, 200);
     const remember = req.body?.remember === 'true';
+    if (a.authentication === 'database') {
+      // database accounts: a connection attempt as the role checks the password (never logged)
+      const r = await dbAuthenticate(a, username, password);
+      if (!r.ok) {
+        await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: `database: ${r.detail}` });
+        return fail(r.reason === 'unavailable' ? locale.t('login.db_unavailable') : locale.t('login.invalid'), r.reason === 'unavailable' ? 503 : 401);
+      }
+      return completeLogin(req, reply, a, session, r.role, { next, method: 'database', detail: 'database' });
+    }
     const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username, password]);
     if (!r?.username) {
       // not a local password: the app's LDAP directories, in order
@@ -862,6 +877,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const r0 = await loginRequest(req, reply);
     if (!r0) return;
     const { a, locale, session, username, next, ip } = r0;
+    if (a.authentication === 'database') return reply.code(403).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), locale.t('login.method_unavailable')));
     const b = req.body ?? {};
     const again = (msg: string, code = 422) => reply.code(code).type('text/html').send(expiredPage(a, locale, session, username, safeNext(a, next), msg));
     if (b.new_password !== b.confirm_password) return again(locale.t('password.mismatch'));

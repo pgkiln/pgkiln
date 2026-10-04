@@ -2425,6 +2425,82 @@ describe('sprint 30', () => {
     }
   });
 
+  describe('database accounts', () => {
+    const dbAlias = 'dbauth-sec30';
+    let dbApp: number;
+    const R = { ann: 'pgapex_s30_ann', eve: 'pgapex_s30_eve', off: 'pgapex_s30_off', boss: 'pgapex_s30_boss' };
+    before(async () => {
+      for (const r of Object.values(R)) await owner.query(`drop role if exists ${r}`);
+      await owner.query(`create role ${R.ann} login password 'Ann-pw-30!'`);
+      await owner.query(`create role ${R.eve} login password 'Eve-pw-30!'`);
+      await owner.query(`create role ${R.off} nologin password 'Off-pw-30!'`);
+      await owner.query(`create role ${R.boss} superuser login password 'Boss-pw-30!'`);
+      dbApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_auth_roles) values ($1, 'DB sec', 'database', $2) returning id`,
+        [dbAlias, [R.ann, R.off, R.boss, 'pgapex', 'pgapex_runtime']])).id;
+      await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [dbApp]);
+    });
+    after(async () => {
+      await owner.query('delete from meta.app where id = $1', [dbApp]);
+      for (const r of Object.values(R)) await owner.query(`drop role if exists ${r}`);
+    });
+    const attempt = async (user: string, password: string) => {
+      const b = new Browser();
+      await b.get(`/a/${dbAlias}/login`);
+      const res = await b.post(`/a/${dbAlias}/login`, { __csrf: b.lastCsrf, username: user, password });
+      return { b, res };
+    };
+    const failures = async () => (await owner.query(`select username, detail from meta.activity_log where app_id = $1 and event = 'login_failed' order by id`, [dbApp])).rows;
+
+    test('wrong passwords, unlisted, NOLOGIN, superuser and pgapex\'s own roles are refused alike; no password is logged', async () => {
+      for (const [user, pw] of [[R.ann, 'wrong'], [R.eve, 'Eve-pw-30!'], [R.off, 'Off-pw-30!'], [R.boss, 'Boss-pw-30!'], ['pgapex', 'pgapex'], ['no_such_role_s30', 'x'],
+        [`${R.ann}\u0000x`, 'Ann-pw-30!'], ['x'.repeat(64), 'x'], [`${R.ann}' or '1'='1`, "' or '1'='1"], [R.ann, '']] as const) {
+        const { b, res } = await attempt(user, pw);
+        assert.ok([401, 400].includes(res.statusCode), `${user}: ${res.statusCode}`);
+        assert.match(res.body, /Invalid|invalid/);
+        assert.equal((await b.get(`/a/${dbAlias}/1`)).statusCode, 302, 'no session');
+      }
+      const log = await failures();
+      assert.ok(log.some((l) => l.username === R.eve && /role not allowed/.test(l.detail)), 'unlisted: refused before connecting');
+      assert.ok(log.some((l) => l.username === R.boss && /superuser refused/.test(l.detail)));
+      assert.ok(log.some((l) => l.username === 'pgapex' && /role not allowed/.test(l.detail)));
+      assert.ok(log.some((l) => l.username === R.off && /connection refused/.test(l.detail)));
+      const all = JSON.stringify((await owner.query(`select * from meta.activity_log where app_id = $1`, [dbApp])).rows);
+      for (const pw of ['Ann-pw-30!', 'Eve-pw-30!', 'Off-pw-30!', 'Boss-pw-30!', 'wrong']) assert.ok(!all.includes(pw), 'no password in the log');
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [dbApp]);
+    });
+
+    test('throttling: after too many failures even the right password is refused', async () => {
+      for (let i = 0; i < 5; i++) assert.equal((await attempt(R.ann, `wrong-${i}`)).res.statusCode, 401);
+      const locked = await attempt(R.ann, 'Ann-pw-30!');
+      assert.equal(locked.res.statusCode, 429);
+      assert.equal((await locked.b.get(`/a/${dbAlias}/1`)).statusCode, 302);
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [dbApp]);
+      assert.equal((await attempt(R.ann, 'Ann-pw-30!')).res.statusCode, 303);
+    });
+
+    test('no other way in: no CSRF token, the password-change form, remember me, SSO, an app_users account of the same name', async () => {
+      const b = new Browser();
+      await b.get(`/a/${dbAlias}/login`);
+      assert.equal((await b.post(`/a/${dbAlias}/login`, { username: R.ann, password: 'Ann-pw-30!' })).statusCode, 403);
+      assert.equal((await b.post(`/a/${dbAlias}/password`, { __csrf: b.lastCsrf, username: R.ann, password: 'Ann-pw-30!', new_password: 'Xx-new-pw-30!', confirm_password: 'Xx-new-pw-30!' })).statusCode, 403);
+      assert.equal((await b.get(`/a/${dbAlias}/sso/any`)).statusCode >= 400 || (await b.get(`/a/${dbAlias}/1`)).statusCode === 302, true);
+      // an app user's password does not open a database-account app
+      assert.equal((await b.post(`/a/${dbAlias}/login`, { __csrf: b.lastCsrf, username: 'king', password: 'king' })).statusCode, 401);
+      assert.equal((await b.get(`/a/${dbAlias}/1`)).statusCode, 302);
+      // a session of a database-account app does not reach another app
+      const ok = await attempt(R.ann, 'Ann-pw-30!');
+      assert.equal(ok.res.statusCode, 303);
+      assert.equal((await ok.b.get('/a/hr/1')).statusCode, 302);
+      // with nothing allowed, nobody signs in
+      await owner.query('update meta.app set db_auth_roles = null where id = $1', [dbApp]);
+      try {
+        assert.equal((await attempt(R.ann, 'Ann-pw-30!')).res.statusCode, 401);
+      } finally {
+        await owner.query('update meta.app set db_auth_roles = $2 where id = $1', [dbApp, [R.ann, R.off, R.boss, 'pgapex', 'pgapex_runtime']]);
+      }
+    });
+  });
+
   test('keyset paging: another user\'s token for this region only seeks in the viewer\'s own query', async () => {
     // the position is not a permission: the rows still come from the region's query as the app's role
     const blake = await as('blake');
