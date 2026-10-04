@@ -75,7 +75,9 @@ multi-selects, popup LOVs, grid columns and display items. Three forms:
 2. **A static list**: `STATIC:Display;Return,Other;OTHER`. For example
    `STATIC:Low;LOW,Normal;NORMAL,High;HIGH`. An entry without `;` uses the same value for both.
 3. **A shared list of values**: `LOV:DEPARTMENTS`, defined once under
-   **Shared Components → Lists of values** and reusable in any item or grid column.
+   **Shared Components → Lists of values** and reusable in any item or grid column. A shared
+   list can also read a web service: give it a **REST data source** and query the rows from
+   `rest` ([chapter 19](19-rest-data-sources.md#lists-of-values)).
 
 ## Cascading lists of values
 

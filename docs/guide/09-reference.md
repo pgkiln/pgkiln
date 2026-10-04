@@ -84,7 +84,15 @@ needed and grants access; deleting revokes access.
 
 **`nav_entry`**: `app_id`, `parent_id` (sub-menu), `seq`, `label`, `icon`, `target_page`, `authz`.
 
-**`lov`**: `app_id`, `name` (uppercase; used as `LOV:NAME`), `query`.
+**`lov`**: `app_id`, `name` (uppercase; used as `LOV:NAME`), `query`, `rest_source` (the query then reads the source's rows from `rest`).
+
+**`web_credential`**: `app_id`, `name` (uppercase), `description`, `type` (`basic` / `header` / `bearer` / `oauth2`), `username` (or client id),
+`header_name`, `token_url`, `scope`, `valid_for` (text[] of URL prefixes), `secret_enc` (encrypted by the server; not readable by the
+runtime role, never exported) ([chapter 19](19-rest-data-sources.md#web-credentials)).
+
+**`rest_source`**: `app_id`, `name` (uppercase), `description`, `url` (with `{param}`), `method`, `credential`, `headers` (jsonb),
+`params` (jsonb), `body`, `row_selector`, `columns` (jsonb), `cache_seconds`, `timeout_s`, `max_rows`
+([chapter 19](19-rest-data-sources.md#rest-data-sources)).
 
 **`app_item`**: `app_id`, `name`, `description`.
 
@@ -117,6 +125,7 @@ needed and grants access; deleting revokes access.
 | `template` | `standard`, `plain`, `collapsible` |
 | `condition`, `authz` | Visibility |
 | `config` | Attributes per type ([chapter 4](04-pages-and-regions.md)) |
+| `rest_source` | A REST data source the region reads; `source` is then SQL over `rest` ([chapter 19](19-rest-data-sources.md)) |
 
 **`item`**: `page_id`, `region_id`, `seq`, `name`, `label`, `type`, `lov`, `source_column`,
 `default_value`, `required`, `help`, `readonly_condition`, `authz`, `config` ([chapter 5](05-items.md)).
@@ -131,8 +140,8 @@ needed and grants access; deleting revokes access.
 **`validation`**: `page_id`, `seq`, `name`, `item_name`, `type` (`not_null` / `sql` / `regex`),
 `expression`, `message`, `when_button`.
 
-**`process`**: `page_id`, `seq`, `name`, `type` (`form_dml` / `grid_dml` / `sql` / `data_load`),
-`region_id`, `code`, `config` (jsonb, for `data_load`), `point` (`submit` / `load`), `when_button`,
+**`process`**: `page_id`, `seq`, `name`, `type` (`form_dml` / `grid_dml` / `sql` / `data_load` / `invoke_api`),
+`region_id`, `code`, `config` (jsonb, for `data_load` and `invoke_api`), `point` (`submit` / `load`), `when_button`,
 `authz`, `success_message`.
 
 ### Runtime and instance

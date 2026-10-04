@@ -235,6 +235,8 @@ Components used by the whole application:
 | **Workflows** | Multi-step processes of tasks, SQL, decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
+| **Web credentials** | How the application signs in to web services (basic, API key header, bearer token, OAuth2 client credentials); the secret is write-only and encrypted ([chapter 19](19-rest-data-sources.md#web-credentials)) |
+| **REST data sources** | Web service endpoints whose JSON becomes rows for regions and lists of values, with a **Test** button and suggested columns ([chapter 19](19-rest-data-sources.md#rest-data-sources)) |
 | **Template components** | HTML templates with placeholders and directives, used as a region type and as report column templates, with a preview; shared as plug-in files ([chapter 4](04-pages-and-regions.md#template-components)) |
 
 ## Users (the user directory)
@@ -370,6 +372,7 @@ imports as empty. Import refuses other formats.
 | `text_messages`, `translations` | globalization |
 | `report_layouts` | report layouts; the logo as base64 |
 | `template_components` | template components (regions and report columns refer to them by static id) |
+| `web_credentials`, `rest_sources` | web credentials **without their secrets**, and REST data sources ([chapter 19](19-rest-data-sources.md)) |
 | `nav` | navigation menu (with ids, so parents can be linked again) |
 | `pages` | every page with its `regions`, `items`, `buttons`, `dynamic_actions`, `validations` and `processes` |
 
@@ -377,7 +380,8 @@ Rows appear as they are in the `meta` tables (without their ids and the id of th
 new column travels along automatically.
 
 **Not exported, on purpose:** accounts and who has access (they belong to an installation, not to
-an app), OAuth clients and their secrets, sessions, activity logs, temporary files, and your
+an app), OAuth clients and their secrets, the secrets of web credentials (enter them again after an
+import), sessions, activity logs, temporary files, and your
 database objects (tables, views, functions: keep those in your own migration scripts). After an
 import, check the app's database role under **Settings** and grant access under **Shared
 Components**.

@@ -65,6 +65,7 @@ hr/
     report-layouts/hr_directory.json   (a logo as hr_directory.logo.png)
     template-components/status_badge.json   (named by static id; the template in status_badge.template.html)
     automations/ document-templates/ task-definitions/ workflow-definitions/ rest-modules/
+    web-credentials/ rest-sources/      (web credentials never contain their secret)
     group-roles.json
   globalization/
     text-messages.json
@@ -131,6 +132,8 @@ the files any more are removed. What belongs to this installation stays:
 - **running tasks and workflows**, which keep their definition (by name),
 - for **automations**: whether each one is switched on, its next and last run, and its log. New
   automations arrive switched off, as with every import.
+- the **secrets of web credentials** with the same name (exports never contain them; see
+  [chapter 19](19-rest-data-sources.md#web-credentials)).
 
 It all happens in one transaction; any error leaves the application unchanged. Without an
 application with that alias, `--replace` simply imports, so the same command deploys the first

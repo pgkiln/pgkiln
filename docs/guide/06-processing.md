@@ -70,13 +70,14 @@ two combine well; see error handling below.
 | `grid_dml` | Save the changes of an **interactive grid** region; runs on the grid's Save button |
 | `sql` | Run `code`: one or more SQL statements with bind variables |
 | `data_load` | Load the CSV/XLSX file of a file item into a table ([chapter 16](16-files.md#data-loading-in-an-application)) |
+| `invoke_api` | Call a web service (a REST data source or a URL, with a web credential) and put values of the response into items ([chapter 19](19-rest-data-sources.md#the-invoke_api-process)) |
 
 | Property | Meaning |
 |---|---|
 | `point` | `submit` (after validations) or `load` (when the page is shown, after form fetch) |
 | `when_button` | Only for this request (empty = every submit with a button) |
 | `region_id` | The form or grid region, for `form_dml` / `grid_dml` |
-| `config` | Settings of a `data_load` process (JSON) |
+| `config` | Settings of a `data_load` or `invoke_api` process (JSON) |
 | `success_message` | Shown after the redirect; messages of several processes are joined |
 | `authz` | Skipped when the user isn't authorized |
 | `seq` | Order |

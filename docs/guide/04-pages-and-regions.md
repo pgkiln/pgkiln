@@ -52,6 +52,14 @@ Region-specific options go in the region's **attributes** (`config`, a JSON obje
 
 ---
 
+### Regions on a REST data source
+
+Every region type that reads a query (report, grid without saving, chart, cards, calendar, map,
+tree, template component) can read a **REST data source** instead of a table: set the region's
+**REST data source** property. Its **Source** is then optional SQL over a CTE named `rest`
+(`select * from rest where …`), and parameters go into `{"rest_params": {"city": "&P1_CITY."}}`
+in the attributes. See [chapter 19](19-rest-data-sources.md#regions-on-a-rest-data-source).
+
 ### `report` (interactive report)
 
 **Source**: any SELECT. Bind variables filter it:
