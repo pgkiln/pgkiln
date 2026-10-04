@@ -5,6 +5,7 @@ import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, maxFiles, removals } from './files.ts';
+import { restSql } from './rest-sources.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -28,7 +29,8 @@ export async function lovOptions(ctx: PageContext, lov: string | null): Promise<
   if (shared) {
     const def = ctx.app.lovs.find((l) => l.name === shared[1].toUpperCase());
     if (!def) throw new Error(`Shared list of values ${shared[1]} does not exist.`);
-    lov = def.query;
+    // a REST data source: the query reads its rows from the CTE "rest"
+    lov = def.rest_source ? await restSql(ctx, def.rest_source, undefined, def.query) : def.query;
   }
   if (/^STATIC:/i.test(lov))
     return lov

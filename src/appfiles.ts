@@ -102,6 +102,7 @@ const CODE: Record<string, Record<string, string>> = {
   document_template: { query: 'sql', template: 'html' },
   task_definition: { action_code: 'sql' },
   template_component: { template: 'html', wrapper: 'html' },
+  rest_source: { body: 'json' },
 };
 const isLong = (v: unknown): v is string => typeof v === 'string' && (v.includes('\n') || v.length > 60);
 const codeExt = (table: string, column: string, row: any) =>
@@ -142,6 +143,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['workflow_definitions', 'shared/workflow-definitions', 'workflow_definition'],
   ['rest_modules', 'shared/rest-modules', 'rest_module'],
   ['template_components', 'shared/template-components', 'template_component'],
+  ['web_credentials', 'shared/web-credentials', 'web_credential'],
+  ['rest_sources', 'shared/rest-sources', 'rest_source'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */

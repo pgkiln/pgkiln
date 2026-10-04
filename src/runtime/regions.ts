@@ -17,6 +17,7 @@ import { renderMap } from './maps.ts';
 import { renderTree } from './tree.ts';
 import { renderTemplateRegion } from './template-region.ts';
 import { cell, renderReport } from './report.ts';
+import { resolveRestRegion } from './rest-sources.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -112,7 +113,14 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
   if (!ctx.vis!.regions.has(r.id)) return '';
   const items = ctx.page.items.filter((i) => i.region_id === r.id);
   let body: Raw;
-  switch (r.type) {
+  // a REST data source becomes SQL over its rows (rest-sources.ts)
+  let restFailed: Raw | null = null;
+  if (r.rest_source && r.type !== 'static' && r.type !== 'form')
+    await resolveRestRegion(ctx, r).catch(async (e) => {
+      restFailed = html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `REST data source of region "${r.title ?? r.id}"`)}</div>`;
+    });
+  if (restFailed) body = restFailed;
+  else switch (r.type) {
     case 'report':
       body = await renderReport(ctx, r, await renderItems(ctx, items, hidden));
       break;

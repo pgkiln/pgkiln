@@ -63,7 +63,7 @@ export interface App {
   authz_schemes: AuthzScheme[];
   app_items: string[];
   app_processes: AppProcess[];
-  lovs: { name: string; query: string }[];
+  lovs: { name: string; query: string; rest_source?: string | null }[];
   theme: { accent?: string; header?: string; nav?: 'side' | 'top'; mode?: 'auto' | 'light' | 'dark'; user_choice?: boolean };
   /** primary language, translated languages, and how the language is chosen */
   language: string;
@@ -87,6 +87,8 @@ export interface Region {
   condition: string | null;
   authz: string | null;
   config: Record<string, any>;
+  /** a REST data source the region reads (its source, if any, is SQL over the CTE "rest") */
+  rest_source?: string | null;
 }
 
 export type ItemType =
@@ -158,7 +160,7 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api';
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;
@@ -188,7 +190,7 @@ export async function loadApp(alias: string) {
   return runtime.one<App>(
     `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.ldap_directories, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.db_role, a.debug, a.theme,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format,
-            coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
+            coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
                        'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth))
                         from meta.page p where p.app_id = a.id), '[]') as pages,

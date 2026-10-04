@@ -36,6 +36,8 @@ const SECTIONS: Record<string, string> = {
   workflow_definition: 'workflow_definitions',
   rest_module: 'rest_modules',
   template_component: 'template_components',
+  web_credential: 'web_credentials',
+  rest_source: 'rest_sources',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

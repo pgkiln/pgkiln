@@ -6,6 +6,7 @@ import type { Region } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { heading } from './items.ts';
 import { columnsOf, facetCondition, facetSelections, regionUrl } from './report.ts';
+import { resolveRestRegion } from './rest-sources.ts';
 
 // Faceted search (APEX 19.2+): a region that filters a report region with
 // checkbox facets showing live counts. The counts of each facet take the
@@ -20,9 +21,11 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
   if (!ctx.vis!.regions.has(report.id)) return html``;
   const facets = (r.config.facets ?? []) as { column: string; label?: string; limit?: number }[];
   const c = ctx.client!;
-  const src = stripSemicolon(applyBinds(report.source ?? 'select 1', bindValues(ctx)));
   let cols: Set<string>;
+  let src = '';
   try {
+    await resolveRestRegion(ctx, report);
+    src = stripSemicolon(applyBinds(report.source ?? 'select 1', bindValues(ctx)));
     cols = new Set(await columnsOf(ctx, src));
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, 'faceted search')}</div>`;

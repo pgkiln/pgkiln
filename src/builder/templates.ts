@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { designSql } from './websources.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import {
@@ -183,7 +184,7 @@ export async function templateRegionForm(pageId: number, appId: number, r: { id:
   const pages = (await owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId])).rows;
   const c = comps.get(cfg.component);
   const id = (n: string) => `tc_${r.id}_${n}`;
-  const cols = r.source?.trim() ? await reportColumns(appId, r.source) : null;
+  const cols = r.source?.trim() ? await reportColumns(appId, await designSql(appId, r)) : null;
   const expected = c ? columnNames(c) : [];
   const missing = cols && 'columns' in cols ? expected.filter((e) => !cols.columns.some((x) => x.toUpperCase() === e)) : [];
   return html`<h3 class="u-mt15">Template component settings</h3>
@@ -256,7 +257,7 @@ export async function columnTemplatesForm(pageId: number, appId: number, r: { id
   const cfg = r.config ?? {};
   const current: Record<string, TcUse> = cfg.column_templates ?? {};
   if (!comps.size && !Object.keys(current).length) return '';
-  const cols = await reportColumns(appId, r.source);
+  const cols = await reportColumns(appId, await designSql(appId, r));
   const names = 'columns' in cols ? cols.columns : [];
   const all = [...names, ...Object.keys(current).filter((k) => !names.includes(k))];
   const rows = all.map((col, i) => {
@@ -353,7 +354,7 @@ export async function templateRoutes(app: FastifyInstance) {
     const { pid, rid } = req.params;
     const r = await regionOf(pid, rid, 'report');
     if (!r) return reply.code(404).send('Not found');
-    const cols = await reportColumns(r.app_id, r.source);
+    const cols = await reportColumns(r.app_id, await designSql(r.app_id, r));
     // when the query can't be read, the columns already configured stay allowed
     const names = 'columns' in cols ? cols.columns : Object.keys(r.config?.column_templates ?? {});
     const config = mergeColumnTemplates(r.config ?? {}, (req.body ?? {}) as Body, names, await appComponents(r.app_id));
