@@ -473,7 +473,7 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 .ab-count { margin-left: auto; font-size: 12.5px; }
 .ab-create { height: 34px; display: inline-flex; align-items: center; }
 
-.ide .ab-table { background: var(--surface); }
+.ide .ab-table { background: var(--surface); position: relative; } /* keeps the .sr-only labels inside its scroll area */
 .ide table.ab-apps th { color: var(--gold); font-size: 12.5px; text-transform: none; letter-spacing: 0; font-weight: 700; padding: 10px 12px; background: var(--surface); }
 .ide table.ab-apps th a { color: inherit; }
 .ide table.ab-apps td { padding: 9px 12px; height: 56px; }
@@ -522,6 +522,8 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
   .ab-tiles:not(.ab-tiles-wrap) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ab-tile { min-height: 0; }
   .ab-side { margin-top: 18px; }
+  /* tablets: no alias and sign-in columns */
+  .ide table.ab-apps :is(th, td):is(:nth-child(3), :nth-child(6)) { display: none; }
 }
 @media (max-width: 640px) {
   /* two by two, title only */
