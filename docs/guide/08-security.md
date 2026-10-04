@@ -223,6 +223,37 @@ directory is tried. **Try it locally:** `docker compose --profile ldap up -d lda
 `psql "$DATABASE_URL" -f examples/ldap-directory.sql` (users `blake` / `blake-ldap`, `dora` /
 `dora-ldap`).
 
+### HTTP header authentication (reverse proxy)
+
+Behind a reverse proxy or single sign-on gateway that already authenticates users (Apache
+`mod_auth_mellon`, oauth2-proxy, an Entra ID application proxy, Kerberos at the proxy, …), an
+application can take the user name from a request header, APEX's *HTTP Header Variable* scheme.
+In **Settings → Security** choose Authentication **HTTP header (reverse proxy)** and set:
+
+- **User name header**: the header the proxy sets (empty: `X-Remote-User`);
+- **Create accounts automatically**: an unknown user name gets a new account with access to this
+  app. Off: the account must exist, be active and have access (Users → Accounts), as for the other
+  sign-in methods;
+- **Sign-out URL**: where *Sign out* goes after the session ends, usually the proxy's own sign-out
+  page (an `http(s)://` URL or a path). Without it the user sees a "signed out" page; the next page
+  they open signs them in again through the proxy.
+
+Anyone can send a header, so pgapex trusts it **only from the proxies** listed in the environment
+variable `PGAPEX_AUTH_HEADER_PROXIES` (comma-separated IPs and CIDRs, e.g.
+`PGAPEX_AUTH_HEADER_PROXIES=10.0.0.5, 192.168.10.0/24`). The check uses the address of the TCP
+connection itself, never `X-Forwarded-For`, so `TRUST_PROXY` doesn't change it. Unset, or a
+request from any other address: the app shows an error page and the activity log records a
+`login_failed` entry (`header: untrusted peer …`). Make sure users can't reach pgapex directly,
+bypassing the proxy, and that the proxy **removes** the header from incoming requests before it
+sets its own.
+
+The first request with the header signs the user in (activity log: `login`, detail `header`) and
+the session is bound to the header value: when a later request carries another user name, or none,
+the session ends (and, with another name, a new one starts for that user). The value must be 1 to
+100 printable ASCII characters without spaces, colons or commas; a repeated header is refused.
+The password form, LDAP, single sign-on buttons and *Keep me signed in* are not used by these apps,
+and form submissions still need the session's CSRF token.
+
 ### Keep me signed in
 
 Under **Settings → Sign-in methods**, *"Keep me signed in" for (days)* (1–365) adds a checkbox to the
