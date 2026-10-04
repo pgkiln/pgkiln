@@ -171,6 +171,33 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('page 25: lazy regions load after the page shows; without JavaScript a link shows them', async () => {
+      const ids = Object.fromEntries((await owner.query(`select r.title, r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                                                          where a.alias = 'hr' and p.page_no = 25`)).rows.map((r) => [r.title, r.id]));
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      await page.goto(`${base}/a/hr/25`);
+      await page.waitForFunction(() => !document.querySelector('[data-lazy]'));
+      assert.equal(await page.locator(`#R${ids['Readings of sensor A']} table.report tbody tr`).count(), 10);
+      assert.equal(await page.locator(`#R${ids['Average per sensor']} .bar-row`).count(), 8);
+      // the lazy report's search box works (its form came along)
+      await page.fill(`#R${ids['Readings of sensor A']} input[type="search"]`, '23');
+      await Promise.all([page.waitForNavigation(), page.press(`#R${ids['Readings of sensor A']} input[type="search"]`, 'Enter')]);
+      await page.waitForFunction(() => !document.querySelector('[data-lazy]'));
+      assert.match(page.url(), new RegExp(`r${ids['Readings of sensor A']}_q=23`));
+      await check(page, 'app-25-large', vp);
+      await page.context().close();
+      const plain = await browser.newContext({ viewport: size, javaScriptEnabled: false });
+      const nojs = await plain.newPage();
+      await login(nojs, '/a/hr/login', 'king', 'king');
+      await nojs.goto(`${base}/a/hr/25`);
+      const show = nojs.locator(`#R${ids['Readings of sensor A']} .region-lazy-link`);
+      assert.equal(await show.isVisible(), true);
+      await Promise.all([nojs.waitForNavigation(), show.click()]);
+      assert.equal(await nojs.locator(`#R${ids['Readings of sensor A']} table.report tbody tr`).count(), 10);
+      await plain.close();
+    });
+
     test('a refreshed chart region brings its styles through the CSSOM', async () => {
       const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
                                   where a.alias = 'hr' and p.page_no = 1 and r.type = 'chart' order by r.seq, r.id limit 1`);
