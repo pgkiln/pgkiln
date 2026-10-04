@@ -136,7 +136,7 @@ export async function homeRoutes(app: FastifyInstance) {
               <td>${a.alias}</td>
               <td class="num">${a.pages}</td>
               <td class="num">${a.views}</td>
-              <td>${a.authentication === 'none' ? 'Public' : 'App users'}</td>
+              <td>${a.authentication === 'none' ? 'Public' : a.authentication === 'header' ? 'HTTP header' : 'App users'}</td>
               <td title="${a.updated_at ? new Date(a.updated_at).toISOString().slice(0, 16).replace('T', ' ') : ''}">${ago(a.updated_at)}</td>
               <td class="ab-actions">
                 <a class="tb-btn" href="${BASE}/apps/${a.id}" title="Edit ${a.name}">${icon('edit')}<span class="sr-only">Edit ${a.name}</span></a>
