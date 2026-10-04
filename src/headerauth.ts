@@ -13,8 +13,11 @@ import type { App } from './metadata.ts';
 import type { MessageKey } from './i18n.ts';
 
 export const DEFAULT_HEADER = 'X-Remote-User';
-/** printable ASCII without spaces and colons (meta.account.username allows no whitespace or colon) */
-const VALUE = /^[\x21-\x39\x3b-\x7e]{1,100}$/;
+/**
+ * Printable ASCII without spaces and colons (meta.account.username allows no whitespace or colon)
+ * and without commas (a repeated header arrives joined with commas).
+ */
+const VALUE = /^[\x21-\x2b\x2d-\x39\x3b-\x7e]{1,100}$/;
 
 let cached: { spec: string; list: BlockList | null } | undefined;
 

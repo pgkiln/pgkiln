@@ -2125,3 +2125,214 @@ describe('sprint 28 popup LOV', () => {
     assert.match(good, /<option value="7788" selected>Scott<\/option>/);
   });
 });
+
+describe('sprint 29 header authentication', () => {
+  const alias = `hdr${Date.now()}`;
+  let hdrApp: number;
+  const users = ['hdr_alice', 'hdr_bob', 'hdr_off', 'hdr_noaccess'];
+  const envBefore = process.env.PGAPEX_AUTH_HEADER_PROXIES;
+  const PROXY = '10.1.2.3';
+
+  /** a cookie-keeping client that talks to pgapex from a given socket address */
+  class Client {
+    cookies = new Map<string, string>();
+    constructor(public remoteAddress = PROXY) {}
+    async request(method: 'GET' | 'POST', url: string, headers: Record<string, string | string[]> = {}, form?: Record<string, string>) {
+      const res = await app.inject({
+        method, url, remoteAddress: this.remoteAddress,
+        payload: form ? new URLSearchParams(form).toString() : undefined,
+        headers: {
+          cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
+          ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
+          ...headers,
+        },
+      });
+      for (const c of res.cookies as { name: string; value: string; expires?: Date }[]) {
+        if (!c.value || (c.expires && c.expires.getTime() < Date.now())) this.cookies.delete(c.name);
+        else this.cookies.set(c.name, c.value);
+      }
+      return res;
+    }
+    get(user?: string | string[], url = `/a/${alias}/1`, extra: Record<string, string> = {}) {
+      return this.request('GET', url, { ...(user === undefined ? {} : { 'x-remote-user': user }), ...extra });
+    }
+  }
+  const sessions = async (user: string) =>
+    (await owner.one<{ n: number }>(`select count(*)::int as n from meta.session where app_id = $1 and lower(username) = lower($2)`, [hdrApp, user]))!.n;
+  const lastLog = async () =>
+    owner.one<{ event: string; detail: string; username: string | null }>(
+      `select event, detail, username from meta.activity_log where app_id = $1 and event <> 'page_view' order by id desc limit 1`, [hdrApp]);
+
+  before(async () => {
+    process.env.PGAPEX_AUTH_HEADER_PROXIES = `${PROXY}, 192.168.50.0/24, not-an-ip`;
+    hdrApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Header test', 'header') returning id`, [alias])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [hdrApp]);
+    for (const u of users) await owner.query(`insert into meta.account (username, active) values ($1, $2) on conflict do nothing`, [u, u !== 'hdr_off']);
+    await owner.query(
+      `insert into meta.app_access (app_id, account_id) select $1, id from meta.account where username = any($2) on conflict do nothing`,
+      [hdrApp, ['hdr_alice', 'hdr_bob', 'hdr_off']]);
+  });
+
+  after(async () => {
+    if (envBefore === undefined) delete process.env.PGAPEX_AUTH_HEADER_PROXIES;
+    else process.env.PGAPEX_AUTH_HEADER_PROXIES = envBefore;
+    await owner.query('delete from meta.app where id = $1', [hdrApp]);
+    await owner.query(`delete from meta.account where username like 'hdr\\_%'`);
+  });
+
+  test('a trusted proxy signs the user in; the session is reused while the header stays the same', async () => {
+    const c = new Client();
+    const res = await c.get('hdr_alice');
+    assert.equal(res.statusCode, 200);
+    assert.equal(await sessions('hdr_alice'), 1);
+    assert.match((await lastLog())!.detail ?? '', /header/);
+    assert.equal((await c.get('hdr_alice')).statusCode, 200);
+    assert.equal(await sessions('hdr_alice'), 1, 'no second session');
+    // a proxy inside the configured CIDR, also as an IPv4-mapped IPv6 address
+    assert.equal((await new Client('192.168.50.77').get('hdr_bob')).statusCode, 200);
+    assert.equal((await new Client('::ffff:192.168.50.78').get('hdr_bob')).statusCode, 200);
+  });
+
+  test('the header from an untrusted peer is refused, and a spoofed X-Forwarded-For does not help', async () => {
+    const before = await sessions('hdr_alice');
+    const res = await new Client('203.0.113.9').get('hdr_alice');
+    assert.equal(res.statusCode, 403);
+    assert.match(res.body, /did not come through it/);
+    const log = (await lastLog())!;
+    assert.equal(log.event, 'login_failed');
+    assert.match(log.detail, /untrusted peer 203\.0\.113\.9/);
+    const spoof = await new Client('203.0.113.9').get('hdr_alice', undefined, { 'x-forwarded-for': PROXY, 'x-real-ip': PROXY });
+    assert.equal(spoof.statusCode, 403);
+    assert.equal((await new Client('192.168.51.1').get('hdr_alice')).statusCode, 403, 'outside the CIDR');
+    assert.equal(await sessions('hdr_alice'), before);
+    // a session cookie taken elsewhere does not work without the proxy either
+    const c = new Client();
+    await c.get('hdr_alice');
+    c.remoteAddress = '203.0.113.9';
+    assert.equal((await c.get('hdr_alice')).statusCode, 403);
+    assert.equal((await c.get()).statusCode, 403);
+  });
+
+  test('without PGAPEX_AUTH_HEADER_PROXIES header authentication is refused', async () => {
+    const saved = process.env.PGAPEX_AUTH_HEADER_PROXIES;
+    try {
+      delete process.env.PGAPEX_AUTH_HEADER_PROXIES;
+      for (const addr of ['127.0.0.1', PROXY]) {
+        const res = await new Client(addr).get('hdr_alice');
+        assert.equal(res.statusCode, 403);
+        assert.match(res.body, /did not come through it/);
+      }
+      assert.match((await lastLog())!.detail, /untrusted peer/);
+    } finally {
+      process.env.PGAPEX_AUTH_HEADER_PROXIES = saved;
+    }
+  });
+
+  test('a changed or missing header ends the session', async () => {
+    const c = new Client();
+    await c.get('hdr_alice');
+    const first = c.cookies.get(`pgapex_app_${hdrApp}`);
+    const aliceBefore = await sessions('hdr_alice');
+    // another user through the same browser: the old session ends, a new one for bob
+    assert.equal((await c.get('hdr_bob')).statusCode, 200);
+    assert.notEqual(c.cookies.get(`pgapex_app_${hdrApp}`), first);
+    assert.equal(await sessions('hdr_alice'), aliceBefore - 1);
+    // header gone: the session ends
+    const bobBefore = await sessions('hdr_bob');
+    const gone = await c.get();
+    assert.equal(gone.statusCode, 401);
+    assert.match(gone.body, /did not send a user name/);
+    assert.equal(await sessions('hdr_bob'), bobBefore - 1);
+  });
+
+  test('unknown user without automatic accounts, deactivated accounts and apps without access are refused', async () => {
+    const unknown = await new Client().get('hdr_nobody');
+    assert.equal(unknown.statusCode, 403);
+    assert.match(unknown.body, /There is no account for &quot;hdr_nobody&quot;|There is no account for "hdr_nobody"/);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.account where username = 'hdr_nobody'`)).n, 0);
+    const off = await new Client().get('hdr_off');
+    assert.equal(off.statusCode, 403);
+    assert.match(off.body, /disabled/);
+    assert.equal(await sessions('hdr_off'), 0);
+    const noAccess = await new Client().get('hdr_noaccess');
+    assert.equal(noAccess.statusCode, 403);
+    assert.match(noAccess.body, /has no access/);
+    assert.equal(await sessions('hdr_noaccess'), 0);
+    // case differences map to the same account
+    assert.equal((await new Client().get('HDR_ALICE')).statusCode, 200);
+  });
+
+  test('automatic accounts are created with access to the app, never active again once deactivated', async () => {
+    try {
+      await owner.query('update meta.app set header_auto_create = true where id = $1', [hdrApp]);
+      assert.equal((await new Client().get('hdr_new')).statusCode, 200);
+      const acc = await owner.one(`select a.active, exists (select 1 from meta.app_access x where x.account_id = a.id and x.app_id = $1) as access
+                                     from meta.account a where username = 'hdr_new'`, [hdrApp]);
+      assert.deepEqual(acc, { active: true, access: true });
+      assert.equal((await new Client().get('hdr_off')).statusCode, 403, 'auto-create does not revive a deactivated account');
+      assert.equal((await new Client().get('hdr_noaccess')).statusCode, 403, 'existing accounts still need access');
+    } finally {
+      await owner.query('update meta.app set header_auto_create = false where id = $1', [hdrApp]);
+    }
+  });
+
+  test('the header value is checked: length, characters, repeated headers', async () => {
+    for (const bad of ['x'.repeat(101), 'hdr alice', 'hdr:alice', 'hdr,alice', 'hdré', ['hdr_alice', 'hdr_bob']]) {
+      const res = await new Client().get(bad as string);
+      assert.equal(res.statusCode, 400, JSON.stringify(bad));
+      assert.match(res.body, /invalid user name/);
+    }
+    assert.equal((await lastLog())!.detail, 'header: invalid user header');
+    // a custom header name: X-Remote-User is ignored then
+    try {
+      await owner.query(`update meta.app set header_name = 'X-Auth-User' where id = $1`, [hdrApp]);
+      assert.equal((await new Client().get('hdr_alice')).statusCode, 401);
+      assert.equal((await new Client().get(undefined, undefined, { 'x-auth-user': 'hdr_alice' })).statusCode, 200);
+      await assert.rejects(owner.query(`update meta.app set header_name = 'X-Bad Header' where id = $1`, [hdrApp]));
+      await assert.rejects(owner.query(`update meta.app set logout_url = 'javascript:alert(1)' where id = $1`, [hdrApp]));
+      await assert.rejects(owner.query(`update meta.app set logout_url = '//evil.example' where id = $1`, [hdrApp]));
+    } finally {
+      await owner.query(`update meta.app set header_name = null where id = $1`, [hdrApp]);
+    }
+  });
+
+  test('POSTs still need the CSRF token; password and SSO sign-in are not available; sign-out', async () => {
+    const c = new Client();
+    const page = await c.get('hdr_alice');
+    const csrf = /name="__csrf" value="([^"]+)"/.exec(page.body)?.[1];
+    assert.ok(csrf);
+    const h = { 'x-remote-user': 'hdr_alice' };
+    assert.equal((await c.request('POST', `/a/${alias}/1`, h, { __request: 'SAVE' })).statusCode, 403, 'no CSRF token');
+    assert.equal((await c.request('POST', `/a/${alias}/1`, h, { __csrf: 'forged', __request: 'SAVE' })).statusCode, 403);
+    // a POST with the header but no session cookie: a fresh session, so the token cannot match
+    assert.equal((await new Client().request('POST', `/a/${alias}/1`, h, { __csrf: csrf!, __request: 'SAVE' })).statusCode, 403);
+    // the login page redirects; the password form is refused
+    assert.equal((await c.request('GET', `/a/${alias}/login`, h)).statusCode, 302);
+    const pw = await c.request('POST', `/a/${alias}/login`, h, { __csrf: csrf!, username: 'hdr_alice', password: 'x' });
+    assert.equal(pw.statusCode, 403);
+    // sign-out ends the session and goes to the logout URL
+    await owner.query(`update meta.app set logout_url = 'https://sso.example.com/logout' where id = $1`, [hdrApp]);
+    const n = await sessions('hdr_alice');
+    const out = await c.request('POST', `/a/${alias}/logout`, h, { __csrf: csrf! });
+    assert.equal(out.statusCode, 303);
+    assert.equal(out.headers.location, 'https://sso.example.com/logout');
+    assert.equal(await sessions('hdr_alice'), n - 1);
+  });
+
+  test('the builder settings offer the header type and save its fields', async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+    const form = await b.get(`/builder/apps/${hdrApp}/settings`);
+    assert.match(form.body, /<option value="header" selected>HTTP header/);
+    assert.match(form.body, /name="header_name"/);
+    const saved = await b.post(`/builder/apps/${hdrApp}/settings`, {
+      __csrf: b.lastCsrf, name: 'Header test', alias, home_page: '1', authentication: 'header',
+      header_name: 'X-Forwarded-User', header_auto_create: 'true', logout_url: '/a/other',
+    });
+    assert.equal(saved.statusCode, 303);
+    assert.deepEqual(
+      await owner.one('select authentication, header_name, header_auto_create, logout_url from meta.app where id = $1', [hdrApp]),
+      { authentication: 'header', header_name: 'X-Forwarded-User', header_auto_create: true, logout_url: '/a/other' });
+  });
+});

@@ -158,7 +158,7 @@ async function headerSession(req: FastifyRequest, reply: FastifyReply, a: App, s
       logActivity({ appId: a.id, username: session.username, event: 'logout', ip, detail: `header: ${detail}` });
       await destroySession(reply, session, base);
     }
-    logActivity({ appId: a.id, username: username ?? null, event: 'login_failed', ip, detail: `header: ${detail}` });
+    await logActivity({ appId: a.id, username: username ?? null, event: 'login_failed', ip, detail: `header: ${detail}` });
     if (json) reply.code(code).send({ error: message });
     else simplePage(reply, code, title, message, undefined, locale);
     return null;
