@@ -11,7 +11,10 @@ export function pageHref(ctx: PageContext, pageNo: number, items: Record<string,
   const params = new URLSearchParams();
   if (clear) params.set('clear', '1');
   for (const k of Object.keys(values).sort()) params.set(k, values[k]);
-  if (Object.keys(values).length) params.set('cs', urlChecksum(ctx.app.id, pageNo, ctx.user, values));
+  if (Object.keys(values).length) {
+    params.set('cs', urlChecksum(ctx.app.id, pageNo, ctx.user, values));
+    ctx.userBound = true;
+  }
   const q = params.toString();
   return `${ctx.base}/${pageNo}${q ? `?${q}` : ''}`;
 }

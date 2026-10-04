@@ -1,3 +1,4 @@
+import type { QueryResult } from 'pg';
 import { applyBinds } from '../binds.ts';
 import { savepoint } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
@@ -18,7 +19,8 @@ import { renderWorkflows } from './workflows.ts';
 import { renderMap } from './maps.ts';
 import { renderTree } from './tree.ts';
 import { renderTemplateRegion } from './template-region.ts';
-import { cell, renderReport } from './report.ts';
+import { cell, maxRows, regionUrl, renderReport } from './report.ts';
+import { cacheKey, cacheOf, lazyOf, renderCaching, useCached } from './region-cache.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 
 // ---------------------------------------------------------------- buttons
@@ -93,26 +95,42 @@ export async function buttonsFor(ctx: PageContext, regionId: number | null) {
 
 // ---------------------------------------------------------------- region types
 
-async function query(ctx: PageContext, r: Region) {
-  const sql = stripSemicolon(applyBinds(r.source ?? '', bindValues(ctx)));
+/** Row limits when a region sets no config.max_rows (reports and grids page instead). */
+export const DEFAULT_MAX_ROWS = { cards: 500, chart: 1000, dynamic: 1000 } as const;
+
+/**
+ * The region's SELECT with at most its row limit (config.max_rows, or the
+ * default for its type): one row more is read, so `more` says it was cut off.
+ */
+async function query(ctx: PageContext, r: Region & { type: keyof typeof DEFAULT_MAX_ROWS }, rowMode?: 'array') {
+  const max = maxRows(r, DEFAULT_MAX_ROWS[r.type])!;
+  const sql = `select * from (\n${stripSemicolon(applyBinds(r.source ?? '', bindValues(ctx)))}\n) "__r" limit ${max + 1}`;
   const c = ctx.client!;
-  return savepoint(c, () => c.query(sql));
+  const res: QueryResult<any> = rowMode
+    ? await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }))
+    : await savepoint(c, () => c.query(sql));
+  const more = res.rows.length > max;
+  if (more) res.rows.length = max;
+  return Object.assign(res, { more, max });
 }
+
+/** "Showing the first N rows." under a region that was cut off at its row limit. */
+const firstRows = (ctx: PageContext, res: { more: boolean; max: number }) =>
+  res.more ? html`<p class="region-limit">${ctx.locale.t('region.first_rows', { n: res.max })}</p>` : '';
 
 async function renderChart(ctx: PageContext, r: Region) {
   let res;
   try {
-    const sql = stripSemicolon(applyBinds(r.source ?? '', bindValues(ctx)));
-    res = await savepoint(ctx.client!, () => ctx.client!.query({ text: sql, rowMode: 'array' }));
+    res = await query(ctx, r as Region & { type: 'chart' }, 'array');
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `chart "${r.title ?? r.id}"`)}</div>`;
   }
   if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
   const kind = CHART_KINDS.includes(r.config.kind) ? r.config.kind : 'bar';
-  return renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t, {
+  return html`${renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t, {
     ...(await chartLink(ctx, r, res.rows, res.fields)),
     gauge: gaugeConfig(r.config.gauge),
-  });
+  })}${firstRows(ctx, res)}`;
 }
 
 /** A gauge's numbers from the region settings (anything else is left out). */
@@ -164,8 +182,10 @@ async function chartLink(ctx: PageContext, r: Region, rows: unknown[][], fields:
  */
 async function renderCards(ctx: PageContext, r: Region) {
   let rows: Record<string, unknown>[];
+  let res;
   try {
-    rows = (await query(ctx, r)).rows;
+    res = await query(ctx, r as Region & { type: 'cards' });
+    rows = res.rows;
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `cards "${r.title ?? r.id}"`)}</div>`;
   }
@@ -195,11 +215,39 @@ async function renderCards(ctx: PageContext, r: Region) {
     }
     return html`<div class="card${metric ? ' metric' : ''}">${inner}</div>`;
   });
-  return html`<div class="cards${metric ? ' cards-metric' : ''}">${cards}</div>`;
+  return html`<div class="cards${metric ? ' cards-metric' : ''}">${cards}</div>${firstRows(ctx, res)}`;
+}
+
+/**
+ * A lazy region's placeholder: app.js fetches the region once the page shows;
+ * without JavaScript the link renders the page with the region (r<id>_load=1).
+ */
+function lazyPlaceholder(ctx: PageContext, r: Region) {
+  const q = new URLSearchParams(ctx.params);
+  q.delete('cs');
+  if (ctx.dialog) q.set('dialog', '1');
+  const fetchUrl = `${ctx.base}/${ctx.page.page_no}/region/${r.id}${q.size ? `?${q}` : ''}`;
+  const show = `${regionUrl(ctx, r, (p) => p.set(`r${r.id}_load`, '1'))}#R${r.id}`;
+  return html`<div class="region-lazy" data-lazy="${fetchUrl}">
+    <a class="region-lazy-link" href="${show}">${ctx.locale.t('region.show', { title: r.title ?? '' }).trim()}</a>
+    <span class="region-loading" hidden>${ctx.locale.t('region.loading')}</span>
+  </div>`;
 }
 
 export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<string> = new Set()) {
   if (!ctx.vis!.regions.has(r.id)) return '';
+  let body: Raw | null = null;
+  const setting = cacheOf(r);
+  const cacheKeyOf = setting ? cacheKey(ctx, r, setting) : null;
+  if (cacheKeyOf && !ctx.cacheRefresh) body = useCached(ctx, cacheKeyOf);
+  if (!body && lazyOf(r) && ctx.loadNow !== r.id && !ctx.params.has(`r${r.id}_load`)) body = lazyPlaceholder(ctx, r);
+  if (!body)
+    body = setting ? await renderCaching(ctx, r, setting, cacheKeyOf!, () => renderBody(ctx, r, hidden)) : await renderBody(ctx, r, hidden);
+  return regionShell(ctx, r, hidden, body);
+}
+
+/** The region's content (what the region's type renders), without its frame and buttons. */
+async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Promise<Raw> {
   const items = ctx.page.items.filter((i) => i.region_id === r.id);
   let body: Raw;
   // a REST data source becomes SQL over its rows (rest-sources.ts)
@@ -256,7 +304,7 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The
       // developer's SQL produces trusted markup; escape data with meta.html_escape().
       try {
-        const res = await query(ctx, r);
+        const res = await query(ctx, r as Region & { type: 'dynamic' });
         body = raw(res.rows.map((row) => String(Object.values(row)[0] ?? '')).join(''));
       } catch (e) {
         body = html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `region "${r.title ?? r.id}"`)}</div>`;
@@ -268,6 +316,10 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
       break;
     }
   }
+  return body!;
+}
+
+async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, body: Raw) {
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
   // (a grid renders its own Save button in its toolbar)
