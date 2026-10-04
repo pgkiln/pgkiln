@@ -46,7 +46,7 @@ src/
     engine.ts              form fetch, validations, processes, application processes
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch, buttons
-    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, charts.ts, calendar.ts, facets.ts, items.ts, links.ts
+    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, facets.ts, items.ts
     charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, drill-down marks, data table
     calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
                            the route POST …/calendar/:id/move is in routes.ts)
