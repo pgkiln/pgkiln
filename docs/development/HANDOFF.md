@@ -955,3 +955,14 @@ search link. The agent commits `wip:` checkpoints and pushes `sprint-28` after e
 chapter 12 version line, merge, tag, push, `gh run list` to check CI.
 
 **Result:** `popup_lov` (endpoint `POST /a/:alias/:page/lov/:item/search`, `searchLov`/`lovLookup` in items.ts); no migration (036 unused: the type was already allowed); HR `hr_27_popup_lov.sql` page 26. Tests 502 + 8 skipped, e2e 78/78. Next: AI features (owner's decision on provider/API keys), keyset paging, streaming PDFs.
+
+## Sprint 29 (IN PROGRESS): HTTP-header authentication (owner: "please continue", 1 agent, 2026-10-04)
+
+Branch `sprint-29` from `main` (v0.20.0); one agent in the main checkout, dev DB 5434; reserved migration 036, HR
+`hr_28` (only if useful). Scope (parity row "Database accounts, HTTP-header authentication"): an app authentication
+type `header` (APEX "HTTP Header Variable") for apps behind a reverse proxy / SSO gateway that sets a user header
+(e.g. `X-Remote-User`): header name per app, only trusted when the request comes from a proxy address listed in an
+env var (e.g. `PGAPEX_AUTH_HEADER_PROXIES`), otherwise refused; optional automatic account creation like OIDC;
+session bound to the header value (a changed header ends the session). Database accounts stay out of scope.
+**If a session ends:** `git log --oneline main..sprint-29`; finish tests, then parity row, CHANGELOG 0.21.0,
+SECURITY.md, `.env.example`, version, CI matrix + v0.21.0, chapter 12 version line, merge, tag, push, check CI.
