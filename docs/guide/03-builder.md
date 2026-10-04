@@ -198,9 +198,9 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | Region | Settings form |
 |---|---|
 | `grid` | Rows per page; whether users may add, change and delete rows; per column its heading, shown, read-only, required and "Edit as" (a shared list of values) |
-| `chart` | Chart type and the text when there are no rows; lists the query's columns |
+| `chart` | Chart type, the text when there are no rows, the gauge's range and thresholds, and the drill-down link (page and items, `#column#` and `#series#`); lists the query's columns |
 | `cards` | Cards or KPI tiles, the text when there are no rows, and the link (page and items) |
-| `calendar` | The link of each event (page and items); warns when the query lacks `start_date` or `title` |
+| `calendar` | The views and the one shown first, the hours of the week and day views, the edit link of each event, the create-on-click link (`#start#`, `#end#`, `#date#`), and drag and drop (the SQL with `:EVENT_ID`, `:NEW_START`, `:NEW_END`, the key column, who may drag); warns when the query lacks `start_date` or `title` |
 | `facets` | The report region it filters, and per column of that report: facet on/off, label, values shown and order |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to

@@ -106,6 +106,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(await page.locator('.alert-error').count(), 0, `${name}: no errors`);
         await check(page, `app-2-${name}`, vp);
       }
+      // the planner's calendar views (page 24; the week view is its first, already checked above)
+      const cal = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 24 and r.type = 'calendar'`)).id;
+      for (const v of ['month', 'day', 'list']) {
+        const res = await page.goto(`${base}/a/hr/24?r${cal}_v=${v}`);
+        assert.equal(res?.status(), 200, `calendar ${v}`);
+        await check(page, `app-24-${v}`, vp);
+      }
       // row selection: select all checks every row
       const before = (await owner.one('select config from meta.region where id = $1', [rid])).config;
       const pageId = (await owner.one('select page_id from meta.region where id = $1', [rid])).page_id;

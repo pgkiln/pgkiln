@@ -36,9 +36,9 @@ only when true) and `authz` (an authorization scheme).
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
-| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, donut or pie chart from a SELECT |
+| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel or radar chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
-| [`calendar`](#calendar) | Month calendar of dated rows |
+| [`calendar`](#calendar) | Month, week, day and list views of dated rows, with create on click and drag and drop |
 | [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
 | [`map`](#map) | Places (markers) and shapes on an interactive map |
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
@@ -245,8 +245,14 @@ select d.dname as department,
  group by d.dname order by 1
 ```
 
-Attributes: `{"kind": "bar" | "column" | "stacked" | "line" | "area" | "combo" | "scatter" | "donut" | "pie"}`
-(default `bar`).
+Attributes:
+
+| Key | Meaning |
+|---|---|
+| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel` or `radar` |
+| `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
+| `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
+| `empty` | Text when there are no rows |
 
 | Kind | Best for | Notes |
 |---|---|---|
@@ -257,6 +263,10 @@ Attributes: `{"kind": "bar" | "column" | "stacked" | "line" | "area" | "combo" |
 | `combo` | two measures with one shared label | the **first series is drawn as columns**, the other series as lines over them |
 | `scatter` | the relation between two numbers | the **first column must be numeric** (the x axis); each further column is a y value. Rows with an empty or non-numeric x are left out. The axes don't have to start at zero |
 | `donut` / `pie` | parts of a whole (≤ 6 slices) | uses the first series; more than 6 slices fold into "Other"; zero and negative values are left out. The donut shows the total in the middle |
+| `bubble` | three measures per item | label, then **x, y and size** columns; the bubble's area is proportional to the size. The axes don't have to start at zero |
+| `gauge` | one value against a target, per row | a half dial per row (up to 12) from `min` (default 0) to `max` (default: rounded up from the values). With `warning` and/or `critical` thresholds each dial shows a status (*On target*, *Warning*, *Critical*) with an icon and a label, and the thresholds as a coloured ring. A `warning` above `critical` means low values are bad |
+| `funnel` | stages of a process | the first series, in the query's order (sort it); each stage shows its share of the first stage |
+| `radar` | several measures per series, side by side | **one axis per row** (3 to 12 rows), one polygon per series, all on one scale from zero |
 
 A stacked chart, a combination of columns and a line, and a scatter plot:
 
@@ -278,9 +288,52 @@ select extract(year from age(current_date, hiredate))::int as "Years of service"
   from hr.emp where active order by 1
 ```
 
+A bubble chart, gauges, a funnel and a radar (HR page 24 "Planner"):
+
+```sql
+-- bubble: x = years of service, y = average salary, size = headcount (deptno only for the link)
+select d.dname as department,
+       round(avg(extract(year from age(current_date, e.hiredate)))::numeric, 1) as "Years of service",
+       round(avg(e.sal)) as "Average salary", count(*) as "Employees", d.deptno
+  from hr.emp e join hr.dept d using (deptno) group by d.deptno, d.dname
+
+-- gauge, {"gauge": {"max": 120, "warning": 80, "critical": 100}}: one dial per department
+select d.dname, round(100.0 * coalesce(sum(e.sal), 0) / 10000) as "Budget used", d.deptno
+  from hr.dept d left join hr.emp e on e.deptno = d.deptno group by d.deptno, d.dname
+
+-- funnel: stages in order
+select 'Requested' as stage, count(*) as "Requests" from hr.leave_request
+union all select 'Approved', count(*) filter (where status = 'APPROVED') from hr.leave_request
+
+-- radar: an axis per job, a polygon per department
+select initcap(job) as job,
+       count(*) filter (where deptno = 10) as "Accounting",
+       count(*) filter (where deptno = 20) as "Research"
+  from hr.emp group by job order by 1
+```
+
 Up to 8 series; two or more get a legend. Every chart has hover/focus **tooltips** and a
 **Data table** toggle (the accessible alternative). Colours come from a palette checked for
-colour-vision deficiency, in light and dark mode. Charts resize with the screen.
+colour-vision deficiency, in light and dark mode; the gauge's status colours are reserved for
+status and always come with an icon and a label. Charts resize with the screen.
+
+#### Drill-down links
+
+With `link`, every data point is a link to a page, like a report link: `#column#` in the item
+values is replaced by the value of the point's row, and `#series#` by the name of its series (the
+column alias). The URL carries a checksum, so pages with session state protection accept it, and
+there are no links when the user may not open the target page.
+
+```json
+{"kind": "column", "link": {"page": 9, "items": {"P9_DEPTNO": "#deptno#", "P9_JOB": "#series#"}}}
+```
+
+Columns that only the link refers to (here `deptno`) are **not drawn** as a series, so the query
+can return a key next to the label. What links: bars, columns and stacked segments (per series),
+line and area points, scatter dots and bubbles, gauge dials, funnel stages, radar axis labels, pie
+and donut slices and their legend entries (not "Other"). The marks are for the mouse; from the
+keyboard the **data table** has the same links (the labels, or each value when there are several
+series), and so do the radar labels and donut legend.
 
 ---
 
@@ -315,11 +368,60 @@ select l.start_date, l.end_date, initcap(e.ename) as title, l.id
   from hr.leave_request l join hr.emp e using (empno)
 ```
 
-Attributes: `{"link": {"page": 7, "items": {"P7_ID": "#id#"}}}`.
+`start_date` and `end_date` can be dates (all-day events) or timestamps (events with a time; a
+timestamp at midnight without an end time counts as all-day).
 
-Tablets and desktops see a month grid (Monday first, up to 4 events per day plus "+n more");
-phones see an agenda list of the days with events. Users move between months with ‹, *Today*
-and › (`?r<id>_m=2026-10`).
+Attributes:
+
+| Key | Meaning |
+|---|---|
+| `link` | `{"page": 7, "items": {"P7_ID": "#id#"}}`: each event links to a page (the edit link) |
+| `views` | The views users can switch between, from `["month", "week", "day", "list"]` (default: all four) |
+| `view` | The view shown first (default: the first of `views`) |
+| `day_start`, `day_end` | The hours of the week and day views (default 8 to 18); widened when an event needs it |
+| `create` | Create on click: `{"page": 7, "items": {"P7_START": "#start#", "P7_END": "#end#"}}` |
+| `move` | Drag and drop: SQL that moves an event (see below) |
+| `key` | The column that identifies an event for `move` (default `id`) |
+| `move_authz` | An authorization scheme for dragging (default: everyone who sees the calendar) |
+
+**Views.** *Month*: a grid, Monday first, up to 4 events per day plus "+n more" (a link to that
+day); phones see an agenda list of the days with events. *Week* and *Day*: an "All day" row and a
+row per hour, each timed event in the hour it starts, with its times; on phones the week view is
+an agenda list too. *List*: the month's events per day. The buttons ‹, *Today* and › move by a
+month, week or day; *Month / Week / Day / List* switch views. Everything is a plain link
+(`?r<id>_v=week&r<id>_d=2026-10-05`, `?r<id>_m=2026-10` for month and list), so it works without
+JavaScript and can be bookmarked.
+
+**Create on click.** With `create`, every day (month view, "All day" row) and every hour slot has a
+**+** link to the page, with `#start#`, `#end#` and `#date#` filled in: `2026-10-05` for a day,
+`2026-10-05 09:00` and `2026-10-05 10:00` for an hour. The link carries a checksum like every
+link (so the target page can keep session state protection on); with JavaScript a click anywhere
+on an empty part of the slot follows it. A date item takes the date; a date-time item shows a day
+as midnight.
+
+**Drag and drop.** With `move`, users drag events with the mouse to another day or hour slot. The
+browser sends the event's key and the slot; the server checks the CSRF token, the page's and the
+region's authorization and condition, `move_authz`, and that the event is **in the region's query
+for this user** (as the application's database role, so row level security applies), works out the
+new start and end (an event keeps its length; a timed event dropped on an hour starts there, else
+it moves by whole days and keeps its time of day) and runs `move` as the application's role with
+three binds:
+
+| Bind | Value |
+|---|---|
+| `:EVENT_ID` | the key column's value |
+| `:NEW_START` | `2026-10-07` or `2026-10-07 14:00` (the same form as the old start) |
+| `:NEW_END` | the new end, or NULL when the event has none |
+
+```json
+{"move": "select hr.move_meeting(:EVENT_ID::int, :NEW_START::timestamp, :NEW_END::timestamp)"}
+```
+
+Put your own rules in the function (raise an exception with a message for the user, e.g. "Only
+the organizer can move this meeting."); the calendar redraws itself after a move and shows the
+error otherwise. Binds are replaced as literals outside quotes, so call a function rather than
+using them inside a `DO` block. Without a mouse (keyboard, touch, no JavaScript), the event's edit
+link is the way to change its dates.
 
 ---
 

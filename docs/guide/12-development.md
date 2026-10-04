@@ -45,8 +45,12 @@ src/
     authz.ts               authorization schemes, conditions, visibility
     engine.ts              form fetch, validations, processes, application processes
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
-    regions.ts             region shell + chart/cards/dynamic dispatch, buttons
-    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, charts.ts, calendar.ts, facets.ts, items.ts, links.ts
+    regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch, buttons
+    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, facets.ts, items.ts
+    charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, drill-down marks, data table
+    calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
+                           the route POST …/calendar/:id/move is in routes.ts)
+    links.ts               page links with checksums; fillItems() fills #column# in link items
     account.ts             My account (details, own password, preferences)
     locale.ts              language, theme, text messages and translations of a request
     format.ts              date masks
@@ -79,7 +83,7 @@ src/
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: next run, Run now, run history
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
-    region-settings.ts     page designer: settings forms for grid, chart, cards, calendar, facets
+    region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
@@ -112,10 +116,13 @@ test/
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
+  charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
+  calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
+  e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
 ```
 
 ## Principles

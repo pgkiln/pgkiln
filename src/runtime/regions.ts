@@ -6,9 +6,9 @@ import type { Button, Region } from '../metadata.ts';
 import { pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
-import { linkAttrs } from './links.ts';
+import { fillItems, linkAttrs, linkColumns } from './links.ts';
 import { renderCalendar } from './calendar.ts';
-import { CHART_KINDS, renderChartBody } from './charts.ts';
+import { CHART_KINDS, renderChartBody, type GaugeConfig } from './charts.ts';
 import { renderFacets } from './facets.ts';
 import { renderGrid } from './grid.ts';
 import { renderTasks } from './tasks.ts';
@@ -62,7 +62,52 @@ async function renderChart(ctx: PageContext, r: Region) {
   }
   if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
   const kind = CHART_KINDS.includes(r.config.kind) ? r.config.kind : 'bar';
-  return renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t);
+  return renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t, {
+    ...(await chartLink(ctx, r, res.rows, res.fields)),
+    gauge: gaugeConfig(r.config.gauge),
+  });
+}
+
+/** A gauge's numbers from the region settings (anything else is left out). */
+function gaugeConfig(g: unknown): GaugeConfig {
+  const out: GaugeConfig = {};
+  if (g && typeof g === 'object')
+    for (const k of ['min', 'max', 'warning', 'critical'] as const) {
+      const v = (g as Record<string, unknown>)[k];
+      if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    }
+  return out;
+}
+
+/**
+ * Drill-down (config.link = {page, items}): each data point links to a page with
+ * item values from its row (#column#) and its series (#series#), as checksummed
+ * URLs. Columns only the link refers to are not drawn as series.
+ */
+async function chartLink(ctx: PageContext, r: Region, rows: unknown[][], fields: { name: string }[]) {
+  const link = r.config.link as { page: number; items?: Record<string, string> } | undefined;
+  if (!link || !Number.isInteger(link.page) || !(await pageAllowed(ctx, link.page))) return {};
+  const index = new Map(fields.map((f, i) => [f.name.toLowerCase(), i]));
+  const hidden = linkColumns(link.items).filter((c) => index.has(c) && index.get(c)! > 0);
+  const shown = fields.map((f, i) => ({ f, i })).slice(1).filter(({ f }) => !hidden.includes(f.name.toLowerCase()));
+  const links = new Map<string, Raw>();
+  return {
+    hidden: hidden.map((c) => fields[index.get(c)!].name),
+    link: (i: number, si: number | null) => {
+      const key = `${i}:${si}`;
+      if (!links.has(key)) {
+        const row = rows[i];
+        const items = fillItems(link.items, (col) => {
+          const at = index.get(col.toLowerCase());
+          if (at !== undefined) return cell(row[at]);
+          if (col.toLowerCase() === 'series') return si === null ? '' : (shown[si]?.f.name ?? '');
+          return undefined;
+        });
+        links.set(key, linkAttrs(ctx, link.page, items));
+      }
+      return links.get(key)!;
+    },
+  };
 }
 
 /**
@@ -95,12 +140,10 @@ async function renderCards(ctx: PageContext, r: Region) {
           </div>
           ${row.body ? html`<p class="card-body">${s(row.body)}</p>` : ''}`;
     if (linkOk && link) {
-      const items: Record<string, string> = {};
-      for (const [k, v] of Object.entries(link.items ?? {}))
-        items[k] = v.replace(/#([A-Za-z0-9_]+)#/g, (m, col: string) => {
-          const key = Object.keys(row).find((x) => x.toLowerCase() === col.toLowerCase());
-          return key === undefined ? m : s(row[key]);
-        });
+      const items = fillItems(link.items, (col) => {
+        const key = Object.keys(row).find((x) => x.toLowerCase() === col.toLowerCase());
+        return key === undefined ? undefined : s(row[key]);
+      });
       return html`<a class="card${metric ? ' metric' : ''}" ${linkAttrs(ctx, link.page, items)}>${inner}</a>`;
     }
     return html`<div class="card${metric ? ' metric' : ''}">${inner}</div>`;

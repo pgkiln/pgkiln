@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
+import { CALENDAR_VIEWS, calendarViews } from '../runtime/calendar.ts';
 import { CHART_KINDS } from '../runtime/charts.ts';
 import { heading } from '../runtime/items.ts';
 import { positionColumns } from '../runtime/report.ts';
@@ -23,6 +24,7 @@ export interface Allowed {
   pages: Set<number>;
   lovs: Set<string>;
   reports: Map<number, string[]>; // report regions on the same page → their columns
+  authz?: Set<string>; // the app's authorization scheme names (upper case)
 }
 
 export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree'] as const;
@@ -39,7 +41,12 @@ const CHART_LABELS: Record<string, string> = {
   scatter: 'Scatter (first column is x)',
   donut: 'Donut',
   pie: 'Pie',
+  bubble: 'Bubble (label, x, y and size columns)',
+  gauge: 'Gauge (one dial per row)',
+  funnel: 'Funnel (stages in the query order)',
+  radar: 'Radar (one axis per row)',
 };
+const GAUGE_KEYS = ['min', 'max', 'warning', 'critical'] as const;
 const CARD_COLUMNS = ['title', 'subtitle', 'body', 'badge', 'icon'];
 const FACET_LIMIT = 12;
 
@@ -50,10 +57,10 @@ const check = (name: string, label: string, on: boolean) =>
   html`<div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label></div>`;
 
 /** A {page, items} link from the form, or undefined (no page, or a page of another app). */
-function mergeLink(b: Body, pages: Set<number>) {
-  const page = Number(b.link_page);
-  if (!b.link_page || !pages.has(page)) return undefined;
-  const items = parseLinkItems(b.link_items);
+function mergeLink(b: Body, pages: Set<number>, prefix = 'link') {
+  const page = Number(b[`${prefix}_page`]);
+  if (!b[`${prefix}_page`] || !pages.has(page)) return undefined;
+  const items = parseLinkItems(b[`${prefix}_items`]);
   return { page, ...(Object.keys(items).length ? { items } : {}) };
 }
 
@@ -72,13 +79,16 @@ function columnsHint(cols: { columns: string[] } | { error: string }, expected?:
     ${missing.length ? html`<div class="alert alert-error" role="alert">The query has no column ${missing.map((m, i) => html`${i ? ' or ' : ''}<code>${m}</code>`)}.</div>` : ''}`;
 }
 
-function linkFieldset(id: (n: string) => string, link: { page?: number; items?: Record<string, string> } | undefined, pages: { page_no: number; name: string }[], what: string) {
-  return html`<fieldset class="prop-group"><legend>Link</legend><div class="form-grid">
-    <div class="field"><label class="label" for="${id('link_page')}">${what} links to page</label>
-      <select id="${id('link_page')}" name="link_page">${opt('', '- no link -', link?.page)}${pages.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, link?.page))}</select></div>
-    <div class="field" data-wide><label class="label" for="${id('link_items')}">Set items</label>
-      <input id="${id('link_items')}" name="link_items" value="${linkItemsText(link?.items)}" placeholder="P3_ID=#id#">
-      <small class="help">ITEM=#column#, comma separated; #column# is replaced by the row's value.</small></div>
+function linkFieldset(
+  id: (n: string) => string, link: { page?: number; items?: Record<string, string> } | undefined, pages: { page_no: number; name: string }[], what: string,
+  { prefix = 'link', legend = 'Link', placeholder = 'P3_ID=#id#', help = "ITEM=#column#, comma separated; #column# is replaced by the row's value." } = {},
+) {
+  return html`<fieldset class="prop-group"><legend>${legend}</legend><div class="form-grid">
+    <div class="field"><label class="label" for="${id(`${prefix}_page`)}">${what} links to page</label>
+      <select id="${id(`${prefix}_page`)}" name="${prefix}_page">${opt('', '- no link -', link?.page)}${pages.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, link?.page))}</select></div>
+    <div class="field" data-wide><label class="label" for="${id(`${prefix}_items`)}">Set items</label>
+      <input id="${id(`${prefix}_items`)}" name="${prefix}_items" value="${linkItemsText(link?.items)}" placeholder="${placeholder}">
+      <small class="help">${help}</small></div>
   </div></fieldset>`;
 }
 
@@ -95,11 +105,19 @@ const staleTag = (known: Set<string>, n: string) => (known.has(n) ? '' : html` <
 
 // ---------------------------------------------------------------- merges (pure, unit tested)
 
-export function mergeChartSettings(config: Config, b: Body): Config {
+export function mergeChartSettings(config: Config, b: Body, a: Allowed): Config {
   const out = { ...config };
   const set = setter(out);
   set('kind', b.kind && (CHART_KINDS as string[]).includes(b.kind) && b.kind !== 'bar' ? b.kind : undefined);
   set('empty', b.empty?.trim() || undefined);
+  set('link', mergeLink(b, a.pages));
+  const gauge: Config = {};
+  for (const k of GAUGE_KEYS) {
+    const raw = b[`gauge_${k}`]?.trim();
+    const v = Number(raw);
+    if (raw && Number.isFinite(v)) gauge[k] = v;
+  }
+  set('gauge', Object.keys(gauge).length ? gauge : undefined);
   return out;
 }
 
@@ -114,7 +132,27 @@ export function mergeCardsSettings(config: Config, b: Body, a: Allowed): Config 
 
 export function mergeCalendarSettings(config: Config, b: Body, a: Allowed): Config {
   const out = { ...config };
-  setter(out)('link', mergeLink(b, a.pages));
+  const set = setter(out);
+  set('link', mergeLink(b, a.pages));
+  set('create', mergeLink(b, a.pages, 'create'));
+  // views: all four is the default (left out); none ticked means all four too
+  const views = CALENDAR_VIEWS.filter((v) => b[`view_${v}`] === 'true');
+  const enabled = views.length ? views : CALENDAR_VIEWS;
+  set('views', views.length && views.length < CALENDAR_VIEWS.length ? views : undefined);
+  set('view', b.view && (enabled as string[]).includes(b.view) && b.view !== enabled[0] ? b.view : undefined);
+  const hour = (v: string | undefined, lo: number, hi: number) => {
+    const n = Number(v);
+    return v?.trim() && Number.isInteger(n) && n >= lo && n <= hi ? n : undefined;
+  };
+  const start = hour(b.day_start, 0, 23);
+  const end = hour(b.day_end, 1, 24);
+  set('day_start', start !== undefined && start !== 8 ? start : undefined);
+  set('day_end', end !== undefined && end !== 18 && end > (start ?? 8) ? end : undefined);
+  set('move', b.move?.trim() || undefined);
+  const key = b.key?.trim();
+  set('key', key && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(key) && key.toLowerCase() !== 'id' ? key : undefined);
+  const authz = b.move_authz?.trim().toUpperCase();
+  set('move_authz', authz && (authz === 'MUST_NOT_BE_PUBLIC_USER' || a.authz?.has(authz)) ? authz : undefined);
   return out;
 }
 
@@ -241,7 +279,7 @@ const MERGES: Record<SettingsType, (c: Config, b: Body, a: Allowed) => Config> =
   map: mergeMapSettings,
   tree: mergeTreeSettings,
   grid: mergeGridSettings,
-  chart: (c, b) => mergeChartSettings(c, b),
+  chart: mergeChartSettings,
   cards: mergeCardsSettings,
   calendar: mergeCalendarSettings,
   facets: mergeFacetsSettings,
@@ -353,6 +391,42 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
       : ''}`;
 }
 
+const VIEW_LABELS: Record<string, string> = { month: 'Month', week: 'Week', day: 'Day', list: 'List' };
+
+async function calendarFields(appId: number, r: RegionRow, id: (n: string) => string, pages: { page_no: number; name: string }[]) {
+  const cfg = r.config ?? {};
+  const views = calendarViews(cfg);
+  const schemes = (await owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
+  return html`${columnsHint(await reportColumns(appId, r.source), ['start_date', 'title'])}
+    <p class="muted u-mt0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code> (dates for all-day events, timestamps for events with a time).</p>
+    <fieldset class="prop-group"><legend>Views</legend>
+      <div class="form-grid">
+        ${CALENDAR_VIEWS.map((v) => check(`view_${v}`, VIEW_LABELS[v], views.includes(v)))}
+        <div class="field"><label class="label" for="${id('view')}">Shown first</label>
+          <select id="${id('view')}" name="view">${CALENDAR_VIEWS.map((v) => opt(v, VIEW_LABELS[v], cfg.view ?? views[0]))}</select></div>
+        <div class="field"><label class="label" for="${id('day_start')}">Week and day views from hour</label>
+          <input id="${id('day_start')}" name="day_start" type="number" min="0" max="23" value="${cfg.day_start ?? ''}" placeholder="8"></div>
+        <div class="field"><label class="label" for="${id('day_end')}">Until hour</label>
+          <input id="${id('day_end')}" name="day_end" type="number" min="1" max="24" value="${cfg.day_end ?? ''}" placeholder="18"></div>
+      </div>
+      <small class="help">Users switch between the ticked views. Hours outside the range are added when an event needs them.</small></fieldset>
+    ${linkFieldset(id, cfg.link, pages, 'Each event', { legend: 'Edit link' })}
+    ${linkFieldset(id, cfg.create, pages, 'An empty day or hour slot', {
+      prefix: 'create', legend: 'Create on click', placeholder: 'P3_START=#start#,P3_END=#end#',
+      help: 'ITEM=#start#, #end# or #date#: the slot clicked (YYYY-MM-DD, or YYYY-MM-DD HH:MI for an hour slot).',
+    })}
+    <fieldset class="prop-group"><legend>Drag and drop</legend><div class="form-grid">
+      <div class="field" data-wide><label class="label" for="${id('move')}">SQL that moves an event</label>
+        <textarea id="${id('move')}" name="move" rows="3" data-code="sql" placeholder="update my_schema.event set starts_at = :NEW_START::timestamp, ends_at = :NEW_END::timestamp where id = :EVENT_ID::int">${cfg.move ?? ''}</textarea>
+        <small class="help">Runs as the application's database role (row level security applies) with <code>:EVENT_ID</code> (the key column's value), <code>:NEW_START</code> and <code>:NEW_END</code> (same duration as before). Empty: events can't be dragged.</small></div>
+      <div class="field"><label class="label" for="${id('key')}">Key column</label>
+        <input id="${id('key')}" name="key" value="${cfg.key ?? ''}" placeholder="id"></div>
+      <div class="field"><label class="label" for="${id('move_authz')}">Who may drag</label>
+        <select id="${id('move_authz')}" name="move_authz">${opt('', 'Everyone who sees the calendar', cfg.move_authz)}${opt('MUST_NOT_BE_PUBLIC_USER', 'Signed-in users', cfg.move_authz)}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.move_authz))}</select></div>
+    </div>
+    <small class="help">Only events the user sees in this calendar can be moved; without a mouse, the edit link changes the dates.</small></fieldset>`;
+}
+
 /** The settings form under a region in the page designer, or '' for types without one. */
 export async function regionSettingsForm(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
   if (r.type === 'report') return html`${await reportSettingsForm(pageId, appId, r, s)}${await columnTemplatesForm(pageId, appId, r, s)}`;
@@ -376,7 +450,14 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
           <div class="field"><label class="label" for="${id('kind')}">Chart type</label>
             <select id="${id('kind')}" name="kind">${CHART_KINDS.map((k) => opt(k, CHART_LABELS[k], cfg.kind ?? 'bar'))}</select></div>
           ${emptyField(id, cfg)}
-        </div></fieldset>`;
+        </div></fieldset>
+        <fieldset class="prop-group"><legend>Gauge</legend><div class="form-grid">
+          ${GAUGE_KEYS.map((k) => html`<div class="field"><label class="label" for="${id(`gauge_${k}`)}">${{ min: 'Minimum', max: 'Maximum', warning: 'Warning from', critical: 'Critical from' }[k]}</label>
+            <input id="${id(`gauge_${k}`)}" name="gauge_${k}" type="number" step="any" value="${cfg.gauge?.[k] ?? ''}" placeholder="${k === 'min' ? '0' : k === 'max' ? 'automatic' : ''}"></div>`)}
+        </div>
+        <small class="help">Gauge charts only. A warning threshold above the critical one means low values are bad (e.g. warning 50, critical 20).</small></fieldset>
+        ${linkFieldset(id, cfg.link, await pages(), 'Each data point')}
+        <small class="help">Drill-down: <code>#column#</code> takes the value from the point's row, <code>#series#</code> the name of its series. Columns only the link refers to are not drawn.</small>`;
       break;
     case 'cards':
       title = 'Cards settings';
@@ -391,9 +472,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'calendar':
       title = 'Calendar settings';
-      body = html`${columnsHint(await reportColumns(appId, r.source), ['start_date', 'title'])}
-        <p class="muted u-mt0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code>.</p>
-        ${linkFieldset(id, cfg.link, await pages(), 'Each event')}`;
+      body = await calendarFields(appId, r, id, await pages());
       break;
     case 'facets':
       title = 'Faceted search settings';
@@ -466,10 +545,11 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
       ? await owner.one(`select r.id, r.type, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2`, [rid, pid])
       : undefined;
     if (!r || !(SETTINGS_TYPES as readonly string[]).includes(r.type)) return reply.code(404).send('Not found');
-    const [pages, lovs, reports] = await Promise.all([
+    const [pages, lovs, reports, schemes] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.lov where app_id = $1', [r.app_id]),
       r.type === 'facets' || r.type === 'map' ? owner.query(`select id, source from meta.region where page_id = $1 and type = 'report'`, [pid]) : Promise.resolve({ rows: [] as any[] }),
+      owner.query('select name from meta.authz_scheme where app_id = $1', [r.app_id]),
     ]);
     const reportCols = new Map<number, string[]>();
     for (const x of reports.rows) {
@@ -480,6 +560,7 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
       pages: new Set(pages.rows.map((x) => x.page_no)),
       lovs: new Set(lovs.rows.map((x) => x.name)),
       reports: reportCols,
+      authz: new Set(schemes.rows.map((x) => String(x.name).toUpperCase())),
     });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     flash(s, 'Settings saved.');

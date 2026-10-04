@@ -19,6 +19,7 @@ import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesse
 import { MULTI_VALUE, renderItem } from './items.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
+import { moveCalendarEvent } from './calendar.ts';
 import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
@@ -518,6 +519,43 @@ export async function runtimeRoutes(app: FastifyInstance) {
     } catch (e) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
       return reply.code(400).send({ error: await publicError(ctx, e, 'list of values') });
+    }
+  });
+
+  // Calendar drag and drop (calendar.ts): move an event, answer with the re-rendered region.
+  app.post('/a/:alias/:page/calendar/:id/move', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    const body = req.body ?? {};
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
+    ctx.params = new URLSearchParams(typeof body.__url_params === 'string' ? body.__url_params : '');
+    const key = typeof body.key === 'string' ? body.key : '';
+    const to = typeof body.to === 'string' ? body.to : '';
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'calendar');
+        if (!r || !vis.regions.has(r.id) || !key || key.length > 200) throw new Forbidden(ctx.locale.t('calendar.cannot_move'));
+        const moved = await moveCalendarEvent(ctx, r, key, to);
+        await computeVisibility(ctx);
+        return {
+          region: (await renderRegion(ctx, r)).toString(),
+          css: ctx.css.text,
+          message: ctx.locale.t('calendar.moved', { title: moved.title, date: moved.start }),
+        };
+      });
+      await saveState(ctx.session);
+      await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'calendar_move', ip: ctx.ip, detail: `region ${req.params.id}, key ${key} to ${to}` });
+      return reply.send(out);
+    } catch (e) {
+      if (e instanceof Forbidden) {
+        await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail: `calendar move: region ${req.params.id}` });
+        return reply.code(403).send({ error: e.message });
+      }
+      if (e instanceof RangeError) return reply.code(400).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'calendar move') });
     }
   });
 

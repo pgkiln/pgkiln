@@ -1228,3 +1228,138 @@ describe('sprint 25: malformed ids in builder URLs', () => {
     }
   });
 });
+
+
+describe('sprint 26 views: calendar drag and drop, create links, chart drill-down', () => {
+  const page24 = async (type: string, title?: string) =>
+    (await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 24 and r.type = $2${title ? ' and r.title = $3' : ''}`, title ? [appId, type, title] : [appId, type])) as { id: number; config: any };
+  const meetingRow = async (title: string) => (await owner.one(`select id, starts_at::text as s, ends_at::text as e from hr.meeting where title = $1`, [title])) as { id: number; s: string; e: string };
+  const move = (b: Browser, rid: number, form: Record<string, string>, csrf = b.lastCsrf) => b.post(`/a/hr/24/calendar/${rid}/move`, { __csrf: csrf, ...form });
+  const day = (m: { s: string }) => m.s.slice(0, 10);
+
+  test('moving needs the session\'s CSRF token and a signed-in user', async () => {
+    const cal = await page24('calendar');
+    const m = await meetingRow('Team stand-up');
+    const king = await as('king');
+    await king.get('/a/hr/24');
+    for (const csrf of ['', 'forged']) assert.equal((await move(king, cal.id, { key: String(m.id), to: `${day(m)}T12:00` }, csrf)).statusCode, 403, csrf);
+    const anon = new Browser();
+    await anon.get('/a/hr/login');
+    const res = await move(anon, cal.id, { key: String(m.id), to: `${day(m)}T12:00` });
+    assert.equal(res.statusCode, 401);
+    assert.deepEqual(await meetingRow('Team stand-up'), m);
+  });
+
+  test('only events the user sees in the calendar can be moved (the region query, as the app role, with RLS)', async () => {
+    const cal = await page24('calendar');
+    const secret = await meetingRow('One-to-one with Jones'); // king's private meeting
+    const blake = await as('blake');
+    const body = (await blake.get('/a/hr/24')).body;
+    assert.doesNotMatch(body, /One-to-one/);
+    // an event outside the region's query (or a key crafted to widen it) is refused before the move SQL runs
+    for (const key of [String(secret.id), `${secret.id}' or '1'='1`, `0 or true`, 'x'.repeat(201)]) {
+      const res = await move(blake, cal.id, { key, to: `${day(secret)}T08:00` });
+      assert.equal(res.statusCode, 403, key);
+      assert.match(res.json().error, /can no longer be moved/);
+    }
+    assert.deepEqual(await meetingRow('One-to-one with Jones'), secret);
+    const log = await owner.one(`select detail from meta.activity_log where event = 'forbidden' and detail like 'calendar move%' order by id desc limit 1`);
+    assert.equal(log.detail, `calendar move: region ${cal.id}`);
+  });
+
+  test('the drop target is validated and never becomes SQL text', async () => {
+    const cal = await page24('calendar');
+    const m = await meetingRow('Team stand-up');
+    const king = await as('king');
+    await king.get('/a/hr/24');
+    for (const to of [`${day(m)}'); delete from hr.meeting; --`, '2026-02-30', `${day(m)}T25:00`, `${day(m)} 10:00`, '']) {
+      const res = await move(king, cal.id, { key: String(m.id), to });
+      assert.equal(res.statusCode, 400, to);
+      assert.match(res.json().error, /not a valid date/);
+    }
+    assert.deepEqual(await meetingRow('Team stand-up'), m);
+    assert.ok((await owner.one('select count(*)::int as n from hr.meeting')).n >= 7);
+  });
+
+  test('regions without drag and drop, other region types, hidden regions and move_authz are refused', async () => {
+    const cal = await page24('calendar');
+    const chart = await page24('chart', 'Jobs per department');
+    const leave = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 12`, [appId])).id;
+    const m = await meetingRow('Team stand-up');
+    const king = await as('king');
+    await king.get('/a/hr/24');
+    for (const rid of [chart.id, leave, 999999]) assert.equal((await move(king, rid, { key: String(m.id), to: `${day(m)}T12:00` })).statusCode, 403, String(rid));
+    // the leave calendar on its own page: no move SQL configured
+    await king.get('/a/hr/12');
+    assert.equal((await king.post(`/a/hr/12/calendar/${leave}/move`, { __csrf: king.lastCsrf, key: '1', to: '2026-10-05' })).statusCode, 403);
+    const allen = await as('allen');
+    try {
+      // an authorization scheme for dragging: allen is no manager
+      await owner.query(`update meta.region set config = config || '{"move_authz": "MANAGER"}' where id = $1`, [cal.id]);
+      const body = (await allen.get('/a/hr/24')).body;
+      assert.doesNotMatch(body, /data-calendar=|draggable=|data-drop=/);
+      assert.equal((await move(allen, cal.id, { key: String(m.id), to: `${day(m)}T12:00` })).statusCode, 403);
+      // a region hidden by its condition can't be used either
+      await owner.query(`update meta.region set config = config - 'move_authz', condition = 'false' where id = $1`, [cal.id]);
+      await king.get('/a/hr/24');
+      assert.equal((await move(king, cal.id, { key: String(m.id), to: `${day(m)}T12:00` })).statusCode, 403);
+    } finally {
+      await owner.query(`update meta.region set config = $2, condition = null where id = $1`, [cal.id, JSON.stringify(cal.config)]);
+    }
+    assert.deepEqual(await meetingRow('Team stand-up'), m);
+  });
+
+  test('the move SQL runs as the application role with the values as literals', async () => {
+    const cal = await page24('calendar');
+    const m = await meetingRow('Research demo');
+    const king = await as('king');
+    try {
+      await owner.query(`update meta.region set config = config || $2::jsonb where id = $1`, [cal.id, JSON.stringify({
+        move: `update hr.meeting set title = current_user || ':' || :EVENT_ID || ':' || :NEW_START, starts_at = :NEW_START::timestamp, ends_at = :NEW_END::timestamp where id = :EVENT_ID::int`,
+      })]);
+      await king.get('/a/hr/24');
+      const res = await move(king, cal.id, { key: String(m.id), to: `${day(m)}T08:00` });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal((await owner.one('select title from hr.meeting where id = $1', [m.id])).title, `hr_app:${m.id}:${day(m)} 08:00`);
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [cal.id, JSON.stringify(cal.config)]);
+      await owner.query('update hr.meeting set title = $2, starts_at = $3, ends_at = $4 where id = $1', [m.id, 'Research demo', m.s, m.e]);
+    }
+  });
+
+  test('create links are checksummed: a changed slot is refused', async () => {
+    const king = await as('king');
+    const body = (await king.get('/a/hr/24')).body;
+    const href = /<a class="cal-add" href="([^"]+)"/.exec(body)![1].replace(/&amp;/g, '&');
+    assert.equal((await king.get(href)).statusCode, 200);
+    const forged = href.replace(/P24_STARTS_AT=[^&]+/, 'P24_STARTS_AT=2000-01-01');
+    assert.equal((await king.get(forged)).statusCode, 403);
+    // another user can't reuse king's link either (the checksum includes the user)
+    assert.equal((await (await as('allen')).get(href)).statusCode, 403);
+  });
+
+  test('chart drill-down: checksummed links, escaped values, none to pages the user may not open', async () => {
+    const chart = await page24('chart', 'Departments: service, pay and size');
+    const { source } = await owner.one('select source from meta.region where id = $1', [chart.id]);
+    const allen = await as('allen');
+    const body = (await allen.get('/a/hr/24')).body;
+    const href = /<a class="bubble s1 \w+ drill" href="([^"]+)"/.exec(body)![1].replace(/&amp;/g, '&');
+    const q = new URLSearchParams(href.split('?')[1]);
+    assert.equal(q.get('cs'), urlChecksum(appId, 2, 'allen', { P2_DEPTNO: q.get('P2_DEPTNO')! }));
+    assert.equal((await allen.get(href)).statusCode, 200);
+    try {
+      // a label with markup, a link item from it, and a target page allen may not open
+      await owner.query(`update meta.region set source = $2, config = config || '{"link": {"page": 2, "items": {"P2_DEPTNO": "#department#"}}}' where id = $1`,
+        [chart.id, `select '"><img src=x onerror=alert(1)>' as department, 1 as x, 2 as y, 3 as z`]);
+      const page = (await allen.get('/a/hr/24')).body;
+      assert.ok(!page.includes('<img src=x'));
+      assert.match(page, /P2_DEPTNO=%22%3E%3Cimg/);
+      await owner.query(`update meta.region set config = config || '{"link": {"page": 3, "items": {"P3_EMPNO": "#x#"}}}' where id = $1`, [chart.id]);
+      const none = (await allen.get('/a/hr/24')).body;
+      assert.doesNotMatch(none, /\/a\/hr\/3\?/, 'page 3 needs MANAGER');
+      assert.match(none, /class="bubble s1 \w+" data-tip=/);
+    } finally {
+      await owner.query(`update meta.region set config = $2, source = $3 where id = $1`, [chart.id, JSON.stringify(chart.config), source]);
+    }
+  });
+});
