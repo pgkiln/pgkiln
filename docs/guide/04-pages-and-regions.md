@@ -39,7 +39,9 @@ only when true) and `authz` (an authorization scheme).
 | [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, donut or pie chart from a SELECT |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month calendar of dated rows |
-| [`facets`](#facets-faceted-search) | Checkbox filters with counts for a report |
+| [`facets`](#facets-faceted-search) | Checkbox, range and star filters with counts and a search field for a report |
+| [`smart_filters`](#smart_filters) | One search field with filter chips and suggestions for a report |
+| [`display_selector`](#display_selector-region-display-selector) | Tabs or a select list that show one region (or group of regions) of the page at a time |
 | [`map`](#map) | Places (markers) and shapes on an interactive map |
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
@@ -325,27 +327,119 @@ and › (`?r<id>_m=2026-10`).
 
 ### `facets` (faceted search)
 
-A panel of checkbox filters, each with a live count, that filters a **report region on the same
-page**. Counts take the search and all *other* facets into account.
+A panel of filters, each with a live count, that filters a **report region on the same page**.
+Counts take the search and all *other* facets into account. Three kinds of facet:
+
+- **checkbox** (the default): the most frequent values of a column, each with a checkbox. With
+  `"exclude": true` the facet gets an *Exclude the selected values* switch: the chosen values are
+  then left out instead (rows where the column is empty stay).
+- **range**: a number or date column in ranges, as radio buttons ("Any", then each range). A
+  range includes its `from` and excludes its `to`, so `..1500`, `1500..3000` and `3000..` don't
+  overlap. With `"custom": true` (the default when no `ranges` are given) users can type their own
+  *from* and *to*; those are inclusive (a date *to* includes the whole day).
+- **star**: a rating column as "5 stars and up", "4 stars and up", … down to 1 (`max`, default 5).
+
+With `"search": true` the panel starts with a search field: the same search as the report's own
+(`r<id>_q`, the row as text contains the term).
 
 Attributes:
 
 ```json
 {"report": 57,
- "facets": [{"column": "job", "label": "Job"},
+ "search": true,
+ "facets": [{"column": "job", "label": "Job", "exclude": true},
             {"column": "department"},
-            {"column": "status", "limit": 5}]}
+            {"column": "status", "limit": 5},
+            {"column": "sal", "label": "Salary", "type": "range", "custom": true,
+             "ranges": [{"to": 1500, "label": "Below 1500"}, {"from": 1500, "to": 3000}, {"from": 3000}]},
+            {"column": "hiredate", "label": "Hired", "type": "range"},
+            {"column": "rating", "type": "star", "max": 5}]}
 ```
 
 | Key | Meaning |
 |---|---|
 | `report` | The id of the report region to filter |
+| `search` | `true`: a search field at the top |
 | `facets[].column` | A column of the report's SELECT |
 | `facets[].label` | Heading (default: the column name) |
-| `facets[].limit` | Most frequent values shown (default 12, max 50) |
+| `facets[].type` | `checkbox` (default), `range` or `star` |
+| `facets[].limit` | checkbox: most frequent values shown (default 12, max 50) |
+| `facets[].exclude` | checkbox: `true` lets users exclude the chosen values |
+| `facets[].ranges` | range: `[{"from": …, "to": …, "label": …}]`, numbers or `YYYY-MM-DD` dates; either bound may be left out (at most 20) |
+| `facets[].custom` | range: `true` adds *from*/*to* fields (default: only when there are no `ranges`) |
+| `facets[].max` | star: the highest rating, 2–10 (default 5) |
+
+Only filters that a facet on the page allows are read from the URL: a value for a column without a
+facet, a range that isn't one of the facet's own, or a *from*/*to* on a facet without `custom`
+is ignored. Values and bounds are sent as query parameters, never as SQL text. A range facet on a
+column that is neither a number nor a date shows a message instead.
 
 Typical layout: facets region with `columns: 3` and template `collapsible`, report with
-`columns: 9`. On phones the facets stack above the report.
+`columns: 9`. On phones the facets stack above the report. Without JavaScript an *Apply* button
+submits the panel; with JavaScript every change applies at once.
+
+---
+
+### `smart_filters`
+
+The compact alternative to a facets panel (APEX *smart filters*): one search field above a report,
+with the filters in use as **chips** (each with a × to remove it) and **suggestions** below it.
+Without a search term the suggestions are each facet's most frequent values (or its ranges); while
+the user types they are the values that contain the term, and choosing one replaces the term by
+that filter. If nothing matches, the term searches all columns of the report.
+
+```json
+{"report": 57,
+ "placeholder": "Search or filter employees…",
+ "suggestions": 3,
+ "facets": [{"column": "job", "label": "Job"},
+            {"column": "department"},
+            {"column": "sal", "label": "Salary", "type": "range",
+             "ranges": [{"to": 1500}, {"from": 1500, "to": 3000}, {"from": 3000}]}]}
+```
+
+| Key | Meaning |
+|---|---|
+| `report` | The id of the report region to filter |
+| `facets` | As for [`facets`](#facets-faceted-search) (checkbox, range and star; `exclude` and `custom` are for the facets panel) |
+| `suggestions` | Suggestions per facet, 0–10 (default 3) |
+| `placeholder` | The text in the empty search field (translatable) |
+
+Everything is a link or a GET form on the report's own URL parameters, so it works without
+JavaScript, can be bookmarked and is kept in saved reports. A facets panel and smart filters may
+filter the same report; the first definition of a column on the page wins. Give the region
+template `plain` and `columns: 12` above the report.
+
+---
+
+### `display_selector` (region display selector)
+
+A bar of **tabs** (or a **select list**) that shows one region of the page at a time, like APEX's
+region display selector. Regions take part through their own attributes:
+
+- `"display_selector": true`: a tab named after the region's title;
+- `"display_selector": "Tab name"`: regions with the same name share one tab (e.g. a smart filters
+  region and its report). The name is translatable.
+
+```json
+{"style": "tabs", "show_all": true, "remember": true}
+```
+
+| Key | Meaning |
+|---|---|
+| `style` | `tabs` (default) or `select` |
+| `show_all` | `false` hides the *Show all* tab (default: shown) |
+| `remember` | `false`: don't remember the chosen tab for the browser session (default: remembered per page) |
+
+Regions stay where the page puts them; regions hidden by a condition or authorization get no tab.
+Without JavaScript the bar is a list of links to the regions (`#R<id>`) and every region shows.
+With JavaScript the links become accessible tabs (arrow keys, Home and End), the other regions are
+hidden, and a link to `#R<id>` opens the tab of that region. In the page designer the display
+selector's settings list the page's regions with a checkbox and a tab name each.
+
+The HR example's page 21 (*Explore*, `examples/hr/hr_21_regions.sql`) has a display selector with
+three tabs: smart filters over an employee report, a faceted search with a search field, an
+excludable job facet, salary ranges with from/to, a hire date range and a star rating, and a chart.
 
 ---
 

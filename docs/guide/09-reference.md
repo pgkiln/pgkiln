@@ -109,7 +109,7 @@ needed and grants access; deleting revokes access.
 | Column | Description |
 |---|---|
 | `page_id`, `seq`, `title` | |
-| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `static`, `dynamic` |
+| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `tasks`, `workflows`, `static`, `dynamic` |
 | `source` | SELECT (or HTML for `static`) |
 | `table_name`, `pk_column` | For `form` and `grid` |
 | `pk_item` | For `form`: the item holding the key |
@@ -179,7 +179,10 @@ from it, for example with a scheduled
 | `r<id>_p` | report, grid | Page number |
 | `r<id>_n` | report | Rows per page |
 | `r<id>_f=column\|op\|value` | report | Column filter (repeatable); `op` is `eq`, `ne`, `contains`, `not_contains`, `gt`, `ge`, `lt`, `le`, `null`, `not_null` |
-| `r<id>_x_<column>=value` | report + facets | Facet selection (repeatable) |
+| `r<id>_x_<column>=value` | report + facets, smart filters | Facet selection (repeatable) |
+| `r<id>_xn_<column>=1` | report + facets | Exclude the selected values (facet with `exclude`) |
+| `r<id>_rg_<column>=from\|to` | report + facets, smart filters | One of a range or star facet's ranges (`~`: the custom range) |
+| `r<id>_rf_<column>`, `r<id>_rt_<column>` | report + facets | Custom range from / to, inclusive (facet with `custom`) |
 | `r<id>_csv=1` | report | Download CSV |
 | `r<id>_pdf=1` | report | Download PDF |
 | `r<id>_m=YYYY-MM` | calendar | Month shown |

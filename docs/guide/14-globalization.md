@@ -42,7 +42,7 @@ latter: **one application, with a translation table**.
 primary language, with where it is used:
 
 - the application name, page names and titles, navigation entries;
-- region titles, column headings, "no data" messages, facet labels, static region HTML;
+- region titles, column headings, "no data" messages, facet labels and range labels, smart filter placeholders, display selector tab names, static region HTML;
 - item labels, help texts, placeholders, null labels, and the display values of static lists
   (`STATIC:Yes;Y,No;N`);
 - button labels and confirmations, validation, process and dynamic-action messages, authorization

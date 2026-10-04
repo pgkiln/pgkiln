@@ -201,7 +201,9 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `chart` | Chart type and the text when there are no rows; lists the query's columns |
 | `cards` | Cards or KPI tiles, the text when there are no rows, and the link (page and items) |
 | `calendar` | The link of each event (page and items); warns when the query lacks `start_date` or `title` |
-| `facets` | The report region it filters, and per column of that report: facet on/off, label, values shown and order |
+| `facets` | The report region it filters and a search field on/off; per column of that report: facet on/off, label, type (checkboxes, ranges, star rating), values shown, exclude, ranges (`..1000; 1000..3000 = Middle; 3000..`), from/to and order |
+| `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
+| `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to
 pages and shared lists of values of the same application, and to report regions on the same page.
