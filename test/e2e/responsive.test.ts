@@ -88,6 +88,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(res?.status(), 200, `page ${p}`);
         await check(page, `app-${p}`, vp);
       }
+      // a review on page 20: the rich text and Markdown editors, tags, stars, date range and QR code
+      await page.goto(`${base}/a/hr/20`);
+      await Promise.all([page.waitForNavigation(), page.locator('table a', { hasText: /^\d+$/ }).first().click()]);
+      await page.locator('svg.qr-code').waitFor();
+      await check(page, 'app-20-review', vp);
       // the report's Actions menu fits
       await page.goto(`${base}/a/hr/2`);
       await page.click('summary:has-text("Actions")');

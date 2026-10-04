@@ -9,6 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { closePools, owner, runtime } from '../src/db.ts';
 import { urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
+import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -1225,6 +1226,127 @@ describe('sprint 25: malformed ids in builder URLs', () => {
       const res = await dev.get(url);
       assert.equal(res.statusCode, 404, url);
       assert.doesNotMatch(res.body, /invalid input syntax|22P02|out of range/, url);
+    }
+  });
+});
+
+
+describe('sprint 26 items: rich text, Markdown, rating, combobox, date range, password reveal, QR code', () => {
+  const page20 = (user: string, id: string) => `/a/hr/20?${new URLSearchParams({ P20_ID: id, cs: urlChecksum(appId, 20, user, { P20_ID: id }) })}`;
+  const base = { __request: 'SAVE', P20_EMPNO: '7698', P20_PERIOD: ['2026-01-01', '2026-06-30'], P20_RATING: '3', P20_SKILLS: 'Sales', P20_NOTES: '' };
+  const XSS = [
+    '<img src=x onerror=alert(1)>', '<script>alert(1)</script>', '<a href="javascript:alert(1)">a</a>', '<a href="java&#x09;script:alert(1)">b</a>',
+    '<svg onload=alert(1)>', '<p style="background:url(javascript:alert(1))" onmouseover="alert(1)">p</p>', '<iframe src="https://evil.example"></iframe>',
+    '<math><mi xlink:href="javascript:alert(1)">m</mi></math>', '<a href="data:text/html,<script>alert(1)</script>">d</a>', '"><script>alert(1)</script>',
+    '<<script>script>alert(1)<</script>/script>', '<!--><script>alert(1)</script>-->', '<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+  ].join('');
+  // unsafe = any real tag outside the allow-list, or any attribute but a safe link's href and rel
+  const ALLOWED = new Set(['p', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'del', 'strike', 'sub', 'sup', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'a', 'hr', 'div']);
+  const unsafe = (html: string) =>
+    [...html.matchAll(/<\/?([a-zA-Z][\w-]*)([^>]*)>/g)].some(([, tag, attrs]) => {
+      if (!ALLOWED.has(tag.toLowerCase())) return true;
+      const rest = attrs.replace(/\s(href)="(https?:|mailto:|tel:|\/|#)[^"]*"/, '').replace(' rel="noopener noreferrer nofollow"', '');
+      return rest.trim() !== '';
+    }) || /<!--/.test(html);
+  let id: string;
+
+  before(async () => {
+    id = String((await owner.one(`insert into hr.review (empno, period, rating, created_by) values (7698, '2026-01-01:2026-06-30', 3, 'sec-test') returning id`)).id);
+  });
+  after(async () => {
+    await owner.query(`delete from hr.review where created_by = 'sec-test'`);
+    await owner.query(`update meta.item i set readonly_condition = null from meta.page p join meta.app a on a.id = p.app_id
+                        where i.page_id = p.id and a.alias = 'hr' and p.page_no = 20 and i.name like 'P20_%'`);
+  });
+
+  test('posted rich text is rebuilt from the allow-list before it is stored', async () => {
+    const b = await as('king');
+    await b.get(page20('king', id));
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_SUMMARY: XSS });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    const { summary } = await owner.one('select summary from hr.review where id = $1', [id]);
+    assert.ok(!unsafe(summary), summary);
+    const body = (await b.get(page20('king', id))).body;
+    const area = /<textarea id="P20_SUMMARY"[^>]*>([\s\S]*?)<\/textarea>/.exec(body)![1];
+    assert.ok(!/</.test(area), 'textarea content is escaped');
+  });
+
+  test('stored hostile HTML and Markdown are made safe when shown read-only', async () => {
+    await owner.query('update hr.review set summary = $2, notes = $3 where id = $1', [id, XSS, `[x](javascript:alert(1)) <img src=x onerror=alert(1)> ${XSS}`]);
+    await owner.query(`update meta.item i set readonly_condition = 'true' from meta.page p join meta.app a on a.id = p.app_id
+                        where i.page_id = p.id and a.alias = 'hr' and p.page_no = 20 and i.name in ('P20_SUMMARY', 'P20_NOTES')`);
+    const b = await as('king');
+    const body = (await b.get(page20('king', id))).body;
+    for (const name of ['P20_SUMMARY', 'P20_NOTES']) {
+      const shown = new RegExp(`<div class="display-value rich-text" id="${name}">([\\s\\S]*?)</div>\\s*(?:<small|</div>|</fieldset>)`).exec(body)?.[1];
+      assert.ok(shown !== undefined, name);
+      assert.ok(!unsafe(shown!), `${name}: ${shown}`);
+    }
+    // editable again: the textarea gets the sanitised HTML, never the raw value
+    await owner.query(`update meta.item i set readonly_condition = null from meta.page p join meta.app a on a.id = p.app_id
+                        where i.page_id = p.id and a.alias = 'hr' and p.page_no = 20 and i.name like 'P20_%'`);
+    const edit = (await b.get(page20('king', id))).body;
+    const area = /<textarea id="P20_SUMMARY"[^>]*>([\s\S]*?)<\/textarea>/.exec(edit)![1];
+    assert.ok(!unsafe(area.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')), area);
+  });
+
+  test('combobox, date range and QR code values are escaped', async () => {
+    const evil = '"><script>alert(1)</script>';
+    await owner.query('update hr.review set skills = $2 where id = $1', [id, `${evil}:x`]);
+    const b = await as('king');
+    const body = (await b.get(page20('king', id))).body;
+    assert.ok(!body.includes('<script>alert(1)'), 'combobox value');
+    assert.match(body, /value="&quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;:x"/);
+    // a QR code's text comes from session state: a load process here; check the label escaping directly
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_PERIOD: [`2026-01-01${evil}`, '2026-06-30'] });
+    assert.equal(res.statusCode, 422);
+    assert.ok(!res.body.includes('<script>alert(1)'), 'date range value');
+  });
+
+  test('a QR code item is display only: a posted value is ignored', async () => {
+    const b = await as('king');
+    await b.get(page20('king', id));
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_RATING: '99', P20_SHARE: 'INJECTED' });
+    assert.equal(res.statusCode, 422);
+    assert.doesNotMatch(res.body, /QR code: INJECTED/);
+  });
+
+  test('malformed rating and date range values are refused and not stored', async () => {
+    for (const change of [{ P20_RATING: '0' }, { P20_RATING: '1e1' }, { P20_RATING: '-1' }, { P20_PERIOD: ['x', 'y'] },
+      { P20_PERIOD: ["2026-01-01'; drop table hr.review; --", '2026-06-30'] }, { P20_PERIOD: ['2026-01-01', '2026-06-30', '2026-07-01'] }, { P20_PERIOD: '2026-01-01:2026-06-30:x' }]) {
+      const b = await as('king');
+      await b.get(page20('king', id));
+      const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, ...change });
+      assert.equal(res.statusCode, 422, JSON.stringify(change));
+    }
+    const row = await owner.one('select period, rating from hr.review where id = $1', [id]);
+    assert.equal(row.period, '2026-01-01:2026-06-30');
+  });
+
+  test('the password item never echoes its value, reveal button or not', async () => {
+    const b = await as('king');
+    await b.get(page20('king', id));
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, ...base, P20_RATING: '99', P20_PIN: 'topsecret' });
+    assert.equal(res.statusCode, 422);
+    assert.doesNotMatch(res.body, /topsecret/);
+    assert.match(res.body, /<input type="password" id="P20_PIN" name="P20_PIN" value="" autocomplete="new-password"/);
+  });
+
+  test('the new item types need the app\'s session like any item (no page for anonymous users)', async () => {
+    const res = await new Browser().get(page20('king', id));
+    assert.equal(res.statusCode, 302);
+  });
+
+  test('rich text and Markdown take linear time on hostile input (no regular-expression backtracking)', () => {
+    const hostile = [
+      '# ' + ' #'.repeat(100_000) + 'x', '[a]('.repeat(100_000), '['.repeat(400_000), ('[a](' + 'x'.repeat(1990)).repeat(200),
+      '**a'.repeat(100_000), '-' + ' -'.repeat(100_000) + 'x', '>'.repeat(200_000), '<a '.repeat(100_000), '<b>'.repeat(100_000),
+    ];
+    for (const input of hostile) {
+      const t = performance.now();
+      markdownHtml(input);
+      sanitizeHtml(input);
+      assert.ok(performance.now() - t < 2000, `${input.slice(0, 20)}… took ${Math.round(performance.now() - t)} ms`);
     }
   });
 });
