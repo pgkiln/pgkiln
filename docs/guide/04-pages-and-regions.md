@@ -152,6 +152,7 @@ Attributes (most of them are also in the page designer's **Report settings** for
 |---|---|---|
 | `page_size` | `15` | Rows per page (the user can change it, up to 500) |
 | `pagination` | X–Y of Z | `"range"`: "Rows X–Y" without a total, for large tables (see [large tables](#large-tables)) |
+| `keyset` | none | With `"range"`: columns that make a row unique (e.g. `["id"]`); Next/Previous seek instead of using an offset (see [large tables](#large-tables)) |
 | `max_rows` | none | Maximum row count: the report, its total and its downloads read at most this many rows (1 to 1,000,000) |
 | `lazy` | `false` | Load the region after the page shows (see [large tables](#large-tables)) |
 | `cache` | none | Keep the rendered region: `{"scope": "user" \| "session" \| "all", "seconds": 300}` |
@@ -766,6 +767,19 @@ filters leave. On a large table that count reads the whole result. With
 `"pagination": "range"` (page designer → Report settings → *Pagination*: *Row ranges*) the
 report shows "Rows 1–15" and reads one row more than it shows to know whether there is a next
 page, like APEX's "row ranges X to Y" pagination. Grids take the same setting.
+
+**Keyset paging.** An offset still makes the database read and skip every row before the page,
+so page 8,000 is slower than page 1. A row-range report with `"keyset": ["id"]` (Report settings →
+*Keyset columns*: columns that make a row unique and are not null, ideally the primary key) pages
+by position instead ("seek" paging): the report is ordered by the user's sort column (if any) and
+then the keyset columns, and *Next* and *Previous* carry the last or first row's values in a
+signed URL parameter (`r<id>_k`). The next page is `where (id) > ($1) order by id limit 16`,
+which an index answers directly, however deep the page, and rows added or removed meanwhile
+don't shift the pages. The values are always query parameters; a position that is not signed by
+the server for this region, sort and page, is too large, or doesn't fit the column's type is
+ignored, and the report pages with the offset as before. Offset paging is also used without a
+position (a page number typed in the URL), for a control break, or in the group by, pivot and
+chart views. Search, filters and sorting work as usual: a new sort or filter starts on page 1.
 
 **Maximum row count.** `"max_rows": 10000` caps what a report reads: its total is counted over at
 most 10,001 rows ("1–15 of more than 10000"), the pager stops at the last page within the

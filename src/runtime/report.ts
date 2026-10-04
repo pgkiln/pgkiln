@@ -17,6 +17,7 @@ import { renderView, VIEWS, type View } from './report-views.ts';
 import { columnTemplates } from './template-components.ts';
 import { facetFilterSql, facetFilters, reportFacetDefs, searchSql } from './facet-state.ts';
 import { resolveRestRegion } from './rest-sources.ts';
+import { checksumValid, signText } from '../security.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -45,6 +46,87 @@ export function maxRows(r: { config: Record<string, any> }, fallback: number | n
 
 /** "Row ranges X to Y" without a total (config.pagination = "range"), as in APEX; otherwise "X–Y of N". */
 export const rangePaging = (r: Region) => r.config.pagination === 'range';
+
+/**
+ * Keyset ("seek") paging: a row-range report with "keyset": ["id"] (columns
+ * that make a row unique, not null, ideally indexed) is ordered by the user's
+ * sort column (if any) and then the keyset columns; Next and Previous carry
+ * the last or first row's values in a signed URL parameter (r<id>_k), which
+ * become query parameters ("where (id) > ($1)"), never SQL text. Whenever
+ * that doesn't apply (no or a tampered token, a control break, another view,
+ * a keyset column missing from the result) the report pages with an offset.
+ */
+export interface Seek {
+  dir: 'n' | 'p';
+  values: (string | null)[];
+}
+const KEYSET_MAX_COLUMNS = 4;
+const KEYSET_MAX_VALUE = 1000;
+const KEYSET_MAX_TOKEN = 8192;
+
+export function keysetColumns(r: Region): string[] | null {
+  const k = r.config.keyset;
+  if (r.type !== 'report' || !rangePaging(r) || !Array.isArray(k) || !k.length || k.length > KEYSET_MAX_COLUMNS) return null;
+  return k.every((c) => typeof c === 'string' && c.length > 0 && c.length <= 63) ? (k as string[]) : null;
+}
+
+const seekScope = (ctx: PageContext, r: Region) => `keyset:${ctx.app.id}:${ctx.page.page_no}:${r.id}`;
+
+/** The signed r<id>_k value for a page reached by Next ('n', from the last row) or Previous ('p', from the first). */
+export function seekToken(ctx: PageContext, r: Region, st: { sort: number; desc: boolean }, page: number, dir: Seek['dir'], values: (string | null)[]) {
+  if (values.some((v) => v !== null && (typeof v !== 'string' || v.length > KEYSET_MAX_VALUE))) return null;
+  const payload = Buffer.from(JSON.stringify({ d: dir, s: st.sort, o: st.desc ? 1 : 0, p: page, v: values })).toString('base64url');
+  return `${payload}.${signText(seekScope(ctx, r), payload)}`;
+}
+
+/** The keyset position in the URL, when it is signed for this region and matches the sort and page; otherwise null. */
+function parseSeek(ctx: PageContext, r: Region, st: { sort: number; desc: boolean; page: number }): Seek | null {
+  const tok = ctx.params.get(key(r, 'k'));
+  if (!tok || tok.length > KEYSET_MAX_TOKEN || st.page < 2 || !keysetColumns(r)) return null;
+  const parts = tok.split('.');
+  if (parts.length !== 2 || !parts[0] || !checksumValid(signText(seekScope(ctx, r), parts[0]), parts[1])) return null;
+  let o: any;
+  try {
+    o = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== 'object' || (o.d !== 'n' && o.d !== 'p') || o.s !== st.sort || o.o !== (st.desc ? 1 : 0) || o.p !== st.page) return null;
+  if (!Array.isArray(o.v) || !o.v.length || o.v.length > KEYSET_MAX_COLUMNS + 1) return null;
+  if (!o.v.every((v: unknown) => v === null || (typeof v === 'string' && v.length <= KEYSET_MAX_VALUE && !v.includes('\0')))) return null;
+  return { dir: o.d, values: o.v };
+}
+
+/** How a report is keyset-paged with these columns, or null (offset paging). */
+function keysetPlan(r: Region, st: ReportState, cols: Map<string, number>, names: string[]) {
+  const kc = keysetColumns(r);
+  if (!kc || st.view !== 'report' || (st.breakCol && cols.has(st.breakCol)) || !kc.every((c) => cols.has(c))) return null;
+  if (new Set(names).size !== names.length) return null;
+  let sortCol: string | null = null;
+  if (st.sort) {
+    if (st.sort > names.length) return null;
+    sortCol = names[st.sort - 1];
+    if (kc.length === 1 && kc[0] === sortCol) sortCol = null;
+  }
+  return { kc, sortCol, desc: st.sort ? st.desc : false };
+}
+
+/** The WHERE condition that continues after (Next) or before (Previous) the given row; null when the values don't fit. */
+function seekCondition(plan: NonNullable<ReturnType<typeof keysetPlan>>, seek: Seek, p: SqlParams) {
+  if (seek.values.length !== plan.kc.length + (plan.sortCol ? 1 : 0)) return null;
+  const vals = [...seek.values];
+  const sv = plan.sortCol ? vals.shift()! : null;
+  if (vals.some((v) => v === null)) return null;
+  const forward = seek.dir === 'n';
+  const op = plan.desc === forward ? '<' : '>';
+  const keys = `(${plan.kc.map(q).join(', ')}) ${op} (${vals.map((v) => p.add(v)).join(', ')})`;
+  if (!plan.sortCol) return keys;
+  // the sort column may be null: those rows come last (nulls last)
+  const x = q(plan.sortCol);
+  if (sv === null) return forward ? `(${x} is null and ${keys})` : `(${x} is not null or ${keys})`;
+  const a = p.add(sv);
+  return forward ? `(${x} ${op} ${a} or (${x} = ${a} and ${keys}) or ${x} is null)` : `(${x} ${op} ${a} or (${x} = ${a} and ${keys}))`;
+}
 
 /** The rows of one page: offset and limit (one row more than shown, so the pager knows whether there is a next page). */
 export function pageWindow(r: Region, st: { page: number; size: number }) {
@@ -119,6 +201,8 @@ export interface ReportState {
   chart: { kind: string; label: string; fn: string; value: string } | null;
   /** the visible area of a map region that filters this report (r<id>_bb) */
   area: MapArea | null;
+  /** keyset position from Next/Previous (r<id>_k), see keysetColumns */
+  seek: Seek | null;
 }
 
 /** A map's visible area: south, west, north, east (west > east when it spans the antimeridian). */
@@ -185,7 +269,7 @@ export function selectionOf(page: { items: { name: string }[] }, r: Region) {
 export function reportState(ctx: PageContext, r: Region): ReportState {
   const p = ctx.params;
   const size = parseInt(p.get(key(r, 'n')) ?? '', 10) || Number(r.config.page_size) || 15;
-  return {
+  const st: ReportState = {
     search: (p.get(key(r, 'q')) ?? '').trim(),
     sort: r.config.sortable === false ? 0 : Math.max(0, Math.min(1000, parseInt(p.get(key(r, 's')) ?? '0', 10) || 0)),
     desc: p.get(key(r, 'd')) === 'desc',
@@ -227,7 +311,10 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
       return (REPORT_CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value ? { kind, label, fn, value } : null;
     })(),
     area: parseArea(p.get(key(r, 'bb'))),
+    seek: null as Seek | null,
   };
+  st.seek = parseSeek(ctx, r, st);
+  return st;
 }
 
 /**
@@ -360,9 +447,10 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const p = new SqlParams();
   if (st.search) where.push(searchSql(st.search, p));
   const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions));
-  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area;
+  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || keysetColumns(r);
   // column name → type oid
-  const cols = new Map<string, number>(needCols ? (await fieldsOf(ctx, src)).map((f) => [f.name, f.dataTypeID]) : []);
+  const fields = needCols ? await fieldsOf(ctx, src) : [];
+  const cols = new Map<string, number>(fields.map((f) => [f.name, f.dataTypeID]));
   for (const f of st.filters) if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
   for (const f of facets) {
     const cond = facetFilterSql(f, cols, p);
@@ -370,7 +458,7 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   }
   const pos = st.area ? positionColumns([...cols.keys()]) : null;
   if (st.area && pos) where.push(areaCondition(st.area, pos));
-  return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols, values: queryValues(p.values) };
+  return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols, names: fields.map((f) => f.name), params: p, values: queryValues(p.values) };
 }
 
 /**
@@ -380,7 +468,8 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
  * max_rows + 1 rows, so a huge table never has to be read to the end.
  */
 export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
-  const { src, where, cols, values } = await filtered(ctx, r, st);
+  const { src, where: filterWhere, cols, names, params } = await filtered(ctx, r, st);
+  let where = filterWhere;
   const extra: string[] = [];
   const range = rangePaging(r);
   const win = pageWindow(r, st);
@@ -392,16 +481,30 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
     });
   }
   const order: string[] = [];
-  if (st.breakCol && cols.has(st.breakCol)) order.push(`${q(st.breakCol)} asc nulls last`);
-  if (st.sort) order.push(`${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`);
+  const plan = keysetPlan(r, st, cols, names);
+  let seek: Seek['dir'] | null = null;
+  if (plan) {
+    const cond = mode === 'page' && st.seek ? seekCondition(plan, st.seek, params) : null;
+    if (cond) (seek = st.seek!.dir), (where = where ? `${where} and ${cond}` : ` where ${cond}`);
+    // Previous reads backwards from the first row (and the page reverses the rows)
+    const back = seek === 'p';
+    const dir = plan.desc !== back ? 'desc' : 'asc';
+    if (plan.sortCol) order.push(`${q(plan.sortCol)} ${dir} nulls ${back ? 'first' : 'last'}`);
+    for (const c of plan.kc) order.push(`${q(c)} ${dir}`);
+    // the position of each row, as text: the sort column, then the keyset columns
+    if (mode === 'page') [...(plan.sortCol ? [plan.sortCol] : []), ...plan.kc].forEach((c, i) => extra.push(`${q(c)}::text as "__k${i}"`));
+  } else {
+    if (st.breakCol && cols.has(st.breakCol)) order.push(`${q(st.breakCol)} asc nulls last`);
+    if (st.sort) order.push(`${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`);
+  }
   const orderBy = order.length ? ` order by ${order.join(', ')}` : '';
   let from = `(\n${src}\n) "__q"${where}`;
   if (mode === 'page' && win.max && !range) from = `(select "__q".* from ${from}${orderBy} limit ${win.max + 1}) "__q"`;
   let sql = `select "__q".*${extra.map((x) => `, ${x}`).join('')} from ${from}${orderBy}`;
   // one row more than a PDF shows, so it can say it was cut off
   const cap = (n: number) => (win.max ? Math.min(win.max, n) : n);
-  sql += mode === 'page' ? ` limit ${win.limit} offset ${win.offset}` : ` limit ${mode === 'pdf' ? cap(PDF_MAX_ROWS) + 1 : cap(DOWNLOAD_MAX_ROWS)}`;
-  return { text: sql, values };
+  sql += mode === 'page' ? ` limit ${win.limit}${seek ? '' : ` offset ${win.offset}`}` : ` limit ${mode === 'pdf' ? cap(PDF_MAX_ROWS) + 1 : cap(DOWNLOAD_MAX_ROWS)}`;
+  return { text: sql, values: queryValues(params.values), seek, keyed: !!plan };
 }
 
 /**
@@ -421,7 +524,7 @@ export function pageInfo(r: Region, st: { page: number; size: number }, rows: un
   const from = shown.length ? win.offset + 1 : 0;
   const to = win.offset + shown.length;
   const more = total === null ? rows.length > shown.length : to < total;
-  return { rows: shown, page: win.page, from, to, total, capped, more };
+  return { rows: shown, page: win.page, from, to, total, capped, more, next: null as string | null, prev: null as string | null };
 }
 export type PageInfo = ReturnType<typeof pageInfo>;
 
@@ -429,13 +532,19 @@ export type PageInfo = ReturnType<typeof pageInfo>;
 export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: Raw | '' = '') {
   const t = ctx.locale.t;
   if (!info.more && info.page <= 1) return info.total ? html`<div class="pager"><span>${t('report.rows')}: ${info.total}</span></div>` : '';
+  // a page number, and the keyset position when there is one
+  const go = (page: number, seek: string | null) => (p: URLSearchParams) => {
+    p.set(key(r, 'p'), String(page));
+    if (seek) p.set(key(r, 'k'), seek);
+    else p.delete(key(r, 'k'));
+  };
   const text =
     info.total === null ? t('report.range_open', { from: info.from, to: info.to })
     : t(info.capped ? 'report.range_more' : 'report.range', { from: info.from, to: info.to, total: info.total });
   return html`<nav class="pager" aria-label="${t('report.pagination')}">
     <span>${text}</span>
-    ${info.page > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(info.page - 1)))}"${linkAttr}>‹ ${t('report.previous')}</a>` : ''}
-    ${info.more ? html`<a class="btn" href="${regionUrl(ctx, r, (p) => p.set(key(r, 'p'), String(info.page + 1)))}"${linkAttr}>${t('report.next')} ›</a>` : ''}
+    ${info.page > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, go(info.page - 1, info.prev))}"${linkAttr}>‹ ${t('report.previous')}</a>` : ''}
+    ${info.more ? html`<a class="btn" href="${regionUrl(ctx, r, go(info.page + 1, info.next))}"${linkAttr}>${t('report.next')} ›</a>` : ''}
   </nav>`;
 }
 
@@ -605,10 +714,26 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   let res: pg.QueryResult<any[]>;
   let pageNo = st.page;
   let failure: string | null = null;
+  let seekDir: Seek['dir'] | null = null;
+  let keyed = false;
   try {
-    const run = async (p: number) => savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, { ...st, page: p }, 'page')), rowMode: 'array' }));
-    res = await run(pageNo);
-    if (res.rows.length === 0 && pageNo > 1) res = await run((pageNo = 1));
+    const run = async (p: number, seek: Seek | null) =>
+      savepoint(c, async () => {
+        const query = await buildSql(ctx, r, { ...st, page: p, seek }, 'page');
+        (seekDir = query.seek), (keyed = query.keyed);
+        return c.query({ text: query.text, values: query.values, rowMode: 'array' });
+      });
+    try {
+      res = await run(pageNo, st.seek);
+    } catch (e) {
+      // a keyset value that doesn't fit the column's type: page with the offset instead
+      if (!st.seek) throw e;
+      res = await run(pageNo, null);
+    }
+    if (seekDir === 'p' && res.rows.length <= st.size) res = await run((pageNo = 1), null);
+    else if (res.rows.length === 0 && pageNo > 1) res = await run((pageNo = 1), null);
+    // read backwards from the first row of the next page: put them in order, there is a next page
+    if (seekDir === 'p') res.rows = res.rows.slice(0, st.size).reverse();
     pageNo = pageWindow(r, { ...st, page: pageNo }).page;
   } catch (e) {
     failure = await publicError(ctx, e, `report "${r.title ?? r.id}"`);
@@ -619,6 +744,13 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const totalIdx = res.fields.findIndex((f) => f.name === '__total');
   const fields = totalIdx >= 0 ? res.fields.slice(0, totalIdx) : [];
   const info = pageInfo(r, { ...st, page: pageNo }, res.rows, totalIdx);
+  if (seekDir === 'p') info.more = true;
+  if (keyed && info.rows.length) {
+    const kIdx = res.fields.flatMap((f, i) => (/^__k\d+$/.test(f.name) ? [i] : []));
+    const at = (row: unknown[]) => kIdx.map((i) => row[i] as string | null);
+    if (info.more) info.next = seekToken(ctx, r, st, info.page + 1, 'n', at(info.rows[info.rows.length - 1]));
+    if (info.page > 2) info.prev = seekToken(ctx, r, st, info.page - 1, 'p', at(info.rows[0]));
+  }
   const hlIdx = st.highlights.map((_, i) => res.fields.findIndex((f) => f.name === `__h${i}`));
   const breakIdx = st.breakCol ? fields.findIndex((f) => f.name === st.breakCol) : -1;
   const allCols = visibleColumns(r, fields);

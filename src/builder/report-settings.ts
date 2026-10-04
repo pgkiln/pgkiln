@@ -51,6 +51,7 @@ export const linkItemsText = (items: Record<string, string> | undefined) => (ite
 interface ReportConfig {
   page_size?: number;
   pagination?: 'range';
+  keyset?: string[];
   max_rows?: number;
   lazy?: boolean;
   cache?: { scope: 'user' | 'session' | 'all'; seconds: number };
@@ -124,6 +125,9 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
         <div class="field"><label class="label" for="${id('pagination')}">Pagination</label>
           <select id="${id('pagination')}" name="pagination">${opt('', 'Rows X–Y of Z (counts the total)', cfg.pagination)}${opt('range', 'Row ranges X–Y (no total)', cfg.pagination)}</select>
           <small class="help">Row ranges skip counting the rows: use them for large tables.</small></div>
+        <div class="field"><label class="label" for="${id('keyset')}">Keyset columns</label>
+          <input id="${id('keyset')}" name="keyset" value="${(cfg.keyset ?? []).join(', ')}" placeholder="e.g. id">
+          <small class="help">With row ranges: columns that make a row unique (comma separated, indexed). Next and Previous then continue after the last row instead of skipping rows (fast deep pages).</small></div>
         <div class="field"><label class="label" for="${id('max_rows')}">Maximum row count</label>
           <input id="${id('max_rows')}" name="max_rows" type="number" min="1" max="1000000" value="${cfg.max_rows ?? ''}" placeholder="no maximum">
           <small class="help">The report (and its downloads) reads at most this many rows.</small></div>
@@ -175,6 +179,8 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
   set('page_size', PAGE_SIZES.includes(String(size)) && size !== 15 ? size : undefined);
   set('mobile', b.mobile === 'scroll' ? 'scroll' : undefined);
   set('pagination', b.pagination === 'range' ? 'range' : undefined);
+  const keyset = (b.keyset ?? '').split(',').map((c) => c.trim()).filter((c) => c && c.length <= 63).slice(0, 4);
+  set('keyset', keyset.length ? keyset : undefined);
   const max = Math.floor(Number(b.max_rows));
   set('max_rows', b.max_rows?.trim() && max >= 1 ? Math.min(max, 1_000_000) : undefined);
   set('lazy', b.lazy === 'true' ? true : undefined);

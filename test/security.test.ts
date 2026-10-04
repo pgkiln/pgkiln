@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner, runtime } from '../src/db.ts';
-import { urlChecksum } from '../src/security.ts';
+import { signText, urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
 import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
 import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/runtime/region-cache.ts';
@@ -2334,5 +2334,64 @@ describe('sprint 29 header authentication', () => {
     assert.deepEqual(
       await owner.one('select authentication, header_name, header_auto_create, logout_url from meta.app where id = $1', [hdrApp]),
       { authentication: 'header', header_name: 'X-Forwarded-User', header_auto_create: true, logout_url: '/a/other' });
+  });
+});
+
+describe('sprint 30', () => {
+  // keyset paging: the r<id>_k position is signed; whatever it holds only becomes query parameters
+  let region: number;
+  const firstId = (body: string) => Number(/<tr[^>]*>\s*<td[^>]*>(\d+)<\/td>/.exec(body.slice(body.indexOf(`id="R${region}"`)))?.[1]);
+  const token = (v: unknown, extra: Record<string, unknown> = {}, scope = `keyset:${appId}:25:${region}`) => {
+    const payload = Buffer.from(JSON.stringify({ d: 'n', s: 0, o: 0, p: 2, v, ...extra })).toString('base64url');
+    return `${payload}.${signText(scope, payload)}`;
+  };
+  before(async () => {
+    region = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 25 and r.title = 'All readings'`, [appId])).id;
+    await owner.query(`update meta.region set config = config || '{"keyset": ["id"]}' where id = $1`, [region]);
+  });
+  after(async () => {
+    await owner.query(`update meta.region set config = config - 'keyset' where id = $1`, [region]);
+  });
+
+  test('keyset paging: a signed position seeks; a tampered, foreign or oversized one is ignored (offset paging)', async () => {
+    const king = await as('king');
+    const page = (k: string, extra = '') => king.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(k)}${extra}`);
+    assert.equal(firstId((await page(token(['1000']))).body), 1001, 'a valid position');
+    // the payload changed, the signature kept
+    const good = token(['1000']);
+    const forged = `${Buffer.from(JSON.stringify({ d: 'n', s: 0, o: 0, p: 2, v: ['5000'] })).toString('base64url')}.${good.split('.')[1]}`;
+    assert.equal(firstId((await page(forged)).body), 26);
+    assert.equal(firstId((await page(`${good.split('.')[0]}.`)).body), 26, 'no signature');
+    assert.equal(firstId((await page(token(['1000'], {}, `keyset:${appId}:25:${region + 1}`))).body), 26, 'signed for another region');
+    assert.equal(firstId((await page(token(['1000'], { p: 3 }))).body), 26, 'for another page');
+    assert.equal(firstId((await page(token(['1000'], { s: 2 }))).body), 26, 'for another sort');
+    assert.equal(firstId((await page(token(Array(6).fill('1')))).body), 26, 'too many values');
+    assert.equal(firstId((await page(token(['x'.repeat(1001)]))).body), 26, 'a value too long');
+    assert.equal(firstId((await page(token([{ a: 1 }]))).body), 26, 'not a string');
+    assert.equal(firstId((await page('a'.repeat(9000))).body), 26, 'oversized');
+  });
+
+  test('keyset paging: values are query parameters, never SQL; a value of the wrong type falls back', async () => {
+    const king = await as('king');
+    for (const v of ["1) or true --", "1'; drop table hr.reading; --", 'abc', '']) {
+      const res = await king.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(token([v]))}`);
+      assert.equal(res.statusCode, 200);
+      assert.equal(firstId(res.body), 26, v);
+      assert.doesNotMatch(res.body.slice(res.body.indexOf(`id="R${region}"`)), /class="alert[^"]*error|syntax error|invalid input/);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from hr.reading')).n, 200000);
+    // a null key value is refused (keys are not null)
+    assert.equal(firstId((await king.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(token([null]))}`)).body), 26);
+    // a sort column number past the columns: offset paging, no error
+    const res = await king.get(`/a/hr/25?r${region}_s=99&r${region}_p=2`);
+    assert.equal(res.statusCode, 200);
+  });
+
+  test('keyset paging: another user\'s token for this region only seeks in the viewer\'s own query', async () => {
+    // the position is not a permission: the rows still come from the region's query as the app's role
+    const blake = await as('blake');
+    const res = await blake.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(token(['199990']))}`);
+    if (res.statusCode === 200) assert.equal(firstId(res.body), 199991);
+    else assert.ok([302, 303, 403].includes(res.statusCode));
   });
 });
