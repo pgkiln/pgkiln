@@ -34,10 +34,17 @@ const allowAll = { allow_insert: 'true', allow_update: 'true', allow_delete: 'tr
 
 describe('region settings: merges', () => {
   test('chart: kind and empty text; the default bar is left out; unknown kinds are dropped', () => {
-    assert.deepEqual(mergeChartSettings({ kind: 'donut', other: 1 }, { kind: 'bar', empty: ' ' }), { other: 1 });
-    assert.deepEqual(mergeChartSettings({}, { kind: 'area', empty: 'Nothing yet' }), { kind: 'area', empty: 'Nothing yet' });
-    assert.deepEqual(mergeChartSettings({}, { kind: 'pie3d' }), {});
-    for (const kind of ['stacked', 'combo', 'scatter', 'pie']) assert.deepEqual(mergeChartSettings({}, { kind }), { kind });
+    assert.deepEqual(mergeChartSettings({ kind: 'donut', other: 1 }, { kind: 'bar', empty: ' ' }, allowed), { other: 1 });
+    assert.deepEqual(mergeChartSettings({}, { kind: 'area', empty: 'Nothing yet' }, allowed), { kind: 'area', empty: 'Nothing yet' });
+    assert.deepEqual(mergeChartSettings({}, { kind: 'pie3d' }, allowed), {});
+    for (const kind of ['stacked', 'combo', 'scatter', 'pie', 'bubble', 'gauge', 'funnel', 'radar']) assert.deepEqual(mergeChartSettings({}, { kind }, allowed), { kind });
+  });
+
+  test('chart: drill-down link to a page of the app; gauge numbers only', () => {
+    assert.deepEqual(mergeChartSettings({}, { kind: 'gauge', link_page: '5', link_items: 'P5_DEPTNO=#deptno#', gauge_min: '0', gauge_max: '120', gauge_warning: '80.5', gauge_critical: 'x' }, allowed), {
+      kind: 'gauge', link: { page: 5, items: { P5_DEPTNO: '#deptno#' } }, gauge: { min: 0, max: 120, warning: 80.5 },
+    });
+    assert.deepEqual(mergeChartSettings({ link: { page: 5 }, gauge: { max: 3 } }, { link_page: '99', gauge_max: '' }, allowed), {});
   });
 
   test('cards: style, empty and a link to a page of the app only', () => {
@@ -50,6 +57,27 @@ describe('region settings: merges', () => {
   test('calendar: link only', () => {
     assert.deepEqual(mergeCalendarSettings({}, { link_page: '7', link_items: 'P7_ID=#id#' }, allowed), { link: { page: 7, items: { P7_ID: '#id#' } } });
     assert.deepEqual(mergeCalendarSettings({ link: { page: 7 } }, { link_page: '' }, allowed), {});
+  });
+
+  test('calendar: views, create link, hours, drag and drop; defaults left out', () => {
+    const all = { view_month: 'true', view_week: 'true', view_day: 'true', view_list: 'true' };
+    assert.deepEqual(mergeCalendarSettings({ x: 1 }, { ...all, view: 'month', day_start: '8', day_end: '18', key: 'id' }, { ...allowed, authz: new Set(['MANAGER']) }), { x: 1 });
+    assert.deepEqual(
+      mergeCalendarSettings({}, {
+        view_week: 'true', view_day: 'true', view: 'day', day_start: '7', day_end: '20', create_page: '7', create_items: 'P7_START_DATE=#start#',
+        move: ' select app.move(:EVENT_ID, :NEW_START, :NEW_END) ', key: 'booking_id', move_authz: 'manager',
+      }, { ...allowed, authz: new Set(['MANAGER']) }),
+      {
+        views: ['week', 'day'], view: 'day', day_start: 7, day_end: 20, create: { page: 7, items: { P7_START_DATE: '#start#' } },
+        move: 'select app.move(:EVENT_ID, :NEW_START, :NEW_END)', key: 'booking_id', move_authz: 'MANAGER',
+      },
+    );
+    // a view that isn't enabled, a key that isn't an identifier, an unknown scheme, a page of another app, bad hours
+    assert.deepEqual(
+      mergeCalendarSettings({ views: ['list'], move_authz: 'X' }, { view_month: 'true', view: 'list', key: 'id; drop', move_authz: 'NOPE', create_page: '99', day_start: '25', day_end: '3' }, allowed),
+      { views: ['month'] },
+    );
+    assert.deepEqual(mergeCalendarSettings({}, { move_authz: 'must_not_be_public_user' }, allowed), { move_authz: 'MUST_NOT_BE_PUBLIC_USER' });
   });
 
   test('grid: defaults left out, per-column keys kept, LOVs checked', () => {

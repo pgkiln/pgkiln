@@ -547,11 +547,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
         };
       });
       await saveState(ctx.session);
-      logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'calendar_move', ip: ctx.ip, detail: `region ${req.params.id}, key ${key} to ${to}` });
+      await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'calendar_move', ip: ctx.ip, detail: `region ${req.params.id}, key ${key} to ${to}` });
       return reply.send(out);
     } catch (e) {
       if (e instanceof Forbidden) {
-        logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail: `calendar move: region ${req.params.id}` });
+        await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail: `calendar move: region ${req.params.id}` });
         return reply.code(403).send({ error: e.message });
       }
       if (e instanceof RangeError) return reply.code(400).send({ error: e.message });

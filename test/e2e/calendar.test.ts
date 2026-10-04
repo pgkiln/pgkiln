@@ -89,7 +89,7 @@ describe('calendar and chart interactions', () => {
     assert.match(page.url(), /P24_STARTS_AT=/);
     assert.equal(await page.inputValue('#P24_STARTS_AT'), slot);
     await page.fill('#P24_TITLE', 'E2E meeting');
-    await Promise.all([page.waitForNavigation(), page.click('button[value="CREATE"]')]);
+    await Promise.all([page.waitForNavigation(), page.click('button.btn[value="CREATE"]')]);
     assert.equal((await owner.one(`select to_char(starts_at, 'YYYY-MM-DD"T"HH24:MI') as s from hr.meeting where title = 'E2E meeting'`)).s, slot);
     assert.deepEqual(await violations(page), []);
     await context.close();
