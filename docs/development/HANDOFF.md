@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-01. Sprints 3–24 are merged into `main` and released as **v0.17.1** (migrations 001–028 are released: add 029+).
+Last updated: 2026-10-04. Sprints 3–26 are merged into `main` and released as **v0.18.0** (migrations 001–034 are released: add 035+; 033 was never used).
 
 ## Project in one paragraph
 
@@ -48,7 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 25, released as **v0.17.1** (tags: v0.2.0, v0.6.0–v0.17.1; 0.3.0–0.5.0 were never tagged). Migrations 001–028 are released |
+| `main` | Everything up to sprint 26, released as **v0.18.0** (tags: v0.2.0, v0.6.0–v0.18.0; 0.3.0–0.5.0 were never tagged). Migrations 001–034 are released |
+| (sprint branches) | `sprint-25`, `sprint-26` and the five `sprint-26-*` work branches were merged (v0.17.1, v0.18.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
 | (older sprint branches) | `sprint-11` … `sprint-13` were merged (v0.9.0) and deleted |
@@ -755,7 +756,7 @@ browser (Brave) still gets "Access blocked", Shields may strip the Referer: a se
 offered. Verified: `npm test` 367/367 (fresh DB), `npm run test:e2e` 58/58. Released as **v0.17.1**.
 
 
-## Sprint 26 (IN PROGRESS): five parity workstreams in parallel (owner: "move on with the parity list", 2026-10-01)
+## Sprint 26 (DONE, v0.18.0): five parity workstreams in parallel (owner: "move on with the parity list", 2026-10-01)
 
 Branch `sprint-26` from `main` (v0.17.1). Five agents work in git worktrees under `../pgapex-wt/<name>`, branch
 `sprint-26-<name>`, each with its own `postgres:17` container (made with `docker run`, NOT compose), migrated with the
@@ -864,6 +865,13 @@ and verify each workstream.
   `javascript:` refused); Markdown input HTML shown as text, output through the same allow-list; Markdown rendering is
   linear time (headings/links regexes rewritten, timing test); pasted HTML sanitised in the browser; QR SVG on the
   server, ≤2000 chars, display only; rating/date range validated server side (422); password never echoed.
+
+**Released 2026-10-04 as v0.18.0.** Final checks on `sprint-26`: `npm run db:reset && npm test` 480 pass + 8 skipped;
+`npm run test:e2e` 73/73; upgrade from v0.17.1 (throwaway `postgres:17` on 5446) 479 pass + 9 skipped. Parity matrix
+recounted (66 ✅ / 32 🟡 / 17 ❌ / 6 ➖ of 121), CHANGELOG 0.18.0, SECURITY.md (five new layers rows, residual risks,
+checklist item 8), CI upgrade matrix + v0.18.0. Worktrees, branches and containers of sprint 26 removed.
+Follow-ups: `examples/hr/README.md` file table stops at hr_10; the old dev DB on 5434 was reset (owner's `npm run dev`
+shares it).
 
 **Merged state (2026-10-04):** ALL FIVE merged. After items: `npm run db:reset && npm test` 480 pass, 8 skipped.
 Upgrade test from v0.17.1 (container `pgapex-upg`, port 5446, before items was merged): 457 pass, 9 skipped.
