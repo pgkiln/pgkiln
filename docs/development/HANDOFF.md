@@ -779,6 +779,10 @@ CHANGELOG, the parity matrix, SECURITY.md or this file. If a session ends while 
 `git -C ../pgapex-wt/<n> log --oneline sprint-26..` and `git status`; uncommitted work can be finished by a new agent
 told to continue from it (as was done in sprint 23).
 
+**2026-10-04:** the first five agents had stopped with only uncommitted partial work (items: `src/richtext.ts`;
+regions: `facet-state.ts` + report.ts; logic: `029_logic.sql`; views: charts.ts; data: nothing). The containers were
+restarted and five new agents were launched to continue from that work, same branches, ports and reservations.
+
 **To finish the sprint** (coordinator):
 1. Merge the branches into `sprint-26` (suggested order: items, views, regions, data, logic; logic and data and
    regions may each redefine `meta.export_app` / `meta.import_app` (028's are the last released): the highest-numbered
