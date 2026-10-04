@@ -1,7 +1,8 @@
 -- 034: export and import after sprint 26's parallel workstreams.
--- 029 (logic) and 031 (smart filters) each redefined meta.import_app from 028, and 031, applied last,
--- dropped 029's build options, computations and branches. This carries all changes:
+-- 029 (logic), 030 (REST data sources) and 031 (smart filters) each redefined meta.import_app (and 029/030
+-- meta.export_app) from 028, so each dropped the others' changes. This carries all changes:
 --   029: "build_options" and per page "computations" and "branches";
+--   030: "web_credentials" (exported without secret_enc; secrets in a document are ignored) and "rest_sources";
 --   031: smart_filters regions get their config.report remapped like facets and map regions.
 
 create or replace function meta.export_app(p_alias text) returns jsonb
@@ -26,6 +27,9 @@ language sql stable set search_path = meta, pg_catalog as $$
     'rest_modules', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.rest_module x where x.app_id = a.id), '[]'),
     'template_components', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.static_id) from meta.template_component x where x.app_id = a.id), '[]'),
     'build_options', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.build_option x where x.app_id = a.id), '[]'),
+    -- (030) secrets never leave the installation: they are entered again after an import
+    'web_credentials', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' - 'secret_enc' order by x.name) from meta.web_credential x where x.app_id = a.id), '[]'),
+    'rest_sources', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.rest_source x where x.app_id = a.id), '[]'),
     -- nav entries and regions keep their ids, so parents and references can be remapped on import
     'nav', coalesce((select jsonb_agg(to_jsonb(x) - 'app_id' order by x.parent_id nulls first, x.seq, x.id) from meta.nav_entry x where x.app_id = a.id), '[]'),
     'pages', coalesce((
@@ -122,6 +126,15 @@ begin
   insert into meta.build_option
   select (jsonb_populate_record(null::meta.build_option, e || jsonb_build_object('id', nextval('meta.build_option_id_seq'), 'app_id', v_app_id))).*
     from jsonb_array_elements(coalesce(p_doc->'build_options', '[]')) e;
+  -- (030) web credentials arrive without a secret, whatever the document holds
+  insert into meta.web_credential
+  select (jsonb_populate_record(null::meta.web_credential, '{"type": "basic", "valid_for": []}'::jsonb || jsonb_strip_nulls(e - 'secret_enc')
+            || jsonb_build_object('id', nextval('meta.web_credential_id_seq'), 'app_id', v_app_id))).*
+    from jsonb_array_elements(coalesce(p_doc->'web_credentials', '[]')) e;
+  insert into meta.rest_source
+  select (jsonb_populate_record(null::meta.rest_source, '{"method": "GET", "headers": {}, "params": [], "columns": [], "cache_seconds": 0, "timeout_s": 10, "max_rows": 1000}'::jsonb
+            || jsonb_strip_nulls(e) || jsonb_build_object('id', nextval('meta.rest_source_id_seq'), 'app_id', v_app_id))).*
+    from jsonb_array_elements(coalesce(p_doc->'rest_sources', '[]')) e;
 
   for v_e in select * from jsonb_array_elements(coalesce(p_doc->'nav', '[]')) loop
     insert into meta.nav_entry
