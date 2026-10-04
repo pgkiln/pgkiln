@@ -4,6 +4,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { CHART_KINDS } from '../runtime/charts.ts';
 import { heading } from '../runtime/items.ts';
 import { positionColumns } from '../runtime/report.ts';
+import { anyBound, MAX_RANGES, type Range } from '../runtime/facet-state.ts';
 import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
@@ -25,7 +26,7 @@ export interface Allowed {
   reports: Map<number, string[]>; // report regions on the same page → their columns
 }
 
-export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'tasks', 'workflows', 'map', 'tree'] as const;
+export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree'] as const;
 type SettingsType = (typeof SETTINGS_TYPES)[number];
 
 const GRID_PAGE_SIZES = ['5', '10', '15', '25', '50', '100', '200'];
@@ -162,13 +163,33 @@ export function mergeGridSettings(config: Config, b: Body, a: Allowed): Config {
   return out;
 }
 
-export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config {
-  const out = { ...config };
+/** "from..to = label; …" (either bound may be empty; numbers or ISO dates) → ranges; malformed parts are left out. */
+export function parseRanges(text: string | undefined): Range[] {
+  const out: Range[] = [];
+  for (const part of (text ?? '').split(';')) {
+    const m = /^\s*(.*?)\s*\.\.\s*(.*?)\s*(?:=\s*(.*?)\s*)?$/.exec(part);
+    if (!m || (!m[1] && !m[2]) || !anyBound(m[1]) || !anyBound(m[2])) continue;
+    out.push({ from: m[1], to: m[2], ...(m[3] ? { label: m[3].slice(0, 80) } : {}) });
+    if (out.length >= MAX_RANGES) break;
+  }
+  return out;
+}
+
+/** Ranges as the settings form shows them. */
+export const rangesText = (ranges: unknown) =>
+  (Array.isArray(ranges) ? ranges : [])
+    .map((r: any) => `${r?.from ?? ''}..${r?.to ?? ''}${r?.label ? ` = ${r.label}` : ''}`)
+    .join('; ');
+
+const FACET_FORM_KEYS = ['label', 'limit', 'type', 'ranges', 'custom', 'exclude'];
+
+/** The facets table of a faceted search or smart filters form (and the report it filters). */
+function mergeFacetList(out: Config, config: Config, b: Body, a: Allowed) {
   const set = setter(out);
   const report = Number(b.report);
   const columns = a.reports.get(report);
   set('report', columns ? report : undefined);
-  if (!columns) return out;
+  if (!columns) return false;
   const n = Math.min(Number(b.n) || 0, 500);
   const old = new Map<string, Config>((config.facets ?? []).map((f: Config) => [f.column, f]));
   const facets = Array.from({ length: n }, (_, i) => ({
@@ -176,20 +197,56 @@ export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config
     on: b[`on_${i}`] === 'true',
     label: (b[`label_${i}`] ?? '').trim(),
     limit: Number(b[`limit_${i}`]),
+    type: b[`type_${i}`] === 'range' || b[`type_${i}`] === 'star' ? b[`type_${i}`] : 'checkbox',
+    ranges: parseRanges(b[`ranges_${i}`]),
+    custom: b[`custom_${i}`] === 'true',
+    exclude: b[`exclude_${i}`] === 'true',
     seq: Number(b[`seq_${i}`]) || (i + 1) * 10,
   }))
     .filter((f) => f.on && columns.includes(f.column))
     .sort((x, y) => x.seq - y.seq)
     .map((f) => {
-      const { label: _l, limit: _n, ...rest } = old.get(f.column) ?? {};
+      const rest = Object.fromEntries(Object.entries(old.get(f.column) ?? {}).filter(([key]) => !FACET_FORM_KEYS.includes(key)));
+      if (f.type !== 'star') delete rest.max;
       return {
         ...rest,
         column: f.column,
         ...(f.label ? { label: f.label } : {}),
-        ...(Number.isInteger(f.limit) && f.limit >= 1 && f.limit <= 50 && f.limit !== FACET_LIMIT ? { limit: f.limit } : {}),
+        ...(f.type !== 'checkbox' ? { type: f.type } : {}),
+        ...(f.type === 'checkbox' && Number.isInteger(f.limit) && f.limit >= 1 && f.limit <= 50 && f.limit !== FACET_LIMIT ? { limit: f.limit } : {}),
+        ...(f.type === 'checkbox' && f.exclude ? { exclude: true } : {}),
+        ...(f.type === 'range' && f.ranges.length ? { ranges: f.ranges } : {}),
+        // a range facet without ranges has from/to fields unless switched off; with ranges, only when switched on
+        ...(f.type === 'range' && f.custom !== !f.ranges.length ? { custom: f.custom } : {}),
       };
     });
   set('facets', facets.length ? facets : undefined);
+  return true;
+}
+
+export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config {
+  const out = { ...config };
+  if (!mergeFacetList(out, config, b, a)) return out;
+  setter(out)('search', b.search === 'true' ? true : undefined);
+  return out;
+}
+
+export function mergeSmartFiltersSettings(config: Config, b: Body, a: Allowed): Config {
+  const out = { ...config };
+  if (!mergeFacetList(out, config, b, a)) return out;
+  const set = setter(out);
+  const n = Number(b.suggestions);
+  set('suggestions', b.suggestions !== undefined && b.suggestions !== '' && Number.isInteger(n) && n >= 0 && n <= 10 && n !== 3 ? n : undefined);
+  set('placeholder', b.placeholder?.trim().slice(0, 100) || undefined);
+  return out;
+}
+
+export function mergeDisplaySelectorSettings(config: Config, b: Body): Config {
+  const out = { ...config };
+  const set = setter(out);
+  set('style', b.style === 'select' ? 'select' : undefined);
+  set('show_all', b.show_all === 'true' ? undefined : false);
+  set('remember', b.remember === 'true' ? undefined : false);
   return out;
 }
 
@@ -245,6 +302,8 @@ const MERGES: Record<SettingsType, (c: Config, b: Body, a: Allowed) => Config> =
   cards: mergeCardsSettings,
   calendar: mergeCalendarSettings,
   facets: mergeFacetsSettings,
+  smart_filters: mergeSmartFiltersSettings,
+  display_selector: (c, b) => mergeDisplaySelectorSettings(c, b),
 };
 
 // ---------------------------------------------------------------- forms
@@ -315,12 +374,14 @@ async function mapReportFieldset(r: RegionRow, pageId: number, appId: number, id
     </fieldset>`;
 }
 
-async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n: string) => string) {
+const FACET_TYPE_LABELS: Record<string, string> = { checkbox: 'Checkboxes', range: 'Ranges', star: 'Star rating' };
+
+async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n: string) => string, smart: boolean) {
   const cfg = r.config ?? {};
   const reports = (await owner.query(`select id, title, source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
   const target = reports.find((x) => x.id === Number(cfg.report));
   const cols = target ? await reportColumns(appId, target.source) : null;
-  const facets: Config[] = cfg.facets ?? [];
+  const facets: Config[] = Array.isArray(cfg.facets) ? cfg.facets : [];
   const byCol = new Map(facets.map((f) => [f.column, f]));
   // configured facets first, in their order; then the report's other columns
   const { all, known } = withStale(
@@ -329,11 +390,17 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
   );
   const rows = all.map((n, i) => {
     const f = byCol.get(n);
+    const type = f?.type === 'range' || f?.type === 'star' ? f.type : 'checkbox';
+    const custom = type === 'range' && (f?.custom === true || (f?.custom !== false && !(Array.isArray(f?.ranges) && f.ranges.length)));
     return html`<tr>
       <td data-label="Column"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="Facet"><input type="checkbox" name="on_${i}" value="true"${f ? raw(' checked') : ''} aria-label="Facet on ${n}"></td>
       <td data-label="Label"><input name="label_${i}" value="${f?.label ?? ''}" placeholder="${heading(n)}" aria-label="Label of ${n}"></td>
+      <td data-label="Type"><select name="type_${i}" aria-label="Type of the facet on ${n}">${Object.entries(FACET_TYPE_LABELS).map(([k, l]) => opt(k, l, type))}</select></td>
       <td data-label="Values shown"><input name="limit_${i}" type="number" min="1" max="50" value="${f?.limit ?? ''}" placeholder="${FACET_LIMIT}" aria-label="Values shown for ${n}" class="u-mw6"></td>
+      <td data-label="Exclude"><input type="checkbox" name="exclude_${i}" value="true"${f?.exclude === true ? raw(' checked') : ''} aria-label="Users may exclude values of ${n}"></td>
+      <td data-label="Ranges"><input name="ranges_${i}" value="${rangesText(f?.ranges)}" placeholder="..1000; 1000..3000 = Middle; 3000.." aria-label="Ranges of ${n}"></td>
+      <td data-label="From/to"><input type="checkbox" name="custom_${i}" value="true"${custom ? raw(' checked') : ''} aria-label="Users may type a range for ${n}"></td>
       <td data-label="Order"><input name="seq_${i}" type="number" value="${(i + 1) * 10}" aria-label="Order of ${n}" class="u-mw6"></td>
     </tr>`;
   });
@@ -341,16 +408,48 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
     <fieldset class="prop-group"><legend>Filters</legend><div class="form-grid">
       <div class="field"><label class="label" for="${id('report')}">Report region</label>
         <select id="${id('report')}" name="report">${opt('', '- choose -', target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? '(untitled)'} (#${x.id})`, cfg.report))}</select>
-        <small class="help">${reports.length ? 'The report on this page that the facets filter. Save to list its columns.' : 'Add a report region to this page first.'}</small></div>
+        <small class="help">${reports.length ? `The report on this page that the ${smart ? 'smart filters' : 'facets'} filter. Save to list its columns.` : 'Add a report region to this page first.'}</small></div>
+      ${smart
+        ? html`<div class="field"><label class="label" for="${id('suggestions')}">Suggestions per facet (0–10)</label>
+            <input id="${id('suggestions')}" name="suggestions" type="number" min="0" max="10" value="${cfg.suggestions ?? 3}"></div>
+          <div class="field" data-wide><label class="label" for="${id('placeholder')}">Placeholder of the search field</label>
+            <input id="${id('placeholder')}" name="placeholder" maxlength="100" value="${cfg.placeholder ?? ''}" placeholder="Search or filter…"></div>`
+        : html`${check('search', 'A search field (searches all columns of the report)', cfg.search === true)}`}
     </div></fieldset>
     ${cols && 'error' in cols ? columnsHint(cols) : ''}
     ${target
       ? html`<fieldset class="prop-group"><legend>Facets</legend>
           ${all.length
-            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Facet</th><th>Label</th><th>Values shown</th><th>Order</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Facet</th><th>Label</th><th>Type</th><th>Values shown</th><th>Exclude</th><th>Ranges</th><th>From/to</th><th>Order</th></tr></thead><tbody>${rows}</tbody></table></div>
+              <small class="help">Checkboxes list the most frequent values (Exclude lets users filter them out instead). Ranges and From/to need a number or date column: ranges are <code>from..to = label</code> separated by <code>;</code>, an open end left empty (<code>..1000</code>, <code>2020-01-01..</code>); a range includes its start, not its end. A star rating offers "4 stars and up" and so on (up to 5; <code>"max"</code> in the JSON changes it).</small>`
             : html`<p class="muted">The report has no columns.</p>`}
         </fieldset>`
       : ''}`;
+}
+
+/** The display selector's settings: style and options, and which regions of the page take part. */
+async function displaySelectorFields(r: RegionRow, pageId: number, id: (n: string) => string) {
+  const cfg = r.config ?? {};
+  const others = (await owner.query(`select id, title, type, config->'display_selector' as flag from meta.region
+                                     where page_id = $1 and id <> $2 and type <> 'display_selector' order by seq, id`, [pageId, r.id])).rows;
+  return html`<fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('style')}">Show as</label>
+        <select id="${id('style')}" name="style">${opt('', 'Tabs', cfg.style)}${opt('select', 'Select list', cfg.style)}</select></div>
+    </div>
+    ${check('show_all', '"Show all" choice (shows every region)', cfg.show_all !== false)}
+    ${check('remember', 'Remember the choice during the session', cfg.remember !== false)}</fieldset>
+    <fieldset class="prop-group"><legend>Regions</legend>
+      <input type="hidden" name="members" value="1">
+      ${others.length
+        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Region</th><th>In a tab</th><th>Tab name</th></tr></thead><tbody>
+            ${others.map((x) => html`<tr>
+              <td data-label="Region">${x.title || '(untitled)'} <span class="muted">(${x.type} #${x.id})</span></td>
+              <td data-label="In a tab"><input type="checkbox" name="member_${x.id}" value="true"${x.flag === true || (typeof x.flag === 'string' && x.flag.trim()) ? raw(' checked') : ''} aria-label="Show ${x.title || `region ${x.id}`} in the display selector"></td>
+              <td data-label="Tab name"><input name="tab_${x.id}" maxlength="60" value="${typeof x.flag === 'string' ? x.flag : ''}" placeholder="${x.title || ''}" aria-label="Tab name of ${x.title || `region ${x.id}`}"></td>
+            </tr>`)}</tbody></table></div>`
+        : html`<p class="muted">There are no other regions on this page.</p>`}
+      <small class="help">A chosen region gets <code>"display_selector": true</code> in its settings (a tab named after it), or the tab name: regions with the same tab name share one tab (e.g. smart filters and their report). Without JavaScript every region shows, with links to each.</small>
+    </fieldset>`;
 }
 
 /** The settings form under a region in the page designer, or '' for types without one. */
@@ -397,7 +496,15 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       break;
     case 'facets':
       title = 'Faceted search settings';
-      body = await facetsFields(r, pageId, appId, id);
+      body = await facetsFields(r, pageId, appId, id, false);
+      break;
+    case 'smart_filters':
+      title = 'Smart filters settings';
+      body = await facetsFields(r, pageId, appId, id, true);
+      break;
+    case 'display_selector':
+      title = 'Display selector settings';
+      body = await displaySelectorFields(r, pageId, id);
       break;
     case 'map':
       title = 'Map settings';
@@ -469,7 +576,7 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
     const [pages, lovs, reports] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.lov where app_id = $1', [r.app_id]),
-      r.type === 'facets' || r.type === 'map' ? owner.query(`select id, source from meta.region where page_id = $1 and type = 'report'`, [pid]) : Promise.resolve({ rows: [] as any[] }),
+      r.type === 'facets' || r.type === 'smart_filters' || r.type === 'map' ? owner.query(`select id, source from meta.region where page_id = $1 and type = 'report'`, [pid]) : Promise.resolve({ rows: [] as any[] }),
     ]);
     const reportCols = new Map<number, string[]>();
     for (const x of reports.rows) {
@@ -482,6 +589,22 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
       reports: reportCols,
     });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
+    // the display selector's form also says which regions of the page take part
+    const b = (req.body ?? {}) as Body;
+    if (r.type === 'display_selector' && b.members === '1') {
+      // {region id: true or the tab name}, for the regions of this page only (checked in the update)
+      const flags: Record<string, string | boolean> = {};
+      for (const k of Object.keys(b)) {
+        const m = /^member_(\d{1,9})$/.exec(k);
+        if (m && b[k] === 'true') flags[m[1]] = (b[`tab_${m[1]}`] ?? '').trim().slice(0, 60) || true;
+      }
+      await owner.query(
+        `update meta.region set config = case when $3::jsonb ? id::text then jsonb_set(config, '{display_selector}', $3::jsonb -> id::text) else config - 'display_selector' end
+          where page_id = $1 and id <> $2 and type <> 'display_selector'
+            and ($3::jsonb -> id::text) is distinct from (config -> 'display_selector')`,
+        [pid, r.id, JSON.stringify(flags)],
+      );
+    }
     flash(s, 'Settings saved.');
     return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
   });

@@ -385,9 +385,95 @@ document.documentElement.classList.add('js');
   });
 })();
 
-// Faceted search: apply on change.
+// Faceted search: apply on change. A range facet's own from/to: typing picks
+// "Custom"; choosing another range clears them (Apply sends them).
 document.addEventListener('change', (e) => {
-  if (e.target.matches?.('[data-facet]')) e.target.form?.requestSubmit();
+  if (!e.target.matches?.('[data-facet]')) return;
+  if (e.target.type === 'radio') {
+    const custom = e.target.closest('fieldset')?.querySelector('[data-facet-range]');
+    custom?.querySelectorAll('input').forEach((i) => (i.value = ''));
+  }
+  e.target.form?.requestSubmit();
+});
+document.addEventListener('input', (e) => {
+  const box = e.target.closest?.('[data-facet-range]');
+  const custom = box?.closest('fieldset')?.querySelector('[data-facet-custom]');
+  if (custom) custom.checked = true;
+});
+
+// Region display selector: the links to the regions become ARIA tabs (or a
+// select list) that show one tab's regions at a time; "Show all" shows them
+// all. The choice follows #R<id> in the URL and is remembered for the session.
+document.querySelectorAll('[data-rds]').forEach((nav) => {
+  const tabs = [...nav.querySelectorAll('.rds-tab')];
+  const panelsOf = (tab) => (tab.dataset.rdsTarget || '').split(' ').filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
+  const panels = tabs.flatMap(panelsOf);
+  if (!panels.length) return;
+  const key = `pgapex.rds.${location.pathname}.${nav.dataset.rds}`;
+  const remember = nav.hasAttribute('data-rds-remember');
+  const select = nav.querySelector('.rds-select');
+  const list = nav.querySelector('.rds-list');
+  if (!select) {
+    list.setAttribute('role', 'tablist');
+    list.setAttribute('aria-label', nav.getAttribute('aria-label') || '');
+    tabs.forEach((tab) => {
+      tab.parentElement.setAttribute('role', 'presentation');
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-controls', (tab.hasAttribute('data-rds-all') ? panels : panelsOf(tab)).map((p) => p.id).join(' '));
+      panelsOf(tab).forEach((p) => {
+        p.setAttribute('role', 'tabpanel');
+        p.setAttribute('aria-labelledby', tab.id);
+        if (!p.hasAttribute('tabindex')) p.tabIndex = 0;
+      });
+    });
+  }
+  panels.forEach((p) => p.classList.add('rds-panel'));
+  const show = (tab, focus) => {
+    const shown = tab.hasAttribute('data-rds-all') ? panels : panelsOf(tab);
+    tabs.forEach((t) => {
+      const on = t === tab;
+      if (!select) {
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+      }
+      t.classList.toggle('is-current', on);
+    });
+    panels.forEach((p) => p.classList.toggle('rds-hidden', !shown.includes(p)));
+    if (select) select.value = tab.hasAttribute('data-rds-all') ? '*' : String(tabs.filter((t) => !t.hasAttribute('data-rds-all')).indexOf(tab));
+    if (remember) try { sessionStorage.setItem(key, tab.id); } catch {}
+    if (focus) tab.focus();
+  };
+  // #R<id> of any region in a tab, or the id of a tab
+  const byHash = (h) => (h ? tabs.find((t) => (t.dataset.rdsTarget || '').split(' ').includes(h)) : null);
+  let stored = null;
+  if (remember) try { stored = sessionStorage.getItem(key); } catch {}
+  show(byHash(location.hash.slice(1)) || tabs.find((t) => t.id === stored) || tabs[0], false);
+  nav.addEventListener('click', (e) => {
+    const tab = e.target.closest('.rds-tab');
+    if (!tab) return;
+    e.preventDefault();
+    show(tab, true);
+  });
+  list.addEventListener('keydown', (e) => {
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    show(tabs[(next + tabs.length) % tabs.length], true);
+  });
+  if (select) {
+    list.hidden = true;
+    select.closest('label').hidden = false;
+    select.addEventListener('change', () => {
+      const own = tabs.filter((t) => !t.hasAttribute('data-rds-all'));
+      show(select.value === '*' ? tabs[0] : own[Number(select.value)] || tabs[0], false);
+    });
+  }
+  window.addEventListener('hashchange', () => {
+    const tab = byHash(location.hash.slice(1));
+    if (tab) show(tab, false);
+  });
 });
 
 // Popup list of values: a search box that filters the options of a select.

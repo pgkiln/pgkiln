@@ -10,6 +10,8 @@ import { linkAttrs } from './links.ts';
 import { renderCalendar } from './calendar.ts';
 import { CHART_KINDS, renderChartBody } from './charts.ts';
 import { renderFacets } from './facets.ts';
+import { renderSmartFilters } from './smart-filters.ts';
+import { renderDisplaySelector } from './display-selector.ts';
 import { renderGrid } from './grid.ts';
 import { renderTasks } from './tasks.ts';
 import { renderWorkflows } from './workflows.ts';
@@ -133,6 +135,12 @@ export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<stri
       break;
     case 'facets':
       body = await renderFacets(ctx, r);
+      break;
+    case 'smart_filters':
+      body = await renderSmartFilters(ctx, r);
+      break;
+    case 'display_selector':
+      body = renderDisplaySelector(ctx, r);
       break;
     case 'tasks':
       body = await renderTasks(ctx, r);

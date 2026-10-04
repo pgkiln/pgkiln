@@ -151,3 +151,21 @@ function substitute(sql: string, replace: (name: string) => string): string {
   }
   return out;
 }
+
+/**
+ * Query parameters ($1, $2, …) collected while a statement is built: user
+ * input (search terms, facet values, range bounds) is sent separately from
+ * the SQL text and never parsed as SQL.
+ */
+export class SqlParams {
+  readonly values: unknown[] = [];
+  /** The placeholder for a value; a cast keeps its type clear to Postgres. */
+  add(value: unknown, cast?: string): string {
+    if (typeof value === 'string' && value.includes('\0')) throw new Error('A query parameter contains a NUL byte');
+    this.values.push(value);
+    return `$${this.values.length}${cast ? `::${cast}` : ''}`;
+  }
+}
+
+/** pg query values: undefined when there are none (so the simple protocol is used as before). */
+export const queryValues = (values: unknown[] | undefined) => (values?.length ? values : undefined);

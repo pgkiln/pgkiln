@@ -4,7 +4,8 @@ import type pg from 'pg';
 import type { Region } from '../metadata.ts';
 import { runtime, savepoint } from '../db.ts';
 import { substitute, type PageContext } from './context.ts';
-import { buildSql, cell, facetSelections, headingOf, isNumeric, OPERATORS, reportState, visibleColumns } from './report.ts';
+import { describeFacetFilter, facetFilters, reportFacetDefs } from './facet-state.ts';
+import { buildSql, cell, headingOf, isNumeric, OPERATORS, reportState, visibleColumns } from './report.ts';
 
 // Report printing: Actions → Download PDF. The same query, filters, sort
 // and visibility as the report on screen (and as the CSV download), drawn
@@ -146,7 +147,7 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
   const cfg = (r.config.pdf ?? {}) as RegionPdf;
   const layout = await layoutFor(ctx.app.id, typeof cfg.layout === 'string' ? cfg.layout : undefined);
   const c = ctx.client!;
-  const res = await savepoint(c, async () => c.query({ text: await buildSql(ctx, r, st, 'pdf'), rowMode: 'array' }));
+  const res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'pdf')), rowMode: 'array' }));
   const cols = printColumns(r, res.fields);
   const lower = (m: Record<string, unknown> | undefined) => new Map(Object.entries(m ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
   const widths = lower(cfg.widths);
@@ -159,7 +160,10 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
   const filters = layout.show_filters
     ? [
         ...st.filters.map((f) => `${headingOf(r, f.column, ctx.locale.tr)} ${OPERATORS[f.op]?.label ?? f.op} ${OPERATORS[f.op]?.noValue ? '' : f.value}`.trim()),
-        ...[...facetSelections(ctx, r)].map(([col, values]) => `${headingOf(r, col, ctx.locale.tr)}: ${values.join(', ')}`),
+        ...(() => {
+          const defs = reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions);
+          return facetFilters(ctx.params, r.id, defs).map((f) => describeFacetFilter(f, defs.get(f.column)?.label ?? headingOf(r, f.column, ctx.locale.tr), t, defs.get(f.column)));
+        })(),
         ...(st.search ? [`${t('report.search')}: "${st.search}"`] : []),
       ].map((s) => printable(oneLine(s)))
     : [];
