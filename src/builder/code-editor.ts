@@ -31,12 +31,16 @@ const CHECKS: Record<string, SqlShape> = {
   'button.condition': 'boolean', 'validation.expression': 'boolean', 'process.code': 'statements', 'authz_scheme.value': 'boolean',
   'lov.query': 'select', 'app_process.code': 'statements', 'automation.query': 'select', 'automation.code': 'statements',
   'document_template.query': 'select', 'task_definition.action_code': 'statements', 'dynamic_action.code': 'statements',
+  'button.badge_query': 'select',
 };
 /** Fields whose check follows the component's type select, like SWITCH ("none": no check). */
 const CHECK_SWITCH: Record<string, string> = {
   'dynamic_action.code': 'action:set_value=select,*=statements',
   'process.code': 'type:sql=statements,*=none',
   'region.source': 'type:static=none,form=none,facets=none,tasks=none,workflows=none,*=select',
+  'computation.expression': 'type:sql_query=select,*=none',
+  'computation.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
+  'branch.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
 };
 /** Fields whose language follows the component's type select: "type:value=lang,…" (other values: SQL). */
 const SWITCH: Record<string, string> = {
@@ -44,6 +48,9 @@ const SWITCH: Record<string, string> = {
   'validation.expression': 'type:regex=text,not_null=text',
   'authz_scheme.value': 'type:role=text',
   'dynamic_action.code': 'action:set_value=sql',
+  'computation.expression': 'type:static=text,item=text,function_body=plpgsql',
+  'computation.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
+  'branch.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
 };
 /** Language when no SWITCH value matches. */
 const fallback = (key: string): CodeLang => (STATEMENTS.has(key) ? 'plpgsql' : 'sql');

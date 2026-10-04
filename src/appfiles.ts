@@ -91,10 +91,12 @@ function sniff(b: Buffer) {
 const CODE: Record<string, Record<string, string>> = {
   region: { source: 'sql', condition: 'sql' },
   item: { default_value: 'sql', readonly_condition: 'sql' },
-  button: { condition: 'sql' },
+  button: { condition: 'sql', badge_query: 'sql' },
   dynamic_action: { code: 'sql' },
   validation: { expression: 'sql' },
   process: { code: 'sql' },
+  computation: { expression: 'sql', condition_expr: 'sql' },
+  branch: { condition_expr: 'sql' },
   app_process: { code: 'sql' },
   authz_scheme: { value: 'sql' },
   lov: { query: 'sql' },
@@ -142,6 +144,7 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['workflow_definitions', 'shared/workflow-definitions', 'workflow_definition'],
   ['rest_modules', 'shared/rest-modules', 'rest_module'],
   ['template_components', 'shared/template-components', 'template_component'],
+  ['build_options', 'shared/build-options', 'build_option'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
@@ -152,6 +155,8 @@ const PAGE_PARTS: [section: string, dir: string, table: string, key: (r: any) =>
   ['dynamic_actions', 'dynamic-actions', 'dynamic_action', (r) => r.name || `${r.event ?? ''} ${r.action ?? ''}`],
   ['validations', 'validations', 'validation', (r) => r.name || r.item_name],
   ['processes', 'processes', 'process', (r) => r.name || r.type],
+  ['computations', 'computations', 'computation', (r) => `${r.item_name ?? ''} ${r.point ?? ''}`],
+  ['branches', 'branches', 'branch', (r) => r.name],
 ];
 
 /** Single files: [section, path, sort columns]. */
