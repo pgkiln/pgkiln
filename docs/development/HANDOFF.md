@@ -805,8 +805,37 @@ and verify each workstream.
   an event key (≤200 chars) + a date-checked slot; start/end go to `move` SQL as literals; `key` is a plain column
   name; refusals and moves logged (`forbidden`, `calendar_move`).
 
+- **regions: DONE, merged** (2026-10-04). Migration 031 (region types `smart_filters`, `display_selector`; redefines
+  only `meta.import_app` from 028, adding `smart_filters` to the types whose `config.report` is remapped), HR
+  `hr_21_regions.sql` page 21, no env vars. Tests 383/391 (8 skipped), e2e 62/62. Behaviour change: a facet filter in
+  the URL (`r<id>_x_<col>`) only applies if a facet on that column exists on the page; report queries now take facet
+  and search values as query parameters (`SqlParams` in binds.ts, `buildSql` returns `{text, values}`). Parity —
+  Faceted search: checkbox, range (predefined + custom from/to, numbers and dates), star rating and search facets;
+  exclude on checkbox facets. Smart filters: search field with chips and suggestions, URL-based, no JS needed. Region
+  display selector: tabs or select list, shared tabs, Show all, session memory, `#R<id>` links, no-JS fallback.
+  Security: facet/search input never becomes SQL text; bounds checked against the column type; only a facet's own
+  ranges unless custom allowed; column names checked and quoted; NUL bytes dropped; limits 50 filters, 100 values
+  ≤500 chars, 20 ranges; facets of regions the user can't see don't filter, such regions get no tab; settings routes
+  are developer + CSRF, same page only.
+- **logic: DONE, merged** (2026-10-04). Migration 029 (`meta.build_option`, `build_option` columns, `meta.computation`,
+  `meta.branch`, DA `css_classes`, menu buttons, badges; **redefines export_app and import_app** from 028 adding
+  `build_options` and per-page `computations`/`branches`), HR `hr_22_logic.sql` page 22, build option
+  `LEAVE_FORECAST`. Tests 386/394, e2e 62/62. Chapter 6 renamed "Buttons, validations, processes and page logic".
+  Parity — Computations ✅ (static, item, SQL query/expression, PL/pgSQL body; before header / after submit; condition,
+  authz, build option). Branches ✅ before header / after processing, page or in-app URL, when button pressed,
+  conditions; missing: branch to another app, function-returning-URL. Build options ✅ (include/exclude, `!NAME`,
+  fail closed, Advisor/Used in, exported). DAs: Set Focus, Add/Remove Class, Show Success/Error, Clear Errors. Buttons:
+  menu button (no JS needed) and badges (static or SQL). Security: computation/branch/badge SQL runs as the app role
+  in savepoints with literal binds; PL/pgSQL bodies become `pg_temp` functions with a random dollar-quote tag (a body
+  containing it is refused); URL branches DB-checked (no scheme, `//`, `\`, `..`, control chars; item values
+  URL-encoded); a menu `request` counts as a button only if the menu button is visible and the entry's authz passes
+  (a real button of that name keeps its own checks); menu links only to openable pages, signed; `css_classes` checked
+  `^[a-z][a-z0-9_-]{0,39}` (≤5) in DB, builder and app.js; excluded build options fail closed (404 for pages); runtime
+  role has SELECT only on the new tables. Note: `examples/hr/README.md` file table stops at hr_10.
+
 **Merge note:** 029 (logic), 030 (data) and 031 (regions) each redefine `meta.export_app`/`meta.import_app`: after
-merging, write migration 034 combining all three changes.
+merging, write migration 034 combining all three changes. **Right now (views, regions, logic merged) 031's
+`import_app` overrides 029's, so importing computations/branches/build options is broken on `sprint-26` until 034.**
 
 **How to resume after a session ends:**
 1. Containers: `docker start pgapex-items pgapex-regions pgapex-logic pgapex-data pgapex-views pgapex-db`.
