@@ -968,3 +968,19 @@ session bound to the header value (a changed header ends the session). Database 
 SECURITY.md, `.env.example`, version, CI matrix + v0.21.0, chapter 12 version line, merge, tag, push, check CI.
 
 **Result:** app authentication `header` (`src/headerauth.ts`, `headerSession` in routes.ts; migration 036: `header_name`, `header_auto_create`, `logout_url`); env `PGAPEX_AUTH_HEADER_PROXIES`. Tests 511 + 8 skipped, e2e 78/78. Next: AI features (owner's decision), keyset paging, streaming PDFs/REST collections, database-account authentication.
+
+## Sprint 30 (IN PROGRESS): the smaller open items (owner: "do the other smaller items as long as you got usage", 2026-10-04)
+
+Branch `sprint-30` from `main` (v0.21.0); one agent in the main checkout, dev DB 5434; reserved migration 037, HR
+`hr_28` page 27. Items in order, each finished, tested and committed before the next (stop anywhere, still mergeable):
+1. **Keyset ("seek") paging** for row-range reports with a sort on indexed/unique columns (parity row "Pagination of
+   large tables" → drop "Missing: keyset").
+2. **Streaming PDFs** of reports and **streaming REST collections** (REST modules' collection handlers) with a cursor
+   (parity row "Large downloads without buffering" → ✅ when both are done).
+3. **Database-account authentication** (APEX "Database Accounts": sign in with a PostgreSQL role's password, checked
+   by a connection attempt or `pg_authid`-free method; roles allowed per app) (parity row "Database accounts,
+   HTTP-header authentication" → ✅).
+**If a session ends:** `git log --oneline main..sprint-30` shows which items are committed; run tsc, `npm run
+db:reset && npm test`, `npm run test:e2e`; update the parity rows of the finished items + summary counts, CHANGELOG
+0.22.0, SECURITY.md, `.env.example`, version, CI matrix + v0.22.0, chapter 12 version line, this file; merge, tag,
+push, check CI with `gh run list -R NickVrgr/Postgresql_APEX`.
