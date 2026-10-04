@@ -211,6 +211,8 @@ from it, for example with a scheduled
 | `r<id>_rg_<column>=from\|to` | report + facets, smart filters | One of a range or star facet's ranges (`~`: the custom range) |
 | `r<id>_rf_<column>`, `r<id>_rt_<column>` | report + facets | Custom range from / to, inclusive (facet with `custom`) |
 | `r<id>_csv=1` | report | Download CSV |
+| `r<id>_xlsx=1` | report | Download Excel |
+| `r<id>_load=1` | lazy region | Show the region in the page (the link of its placeholder without JavaScript) |
 | `r<id>_pdf=1` | report | Download PDF |
 | `r<id>_m=YYYY-MM` | calendar | Month shown |
 

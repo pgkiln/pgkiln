@@ -9,8 +9,10 @@ those rows, but you can create and change applications with plain SQL, for examp
 migration script. That is exactly how the HR sample (`examples/hr/hr.sql`) and the tutorial app
 (`examples/tasks-app.sql`) are built.
 
-Because definitions are read on every request (there is no cache), a change in the builder is
-live on the next page load.
+Because definitions are read on every request (there is no cache of definitions), a change in the
+builder is live on the next page load. Regions can opt in to a cache of their rendered HTML; its
+key includes the region's definition, so a change shows at once there too (see
+[large tables](04-pages-and-regions.md#large-tables)).
 
 ```
 meta.app ─┬─ meta.page ─┬─ meta.region        (reports, forms, grids, charts, …)

@@ -32,7 +32,7 @@ src/
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
-  xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
+  xlsx.ts                  Excel writer for report downloads (typed cells, streamed through fflate's Zip)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
   richtext.ts              rich text and Markdown items: allow-list HTML sanitiser, Markdown renderer
@@ -51,8 +51,10 @@ src/
     engine.ts              form fetch, validations, processes, application processes
     logic.ts               computations, branches and their conditions (before header / after submit)
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
-    regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch, buttons (menu buttons, badges)
+    regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, facets.ts, items.ts
+                           (report.ts: paging with row ranges and max_rows, pagerNav, streamed CSV/Excel downloads with a cursor)
+    region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
     charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, drill-down marks, data table
     calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
                            the route POST …/calendar/:id/move is in routes.ts)
@@ -108,7 +110,7 @@ src/
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
 public/
   app.css                  theme (light/dark, responsive)
-  app.js                   client runtime: dialogs, dynamic actions (focus, classes, messages), grids, menus (no inline JS)
+  app.js                   client runtime: dialogs, dynamic actions (focus, classes, messages), grids, menus, lazy regions (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
@@ -132,6 +134,7 @@ test/
   charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
+  large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers

@@ -233,7 +233,10 @@ database trigger, and then nothing is loaded.
 Every interactive report has **Actions → Download CSV** and **Download Excel**. Both contain the
 rows of the report as on screen: the same query, search, filters, facets and sort, the same
 headings and hidden columns, and the same access checks (page authorization, region visibility,
-row level security). They hold at most 100,000 rows.
+row level security). They hold at most `DOWNLOAD_MAX_ROWS` rows (default 1,000,000) or the
+report's `max_rows`. Both are **streamed**: the query runs as a database cursor and each batch of
+1,000 rows is sent before the next is read, so the server's memory stays flat whatever the size.
+The query and its first rows run before anything is sent, so a failing query still shows an error.
 
 The Excel file (`.xlsx`) keeps the data types: numbers are numbers, dates and timestamps are
 Excel dates, and booleans are TRUE/FALSE. The heading row is bold and frozen, with an
@@ -255,7 +258,7 @@ Both formats also load back in: see [data loading](#data-loading).
 
 By default the page is A4, portrait, or landscape when the columns don't fit. A PDF holds at
 most `PDF_MAX_ROWS` rows (default 5000); if there are more, it says so. The CSV and Excel
-downloads have all rows.
+downloads hold far more (see above).
 
 ### Report layouts
 
