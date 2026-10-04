@@ -915,3 +915,19 @@ merging, write migration 034 combining all three changes. (Done: 034.)
 Still open for the owner: **AI features** (provider and API key storage); an optional server-side map tile proxy if
 Brave keeps getting OpenStreetMap's "Access blocked"; leftovers `../pgapex-wt/designer-shots`, `editor-shots`, the docker
 network `templates_default` and volume `templates_pgdata` (can be deleted).
+
+## Sprint 27 (IN PROGRESS): large tables (owner, 2026-10-04: "move on with large tables, only one agent")
+
+Branch `sprint-27` from `main` (v0.18.0 + the CI fix 1519757: the App Builder home table overflowed at 768px on the
+GitHub runner because `.sr-only` labels escaped the table's scroll area). One agent works **in the main checkout**
+(no worktree), dev DB on 5434; reserved migration **035**, HR `hr_25` page 25. Scope (parity rows "Pagination of
+large tables", "Lazy loading of regions", "Region caching", "Large downloads without buffering"):
+1. Report/grid pagination without a total ("row ranges X to Y", fetch size+1 for Next) and a maximum row count;
+   optionally keyset paging on an indexed sort.
+2. Row limits on cards, charts, dynamic content and select-list LOVs (configurable, sensible defaults).
+3. Lazy loading of regions: placeholder + fetch through the refresh-region endpoint after the page shows; without
+   JavaScript the normal render (or a link).
+4. Region caching per user / session / all users for a duration (invalidated on submit of the page); never across apps.
+5. Streamed CSV/Excel downloads with a cursor (DECLARE/FETCH, no new dependency) so memory stays flat.
+The agent commits `wip:` checkpoints often. CI is readable now: `gh run list -R NickVrgr/Postgresql_APEX` /
+`gh run view <id> --log-failed` (owner logged gh in as NickVrgr on 2026-10-04).
