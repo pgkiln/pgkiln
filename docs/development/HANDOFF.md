@@ -833,9 +833,34 @@ and verify each workstream.
   `^[a-z][a-z0-9_-]{0,39}` (≤5) in DB, builder and app.js; excluded build options fail closed (404 for pages); runtime
   role has SELECT only on the new tables. Note: `examples/hr/README.md` file table stops at hr_10.
 
+- **data: DONE, merged** (2026-10-04). Migration 030 (`meta.web_credential`, `meta.rest_source`, region
+  `rest_source`, process type `invoke_api`; redefines export/import adding `web_credentials` without `secret_enc` and
+  `rest_sources`), HR `hr_23_rest_sources.sql` page 23 (credential `HR_API`, sources `DEPARTMENTS`, `DEPARTMENT`,
+  `EMPLOYEES_API`, LOV `DEPARTMENTS_REST`, public `departments/:deptno` handler in REST module v1), new chapter 19.
+  **Env vars** (all optional; unset = no outgoing calls, no secrets): `PGAPEX_REST_ALLOWED_HOSTS` (`api.example.com`,
+  `*.example.com`, `host:8443`, `*`), `PGAPEX_REST_PRIVATE_HOSTS`, `PGAPEX_SECRET_KEY` (≥32 chars),
+  `PGAPEX_REST_MAX_BYTES` (default 5000000). Parity row: "REST Data Sources / Web Credentials / Invoke API ✅/🟡 —
+  JSON endpoints with path/query/header/body params, row selector, typed columns, response cache, feeding reports,
+  cards, charts, calendars, maps, trees, template components and shared LOVs as SQL over `rest`; web credentials basic,
+  API-key header, bearer, OAuth2 client credentials, encrypted write-only secrets; `invoke_api` process; SSRF-checked
+  allow-list (chapter 19). Not covered: XML/SOAP, DML write-back, sync into local tables, OAuth2 authorization code."
+  Security (SECURITY.md): http/https only, no userinfo; host allow-list; resolved address checked at connect time and
+  used (no DNS rebinding); private/loopback/link-local/CGNAT/multicast/doc ranges refused incl. IPv4-mapped, NAT64,
+  6to4 unless in PRIVATE_HOSTS; ≤3 redirects re-checked, credential headers dropped cross-origin; ≤60 s, size limit
+  after decompression. Secrets AES-256-GCM with a key outside the DB, write-only, never exported/logged; runtime role
+  has a column grant without `secret_enc`; changing the key means re-entering secrets. Parameter values URL-encoded
+  after a fixed host, `.`/`..` refused, one-line headers, no Authorization/Cookie/Host/transport headers on a source.
+  Response values go into SQL as one escaped literal via `jsonb_to_recordset`, checked column names, app role.
+  Residual: cached responses shared by all users of the app; `*` lets developers call any public host; OAuth tokens
+  and cache are per process. Coordinator fixes at merge: facet/map report pickers now select `rest_source` (the
+  column list of a REST-backed report was wrong), calendar drag and drop resolves a REST-backed region.
+
+**Merged state (2026-10-04):** views, regions, logic, data merged into `sprint-26` + migration **034** (export/import
+with 029's, 030's and 031's changes). `npm run db:reset && npm test`: 458 pass, 8 skipped, 0 fail. Still to do: items
+(agent running), e2e, CI-style upgrade test, docs/release steps below.
+
 **Merge note:** 029 (logic), 030 (data) and 031 (regions) each redefine `meta.export_app`/`meta.import_app`: after
-merging, write migration 034 combining all three changes. **Right now (views, regions, logic merged) 031's
-`import_app` overrides 029's, so importing computations/branches/build options is broken on `sprint-26` until 034.**
+merging, write migration 034 combining all three changes. (Done: 034.)
 
 **How to resume after a session ends:**
 1. Containers: `docker start pgapex-items pgapex-regions pgapex-logic pgapex-data pgapex-views pgapex-db`.
