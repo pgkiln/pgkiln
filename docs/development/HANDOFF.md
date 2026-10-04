@@ -783,6 +783,21 @@ told to continue from it (as was done in sprint 23).
 regions: `facet-state.ts` + report.ts; logic: `029_logic.sql`; views: charts.ts; data: nothing). The containers were
 restarted and five new agents were launched to continue from that work, same branches, ports and reservations.
 
+**State at the last handoff (2026-10-04):** the five relaunched agents were still running, each with substantial
+uncommitted work (new migrations 029/030/032, `src/secrets.ts`, `src/webclient.ts`, `src/websources.ts`,
+`src/runtime/rest-sources.ts`, `src/qrcode.ts`, `examples/hr/hr_20_items.sql`, `hr_24_planner.sql`, edits across
+runtime/builder/i18n) and had been asked to commit `wip:` checkpoints. Nothing is merged into `sprint-26` yet.
+
+**How to resume after a session ends:**
+1. Containers: `docker start pgapex-items pgapex-regions pgapex-logic pgapex-data pgapex-views pgapex-db`.
+2. Per worktree: `git -C ../pgapex-wt/<n> log --oneline sprint-26..` and `git -C ../pgapex-wt/<n> status`.
+   A workstream is finished only when its agent reported tests green and the tree is clean.
+3. For each unfinished one, launch a new agent with: "Read `docs/development/sprint-26-agent-rules.md` (in the main
+   checkout) and follow it. Worktree `../pgapex-wt/<n>`, branch `sprint-26-<n>`, DB `pgapex-<n>` port <db>, app port
+   <app>, reserved migration <m>, HR `hr_<x>` page <x>. Continue the uncommitted/wip work for the gaps in the table
+   above; commit `wip:` checkpoints often." Scratch files like `test/zz-*.ts` (views) must not be committed.
+4. Then follow "To finish the sprint" below.
+
 **To finish the sprint** (coordinator):
 1. Merge the branches into `sprint-26` (suggested order: items, views, regions, data, logic; logic and data and
    regions may each redefine `meta.export_app` / `meta.import_app` (028's are the last released): the highest-numbered
