@@ -788,6 +788,11 @@ uncommitted work (new migrations 029/030/032, `src/secrets.ts`, `src/webclient.t
 `src/runtime/rest-sources.ts`, `src/qrcode.ts`, `examples/hr/hr_20_items.sql`, `hr_24_planner.sql`, edits across
 runtime/builder/i18n) and had been asked to commit `wip:` checkpoints. Nothing is merged into `sprint-26` yet.
 
+**2026-10-04 (later):** the session ended again; all five branches now have `wip:` commits (views also a docs
+commit), with only small uncommitted edits left (items: 05-items.md; regions: export.test.ts + new
+`test/regions-sprint26.test.ts`; logic: hr_22 + security.test.ts). A third round of agents was launched to finish
+and verify each workstream.
+
 **How to resume after a session ends:**
 1. Containers: `docker start pgapex-items pgapex-regions pgapex-logic pgapex-data pgapex-views pgapex-db`.
 2. Per worktree: `git -C ../pgapex-wt/<n> log --oneline sprint-26..` and `git -C ../pgapex-wt/<n> status`.
