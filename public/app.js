@@ -94,6 +94,71 @@ document.documentElement.classList.add('js');
     }
   }
 
+  // ------------------------------------------------------------ messages and errors (dynamic actions)
+  // class names a dynamic action may add or remove (the database checks the same pattern)
+  const CLASS_NAME = /^[a-z][a-z0-9_-]{0,39}$/;
+
+  function showMessage(message, kind) {
+    const box = document.querySelector('.messages');
+    if (!box) return window.alert(message);
+    const div = document.createElement('div');
+    div.className = `alert alert-${kind}`;
+    div.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    div.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'alert-close';
+    close.setAttribute('aria-label', (meta.texts && meta.texts['common.dismiss']) || 'Dismiss');
+    close.textContent = '×';
+    div.append(close);
+    box.append(div);
+  }
+
+  /** An error shown on an item, like the server's validation errors. */
+  function itemError(name, message) {
+    const w = wrapperOf(name);
+    if (!w) return showMessage(message, 'error');
+    w.classList.add('has-error');
+    let small = w.querySelector(':scope > small.error');
+    if (!small) {
+      small = document.createElement('small');
+      small.className = 'error';
+      small.id = `${name}_error`;
+      w.append(small);
+    }
+    small.textContent = message;
+    for (const c of w.querySelectorAll('input, select, textarea')) {
+      c.setAttribute('aria-invalid', 'true');
+      const ids = (c.getAttribute('aria-describedby') || '').split(' ').filter(Boolean);
+      if (!ids.includes(small.id)) c.setAttribute('aria-describedby', [...ids, small.id].join(' '));
+    }
+  }
+
+  /** Remove error messages: of the given items, or all of them (page and items). */
+  function clearErrors(items) {
+    const wrappers = items.length ? items.map(wrapperOf).filter(Boolean) : [...document.querySelectorAll('[data-item].has-error')];
+    if (!items.length) document.querySelectorAll('.messages .alert-error').forEach((el) => el.remove());
+    for (const w of wrappers) {
+      w.classList.remove('has-error');
+      const small = w.querySelector(':scope > small.error');
+      if (small) small.remove();
+      for (const c of w.querySelectorAll('[aria-invalid]')) {
+        c.removeAttribute('aria-invalid');
+        const ids = (c.getAttribute('aria-describedby') || '').split(' ').filter((id) => id && id !== `${w.dataset.item}_error`);
+        if (ids.length) c.setAttribute('aria-describedby', ids.join(' '));
+        else c.removeAttribute('aria-describedby');
+      }
+    }
+  }
+
+  function focusTarget(el) {
+    if (!el) return;
+    const control = el.matches('input, select, textarea, button, a[href]') ? el : el.querySelector('input:not([type=hidden]), select, textarea, button, a[href]');
+    if (control) return control.focus();
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus();
+  }
+
   const targets = (da) => [
     ...da.items.map(wrapperOf).filter(Boolean),
     ...(da.region ? [document.getElementById(`R${da.region}`)].filter(Boolean) : []),
@@ -119,6 +184,25 @@ document.documentElement.classList.add('js');
     switch (da.action) {
       case 'alert':
         window.alert(da.message || '');
+        return;
+      case 'set_focus':
+        focusTarget(targets(da)[0]);
+        return;
+      case 'add_class':
+      case 'remove_class': {
+        const names = (da.classes || []).filter((c) => CLASS_NAME.test(c));
+        targets(da).forEach((el) => (da.action === 'add_class' ? el.classList.add(...names) : el.classList.remove(...names)));
+        return;
+      }
+      case 'show_success':
+        showMessage(da.message || '', 'success');
+        return;
+      case 'show_error':
+        if (da.items.length) da.items.forEach((n) => itemError(n, da.message || ''));
+        else showMessage(da.message || '', 'error');
+        return;
+      case 'clear_errors':
+        clearErrors(da.items);
         return;
       case 'submit':
         form && form.requestSubmit();

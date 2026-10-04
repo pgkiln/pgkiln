@@ -242,6 +242,18 @@ textarea.code { font-family: var(--mono); font-size: 0.84rem; line-height: 1.45;
 .btn-hot:hover { background: color-mix(in srgb, var(--accent) 86%, black); }
 .btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
 .btn-danger:hover { background: var(--danger-soft); }
+.btn-badge { display: inline-block; min-width: 1.4em; padding: 0.05rem 0.4rem; border-radius: 99px; font-size: 0.72rem; font-weight: 650; line-height: 1.3; text-align: center; background: var(--accent); color: var(--accent-text); }
+.btn-hot .btn-badge { background: var(--accent-text); color: var(--accent); }
+/* menu buttons: a details dropdown whose summary looks like a button */
+details.btn-menu { display: inline-block; }
+details.btn-menu > summary .btn-caret { width: 0.9em; height: 0.9em; transform: rotate(90deg); transition: transform 0.15s; }
+details.btn-menu[open] > summary .btn-caret { transform: rotate(-90deg); }
+.region-footer details.btn-menu .menu-panel, .page-form > .buttons details.btn-menu .menu-panel { left: auto; right: 0; }
+/* classes for dynamic actions (add_class / remove_class) */
+.is-highlight { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
+.is-muted { opacity: 0.55; }
+.is-success { border-color: var(--success) !important; }
+.is-danger { border-color: var(--danger) !important; }
 .link-button { background: none; border: 0; padding: 0; font: inherit; font-size: 0.85rem; color: var(--danger); cursor: pointer; text-decoration: underline; }
 .link-button.plain { color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; font-size: 0.93rem; }
 .danger-zone { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--border); }

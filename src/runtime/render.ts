@@ -30,6 +30,8 @@ function dynamicActionsJson(ctx: PageContext) {
       region: d.affected_region_id,
       submit: list(d.items_to_submit),
       message: d.message,
+      // add_class / remove_class: names checked by the database (and again in app.js)
+      classes: d.css_classes ? d.css_classes.split(' ').filter((c) => /^[a-z][a-z0-9_-]{0,39}$/.test(c)) : [],
     }));
 }
 
@@ -220,7 +222,7 @@ function formKeys(ctx: PageContext) {
 
 /** Texts app.js shows (offline banner and queue, location and scan buttons), in the page's language. */
 const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
-  'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close'] as const;
+  'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close', 'common.dismiss'] as const;
 const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
 
 /** The current page's URL (for returning after a preference change). */

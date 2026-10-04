@@ -17,6 +17,7 @@ import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './a
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { MULTI_VALUE, renderItem } from './items.ts';
+import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { reportCsv, reportParams, reportXlsx, normaliseReportParams, selectionOf } from './report.ts';
@@ -101,7 +102,7 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   await saveState(s);
 
   if (a.app_processes.some((p) => p.point === 'after_login')) {
-    const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [] } as unknown as Page);
+    const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [], computations: [], branches: [] } as unknown as Page);
     const ctx: PageContext = {
       app: a, page: home, session: s, base, params: new URLSearchParams(), request: '', user: username,
       roles, ip: clientIp(req), errors: { page: [], items: {} }, messages: [],
@@ -271,13 +272,19 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // a document template: ?doc=NAME (see documents.ts)
     const docName = ctx.params.get('doc');
 
-    let result: { html?: string; csv?: string; file?: Buffer; type?: string; name?: string };
+    let result: { html?: string; csv?: string; file?: Buffer; type?: string; name?: string; redirect?: string };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
         await checkPageAccess(ctx);
         await runAppProcesses(ctx, 'before_page');
+        // before header (as in APEX): branches, then computations and processes
+        if (!docName && !downloadKey) {
+          const to = await branchTarget(ctx, 'before_header');
+          if (to) return { redirect: to };
+        }
         await fetchForms(ctx);
+        await runComputations(ctx, 'before_header');
         try {
           await runProcesses(ctx, 'load');
         } catch (e) {
@@ -301,6 +308,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       throw e;
     }
     await saveState(ctx.session);
+    if (result.redirect) return reply.redirect(result.redirect, 303);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
     if (result.file)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type(result.type!).send(result.file);
@@ -349,6 +357,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
 
     let messages: string[] = [];
     let button;
+    let branchTo: string | null = null;
     let snapshot: Session['state'] = {};
     try {
       button = await appTx(txContext(ctx), async (c) => {
@@ -367,8 +376,16 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (!pressed) return undefined;
         ctx.request = pressed.name;
         snapshot = { ...ctx.session.state };
+        try {
+          await runComputations(ctx, 'after_submit');
+        } catch (e) {
+          if (e instanceof ComputationFailed) throw new ProcessFailed(e.message, null);
+          throw e;
+        }
         if (ctx.request !== 'DELETE') await validate(ctx);
         messages = await runProcesses(ctx, 'submit');
+        // after processing: the first branch that applies; else the button's target page
+        branchTo = await branchTarget(ctx, 'after_processing');
         return pressed;
       });
     } catch (e) {
@@ -391,7 +408,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     await saveState(ctx.session);
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx));
-    return reply.redirect(button.target_page ? `${ctx.base}/${button.target_page}` : self, 303);
+    return reply.redirect(branchTo ?? (button.target_page ? `${ctx.base}/${button.target_page}` : self), 303);
   });
 
   // ---------------------------------------------------------------- file downloads

@@ -173,6 +173,11 @@ export function translatePage(page: Page, tr: (s: string) => string) {
   for (const b of page.buttons) {
     b.label = tr(b.label);
     if (b.confirm) b.confirm = tr(b.confirm);
+    if (b.badge) b.badge = tr(b.badge);
+    for (const e of Array.isArray(b.menu) ? b.menu : []) {
+      e.label = tr(e.label);
+      if (e.confirm) e.confirm = tr(e.confirm);
+    }
   }
   for (const d of page.dynamic_actions) if (d.message) d.message = tr(d.message);
   for (const v of page.validations) if (v.message) v.message = tr(v.message);
@@ -209,6 +214,9 @@ export async function translatableTexts(appId: number, q: { query: (sql: string,
             where p.app_id = $1 and i.lov ~* '^STATIC2?:' and strpos(pair, ';') > 0
          union all select b.label, 'page ' || p.page_no || ' button' from meta.button b join meta.page p on p.id = b.page_id where p.app_id = $1
          union all select b.confirm, 'page ' || p.page_no || ' confirm' from meta.button b join meta.page p on p.id = b.page_id where p.app_id = $1
+         union all select b.badge, 'page ' || p.page_no || ' badge' from meta.button b join meta.page p on p.id = b.page_id where p.app_id = $1
+         union all select e->>'label', 'page ' || p.page_no || ' menu ' || b.name from meta.button b join meta.page p on p.id = b.page_id,
+                  jsonb_array_elements(case when jsonb_typeof(b.menu) = 'array' then b.menu else '[]' end) e where p.app_id = $1
          union all select d.message, 'page ' || p.page_no || ' dynamic action' from meta.dynamic_action d join meta.page p on p.id = d.page_id where p.app_id = $1
          union all select v.message, 'page ' || p.page_no || ' validation' from meta.validation v join meta.page p on p.id = v.page_id where p.app_id = $1
          union all select x.success_message, 'page ' || p.page_no || ' process' from meta.process x join meta.page p on p.id = x.page_id where p.app_id = $1
