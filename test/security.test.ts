@@ -2043,3 +2043,85 @@ describe('sprint 27 large tables', () => {
     }
   });
 });
+
+describe('sprint 28 popup LOV', () => {
+  const search = (b: Browser, form: Record<string, string>, item = 'P26_EMPNO', path = '/a/hr/26') =>
+    b.post(`${path}/lov/${item}/search`, { __csrf: b.lastCsrf, ...form });
+  const setItem = (name: string, set: string, values: unknown[] = []) =>
+    owner.query(`update meta.item i set ${set} from meta.page p where p.id = i.page_id and p.app_id = $1 and i.name = '${name}'`, [appId, ...values]);
+  const outcome = async (b: Browser, res: { statusCode: number; body: string; headers: Record<string, unknown> }) =>
+    res.statusCode === 303 ? (await b.get(String(res.headers.location))).body : res.body;
+
+  test('the search term is a parameter: quotes, wildcards and SQL text match nothing', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/26');
+    const hit = await search(king, { q: 'KIN' });
+    assert.equal(hit.statusCode, 200);
+    const json = hit.json();
+    assert.deepEqual(json.rows.map((r: any) => r.value), ['7839']);
+    assert.equal(json.headings.length, 3, 'display column plus job and department, not the return value');
+    assert.deepEqual(json.rows[0].columns, ['King', 'President', 'ACCOUNTING']);
+    assert.ok((await search(king, { q: 'research' })).json().rows.length >= 3, 'extra columns are searched');
+    for (const q of [`' or 1=1 --`, '%', '_', `x'); drop table hr.emp; --`, '\\'])
+      assert.deepEqual((await search(king, { q })).json().rows, [], q);
+    assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
+  });
+
+  test("only the item's own LOV, on its own page and application", async () => {
+    const king = await as('king');
+    await king.get('/a/hr/26');
+    assert.equal((await search(king, { q: '' }, 'P3_MGR')).statusCode, 403, 'an item of another page');
+    assert.equal((await search(king, { q: '' }, 'P26_NOPE')).statusCode, 403);
+    assert.equal((await search(king, { q: '' }, 'P3_EMPNO', '/a/hr/3')).statusCode, 403, 'not a popup LOV');
+    assert.equal((await search(king, { q: '' }, 'P26_EMPNO', '/a/nope/26')).statusCode, 404);
+    assert.equal((await king.post('/a/hr/26/lov/P26_EMPNO/search', { q: '' })).statusCode, 403, 'no CSRF token');
+    assert.equal((await new Browser().post('/a/hr/26/lov/P26_EMPNO/search', { q: '' })).statusCode, 401, 'not signed in');
+  });
+
+  test('a hidden, read-only or unauthorized item is not searchable', async () => {
+    try {
+      await setItem('P26_EMPNO', `authz = 'ADMIN'`);
+      const blake = await as('blake');
+      await blake.get('/a/hr/26');
+      assert.equal((await search(blake, { q: '' })).statusCode, 403);
+      const king = await as('king');
+      await king.get('/a/hr/26');
+      assert.equal((await search(king, { q: '' })).statusCode, 200);
+      await setItem('P26_EMPNO', `authz = null, readonly_condition = 'true'`);
+      assert.equal((await search(king, { q: '' })).statusCode, 403);
+    } finally {
+      await setItem('P26_EMPNO', 'authz = null, readonly_condition = null');
+    }
+  });
+
+  test('the page size is clamped to 100 rows', async () => {
+    try {
+      await setItem('P26_EMPNO', `lov = 'select sensor || '' #'' || id, id from hr.reading order by id', config = '{"page_size": 100000}'`);
+      const king = await as('king');
+      await king.get('/a/hr/26');
+      const big = (await search(king, { q: '', n: '100000' })).json();
+      assert.equal(big.rows.length, 100);
+      assert.equal(big.more, true);
+      assert.equal((await search(king, { q: '', n: '3', p: '2' })).json().rows[0].value, '7');
+      assert.equal((await search(king, { q: '', n: '-5' })).json().rows.length, 25);
+    } finally {
+      await setItem('P26_EMPNO', `lov = $2, config = '{"page_size": 5}'`, [
+        `select initcap(e.ename) as name, e.empno, initcap(e.job) as job, d.dname as department
+  from hr.emp e left join hr.dept d on d.deptno = e.deptno
+ order by e.ename`,
+      ]);
+    }
+  });
+
+  test('a forged posted value is rejected; a value from the LOV is kept', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/26');
+    const bad = await outcome(king, await king.post('/a/hr/26', { __csrf: king.lastCsrf, P26_EMPNO: '99999', P26_DEPTNO: '10', __request: 'SHOW' }));
+    assert.match(bad, /Employee: choose a value from the list\./);
+    const bad2 = await outcome(king, await king.post('/a/hr/26', { __csrf: king.lastCsrf, P26_EMPNO: '', P26_DEPTNO: `10' or '1'='1`, __request: 'SHOW' }));
+    assert.match(bad2, /Department: choose a value from the list\./);
+    const good = await outcome(king, await king.post('/a/hr/26', { __csrf: king.lastCsrf, P26_EMPNO: '7788', P26_DEPTNO: '20', __request: 'SHOW' }));
+    assert.doesNotMatch(good, /choose a value from the list/);
+    assert.match(good, /<option value="7788" selected>Scott<\/option>/);
+  });
+});
