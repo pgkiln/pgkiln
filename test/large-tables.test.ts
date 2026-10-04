@@ -10,6 +10,7 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { clearRegionCache } from '../src/runtime/region-cache.ts';
+import { mergeReportSettings } from '../src/builder/report-settings.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -164,5 +165,30 @@ describe('streamed downloads', () => {
     } finally {
       await owner.query('delete from meta.region where id = $1', [bad]);
     }
+  });
+});
+
+describe('builder: report settings for large tables', () => {
+  test('pagination, maximum row count, lazy loading and cache', () => {
+    const none = new Set<never>();
+    const out = mergeReportSettings({ page_size: 25 } as any, { page_size: '25', pagination: 'range', max_rows: '20000000', lazy: 'true', cache_scope: 'session', cache_seconds: '999999', searchable: 'true', interactive: 'true', sortable: 'true', saved_reports: 'true' }, none, none, none);
+    assert.equal(out.pagination, 'range');
+    assert.equal(out.max_rows, 1_000_000);
+    assert.equal(out.lazy, true);
+    assert.deepEqual(out.cache, { scope: 'session', seconds: 86_400 });
+    const off = mergeReportSettings(out, { page_size: '25', pagination: 'x', max_rows: '', cache_scope: 'everyone', searchable: 'true', interactive: 'true', sortable: 'true', saved_reports: 'true' }, none, none, none);
+    assert.equal(off.pagination, undefined);
+    assert.equal(off.max_rows, undefined);
+    assert.equal(off.lazy, undefined);
+    assert.equal(off.cache, undefined);
+  });
+
+  test('the form shows the fields', async () => {
+    const owner2 = new Browser(app);
+    await owner2.get('/builder/login');
+    await owner2.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const page = (await owner2.get(`/builder/pages/${pageId}?c=region-${regions['All readings']}`)).body;
+    assert.match(page, /name="pagination"[\s\S]*<option value="range" selected>/);
+    assert.match(page, /name="cache_scope"/);
   });
 });
