@@ -27,7 +27,8 @@ import { checksumValid, signText } from '../security.ts';
 
 const NUMERIC_OIDS = new Set([20, 21, 23, 26, 700, 701, 1700]);
 export const isNumeric = (typeOid: number) => NUMERIC_OIDS.has(typeOid);
-const PDF_MAX_ROWS = Number(process.env.PDF_MAX_ROWS ?? 5000);
+/** Rows in a report PDF (fetched with a cursor in batches): 1 to 100,000, default 5,000. */
+export const PDF_MAX_ROWS = Math.max(1, Math.min(100_000, Number(process.env.PDF_MAX_ROWS) || 5000));
 const TIMESTAMP_OIDS = new Set([1114, 1184]);
 export const PAGE_SIZES = [5, 10, 15, 25, 50, 100];
 /** Rows in a CSV or Excel download (streamed with a cursor, so memory stays flat); Excel's own limit is 1,048,575. */

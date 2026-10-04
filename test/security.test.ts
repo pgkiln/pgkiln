@@ -2387,6 +2387,44 @@ describe('sprint 30', () => {
     assert.equal(res.statusCode, 200);
   });
 
+  test('streamed REST collections: authentication, roles and limits as before; a failure mid-stream cuts the response', async () => {
+    const handlers = [
+      { method: 'GET', path: 'open', type: 'collection', auth: 'public', source: 'select g as n from generate_series(1, 2000) g order by g' },
+      { method: 'GET', path: 'closed', type: 'collection', source: 'select g as n from generate_series(1, 10) g' },
+      { method: 'GET', path: 'admins', type: 'collection', roles: ['nobody_has_this_role_30'], source: 'select g as n from generate_series(1, 10) g' },
+      { method: 'GET', path: 'fails', type: 'collection', auth: 'public', source: 'select 1 / (150 - g) as x from generate_series(1, 300) g' },
+      { method: 'GET', path: 'broken', type: 'collection', auth: 'public', source: 'select * from no_such_table_30' },
+    ];
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec30', 'Sprint 30', $2)
+      on conflict (app_id, name) do update set handlers = excluded.handlers`, [appId, JSON.stringify(handlers)]);
+    try {
+      const get = (path: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url: `/a/hr/rest/sec30/${path}`, headers });
+      assert.equal((await get('closed')).statusCode, 401);
+      assert.equal((await get('closed', { authorization: 'Bearer forged' })).statusCode, 401);
+      const { issueApiToken } = await import('../src/api.ts');
+      const tok = (await issueApiToken(appId, 'king', 1)).token;
+      assert.equal((await get('closed', { authorization: `Bearer ${tok}` })).statusCode, 200);
+      assert.equal((await get('admins', { authorization: `Bearer ${tok}` })).statusCode, 403);
+      const big = (await get('open?limit=100000&offset=-5')).json();
+      assert.deepEqual([big.items.length, big.limit, big.offset, big.has_more], [500, 500, 0, true]);
+      const inj = await get(`open?limit=${encodeURIComponent('1; drop table meta.app')}&offset=${encodeURIComponent('0) x; --')}`);
+      assert.equal(inj.statusCode, 200);
+      assert.equal(inj.json().items.length, 25);
+      // an error before the first rows is still a status
+      const broken = await get('broken');
+      assert.equal(broken.statusCode, 500);
+      assert.doesNotMatch(broken.body, /no_such_table_30/);
+      // past the first batch the response has started: it ends short, never as complete JSON
+      const fails = await get('fails?limit=300').then((r) => r.body, () => null);
+      if (fails !== null) {
+        assert.throws(() => JSON.parse(fails));
+        assert.doesNotMatch(fails, /has_more/);
+      }
+    } finally {
+      await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec30'`, [appId]);
+    }
+  });
+
   test('keyset paging: another user\'s token for this region only seeks in the viewer\'s own query', async () => {
     // the position is not a permission: the rows still come from the region's query as the app's role
     const blake = await as('blake');

@@ -257,8 +257,11 @@ Both formats also load back in: see [data loading](#data-loading).
 - a footer with *page n of m* on every page.
 
 By default the page is A4, portrait, or landscape when the columns don't fit. A PDF holds at
-most `PDF_MAX_ROWS` rows (default 5000); if there are more, it says so. The CSV and Excel
-downloads hold far more (see above).
+most `PDF_MAX_ROWS` rows (default 5000, up to 100,000; or the report's `max_rows` when lower); if
+there are more, a note after the table says so. The rows are read from a cursor in batches of 500
+and drawn as they arrive, so the server never holds all query rows at once; the finished PDF itself
+is still built in memory before it is sent, because the footer's *page n of m* needs the page
+count. The CSV and Excel downloads hold far more (see above) and stream all the way.
 
 ### Report layouts
 

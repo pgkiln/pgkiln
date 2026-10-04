@@ -67,3 +67,27 @@ describe('report PDF', () => {
     assert.equal((await king.get('/a/hr/2?r999999_pdf=1')).statusCode, 403, 'unknown region');
   });
 });
+
+// Sprint 30: report PDFs read their rows from a cursor in batches
+describe('large report PDFs', () => {
+  test('rows come in batches; the row limit is noted after the table', async () => {
+    const { owner } = await import('../src/db.ts');
+    const id = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 25 and r.title = 'All readings'`)).id;
+    await owner.query(`update meta.region set config = config || '{"max_rows": 1200}' where id = $1`, [id]);
+    try {
+      const res = await (await as('king')).get(`/a/hr/25?r${id}_pdf=1`);
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.rawPayload.subarray(0, 5).toString(), '%PDF-');
+      const text = pdfText(res.rawPayload);
+      assert.ok(text.includes('Only the first 1200 rows are included'), 'the note');
+      assert.ok(text.includes('Sensor A') && text.includes('Page 1 of'));
+      // a whole number of batches and no more rows: no note
+      await owner.query(`update meta.region set config = config - 'max_rows' || '{"pagination": "range"}', source = 'select id, sensor from hr.reading where id <= 1000 order by id' where id = $1`, [id]);
+      const all = pdfText((await (await as('king')).get(`/a/hr/25?r${id}_pdf=1`)).rawPayload);
+      assert.ok(!all.includes('Only the first'));
+      assert.ok(all.includes('1000'));
+    } finally {
+      await owner.query(`update meta.region set config = config - 'max_rows', source = 'select id, sensor, taken_at, value from hr.reading order by id' where id = $1`, [id]);
+    }
+  });
+});

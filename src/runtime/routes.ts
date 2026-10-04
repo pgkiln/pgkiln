@@ -15,7 +15,7 @@ import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts
 import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type SsoResult } from '../sso.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
-import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
+import { bindValues, publicError, stripSemicolon, toState, writeOut, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
 import { comboMultiple, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
@@ -33,22 +33,6 @@ import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale }
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-/** Write to a streamed response, waiting while the client is slow; fails once the client is gone. */
-async function writeOut(out: PassThrough, chunk: string | Uint8Array) {
-  if (out.destroyed) throw new Error('download aborted');
-  if (out.write(chunk)) return;
-  await new Promise<void>((resolve) => {
-    const done = () => {
-      out.off('drain', done);
-      out.off('close', done);
-      resolve();
-    };
-    out.on('drain', done);
-    out.on('close', done);
-  });
-  if (out.destroyed) throw new Error('download aborted');
-}
 
 type Params = { alias: string; page?: string; id?: string; item?: string; sid?: string };
 type Body = Record<string, string | undefined>;

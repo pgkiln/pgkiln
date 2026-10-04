@@ -47,7 +47,7 @@ src/
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
-    context.ts             PageContext, bind values, substitutions, public error messages
+    context.ts             PageContext, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
     engine.ts              form fetch, validations, processes, application processes
     logic.ts               computations, branches and their conditions (before header / after submit)
@@ -72,14 +72,14 @@ src/
     documents.ts           ?doc=NAME: a template filled with the page's values
     maps.ts                map region (data for Leaflet: markers or heat, report filter; list fallback, head assets)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
-    rest.ts                REST modules: handler checks, matching, bearer tokens, execution, OpenAPI
+    rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
     rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process
     tree.ts                tree region
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
     workflows.ts           workflow console region and its actions
-    pdf.ts                 report PDFs with report layouts (pdfkit)
+    pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
