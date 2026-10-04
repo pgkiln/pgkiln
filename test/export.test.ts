@@ -103,10 +103,10 @@ describe('application export', () => {
       const facets = await owner.query(
         `select r.config->>'report' as report,
                 (select p2.app_id from meta.region r2 join meta.page p2 on p2.id = r2.page_id where r2.id = (r.config->>'report')::int) as report_app
-           from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type in ('facets', 'map') and r.config ? 'report'`,
+           from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type in ('facets', 'smart_filters', 'map') and r.config ? 'report'`,
         [id],
       );
-      assert.ok(facets.rows.length >= 2, 'the HR sample has facets and a map that filters a report');
+      assert.ok(facets.rows.length >= 3, 'the HR sample has facets, smart filters and a map that filters a report');
       for (const f of facets.rows) assert.equal(f.report_app, id, 'facets and maps point at the copied report');
       const parents = await owner.one(
         `select count(*)::int as n from meta.nav_entry c join meta.nav_entry p on p.id = c.parent_id where c.app_id = $1 and p.app_id <> $1`,

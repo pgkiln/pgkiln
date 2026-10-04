@@ -125,6 +125,40 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('page 21: display selector tabs, smart filters and range facets', async () => {
+      const ids = Object.fromEntries((await owner.query(`select r.title, r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                                                          where a.alias = 'hr' and p.page_no = 21`)).rows.map((r) => [r.title, r.id]));
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      await page.goto(`${base}/a/hr/21`);
+      await page.evaluate(() => sessionStorage.clear());
+      await page.goto(`${base}/a/hr/21`);
+      // JavaScript turns the links into tabs; "Show all" is first and shows everything
+      assert.equal(await page.locator('.rds-list[role="tablist"] [role="tab"]').count(), 4);
+      assert.equal(await page.locator('.rds-hidden').count(), 0);
+      await page.click('.rds-tab:has-text("Faceted search")');
+      assert.equal(await page.locator(`#R${ids['Employee list']}`).isVisible(), true);
+      assert.equal(await page.locator(`#R${ids['Employees']}`).isVisible(), false, 'the other tab is hidden');
+      assert.equal(await page.locator('.rds-tab:has-text("Faceted search")').getAttribute('aria-selected'), 'true');
+      await check(page, 'app-21-facets', vp);
+      // arrow keys move between tabs
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.locator(`#R${ids['Average salary by job']}`).isVisible(), true);
+      // the choice is remembered; a predefined range applies on change
+      await page.goto(`${base}/a/hr/21`);
+      assert.equal(await page.locator(`#R${ids['Average salary by job']}`).isVisible(), true, 'remembered');
+      await page.click('.rds-tab:has-text("Faceted search")');
+      await Promise.all([page.waitForNavigation(), page.locator(`#R${ids['Filter']} input[type="radio"][value="3000|"]`).check()]);
+      assert.equal(await page.locator(`#R${ids['Employee list']} tbody tr`).count(), 3);
+      assert.equal(await page.locator(`#R${ids['Employee list']}`).isVisible(), true, 'the tab stays after the reload');
+      // smart filters: a suggestion becomes a chip
+      await page.click('.rds-tab:has-text("Smart filters")');
+      await Promise.all([page.waitForNavigation(), page.click(`#R${ids['Find employees']} .chip-suggest >> nth=0`)]);
+      assert.equal(await page.locator(`#R${ids['Find employees']} .sf-chip`).count(), 1);
+      await check(page, 'app-21-smart', vp);
+      await page.context().close();
+    });
+
     test('a refreshed chart region brings its styles through the CSSOM', async () => {
       const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
                                   where a.alias = 'hr' and p.page_no = 1 and r.type = 'chart' order by r.seq, r.id limit 1`);
