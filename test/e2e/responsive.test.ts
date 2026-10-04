@@ -276,6 +276,12 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         ),
         template_component: `/builder/apps/${appId}/shared?c=template_component-${(await owner.one(`select id from meta.template_component where app_id = $1 and static_id = 'contact_card'`, [appId])).id}`,
         template_import: `/builder/apps/${appId}/shared?new=template_component`,
+        web_credential: `/builder/apps/${appId}/shared?c=web_credential-${(await owner.one(`select id from meta.web_credential where app_id = $1 and name = 'HR_API'`, [appId])).id}`,
+        rest_source: `/builder/apps/${appId}/shared?c=rest_source-${(await owner.one(`select id from meta.rest_source where app_id = $1 and name = 'DEPARTMENT'`, [appId])).id}`,
+        rest_region: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 23 and r.rest_source is not null and r.type = 'report'`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
         column_templates: await (async () => {
           const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 19 and r.type = 'report'`, [appId]);
           return `/builder/pages/${r.page_id}?c=region-${r.id}`;
