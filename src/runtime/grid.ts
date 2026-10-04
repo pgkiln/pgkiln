@@ -87,7 +87,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   let writable: Set<string>;
   try {
     writable = await writableColumns(c, r);
-    res = await savepoint(c, async () => c.query({ text: await buildSql(ctx, r, st, 'page'), rowMode: 'array' }));
+    res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'page')), rowMode: 'array' }));
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `grid "${r.title ?? r.id}"`)}</div>`;
   }
@@ -224,7 +224,7 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
   };
 
   // Rebuild the column list the same way the grid was rendered.
-  const src = await savepoint(c, async () => c.query({ text: `${await buildSql(ctx, r, { ...reportState(ctx, r), page: 1, size: 1 }, 'page')}`, rowMode: 'array' }));
+  const src = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, { ...reportState(ctx, r), page: 1, size: 1 }, 'page')), rowMode: 'array' }));
   const cols = visibleColumns(r, src.fields.slice(0, -1)).map(({ f }) => f);
   const writable = await writableColumns(c, r);
   const table = (await c.query('select $1::regclass::text as t', [r.table_name])).rows[0].t as string;

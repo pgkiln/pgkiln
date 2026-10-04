@@ -30,7 +30,7 @@ src/
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
-  binds.ts                 :BIND scanner → escaped literals, splitStatements (unit tested)
+  binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
   xlsx.ts                  Excel writer for report downloads (typed cells, via fflate)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
@@ -51,6 +51,9 @@ src/
     calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
                            the route POST …/calendar/:id/move is in routes.ts)
     links.ts               page links with checksums; fillItems() fills #column# in link items
+    facet-state.ts         facet definitions (checkbox, range, star; exclude, custom range), filters read from the URL, their SQL as query parameters
+    smart-filters.ts       smart_filters region: search field, filter chips, suggestions
+    display-selector.ts    display_selector region: tabs / select list over the page's regions (app.js makes them ARIA tabs)
     account.ts             My account (details, own password, preferences)
     locale.ts              language, theme, text messages and translations of a request
     format.ts              date masks
@@ -83,7 +86,7 @@ src/
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: next run, Run now, run history
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
-    region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets
+    region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
@@ -131,7 +134,7 @@ test/
 
 1. **Metadata first.** A feature is a column or row in `meta.*`, rendered by the runtime, editable
    in the builder, included in export/import and usable from SQL.
-2. **User input never becomes SQL text.** Use `literal()` (binds.ts) for values,
+2. **User input never becomes SQL text.** Use query parameters (`SqlParams`, binds.ts) or `literal()` for values,
    `pg.escapeIdentifier` only for identifiers checked against a known list, whitelists for
    operators and keywords, and integers for positions.
 3. **Visibility is authority.** Anything a user can trigger (buttons, items, dynamic actions, grid

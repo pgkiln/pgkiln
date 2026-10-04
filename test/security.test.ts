@@ -1363,3 +1363,105 @@ describe('sprint 26 views: calendar drag and drop, create links, chart drill-dow
     }
   });
 });
+
+describe('sprint 26 regions: smart filters, facet kinds, display selector', () => {
+  const region = async (title: string) =>
+    (await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                       where a.alias = 'hr' and p.page_no = 21 and r.title = $1`, [title])) as { id: number; page_id: number };
+  const rows = (body: string, rid: number) => (new RegExp(`id="R${rid}"[\\s\\S]*?<tbody>([\\s\\S]*?)</tbody>`).exec(body)?.[1].match(/data-label="Name"/g) ?? []).length;
+  const url = (params: [string, string][]) => `/a/hr/21?${new URLSearchParams(params)}`;
+
+  test('facet values, range bounds and search terms are query parameters: injection finds nothing', async () => {
+    const { id: rid } = await region('Employee list');
+    const king = await as('king');
+    const n: [string, string] = [`r${rid}_n`, '50'];
+    const all = rows((await king.get(url([n]))).body, rid);
+    for (const params of [
+      [[`r${rid}_x_job`, "Clerk' or '1'='1"]],
+      [[`r${rid}_q`, "%' or 1=1 --"]],
+      [[`r${rid}_rf_salary`, '0 or 1=1'], [`r${rid}_rt_salary`, "1); drop table hr.emp; --"]],
+      [[`r${rid}_rg_salary`, "3000|' or 1=1 --"]],
+      [[`r${rid}_rf_hiredate`, '1980-02-30']],
+      [[`r${rid}_x_job"; drop table hr.emp; --`, 'x']],
+      [[`r${rid}_rg_rating`, '0|']], // not one of the star facet's ranges
+    ] as [string, string][][]) {
+      const res = await king.get(url([n, ...params]));
+      assert.equal(res.statusCode, 200, JSON.stringify(params));
+      assert.doesNotMatch(res.body, /alert-error/, JSON.stringify(params));
+      const shown = rows(res.body, rid);
+      assert.ok(shown === 0 || shown === all, `${JSON.stringify(params)}: no rows, or the filter ignored (${shown})`);
+    }
+    // a malformed exclude switch is just "not excluded": the four clerks
+    assert.equal(rows((await king.get(url([n, [`r${rid}_x_job`, 'Clerk'], [`r${rid}_xn_job`, "1' or '1'='1"]]))).body, rid), 4);
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, 14);
+  });
+
+  test('a NUL byte, huge and repeated values do not fail the page', async () => {
+    const { id: rid } = await region('Employee list');
+    const king = await as('king');
+    const res = await king.get(`/a/hr/21?r${rid}_x_job=a%00b&r${rid}_q=x%00&${Array.from({ length: 300 }, (_, i) => `r${rid}_x_job=v${i}`).join('&')}&r${rid}_rf_salary=${'9'.repeat(400)}`);
+    assert.ok([200, 400].includes(res.statusCode), String(res.statusCode));
+    assert.doesNotMatch(res.body, /invalid byte sequence|22021|stack/);
+  });
+
+  test('values typed by users are escaped in chips, suggestions and the search field', async () => {
+    const { id: rid } = await region('Employees');
+    const king = await as('king');
+    const body = (await king.get(url([[`r${rid}_q`, '<script>alert(1)</script>'], [`r${rid}_x_job`, '"><img src=x onerror=alert(1)>']]))).body;
+    assert.doesNotMatch(body, /<script>alert\(1\)|<img src=x/);
+    assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  });
+
+  test('only facets of regions the user may see filter a report', async () => {
+    const sf = await region('Find employees');
+    const { id: rid } = await region('Employees');
+    const king = await as('king');
+    const filtered = url([[`r${rid}_n`, '50'], [`r${rid}_x_department`, 'SALES']]);
+    assert.equal(rows((await king.get(filtered)).body, rid), 6);
+    try {
+      await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [sf.id]);
+      const blake = await as('blake');
+      assert.equal(rows((await blake.get(filtered)).body, rid), 14, 'the smart filters are hidden from blake: their facets do not apply');
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [sf.id]);
+    }
+  });
+
+  test('the display selector lists no tab for a region the user may not see', async () => {
+    const chart = await region('Average salary by job');
+    try {
+      await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [chart.id]);
+      const body = (await (await as('blake')).get('/a/hr/21')).body;
+      assert.doesNotMatch(body, />Salaries</);
+      assert.doesNotMatch(body, new RegExp(`R${chart.id}\\b`));
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [chart.id]);
+    }
+  });
+
+  test('settings routes: developers only, with a CSRF token, on the region\'s own page', async () => {
+    const sel = await region('Views');
+    const sf = await region('Find employees');
+    const before = (await owner.query('select id, config from meta.region where page_id = $1 order by id', [sel.page_id])).rows;
+    const king = await as('king');
+    for (const b of [new Browser(), king])
+      assert.equal((await b.post(`/builder/pages/${sel.page_id}/region/${sel.id}/settings`, { __csrf: b.lastCsrf, style: 'select', members: '1' })).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/pages/${sel.page_id}`);
+    assert.equal((await dev.post(`/builder/pages/${sel.page_id}/region/${sel.id}/settings`, { __csrf: 'forged', style: 'select', members: '1' })).statusCode, 403);
+    const otherPage = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2`)).id;
+    assert.equal((await dev.post(`/builder/pages/${otherPage}/region/${sel.id}/settings`, { __csrf: dev.lastCsrf, style: 'select', members: '1' })).statusCode, 404, 'a region of another page');
+    // a smart filters region can only point at a report region of its own page
+    const otherReport = (await owner.one(`select r.id from meta.region r where r.page_id = $1 and r.type = 'report'`, [otherPage])).id;
+    try {
+      await dev.post(`/builder/pages/${sf.page_id}/region/${sf.id}/settings`, { __csrf: dev.lastCsrf, report: String(otherReport), n: '1', col_0: 'job', on_0: 'true' });
+      const cfg = (await owner.one('select config from meta.region where id = $1', [sf.id])).config;
+      assert.notEqual(Number(cfg.report), otherReport);
+    } finally {
+      for (const r of before) await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
+    }
+    assert.deepEqual((await owner.query('select id, config from meta.region where page_id = $1 order by id', [sel.page_id])).rows, before);
+  });
+});

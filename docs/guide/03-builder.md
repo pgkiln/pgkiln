@@ -201,7 +201,9 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `chart` | Chart type, the text when there are no rows, the gauge's range and thresholds, and the drill-down link (page and items, `#column#` and `#series#`); lists the query's columns |
 | `cards` | Cards or KPI tiles, the text when there are no rows, and the link (page and items) |
 | `calendar` | The views and the one shown first, the hours of the week and day views, the edit link of each event, the create-on-click link (`#start#`, `#end#`, `#date#`), and drag and drop (the SQL with `:EVENT_ID`, `:NEW_START`, `:NEW_END`, the key column, who may drag); warns when the query lacks `start_date` or `title` |
-| `facets` | The report region it filters, and per column of that report: facet on/off, label, values shown and order |
+| `facets` | The report region it filters and a search field on/off; per column of that report: facet on/off, label, type (checkboxes, ranges, star rating), values shown, exclude, ranges (`..1000; 1000..3000 = Middle; 3000..`), from/to and order |
+| `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
+| `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to
 pages and shared lists of values of the same application, and to report regions on the same page.

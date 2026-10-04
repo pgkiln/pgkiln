@@ -1,6 +1,6 @@
 import { icon } from '../icons.ts';
 import pg from 'pg';
-import { applyBinds, literal } from '../binds.ts';
+import { applyBinds, literal, queryValues, SqlParams } from '../binds.ts';
 import { savepoint } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
@@ -15,11 +15,13 @@ import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
 import { renderView, VIEWS, type View } from './report-views.ts';
 import { columnTemplates } from './template-components.ts';
+import { facetFilterSql, facetFilters, reportFacetDefs, searchSql } from './facet-state.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
-// input only ever becomes escaped literals, quoted identifiers of columns
-// that exist in the result, whitelisted operators, or integers.
+// input only ever becomes query parameters (search, facets) or escaped
+// literals (filters, highlights), quoted identifiers of columns that exist in
+// the result, whitelisted operators, or integers.
 
 const NUMERIC_OIDS = new Set([20, 21, 23, 26, 700, 701, 1700]);
 export const isNumeric = (typeOid: number) => NUMERIC_OIDS.has(typeOid);
@@ -285,21 +287,6 @@ export function regionUrl(ctx: PageContext, r: Region, change: (p: URLSearchPara
   return `${ctx.base}/${ctx.page.page_no}${q ? `?${q}` : ''}${ctx.dialog ? `${q ? '&' : '?'}dialog=1` : ''}`;
 }
 
-/** Faceted search selections for a report: ?r<id>_x_<column>=value (repeatable). */
-export function facetSelections(ctx: PageContext, r: Region, except?: string) {
-  const out = new Map<string, string[]>();
-  const prefix = `r${r.id}_x_`;
-  for (const k of new Set(ctx.params.keys()))
-    if (k.startsWith(prefix) && k.slice(prefix.length) !== except) {
-      const values = ctx.params.getAll(k).filter((v) => v !== '');
-      if (values.length) out.set(k.slice(prefix.length), values);
-    }
-  return out;
-}
-
-export const facetCondition = (col: string, values: string[]) =>
-  `"__q".${pg.escapeIdentifier(col)}::text in (${values.map((v) => literal(v)).join(', ')})`;
-
 export async function fieldsOf(ctx: PageContext, src: string) {
   const c = ctx.client!;
   const res = await savepoint(c, () => c.query(`select * from (\n${src}\n) "__q" limit 0`));
@@ -344,20 +331,26 @@ export async function withComputations(ctx: PageContext, src: string, st: Report
 export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const { src } = await withComputations(ctx, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st);
   const where: string[] = [];
-  if (st.search) where.push(`"__q"::text ilike ${literal(`%${escapeLike(st.search)}%`)}`);
-  const facets = facetSelections(ctx, r);
-  const needCols = st.filters.length || facets.size || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area;
+  // the search term, facet values and range bounds are query parameters
+  const p = new SqlParams();
+  if (st.search) where.push(searchSql(st.search, p));
+  const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions));
+  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area;
   // column name → type oid
   const cols = new Map<string, number>(needCols ? (await fieldsOf(ctx, src)).map((f) => [f.name, f.dataTypeID]) : []);
   for (const f of st.filters) if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
-  for (const [col, values] of facets) if (cols.has(col)) where.push(facetCondition(col, values));
+  for (const f of facets) {
+    const cond = facetFilterSql(f, cols, p);
+    if (cond) where.push(cond);
+  }
   const pos = st.area ? positionColumns([...cols.keys()]) : null;
   if (st.area && pos) where.push(areaCondition(st.area, pos));
-  return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols };
+  return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols, values: queryValues(p.values) };
 }
 
+/** The report's rows as a query: its text and parameter values (for c.query({...sql, rowMode})). */
 export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
-  const { src, where, cols } = await filtered(ctx, r, st);
+  const { src, where, cols, values } = await filtered(ctx, r, st);
   const extra: string[] = [];
   if (mode === 'page') {
     extra.push('count(*) over () as "__total"');
@@ -373,7 +366,7 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
   if (order.length) sql += ` order by ${order.join(', ')}`;
   // one row more than a PDF shows, so it can say it was cut off
   sql += mode === 'page' ? ` limit ${st.size} offset ${(st.page - 1) * st.size}` : ` limit ${mode === 'pdf' ? PDF_MAX_ROWS + 1 : CSV_MAX_ROWS}`;
-  return sql;
+  return { text: sql, values };
 }
 
 /**
@@ -381,16 +374,16 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
  * and per control-break value when there is a break column.
  */
 async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numeric: (col: string) => boolean) {
-  const { src, where, cols } = await filtered(ctx, r, st);
+  const { src, where, cols, values } = await filtered(ctx, r, st);
   const aggs = st.aggregates.filter((a) => cols.has(a.column) && (!AGGREGATES[a.fn].numeric || numeric(a.column)));
   if (!aggs.length) return null;
   const exprs = aggs.map((a) => AGGREGATES[a.fn].sql(q(a.column)));
   const c = ctx.client!;
-  const total = await savepoint(c, () => c.query({ text: `select ${exprs.join(', ')} from (\n${src}\n) "__q"${where}`, rowMode: 'array' }));
+  const total = await savepoint(c, () => c.query({ text: `select ${exprs.join(', ')} from (\n${src}\n) "__q"${where}`, values, rowMode: 'array' }));
   const groups = new Map<string, unknown[]>();
   if (st.breakCol && cols.has(st.breakCol)) {
     const res = await savepoint(c, () =>
-      c.query({ text: `select ${q(st.breakCol!)}::text, ${exprs.join(', ')} from (\n${src}\n) "__q"${where} group by 1`, rowMode: 'array' }),
+      c.query({ text: `select ${q(st.breakCol!)}::text, ${exprs.join(', ')} from (\n${src}\n) "__q"${where} group by 1`, values, rowMode: 'array' }),
     );
     for (const row of res.rows) groups.set(String(row[0]), row.slice(1));
   }
@@ -419,7 +412,7 @@ export const headingOf = (r: Region, name: string, tr: (s: string) => string = (
 export async function reportCsv(ctx: PageContext, r: Region) {
   const st = reportState(ctx, r);
   const c = ctx.client!;
-  const res = await savepoint(c, async () => c.query({ text: await buildSql(ctx, r, st, 'csv'), rowMode: 'array' }));
+  const res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'csv')), rowMode: 'array' }));
   const cols = visibleColumns(r, res.fields);
   const esc = (s: string, numeric: boolean) => {
     if (!numeric && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
@@ -448,7 +441,7 @@ export function xlsxCell(v: unknown, typeOid: number): XlsxCell {
 export async function reportXlsx(ctx: PageContext, r: Region) {
   const st = reportState(ctx, r);
   const c = ctx.client!;
-  const res = await savepoint(c, async () => c.query({ text: await buildSql(ctx, r, st, 'xlsx'), rowMode: 'array' }));
+  const res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'xlsx')), rowMode: 'array' }));
   const cols = visibleColumns(r, res.fields);
   return writeXlsx({
     name: r.title ?? ctx.page.title ?? ctx.page.name,
@@ -518,7 +511,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   let pageNo = st.page;
   let failure: string | null = null;
   try {
-    const run = async (p: number) => savepoint(c, async () => c.query({ text: await buildSql(ctx, r, { ...st, page: p }, 'page'), rowMode: 'array' }));
+    const run = async (p: number) => savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, { ...st, page: p }, 'page')), rowMode: 'array' }));
     res = await run(pageNo);
     if (res.rows.length === 0 && pageNo > 1) res = await run((pageNo = 1));
   } catch (e) {

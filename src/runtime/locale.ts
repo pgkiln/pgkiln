@@ -160,7 +160,13 @@ export function translatePage(page: Page, tr: (s: string) => string) {
     const c = r.config ?? {};
     if (typeof c.empty === 'string') c.empty = tr(c.empty);
     if (c.headings) for (const k of Object.keys(c.headings)) c.headings[k] = tr(c.headings[k]);
-    if (Array.isArray(c.facets)) for (const f of c.facets) if (f.label) f.label = tr(f.label);
+    if (Array.isArray(c.facets))
+      for (const f of c.facets) {
+        if (f?.label) f.label = tr(f.label);
+        if (Array.isArray(f?.ranges)) for (const x of f.ranges) if (typeof x?.label === 'string') x.label = tr(x.label);
+      }
+    if (typeof c.placeholder === 'string') c.placeholder = tr(c.placeholder);
+    if (typeof c.display_selector === 'string') c.display_selector = tr(c.display_selector);
     if (r.type === 'static' && r.source) r.source = tr(r.source);
   }
   for (const i of page.items) {
@@ -198,6 +204,12 @@ export async function translatableTexts(appId: number, q: { query: (sql: string,
                           jsonb_each_text(case when jsonb_typeof(r.config->'headings') = 'object' then r.config->'headings' else '{}' end) h where p.app_id = $1
          union all select f->>'label', 'page ' || p.page_no || ' facet' from meta.region r join meta.page p on p.id = r.page_id,
                           jsonb_array_elements(case when jsonb_typeof(r.config->'facets') = 'array' then r.config->'facets' else '[]' end) f where p.app_id = $1
+         union all select g->>'label', 'page ' || p.page_no || ' facet range' from meta.region r join meta.page p on p.id = r.page_id,
+                          jsonb_array_elements(case when jsonb_typeof(r.config->'facets') = 'array' then r.config->'facets' else '[]' end) f,
+                          jsonb_array_elements(case when jsonb_typeof(f->'ranges') = 'array' then f->'ranges' else '[]' end) g where p.app_id = $1
+         union all select r.config->>'placeholder', 'page ' || p.page_no || ' region' from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1
+         union all select r.config->>'display_selector', 'page ' || p.page_no || ' tab' from meta.region r join meta.page p on p.id = r.page_id
+                    where p.app_id = $1 and jsonb_typeof(r.config->'display_selector') = 'string'
          union all select r.source, 'page ' || p.page_no || ' static region' from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type = 'static'
          union all select i.label, 'page ' || p.page_no || ' item ' || i.name from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1
          union all select i.help, 'page ' || p.page_no || ' help ' || i.name from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1

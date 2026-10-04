@@ -26,7 +26,7 @@ export const BUTTON_ACTIONS = () => options('button', 'action');
 /** Gallery names and icons. */
 export const REGION_LABELS: Record<string, [string, string]> = {
   report: ['Interactive report', 'table'], grid: ['Interactive grid', 'grid'], form: ['Form', 'file'], chart: ['Chart', 'chart'],
-  cards: ['Cards', 'layers'], calendar: ['Calendar', 'calendar'], facets: ['Faceted search', 'filter'], tasks: ['Task list', 'inbox'],
+  cards: ['Cards', 'layers'], calendar: ['Calendar', 'calendar'], facets: ['Faceted search', 'filter'], smart_filters: ['Smart filters', 'search'], display_selector: ['Region display selector', 'menu'], tasks: ['Task list', 'inbox'],
   workflows: ['Workflow console', 'activity'], map: ['Map', 'map'], tree: ['Tree', 'org'], static: ['Static content', 'region'], dynamic: ['Dynamic content', 'code'],
   template_component: ['Template component', 'layers'],
 };
