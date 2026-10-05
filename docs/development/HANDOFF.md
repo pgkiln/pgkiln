@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 33 released as v0.25.0, CI green; sprint 34 item 1 done on `sprint-34`, item 2 next). Sprints 3–33 are merged into `main` and released as **v0.25.0** (migrations 001–054 are released: add 055+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
+Last updated: 2026-10-05 (sprint 34 released as v0.26.0; sprint 35 not started, candidates under Sprint 34). Sprints 3–34 are merged into `main` and released as **v0.26.0** (migrations 001–056 are released: add 057+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
 
 ## Project in one paragraph
 
@@ -48,8 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 33, released as **v0.25.0** (tags: v0.2.0, v0.6.0–v0.25.0; 0.3.0–0.5.0 were never tagged). Migrations 001–054 are released |
-| (sprint branches) | `sprint-32` and `sprint-33` were merged (v0.24.0, v0.25.0) |
+| `main` | Everything up to sprint 34, released as **v0.26.0** (tags: v0.2.0, v0.6.0–v0.26.0; 0.3.0–0.5.0 were never tagged). Migrations 001–056 are released |
+| (sprint branches) | `sprint-32`, `sprint-33` and `sprint-34` were merged (v0.24.0, v0.25.0, v0.26.0) |
 | (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
@@ -1425,7 +1425,7 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
 
-## Sprint 34 (IN PROGRESS, owner 2026-10-05: "add to the next sprint"; "read the handoff, apex feature parity and keep going")
+## Sprint 34 (DONE, v0.26.0, owner 2026-10-05: "add to the next sprint"; "read the handoff, apex feature parity and keep going")
 
 Branch `sprint-34` from `main` (v0.25.0). Worked by one session directly (no sub-agents), same rules as
 `docs/development/sprint-33-agent-rules.md` with `sprint-34` for `sprint-33`. Migration numbers from **055**.
@@ -1433,7 +1433,17 @@ Branch `sprint-34` from `main` (v0.25.0). Worked by one session directly (no sub
 | # | Item (parity row) | Status |
 |---|---|---|
 | 1 | Working copies | **done** (migration 055; see report below) |
-| 2 | Theme, library and boilerplate application types | next (migration 056) |
+| 2 | Theme, library and boilerplate application types | **done** (migration 056; see report below) |
+
+Release 0.26.0: CI-style run in a clean worktree without `.env` on a fresh postgres:17 (5446): **909 pass / 10 skip,
+e2e 107/107** (before the release commit, which only adds `app_type` to the old-export import test). SECURITY.md rows
+for both items; CI matrix v0.26.0.
+
+**Sprint 35 candidates** (owner to choose; the remaining ❌ rows of the parity matrix, AI rows are the owner's call):
+Sample data source for development (26.1); Data Reporter (self-service reports for business users, 26.1);
+Blueprints / spec-driven development (26.1); Workspaces (multi-tenant); a new default style like "Iris" (26.1);
+AI rows (assistant, NL2IR, *Generate Text with AI*). 🟡 rows worth finishing: Create application wizard (several
+sheets, pasted data), APEX PL/SQL APIs, Theme Roller (conditional/dynamic properties), Instance administration.
 
 **Item reports:**
 
@@ -1459,6 +1469,23 @@ Branch `sprint-34` from `main` (v0.25.0). Worked by one session directly (no sub
   per component, not per property; renaming a region on one side while the other side changes its items gives a
   "not consistent" refusal. No env vars, no HR part. Tests (clean worktree, fresh DB 5446): 901 pass / 10 skip, e2e
   107/107.
+- **2 application types and subscriptions: DONE** (pushed on `sprint-34`). Migration `056_app_types_subscriptions.sql`:
+  `meta.app.app_type` (standard/theme/library/boilerplate, exported; trigger defaults NULL from older exports) and
+  `meta.subscription` (app_id, kind theme|lov|authz_scheme|build_option|template_component|list, name ('' for
+  theme), master_app_id, created/refreshed stamps; not exported, in `KEPT` and `NOT_EXPORTED`). `src/subscriptions.ts`:
+  `KINDS` (table, key column, which master types offer it), offers, subscribe (copies now; replaces a same-named
+  component), refresh (one or all; every column but id/app_id, lists with their entries re-parented; theme = the whole
+  `meta.app.theme`), publish (refresh all subscribers, `skip` callback for locked apps), inSync, unsubscribe.
+  Builder `src/builder/subscriptions.ts`: `/builder/apps/:id/subscriptions` (type, subscriptions with state,
+  subscribe select, subscribers + publish), POST subscribe/refresh/unsubscribe/publish, `subscriptionNote()` under a
+  component in Shared Components (shared.ts), tree link. Settings: Application type select (routes.ts `$28`).
+  Create: *Start from* a boilerplate (`startFromBoilerplate` in newapp.ts: replaceApp of the boilerplate's export,
+  then the new app's name/role/authentication restored, type standard, api_role null). Tests:
+  `test/subscriptions.test.ts`, security block "sprint 34 application types and subscriptions", e2e pages
+  `subscriptions`, `subscribers`. Docs ch. 3 (Creating an application, Application types and subscriptions), ch. 12;
+  parity row ✅ (App Builder 11/2/2/0, totals 87/20/8/3), Create application wizard row mentions boilerplates;
+  CHANGELOG. Limits: no subscriptions to pages, REST sources or other plug-ins; subscribed LOVs on a REST source need a
+  same-named source in the subscriber.
 
 Original plan:
 

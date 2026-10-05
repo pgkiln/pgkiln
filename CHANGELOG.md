@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-05
+
 ### Added
 - **Working copies** (migration 055): Working copies on an application makes a second application
   to change in isolation (same schema and data, no automations of its own). Compare and merge
