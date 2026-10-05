@@ -35,11 +35,11 @@ describe('map region', () => {
     const page = res.body;
     assert.match(page, /<div class="map[^"]*" data-map/);
     const d = mapData(page);
-    const titles = d.points.map((p: any) => p.title).sort();
+    const titles = d.layers[0].points.map((p: any) => p.title).sort();
     assert.deepEqual(titles, ['ACCOUNTING', 'OPERATIONS', 'RESEARCH', 'SALES', 'Scott']);
-    const scott = d.points.find((p: any) => p.title === 'Scott');
+    const scott = d.layers[0].points.find((p: any) => p.title === 'Scott');
     assert.deepEqual([scott.lat, scott.lng], [52.0116, 4.3571], 'from "lat,lng" text');
-    assert.match(d.points.find((p: any) => p.title === 'SALES').href, /\/a\/hr\/5\?.*P5_DEPTNO=30/);
+    assert.match(d.layers[0].points.find((p: any) => p.title === 'SALES').href, /\/a\/hr\/5\?.*P5_DEPTNO=30/);
     assert.match(page, /<details class="map-list">/);
     assert.match(page, /<link rel="stylesheet" href="\/static\/vendor\/leaflet\/leaflet.css">/);
     assert.match(page, /<script src="\/static\/vendor\/leaflet\/leaflet.js" defer><\/script>/);
@@ -54,7 +54,7 @@ describe('map region', () => {
     try {
       const page = (await king.get('/a/hr/4')).body;
       assert.doesNotMatch(page, /<\/script><b>x/i);
-      assert.ok(mapData(page).points.some((p: any) => p.title.toLowerCase() === '</script><b>x'));
+      assert.ok(mapData(page).layers[0].points.some((p: any) => p.title.toLowerCase() === '</script><b>x'));
     } finally {
       await owner.query(`update hr.emp set ename = 'SCOTT', work_location = null where empno = 7788`);
     }
@@ -81,11 +81,11 @@ describe('heat maps and filtering a report by the map area (page 16)', () => {
 
   test('a heat map layer carries the weights; markers are the default', async () => {
     const [heat, offices] = maps((await king.get('/a/hr/16')).body);
-    assert.equal(heat.layer, 'heat');
-    assert.equal(heat.points.length, 14);
-    assert.ok(heat.points.some((p: any) => p.weight === 5000), 'weighted by salary');
+    assert.equal(heat.layers[0].kind, 'heat');
+    assert.equal(heat.layers[0].points.length, 14);
+    assert.ok(heat.layers[0].points.some((p: any) => p.weight === 5000), 'weighted by salary');
     assert.deepEqual(heat.legend, ['Fewer', 'More']);
-    assert.equal(offices.layer, 'markers');
+    assert.equal(offices.layers[0].kind, 'markers');
   });
 
   test('the map that filters the report gets its URL; the area filters the rows and shows a chip', async () => {

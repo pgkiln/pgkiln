@@ -128,6 +128,10 @@ export const fr: Record<MessageKey, string> = {
   'map.filter_clear': 'Tout afficher',
   'map.fewer': 'Moins',
   'map.more': 'Plus',
+  'report.near': 'À moins de {km} km',
+  'map.near': 'Afficher les lieux à moins de {km} km du centre',
+  'map.layers': 'Calques',
+  'map.cluster': '{n} lieux : zoomer',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'Le composant de modèle « {name} » n’existe pas dans cette application.',
   'tc.invalid': 'Le composant de modèle « {name} » n’est pas valide et n’est pas affiché.',

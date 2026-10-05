@@ -1065,6 +1065,20 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .map-filter .btn { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); text-decoration: none; }
 .map-filter .btn:not(.btn-hot) { background: var(--surface); }
 .map-list ul { margin: 0.4rem 0; padding-left: 1.2rem; }
+/* several layers: each layer's places, lines and areas in its own colour (the light series colours: the tiles are light in both themes) */
+.map-c1 { --mc: #2a78d6; } .map-c2 { --mc: #eb6834; } .map-c3 { --mc: #1baf7a; } .map-c4 { --mc: #eda100; }
+.map-c5 { --mc: #e87ba4; } .map-c6 { --mc: #008300; } .map-c7 { --mc: #4a3aa7; } .map-c8 { --mc: #e34948; }
+path.leaflet-interactive[class*="map-c"] { stroke: var(--mc); fill: var(--mc); }
+path.map-dot { stroke: #fff; fill: var(--mc); }
+path.map-near { stroke: #1f2733; stroke-dasharray: 6 4; fill: #1f2733; fill-opacity: 0.06; }
+/* a cluster: a round marker with the number of places in it */
+.map-cluster { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--mc, #2a78d6); color: #fff; font-weight: 700; font-size: 0.82rem; border: 3px solid rgba(255, 255, 255, 0.85); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.map-cluster:focus-visible { outline: 3px solid #1f2733; outline-offset: 2px; }
+.map-layers { margin: 0; padding: 0.3rem 0.6rem 0.4rem; border: 0; border-radius: 6px; background: rgba(255, 255, 255, 0.95); color: #1f2733; font-size: 0.8rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); max-width: 60vw; }
+.map-layers legend { float: left; width: 100%; padding: 0; font-weight: 700; }
+.map-layers label { display: flex; align-items: center; gap: 0.35rem; min-height: 24px; cursor: pointer; }
+.map-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--mc); flex: none; }
+.map-swatch-heat { border-radius: 3px; background: linear-gradient(to right, rgba(109, 167, 236, 0.45), rgba(13, 54, 107, 0.9)); }
 .tree-view, .tree-view ul { list-style: none; margin: 0; padding-left: 1.1rem; }
 .tree-view { padding-left: 0; }
 .tree-view li { margin: 0.15rem 0; }

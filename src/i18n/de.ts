@@ -128,6 +128,10 @@ export const de: Record<MessageKey, string> = {
   'map.filter_clear': 'Alles anzeigen',
   'map.fewer': 'Weniger',
   'map.more': 'Mehr',
+  'report.near': 'Im Umkreis von {km} km',
+  'map.near': 'Orte im Umkreis von {km} km um die Mitte anzeigen',
+  'map.layers': 'Ebenen',
+  'map.cluster': '{n} Orte: hineinzoomen',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'Die Vorlagenkomponente „{name}“ existiert in dieser Anwendung nicht.',
   'tc.invalid': 'Die Vorlagenkomponente „{name}“ ist ungültig und wird nicht angezeigt.',

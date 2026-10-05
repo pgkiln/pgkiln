@@ -128,6 +128,10 @@ export const es: Record<MessageKey, string> = {
   'map.filter_clear': 'Mostrar todo',
   'map.fewer': 'Menos',
   'map.more': 'Más',
+  'report.near': 'A menos de {km} km',
+  'map.near': 'Mostrar los lugares a menos de {km} km del centro',
+  'map.layers': 'Capas',
+  'map.cluster': '{n} lugares: acercar',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'El componente de plantilla "{name}" no existe en esta aplicación.',
   'tc.invalid': 'El componente de plantilla "{name}" no es válido y no se muestra.',

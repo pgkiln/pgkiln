@@ -138,6 +138,10 @@ const en = {
   'map.filter_clear': 'Show everything',
   'map.fewer': 'Fewer',
   'map.more': 'More',
+  'report.near': 'Within {km} km',
+  'map.near': 'Show places within {km} km of the centre',
+  'map.layers': 'Layers',
+  'map.cluster': '{n} places: zoom in',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'The template component "{name}" does not exist in this application.',
   'tc.invalid': 'The template component "{name}" is not valid and is not shown.',
@@ -649,6 +653,10 @@ const nl: Record<MessageKey, string> = {
   'map.filter_clear': 'Alles tonen',
   'map.fewer': 'Minder',
   'map.more': 'Meer',
+  'report.near': 'Binnen {km} km',
+  'map.near': 'Plaatsen binnen {km} km van het midden tonen',
+  'map.layers': 'Lagen',
+  'map.cluster': '{n} plaatsen: inzoomen',
   // sjablooncomponenten (src/runtime/template-region.ts)
   'tc.missing': 'Het sjablooncomponent "{name}" bestaat niet in deze applicatie.',
   'tc.invalid': 'Het sjablooncomponent "{name}" is niet geldig en wordt niet getoond.',

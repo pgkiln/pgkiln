@@ -1665,22 +1665,141 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       return box;
     };
-    const layers = [];
-    if (data.layer === 'heat') layers.push(heatLayer(data.points));
-    else for (const p of data.points) layers.push(window.L.marker([p.lat, p.lng], { title: p.title || '' }).bindPopup(() => popup(p)));
-    if (data.shapes.length)
-      layers.push(window.L.geoJSON({ type: 'FeatureCollection', features: data.shapes }, { onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)) }));
-    const group = window.L.featureGroup(layers).addTo(map);
+    // one Leaflet layer per query: markers (clustered or not) with their lines and areas, or a heat map
+    const several = data.layers.length > 1;
+    const built = data.layers.map((l) => {
+      const parts = [];
+      if (l.kind === 'heat') parts.push(heatLayer(l.points));
+      else if (l.cluster) parts.push(clusterLayer(l, popup, data.clusterLabel, several));
+      else for (const p of l.points) parts.push(placeMarker(p, l, popup, several));
+      if (l.shapes.length)
+        parts.push(window.L.geoJSON({ type: 'FeatureCollection', features: l.shapes }, {
+          style: () => (several ? { className: `map-c${l.color}` } : {}),
+          onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)),
+        }));
+      return { def: l, layer: window.L.featureGroup(parts) };
+    });
+    const group = window.L.featureGroup(built.map((b) => b.layer)).addTo(map);
     const bounds = group.getBounds();
-    const area = data.filter && data.filter.area;
-    if (area) map.fitBounds([[area.s, area.w], [area.n, area.e]]);
-    else if (data.points.length === 1 && !data.shapes.length) map.setView([data.points[0].lat, data.points[0].lng], data.zoom || 14);
+    for (const b of built) if (b.def.hidden) group.removeLayer(b.layer);
+    const f = data.filter;
+    const allPoints = data.layers.flatMap((l) => l.points);
+    const allShapes = data.layers.flatMap((l) => l.shapes);
+    if (f && f.area) map.fitBounds([[f.area.s, f.area.w], [f.area.n, f.area.e]]);
+    else if (f && f.near) {
+      const circle = window.L.circle([f.near.lat, f.near.lng], { radius: f.near.km * 1000, className: 'map-near', interactive: false }).addTo(map);
+      map.fitBounds(circle.getBounds());
+    } else if (allPoints.length === 1 && !allShapes.length) map.setView([allPoints[0].lat, allPoints[0].lng], data.zoom || 14);
     else if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: data.zoom || 16 });
     else map.setView([20, 0], 2);
-    if (data.layer === 'heat') heatLegend(map, data.legend);
-    if (data.filter) areaFilter(map, data.filter);
+    if (data.layers.some((l) => l.kind === 'heat')) heatLegend(map, data.legend);
+    if (several) layerSwitch(map, group, built, data.layersLabel);
+    if (f) areaFilter(map, f);
   }
 });
+
+// A place on a map with several layers is a dot in its layer's colour (map-c1…); a lone layer keeps Leaflet's pins.
+function placeMarker(p, l, popup, several) {
+  const m = several
+    ? window.L.circleMarker([p.lat, p.lng], { radius: 7, weight: 2, fillOpacity: 0.85, className: `map-dot map-c${l.color}` })
+    : window.L.marker([p.lat, p.lng], { title: p.title || '' });
+  if (several && p.title) m.bindTooltip(p.title);
+  return m.bindPopup(() => popup(p));
+}
+
+// Marker clustering: places closer than CELL pixels at the current zoom level are one round marker with
+// their count; clicking it zooms to them. Recomputed after zooming; at the highest zoom levels every
+// place is shown by itself.
+const CELL = 56;
+function clusterLayer(l, popup, label, several) {
+  const markers = l.points.map((p) => placeMarker(p, l, popup, several));
+  const Cluster = window.L.FeatureGroup.extend({
+    onAdd(map) {
+      this._map = map;
+      map.on('zoomend', this._redraw, this);
+      this._redraw();
+    },
+    onRemove(map) {
+      map.off('zoomend', this._redraw, this);
+      this.clearLayers();
+    },
+    getBounds() {
+      return window.L.latLngBounds(l.points.map((p) => [p.lat, p.lng]));
+    },
+    _redraw() {
+      const map = this._map;
+      this.clearLayers();
+      const zoom = map.getZoom();
+      if (zoom >= map.getMaxZoom() - 1) {
+        for (const m of markers) this.addLayer(m);
+        return;
+      }
+      const cells = new Map();
+      l.points.forEach((p, i) => {
+        const at = map.project([p.lat, p.lng], zoom);
+        const k = `${Math.floor(at.x / CELL)}:${Math.floor(at.y / CELL)}`;
+        if (!cells.has(k)) cells.set(k, []);
+        cells.get(k).push(i);
+      });
+      for (const members of cells.values()) {
+        if (members.length === 1) {
+          this.addLayer(markers[members[0]]);
+          continue;
+        }
+        const pts = members.map((i) => l.points[i]);
+        const lat = pts.reduce((a, p) => a + p.lat, 0) / pts.length;
+        const lng = pts.reduce((a, p) => a + p.lng, 0) / pts.length;
+        const count = document.createElement('span');
+        count.textContent = String(pts.length);
+        const size = pts.length < 10 ? 32 : pts.length < 100 ? 38 : 44;
+        const title = label.replace('{n}', String(pts.length));
+        const m = window.L.marker([lat, lng], {
+          title,
+          alt: title,
+          icon: window.L.divIcon({ html: count, className: `map-cluster map-c${l.color}`, iconSize: [size, size] }),
+        });
+        m.on('click', () => {
+          const b = window.L.latLngBounds(pts.map((p) => [p.lat, p.lng]));
+          // all in one spot: zoom in as far as the cluster goes apart (the highest levels show every place)
+          if (b.getNorthEast().equals(b.getSouthWest())) map.setView(b.getCenter(), map.getMaxZoom());
+          else map.fitBounds(b, { padding: [32, 32] });
+        });
+        this.addLayer(m);
+      }
+    },
+  });
+  return new Cluster();
+}
+
+// The legend of a map with several layers: a check box per layer (with its colour) switches it on and off.
+function layerSwitch(map, group, built, label) {
+  const Control = window.L.Control.extend({
+    onAdd() {
+      const box = window.L.DomUtil.create('fieldset', 'map-layers');
+      window.L.DomEvent.disableClickPropagation(box);
+      window.L.DomEvent.disableScrollPropagation(box);
+      const legend = document.createElement('legend');
+      legend.textContent = label;
+      box.append(legend);
+      for (const b of built) {
+        const row = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !b.def.hidden;
+        cb.addEventListener('change', () => (cb.checked ? group.addLayer(b.layer) : group.removeLayer(b.layer)));
+        const swatch = document.createElement('span');
+        swatch.className = `map-swatch ${b.def.kind === 'heat' ? 'map-swatch-heat' : `map-c${b.def.color}`}`;
+        swatch.setAttribute('aria-hidden', 'true');
+        const name = document.createElement('span');
+        name.textContent = b.def.name;
+        row.append(cb, swatch, name);
+        box.append(row);
+      }
+      return box;
+    },
+  });
+  new Control({ position: 'bottomright' }).addTo(map);
+}
 
 // A heat map layer: every point is a soft spot on a canvas, weighted; the summed
 // intensity is coloured with one-hue blue steps (light and translucent → dark).
@@ -1785,10 +1904,27 @@ function areaFilter(map, f) {
       go.textContent = f.label;
       go.href = '#';
       go.hidden = true;
+      // distance mode: the places within the distance from the centre to the nearest edge of the map
+      const radius = () => {
+        const c = map.getCenter();
+        const b = map.getBounds();
+        const km = Math.min(map.distance(c, [b.getNorth(), c.lng]), map.distance(c, [c.lat, b.getEast()])) / 1000;
+        // two significant digits: 1.2, 35, 480 km
+        const p = Math.pow(10, Math.floor(Math.log10(Math.max(km, 0.001))) - 1);
+        return Math.min(20000, Math.max(0.1, Math.round(km / p) * p));
+      };
+      const kmText = (km) => new Intl.NumberFormat(document.documentElement.lang || undefined, { maximumFractionDigits: 1 }).format(km);
+      if (f.mode === 'distance') go.textContent = f.label.replace('{km}', kmText(radius()));
       go.addEventListener('click', (e) => {
         e.preventDefault();
-        const b = map.getBounds();
         const r = (v) => Math.round(v * 1e5) / 1e5;
+        if (f.mode === 'distance') {
+          const c = map.getCenter().wrap();
+          const near = [r(c.lat), r(c.lng), Math.round(radius() * 1000) / 1000].join(',');
+          location.href = f.url.replace('__NEAR__', encodeURIComponent(near));
+          return;
+        }
+        const b = map.getBounds();
         // west/east wrapped to -180..180 (west > east across the antimeridian); the whole world when zoomed far out
         const wrap = (v) => r(((((v + 180) % 360) + 360) % 360) - 180);
         const wide = b.getEast() - b.getWest() >= 360;
@@ -1796,7 +1932,7 @@ function areaFilter(map, f) {
         location.href = f.url.replace('__BB__', encodeURIComponent(bb));
       });
       box.append(go);
-      if (f.area) {
+      if (f.area || f.near) {
         const all = document.createElement('a');
         all.className = 'btn map-filter-clear';
         all.textContent = f.clearLabel;
@@ -1804,7 +1940,13 @@ function areaFilter(map, f) {
         box.append(all);
       }
       // shown once the user moved the map (not after the first fit)
-      map.whenReady(() => setTimeout(() => map.on('moveend', () => (go.hidden = false)), 0));
+      map.whenReady(() =>
+        setTimeout(() =>
+          map.on('moveend', () => {
+            if (f.mode === 'distance') go.textContent = f.label.replace('{km}', kmText(radius()));
+            go.hidden = false;
+          }),
+        0));
       return box;
     },
   });
