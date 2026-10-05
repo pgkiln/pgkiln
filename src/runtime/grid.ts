@@ -231,11 +231,11 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const label = (name: string) => headingOf(r, name, tr);
 
   const header = placed.map(
-    (p, pi) => html`<th scope="col" class="${colCls(p, pi, NUMERIC.has(p.col.typeOid) ? 'num' : null)}" data-col="${p.col.ci}" data-col-name="${p.col.name}"${hiddenAttr(p)}>${label(p.col.name)}${p.col.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}<span class="grid-resize" aria-hidden="true"></span></th>`,
+    (p, pi) => html`<th scope="col" class="${colCls(p, pi, NUMERIC.has(p.col.typeOid) ? 'num' : null)}" data-col="${p.col.ci}" data-col-name="${p.col.name}"${p.width ? raw(` data-width="${p.width}"`) : ''}${hiddenAttr(p)}>${label(p.col.name)}${p.col.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}<span class="grid-resize" aria-hidden="true"></span></th>`,
   );
   const leadHeads = leads.map((k) =>
     k === 'pick' ? html`<th scope="col" class="${leadCls(k)}"><span class="sr-only">${t('grid.select')}</span></th>`
-    : k === 'sel' ? html`<th scope="col" class="${leadCls(k)} grid-sel"><span class="sr-only">${t('grid.delete')}</span>${icon('close')}</th>`
+    : k === 'sel' ? html`<th scope="col" class="${leadCls(k)}"><span class="sr-only">${t('grid.delete')}</span>${icon('close')}</th>`
     : html`<th scope="col" class="${leadCls(k)}"><span class="sr-only">${t('grid.row_actions')}</span></th>`,
   );
 
@@ -266,7 +266,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       if (k === 'pick')
         return html`<td class="${leadCls(k)}" data-label="${t('grid.select')}"><a class="grid-pick-link" href="${selectHref(ctx, r, selValue!, details)}" data-grid-select="${details.map((d) => d.id).join(',')}" data-grid-leave${isSelected ? raw(' aria-current="true"') : ''}><span class="grid-radio" aria-hidden="true"></span><span class="sr-only">${t('grid.select_row', { row: i + 1 })}</span></a></td>`;
       if (k === 'sel')
-        return html`<td class="${leadCls(k)} grid-sel" data-label="${t('grid.delete')}"><label class="check"><input type="checkbox" id="${g}_${i}_del" name="${g}_${i}_del" value="true"${deleted ? raw(' checked') : ''}><span class="sr-only">${t('grid.delete_row', { row: i + 1 })}</span></label></td>`;
+        return html`<td class="${leadCls(k)}" data-label="${t('grid.delete')}"><label class="check"><input type="checkbox" id="${g}_${i}_del" name="${g}_${i}_del" value="true"${deleted ? raw(' checked') : ''}><span class="sr-only">${t('grid.delete_row', { row: i + 1 })}</span></label></td>`;
       return html`<td class="${leadCls(k)}" data-label="${t('grid.row_actions')}"><details class="menu row-menu">
         <summary class="btn btn-small" aria-label="${t('grid.row_actions_for', { row: i + 1 })}"><span aria-hidden="true">⋮</span></summary>
         <div class="menu-panel menu-links">
@@ -287,7 +287,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   // New rows: re-show posted ones after a failed save, a duplicated row, plus a blank template.
   const newRow = (j: number, values: Record<number, string> = {}) =>
     html`<tr class="grid-new" data-new-row="${j}">
-      ${leads.map((k) => html`<td class="${leadCls(k)}${k === 'sel' ? ' grid-sel' : ''}" data-label="${k === 'sel' ? t('grid.new') : ''}">${k === 'sel' ? html`<span class="badge-pill">${t('grid.new')}</span>` : ''}</td>`)}
+      ${leads.map((k) => html`<td class="${leadCls(k)}" data-label="${k === 'sel' ? t('grid.new') : ''}">${k === 'sel' ? html`<span class="badge-pill">${t('grid.new')}</span>` : ''}</td>`)}
       ${placed.map((p, pIdx) => {
         const col = p.col;
         const lbl = label(col.name);
@@ -344,7 +344,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
         rest.forEach((x) => p.append(key(r, 'a'), x));
       })}" aria-label="${t('report.remove')}" data-grid-leave>×</a></span>`);
 
-  return html`<div class="grid${frozenAny ? ' grid-has-frozen' : ''}" data-grid="${g}"${details.length ? raw(` data-grid-details="${details.map((d) => d.id).join(',')}"`) : ''}>
+  return html`<div class="grid${frozenAny ? ' grid-has-frozen' : ''}" data-grid="${g}" data-region="${r.id}"${r.config.actions === false ? '' : raw(' data-arrange')}${details.length ? raw(` data-grid-details="${details.map((d) => d.id).join(',')}"`) : ''}>
     <div class="report-toolbar grid-toolbar">
       <div class="search" role="search">
         <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_placeholder')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}">
@@ -357,7 +357,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       </div>
     </div>
     ${chips.length ? html`<div class="chips">${chips}</div>` : ''}
-    <div class="table-wrap"><table class="report report-reflow grid-table">
+    <div class="table-wrap"><table class="report report-reflow grid-table" data-frozen="${placed.filter((p) => p.frozen).length}" data-leads="${leads.length}">
       <thead><tr>${leadHeads}${header}</tr></thead>
       <tbody>${rows}${postedNew}</tbody>
       ${insertable ? html`<tbody class="grid-template">${newRow(nextNew)}</tbody>` : ''}

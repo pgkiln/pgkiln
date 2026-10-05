@@ -523,34 +523,115 @@ document.documentElement.classList.add('js');
   window.addEventListener('scroll', hide, { passive: true });
 })();
 
-// Interactive grid: add rows, track unsaved changes.
+// Interactive grid: add and duplicate rows, track unsaved changes, row
+// action menus, master-detail without reloading, moving and resizing
+// columns, copy and paste of cell ranges. Everything here has a server-side
+// path that works without JavaScript (links, labels and the Columns form);
+// pasted values are saved by the normal, validated grid save.
 (() => {
+  const body = document.body;
+  const base = body.dataset.base;
+  const pageNo = body.dataset.page;
+  const metaEl = document.getElementById('pgapex-meta');
+  const csrf = metaEl ? JSON.parse(metaEl.textContent).csrf : '';
   let dirty = false;
+
   // With JS the blank template row is hidden and must not be submitted (its
   // clones are); without JS it stays visible as the "new row".
-  document.querySelectorAll('.grid-template [name]').forEach((el) => (el.disabled = true));
+  const disableTemplates = (root) => root.querySelectorAll('.grid-template [name]').forEach((el) => (el.disabled = true));
+  disableTemplates(document);
+
+  // ------------------------------------------------------------ rows
+  function addRow(grid) {
+    const g = grid.dataset.grid;
+    const tpl = grid.querySelector('.grid-template tr');
+    if (!tpl) return null;
+    const rows = grid.querySelector('tbody:not(.grid-template)');
+    const used = [...grid.querySelectorAll('tbody:not(.grid-template) [data-new-row]')].map((r) => Number(r.dataset.newRow));
+    const next = Math.max(Number(tpl.dataset.newRow), ...used.map((n) => n + 1));
+    const row = tpl.cloneNode(true);
+    row.dataset.newRow = String(next);
+    row.querySelectorAll('[name]').forEach((el) => ((el.disabled = false), (el.name = el.name.replace(new RegExp(`^${g}_n\\d+_`), `${g}_n${next}_`))));
+    rows.appendChild(row);
+    dirty = true;
+    return row;
+  }
+
+  /** The editable control of a cell, if any. */
+  const control = (td) => td?.querySelector('input:not([type=hidden]), select');
+
+  function setCell(td, text) {
+    const el = control(td);
+    if (!el || el.disabled) return false;
+    const v = String(text ?? '').trim();
+    if (el.type === 'checkbox') el.checked = /^(true|t|yes|y|1|on|x|✓)$/i.test(v);
+    else if (el.tagName === 'SELECT') {
+      const opt = [...el.options].find((o) => o.value === v) || [...el.options].find((o) => o.text.trim().toLowerCase() === v.toLowerCase());
+      el.value = opt ? opt.value : '';
+    } else if (el.type === 'number') {
+      let n = v.replace(/[\s ']/g, '');
+      n = n.includes('.') ? n.replace(/,/g, '') : n.replace(',', '.');
+      el.value = n;
+    } else if (el.type === 'datetime-local') el.value = v.replace(' ', 'T').slice(0, 16);
+    else el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function cellText(td) {
+    const el = control(td);
+    if (!el) return td.textContent.trim();
+    if (el.type === 'checkbox') return el.checked ? 'true' : 'false';
+    if (el.tagName === 'SELECT') return el.selectedIndex > 0 ? el.options[el.selectedIndex].text.trim() : '';
+    return el.value;
+  }
+
+  function closeMenus(target) {
+    const d = target.closest('details');
+    if (d) d.open = false;
+  }
+
   document.addEventListener('click', (e) => {
     const add = e.target.closest('[data-grid-add]');
     if (add) {
-      const grid = add.closest('[data-grid]');
-      const g = grid.dataset.grid;
-      const tpl = grid.querySelector('.grid-template tr');
-      const rows = grid.querySelector('tbody:not(.grid-template)');
-      const used = [...grid.querySelectorAll('tbody:not(.grid-template) [data-new-row]')].map((r) => Number(r.dataset.newRow));
-      const next = Math.max(Number(tpl.dataset.newRow), ...used.map((n) => n + 1));
-      const row = tpl.cloneNode(true);
-      row.dataset.newRow = String(next);
-      row.querySelectorAll('[name]').forEach((el) => (el.disabled = false, el.name = el.name.replace(new RegExp(`^${g}_n\\d+_`), `${g}_n${next}_`)));
-      rows.appendChild(row);
-      row.querySelector('input, select')?.focus();
-      dirty = true;
+      const row = addRow(add.closest('[data-grid]'));
+      row?.querySelector('input:not([type=hidden]), select')?.focus();
+      return;
+    }
+    // Duplicate: the row's values in a new row (without JS a link does it on the server)
+    const dup = e.target.closest('[data-grid-dup]');
+    if (dup) {
+      const grid = dup.closest('[data-grid]');
+      const src = dup.closest('tr');
+      const row = grid.querySelector('.grid-template') ? addRow(grid) : null;
+      if (!row) return;
+      e.preventDefault();
+      closeMenus(dup);
+      for (const td of row.querySelectorAll('td[data-col]')) {
+        const from = src.querySelector(`td[data-col="${td.dataset.col}"]`);
+        if (from && control(td) && control(from)) setCell(td, control(from).tagName === 'SELECT' ? control(from).value : cellText(from));
+      }
+      control(row.querySelector('td[data-col]:not([hidden])'))?.focus();
+      return;
+    }
+    if (e.target.closest('[data-grid-del]')) {
+      // the label toggles the row's delete checkbox; close the menu after it
+      setTimeout(() => closeMenus(e.target), 0);
+      return;
+    }
+    // A master row: refresh its detail regions in place
+    const pick = e.target.closest('a[data-grid-select]');
+    if (pick && pick.dataset.gridSelect) {
+      e.preventDefault();
+      selectMaster(pick);
       return;
     }
     const leave = e.target.closest('[data-grid-leave]');
     if (leave && dirty && !window.confirm('You have unsaved changes in the grid. Leave anyway?')) e.preventDefault();
   });
   document.addEventListener('input', (e) => {
-    const row = e.target.closest?.('[data-grid] tr');
+    const row = e.target.closest?.('[data-grid] table.grid-table > tbody > tr');
     if (!row) return;
     row.classList.add('dirty');
     dirty = true;
@@ -564,6 +645,357 @@ document.documentElement.classList.add('js');
     if (dirty && document.querySelector('[data-grid]')) {
       e.preventDefault();
       e.returnValue = '';
+    }
+  });
+
+  // A row's actions menu sits in a scrolling table: show its panel over the page instead.
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (!d.matches?.('.row-menu') || !d.open) return;
+    const panel = d.querySelector('.menu-panel');
+    const r = d.querySelector('summary').getBoundingClientRect();
+    panel.style.position = 'fixed';
+    panel.style.top = `${Math.round(r.bottom + 4)}px`;
+    panel.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - panel.offsetWidth - 8)))}px`;
+  }, true);
+  window.addEventListener('scroll', () => document.querySelectorAll('.row-menu[open]').forEach((d) => (d.open = false)), { passive: true });
+
+  // ------------------------------------------------------------ master-detail
+  async function selectMaster(link) {
+    const master = link.closest('[data-grid]');
+    const ids = link.dataset.gridSelect.split(',').filter(Boolean);
+    const dirtyDetail = ids.some((id) => document.querySelector(`#R${id} [data-grid] tr.dirty, #R${id} [data-grid] tbody:not(.grid-template) tr.grid-new`));
+    if (dirtyDetail && !window.confirm('You have unsaved changes in the grid. Leave anyway?')) return;
+    const query = new URL(link.href, location.href).search.slice(1);
+    for (const id of ids) {
+      const region = document.getElementById(`R${id}`);
+      region?.setAttribute('aria-busy', 'true');
+      try {
+        const res = await fetch(`${base}/${pageNo}/region/${id}?${query}`, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
+        const json = await res.json().catch(() => ({ error: res.statusText }));
+        if (!res.ok) throw new Error(json.error || res.statusText);
+        const sheet = document.getElementById('pgapex-css')?.sheet;
+        if (sheet && json.css) for (const rule of json.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
+        if (json.detached) {
+          const tpl = document.createElement('template');
+          tpl.innerHTML = json.detached;
+          const page = document.querySelector('form.page-form') || document.querySelector('main') || body;
+          for (const f of [...tpl.content.children]) {
+            const old = f.id && document.getElementById(f.id);
+            if (old) old.replaceWith(f);
+            else page.after(f);
+          }
+        }
+        const tpl = document.createElement('template');
+        tpl.innerHTML = json.html.trim();
+        const node = tpl.content.firstElementChild;
+        if (region && node) {
+          region.replaceWith(node);
+          document.dispatchEvent(new CustomEvent('pgapex:replaced', { detail: node }));
+        }
+      } catch (err) {
+        region?.removeAttribute('aria-busy');
+        window.alert(err.message);
+        return;
+      }
+    }
+    // mark the row, and make the page's other links and forms carry the new selection
+    for (const a of master.querySelectorAll('a[data-grid-select]')) {
+      const on = a === link;
+      if (on) a.setAttribute('aria-current', 'true');
+      else a.removeAttribute('aria-current');
+      a.closest('tr').classList.toggle('is-selected', on);
+    }
+    const sel = new URL(link.href, location.href).searchParams;
+    const rid = master.dataset.region;
+    const keys = [`r${rid}_sel`, `r${rid}_selcs`];
+    for (const a of document.querySelectorAll(`a[href*="r${rid}_sel="]`)) {
+      if (a.closest(`[data-grid="${master.dataset.grid}"]`) && a.dataset.gridSelect !== undefined) continue;
+      const u = new URL(a.href, location.href);
+      for (const k of keys) u.searchParams.set(k, sel.get(k));
+      a.href = u.pathname + u.search + u.hash;
+    }
+    for (const k of keys) for (const input of document.querySelectorAll(`input[type=hidden][name="${k}"]`)) input.value = sel.get(k);
+    for (const input of document.querySelectorAll('input[type=hidden][name="params"]')) {
+      const p = new URLSearchParams(input.value);
+      if (!p.has(keys[0])) continue;
+      for (const k of keys) p.set(k, sel.get(k));
+      input.value = p.toString();
+    }
+    history.replaceState(history.state, '', link.href);
+  }
+
+  // ------------------------------------------------------------ columns: move, resize, freeze
+  const tableOf = (grid) => grid.querySelector('table.grid-table');
+  const heads = (table) => [...table.tHead.rows[0].querySelectorAll('th[data-col]')];
+  const cellsOf = (table, col) => [...table.querySelectorAll(`tr > [data-col="${col}"]`)];
+
+  /** Frozen columns after a move or resize: the first N shown columns, each left of the next. */
+  function refreeze(table) {
+    const n = Number(table.dataset.frozen) || 0;
+    const leads = [...table.tHead.rows[0].querySelectorAll('th.grid-lead')];
+    let left = leads.reduce((w, th) => w + th.offsetWidth, 0);
+    let k = 0;
+    for (const th of heads(table)) {
+      const on = !th.hidden && k < n;
+      if (!th.hidden) k++;
+      const last = on && k === n;
+      for (const c of cellsOf(table, th.dataset.col)) {
+        c.classList.toggle('grid-frozen', on);
+        c.classList.toggle('grid-frozen-last', last);
+        c.style.left = on ? `${left}px` : '';
+      }
+      if (on) left += th.offsetWidth;
+    }
+  }
+
+  async function saveLayout(grid) {
+    const table = tableOf(grid);
+    const hs = heads(table);
+    const widths = {};
+    for (const th of hs) if (th.dataset.width) widths[th.dataset.colName] = Number(th.dataset.width);
+    const layout = {
+      order: hs.map((th) => th.dataset.colName),
+      hidden: hs.filter((th) => th.hidden).map((th) => th.dataset.colName),
+      widths,
+      frozen: Number(table.dataset.frozen) || 0,
+    };
+    const params = new URLSearchParams({ __csrf: csrf, layout: JSON.stringify(layout) });
+    try {
+      const res = await fetch(`${base}/${pageNo}/grid/${grid.dataset.region}/layout`, { method: 'POST', body: params, headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+      // the Columns form shows the new layout after the next page load; keep its positions in step now
+      const form = document.getElementById(`rl${grid.dataset.region}`);
+      if (form) for (const [i, th] of hs.entries()) {
+        const row = [...document.querySelectorAll(`input[form="${form.id}"][name^="col_"]`)].find((x) => x.value === th.dataset.colName);
+        const at = row?.name.slice(4);
+        const pos = at !== undefined && document.querySelector(`input[form="${form.id}"][name="pos_${at}"]`);
+        if (pos) pos.value = String(i + 1);
+        const w = at !== undefined && document.querySelector(`input[form="${form.id}"][name="width_${at}"]`);
+        if (w && th.dataset.width) w.value = th.dataset.width;
+      }
+    } catch (err) {
+      console.warn('grid layout not saved:', err.message);
+    }
+  }
+
+  function moveColumn(table, from, to, after) {
+    for (const row of table.querySelectorAll('tr')) {
+      const a = row.querySelector(`:scope > [data-col="${from}"]`);
+      const b = row.querySelector(`:scope > [data-col="${to}"]`);
+      if (!a || !b || a === b) continue;
+      if (after) b.after(a);
+      else b.before(a);
+    }
+  }
+
+  function arrangeable(root) {
+    for (const grid of root.querySelectorAll('[data-grid][data-arrange]')) {
+      if (grid.dataset.arranged) continue;
+      grid.dataset.arranged = '1';
+      const table = tableOf(grid);
+      if (!table?.tHead) continue;
+      for (const th of heads(table)) th.draggable = true;
+      if (Number(table.dataset.frozen)) requestAnimationFrame(() => refreeze(table));
+    }
+  }
+  arrangeable(document);
+  document.addEventListener('pgapex:replaced', (e) => {
+    const root = e.detail?.parentElement || document;
+    disableTemplates(root);
+    arrangeable(root);
+  });
+
+  let dragCol = null;
+  let resizing = false;
+  document.addEventListener('dragstart', (e) => {
+    const th = e.target.closest?.('[data-grid][data-arrange] thead th[data-col]');
+    if (!th) return;
+    if (resizing) return e.preventDefault();
+    dragCol = th;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', th.dataset.colName);
+  });
+  const clearDrop = () => document.querySelectorAll('.grid-drop-before, .grid-drop-after').forEach((x) => x.classList.remove('grid-drop-before', 'grid-drop-after'));
+  document.addEventListener('dragover', (e) => {
+    const th = dragCol && e.target.closest?.('thead th[data-col]');
+    if (!th || th.closest('table') !== dragCol.closest('table')) return;
+    e.preventDefault();
+    clearDrop();
+    const r = th.getBoundingClientRect();
+    if (th !== dragCol) th.classList.add(e.clientX > r.left + r.width / 2 ? 'grid-drop-after' : 'grid-drop-before');
+  });
+  document.addEventListener('drop', (e) => {
+    const th = dragCol && e.target.closest?.('thead th[data-col]');
+    if (!th || th.closest('table') !== dragCol.closest('table')) return;
+    e.preventDefault();
+    const r = th.getBoundingClientRect();
+    const table = th.closest('table');
+    moveColumn(table, dragCol.dataset.col, th.dataset.col, e.clientX > r.left + r.width / 2);
+    clearDrop();
+    refreeze(table);
+    saveLayout(table.closest('[data-grid]'));
+    dragCol = null;
+  });
+  document.addEventListener('dragend', () => {
+    dragCol = null;
+    clearDrop();
+  });
+
+  document.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest?.('[data-grid][data-arrange] .grid-resize');
+    if (!handle) return;
+    e.preventDefault();
+    const th = handle.closest('th');
+    const table = th.closest('table');
+    const grid = table.closest('[data-grid]');
+    const startX = e.clientX;
+    const startW = th.offsetWidth;
+    const cells = cellsOf(table, th.dataset.col);
+    resizing = true;
+    grid.classList.add('grid-resizing');
+    handle.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      const w = Math.max(40, Math.min(1000, Math.round(startW + ev.clientX - startX)));
+      th.dataset.width = String(w);
+      for (const c of cells) {
+        c.classList.add('grid-sized');
+        c.style.width = c.style.minWidth = c.style.maxWidth = `${w}px`;
+      }
+    };
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      resizing = false;
+      grid.classList.remove('grid-resizing');
+      if (th.dataset.width && Number(th.dataset.width) !== startW) {
+        refreeze(table);
+        saveLayout(grid);
+      }
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  });
+
+  // ------------------------------------------------------------ copy and paste
+  // Click a cell, then Shift+click another: the range between them is
+  // selected. Ctrl+C copies it as tab-separated text (as spreadsheets do);
+  // Ctrl+V pastes such text from the focused cell (or the range) on, adding
+  // rows when the grid allows it; one value pasted into a range fills it.
+  // Delete empties a selected range. Read-only cells are left alone.
+  let anchor = null;
+  const rowsOf = (grid) => [...grid.querySelectorAll('table.grid-table > tbody:not(.grid-template) > tr')];
+  const shownCells = (tr) => [...tr.querySelectorAll(':scope > td[data-col]:not([hidden])')];
+  const selectedCells = (grid) => [...grid.querySelectorAll('td.grid-cell-selected')];
+  const clearSelection = () => document.querySelectorAll('td.grid-cell-selected').forEach((td) => td.classList.remove('grid-cell-selected'));
+  const at = (td) => {
+    const rows = rowsOf(td.closest('[data-grid]'));
+    const tr = td.closest('tr');
+    return { r: rows.indexOf(tr), c: shownCells(tr).indexOf(td) };
+  };
+
+  function selectRange(from, to) {
+    clearSelection();
+    const grid = from.closest('[data-grid]');
+    const a = at(from), b = at(to);
+    const rows = rowsOf(grid);
+    for (let r = Math.min(a.r, b.r); r <= Math.max(a.r, b.r); r++) {
+      const cells = shownCells(rows[r]);
+      for (let c = Math.min(a.c, b.c); c <= Math.max(a.c, b.c); c++) cells[c]?.classList.add('grid-cell-selected');
+    }
+  }
+
+  document.addEventListener('focusin', (e) => {
+    const td = e.target.closest?.('[data-grid] tbody:not(.grid-template) td[data-col]');
+    if (td && !td.classList.contains('grid-cell-selected')) {
+      clearSelection();
+      anchor = td;
+    }
+  });
+  document.addEventListener('mousedown', (e) => {
+    const td = e.target.closest?.('[data-grid] tbody:not(.grid-template) td[data-col]');
+    if (!td) return;
+    if (e.shiftKey && anchor && anchor.isConnected && anchor.closest('[data-grid]') === td.closest('[data-grid]')) {
+      e.preventDefault();
+      selectRange(anchor, td);
+      return;
+    }
+    clearSelection();
+    anchor = td;
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') return clearSelection();
+    const grid = e.target.closest?.('[data-grid]');
+    if (!grid || !['Delete', 'Backspace'].includes(e.key)) return;
+    const cells = selectedCells(grid);
+    if (cells.length < 2) return;
+    e.preventDefault();
+    for (const td of cells) setCell(td, '');
+  });
+
+  document.addEventListener('copy', (e) => {
+    const grid = e.target.closest?.('[data-grid]');
+    const cells = grid ? selectedCells(grid) : [];
+    if (!cells.length) return;
+    const lines = new Map();
+    for (const td of cells) {
+      const tr = td.closest('tr');
+      if (!lines.has(tr)) lines.set(tr, []);
+      lines.get(tr).push(cellText(td).replace(/[\t\r\n]+/g, ' '));
+    }
+    e.clipboardData.setData('text/plain', [...lines.values()].map((l) => l.join('\t')).join('\r\n'));
+    e.preventDefault();
+  });
+
+  /** Tab-separated text (quoted fields as spreadsheets write them) → rows of values. */
+  function parseTsv(text) {
+    const rows = [];
+    let row = [], field = '', quoted = false;
+    const s = text.replace(/\r\n?/g, '\n').replace(/\n$/, '');
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (quoted) {
+        if (ch === '"' && s[i + 1] === '"') (field += '"'), i++;
+        else if (ch === '"') quoted = false;
+        else field += ch;
+      } else if (ch === '"' && field === '') quoted = true;
+      else if (ch === '\t') row.push(field), (field = '');
+      else if (ch === '\n') row.push(field), rows.push(row), (row = []), (field = '');
+      else field += ch;
+    }
+    row.push(field);
+    rows.push(row);
+    return rows.slice(0, 1000).map((r) => r.slice(0, 200));
+  }
+
+  document.addEventListener('paste', (e) => {
+    const td = e.target.closest?.('[data-grid] tbody:not(.grid-template) td[data-col]');
+    if (!td) return;
+    const grid = td.closest('[data-grid]');
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    const range = selectedCells(grid);
+    const data = parseTsv(text);
+    const single = data.length === 1 && data[0].length === 1;
+    if (single && range.length < 2) return; // one value into one cell: the browser's own paste
+    e.preventDefault();
+    if (single) {
+      for (const c of range) setCell(c, data[0][0]);
+      return;
+    }
+    const start = range.length ? range[0] : td;
+    const { r: r0, c: c0 } = at(start);
+    for (let i = 0; i < data.length; i++) {
+      let rows = rowsOf(grid);
+      let tr = rows[r0 + i];
+      if (!tr) {
+        if (!addRow(grid)) break;
+        rows = rowsOf(grid);
+        tr = rows[rows.length - 1];
+      }
+      const cells = shownCells(tr);
+      data[i].forEach((v, j) => cells[c0 + j] && setCell(cells[c0 + j], v));
     }
   });
 })();

@@ -661,6 +661,45 @@ fieldset.prop-group > legend { font-size: 0.75rem; text-transform: uppercase; le
 .grid-table tr.dirty td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .js .grid-template { display: none; }
 .grid-table .icon { width: 14px; height: 14px; }
+/* columns a user hid stay in the form (their values still post) */
+.grid-table [hidden] { display: none !important; }
+/* leading columns: master selection, delete, row actions */
+.grid-table .grid-lead { width: 44px; min-width: 44px; max-width: 44px; padding: 0.25rem; text-align: center; }
+.grid-table .grid-sized { overflow: hidden; text-overflow: ellipsis; }
+.grid-table .grid-sized input:not([type=checkbox]), .grid-table .grid-sized select { min-width: 0; width: 100%; }
+/* frozen columns stay in view while the grid scrolls sideways (left offsets are per-page classes) */
+.grid-table .grid-frozen { position: sticky; z-index: 2; background: var(--surface); }
+.grid-table thead .grid-frozen, .grid-table tfoot .grid-frozen { background: var(--surface-2); z-index: 3; }
+.grid-table .grid-frozen-last { box-shadow: inset -1px 0 0 var(--border), 4px 0 6px -4px rgb(16 24 40 / 18%); }
+.grid-table tr.grid-new .grid-frozen { background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface)); }
+.grid-table tr.is-selected td { background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface)); }
+.grid-pick-link { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; }
+.grid-pick-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.grid-radio { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); }
+.grid-pick-link[aria-current] .grid-radio { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 3px, transparent 4px); }
+/* the row actions menu: a small button with a menu panel */
+.row-menu > summary.btn-small { padding: 0.15rem 0.5rem; min-height: 0; line-height: 1.2; }
+.row-menu .menu-panel { left: 0; right: auto; min-width: 200px; padding: 0.4rem 0.8rem; z-index: 20; text-align: left; }
+.row-menu .menu-links label { color: var(--text); padding: 0.2rem 0; display: flex; align-items: center; gap: 0.45rem; cursor: pointer; }
+.row-menu .menu-links label:hover { color: var(--accent); }
+.grid-table td:has(> .row-menu[open]) { z-index: 5; }
+/* resizing and moving columns (app.js) */
+.grid-resize { display: none; }
+.js .grid-table thead th[data-col] { position: relative; }
+.js .grid-table thead th.grid-frozen[data-col] { position: sticky; }
+.js .grid-resize { display: block; position: absolute; top: 0; right: 0; bottom: 0; width: 7px; cursor: col-resize; touch-action: none; }
+.js .grid-resize:hover, .grid-resizing .grid-resize { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.js .grid-table thead th[draggable="true"] { cursor: grab; }
+.grid-table th.grid-drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+.grid-table th.grid-drop-after { box-shadow: inset -3px 0 0 var(--accent); }
+/* copy and paste: a range of selected cells */
+.grid-table td.grid-cell-selected { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); box-shadow: inset 0 0 0 1px var(--accent); }
+.grid-columns-form { border-collapse: collapse; font-size: 0.85rem; }
+.grid-columns-form th, .grid-columns-form td { padding: 0.2rem 0.35rem; text-align: left; white-space: nowrap; }
+.grid-columns-form input[type=number] { width: 5.5rem; }
+.grid-actions-menu .menu-panel { max-height: 70vh; overflow-y: auto; }
+.grid-freeze-label { align-self: center; font-size: 0.85rem; }
+.grid-detail-hint { margin: 0; }
 
 /* ---------- calendar ---------- */
 .cal-toolbar { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
@@ -800,6 +839,12 @@ input[type=color] { width: 4rem; min-height: 2.4rem; padding: 0.15rem; }
 @media (max-width: 640px) {
   .grid-table th.grid-sel, .grid-table td.grid-sel { width: 100%; text-align: left; }
   .grid-table td input:not([type=checkbox]), .grid-table td select { min-width: 0; width: 100%; }
+  /* cards on phones: nothing to freeze, widths and the leading columns follow the card */
+  .grid-table .grid-frozen { position: static; box-shadow: none; }
+  .grid-table .grid-lead, .grid-table .grid-sized { width: 100%; min-width: 0; max-width: none; text-align: left; }
+  .report-reflow.grid-table .agg-row td.grid-lead { display: none; }
+  .report-reflow.grid-table td.grid-lead:empty { display: none; }
+  .grid-resize { display: none !important; }
 }
 
 /* two-thirds / one-third columns on desktops (builder Users page) */
