@@ -348,7 +348,7 @@ Attributes:
 | `gauge` | one value against a target, per row | a half dial per row (up to 12) from `min` (default 0) to `max` (default: rounded up from the values). With `warning` and/or `critical` thresholds each dial shows a status (*On target*, *Warning*, *Critical*) with an icon and a label, and the thresholds as a coloured ring. A `warning` above `critical` means low values are bad |
 | `funnel` | stages of a process | the first series, in the query's order (sort it); each stage shows its share of the first stage |
 | `radar` | several measures per series, side by side | **one axis per row** (3 to 12 rows), one polygon per series, all on one scale from zero |
-| `gantt` | tasks over time | **label, start, end** (dates or timestamps; an empty end, or one equal to the start, is a milestone ◆), then optional columns **by name**: `progress` (0 to 100, the filled part of the bar), `task_id` and `depends_on` (the ids a task waits for: `3`, `3,4` or an array). A time axis in hours, days, weeks, months or years, a dashed line for today, and elbow lines from the end of each predecessor to the start of the task. Rows without a start are left out |
+| `gantt` | tasks over time | **label, start, end** (dates or timestamps; an empty end, or one equal to the start, is a milestone ◆), then optional columns **by name**: `progress` (0 to 100, the filled part of the bar), `task_id` and `depends_on` (the ids a task waits for: `3`, `3,4` or an array). A time axis in hours, days, weeks, months or years, a dashed line for now (in the session's time zone, like the timestamps the query returns), and elbow lines from the end of each predecessor to the start of the task. Rows without a start are left out |
 | `pyramid` | levels of a hierarchy, or two groups compared per band | **one series**: a triangle cut into segments from the top (the first row) down, each segment's **area** in proportion to its value (≤ 8; more fold into "Other"). **Two series**: back-to-back bars (a population pyramid), the first series to the left, both on one scale; negative values count as their size |
 | `polar` | values per period or direction (months, weekdays) | a polar area chart: **one equal sector per row** (up to 24) clockwise from 12 o'clock, the radius in proportion to the value on rings from zero; several series share a row's sector |
 
@@ -661,7 +661,9 @@ excludable job facet, salary ranges with from/to, a hire date range and a star r
 **Source**: a SELECT with one row per place. The position comes from `lat` and `lng` (or
 `latitude`/`longitude`), or from a `location` column holding `latitude,longitude` text (what a
 [`location` item](05-items.md) stores). Optional columns: `title` and `body` (the popup), and
-`geojson` (a GeoJSON geometry or feature, e.g. PostGIS `st_asgeojson(geom)`) to draw lines and areas.
+`geojson` (a GeoJSON geometry or feature, e.g. PostGIS `st_asgeojson(geom)`) to draw lines and areas;
+a GeoJSON point is a place like a row with `lat`/`lng`. With [PostGIS](#postgis) installed, a
+`geometry` or `geography` column (in WGS 84, SRID 4326) is enough: the server turns it into GeoJSON.
 
 ```sql
 select dname as title, initcap(loc) as body, lat, lng, deptno
@@ -677,7 +679,11 @@ The map zooms to fit all places. Attributes:
 | `zoom` | Zoom level (1–19) when there is one place; default 14 |
 | `empty` | Text when no row has a position |
 | `layer` | `markers` (default) or `heat`: a heat map of the places, each weighted by its `weight` column (default 1) |
+| `cluster` | `true`: group markers that are close together (below) |
+| `name` | The name of the region's own layer in the legend (default: the region title) |
+| `layers` | More layers, each with its own query (below) |
 | `report` | The id of a report region on the same page that the map filters (below) |
+| `filter` | `area` (default) or `distance`: how the map filters that report |
 
 **Heat map.** With `"layer": "heat"` the places are drawn as a heat map instead of markers: where
 places (or heavier weights) are close together, the colour is darker. It suits many points, such as
@@ -686,6 +692,34 @@ visits, incidents or sales. A legend (fewer → more) sits in the corner. GeoJSO
 ```sql
 select lat, lng, sal as weight from hr.emp join hr.dept using (deptno)   -- {"layer": "heat"}
 ```
+
+**Marker clustering.** With `"cluster": true` markers that are close together at the current zoom
+level are drawn as one round marker with their number; clicking it zooms in to them. Zooming
+regroups them, and at the two highest zoom levels every place is shown by itself. Use it for
+hundreds or thousands of places (a map shows at most 5,000 per layer).
+
+**Several layers** (APEX: map layers). The region's query is the first layer; `layers` adds up to
+seven more, each with its own query (the same columns as above) and its own settings:
+
+```json
+{"name": "Visits", "cluster": true,
+ "layers": [
+   {"name": "Offices", "source": "select lat, lng, dname as title, deptno from hr.dept",
+    "link": {"page": 5, "items": {"P5_DEPTNO": "#deptno#"}}},
+   {"name": "Sales areas", "source": "select dname as title, st_asgeojson(area) as geojson from hr.sales_area"},
+   {"name": "Visit density", "source": "select lat, lng from hr.field_visit", "layer": "heat", "hidden": true}
+ ]}
+```
+
+Each layer has `name` (shown in the legend, translatable like other texts), `source`, and optionally
+`layer` (`markers` or `heat`), `cluster`, `link` and `hidden` (off until the user switches it on).
+On a map with more than one layer each layer's places, lines and areas get their own colour, and a
+**Layers** legend in the corner switches them on and off. Without JavaScript the list below the map
+has a part per layer. A layer whose query fails shows its error above the map; the other layers are
+still drawn. In the Page Designer the map's settings have a fieldset per layer (and one empty to add
+a layer; emptying a layer's query removes it), and the Advisor checks every layer's query. The HR
+example's page 33 (Field visits) has four layers: clustered customer visits, the offices, sales areas
+with delivery routes, and a heat map of the visits.
 
 **Filtering a report by the map area** (APEX: map as a spatial filter). Give the map
 `"report": <region id>` of an [interactive report](#report-interactive-report) on the same page.
@@ -696,6 +730,26 @@ like a map's (`lat`/`lng`, `latitude`/`longitude` or `location`). Without them t
 and nothing is filtered. The area is in the URL (`r<id>_bb=south,west,north,east`), so it can be
 bookmarked and saved with a saved report. It also applies to the report's downloads. The HR example's
 page 16 (Locations) has a heat map of the payroll and an offices map that filters the employee list.
+
+With `"filter": "distance"` the button reads **Show places within … km of the centre** instead: the
+distance is from the map's centre to its nearest edge, and the report shows the rows within that
+distance (a **Within … km** chip; the map draws the circle). In the URL it is
+`r<id>_near=latitude,longitude,km`. The HR example's page 33 filters its list of visits this way.
+
+<a id="postgis"></a>**Spatial filtering on the server, with or without PostGIS.** Both filters run in
+the report's SQL, never in the browser. When the [PostGIS](https://postgis.net) extension is installed
+in the database and the report has a `geometry` or `geography` column (one named `geom`, `geometry`,
+`geog`, `geography`, `the_geom`, `shape` or `location` first, else the first such column), pgapex uses
+PostGIS: the area becomes `ST_Intersects(column, ST_MakeEnvelope(west, south, east, north, 4326))`
+(two envelopes across the antimeridian) and the distance `ST_DWithin(column::geography, point, metres)`,
+so spatial indexes can be used and lines and areas count when they touch the area. Geometry columns
+are expected in WGS 84 (SRID 4326). pgapex finds PostGIS by itself (it looks in `pg_extension` once a
+minute) and calls its functions in the extension's schema, so the application's database role needs
+`USAGE` on that schema (PostGIS's default, `public`, has it). Without PostGIS, or for a report without
+such a column, the report's `lat`/`lng` (or `location`) columns are compared with numbers: a bounding
+box for the area, and for the distance a box around the circle first and then the great-circle
+(haversine) distance on a sphere of 6,371 km. The numbers in the URL are parsed and range-checked
+first (anything else is ignored), so no text from the URL reaches the SQL.
 
 Below the map a collapsed list names every place, so the data is reachable without JavaScript and
 by screen readers. The map uses [Leaflet](https://leafletjs.com) (shipped with pgapex, loaded only

@@ -83,7 +83,8 @@ src/
     files.ts               file items: multipart parsing, temporary files, signed downloads
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
-    maps.ts                map region (data for Leaflet: markers or heat, report filter; list fallback, head assets)
+    maps.ts                map region (data for Leaflet: layers with a query each, markers, clusters or heat, PostGIS geometry as GeoJSON, report filter by area or distance; list fallback, head assets)
+    spatial.ts             spatial filtering on the server: map area and distance parsing, PostGIS detection and SQL (ST_Intersects, ST_DWithin), lat/lng fallback (bounding box, haversine)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
     rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke())
@@ -138,7 +139,7 @@ src/
     supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
   app.css                  theme (light/dark, responsive)
-  app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions (no inline JS)
+  app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
