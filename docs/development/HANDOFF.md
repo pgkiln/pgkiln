@@ -1018,3 +1018,11 @@ parity rows + counts, CHANGELOG 0.23.0, SECURITY.md, `.env.example`, version, CI
 line; merge, tag, push; remove worktrees, branches and containers).
 
 **Workstream reports:** (filled in as agents finish)
+
+## Sprint 32 (PLANNED, owner 2026-10-05)
+
+- **CI: move GitHub Actions off Node.js 20** (deprecated; the runs show a warning): `actions/checkout`,
+  `actions/setup-node` and `actions/upload-artifact` in `.github/workflows/ci.yml` to their current major versions
+  (check the latest releases first); confirm the warning is gone in the run annotations. Also note: `ubuntu-latest`
+  moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres service, Playwright deps).
+- Further items: pick from the parity matrix after sprint 31 is merged.
