@@ -577,6 +577,8 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
     const sets: string[] = [];
     cols.forEach((col, ci) => {
       if (!writable.has(col.name)) return;
+      // a field that was not posted is left alone (an unchecked checkbox posts nothing: false)
+      if (col.dataTypeID !== 16 && body[`${g}_${i}_c${ci}`] === undefined) return;
       const v = norm(ci, one(`${g}_${i}_c${ci}`));
       if (v === (orig[ci] ?? null)) return;
       if (required(col.name) && v === '') errors.push(ctx.locale.t('grid.required', { row: Number(i) + 1, label: headingOf(r, col.name, ctx.locale.tr) }));
