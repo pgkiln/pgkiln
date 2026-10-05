@@ -239,7 +239,7 @@ export async function describe(db: Db, schema: string, table: string): Promise<T
               a.attidentity as identity, a.attgenerated as generated, pg_get_expr(d.adbin, d.adrelid) as default,
               b.typname as base, b.typtype as base_kind, b.oid as base_oid, t.typcategory = 'A' as array,
               case when t.typtype = 'd' then t.typtypmod else a.atttypmod end as typmod,
-              (select array_agg(e.enumlabel order by e.enumsortorder) from pg_enum e where e.enumtypid = b.oid) as labels
+              (select array_agg(e.enumlabel::text order by e.enumsortorder) from pg_enum e where e.enumtypid = b.oid) as labels
          from pg_attribute a
          join pg_type t on t.oid = a.atttypid
          join pg_type b on b.oid = case when t.typtype = 'd' then t.typbasetype else t.oid end
