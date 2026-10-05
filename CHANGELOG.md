@@ -41,6 +41,11 @@ All notable changes to this project are documented here. The format follows
   CSV/TSV and JSON in a bytea, with the data loader's column names and types (XLSX and XML: use the
   data loader). HR example page 35 "Parse and fetch".
 
+- **Theme Roller style variants**: up to 10 saved styles per application (accent and header colour,
+  font, font size, corner radius) with a default; users may pick one in the user menu or on My
+  account (kept per app on the account). **Template options** on regions and buttons: fixed lists of
+  CSS classes, chosen in the Page Designer. Migration 053.
+
 ### Changed
 - The export leaves out OAuth2 passwords, refresh tokens and a synchronisation's run state; an
   imported synchronisation starts switched off. `pgapex import --replace` keeps the new secrets.
