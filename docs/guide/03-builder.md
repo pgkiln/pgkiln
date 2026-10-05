@@ -579,6 +579,11 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
 - **Unload Data**: download a table or view (chosen columns, an optional WHERE and ORDER BY) or a
   query as CSV, JSON, Excel or XML, streamed from a cursor in a read-only transaction
   ([chapter 16](16-files.md#sql-workshop--unload-data)).
+- **Sample Data**: generate realistic rows for one or more tables of a schema (names, e-mail
+  addresses, dates and numbers in a range, values from a list, foreign keys that pick existing parent
+  rows, a percentage of nulls), proposed per column from the catalog; preview them, insert them in one
+  transaction (parents first) or download them as SQL or CSV, with a seed for the same rows again;
+  save the definition to rerun it ([chapter 16](16-files.md#sql-workshop--sample-data)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 
