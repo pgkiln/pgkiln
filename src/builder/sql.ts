@@ -9,6 +9,7 @@ import { clearCompletions } from './code-editor.ts';
 import { scriptRoutes } from './scripts.ts';
 import { quickSqlRoutes } from './quicksql.ts';
 import { queryBuilderRoutes } from './querybuilder.ts';
+import { unloadRoutes } from './unload.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection).
 
@@ -17,6 +18,8 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(scriptRoutes);
   await app.register(quickSqlRoutes);
   await app.register(queryBuilderRoutes);
+  // Unload Data (sprint 32)
+  await app.register(unloadRoutes);
   // ---------------------------------------------------------------- SQL workshop
   const resultTable = (res: pg.QueryResult<any[]>, limit = 500) => {
     const rows = (res.rows ?? []).slice(0, limit);

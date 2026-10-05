@@ -610,10 +610,14 @@ export const headingOf = (r: Region, name: string, tr: (s: string) => string = (
 /** Rows fetched from the download cursor at a time. */
 const DOWNLOAD_BATCH = 1000;
 
-/** A CSV field: quoted when needed; text that looks like a formula is neutralised. */
-const csvField = (s: string, numeric: boolean) => {
+/**
+ * A CSV field: enclosed when it holds the delimiter, the enclosure or a line
+ * break; text that looks like a formula (= + - @ tab CR) gets a leading
+ * apostrophe so a spreadsheet doesn't evaluate it. Also used by Unload Data.
+ */
+export const csvField = (s: string, numeric: boolean, delimiter = ',', quote = '"') => {
   if (!numeric && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return s.includes(delimiter) || s.includes(quote) || /[\r\n]/.test(s) ? `${quote}${s.split(quote).join(quote + quote)}${quote}` : s;
 };
 
 /**

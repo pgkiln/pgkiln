@@ -627,3 +627,7 @@ pre.ddl { max-height: 36rem; overflow: auto; }
 .support-results pre.source { max-height: 200px; margin-top: 0.3rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 details.support-script { margin: 0.3rem 0; }
 details.support-script pre.source { margin-top: 0.4rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* SQL Workshop → Unload Data */
+.unload-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.unload-pick select { flex: 1 1 14rem; min-width: 0; max-width: 32rem; }
+.unload-formats { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }

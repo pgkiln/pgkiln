@@ -147,7 +147,8 @@ export async function dataLoadRoutes(app: FastifyInstance) {
       'Load data from a file',
       html`${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
       <p class="muted">CSV or TSV (UTF-8 or Windows-1252; the delimiter is detected), Excel .xlsx (the first sheet), JSON (an array of objects, or JSON Lines) or XML (rows from a repeating element), up to ${MAX_MB} MB.
-        Next you choose a new or existing table. Loading runs as the builder's owner connection.</p>
+        Next you choose a new or existing table. Loading runs as the builder's owner connection.
+        To download a table or a query as a file, use <a href="${BASE}/sql/unload">Unload Data</a>.</p>
       <form method="post" enctype="multipart/form-data">${csrf(s)}
         <div class="form-grid">
           <div class="field"><label class="label" for="f_file">File</label>
