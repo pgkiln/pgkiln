@@ -22,6 +22,7 @@ import { advisorRoutes } from './builder/advisor.ts';
 import { topSqlRoutes } from './builder/top-sql.ts';
 import { diagnosticsRoutes } from './builder/diagnostics.ts';
 import { ldapRoutes } from './builder/ldap.ts';
+import { aiRoutes } from './builder/ai.ts';
 import { documentRoutes } from './builder/documents.ts';
 import { pwaBuilderRoutes } from './builder/pwa.ts';
 import { themeRollerRoutes } from './builder/themeroller.ts';
@@ -104,6 +105,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(topSqlRoutes);
   await app.register(diagnosticsRoutes);
   await app.register(ldapRoutes);
+  await app.register(aiRoutes);
   await app.register(documentRoutes);
   await app.register(pwaBuilderRoutes);
   await app.register(themeRollerRoutes);

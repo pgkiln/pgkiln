@@ -275,6 +275,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
         ${card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
       </div>`;
     return send(reply, s, shell(s, 'Workspace utilities', [['App Builder', BASE], ['Workspace utilities']], main));
