@@ -42,7 +42,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Translated applications (XLIFF), `APEX_LANG.MESSAGE`, `&APP_TEXT$NAME.` | Translations in the app (XLIFF/CSV import and export), `meta.message()`, `&APP_TEXT$NAME.` ([chapter 14](14-globalization.md)) |
 | Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
 | Number format masks (`FML999G999G990D00`) on columns and items | `{"formats": {...}}` on report, grid and cards columns, `{"format_mask": "..."}` on charts and number/display items ([chapter 14](14-globalization.md#number-formats)) |
-| Automatic Time Zone, `APEX_UTIL.SET_SESSION_TIME_ZONE` | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
+| Automatic Time Zone | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
 | Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark* |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
