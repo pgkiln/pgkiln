@@ -611,6 +611,23 @@ export function wallClock(v: unknown): number {
   return Number.isFinite(t) ? t : NaN;
 }
 
+/**
+ * The wall clock time in a time zone as "UTC" milliseconds, like wallClock() reads the
+ * timestamps a query returns (the session's TimeZone): a Gantt chart's "today" line.
+ */
+export function wallClockIn(zone: string | null | undefined, at = new Date()): number {
+  try {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', { timeZone: zone || 'UTC', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        .formatToParts(at)
+        .map((x) => [x.type, x.value]),
+    );
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  } catch {
+    return at.getTime();
+  }
+}
+
 type Unit = 'hour' | 'day' | 'week' | 'month' | 'year';
 const STEPS: [Unit, number, number][] = [
   ['hour', 1, HOUR], ['hour', 2, 2 * HOUR], ['hour', 3, 3 * HOUR], ['hour', 6, 6 * HOUR], ['hour', 12, 12 * HOUR],

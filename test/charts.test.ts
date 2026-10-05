@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PageCss } from '../src/css.ts';
 import { raw } from '../src/html.ts';
-import { CHART_KINDS, gaugeStatus, niceScale, renderChartBody, timeScale, wallClock, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
+import { CHART_KINDS, gaugeStatus, niceScale, renderChartBody, timeScale, wallClock, wallClockIn, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
 
 const fields = (...names: string[]) => names.map((name) => ({ name }));
 const render = (kind: ChartKind, rows: unknown[][], f = fields('label', 'A', 'B'), opts: ChartOptions = {}) => {
@@ -224,6 +224,15 @@ describe('sprint 33: Gantt, pyramid and polar charts', () => {
     assert.doesNotMatch(render('gantt', tasks, ganttFields, { now: wallClock('2027-01-01') }).body, /gantt-today/, 'today outside the range: no line');
     assert.match(body, /<span class="gantt-corner">task<\/span>/);
     assert.match(body, /<th scope="col">starts<\/th><th scope="col">ends<\/th><th scope="col" class="num">progress<\/th><th scope="col">depends_on<\/th>/);
+  });
+
+  test("gantt: today is the wall clock in the session's time zone", () => {
+    const at = new Date(Date.UTC(2026, 2, 10, 23, 30));
+    assert.equal(wallClockIn('UTC', at), Date.UTC(2026, 2, 10, 23, 30));
+    assert.equal(wallClockIn('Europe/Amsterdam', at), Date.UTC(2026, 2, 11, 0, 30), 'already the next day in Amsterdam');
+    assert.equal(wallClockIn('America/New_York', at), Date.UTC(2026, 2, 10, 19, 30));
+    assert.equal(wallClockIn(null, at), at.getTime(), 'no zone: UTC');
+    assert.equal(wallClockIn('Not/AZone', at), at.getTime(), 'an unknown zone: UTC');
   });
 
   test('gantt: dependencies from the end of a task to the start of the one that waits for it', () => {

@@ -9,7 +9,8 @@ import { bindValues, publicError, stripSemicolon, substitute, type PageContext }
 import { renderItems } from './items.ts';
 import { fillItems, linkAttrs, linkColumns } from './links.ts';
 import { renderCalendar } from './calendar.ts';
-import { CHART_KINDS, renderChartBody, type GaugeConfig } from './charts.ts';
+import { CHART_KINDS, renderChartBody, wallClockIn, type GaugeConfig } from './charts.ts';
+import { databaseTimeZone } from './locale.ts';
 import { renderFacets } from './facets.ts';
 import { renderSmartFilters } from './smart-filters.ts';
 import { renderListRegion } from './lists.ts';
@@ -134,6 +135,8 @@ async function renderChart(ctx: PageContext, r: Region) {
     ...(await chartLink(ctx, r, res.rows, res.fields)),
     gauge: gaugeConfig(r.config.gauge),
     ...chartFormat(ctx, r),
+    // the query's timestamps are in the session's time zone: so is "today"
+    ...(kind === 'gantt' ? { now: wallClockIn(ctx.locale.timeZone ?? (await databaseTimeZone())) } : {}),
   })}${firstRows(ctx, res)}`;
 }
 
