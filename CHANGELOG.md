@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Automations** (migration 044): several ordered **actions** per automation, each with its own
+  condition (row values as binds); **error handling** per automation: stop (as before), skip the row
+  and continue, or disable; failed rows and their errors in the run history (status `warning`);
+  **`meta.run_automation(name)`** runs an automation from application SQL, synchronously in the
+  caller's transaction (like `APEX_AUTOMATION.EXECUTE`). Existing automations become one action.
+  Export/import and the CLI directory format carry the actions. HR example part 33.
+- **Workflows**: an **invoke API** step calls a REST data source of the app or a URL through the same
+  code as the invoke-API process (allow-list, SSRF checks, web credentials); response values and the
+  HTTP status go into workflow variables; no transaction stays open during the call; a failed call
+  faults the step (retry in the console). HR example part 34.
+
+### Changed
+- CI: `actions/checkout`, `actions/setup-node` and `actions/upload-artifact` v7 (Node.js 24).
+
+### Fixed
+- A flaky custom-authentication test (page views are logged without awaiting).
+
 ## [0.23.0] - 2026-10-05
 
 ### Added

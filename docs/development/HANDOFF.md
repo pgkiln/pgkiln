@@ -1156,14 +1156,20 @@ can be merged after any item:
 | 0 | CI: actions off Node.js 20; custom-auth flake | (none) | done on `main` (3bb983a, 192f0af); CI run 37286030252 green, no Node 20 warning |
 | 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | **done** (bcfec61..14943e4) |
 | 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045 (unused), `hr_34` | **done** (ca079be..c6066d2) |
-| 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | to do |
+| 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | **in progress** (an agent was working on it; uncommitted `src/builder/unload.ts` etc. may exist) |
 | 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | to do |
 | 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | to do |
 
 Later CI note: `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres
 service, Playwright deps).
 
-**If a session ends:** `git log --oneline main..sprint-32` and `git status`; commit any uncommitted work as `wip:`;
+**Coordinator already did (so a successor doesn't redo it):** parity rows Automations (✅) and Workflow (invoke API)
+plus the summary counts (80/25/10/6) and the "Last reviewed" line; CHANGELOG `[Unreleased]` for items 0–2. Still to do
+at release: rows for items 3–5, CHANGELOG entries for them, SECURITY.md (notes in the item reports below), version,
+CI matrix + v0.24.0.
+
+**If a session ends:** `git log --oneline main..sprint-32` and `git status`; make sure no agent is still editing (the
+`git status` output stops changing); commit any uncommitted work as `wip:`;
 launch the next agent with "Read `docs/development/sprint-32-agent-rules.md` and follow it. Item <n> of the Sprint 32
 table in HANDOFF.md." When the items are done (or usage runs low): parity rows + summary counts, CHANGELOG 0.24.0,
 SECURITY.md, `.env.example`, version, CI upgrade matrix + v0.24.0, chapter 12 version line, this file; clean-worktree
