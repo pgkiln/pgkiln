@@ -4338,3 +4338,107 @@ describe('sprint 33 item 3: REST write-back, synchronisation, OAuth2 password an
     assert.equal((await owner.one(`select sync_enabled from meta.rest_source where app_id = $1 and name = 'SEC3_IMPSRC'`, [imported.id])).sync_enabled, false);
   });
 });
+
+describe('sprint 33 item 4: debug messages and the installation log', () => {
+  const dev = new Browser();
+  let reviewId: string;
+  const hrViews = async () => (await owner.query('select id from meta.debug_view where app_id = $1 order by id', [appId])).rows.map((r) => r.id as string);
+
+  before(async () => {
+    reviewId = String((await owner.one(`insert into hr.review (empno, period, rating, created_by) values (7698, '2026-01-01:2026-06-30', 3, 'sec33-4') returning id`)).id);
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+  });
+  after(async () => {
+    await owner.query(`update meta.app set debug_level = 0, debug_retention_days = 7 where id = $1`, [appId]);
+    await owner.query('delete from meta.debug_view where app_id = $1', [appId]);
+    await owner.query(`delete from hr.review where created_by = 'sec33-4'`);
+    await owner.query(`delete from meta.developer where username = 'sec33_dev'`);
+  });
+
+  test('application roles can not read or write the debug tables, nor call the save and purge functions', async () => {
+    const role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    for (const t of ['meta.debug_view', 'meta.debug_message'])
+      for (const r of [role, 'pgapex_runtime'])
+        assert.equal((await owner.one(`select has_table_privilege($1, $2, 'select,insert,update,delete') as ok`, [r, t])).ok, false, `${r} ${t}`);
+    for (const fn of ['meta.debug_save(int, int, text, uuid, text, text, int, int, timestamptz, numeric, jsonb)', 'meta.debug_purge()'])
+      assert.equal((await owner.one(`select has_function_privilege($1, $2, 'execute') as ok`, [role, fn])).ok, false, `${role} ${fn}`);
+    assert.equal((await owner.one(`select has_function_privilege($1, 'meta.debug(int, text)', 'execute') as ok`, [role])).ok, true);
+  });
+
+  test('with debug off a request writes nothing; meta.debug_save refuses an application not in debug', async () => {
+    await owner.query('update meta.app set debug_level = 0 where id = $1', [appId]);
+    await owner.query('delete from meta.debug_view where app_id = $1', [appId]);
+    const b = await as('king');
+    await b.get('/a/hr/1');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.deepEqual(await hrViews(), []);
+    assert.equal((await runtime.one(`select meta.debug_save($1, 1, 'x', null, 'GET', '/forged', 200, 9, now(), 1, '[]') as id`, [appId])).id, null);
+  });
+
+  test('password item values and query string values are never recorded, even at level 9', async () => {
+    await owner.query('update meta.app set debug_level = 9 where id = $1', [appId]);
+    const b = await as('king');
+    const url = `/a/hr/20?${new URLSearchParams({ P20_ID: reviewId, cs: urlChecksum(appId, 20, 'king', { P20_ID: reviewId }) })}`;
+    await b.get(url);
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, __request: 'SAVE', P20_EMPNO: '7698', P20_PERIOD: ['2026-01-01', '2026-06-30'], P20_RATING: '99', P20_SKILLS: 'Sales', P20_NOTES: '', P20_PIN: 'pin-s33-secret' });
+    assert.equal(res.statusCode, 422);
+    let rows: unknown[] = [];
+    for (let i = 0; i < 50 && !rows.some((r) => JSON.stringify(r).includes('P20_PIN')); i++) {
+      await new Promise((r) => setTimeout(r, 40));
+      rows = (await owner.query('select v.path, m.message from meta.debug_view v join meta.debug_message m on m.view_id = v.id where v.app_id = $1', [appId])).rows;
+    }
+    const all = JSON.stringify(rows);
+    assert.match(all, /P20_PIN posted: \(password, not shown\)/);
+    assert.doesNotMatch(all, /pin-s33-secret/);
+    assert.doesNotMatch(all, new RegExp(`P20_ID=${reviewId}|cs=`), 'query values are left out');
+  });
+
+  test('the viewer escapes messages and only shows a page view under its own application', async () => {
+    await owner.query('update meta.app set debug_level = 9 where id = $1', [appId]);
+    const id = (await runtime.one(`select meta.debug_save($1, 1, 'x', null, 'GET', '/a/hr/1', 200, 9, now(), 1, $2::jsonb) as id`,
+      [appId, JSON.stringify([{ ms: 0, level: 4, component: '<b>c</b>', text: '<script>alert(1)</script>' }])])).id;
+    const res = await dev.get(`/builder/apps/${appId}/debug/${id}`);
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /<script>alert\(1\)/);
+    assert.match(res.body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec33-other', 'Other', 'none') returning id`)).id;
+    try {
+      assert.equal((await dev.get(`/builder/apps/${other}/debug/${id}`)).statusCode, 404);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+    assert.equal((await dev.get(`/builder/apps/${appId}/debug/1%20or%201=1`)).statusCode, 404);
+    // filters are parameters: a quote in the user filter is just text
+    assert.equal((await dev.get(`/builder/apps/${appId}/debug?user=${encodeURIComponent("x' or '1'='1")}&page=abc&before=1;drop`)).statusCode, 200);
+  });
+
+  test('the viewer needs a developer session, and its changes need the CSRF token', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get(`/builder/apps/${appId}/debug`)).statusCode, 302);
+    assert.equal((await anon.get('/builder/installation')).statusCode, 302);
+    const before = (await owner.one('select count(*)::int as n from meta.debug_view where app_id = $1', [appId])).n;
+    assert.ok(before > 0);
+    assert.equal((await dev.post(`/builder/apps/${appId}/debug/purge`, { __csrf: 'wrong' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/apps/${appId}/debug/settings`, { __csrf: 'wrong', debug_level: '0', debug_retention_days: '7' })).statusCode, 403);
+    assert.equal((await owner.one('select count(*)::int as n from meta.debug_view where app_id = $1', [appId])).n, before);
+    assert.equal((await owner.one('select debug_level from meta.app where id = $1', [appId])).debug_level, 9);
+    // out-of-range settings are refused
+    await dev.get(`/builder/apps/${appId}/debug`);
+    await dev.post(`/builder/apps/${appId}/debug/settings`, { __csrf: dev.lastCsrf, debug_level: '9', debug_retention_days: '3650' });
+    assert.equal((await owner.one('select debug_retention_days from meta.app where id = $1', [appId])).debug_retention_days, 7);
+  });
+
+  test('the installation log is for administrators only', async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec33_dev', meta.hash_password('Sec33-dev-password!'), false) on conflict do nothing`);
+    const d = new Browser();
+    await d.get('/builder/login');
+    await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'sec33_dev', password: 'Sec33-dev-password!' });
+    const res = await d.get('/builder/installation');
+    assert.equal(res.statusCode, 403);
+    assert.doesNotMatch(res.body, /051_debug_messages/);
+    assert.doesNotMatch((await d.get('/builder/utilities')).body, /\/builder\/installation/);
+    assert.equal((await dev.get('/builder/installation')).statusCode, 200);
+  });
+});

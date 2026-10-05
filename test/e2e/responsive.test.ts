@@ -413,6 +413,16 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         search: `/builder/apps/${appId}/search?q=empno`,
         advisor: `/builder/apps/${appId}/advisor`,
         top_sql: `/builder/apps/${appId}/top-sql`,
+        debug: `/builder/apps/${appId}/debug`,
+        debug_view: `/builder/apps/${appId}/debug/${await (async () => {
+          const v = (await owner.one(`insert into meta.debug_view (app_id, page_no, username, method, path, status, level, elapsed_ms, entries)
+            values ($1, 3, 'king', 'GET', '/a/hr/3', 200, 9, 42.5, 3) returning id`, [appId])).id;
+          await owner.query(`insert into meta.debug_message (view_id, seq, elapsed_ms, duration_ms, level, component, message) values
+            ($1, 1, 0, null, 4, 'request', 'GET /a/hr/3 (parameters: P3_EMPNO, cs)'), ($1, 2, 1.2, 38.1, 6, 'region', 'region "Employees" (report)'),
+            ($1, 3, 40, null, 4, 'meta.debug', repeat('a long message without spaces ', 3) || repeat('x', 300))`, [v]);
+          return v;
+        })()}`,
+        installation: '/builder/installation',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,
@@ -497,6 +507,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
       }
       // (sprint 32) create an application from a file: upload, step 2, the result and the generated pages
       const alias = `e2e-ff-${size.width}`;

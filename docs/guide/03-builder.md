@@ -44,7 +44,7 @@ The home page is laid out like APEX's App Builder:
   (applications, pages, active accounts; page views, users, failed sign-ins and errors of the last
   24 hours, and per application the last 7 days with a link to its Activity page) and
   **Workspace Utilities** (users, identity providers, LDAP directories, password policy,
-  developers, the SQL Workshop).
+  developers, the SQL Workshop, and for administrators the [installation log](#installation)).
 - **The applications**, as a report (application id, name, alias, pages, page views of the last 24
   hours, sign-in, last updated, and Edit / Run) or as cards. **Search** filters the list as you type
   (by name, alias or id; without JavaScript, press Enter). Click a column heading, or use
@@ -359,14 +359,15 @@ register at the provider, and has a *Test discovery* button. See
 - **Application**: name, alias, home page.
 - **Security**: authentication (*App users*, *HTTP header*, *Database accounts*, *Custom* or
   *None*), the database role, and **debug mode** (shows full database errors to users; development
-  only). **Custom authentication**: the function name, or the function body, and the
+  only). The state of the [debug messages](06-processing.md#debug-messages) is shown below it,
+  with a link to set their level. **Custom authentication**: the function name, or the function body, and the
   post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)).
 - **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
 - **Theme**: accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu
   (instead of the navigation entries) and as the navigation bar (links in the header), the theme style (automatic, light or dark) and whether users may choose light or dark.
 - **Globalization**: primary language, translated languages, how the language is chosen, date formats.
-- **Security checklist**: whether the app has its own role, debug mode, and pages without
+- **Security checklist**: whether the app has its own role, debug mode, debug messages, and pages without
   checksum protection or without authentication.
 - **Delete application**: removes the definition (not your tables).
 
@@ -421,6 +422,14 @@ failed and locked sign-ins; errors and access denials; views and timings per pag
 and a list of recent events (with *Include page views*). The "reference #123" numbers users see
 on errors are the event ids here.
 
+**Debug messages** (APEX: *View Debug*) sets the application's debug level and retention and lists
+the requests recorded while it was on: time, page, method and path, user, HTTP status, total time,
+number of entries and problems (errors and warnings), filtered by page, user or *only with errors or
+warnings*, 50 at a time. Opening one shows its entries with the time since the start of the request,
+the duration of timed steps (the slowest is highlighted), the time until the next entry, level,
+component and message, with links to the previous and next request. *Delete all debug messages*
+empties the list. See [chapter 6](06-processing.md#debug-messages).
+
 **Top SQL** lists the statements the application's database role ran, from `pg_stat_statements`:
 calls, total and mean time, rows and share of the total, sortable, with *Reset the statistics*.
 Literals appear as `$1`, `$2`…; applications that share a database role share the list. It needs
@@ -429,6 +438,19 @@ development `docker-compose.yml`) and the extension, which migration 016 creates
 a superuser; otherwise `create extension pg_stat_statements;` by hand). Reading other roles' query
 texts needs `pg_read_all_stats` for the owner role, and resetting needs execute on
 `pg_stat_statements_reset`.
+
+
+## Installation
+
+Workspace utilities → **Installation** (administrators only; APEX: the install/upgrade logs of
+instance administration) shows the pgapex version of the running server, the number of applied
+migrations and the database, and warns when the database misses migrations of this server (run
+`npm run db:migrate`) or has migrations the server does not know (an older server). Below it:
+
+- **Install and upgrade runs**: every run of `npm run db:migrate` / `pgapex migrate` that applied a
+  file or failed: when, *install* (an empty database) or *upgrade*, the version, the files and, for a
+  failed run, the file and the error (that file was rolled back). Runs are recorded from 0.25 on.
+- **Applied migrations** with the time each was applied, and the **example and seed scripts**.
 
 ## Globalization
 

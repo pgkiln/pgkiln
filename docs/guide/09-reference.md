@@ -20,9 +20,12 @@ triggers, your own functions).
 | `meta.url_encode(text)` | text | Percent-encodes a URL component |
 | `meta.temp_files` (view) | rows | The current session's uploaded files: `id`, `item_name`, `filename`, `mime_type`, `size`, `content`, `created_at` (like `APEX_APPLICATION_TEMP_FILES`; [chapter 16](16-files.md)) |
 | `meta.delete_temp_file(id)` | void | Removes one of the current session's uploaded files |
+| `meta.debug(level, text)`, `meta.debug(text)` | void | A [debug message](06-processing.md#debug-messages) (APEX: `apex_debug.message`): recorded with the request when the app's debug level is at least `level` (1 error, 2 warning, 4 information (the default), 6 trace, 9 everything); otherwise it returns at once. Texts are cut at 4000 characters |
+| `meta.debug_enabled(level default 4)` | boolean | Whether a message of this level would be recorded (skip building expensive texts) |
+| `meta.debug_level()` | int | The request's debug level (0: off, and outside a request) |
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
-`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`.
+`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.debug_level`.
 
 ## Functions for developers and scripts
 
@@ -92,6 +95,8 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `language`, `languages`, `language_from` | text, text[], text | Primary language, translated languages, `browser` / `user` / `primary` |
 | `date_format`, `timestamp_format` | text | Display masks (e.g. `DD-MM-YYYY`); NULL: the language's default |
 | `debug` | boolean | Show database error details to users |
+| `debug_level` | smallint | [Debug messages](06-processing.md#debug-messages): 0 off, 1, 2, 4, 6 or 9 (APEX levels) |
+| `debug_retention_days` | int | Days debug messages are kept (1–90, default 7) |
 | `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top"}` |
 
 **`account`** (the user directory): `username` (unique, case-insensitive), `display_name`, `email`,
@@ -203,6 +208,8 @@ navigation entries and application processes have the same `build_option` column
 |---|---|---|
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
 | `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`; builder: `lock_broken`, `supporting_objects`, …), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
+| `debug_view` | [Debug messages](06-processing.md#debug-messages): one row per recorded request: `app_id`, `page_no`, `username`, `session_id`, `method`, `path` (without the query string), `status`, `level`, `started_at`, `elapsed_ms`, `entries`. Written through `meta.debug_save()` (runtime role only), not exported | no |
+| `debug_message` | The entries of a recorded request: `view_id`, `seq`, `elapsed_ms` (since the start), `duration_ms` (timed steps), `level`, `component`, `message` | no |
 | `developer` | Builder accounts (`is_admin`: manages developers, breaks locks) | no |
 | `builder_lock` | Page (`page_no`) and application (`page_no` 0) locks: `locked_by`, `locked_at`, `note` | no |
 | `dev_comment` | Developer comments on an application (`page_no` 0) or page: `author`, `body`, `created_at` | no |
@@ -228,7 +235,13 @@ navigation entries and application processes have the same `build_option` column
 | `translation` | Per app and language: `source` (primary-language text) → `target` | yes |
 | `temp_file` | Uploaded files per session (deleted with the session; at most 20 per session). Read through the view `meta.temp_files` | no (through the view) |
 
-Retention: expired sessions are purged automatically. The activity log is kept until you delete
+Outside `meta`: `public.pgapex_migration` (applied migrations), `public.pgapex_seed` (applied example
+scripts) and `public.pgapex_install_log` (each migration run that applied or failed a file: `started_at`,
+`finished_at`, `version`, `kind` `install`/`upgrade`, `applied` files, `status`, `error`, `db_user`),
+shown under Workspace utilities → **Installation**.
+
+Retention: expired sessions are purged automatically; debug messages after the application's
+`debug_retention_days` (and at most 5000 requests per application), by the scheduler. The activity log is kept until you delete
 from it, for example with a scheduled
 `delete from meta.activity_log where at < now() - interval '90 days'`.
 

@@ -17,6 +17,8 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
 | `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
 | `APEX_ACL` / `apex_acl.has_user_role` | `meta.has_role('role')` |
+| `APEX_DEBUG` (`message`, `error`, `warn`, `info`, `trace`), debug levels, *View Debug* | `meta.debug(level, text)`, `meta.debug_enabled(level)`; the app's debug level; Activity → Debug messages ([chapter 6](06-processing.md#debug-messages)) |
+| Instance administration: install/upgrade log | Workspace utilities → Installation (administrators) |
 | Workspace users (APEX accounts), Application Access Control | `meta.account` (Builder → Users), `meta.app_access` (Access control) |
 | Page access protection "Arguments must have checksum" | `protection = 'checksum'` (the default) |
 | Automatic row processing (DML) | Process type `form_dml` |

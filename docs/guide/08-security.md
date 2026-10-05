@@ -480,5 +480,5 @@ decision.
 3. Authorization schemes on pages and buttons that change data.
 4. Checksum protection on pages (the default).
 5. Business rules in constraints, triggers or functions, not only in validations.
-6. Debug mode off.
+6. Debug mode and debug messages off.
 7. Review the app's **Settings → Security checklist** and **Activity** monitor now and then.

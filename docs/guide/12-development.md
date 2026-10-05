@@ -14,12 +14,13 @@ scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)
-  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate)
+  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
+                           or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
   cli/                     the command line: main.ts (commands, help, exit codes), files.ts (directories,
                            zip), diff.ts, replace.ts (import --replace in place)
   app.ts / server.ts       Fastify setup / entry point
-  db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings), savepoints
+  db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings, NOTICEs to the debug log), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
@@ -59,10 +60,12 @@ src/
                            (callOperation); invoke(): the invoke API call shared by the invoke_api process and workflow step
   restsync.ts              REST data source synchronisation into a local table (merge/replace/append as the app role), run log,
                            syncTick() (scheduled and SQL-queued runs, called by the automations scheduler)
+  debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
+                           loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
-    context.ts             PageContext, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
+    context.ts             PageContext, dbg()/timed() debug helpers, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
@@ -129,6 +132,8 @@ src/
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
+    diagnostics.ts         Activity → Debug messages (level, list, one request's entries, purge); Workspace utilities →
+                           Installation (version, install/upgrade runs, applied and missing migrations; administrators)
     ldap.ts                Users → LDAP directories
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
@@ -180,6 +185,7 @@ test/
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   helpers.ts               a cookie-keeping test browser
