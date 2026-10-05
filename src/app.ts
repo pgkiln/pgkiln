@@ -53,6 +53,7 @@ import { runtimeRoutes } from './runtime/routes.ts';
 import { debugOf, finishDebug } from './debug.ts';
 import { migrate, pendingMigrations } from './migrate.ts';
 import { ownerUrl } from './db.ts';
+import { refreshInstanceSettings } from './instance.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -67,6 +68,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     console.error(`pgapex: the database is missing ${pending.length} migration(s) (${pending[0]} …). Run "npm run db:migrate" (or "pgapex migrate"), or start with MIGRATE_ON_START=true.`);
   }
   await loadSecrets();
+  if (!pending.length) await refreshInstanceSettings(true);
   const app = Fastify({
     logger: opts.logger === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
     // behind a reverse proxy, set TRUST_PROXY=true so req.ip is the client (login throttling)

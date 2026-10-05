@@ -28,6 +28,9 @@ All notable changes to this project are documented here. The format follows
   and report columns (bold, muted, no wrapping, monospace, right-aligned, centred).
 - **Report row selection across pages**: rows chosen on one page of a report stay chosen while paging (each change
   is recorded in the selection item's session state), with a count of the selected rows.
+- **Instance settings** (Workspace utilities, administrators): session idle time and length and sign-in throttling
+  set in the builder (over the environment variables, picked up by every server within 30 seconds), and an overview
+  of the server's configuration with secrets hidden.
 
 ## [0.28.0] - 2026-10-06
 

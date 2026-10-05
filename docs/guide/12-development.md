@@ -15,6 +15,7 @@ bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with 
 src/
   env.ts                   .env loader (imported first)
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
+  instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
                            or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
@@ -185,6 +186,7 @@ src/
                            write-back operations, synchronisation settings, Synchronise now and run history
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
+    instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview)
     workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid
                            request), the current workspace (session state __WS), placeApp, the switcher, Workspace utilities → Workspaces
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST; appOfPath), developer comments, administrators
@@ -235,6 +237,7 @@ test/
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets
   drawers.test.ts          drawers and dialog sizes (065): Page Designer, what pages tell the browser, export/import
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
   web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and

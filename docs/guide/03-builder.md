@@ -702,6 +702,17 @@ The model sees table and column names, types, keys and descriptions, and what yo
 rows. Its answers are escaped when shown. Requests are logged in the AI usage log with the source
 `builder` and no application (no application limits apply).
 
+## Instance settings
+
+Workspace utilities → **Instance settings** (administrators; APEX: instance administration → instance settings):
+
+- **Sessions and sign-in**: session idle time, maximum session length, the sign-in throttling window and the number
+  of failed sign-ins per user and per IP address. A value set here wins over its environment variable
+  (`SESSION_IDLE_MINUTES`, `SESSION_MAX_HOURS`, `LOGIN_*`); empty uses the variable or the default. The page shows the
+  value in effect and where it comes from. Other servers of the installation pick up a change within 30 seconds.
+- **Configuration**: the server's environment variables (port, public URL, allow-lists, background runners, AI keys,
+  …) as they are in effect; secrets (connection strings, keys) only show whether they are set.
+
 ## Installation
 
 Workspace utilities → **Installation** (administrators only; APEX: the install/upgrade logs of

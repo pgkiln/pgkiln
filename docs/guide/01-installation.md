@@ -86,7 +86,7 @@ which is read at startup; real environment variables take precedence.
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy, so client IPs (used by login throttling) come from `X-Forwarded-For` |
 | `PGAPEX_AUTH_HEADER_PROXIES` | *(none)* | Comma-separated IPs and CIDRs (e.g. `10.0.0.5, 192.168.10.0/24`) of the reverse proxies whose user header apps with **HTTP header** authentication trust; checked against the connection's own address, never `X-Forwarded-For`. Unset: header sign-in is refused ([chapter 8](08-security.md#http-header-authentication-reverse-proxy)) |
-| `SESSION_IDLE_MINUTES` | `60` | A session ends after this long without requests |
+| `SESSION_IDLE_MINUTES` | `60` | A session ends after this long without requests. This and the next four can also be set in the builder (Workspace utilities → **Instance settings**), which wins over the variable |
 | `SESSION_MAX_HOURS` | `8` | A session ends this long after sign-in, whatever the activity |
 | `LOGIN_WINDOW_MINUTES` | `15` | Window for counting failed sign-ins |
 | `LOGIN_MAX_FAILURES_PER_USER` | `5` | Failed sign-ins per username (since their last success) before a lock |

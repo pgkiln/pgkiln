@@ -5805,3 +5805,21 @@ describe('sprint 37 report selection across pages', () => {
     }
   });
 });
+
+describe('sprint 37 instance settings', () => {
+  test('only administrators, with CSRF; values are whole numbers in range; secrets never shown', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get('/builder/instance')).statusCode, 302);
+    const adm = new Browser();
+    await adm.get('/builder/login');
+    await adm.post('/builder/login', { __csrf: adm.lastCsrf, username: 'admin', password: 'admin' });
+    const page = (await adm.get('/builder/instance')).body;
+    for (const k of ['PGAPEX_SECRET_KEY', 'API_JWT_SECRET', 'DATABASE_URL', 'RUNTIME_DATABASE_URL']) {
+      const v = process.env[k];
+      if (v) assert.ok(!page.includes(v), k);
+    }
+    assert.equal((await adm.post('/builder/instance', { __csrf: 'forged', session_max_hours: '1' })).statusCode, 403);
+    await adm.post('/builder/instance', { __csrf: adm.lastCsrf, session_max_hours: "1; drop table meta.setting" });
+    assert.equal(await owner.one(`select value from meta.setting where name = 'session_max_hours'`), undefined);
+  });
+});

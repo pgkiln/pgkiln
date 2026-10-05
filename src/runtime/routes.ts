@@ -13,7 +13,7 @@ import { documentShell } from '../layout.ts';
 import { accountRoles, loadApp, loadPage, type App, type Page, type Region } from '../metadata.ts';
 import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
-import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
+import { checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
 import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type SsoResult } from '../sso.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
@@ -1005,7 +1005,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (username.includes('\0')) return fail(locale.t('login.invalid'), 400), null;
     if (await loginThrottled(a.id, username, ip)) {
       logActivity({ appId: a.id, username, event: 'login_locked', ip });
-      return fail(locale.t('login.throttled', { minutes: LOGIN_WINDOW_MINUTES }), 429), null;
+      return fail(locale.t('login.throttled', { minutes: loginWindowMinutes() }), 429), null;
     }
     return { a, locale, session, username: username.slice(0, 100), next, ip, fail };
   };

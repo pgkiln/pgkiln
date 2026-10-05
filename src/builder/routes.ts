@@ -16,6 +16,7 @@ import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
 import { appAllowed, currentWorkspace, placeApp, workspaceRoutes } from './workspaces.ts';
+import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
@@ -122,6 +123,7 @@ export async function builderRoutes(app: FastifyInstance) {
   // the workspace pages (App Builder home, Create, Import, Dashboard, Utilities) are in home.ts
   await homeRoutes(app);
   await workspaceRoutes(app);
+  await instanceRoutes(app);
   await wizardRoutes(app);
   await appFromFileRoutes(app);
 
