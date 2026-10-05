@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-05
+
+### Added
+- **Working copies** (migration 055): Working copies on an application makes a second application
+  to change in isolation (same schema and data, no automations of its own). Compare and merge
+  compares it with the main application per component, three ways, with a line diff; changes on
+  one side merge, conflicts are chosen per component. Merge into the main application, or refresh
+  the copy with the main application's changes; users, sessions, saved reports, secrets and
+  automation switches stay. Locks are respected; merges are logged.
+- **Theme, library and boilerplate applications** (migration 056): an application type in Settings.
+  Other applications subscribe to a theme application's theme and template components, or a library
+  application's lists of values, authorization schemes, build options, template components and
+  lists (Shared Components → Subscriptions): the component is copied, shown as in sync or not, and
+  refreshed on demand; the master publishes to all subscribers. Create application can start from a
+  boilerplate application.
+
 ## [0.25.0] - 2026-10-05
 
 ### Added

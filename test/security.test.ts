@@ -4689,3 +4689,141 @@ describe('sprint 33 item 6: Theme Roller style variants and template options', (
     }
   });
 });
+
+describe('sprint 34 working copies', () => {
+  const MAIN = 'wc-sec';
+  let mainId: number;
+  let dev: FileBrowser;
+  before(async () => {
+    await owner.query('delete from meta.app where alias like $1', [`${MAIN}%`]);
+    mainId = (await owner.one(`select meta.import_app(meta.export_app('hr'), $1) as id`, [MAIN])).id;
+    dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where alias like $1', [`${MAIN}%`]);
+  });
+
+  test('the pages need a developer and the CSRF token', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.get(`/builder/apps/${mainId}/working-copies`)).statusCode, 302);
+    assert.equal((await anon.post('/builder/working-copies', { __csrf: 'x', main_app_id: String(mainId), name: 'anon' })).statusCode, 302);
+    await dev.get(`/builder/apps/${mainId}/working-copies`);
+    assert.equal((await dev.post('/builder/working-copies', { __csrf: 'forged', main_app_id: String(mainId), name: 'forged' })).statusCode, 403);
+    assert.equal(await owner.one(`select 1 from meta.working_copy where main_app_id = $1`, [mainId]), undefined);
+    for (const name of ['<b>x</b>', '../up', 'a'.repeat(41), '-lead']) await dev.submit('/builder/working-copies', { main_app_id: String(mainId), name });
+    assert.equal(await owner.one(`select 1 from meta.working_copy where main_app_id = $1`, [mainId]), undefined, 'bad names refused');
+    assert.equal((await dev.get('/builder/apps/x/working-copies')).statusCode, 404);
+    assert.equal((await dev.submit(`/builder/apps/${mainId}/merge`, { state: 'x', direction: 'merge' })).statusCode, 404, 'only a copy merges');
+  });
+
+  test('merging respects locks and the comparison shown; differences are escaped; the copy table is closed to the runtime', async () => {
+    await dev.get(`/builder/apps/${mainId}/working-copies`);
+    await dev.submit('/builder/working-copies', { main_app_id: String(mainId), name: 'sec' });
+    const copyId = (await owner.one(`select app_id from meta.working_copy where main_app_id = $1`, [mainId])).app_id;
+    const lov = (id: number) => owner.one(`select query from meta.lov where app_id = $1 and name = 'JOBS'`, [id]);
+    await owner.query(`update meta.lov set query = 'select ''</pre><script>x()</script>'' as d, 1 as r' where app_id = $1 and name = 'JOBS'`, [copyId]);
+    const page = await dev.get(`/builder/apps/${copyId}/compare?c=${encodeURIComponent('shared/lovs/jobs')}`);
+    assert.doesNotMatch(page.body, /<script>x\(\)/, 'differences are escaped');
+    assert.equal((await dev.get(`/builder/apps/${copyId}/compare?c=${encodeURIComponent('../../etc/passwd')}`)).statusCode, 200, 'unknown components are only looked up');
+    const state = /name="state" value="([0-9a-f]+)"/.exec(page.body)![1];
+    const mainBefore = (await lov(mainId)).query;
+
+    // another developer's page or application lock on the main application stops the merge
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'someone-else')`, [mainId]);
+    try {
+      await dev.submit(`/builder/apps/${copyId}/merge`, { state, direction: 'merge' });
+      assert.equal((await lov(mainId)).query, mainBefore, 'locked: nothing merged');
+    } finally {
+      await owner.query(`delete from meta.builder_lock where app_id = $1`, [mainId]);
+    }
+    // a forged or stale fingerprint, a bad direction, a missing CSRF token
+    await dev.submit(`/builder/apps/${copyId}/merge`, { state: 'f'.repeat(32), direction: 'merge' });
+    assert.equal(await dev.submit(`/builder/apps/${copyId}/merge`, { state, direction: 'sideways' }).then((r) => r.statusCode), 400);
+    assert.equal((await dev.post(`/builder/apps/${copyId}/merge`, { __csrf: 'forged', state, direction: 'merge' })).statusCode, 403);
+    assert.equal((await lov(mainId)).query, mainBefore, 'still nothing merged');
+    await dev.get(`/builder/apps/${copyId}/compare`);
+    await dev.submit(`/builder/apps/${copyId}/merge`, { state, direction: 'merge' });
+    assert.match((await lov(mainId)).query, /<script>x\(\)/, 'the real merge goes through');
+
+    await assert.rejects(runtime.query('select * from meta.working_copy'), /permission denied/);
+    // deleting needs a copy: the main application can not be deleted this way
+    await dev.submit(`/builder/apps/${mainId}/working-copy/delete`, {});
+    assert.ok(await owner.one('select 1 from meta.app where id = $1', [mainId]));
+  });
+});
+
+describe('sprint 34 application types and subscriptions', () => {
+  const P = 'sub-sec';
+  let lib: number, sub: number;
+  let dev: FileBrowser;
+  const blank = async (alias: string, type = 'standard') =>
+    (await owner.one(`insert into meta.app (alias, name, app_type) values ($1, $2, $3) returning id`, [alias, `App ${alias}`, type])).id as number;
+  const lov = async (id: number) => (await owner.one(`select query from meta.lov where app_id = $1 and name = 'SECRET_LOV'`, [id]))?.query;
+  before(async () => {
+    await owner.query('delete from meta.app where alias like $1', [`${P}%`]);
+    lib = await blank(`${P}-lib`, 'library');
+    sub = await blank(`${P}-sub`);
+    await owner.query(`insert into meta.lov (app_id, name, query) values ($1, 'SECRET_LOV', 'select 1 as d, 1 as r')`, [lib]);
+    dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where alias like $1', [`${P}%`]);
+  });
+
+  test('the pages need a developer and the CSRF token; only offered components can be subscribed to', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.get(`/builder/apps/${sub}/subscriptions`)).statusCode, 302);
+    assert.equal((await anon.post(`/builder/apps/${sub}/subscriptions`, { __csrf: 'x', component: `${lib}|lov|SECRET_LOV` })).statusCode, 302);
+    await dev.get(`/builder/apps/${sub}/subscriptions`);
+    assert.equal((await dev.post(`/builder/apps/${sub}/subscriptions`, { __csrf: 'forged', component: `${lib}|lov|SECRET_LOV` })).statusCode, 403);
+    assert.equal(await lov(sub), undefined);
+    // a standard application, an unknown kind or a table name in the kind are refused
+    const std = await blank(`${P}-std`);
+    await owner.query(`insert into meta.lov (app_id, name, query) values ($1, 'SECRET_LOV', 'select 2 as d, 2 as r')`, [std]);
+    for (const component of [`${std}|lov|SECRET_LOV`, `${lib}|page|1`, `${lib}|__proto__|x`, `${lib}|lov;drop table meta.app|x`, `${lib}|account|admin`, 'garbage'])
+      await dev.submit(`/builder/apps/${sub}/subscriptions`, { component });
+    assert.equal(await lov(sub), undefined, 'nothing copied');
+    assert.equal((await owner.one('select count(*)::int as n from meta.subscription where app_id = $1', [sub])).n, 0);
+    // the subscriber's application lock (another developer) refuses subscribing
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'someone-else')`, [sub]);
+    try {
+      await dev.submit(`/builder/apps/${sub}/subscriptions`, { component: `${lib}|lov|SECRET_LOV` });
+      assert.equal(await lov(sub), undefined, 'locked');
+    } finally {
+      await owner.query('delete from meta.builder_lock where app_id = $1', [sub]);
+    }
+  });
+
+  test('publishing skips applications locked by another developer; the subscription table is closed to the runtime', async () => {
+    await dev.get(`/builder/apps/${sub}/subscriptions`);
+    await dev.submit(`/builder/apps/${sub}/subscriptions`, { component: `${lib}|lov|SECRET_LOV` });
+    assert.equal(await lov(sub), 'select 1 as d, 1 as r');
+    await owner.query(`update meta.lov set query = 'select 3 as d, 3 as r' where app_id = $1 and name = 'SECRET_LOV'`, [lib]);
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'someone-else')`, [sub]);
+    try {
+      await dev.get(`/builder/apps/${lib}/subscriptions`);
+      await dev.submit(`/builder/apps/${lib}/subscriptions/publish`, { kind: 'lov', name: 'SECRET_LOV' });
+      assert.equal(await lov(sub), 'select 1 as d, 1 as r', 'the locked subscriber is not changed');
+    } finally {
+      await owner.query('delete from meta.builder_lock where app_id = $1', [sub]);
+    }
+    await dev.submit(`/builder/apps/${lib}/subscriptions/publish`, { kind: 'lov', name: 'SECRET_LOV' });
+    assert.equal(await lov(sub), 'select 3 as d, 3 as r');
+    await assert.rejects(runtime.query('select * from meta.subscription'), /permission denied/);
+    await assert.rejects(owner.query(`update meta.app set app_type = 'evil' where id = $1`, [sub]), /check constraint/);
+    // a bad referrer never becomes the redirect
+    dev.headers.referer = `https://evil.example/builder/apps/${lib}/shared?c=lov-1`;
+    try {
+      const res = await dev.request('POST', `/builder/apps/${sub}/subscriptions/refresh`, { __csrf: dev.lastCsrf });
+      assert.equal(res.headers.location, `/builder/apps/${sub}/subscriptions`);
+      dev.headers.referer = `http://localhost/builder/apps/${sub}/shared?c=lov-12`;
+      assert.equal((await dev.request('POST', `/builder/apps/${sub}/subscriptions/refresh`, { __csrf: dev.lastCsrf })).headers.location, `/builder/apps/${sub}/shared?c=lov-12`);
+    } finally {
+      delete dev.headers.referer;
+    }
+  });
+});

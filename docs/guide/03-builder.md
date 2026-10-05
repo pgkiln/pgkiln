@@ -63,6 +63,7 @@ The home page is laid out like APEX's App Builder:
 | Parsing schema | The database schema the app works with. Choose an existing schema, or leave it on "new schema" to create one named after the alias |
 | Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)), *Custom* (your own PL/pgSQL function, see [chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) or *None* (a public app) |
 | First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
+| Start from | Shown when there are **boilerplate** applications (Settings → Application type): their pages, shared components and settings are copied into the new application, which keeps its own name, alias, role and authentication ([application types](#application-types-and-subscriptions)) |
 
 Creating the app also:
 
@@ -301,6 +302,47 @@ Page properties:
 
 Chapters 4–7 describe every component type and property.
 
+## Working copies
+
+APEX's working copies: a second application to change in isolation, then merge back. On an
+application's pages, **Working copies** (top right) lists its copies and **creates** one with a
+name; the copy gets the alias `<alias>-<name>` and its own application id. It is the same
+application, so it runs against the main application's schema, role and data, and the same users
+may sign in to it. It runs no automations or REST synchronisations (the main application does);
+web credentials keep working.
+
+Change the copy like any application. Its **Compare and merge** page compares it with the main
+application per **component**: the application settings, each shared component (a list of values,
+an authorization scheme, a REST data source, …), the navigation menu, each page's settings and each
+region, item, button, process and so on. A copy keeps the main application *as it was when the copy
+was made* (or last refreshed or merged), so the page tells which side changed what:
+
+| Result | Meaning |
+|---|---|
+| Copy | changed (added, deleted) only in the copy: the copy's version wins |
+| Main | changed only in the main application: its version stays |
+| Conflict | changed on both sides, differently: choose **Main** or **Copy** |
+
+**Show** shows a component's differences (lines of the main application with `-`, of the copy with
+`+`). Then:
+
+- **Merge into …** writes the result into the main application *and* the copy;
+- **Refresh the copy** writes it into the copy only, bringing the main application's changes in
+  (conflicts are chosen the same way).
+
+Both keep what belongs to the installation, like `pgapex import --replace`: users and access,
+sessions, saved reports, running tasks and workflows, secrets of web credentials, and the main
+application's automation and synchronisation switches (a new automation arrives switched off). A
+merge is refused while another developer has locked the main application or a page the merge
+changes, and when either side changed after the comparison was shown (compare again). If the
+result is not consistent (for example an item kept from one side refers to a region the other side
+renamed), nothing is written and the message names the problem. Merges and refreshes are logged in
+the activity log (`working_copy`).
+
+**Delete working copy** deletes the copy's application. Deleting the main application leaves its
+copies as ordinary applications. Copies of copies are not possible, and working copies are not
+exported.
+
 ## Shared components
 
 Components used by the whole application:
@@ -324,6 +366,32 @@ Components used by the whole application:
 | **Data load definitions** | A target table, file format (CSV, Excel, JSON, XML with its row element) and column mapping with transformations, for SQL Workshop → Load Data and the `data_load` process ([chapter 16](16-files.md#data-load-definitions)) |
 | **Lists** | Named sets of links (static entries with nesting, badges, conditions and authorization, or a query) for list regions, the navigation menu and the navigation bar ([chapter 4](04-pages-and-regions.md#list-lists)) |
 | **Supporting objects** | Install, upgrade and deinstall scripts that travel with the export ([below](#supporting-objects)) |
+
+### Application types and subscriptions
+
+APEX 26.1's theme, library and boilerplate applications, and subscribed shared components. Each
+application has a **type** (Settings → Application type):
+
+| Type | Meaning |
+|---|---|
+| Standard | An ordinary application |
+| Theme application | Offers its theme (colours, navigation, light/dark settings and the Theme Roller's styles) and its template components to other applications |
+| Library application | Offers its lists of values, authorization schemes, build options, template components and lists (with their entries) to other applications |
+| Boilerplate application | A starting point: **Create** offers it under *Start from* |
+
+**Shared Components → Subscriptions** subscribes the application to one of those components: it is
+copied now (replacing a component with the same name) and remembered as a subscription. The page
+lists the subscriptions with their state (*in sync*, or *differs* when the master or the copy
+changed); **Refresh** (one, or all) copies the master's definition again, replacing changes made
+here, and **Unsubscribe** keeps the component as it is but forgets where it came from. The
+component's own page in Shared Components says where it comes from, with a Refresh button.
+
+On a theme or library application the same page lists its **subscribers**, and **Publish**
+refreshes every subscriber of a component at once (an application locked by another developer is
+skipped and named in the message). Subscribing, refreshing and publishing are logged in the activity
+log (`subscription`). A subscribed list of values that uses a REST data source needs a data source
+with the same name in the subscribing application. Subscriptions are links between the
+applications of this installation and are not exported (the type is).
 
 ### Supporting objects
 

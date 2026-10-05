@@ -31,7 +31,7 @@ export function compareFiles(database: FileMap, directory: FileMap): FileChange[
 const isText = (b: Buffer) => !b.subarray(0, 8000).includes(0);
 
 /** Unified diff of two texts (3 lines of context), or a note for binary files. */
-export function unifiedDiff(path: string, a: Buffer | undefined, b: Buffer | undefined) {
+export function unifiedDiff(path: string, a: Buffer | undefined, b: Buffer | undefined, names: [string, string] = ['database', 'directory']) {
   if ((a && !isText(a)) || (b && !isText(b))) return `Binary file ${path} differs\n`;
   const split = (buf?: Buffer) => (buf ? canonical(path, buf).toString('utf8').replace(/\n$/, '').split('\n') : []);
   const x = split(a), y = split(b);
@@ -46,7 +46,7 @@ export function unifiedDiff(path: string, a: Buffer | undefined, b: Buffer | und
     else if (i < n && (j >= m || lcs[i + 1][j] >= lcs[i][j + 1])) ops.push(['-', x[i], i++, j]);
     else ops.push(['+', y[j], i, j++]);
   }
-  const out = [`--- database/${path}`, `+++ directory/${path}`];
+  const out = [`--- ${names[0]}/${path}`, `+++ ${names[1]}/${path}`];
   const CONTEXT = 3;
   for (let k = 0; k < ops.length; ) {
     if (ops[k][0] === ' ') {

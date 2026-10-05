@@ -185,6 +185,7 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
       <div class="ide-head-title"><span class="ide-app-icon" aria-hidden="true">${String(a.name ?? '?').slice(0, 1).toUpperCase()}</span>
         <div><h1>${a.name}</h1><span class="muted small">Application ${a.id} · /a/${a.alias}</span></div>
         <div class="buttons ide-head-actions">
+          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/working-copies">${icon('layers')} Working copies</a>
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a>
           <a class="btn btn-sm btn-run" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
         </div></div>

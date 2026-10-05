@@ -644,3 +644,9 @@ details.support-script pre.source { margin-top: 0.4rem; white-space: pre-wrap; o
 .ide input[type=color].swatch { width: 2rem; min-height: 1.4rem; padding: 0; vertical-align: middle; }
 .ide .options-field { border: 0; margin: 0; padding: 0; min-width: 0; }
 .ide .options-field code { font-size: 0.75em; }
+
+/* (sprint 34) working copies: differences and conflicts */
+pre.diff { max-height: 32rem; overflow: auto; background: var(--code-bg); padding: 0.6rem; font-size: 0.82rem; white-space: pre; }
+tr.row-conflict > td:first-child { border-left: 3px solid var(--warn); }
+.badge.badge-warn { background: var(--warning-soft); color: var(--text); }
+.publish-buttons .btn { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: left; }

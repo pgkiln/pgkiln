@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { owner, type Client } from '../db.ts';
 import { passwordProblem } from '../accounts.ts';
+import { replaceApp } from '../cli/replace.ts';
 
 // Creating an application (Create → blank application, and Create → from a
 // file): the parsing schema, a database role app_<alias> that can use only
@@ -86,6 +87,22 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
     existingAccount = !!existing.rowCount;
   }
   return { id: appId, existingAccount };
+}
+
+/**
+ * (056) Start a new application from a boilerplate application: its definition
+ * (pages, shared components, settings) replaces the new application's, which
+ * keeps its name, alias, schema role and authentication. Inside the caller's
+ * transaction, right after createApp().
+ */
+export async function startFromBoilerplate(c: Client, appId: number, a: CheckedApp, boilerplateId: number) {
+  const bp = (await c.query<{ alias: string }>(`select alias from meta.app where id = $1 and app_type = 'boilerplate'`, [boilerplateId])).rows[0];
+  if (!bp) throw new Error('Choose a boilerplate application (an application of type Boilerplate).');
+  const doc = (await c.query('select meta.export_app($1) as d', [bp.alias])).rows[0].d;
+  await replaceApp(c, doc, a.alias);
+  await c.query(`update meta.app set name = $2, db_role = $3, authentication = $4, app_type = 'standard', api_role = null, updated_at = now() where id = $1`, [
+    appId, a.name, a.role, a.authentication,
+  ]);
 }
 
 /** A friendlier message for the errors creating an application can raise. */

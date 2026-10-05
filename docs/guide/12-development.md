@@ -17,6 +17,9 @@ src/
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
                            or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
+  subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
+  workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
+                           merge into the main application or refresh the copy, both through cli/replace.ts
   cli/                     the command line: main.ts (commands, help, exit codes), files.ts (directories,
                            zip), diff.ts, replace.ts (import --replace in place)
   app.ts / server.ts       Fastify setup / entry point
@@ -144,6 +147,8 @@ src/
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
     themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
+    subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
+    workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     process-jobs.ts        page designer: the Jobs tab of a background chain process
@@ -245,7 +250,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.25.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.26.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

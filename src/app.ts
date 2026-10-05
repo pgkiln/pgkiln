@@ -25,6 +25,8 @@ import { ldapRoutes } from './builder/ldap.ts';
 import { documentRoutes } from './builder/documents.ts';
 import { pwaBuilderRoutes } from './builder/pwa.ts';
 import { themeRollerRoutes } from './builder/themeroller.ts';
+import { workingCopyRoutes } from './builder/workingcopies.ts';
+import { subscriptionRoutes } from './builder/subscriptions.ts';
 import { reportSettingsRoutes } from './builder/report-settings.ts';
 import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
@@ -102,6 +104,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(documentRoutes);
   await app.register(pwaBuilderRoutes);
   await app.register(themeRollerRoutes);
+  await app.register(workingCopyRoutes);
+  await app.register(subscriptionRoutes);
   await app.register(oauthRoutes);
   await app.register(apiRoutes);
   await app.register(globalizationRoutes);

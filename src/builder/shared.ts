@@ -3,6 +3,7 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { usedInPanel } from './search.ts';
+import { subscriptionNote } from './subscriptions.ts';
 import { documentExtras } from './documents.ts';
 import { workflowExtras, workflowForm } from './workflows.ts';
 import { restExtras } from './rest.ts';
@@ -74,6 +75,7 @@ export async function sharedRoutes(app: FastifyInstance) {
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(formSpec, selKind, formRow, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
             ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s, rows.automation_action) : selKind === 'automation_action' ? actionExtras(row, rows.automation) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : selKind === 'web_credential' ? credentialExtras(a.id, row, s) : selKind === 'rest_source' ? await restSourceExtras(a.id, row, s) : selKind === 'data_load_def' ? dataLoadDefExtras(row) : selKind === 'list' ? listExtras(a.id, row, rows.list_entry) : selKind === 'supporting_script' ? html`<p class="u-mt1"><a class="btn" href="${BASE}/apps/${a.id}/supporting-objects">${icon('play')} Run supporting objects…</a></p>` : ''}
             ${await usedInPanel(a.id, selKind, row)}
+            ${await subscriptionNote(a.id, selKind, row, s)}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
     } else {
@@ -132,6 +134,8 @@ export async function sharedRoutes(app: FastifyInstance) {
       <li><a href="${BASE}/apps/${a.id}/shared"${!selKind && !newKind ? raw(' aria-current="page"') : ''}>${icon('users')}<span>Access control</span><span class="kind">${users.length}</span></a></li>
       <li class="group">Globalization</li>
       <li><a href="${BASE}/apps/${a.id}/globalization">${icon('file')}<span>Translations and text messages</span><span class="kind">${[a.language, ...(a.languages ?? [])].join(', ')}</span></a></li>
+      <li class="group">Subscriptions</li>
+      <li><a href="${BASE}/apps/${a.id}/subscriptions">${icon('layers')}<span>Subscriptions and subscribers</span>${a.app_type && a.app_type !== 'standard' ? html`<span class="kind">${a.app_type}</span>` : ''}</a></li>
       ${SHARED.map((kind) => {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>

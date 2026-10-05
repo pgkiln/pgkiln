@@ -180,6 +180,7 @@ export async function homeRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const schemas = await owner.query(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`);
+    const boilerplates = (await owner.query(`select id, name from meta.app where app_type = 'boilerplate' order by lower(name), id`)).rows;
     const main = html`<div class="ab-narrow">
       <h1>Create an application</h1>
       <p class="muted">A blank application with a Home page, its own database role and a parsing schema. Add pages with the page wizards afterwards.</p>
@@ -188,6 +189,10 @@ export async function homeRoutes(app: FastifyInstance) {
         <div class="form-grid">
           ${input('name', 'Name', '', { required: true })}
           ${input('alias', 'Alias (URL)', '', { required: true, help: 'lowercase, e.g. inventory → /a/inventory' })}
+          ${boilerplates.length
+            ? select('boilerplate', 'Start from', '', [['', '- a blank application (a Home page) -'], ...boilerplates.map((x): [string, string] => [String(x.id), `${x.name} (boilerplate)`])],
+                'A boilerplate application\'s pages, shared components and settings are copied; the new application keeps its own name, alias, role and authentication.')
+            : ''}
           ${select('schema', 'Parsing schema', '', [['', '- new schema named after the alias -'], ...schemas.rows.map((r): [string, string] => [r.nspname, r.nspname])],
             'A database role app_<alias> is created with access to this schema only; the app runs as that role.')}
           ${select('authentication', 'Authentication', 'app_users', [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
