@@ -38,8 +38,8 @@ jobs:
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
       LDAP_URL: ldap://127.0.0.1:3890
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -77,15 +77,15 @@ jobs:
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
       SCREENSHOTS: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots
@@ -118,10 +118,10 @@ jobs:
       RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the release tags
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
