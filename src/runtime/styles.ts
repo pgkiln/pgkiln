@@ -13,6 +13,22 @@ import type { App } from '../metadata.ts';
 import type { Session } from '../session.ts';
 
 export const HEX = /^#[0-9a-f]{6}$/i;
+
+/**
+ * Base styles (APEX: the theme style of Universal Theme; 26.1's default is
+ * "Iris"). theme.base picks one; the light and dark colours, corners, font
+ * and shadows of each live in app.css under html[data-style="…"]. The accent
+ * and header defaults below are what the builder shows for them.
+ */
+export const BASE_STYLES = {
+  standard: { label: 'Standard', accent: '#0b63c5', header: '#13294b' },
+  iris: { label: 'Iris', accent: '#5146d8', header: '#1e1a4d' },
+} as const;
+export type BaseStyle = keyof typeof BASE_STYLES;
+/** New applications start with this base style. */
+export const NEW_APP_BASE: BaseStyle = 'iris';
+/** The application's base style (anything else than a known key: Standard). */
+export const baseStyleOf = (theme: { base?: unknown } | undefined): BaseStyle => (theme?.base === 'iris' ? 'iris' : 'standard');
 export const STYLE_NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,29}$/;
 export const MAX_STYLES = 10;
 
@@ -126,15 +142,16 @@ const colourVars = (accent?: string, header?: string) => {
 export function themeCss(theme: App['theme'] | undefined, style: StyleVariant | null): string {
   const out: string[] = [];
   const base = colourVars(theme?.accent, theme?.header);
-  if (base.length) out.push(`:root{${base.join('')}}`);
+  // html:root ties with app.css's html[data-style] rules and comes later, so own colours win over a base style's
+  if (base.length) out.push(`html:root{${base.join('')}}`);
   if (style) {
     const colours = colourVars(style.accent, style.header);
-    if (colours.length) out.push(`:root{${colours.join('')}}`);
+    if (colours.length) out.push(`html:root{${colours.join('')}}`);
     const all: string[] = [];
     if (style.font && own(FONTS, style.font)) all.push(`--font:${FONTS[style.font].css};`);
     if (style.font_size && own(FONT_SIZES, style.font_size)) all.push(`--font-size:${FONT_SIZES[style.font_size].css};`);
     if (style.radius && own(RADII, style.radius)) all.push(`--radius:${RADII[style.radius].css};`);
-    if (all.length) out.push(`:root{${all.join('')}}`);
+    if (all.length) out.push(`html:root{${all.join('')}}`);
   }
   return out.join('');
 }

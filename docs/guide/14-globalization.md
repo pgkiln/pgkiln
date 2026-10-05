@@ -192,11 +192,26 @@ Under **Settings → Theme**, *Theme style* is **Automatic** (follow the device,
 has the same choice. The choice is saved on the account, so it applies in every application that
 allows it. For public applications it's kept in a cookie.
 
+## Base styles: Iris and Standard
+
+Every application has a **base style** (Settings → Theme → *Base style*; APEX: the Universal Theme's theme style,
+whose default in 26.1 is *Iris*). It sets the colours of the light and the dark theme, the corners, the font and the
+shadows of the whole application:
+
+| Base style | Look |
+|---|---|
+| **Iris** (the default for new applications) | Indigo accent (`#5146d8`, `#a59cff` in dark mode), a deep indigo header, cool light greys, larger corners (12 px), softer shadows, rounded navigation items and pill-shaped primary buttons |
+| **Standard** | pgapex's look until 0.28: blue accent, navy header, 8 px corners. Applications created before 0.29 keep it until you change it |
+
+The accent and header colours under Settings → Theme, and the style variants below, change the base style's
+colours (in the light theme). Choosing a colour equal to a base style's own stores nothing, so switching the base
+style later changes it too. All text colours of both base styles meet WCAG AA contrast in light and dark mode.
+
 ## Style variants (Theme Roller)
 
 APEX lets an application keep several *theme styles* and lets users pick one. In pgapex:
 **Settings → Theme → Theme Roller** (`/builder/apps/:id/theme`) keeps up to 10 named **styles** per
-application. The base colours under Settings → Theme are the *Standard* style; each style can change:
+application. The base style and colours under Settings → Theme are the *Standard* choice; each style can change:
 
 | Property | Values |
 |---|---|

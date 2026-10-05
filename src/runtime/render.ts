@@ -172,7 +172,7 @@ export function styleSwitch(ctx: PageContext, back: string) {
 }
 
 export async function chrome(ctx: PageContext, main: Raw, title: string) {
-  const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme };
+  const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style };
   const t = ctx.locale.t;
   if (ctx.dialog)
     return documentShell(`${title} · ${ctx.app.name}`, html`<main class="t-dialog-main" id="main">${main}</main>`, 't-dialog-page', {
@@ -307,6 +307,6 @@ export function dialogClosePage(ctx: PageContext) {
     't-dialog-page',
     { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no) },
     '',
-    { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme },
+    { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style },
   );
 }

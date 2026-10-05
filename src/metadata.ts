@@ -84,6 +84,8 @@ export interface App {
     accent?: string; header?: string; nav?: 'side' | 'top'; mode?: 'auto' | 'light' | 'dark'; user_choice?: boolean;
     /** (053) Theme Roller style variants, the default one, and whether users may choose (src/runtime/styles.ts) */
     styles?: unknown[]; style?: string; style_choice?: boolean;
+    /** (0.29) the base style: 'iris' or Standard (src/runtime/styles.ts) */
+    base?: string;
   };
   /** primary language, translated languages, and how the language is chosen */
   language: string;

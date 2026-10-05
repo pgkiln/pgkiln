@@ -76,6 +76,74 @@
   color-scheme: dark;
 }
 
+/* ---------- base style "Iris" (theme.base = 'iris'; the default for new
+   applications, like APEX 26.1's Iris theme style). Selectors are
+   html[data-style="iris"]: they beat the Standard values above, and the
+   application's own colours (src/runtime/styles.ts, html:root, later in the
+   page) beat them in turn. Contrast: text ≥ 15:1, muted ≥ 5.8:1, accent ≥ 6.5:1. */
+html[data-style="iris"] {
+  --bg: #f6f6fb;
+  --surface: #ffffff;
+  --surface-2: #f8f8fc;
+  --surface-3: #eeeef6;
+  --text: #1d1b2e;
+  --muted: #5f5d75;
+  --border: #e3e2ef;
+  --accent: #5146d8;
+  --accent-text: #ffffff;
+  --accent-soft: #eeedfd;
+  --header: #1e1a4d;
+  --header-text: #f1f0ff;
+  --nav-bg: #ffffff;
+  --nav-active: #eeedfd;
+  --radius: 12px;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --shadow: 0 1px 2px rgb(30 27 75 / 5%), 0 2px 8px rgb(30 27 75 / 6%);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-style="iris"]:not([data-theme="light"]) {
+    --bg: #121120;
+    --surface: #1a1930;
+    --surface-2: #201f38;
+    --surface-3: #292846;
+    --text: #e8e7f5;
+    --muted: #a3a1bd;
+    --border: #302f4d;
+    --accent: #a59cff;
+    --accent-text: #14122b;
+    --accent-soft: #2a2752;
+    --header: #0d0c1a;
+    --header-text: #e8e7f5;
+    --nav-bg: #161528;
+    --nav-active: #2a2752;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 8px rgb(0 0 0 / 25%);
+  }
+}
+html[data-style="iris"][data-theme="dark"] {
+  --bg: #121120;
+  --surface: #1a1930;
+  --surface-2: #201f38;
+  --surface-3: #292846;
+  --text: #e8e7f5;
+  --muted: #a3a1bd;
+  --border: #302f4d;
+  --accent: #a59cff;
+  --accent-text: #14122b;
+  --accent-soft: #2a2752;
+  --header: #0d0c1a;
+  --header-text: #e8e7f5;
+  --nav-bg: #161528;
+  --nav-active: #2a2752;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 8px rgb(0 0 0 / 25%);
+}
+/* Iris: rounded navigation pills instead of an edge bar, quieter region headers, pill-shaped primary buttons */
+html[data-style="iris"] .t-nav a[aria-current="page"] { box-shadow: none; border-radius: calc(var(--radius) * 0.75); }
+html[data-style="iris"] .t-nav a, html[data-style="iris"] .t-nav summary { border-radius: calc(var(--radius) * 0.75); }
+html[data-style="iris"] .region-header { border-bottom-color: transparent; }
+html[data-style="iris"] .region-header h2 { letter-spacing: -0.01em; }
+html[data-style="iris"] .btn-hot { border-radius: 999px; }
+html[data-style="iris"] :focus-visible { outline-color: var(--accent); }
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; font: var(--font-size)/1.5 var(--font); background: var(--bg); color: var(--text); }

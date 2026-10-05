@@ -13,6 +13,10 @@ All notable changes to this project are documented here. The format follows
   manage workspaces on Workspace utilities → Workspaces: add, rename, developers, move applications, delete when
   empty. Existing applications and developers are in the Default workspace. Not a security boundary between
   developers who write SQL: use separate installations for tenants that must not see each other.
+- **Base style Iris** (like APEX 26.1's new default theme style): indigo accent, a deep indigo header, larger corners,
+  softer shadows and its own dark palette, all with WCAG AA contrast. New applications start with it; existing ones
+  keep *Standard* until switched in Settings → Theme → Base style. Own accent and header colours and Theme Roller
+  styles still apply on top.
 
 ## [0.28.0] - 2026-10-06
 

@@ -8,7 +8,8 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { COMPONENTS, parseFields } from '../src/builder/components.ts';
 import { closePools, owner } from '../src/db.ts';
-import { appStyles, chosenStyle, parseStyle, themeCss } from '../src/runtime/styles.ts';
+import { appStyles, BASE_STYLES, baseStyleOf, chosenStyle, parseStyle, themeCss } from '../src/runtime/styles.ts';
+import { readFileSync } from 'node:fs';
 import { templateClasses } from '../src/runtime/template-options.ts';
 import { Browser } from './helpers.ts';
 
@@ -249,5 +250,93 @@ describe('Theme Roller in the builder', () => {
     assert.equal(theme.style, 'Forest');
     // restore for the other tests
     await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify({ accent: '#123456', styles: STYLES, style: 'Ocean', style_choice: true })]);
+  });
+});
+
+describe('base style Iris', () => {
+  const lum = (hex: string) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a: string, b: string) => {
+    const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+  };
+  const block = (css: string, selector: string) => {
+    const i = css.indexOf(`${selector} {`);
+    assert.ok(i >= 0, selector);
+    const body = css.slice(i, css.indexOf('}', i));
+    return Object.fromEntries([...body.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6})/g)].map((m) => [m[1], m[2]]));
+  };
+
+  test('only "iris" is a base style other than Standard', () => {
+    assert.equal(baseStyleOf({ base: 'iris' }), 'iris');
+    for (const v of [undefined, '', 'Iris', '"><script>', 42]) assert.equal(baseStyleOf({ base: v }), 'standard');
+    assert.equal(baseStyleOf(undefined), 'standard');
+  });
+
+  test('app.css defines Iris for light and dark with readable contrast', () => {
+    const css = readFileSync(new URL('../public/app.css', import.meta.url), 'utf8');
+    for (const v of [block(css, 'html[data-style="iris"]'), block(css, 'html[data-style="iris"][data-theme="dark"]')]) {
+      assert.ok(ratio(v.text, v.bg) >= 7, 'text');
+      assert.ok(ratio(v.muted, v.surface) >= 4.5 && ratio(v.muted, v.bg) >= 4.5, 'muted');
+      assert.ok(ratio(v.accent, v.surface) >= 4.5, 'accent on surface');
+      assert.ok(ratio(v['accent-text'], v.accent) >= 4.5, 'text on accent');
+      assert.ok(ratio(v.accent, v['accent-soft']) >= 4.5, 'accent on its soft background');
+      assert.ok(ratio(v['header-text'], v.header) >= 7, 'header');
+    }
+    assert.equal(block(css, 'html[data-style="iris"]').accent, BASE_STYLES.iris.accent);
+    assert.equal(block(css, 'html[data-style="iris"]').header, BASE_STYLES.iris.header);
+  });
+
+  test('own colours win over the base style (same specificity, later in the page)', () => {
+    assert.match(themeCss({ accent: '#222222' }, null), /^html:root\{--accent:#222222/);
+  });
+
+  test('the page and the sign-in page carry data-style; Standard apps do not', async () => {
+    const plain = (await new Browser(app).get(`/a/${alias}/1`)).body;
+    assert.doesNotMatch(plain, /data-style=/);
+    await owner.query(`update meta.app set theme = theme || '{"base": "iris"}' where id = $1`, [appId]);
+    try {
+      assert.match((await new Browser(app).get(`/a/${alias}/1`)).body, /<html lang="en" data-style="iris">/);
+      await owner.query(`update meta.app set authentication = 'app_users' where id = $1`, [appId]);
+      assert.match((await new Browser(app).get(`/a/${alias}/login`)).body, /<html[^>]* data-style="iris">/);
+      await owner.query(`update meta.app set theme = theme || '{"base": "<b>"}' where id = $1`, [appId]);
+      assert.doesNotMatch((await new Browser(app).get(`/a/${alias}/login`)).body, /data-style=/, 'unknown values are ignored');
+    } finally {
+      await owner.query(`update meta.app set authentication = 'none', theme = theme - 'base' where id = $1`, [appId]);
+    }
+  });
+
+  test('new applications start with Iris; Settings → Theme switches it and keeps base colours out of the theme', async () => {
+    const dev = new Browser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await owner.query(`delete from meta.app where alias = 'ts-iris'`);
+    try {
+      await dev.get('/builder/create');
+      assert.equal((await dev.submit('/builder/apps', { name: 'Iris test', alias: 'ts-iris', authentication: 'none' })).statusCode, 303);
+      const id = (await owner.one(`select id, theme from meta.app where alias = 'ts-iris'`)).id;
+      assert.deepEqual((await owner.one('select theme from meta.app where id = $1', [id])).theme, { base: 'iris' });
+      const settings = (await dev.get(`/builder/apps/${id}/settings`)).body;
+      assert.match(settings, /<option value="iris" selected/);
+      assert.match(settings, /name="accent"[^>]*value="#5146d8"/);
+      const form = { name: 'Iris test', alias: 'ts-iris', home_page: '1', authentication: 'none', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' };
+      await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'standard', accent: '#5146d8', header: '#1e1a4d' });
+      assert.equal((await owner.one('select theme from meta.app where id = $1', [id])).theme.base, undefined);
+      assert.equal((await owner.one('select theme from meta.app where id = $1', [id])).theme.accent, undefined, 'a base style\'s own colour is not stored');
+      await dev.get(`/builder/apps/${id}/settings`);
+      await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'iris', accent: '#aa3366', header: '#1e1a4d' });
+      const t = (await owner.one('select theme from meta.app where id = $1', [id])).theme;
+      assert.equal(t.base, 'iris');
+      assert.equal(t.accent, '#aa3366');
+      await dev.get(`/builder/apps/${id}/settings`);
+      await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'javascript:alert(1)', accent: '#aa3366' });
+      assert.equal((await owner.one('select theme from meta.app where id = $1', [id])).theme.base, undefined, 'unknown values become Standard');
+    } finally {
+      await owner.query(`delete from meta.app where alias = 'ts-iris'`);
+      await owner.query('drop schema if exists ts_iris cascade');
+      await owner.query('drop role if exists app_ts_iris');
+    }
   });
 });

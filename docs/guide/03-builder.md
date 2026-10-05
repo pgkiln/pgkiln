@@ -563,7 +563,8 @@ register at the provider, and has a *Test discovery* button. See
   with a link to set their level. **Custom authentication**: the function name, or the function body, and the
   post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)).
 - **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
-- **Theme**: accent colour, header colour, *side* or *top* navigation (on tablets and phones the
+- **Theme**: the **base style** (*Iris*, the default for applications created from 0.29 on, or *Standard*, pgapex's
+  look until 0.28; see [chapter 14](14-globalization.md#base-styles-iris-and-standard)), accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu
   (instead of the navigation entries) and as the navigation bar (links in the header), the theme style (automatic, light or dark) and whether users may choose light or dark.
   **Theme Roller** opens the [style variants](14-globalization.md#style-variants-theme-roller): several

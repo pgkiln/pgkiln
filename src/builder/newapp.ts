@@ -3,6 +3,7 @@ import { owner, type Client } from '../db.ts';
 import { passwordProblem } from '../accounts.ts';
 import { replaceApp } from '../cli/replace.ts';
 import { placeApp } from './workspaces.ts';
+import { NEW_APP_BASE } from '../runtime/styles.ts';
 
 // Creating an application (Create → blank application, and Create → from a
 // file): the parsing schema, a database role app_<alias> that can use only
@@ -74,7 +75,8 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   await c.query(`alter default privileges in schema ${S} grant usage, select on sequences to ${R}`);
   await c.query(`alter default privileges in schema ${S} grant execute on functions to ${R}`);
 
-  const r = await c.query('insert into meta.app (alias, name, authentication, db_role) values ($1, $2, $3, $4) returning id', [a.alias, a.name, a.authentication, a.role]);
+  // new applications start with the newest base style (Iris); existing ones keep theirs
+  const r = await c.query('insert into meta.app (alias, name, authentication, db_role, theme) values ($1, $2, $3, $4, $5) returning id', [a.alias, a.name, a.authentication, a.role, { base: NEW_APP_BASE }]);
   const appId = r.rows[0].id as number;
   await placeApp(c, appId, a.workspaceId);
   const p = await c.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appId]);

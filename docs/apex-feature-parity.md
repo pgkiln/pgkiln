@@ -18,12 +18,12 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Items | 10 | 2 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
 | Logic and processing | 9 | 3 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons, download, chain and workflow processes; no custom JavaScript in dynamic actions |
 | Security | 19 | 1 | 0 | 0 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
-| User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
+| User interface | 6 | 4 | 0 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 5 | 1 | 0 | 0 | One translated app like 26.1; number format masks and automatic time zone; five built-in languages |
 | Data and integration | 8 | 1 | 0 | 2 | REST APIs via PostgREST, REST data sources that write back and synchronise, web credentials with OAuth2 grants, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 5 | 1 | 0 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; AI with Claude or OpenAI: *Generate text with AI*, an assistant region with tools, natural-language report filters and blueprints |
 | Administration | 3 | 2 | 0 | 0 | Workspaces that group applications and developers (not a tenant boundary); Top SQL per app; debug messages per request; an install/upgrade log |
-| **Total** | **95** | **19** | **1** | **3** | 118 APEX features compared: 81% available, 16% partial |
+| **Total** | **96** | **19** | **0** | **3** | 118 APEX features compared: 81% available, 16% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -144,7 +144,7 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Icons (Font APEX 2.5) | 🟡 | 31 line icons |
 | Accessibility | 🟡 | Labels, keyboard, focus rings, reduced motion, table alternatives for charts; no formal audit yet |
 | Drawers, top/bottom dialogs (26.1) | 🟡 | The navigation is a drawer on small screens; no drawer pages |
-| New "Iris" default style (26.1) | ❌ | pgapex has its own neutral style |
+| New "Iris" default style (26.1) | ✅ | Base style **Iris** (indigo accent, larger corners, softer shadows, light and dark palettes checked for WCAG AA contrast), the default for new applications; existing ones keep *Standard* until switched in Settings → Theme ([chapter 14](guide/14-globalization.md#base-styles-iris-and-standard)) |
 | Progressive Web App | ✅ | Per app: installable (manifest, icon, standalone), service worker, offline pages (opt-in, wiped at sign-in/out), **forms sent offline queued on the device and sent later** (files included, once only, under the same user), location, camera and barcode items. **Missing:** push notifications |
 
 ## Globalization
@@ -242,7 +242,7 @@ credentials; rich text and the other new item types.
 Done in 0.28.0 (AI with Claude and OpenAI): *Generate text with AI*, the AI assistant with tools, natural-language
 report filters, App Builder AI and blueprints.
 
-1. A new default style like "Iris", then the 🟡 rows (sprint 37; workspaces are done).
+1. The 🟡 rows (sprint 37; workspaces and the Iris base style are done).
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

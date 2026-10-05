@@ -91,6 +91,18 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(res?.status(), 200, `page ${p}`);
         await check(page, `app-${p}`, vp);
       }
+      // the Iris base style (the default for new applications): same layout, its own colours
+      await owner.query(`update meta.app set theme = theme || '{"base": "iris"}' where alias = 'hr'`);
+      try {
+        for (const p of [1, 2, 3]) {
+          await page.goto(`${base}/a/hr/${p}`);
+          assert.equal(await page.getAttribute('html', 'data-style'), 'iris');
+          assert.equal((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius'))).trim(), '12px');
+          await check(page, `app-${p}-iris`, vp);
+        }
+      } finally {
+        await owner.query(`update meta.app set theme = theme - 'base' where alias = 'hr'`);
+      }
       // a review on page 20: the rich text and Markdown editors, tags, stars, date range and QR code
       await page.goto(`${base}/a/hr/20`);
       await Promise.all([page.waitForNavigation(), page.locator('table a', { hasText: /^\d+$/ }).first().click()]);

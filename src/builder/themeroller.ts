@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { appStyles, FONT_SIZES, FONTS, HEX, MAX_STYLES, parseStyle, RADII, STYLE_NAME, type StyleVariant } from '../runtime/styles.ts';
+import { appStyles, BASE_STYLES, baseStyleOf, FONT_SIZES, FONTS, HEX, MAX_STYLES, parseStyle, RADII, STYLE_NAME, type StyleVariant } from '../runtime/styles.ts';
 import { REGION_OPTIONS, BUTTON_OPTIONS } from '../runtime/template-options.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
@@ -66,9 +66,10 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     const main = html`${appHeader(a, 'settings')}
       <div class="ide-body">
         ${region('Theme Roller: style variants', html`
-          <p class="muted u-mt0">Several saved styles for this application (APEX: theme styles). The base colours under
-            <a href="${BASE}/apps/${a.id}/settings">Settings → Theme</a> are the <em>Standard</em> style; each style below
-            changes them and may set a font, font size and corners. Colours apply to the light theme; fonts, sizes and corners to both.</p>
+          <p class="muted u-mt0">Several saved styles for this application (APEX: theme styles). The base style
+            (${BASE_STYLES[baseStyleOf(a.theme)].label}) and colours under <a href="${BASE}/apps/${a.id}/settings">Settings → Theme</a>
+            are what users see without a style; each style below changes the colours and may set a font, font size and corners.
+            Colours apply to the light theme; fonts, sizes and corners to both.</p>
           ${styles.length
             ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Accent</th><th>Header</th><th>Font</th><th>Font size</th><th>Corners</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
                 ${styles.map((x) => html`<tr><td>${x.name}${theme.style === x.name ? html` <span class="badge">default</span>` : ''}</td>
@@ -80,7 +81,7 @@ export async function themeRollerRoutes(app: FastifyInstance) {
             : html`<p class="muted">No styles yet: the application uses its base colours.</p>`}
           <form method="post" action="${BASE}/apps/${a.id}/theme/settings" class="u-mt1">${csrf(s)}
             <div class="form-grid">
-              ${select('style', 'Default style', typeof theme.style === 'string' ? theme.style : '', [['', 'Standard (the base colours)'], ...styles.map((x): [string, string] => [x.name, x.name])], 'What everyone sees unless they chose another style.')}
+              ${select('style', 'Default style', typeof theme.style === 'string' ? theme.style : '', [['', 'None (the base style and colours)'], ...styles.map((x): [string, string] => [x.name, x.name])], 'What everyone sees unless they chose another style.')}
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="style_choice" value="true"${theme.style_choice === true ? raw(' checked') : ''}> Users may choose a style</label>
               <small class="help">Adds the styles to the user menu and My account (APEX: "Enable End Users to Choose Theme Style"). A user's choice is kept per application on the account; only this application's styles can be chosen.</small></div>

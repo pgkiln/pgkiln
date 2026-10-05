@@ -8,6 +8,7 @@ import { documentShell } from '../layout.ts';
 import { loadApp, type App } from '../metadata.ts';
 import { runtime } from '../db.ts';
 import { appWithLocale, type Req } from './routes.ts';
+import { BASE_STYLES, baseStyleOf } from './styles.ts';
 
 // Progressive Web Apps (APEX: Progressive Web App): an application with
 // "pwa" on gets, under its own URL (/a/<alias>/):
@@ -22,8 +23,8 @@ import { appWithLocale, type Req } from './routes.ts';
 // id so a resend is never processed twice (routes.ts).
 
 const HEX = /^#[0-9a-f]{6}$/i;
-export const accentOf = (a: Pick<App, 'theme'>) => (a.theme?.accent && HEX.test(a.theme.accent) ? a.theme.accent : '#0b63c5');
-export const headerOf = (a: Pick<App, 'theme'>) => (a.theme?.header && HEX.test(a.theme.header) ? a.theme.header : '#13294b');
+export const accentOf = (a: Pick<App, 'theme'>) => (a.theme?.accent && HEX.test(a.theme.accent) ? a.theme.accent : BASE_STYLES[baseStyleOf(a.theme)].accent);
+export const headerOf = (a: Pick<App, 'theme'>) => (a.theme?.header && HEX.test(a.theme.header) ? a.theme.header : BASE_STYLES[baseStyleOf(a.theme)].header);
 
 /** <head> additions of an installable app. */
 export function pwaHead(a: Pick<App, 'alias' | 'pwa' | 'theme'>): Raw | '' {

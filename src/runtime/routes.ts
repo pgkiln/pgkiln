@@ -66,7 +66,7 @@ export function simplePage(reply: FastifyReply, code: number, title: string, mes
     );
 }
 
-export const rootAttrs = (locale?: Locale) => (locale ? { lang: locale.lang, dir: locale.dir, theme: locale.theme } : {});
+export const rootAttrs = (locale?: Locale) => (locale ? { lang: locale.lang, dir: locale.dir, theme: locale.theme, style: locale.style } : {});
 
 /** Load an app with its texts in the request's language. */
 export async function appWithLocale(req: FastifyRequest, alias: string, session?: Session) {

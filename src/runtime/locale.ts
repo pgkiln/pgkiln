@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import { runtime } from '../db.ts';
+import { baseStyleOf } from './styles.ts';
 import { baseLanguage, fromAcceptLanguage, RTL, translator, type Translate } from '../i18n.ts';
 import type { App, Page } from '../metadata.ts';
 import type { Session } from '../session.ts';
@@ -24,6 +25,8 @@ export interface Locale {
   messages: Record<string, string>;
   languages: string[];
   theme: ThemeMode;
+  /** the app's base style when not Standard (html data-style) */
+  style?: 'iris';
   /** whether users may pick light/dark themselves */
   themeChoice: boolean;
   /** dates and timestamps for display (undefined: not a date) */
@@ -196,6 +199,7 @@ export async function resolveLocale(req: FastifyRequest, app: App, session?: Ses
     messages,
     languages,
     theme: themeFor(app, session, req),
+    style: baseStyleOf(app.theme) === 'iris' ? 'iris' : undefined,
     themeChoice: app.theme?.user_choice !== false,
     format,
     number,
