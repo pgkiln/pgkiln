@@ -18,12 +18,12 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Items | 10 | 2 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
 | Logic and processing | 9 | 3 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons, download, chain and workflow processes; no custom JavaScript in dynamic actions |
 | Security | 19 | 1 | 0 | 0 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
-| User interface | 6 | 4 | 0 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
+| User interface | 7 | 3 | 0 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 5 | 1 | 0 | 0 | One translated app like 26.1; number format masks and automatic time zone; five built-in languages |
 | Data and integration | 8 | 1 | 0 | 2 | REST APIs via PostgREST, REST data sources that write back and synchronise, web credentials with OAuth2 grants, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 5 | 1 | 0 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; AI with Claude or OpenAI: *Generate text with AI*, an assistant region with tools, natural-language report filters and blueprints |
 | Administration | 3 | 2 | 0 | 0 | Workspaces that group applications and developers (not a tenant boundary); Top SQL per app; debug messages per request; an install/upgrade log |
-| **Total** | **96** | **19** | **0** | **3** | 118 APEX features compared: 81% available, 16% partial |
+| **Total** | **97** | **18** | **0** | **3** | 118 APEX features compared: 82% available, 15% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -143,7 +143,7 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Theme Roller (26.1: conditional and dynamic properties, CSS variables) | 🟡 | Accent and header colours, navigation position; **style variants** (up to 10 saved styles per app: colours, font, font size, corners; a default; users may choose one, kept per app on the account; exported with the app) on Settings → Theme → Theme Roller; **template options** on regions and buttons (fixed lists of CSS classes, checkboxes in the Page Designer) ([chapter 14](guide/14-globalization.md#style-variants-theme-roller)). **Missing:** conditional and dynamic theme properties, a live preview, style colours in dark mode, template options on items and report columns |
 | Icons (Font APEX 2.5) | 🟡 | 31 line icons |
 | Accessibility | 🟡 | Labels, keyboard, focus rings, reduced motion, table alternatives for charts; no formal audit yet |
-| Drawers, top/bottom dialogs (26.1) | 🟡 | The navigation is a drawer on small screens; no drawer pages |
+| Drawers, top/bottom dialogs (26.1) | ✅ | Modal pages open as a centred dialog or as a drawer from the left, right, top or bottom edge, in three sizes, sliding in (without animation for reduced motion); on phones full screen ([chapter 4](guide/04-pages-and-regions.md#dialogs-and-drawers)). Not yet: a footer slot for inline drawers |
 | New "Iris" default style (26.1) | ✅ | Base style **Iris** (indigo accent, larger corners, softer shadows, light and dark palettes checked for WCAG AA contrast), the default for new applications; existing ones keep *Standard* until switched in Settings → Theme ([chapter 14](guide/14-globalization.md#base-styles-iris-and-standard)) |
 | Progressive Web App | ✅ | Per app: installable (manifest, icon, standalone), service worker, offline pages (opt-in, wiped at sign-in/out), **forms sent offline queued on the device and sent later** (files included, once only, under the same user), location, camera and barcode items. **Missing:** push notifications |
 

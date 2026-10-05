@@ -17,6 +17,9 @@ All notable changes to this project are documented here. The format follows
   softer shadows and its own dark palette, all with WCAG AA contrast. New applications start with it; existing ones
   keep *Standard* until switched in Settings → Theme → Base style. Own accent and header colours and Theme Roller
   styles still apply on top.
+- **Drawers** (migration 065): a modal page opens as a centred dialog or as a drawer from the left, right, top or
+  bottom edge (APEX: the Drawer page template, 26.1's top and bottom drawers), small, medium or large (Page Designer
+  → Page → Dialog position and size). HR example: *Leave request* (page 7) is a drawer from the right.
 
 ## [0.28.0] - 2026-10-06
 

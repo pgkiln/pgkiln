@@ -297,6 +297,8 @@ export async function designerRoutes(app: FastifyInstance) {
           </div></fieldset>
           <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
             ${select('mode', 'Page mode', p.mode, [['normal', 'Normal'], ['modal', 'Modal dialog']])}
+            ${select('dialog_position', 'Dialog position', p.dialog_position ?? 'center', [['center', 'Centred dialog'], ['right', 'Drawer from the right'], ['left', 'Drawer from the left'], ['top', 'Drawer from the top'], ['bottom', 'Drawer from the bottom']], 'Modal pages only. On phones dialogs and side drawers fill the screen.')}
+            ${select('dialog_size', 'Dialog size', p.dialog_size ?? 'medium', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], 'The width (the height of top and bottom drawers).')}
             ${select('parent_page', 'Breadcrumb parent', p.parent_page ?? '', [['', '- none -'], ...lk.pages.filter((x) => x.page_no !== p.page_no).map((x): [string, string] => [String(x.page_no), `${x.page_no}. ${x.name}`])])}
           </div></fieldset>
           <fieldset class="prop-group"><legend>Security</legend><div class="form-grid">
@@ -378,8 +380,10 @@ export async function designerRoutes(app: FastifyInstance) {
     try {
       const before = await owner.one('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
       await owner.query(
-        `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10 where id = $1`,
-        [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null],
+        `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
+                dialog_position = $11, dialog_size = $12 where id = $1`,
+        [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
+         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium'],
       );
       // the page's lock and comments follow a new page number
       if (before && before.page_no !== Number(b.page_no))

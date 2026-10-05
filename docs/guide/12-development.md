@@ -234,12 +234,14 @@ test/
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  drawers.test.ts          drawers and dialog sizes (065): Page Designer, what pages tell the browser, export/import
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
   web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and
                            meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
-  theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page) and template options
+  theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page), template options, base style Iris
+  workspaces.test.ts       workspaces (064): Default, administrators' pages, current workspace, refused apps, imports and copies
   ai.test.ts               AI services: Generate text with AI (text, structured outputs, errors, limits, keys), its dynamic action,
                            meta.ai_generate, the providers, HR page 37; against ai-mock.ts (no real API calls)
   ai-assistant.test.ts     AI assistant region (context, tools as the app role, writes, REST, histories, limits, sessions), OpenAI,

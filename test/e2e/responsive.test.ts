@@ -415,6 +415,24 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('a drawer page slides in from the right (full screen on phones)', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'allen', 'allen');
+      await page.goto(`${base}/a/hr/6`);
+      await page.locator('a, button').filter({ hasText: 'Request leave' }).first().click();
+      await page.frameLocator('#t-dialog iframe').locator('form').first().waitFor();
+      const dlg = page.locator('#t-dialog');
+      assert.match(String(await dlg.getAttribute('class')), /\bt-drawer\b.*|.*\bt-dialog-right\b/);
+      await page.waitForTimeout(300); // the slide-in animation
+      const box = (await dlg.boundingBox())!;
+      assert.ok(Math.abs(box.x + box.width - size.width) <= 1, `docked to the right edge: ${JSON.stringify(box)}`);
+      assert.ok(Math.abs(box.height - size.height) <= 1, `full height: ${JSON.stringify(box)}`);
+      if (size.width <= 640) assert.ok(box.width >= size.width - 1, 'full width on phones');
+      else assert.ok(box.width < size.width, 'narrower than the screen');
+      if (shots) await page.screenshot({ path: `test-results/${vp}-app-drawer.png` });
+      await page.context().close();
+    });
+
     test('several files can be chosen in the dialog form and are listed after saving', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');

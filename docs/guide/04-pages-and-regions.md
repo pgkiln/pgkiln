@@ -7,10 +7,28 @@ A page has a number (unique in the app), a name, a title, and these behaviours:
 | Property | Values | Effect |
 |---|---|---|
 | `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
+| `dialog_position` | `center`, `left`, `right`, `top`, `bottom` | Modal pages: a centred dialog (the default) or a **drawer** that slides in from that edge (APEX: the Drawer page template; 26.1: top and bottom drawers). See [Dialogs and drawers](#dialogs-and-drawers) |
+| `dialog_size` | `small`, `medium`, `large` | Modal pages: the dialog's or side drawer's width, the height of a top or bottom drawer |
 | `parent_page` | page number | Breadcrumb trail, and which menu entry is highlighted |
 | `requires_auth` | boolean | `false` makes the page public in an app with a login |
 | `authz` | scheme name | Who may open it (403 otherwise) |
 | `protection` | `checksum`, `unrestricted` | Whether URL item values need a checksum |
+
+### Dialogs and drawers
+
+A modal page (Page Designer → Page → Appearance: *Page mode* Modal dialog) opens over the page that linked to it.
+*Dialog position* chooses how:
+
+| Position | Opens as | Sizes (small / medium / large) |
+|---|---|---|
+| Centred dialog | A dialog in the middle of the screen | 480 / 760 / 1100 px wide |
+| Drawer from the right or left | A full-height panel docked to that edge, sliding in | 400 / 560 / 860 px wide |
+| Drawer from the top or bottom | A full-width panel docked to that edge | about a third, half or most of the screen high |
+
+On phones centred dialogs and side drawers fill the screen; top and bottom drawers keep their height. Users who
+prefer reduced motion get no slide-in animation. Everything else (closing after a submit, the *Dialog Closed* dynamic
+action, opening the page directly as a normal page) works the same for every position. In the HR example,
+*Leave request* (page 7) is a drawer from the right.
 
 ### Layout
 

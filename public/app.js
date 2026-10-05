@@ -388,6 +388,22 @@ document.documentElement.classList.add('js');
   }
 
   // ------------------------------------------------------------ modal dialogs
+  const POSITIONS = ['center', 'left', 'right', 'top', 'bottom'];
+  const SIZES = ['small', 'medium', 'large'];
+  function dialogShape(url) {
+    let shapes = {};
+    try {
+      shapes = JSON.parse(document.getElementById('pgapex-meta')?.textContent || '{}').dialogs || {};
+    } catch {}
+    let page = '';
+    try {
+      const u = new URL(url, location.href);
+      const base = body.dataset.base || '';
+      if (u.origin === location.origin && u.pathname.startsWith(base + '/')) page = u.pathname.slice(base.length + 1);
+    } catch {}
+    const s = Object.prototype.hasOwnProperty.call(shapes, page) ? shapes[page] : null;
+    return [POSITIONS.includes(s?.[0]) ? s[0] : 'center', SIZES.includes(s?.[1]) ? s[1] : 'medium'];
+  }
   function openDialog(url) {
     let dlg = document.getElementById('t-dialog');
     if (!dlg) {
@@ -409,6 +425,9 @@ document.documentElement.classList.add('js');
         title.textContent = (doc.title || '').split(' · ')[0];
       } catch {}
     };
+    // (065) drawers from an edge and dialog sizes, per target page (pgapex-meta "dialogs")
+    const [pos, size] = dialogShape(url);
+    dlg.className = `t-dialog t-dialog-${pos} t-dialog-${size}${pos === 'center' ? '' : ' t-drawer'}`;
     frame.src = url + (url.includes('?') ? '&' : '?') + 'dialog=1';
     dlg.showModal();
   }

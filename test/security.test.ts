@@ -5727,3 +5727,25 @@ describe('sprint 37 workspaces', () => {
     for (const t of ['workspace', 'workspace_member', 'workspace_app']) await assert.rejects(runtime.query(`select * from meta.${t}`), /permission denied/, t);
   });
 });
+
+describe('sprint 37 drawers', () => {
+  test('dialog shapes sent to the browser come from fixed lists only', async () => {
+    const { dialogShapes } = await import('../src/runtime/render.ts');
+    const pages = [
+      { page_no: 1, mode: 'modal', dialog_position: '</script><script>alert(1)</script>', dialog_size: 'large' },
+      { page_no: 2, mode: 'modal', dialog_position: 'right', dialog_size: 'x" onload="' },
+      { page_no: 3, mode: 'normal', dialog_position: 'left', dialog_size: 'small' },
+    ];
+    const out = dialogShapes({ app: { pages } } as never);
+    assert.deepEqual(out, { 1: ['center', 'large'], 2: ['right', 'medium'] });
+  });
+
+  test('the Page Designer refuses dialog changes without CSRF', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const page = await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 7`);
+    assert.equal((await dev.post(`/builder/pages/${page.id}`, { __csrf: 'forged', page_no: '7', name: 'x', dialog_position: 'left' })).statusCode, 403);
+    assert.equal((await owner.one('select dialog_position from meta.page where id = $1', [page.id])).dialog_position, 'right');
+  });
+});
