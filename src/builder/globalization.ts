@@ -149,7 +149,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
             <li>Primary language: <b>${langName(a.language)}</b></li>
             <li>Translated into: ${langs.length ? langs.map((l, i) => html`${i ? ', ' : ''}<b>${langName(l)}</b>`) : html`<span class="muted">none yet</span>`}</li>
             <li>Language derived from: <b>${{ browser: 'the browser', user: 'the user’s preference, then the browser', primary: 'always the primary language' }[a.language_from as string]}</b></li>
-            <li>pgapex’s own texts (sign-in, reports, messages) exist in ${BUILTIN_LANGUAGES.map(([c, n]) => `${n}`).join(' and ')}; override any of them with a text message of the same name.</li>
+            <li>pgapex’s own texts (sign-in, reports, messages) exist in ${BUILTIN_LANGUAGES.slice(0, -1).map(([, n]) => n).join(', ')} and ${BUILTIN_LANGUAGES.at(-1)?.[1]}; override any of them with a text message of the same name.</li>
           </ul>
           <p><a class="btn" href="${BASE}/apps/${a.id}/settings">Change languages in Settings</a></p>`)}
         ${lang ? region('Export and import', html`

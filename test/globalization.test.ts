@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { appTx, closePools, owner } from '../src/db.ts';
-import { BUILTIN_LANGUAGES, translator } from '../src/i18n.ts';
+import { BUILTIN_LANGUAGES, builtinTexts, translator } from '../src/i18n.ts';
 import { formatMaskError, formatSettingsProblem, maskedFormatter, dateFormatter } from '../src/runtime/format.ts';
 import { sameOffset, zoneOffset } from '../src/runtime/locale.ts';
 import { mergeReportSettings, formatProblems } from '../src/builder/report-settings.ts';
@@ -281,10 +281,13 @@ describe('time zones', () => {
 
 describe('built-in texts in German, French and Spanish', () => {
   test('every language has every text, with the same placeholders', () => {
-    const en = translator('en');
+    const en = builtinTexts('en')!;
+    const holes = (s: string) => [...s.matchAll(/\{\w+\}/g)].map((m) => m[0]).sort().join(' ');
     for (const [lang] of BUILTIN_LANGUAGES) {
-      const t = translator(lang);
-      assert.ok(t('login.title') && t('login.title') !== en('login.title') || lang === 'en', `${lang} login.title`);
+      const own = builtinTexts(lang)!;
+      assert.deepEqual(Object.keys(own).sort(), Object.keys(en).sort(), `${lang}: the same keys`);
+      for (const k of Object.keys(en)) assert.equal(holes(own[k]), holes(en[k]), `${lang} ${k}: the same placeholders`);
+      if (lang !== 'en') assert.notEqual(translator(lang)('login.title'), translator('en')('login.title'), `${lang} login.title`);
     }
     assert.deepEqual(BUILTIN_LANGUAGES.map(([l]) => l), ['en', 'nl', 'de', 'fr', 'es']);
   });

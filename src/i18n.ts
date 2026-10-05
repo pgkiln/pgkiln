@@ -1,7 +1,12 @@
 // pgapex's own user-facing texts (login, account pages, reports, messages)
-// in several languages, like APEX's translated runtime messages. An
+// in several languages, like APEX's translated runtime messages (en and nl
+// here, de, fr and es in src/i18n/). An
 // application can override any of them with a text message of the same
 // name (Shared Components → Text messages), as in APEX.
+
+import { de } from './i18n/de.ts';
+import { es } from './i18n/es.ts';
+import { fr } from './i18n/fr.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -955,10 +960,13 @@ const nl: Record<MessageKey, string> = {
   'login.no_access_title': 'Geen toegang',
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es };
+
+/** pgapex's own texts in a built-in language (undefined: not built in). */
+export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {
