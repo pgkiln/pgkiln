@@ -301,6 +301,47 @@ Page properties:
 
 Chapters 4–7 describe every component type and property.
 
+## Working copies
+
+APEX's working copies: a second application to change in isolation, then merge back. On an
+application's pages, **Working copies** (top right) lists its copies and **creates** one with a
+name; the copy gets the alias `<alias>-<name>` and its own application id. It is the same
+application, so it runs against the main application's schema, role and data, and the same users
+may sign in to it. It runs no automations or REST synchronisations (the main application does);
+web credentials keep working.
+
+Change the copy like any application. Its **Compare and merge** page compares it with the main
+application per **component**: the application settings, each shared component (a list of values,
+an authorization scheme, a REST data source, …), the navigation menu, each page's settings and each
+region, item, button, process and so on. A copy keeps the main application *as it was when the copy
+was made* (or last refreshed or merged), so the page tells which side changed what:
+
+| Result | Meaning |
+|---|---|
+| Copy | changed (added, deleted) only in the copy: the copy's version wins |
+| Main | changed only in the main application: its version stays |
+| Conflict | changed on both sides, differently: choose **Main** or **Copy** |
+
+**Show** shows a component's differences (lines of the main application with `-`, of the copy with
+`+`). Then:
+
+- **Merge into …** writes the result into the main application *and* the copy;
+- **Refresh the copy** writes it into the copy only, bringing the main application's changes in
+  (conflicts are chosen the same way).
+
+Both keep what belongs to the installation, like `pgapex import --replace`: users and access,
+sessions, saved reports, running tasks and workflows, secrets of web credentials, and the main
+application's automation and synchronisation switches (a new automation arrives switched off). A
+merge is refused while another developer has locked the main application or a page the merge
+changes, and when either side changed after the comparison was shown (compare again). If the
+result is not consistent (for example an item kept from one side refers to a region the other side
+renamed), nothing is written and the message names the problem. Merges and refreshes are logged in
+the activity log (`working_copy`).
+
+**Delete working copy** deletes the copy's application. Deleting the main application leaves its
+copies as ordinary applications. Copies of copies are not possible, and working copies are not
+exported.
+
 ## Shared components
 
 Components used by the whole application:
