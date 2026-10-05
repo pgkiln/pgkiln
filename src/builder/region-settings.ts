@@ -14,6 +14,7 @@ import { columnTemplatesForm, templateRegionForm } from './templates.ts';
 import { LIST_TEMPLATES } from '../runtime/lists.ts';
 import { MAX_EXTRA_LAYERS } from '../runtime/maps.ts';
 import { postgis } from '../runtime/spatial.ts';
+import { reporterSettingsForm } from './reporter.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
 // for grid, chart, cards, calendar and faceted search regions (report
@@ -682,6 +683,7 @@ async function displaySelectorFields(r: RegionRow, pageId: number, id: (n: strin
 export async function regionSettingsForm(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
   if (r.type === 'report') return html`${await reportSettingsForm(pageId, appId, r, s)}${await columnTemplatesForm(pageId, appId, r, s)}`;
   if (r.type === 'template_component') return templateRegionForm(pageId, appId, r, s);
+  if (r.type === 'data_reporter') return reporterSettingsForm(pageId, appId, r, s);
   if (!(SETTINGS_TYPES as readonly string[]).includes(r.type)) return '';
   const cfg = r.config ?? {};
   const id = (n: string) => `rg_${r.id}_${n}`;
