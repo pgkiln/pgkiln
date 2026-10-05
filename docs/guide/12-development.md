@@ -118,9 +118,14 @@ src/
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
-    newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app and from a file
+    newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app, from a file, from tables
     appfromfile.ts         Create → From a file: upload (src/dataload.ts parsing), proposed table/columns, one transaction:
                            app + table + rows (loadRows) + pages (meta.generate_page: report and form, chart, facets)
+    appsheets.ts           Create → From a file with several sheets/JSON arrays: parseBook, proposed keys and foreign keys,
+                           step 2 sections, one transaction (tables, rows, foreign keys, report+form per table); addDashboard
+                           (a chart per table on one page, also used for existing tables)
+    appwizard.ts           Create → From pasted data (kept as a temp file, then the From a file steps) and From existing tables
+                           (a schema's tables/views → report+form or report pages, navigation, dashboard)
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
