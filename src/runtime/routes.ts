@@ -9,7 +9,7 @@ import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
-import { accountRoles, loadApp, loadPage, type App, type Page } from '../metadata.ts';
+import { accountRoles, loadApp, loadPage, type App, type Page, type Region } from '../metadata.ts';
 import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
 import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
@@ -26,6 +26,9 @@ import { renderRegion } from './regions.ts';
 import { moveCalendarEvent } from './calendar.ts';
 import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
 import { invalidatePage, lazyOf } from './region-cache.ts';
+import { applyRowSelection, mastersOf } from './master-detail.ts';
+import { currentLayout, layoutJson, layoutParam, parseLayout, storeLayout } from './grid-layout.ts';
+import { layoutFromForm, statePart } from './grid.ts';
 import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
@@ -330,6 +333,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (normalised !== null) return reply.redirect(`${ctx.base}/${ctx.page.page_no}${normalised ? `?${normalised}` : ''}`);
 
     if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
+    // a master grid's selected row (signed link) into its item
+    applyRowSelection(ctx);
     const flash = takeFlash(ctx.session);
     if (flash) ctx.messages.push(flash);
     const flashError = takeFlash(ctx.session, '__FLASH_ERROR');
@@ -554,23 +559,31 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // page's query string (report paging, filters) comes along. Page access,
   // the region's condition and authorization are checked as for the page;
   // session state is only read (several regions load at the same time).
+  // A detail region (master-detail.ts) is fetched the same way after a row
+  // of its master grid was selected: the signed selection in the query
+  // string goes into the master's item first (and is kept in the session).
   app.get('/a/:alias/:page/region/:id', async (req: Req, reply) => {
     const ctx = await loadContext(req, reply, { json: true });
     if (!ctx) return;
     ctx.params.delete('cs');
     ctx.dialog = ctx.params.get('dialog') === '1';
     reply.header('cache-control', 'private, no-store');
+    let selected = false;
     try {
       const out = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
         await checkPageAccess(ctx);
-        const vis = await computeVisibility(ctx);
         const r = ctx.page.regions.find((x) => x.id === Number(req.params.id));
-        if (!r || !lazyOf(r) || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        const masters = r ? mastersOf(ctx.page, r) : [];
+        if (masters.length) selected = applyRowSelection(ctx);
+        const vis = await computeVisibility(ctx);
+        const detail = masters.some((m) => vis.regions.has(m.id));
+        if (!r || !(lazyOf(r) || detail) || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
         ctx.loadNow = r.id;
         const markup = (await renderRegion(ctx, r)).toString();
         return { html: markup, css: ctx.css.text, detached: ctx.detached.map(String).join('') };
       });
+      if (selected) await saveState(ctx.session);
       return reply.send(out);
     } catch (e) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
@@ -587,7 +600,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (body.__csrf !== ctx.session.csrf_token) return forbidden(ctx, reply, ctx.locale.t('error.session_reload'), 'saved report: csrf');
     if (ctx.user === 'nobody') return forbidden(ctx, reply, ctx.locale.t('error.access_denied'), 'saved report: not signed in');
     const regionId = Number(req.params.id);
-    const region = ctx.page.regions.find((r) => r.id === regionId && r.type === 'report');
+    const region = ctx.page.regions.find((r) => r.id === regionId && (r.type === 'report' || r.type === 'grid'));
     // only the report's own parameters come back
     const params = region ? reportParams(region, new URLSearchParams(body.params ?? '')) : new URLSearchParams();
     try {
@@ -615,6 +628,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
       if (!name) return t('report.name_required');
       const region = ctx.page.regions.find((r) => r.id === regionId)!;
       const pub = req.body?.public === 'true' && typeof region.config.public_reports === 'string' && (await isAuthorized(ctx, region.config.public_reports));
+      // a grid report keeps the user's column layout too
+      if (region.type === 'grid') params.set(layoutParam(region), layoutJson((await currentLayout(ctx, region)).layout));
+      else params.delete(layoutParam(region));
       await ctx.client!.query('select meta.save_report($1, $2, $3, $4)', [regionId, name, params.toString(), pub]);
       return t('report.saved', { name });
     }),
@@ -624,6 +640,85 @@ export async function runtimeRoutes(app: FastifyInstance) {
     savedReport(req, reply, async (ctx) => {
       await ctx.client!.query('select meta.delete_saved_report($1)', [Number(req.params.sid) || 0]);
       return ctx.locale.t('report.saved_deleted');
+    }),
+  );
+
+  // ---------------------------------------------------------------- grid layout and grid reports
+  // Actions → Columns (or app.js after dragging or resizing a column): the
+  // user's own column layout of a grid; Reset goes back to the developer's.
+  // Applying a saved grid report makes its layout the user's. Any user who
+  // can see the grid may arrange it (the public user in the session only).
+  const gridAction = async (req: Req, reply: FastifyReply, run: (ctx: PageContext, r: Region, back: URLSearchParams) => Promise<string | null>) => {
+    const ctx = await loadContext(req, reply);
+    if (!ctx) return;
+    const body = req.body ?? {};
+    const json = /application\/json/.test(String(req.headers.accept ?? ''));
+    const refuse = async (detail: string) => {
+      await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail });
+      return json ? reply.code(403).send({ error: ctx.locale.t('error.access_denied') }) : forbidden(ctx, reply, ctx.locale.t('error.access_denied'), detail);
+    };
+    if (body.__csrf !== ctx.session.csrf_token)
+      return json ? reply.code(403).send({ error: ctx.locale.t('error.session_reload') }) : forbidden(ctx, reply, ctx.locale.t('error.session_reload'), 'grid layout: csrf');
+    const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'grid');
+    // back to the page with the reports' and grids' own parameters only
+    ctx.params = new URLSearchParams(typeof body.params === 'string' ? body.params.slice(0, 8000) : '');
+    const back = statePart(ctx);
+    let message: string | null = null;
+    try {
+      message = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        if (!r || !vis.regions.has(r.id) || r.config.actions === false) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        return run(ctx, r, back);
+      });
+    } catch (e) {
+      if (e instanceof Forbidden) return refuse(`grid layout: region ${req.params.id} on page ${ctx.page.page_no}`);
+      message = await publicError(ctx, e, 'grid layout');
+      if (json) return reply.code(400).send({ error: message });
+    }
+    if (json) {
+      await saveState(ctx.session);
+      return reply.send({ ok: true });
+    }
+    if (message) ctx.session.state.__FLASH = message;
+    await saveState(ctx.session);
+    const q = back.toString();
+    return reply.redirect(`${ctx.base}/${ctx.page.page_no}${q ? `?${q}` : ''}`, 303);
+  };
+
+  app.post('/a/:alias/:page/grid/:id/layout', async (req: Req, reply) =>
+    gridAction(req, reply, async (ctx, r) => {
+      const body = req.body ?? {};
+      // app.js posts the layout as JSON; the Columns form posts one field per column
+      const layout = typeof body.layout === 'string' ? parseLayout(body.layout) : layoutFromForm(body);
+      if (!layout) throw new Forbidden('layout');
+      await storeLayout(ctx, r, layout);
+      return null;
+    }),
+  );
+
+  app.post('/a/:alias/:page/grid/:id/layout/reset', async (req: Req, reply) =>
+    gridAction(req, reply, async (ctx, r, back) => {
+      await storeLayout(ctx, r, null);
+      for (const k of [...back.keys()]) if (k.startsWith(`r${r.id}_`)) back.delete(k);
+      return null;
+    }),
+  );
+
+  app.post('/a/:alias/:page/grid/:id/saved/:sid/apply', async (req: Req, reply) =>
+    gridAction(req, reply, async (ctx, r, back) => {
+      const c = ctx.client!;
+      // own or public reports of this grid only (the view shows no one else's)
+      const row = (
+        await c.query<{ params: string }>(`select params from meta.saved_reports where id = $1 and region_id = $2 and kind = 'report'`, [Number(req.params.sid) || 0, r.id])
+      ).rows[0];
+      if (!row) throw new Forbidden('saved report');
+      const saved = new URLSearchParams(row.params);
+      await storeLayout(ctx, r, parseLayout(saved.get(layoutParam(r))));
+      for (const k of [...back.keys()]) if (k.startsWith(`r${r.id}_`)) back.delete(k);
+      for (const [k, v] of saved) if (k.startsWith(`r${r.id}_`) && k !== layoutParam(r) && !/_(p|dup|sel|selcs)$/.test(k)) back.append(k, v);
+      return null;
     }),
   );
 

@@ -553,7 +553,7 @@ export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: 
  * The aggregates over all filtered rows (not just the page): the totals,
  * and per control-break value when there is a break column.
  */
-async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numeric: (col: string) => boolean) {
+export async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numeric: (col: string) => boolean) {
   const { src, where, cols, values } = await filtered(ctx, r, st);
   const aggs = st.aggregates.filter((a) => cols.has(a.column) && (!AGGREGATES[a.fn].numeric || numeric(a.column)));
   if (!aggs.length) return null;
