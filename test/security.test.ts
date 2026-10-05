@@ -1490,6 +1490,8 @@ describe('sprint 26 logic: computations, branches, menus, badges, dynamic action
     ).rows.map((r) => r.id);
     // (the example's rounding computation would refuse this value: left out with a build option)
     await owner.query(`update meta.computation set build_option = 'LEAVE_FORECAST' where page_id = $1 and seq = 40 and point = 'after_submit'`, [pid]);
+    // a number item refuses text that is not a number (sprint 31): a text item carries it here
+    await owner.query(`update meta.item set type = 'text' where page_id = $1 and name = 'P22_DAYS'`, [pid]);
     try {
       const b = await king();
       const evil = `1'; drop table hr.emp; --$pgapex_x$ $$`;
@@ -1503,6 +1505,7 @@ describe('sprint 26 logic: computations, branches, menus, badges, dynamic action
     } finally {
       await owner.query('delete from meta.computation where id = any($1)', [ids]);
       await owner.query(`update meta.computation set build_option = null where page_id = $1`, [pid]);
+      await owner.query(`update meta.item set type = 'number' where page_id = $1 and name = 'P22_DAYS'`, [pid]);
     }
   });
 
