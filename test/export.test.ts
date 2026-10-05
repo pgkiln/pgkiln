@@ -24,6 +24,7 @@ const NOT_EXPORTED = new Set([
   'debug_view', // debug messages: requests recorded by this installation
   'web_request_log', // web requests queued from SQL and their responses (kept 24 hours)
   'account_style', // the style variant each user chose (installation data, like accounts)
+  'working_copy', // working copies: builder state of this installation
 ]);
 
 /** Where each exported table appears in the document. */
