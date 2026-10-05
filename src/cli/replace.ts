@@ -4,7 +4,7 @@
 // the on/off state of automations, and the secrets of web credentials. Components are matched by their static
 // id (see src/appfiles.ts): saved reports follow their region (page number +
 // region key), tasks and workflows their definition (name), automation logs and
-// state their automation (name).
+// state their automation (name), background process jobs their chain (page + name).
 //
 // How: meta.import_app() loads the document as a temporary application; its
 // rows then move to the existing application, whose old components are
@@ -20,11 +20,11 @@ export const REPLACED = [
   'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'data_load_def', 'nav_entry', 'page',
 ];
 /** Tables of an application that belong to the installation: kept. */
-export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow'];
+export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
-const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.definition_id', 'automation_log.automation_id'];
+const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.definition_id', 'automation_log.automation_id', 'process_job.process_id'];
 
 type Db = pg.ClientBase | pg.Pool;
 
@@ -70,6 +70,14 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
       [old, neu],
     );
   }
+  // background jobs follow their chain process (page number + process name)
+  await db.query(
+    `update meta.process_job j set process_id = n.id
+       from meta.process o join meta.page op on op.id = o.page_id,
+            meta.process n join meta.page np on np.id = n.page_id
+      where op.app_id = $1 and np.app_id = $2 and np.page_no = op.page_no and n.name = o.name and j.process_id = o.id`,
+    [old, neu],
+  );
   // web credentials keep this installation's secrets (an export has none), matched by name
   await db.query(
     `update meta.web_credential n set secret_enc = o.secret_enc

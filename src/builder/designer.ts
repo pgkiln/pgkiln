@@ -7,6 +7,7 @@ import { back, BASE, bicon, csrf, developer, flash, input, select, send, shell, 
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
 import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
+import { processJobsPanel } from './process-jobs.ts';
 import { arrangeRoutes, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, REGION_LABELS, REGION_TYPES, undoState } from './arrange.ts';
 
 // Page designer, laid out like APEX's Page Designer: the component tree on
@@ -254,6 +255,7 @@ export async function designerRoutes(app: FastifyInstance) {
         props = html`${peTabs([
           tab('pd-r-props', spec.label, componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, 'Save', { id: formId }), true),
           ...(settings ? [tab('pd-r-attrs', 'Attributes', settings)] : []),
+          ...(kind === 'process' && row.type === 'chain' && row.config?.background ? [tab('pd-r-jobs', 'Jobs', await processJobsPanel(row.id))] : []),
         ])}
           ${await usedInPanel(p.app_id, kind, row)}
           <form method="post" action="${BASE}/pages/${p.id}/c/${kind}/${row.id}/delete" class="danger-zone">${csrf(s)}

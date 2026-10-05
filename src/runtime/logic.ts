@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { applyBinds } from '../binds.ts';
-import { savepoint } from '../db.ts';
+import { runtime, savepoint } from '../db.ts';
 import type { Branch, Computation, Condition } from '../metadata.ts';
 import { isAuthorized, sqlTrue } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
 import { pageHref } from './links.ts';
+import { urlChecksum } from '../security.ts';
+import { logActivity } from '../session.ts';
 
 // Declarative page logic (migration 029): conditions, computations and
 // branches. Everything runs inside the request's transaction as the
@@ -150,6 +152,16 @@ export async function branchTarget(ctx: PageContext, point: Branch['point']): Pr
     if (point === 'after_processing' && b.when_button && b.when_button !== ctx.request) continue;
     if (!(await isAuthorized(ctx, b.authz))) continue;
     if (!(await conditionHolds(ctx, b, `condition of branch "${b.name}"`))) continue;
+    if (b.target_type === 'function') {
+      const path = await branchFunction(ctx, b);
+      if (path === null || (point === 'before_header' && leadingPage(path) === ctx.page.page_no)) continue;
+      return `${ctx.base}/${path}`;
+    }
+    if (b.target_type === 'app') {
+      const href = await otherApp(ctx, b);
+      if (href === null) continue;
+      return href;
+    }
     if (b.target_type === 'url') {
       const path = substitute(b.target_url ?? '', ctx, encodeURIComponent);
       if (point === 'before_header' && leadingPage(path) === ctx.page.page_no) continue;
@@ -162,4 +174,59 @@ export async function branchTarget(ctx: PageContext, point: Branch['point']): Pr
     return pageHref(ctx, target, items);
   }
   return null;
+}
+
+/**
+ * A "function returning a URL" branch: its PL/pgSQL body (as the app's role,
+ * binds as literals) returns a path inside the application, checked like a
+ * branch's target_url (meta.branch_path_ok). null or an empty result: the
+ * branch doesn't apply. A failing body or a path that isn't allowed shows a
+ * message (before the page is shown) and the next branch is tried.
+ */
+async function branchFunction(ctx: PageContext, b: Branch): Promise<string | null> {
+  const c = ctx.client!;
+  let path: string | null;
+  try {
+    path = await savepoint(c, () => functionBody(ctx, b.target_function ?? ''));
+  } catch (e) {
+    ctx.errors.page.push(await publicError(ctx, e, `branch "${b.name}"`));
+    return null;
+  }
+  path = path?.trim() || null;
+  if (path === null) return null;
+  const ok = (await c.query('select meta.branch_path_ok($1) as ok', [path])).rows[0]?.ok === true;
+  if (ok) return path;
+  ctx.errors.page.push(ctx.locale.t('logic.branch_bad_url', { name: b.name }));
+  logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail: `branch "${b.name}" returned a URL outside the application` });
+  return null;
+}
+
+/**
+ * A branch to a page of another application of this installation. The
+ * application and page must exist (and the page's build option be included);
+ * item values are signed for that application, page and user, so a page with
+ * checksum protection there accepts them. That application's own
+ * authentication and authorization apply when the browser gets there.
+ */
+async function otherApp(ctx: PageContext, b: Branch): Promise<string | null> {
+  const alias = b.target_app ?? '';
+  const page = b.target_page;
+  // pgapex's runtime connection reads the metadata (the app's role may not)
+  const row = page
+    ? await runtime.one<{ id: number; alias: string }>(
+        `select a.id, a.alias from meta.app a join meta.page p on p.app_id = a.id
+          where a.alias = $1 and p.page_no = $2 and meta.build_option_on(a.id, p.build_option)`,
+        [alias, page],
+      )
+    : undefined;
+  if (!row || !page) {
+    ctx.errors.page.push(ctx.locale.t('logic.branch_no_app', { name: b.name, app: alias, page: String(page ?? '') }));
+    return null;
+  }
+  const values = Object.fromEntries(Object.entries(b.target_items ?? {}).map(([k, v]) => [k.toUpperCase(), substitute(String(v), ctx, (x) => x)]));
+  const params = new URLSearchParams();
+  for (const k of Object.keys(values).sort()) params.set(k, values[k]);
+  if (Object.keys(values).length) params.set('cs', urlChecksum(row.id, page, ctx.user, values));
+  const q = params.toString();
+  return `/a/${encodeURIComponent(row.alias)}/${page}${q ? `?${q}` : ''}`;
 }

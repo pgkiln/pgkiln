@@ -7,6 +7,7 @@ import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
+import { processProblems } from '../runtime/processes.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
@@ -64,7 +65,10 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
     case 'validation':
       return row.type === 'sql' ? [{ name: 'expression', shape: 'boolean' }] : row.type === 'regex' ? [{ name: 'expression', shape: 'regex' }] : [];
     case 'process':
-      return row.type === 'sql' ? [{ name: 'code', shape: 'statements' }] : [];
+      return [
+        ...(row.type === 'sql' ? [{ name: 'code', shape: 'statements' as const }] : row.type === 'download' ? [{ name: 'code', shape: 'select' as const }] : []),
+        ...conditionSql(row),
+      ];
     case 'authz_scheme':
       return row.type === 'sql' ? [{ name: 'value', shape: 'boolean' }] : [];
     case 'lov':
@@ -259,6 +263,18 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     if (kind === 'computation' && !items.has(String(row.item_name).toUpperCase())) missing(e, 'Item', `Item ${row.item_name} doesn't exist (the computation sets nothing).`);
     if (kind === 'computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
     if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);
+    if (kind === 'process') {
+      for (const problem of processProblems(row.type, row.config)) missing(e, 'Configuration', problem);
+      if (row.parent_process && !all.some((x) => x.kind === 'process' && x.row.page_id === row.page_id && x.row.type === 'chain' && x.row.name === row.parent_process))
+        missing(e, 'Chain (parent process)', `There is no chain process "${row.parent_process}" on this page, so this process never runs.`);
+      if (row.type === 'workflow' && (row.config?.action ?? 'start') === 'start' && row.config?.definition
+          && !all.some((x) => x.kind === 'workflow_definition' && x.row.name === String(row.config.definition).toUpperCase()))
+        missing(e, 'Configuration', `Workflow definition ${row.config.definition} doesn't exist.`);
+    }
+    if (kind === 'branch' && row.target_type === 'page' && row.target_page && !pageNos.has(Number(row.target_page))) missing(e, 'Page', `Page ${row.target_page} doesn't exist.`);
+    if (kind === 'branch' && row.target_type === 'app'
+        && !(await owner.one('select 1 as ok from meta.app a join meta.page p on p.app_id = a.id where a.alias = $1 and p.page_no = $2', [row.target_app, row.target_page])))
+      missing(e, 'Application (app)', `Application ${row.target_app} has no page ${row.target_page}.`);
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');
     if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);

@@ -53,7 +53,7 @@ function conditionHolds(type: string | null, expected: string | null, value: str
 function initiallyHidden(ctx: PageContext) {
   const hidden = new Set<string>();
   for (const d of ctx.page.dynamic_actions) {
-    if (!ctx.vis!.dynamicActions.has(d.id) || (d.action !== 'show' && d.action !== 'hide')) continue;
+    if (!ctx.vis!.dynamicActions.has(d.id) || (d.action !== 'show' && d.action !== 'hide') || d.event === 'dialog_closed') continue;
     const trigger = list(d.trigger_element)[0];
     const value = trigger ? (ctx.session.state[trigger] ?? '') : '';
     const holds = conditionHolds(d.condition_type, d.condition_value, value);
@@ -285,7 +285,7 @@ export function dialogClosePage(ctx: PageContext) {
     ctx.app.name,
     html`<main class="t-dialog-main"><p>${ctx.locale.t('dialog.done')} <a href="${ctx.base}/${ctx.app.home_page}">${ctx.locale.t('dialog.continue')}</a></p></main>`,
     't-dialog-page',
-    { 'data-dialog-close': '1' },
+    { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no) },
     '',
     { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme },
   );

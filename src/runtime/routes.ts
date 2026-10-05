@@ -24,6 +24,7 @@ import { parseNumber } from '../numformat.ts';
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
+import { downloadHeaders, type Download } from './processes.ts';
 import { moveCalendarEvent } from './calendar.ts';
 import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
 import { invalidatePage, lazyOf } from './region-cache.ts';
@@ -353,7 +354,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // a document template: ?doc=NAME (see documents.ts)
     const docName = ctx.params.get('doc');
 
-    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string };
+    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string; download?: Download };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -371,6 +372,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         } catch (e) {
           ctx.errors.page.push((e as Error).message);
         }
+        // a download process on load sends its file instead of the page
+        if (ctx.download && !docName && !downloadKey) return { download: ctx.download };
         await computeVisibility(ctx);
         if (docName) return renderDocument(ctx, docName);
         if (downloadKey) {
@@ -407,6 +410,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (result.redirect) return reply.redirect(result.redirect, 303);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
     if (result.streamed) return reply;
+    if (result.download) return reply.headers(downloadHeaders(result.download)).send(result.download.content);
     if (result.file)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type(result.type!).send(result.file);
     return reply.type('text/html').send(result.html);
@@ -502,6 +506,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
       await saveState(ctx.session);
       return reply.redirect(self, 303);
     }
+    // a download process: the file is the answer (the page stays as it is in the browser)
+    if (ctx.download) {
+      await saveState(ctx.session);
+      logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'download', ip: ctx.ip, detail: ctx.download.name.slice(0, 200) });
+      return reply.headers(downloadHeaders(ctx.download)).send(ctx.download.content);
+    }
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     await saveState(ctx.session);
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx));
@@ -526,7 +536,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const da = ctx.page.dynamic_actions.find((d) => d.id === Number(req.params.id));
         if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         applyPostedItems(ctx, body, list(da.items_to_submit));
-        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string } = { items: {}, itemsHtml: {}, regions: {} };
+        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string; flash?: string } = { items: {}, itemsHtml: {}, regions: {} };
         const affected = list(da.affected_items).filter((n) => vis.items.has(n));
         switch (da.action) {
           case 'set_value': {
@@ -553,6 +563,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
             break;
         }
         for (const n of affected) out.items[n] = ctx.session.state[n] ?? '';
+        // the first action after a dialog closed: the dialog's success message is shown here, not on the next page
+        if (da.event === 'dialog_closed' && body.__dialog_closed === '1') {
+          const flash = takeFlash(ctx.session);
+          if (flash) out.flash = flash;
+        }
         return out;
       });
       await saveState(ctx.session);
