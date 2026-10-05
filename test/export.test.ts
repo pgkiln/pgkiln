@@ -34,6 +34,7 @@ const SECTIONS: Record<string, string> = {
   translation: 'translations',
   report_layout: 'report_layouts',
   automation: 'automations',
+  automation_action: 'automation_actions',
   document_template: 'document_templates',
   task_definition: 'task_definitions',
   workflow_definition: 'workflow_definitions',
@@ -136,7 +137,7 @@ describe('application export', () => {
   test('older files without the newer sections still import', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     // as exported by 0.2.0: no LOVs, group roles, texts, translations or layouts
-    for (const k of ['lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations']) delete doc[k];
+    for (const k of ['lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations', 'automation_actions']) delete doc[k];
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_old_format') as id`, [JSON.stringify(doc)])).id;
     try {
       assert.ok((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [id])).n > 5);

@@ -76,7 +76,9 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
     case 'app_process':
       return [{ name: 'code', shape: 'statements' }];
     case 'automation':
-      return [{ name: 'query', shape: 'select' }, { name: 'code', shape: 'statements' }];
+      return [{ name: 'query', shape: 'select' }];
+    case 'automation_action':
+      return [{ name: 'code', shape: 'statements' }, { name: 'condition', shape: 'boolean' }];
     case 'document_template':
       return [{ name: 'query', shape: 'select' }];
     case 'task_definition':

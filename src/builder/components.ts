@@ -27,6 +27,7 @@ export type FieldKind =
   | 'nav'      // navigation entry of the app (parent)
   | 'list_name'   // list of the app (by name)
   | 'list_parent' // entry of the app's lists (parent of a list entry)
+  | 'automation_name' // automation of the app (by name)
   | 'build_option' // build option of the app (NAME or !NAME)
   | 'rest_source' // REST data source of the app (by name)
   | 'secret'   // write-only: never shown; empty keeps the stored value
@@ -584,21 +585,40 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     plural: 'Automations',
     icon: 'clock',
     summary: (a) => a.name,
-    defaults: { enabled: true, schedule: '0 7 * * 1-5', time_zone: 'UTC', timeout_s: 300 },
-    validate: (v) => (v.schedule ? scheduleProblem(String(v.schedule), String(v.time_zone ?? 'UTC')) : 'Enter a schedule.') ?? (v.code ? null : 'Enter the code to run.'),
+    defaults: { enabled: true, schedule: '0 7 * * 1-5', time_zone: 'UTC', timeout_s: 300, error_handling: 'stop' },
+    validate: (v) => (v.schedule ? scheduleProblem(String(v.schedule), String(v.time_zone ?? 'UTC')) : 'Enter a schedule.'),
     fields: [
-      { name: 'name', label: 'Name', kind: 'text', group: 'Identification' },
+      { name: 'name', label: 'Name', kind: 'text', group: 'Identification', help: 'Application code runs it with meta.run_automation(\'<name>\').' },
       { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
       { name: 'enabled', label: 'Enabled (runs on its schedule)', kind: 'bool', group: 'Identification' },
       { name: 'schedule', label: 'Schedule (cron)', kind: 'text', group: 'Schedule',
         help: 'minute hour day-of-month month day-of-week, e.g. 0 7 * * 1-5 (07:00 on weekdays), */15 * * * * (every 15 minutes), 0 2 1 * * (02:00 on the 1st); or @hourly, @daily, @weekly, @monthly' },
       { name: 'time_zone', label: 'Time zone', kind: 'text', group: 'Schedule', help: 'IANA name, e.g. Europe/Amsterdam or UTC' },
-      { name: 'query', label: 'For each row of (optional)', kind: 'code', wide: true, group: 'Action',
-        help: 'A SELECT; the code then runs once per row with its columns as binds, e.g. select id, owner from sales.orders where status = \'OPEN\' → :ID, :OWNER' },
+      { name: 'query', label: 'For each row of (optional)', kind: 'code', wide: true, group: 'Execution',
+        help: 'A SELECT; the actions then run once per row with its columns as binds, e.g. select id, owner from sales.orders where status = \'OPEN\' → :ID, :OWNER. Empty: the actions run once.' },
+      { name: 'error_handling', label: 'Error handling', kind: 'select', options: ['stop', 'skip', 'disable'], group: 'Execution',
+        help: 'stop: an error rolls the whole run back · skip: a failing row is rolled back and recorded in the run history, the other rows go on (needs a query) · disable: like stop, and the automation is switched off.' },
+      { name: 'roles', label: 'Roles', kind: 'list', group: 'Execution', help: 'Comma separated; what meta.has_role() returns true for while it runs.' },
+      { name: 'timeout_s', label: 'Timeout (seconds)', kind: 'int', group: 'Execution', help: 'Of a scheduled run or Run now (a run from SQL has the caller\'s statement timeout).' },
+    ],
+  },
+  automation_action: {
+    table: 'meta.automation_action',
+    scope: 'app',
+    label: 'Automation action',
+    plural: 'Automation actions',
+    icon: 'play',
+    summary: (a) => `${a.automation_name}: ${a.name}`,
+    defaults: { seq: 10 },
+    validate: (v) => (!v.automation_name ? 'Choose the automation.' : !v.name ? 'Enter a name.' : !v.code ? 'Enter the code to run.' : null),
+    fields: [
+      { name: 'automation_name', label: 'Automation', kind: 'automation_name', group: 'Action' },
+      { name: 'name', label: 'Name', kind: 'text', group: 'Action' },
+      { name: 'seq', label: 'Sequence', kind: 'int', group: 'Action', help: 'Actions run in this order, all in the run\'s transaction.' },
       { name: 'code', label: 'Code (SQL or PL/pgSQL)', kind: 'code', wide: true, group: 'Action',
-        help: 'Runs as the application\'s database role, in one transaction. Binds: :APP_ID, :APP_ALIAS, :APP_USER (automation:<name>), :AUTOMATION_NAME, and the row\'s columns (not inside $$ … $$ blocks: pass them to a function instead).' },
-      { name: 'roles', label: 'Roles', kind: 'list', group: 'Action', help: 'Comma separated; what meta.has_role() returns true for while it runs.' },
-      { name: 'timeout_s', label: 'Timeout (seconds)', kind: 'int', group: 'Action' },
+        help: 'Runs as the application\'s database role. Binds: :APP_ID, :APP_ALIAS, :APP_USER (automation:<name>), :AUTOMATION_NAME, and the row\'s columns (not inside $$ … $$ blocks: pass them to a function instead).' },
+      { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', wide: true, group: 'Condition',
+        help: 'Optional boolean expression; the action runs only when it is true, e.g. :DAYS_OPEN::int > 7 (the row\'s columns are binds).' },
     ],
   },
 };
@@ -639,6 +659,9 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'rest_source':
       case 'list_name':
         values[f.name] = v === '' ? null : v.trim().toUpperCase();
+        break;
+      case 'automation_name':
+        values[f.name] = v === '' ? null : v.trim();
         break;
       case 'secret':
         // not trimmed: a secret is what was typed

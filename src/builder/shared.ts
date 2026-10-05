@@ -7,7 +7,7 @@ import { documentExtras } from './documents.ts';
 import { workflowExtras, workflowForm } from './workflows.ts';
 import { restExtras } from './rest.ts';
 import { COMPONENTS } from './components.ts';
-import { automationExtras } from './automations.ts';
+import { actionExtras, actionPrefill, automationExtras } from './automations.ts';
 import { layoutExtras } from './layouts.ts';
 import { templateExtras, templateImport } from './templates.ts';
 import { credentialExtras, restSourceExtras } from './websources.ts';
@@ -32,10 +32,10 @@ function listExtras(appId: number, list: any, entries: any[]): Raw {
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script'];
 
   const ORDER: Record<string, string> = {
-    nav_entry: 'parent_id nulls first, seq, id', app_process: 'seq, id', list_entry: 'list_name, parent_id nulls first, seq, id', supporting_script: 'kind, seq, name',
+    nav_entry: 'parent_id nulls first, seq, id', app_process: 'seq, id', list_entry: 'list_name, parent_id nulls first, seq, id', automation_action: 'automation_name, seq, name', supporting_script: 'kind, seq, name',
   };
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
@@ -61,8 +61,8 @@ export async function sharedRoutes(app: FastifyInstance) {
     let editor: Raw;
     if (newKind && SHARED.includes(newKind)) {
       const spec = COMPONENTS[newKind];
-      // "Add entry" from a list fills in the list
-      const prefill = newKind === 'list_entry' && req.query.list ? { list_name: String(req.query.list).toUpperCase() } : {};
+      // "Add entry" from a list fills in the list, "Add action" from an automation the automation (and the next sequence)
+      const prefill = newKind === 'list_entry' && req.query.list ? { list_name: String(req.query.list).toUpperCase() } : newKind === 'automation_action' && req.query.automation ? actionPrefill(String(req.query.automation), rows.automation_action) : {};
       editor = region(`New ${spec.label.toLowerCase()}`, componentForm(spec, newKind, { seq: 10, ...spec.defaults, ...prefill }, lk, `${BASE}/apps/${a.id}/shared/${newKind}`, s, 'Create'));
       if (newKind === 'template_component') editor = html`${editor}${templateImport(a.id, s)}`;
     } else if (selKind && SHARED.includes(selKind)) {
@@ -72,7 +72,7 @@ export async function sharedRoutes(app: FastifyInstance) {
       const [formSpec, formRow] = row && selKind === 'workflow_definition' ? workflowForm(spec, row) : [spec, row];
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(formSpec, selKind, formRow, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
-            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : selKind === 'web_credential' ? credentialExtras(a.id, row, s) : selKind === 'rest_source' ? restSourceExtras(a.id, row, s) : selKind === 'data_load_def' ? dataLoadDefExtras(row) : selKind === 'list' ? listExtras(a.id, row, rows.list_entry) : selKind === 'supporting_script' ? html`<p class="u-mt1"><a class="btn" href="${BASE}/apps/${a.id}/supporting-objects">${icon('play')} Run supporting objects…</a></p>` : ''}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s, rows.automation_action) : selKind === 'automation_action' ? actionExtras(row, rows.automation) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : selKind === 'web_credential' ? credentialExtras(a.id, row, s) : selKind === 'rest_source' ? restSourceExtras(a.id, row, s) : selKind === 'data_load_def' ? dataLoadDefExtras(row) : selKind === 'list' ? listExtras(a.id, row, rows.list_entry) : selKind === 'supporting_script' ? html`<p class="u-mt1"><a class="btn" href="${BASE}/apps/${a.id}/supporting-objects">${icon('play')} Run supporting objects…</a></p>` : ''}
             ${await usedInPanel(a.id, selKind, row)}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
@@ -136,7 +136,7 @@ export async function sharedRoutes(app: FastifyInstance) {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>
           ${rows[kind].map((r) => html`<li><a href="?c=${kind}-${r.id}"${selKind === kind && selId === String(r.id) ? raw(' aria-current="page"') : ''}>${icon(kind === 'nav_entry' ? (r.icon ?? 'chevron') : spec.icon)}<span>${r.parent_id ? '↳ ' : ''}${spec.summary(r)}</span>${
-            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : kind === 'automation' ? html`<span class="kind">${r.enabled ? (r.last_status === 'error' ? 'error' : r.schedule) : 'off'}</span>` : kind === 'web_credential' ? html`<span class="kind">${r.type}${r.secret_enc ? '' : ' · no secret'}</span>` : kind === 'rest_source' ? html`<span class="kind">${r.method}</span>` : kind === 'list' ? html`<span class="kind">${r.type}</span>` : kind === 'supporting_script' ? html`<span class="kind">${r.kind}</span>` : ''
+            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : kind === 'automation' ? html`<span class="kind">${r.enabled ? (r.last_status === 'error' || r.last_status === 'warning' ? r.last_status : r.schedule) : 'off'}</span>` : kind === 'web_credential' ? html`<span class="kind">${r.type}${r.secret_enc ? '' : ' · no secret'}</span>` : kind === 'rest_source' ? html`<span class="kind">${r.method}</span>` : kind === 'list' ? html`<span class="kind">${r.type}</span>` : kind === 'supporting_script' ? html`<span class="kind">${r.kind}</span>` : ''
           }</a></li>`)}${kind === 'supporting_script' ? html`<li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('play')}<span>Review and run…</span></a></li>` : ''}`;
       })}
     </ul>`;

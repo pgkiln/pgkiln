@@ -16,7 +16,7 @@ import { regionKeys } from '../appfiles.ts';
 /** Tables of an application that are its definition: replaced. */
 export const REPLACED = [
   'authz_scheme', 'app_item', 'app_process', 'lov', 'app_group_role', 'text_message', 'translation',
-  'report_layout', 'automation', 'document_template', 'task_definition', 'workflow_definition',
+  'report_layout', 'automation', 'automation_action', 'document_template', 'task_definition', 'workflow_definition',
   'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'data_load_def', 'nav_entry', 'page',
   // (042) a list before its entries (they follow it by name), supporting objects
   'list', 'list_entry', 'supporting_script',

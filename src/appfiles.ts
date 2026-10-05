@@ -101,6 +101,7 @@ const CODE: Record<string, Record<string, string>> = {
   authz_scheme: { value: 'sql' },
   lov: { query: 'sql' },
   automation: { query: 'sql', code: 'sql' },
+  automation_action: { code: 'sql', condition: 'sql' },
   document_template: { query: 'sql', template: 'html' },
   task_definition: { action_code: 'sql' },
   template_component: { template: 'html', wrapper: 'html' },
@@ -173,7 +174,9 @@ const SINGLE: [section: string, path: string, sort: string[]][] = [
   ['text_messages', 'globalization/text-messages.json', ['name', 'language']],
 ];
 
-const KNOWN = new Set(['format', 'app', 'app_processes', 'translations', 'nav', 'list_entries', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
+const ACTIONS_DIR = 'shared/automation-actions';
+
+const KNOWN = new Set(['format', 'app', 'app_processes', 'translations', 'nav', 'list_entries', 'automation_actions', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
 
 const byColumns = (cols: string[]) => (a: any, b: any) => {
   for (const c of cols) {
@@ -230,6 +233,18 @@ export function docToFiles(doc: Doc): FileMap {
     const byList = new Map<string, any[]>();
     for (const e of doc.list_entries) byList.set(String(e.list_name), [...(byList.get(String(e.list_name)) ?? []), e]);
     w.json('shared/list-entries.json', Object.fromEntries([...byList].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([name, rows]) => [name, navTree(rows)])));
+  }
+
+  // automation actions: a directory per automation (its key), a file per action
+  if (doc.automation_actions?.length) {
+    const autos: any[] = doc.automations ?? [];
+    const autoKey = new Map(uniqueKeys(autos, (r) => r.name, 'automation').map((k, i) => [String(autos[i].name), k]));
+    const byAuto = new Map<string, any[]>();
+    for (const x of doc.automation_actions) byAuto.set(String(x.automation_name), [...(byAuto.get(String(x.automation_name)) ?? []), x]);
+    for (const [name, rows] of byAuto) {
+      const dir = `${ACTIONS_DIR}/${autoKey.get(name) ?? (slug(name) || 'automation')}`;
+      uniqueKeys(rows, (r) => r.name, 'action').forEach((k, i) => w.record(dir, `${seqPrefix(rows[i].seq)}-${k}`, 'automation_action', rows[i]));
+    }
   }
 
   for (const page of doc.pages ?? []) writePage(w, page);
@@ -406,6 +421,15 @@ export function filesToDoc(files: FileMap): Doc {
     for (const rows of Object.values(read('shared/list-entries.json', {}) as Record<string, any[]>)) walkList(rows, null);
     doc.list_entries = entries;
   }
+
+  // automation actions, in the export's order (automation name, sequence, name). An older
+  // directory has none: its automations carry their code, which import turns into an action.
+  const actionDirs = [...new Set([...files.keys()].map((p) => new RegExp(`^${ACTIONS_DIR}/([^/]+)/`).exec(p)?.[1]).filter((d): d is string => !!d))].sort();
+  const cmp = (x: unknown, y: unknown) => (String(x) < String(y) ? -1 : String(x) > String(y) ? 1 : 0);
+  const actions = actionDirs
+    .flatMap((d) => readRecords(files, `${ACTIONS_DIR}/${d}`).map(mergeCode))
+    .sort((a, b) => cmp(a.automation_name, b.automation_name) || (a.seq ?? 0) - (b.seq ?? 0) || cmp(a.name, b.name));
+  if (actions.length || !doc.automations.some((a: any) => a.code != null)) doc.automation_actions = actions;
 
   const pageDirs = [...new Set([...files.keys()].map((p) => /^pages\/([^/]+)\//.exec(p)?.[1]).filter((d): d is string => !!d))].sort();
   let regionId = 0;
