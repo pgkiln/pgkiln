@@ -4442,3 +4442,146 @@ describe('sprint 33 item 4: debug messages and the installation log', () => {
     assert.equal((await dev.get('/builder/installation')).statusCode, 200);
   });
 });
+
+describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
+  const env = { ...process.env };
+  let role = '';
+  let other = 0;
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { url: string; headers: Record<string, unknown> }[] = [];
+  /** SQL as an application's code (its role, meta.app_id() set). */
+  const asApp = <T>(app: number, fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>, dbRole: string | null = role) =>
+    runtime.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'sec', true)`, [String(app)]);
+      if (dbRole) await c.query(`set local role ${dbRole}`);
+      return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
+    });
+  const fails = (app: number, sql: string, params: unknown[], re: RegExp, dbRole?: string | null) =>
+    assert.rejects(asApp(app, (q) => q(sql, params), dbRole), re);
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1,api.example.com';
+    delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+    role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec33-wr', 'Other', 'none') returning id`)).id;
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc) values ($1, 'SEC5_TOKEN', 'bearer', $2)`, [other, encryptSecret('other-app-s3cret')]);
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      hits.push({ url: req.url!, headers: req.headers });
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('private');
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+  });
+
+  after(async () => {
+    await owner.query('delete from meta.web_request_log where app_id = any($1)', [[appId, other]]);
+    await owner.query('delete from meta.app where id = $1', [other]);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  test('application roles can not read or change the request table; take/done only see their own transaction', async () => {
+    for (const sql of ['select * from meta.web_request_log', `insert into meta.web_request_log (app_id, url) values (${other}, 'http://x')`, 'update meta.web_request_log set status = $$ok$$', 'delete from meta.web_request_log'])
+      await fails(appId, sql, [], /permission denied/);
+    await assert.rejects(runtime.query('select * from meta.web_request_log'), /permission denied/);
+    await assert.rejects(runtime.query('select meta.web_request_check()'), /permission denied/);
+    // a committed request of another application: not taken, not finished, not readable
+    const id = (await asApp(other, (q) => q(`select meta.web_request('https://api.example.com/x') as id`), null))[0].id;
+    const r = await asApp(appId, async (q) => ({
+      taken: await q(`select set_config('pgapex.web_pending', '1', true); select * from meta.web_request_take(20)`),
+      response: (await q('select meta.web_response($1) as r, meta.web_response_blob($1) as b', [id]))[0],
+    }));
+    assert.deepEqual(r.taken, []);
+    assert.deepEqual(r.response, { r: null, b: null });
+    // even the same application can't take or finish a committed request from SQL: only the scheduler does
+    const own = await asApp(other, async (q) => {
+      await q(`select set_config('pgapex.web_pending', '1', true)`);
+      const taken = await q('select * from meta.web_request_take(20)');
+      await q(`select meta.web_request_done($1, 'ok', 200, null, '{}', 'forged', null)`, [id]);
+      return taken;
+    }, null);
+    assert.equal(own.length, 0);
+    const row = await owner.one('select status, response_body from meta.web_request_log where id = $1', [id]);
+    assert.deepEqual([row.status, row.response_body], ['queued', null]);
+  });
+
+  test('requests are checked when queued: URL, method, headers, credential of the app, sizes, the queue limit', async () => {
+    const bad: [string, unknown[], RegExp][] = [
+      ['select meta.web_request($1)', ['file:///etc/passwd'], /must start with http/],
+      ['select meta.web_request($1)', ['javascript:alert(1)'], /must start with http/],
+      ['select meta.web_request($1)', ['http://user:pw@api.example.com/'], /must start with http/],
+      ['select meta.web_request($1)', ['http://api.example.com/a b'], /no spaces/],
+      ['select meta.web_request($1)', ['http://api.example.com/\r\nX: y'], /no spaces/],
+      ['select meta.web_request($1, $2)', ['http://api.example.com/', 'TRACE'], /method is one of/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"X-A": "1\\r\\nInjected: yes"}'], /without line breaks/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"Bad Name": "1"}'], /not a valid header name/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"Host": "evil.example.com"}'], /set by the server/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"X-N": 1}'], /is a string/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '["x"]'], /JSON object/],
+      ['select meta.web_request($1, p_body => $2)', ['http://api.example.com/', 'x'.repeat(1_000_001)], /larger than 1 MB/],
+      ['select meta.web_request($1, p_timeout_s => 3600)', ['http://api.example.com/'], /1 to 60 seconds/],
+      // another application's credential is not found from this one
+      ['select meta.web_request($1, p_credential => $2)', ['http://api.example.com/', 'SEC5_TOKEN'], /web credential SEC5_TOKEN does not exist/],
+      ['select meta.web_request_source($1)', ['NO_SUCH_SOURCE'], /does not exist in this application/],
+      ['select meta.web_request_source($1, $2)', ['CRM_CONTACTS', '{"a": 1}'], /JSON object of strings/],
+    ];
+    for (const [sql, params, re] of bad) await fails(appId, sql, params, re);
+    // no application: refused
+    await assert.rejects(runtime.query(`select meta.web_request('https://api.example.com/')`), /no current application/);
+    // the queue limit
+    await fails(other, `select meta.web_request('https://api.example.com/q') from generate_series(1, 101)`, [], /100 requests waiting/, null);
+    await owner.query('delete from meta.web_request_log where app_id = $1', [other]);
+  });
+
+  test('the server makes it with the allow-list, the address checks and the credential URL limits', async () => {
+    const wr = await import('../src/webrequests.ts');
+    const at = (url: string, more: Record<string, unknown> = {}) =>
+      wr.execute(other, { id: '0', source: null, params: null, url, method: 'GET', headers: {}, body: null, credential: null, timeout_s: 5, ...more });
+    // 127.0.0.1 is allowed but private (PGAPEX_REST_PRIVATE_HOSTS unset): refused before connecting
+    let r = await at(`${mockBase}/x`);
+    assert.equal(r.status, 'error');
+    assert.match(r.message!, /private, loopback or link-local/);
+    r = await at('http://169.254.169.254/latest/meta-data/');
+    assert.match(r.message!, /allow-list/);
+    r = await at('http://evil.example.org/');
+    assert.match(r.message!, /allow-list/);
+    assert.equal(hits.length, 0);
+    // a credential that is valid for one URL only is not sent elsewhere
+    await owner.query(`update meta.web_credential set valid_for = '{https://api.example.com/only}' where app_id = $1 and name = 'SEC5_TOKEN'`, [other]);
+    r = await at('https://api.example.com/other', { credential: 'SEC5_TOKEN' });
+    assert.match(r.message!, /not valid for this URL/);
+    assert.ok(!JSON.stringify(r).includes('other-app-s3cret'));
+    // a header that smuggles a line break (edited in the table by the owner) is dropped, not sent
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    try {
+      r = await at(`${mockBase}/h`, { headers: { 'x-ok': 'fine', 'x-bad': 'a\r\nInjected: 1' } });
+      assert.equal(r.status, 'ok');
+      assert.equal(hits.at(-1)!.headers['x-ok'], 'fine');
+      assert.equal(hits.at(-1)!.headers['injected'], undefined);
+      assert.equal(hits.at(-1)!.headers['x-bad'], undefined);
+    } finally {
+      delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+    }
+  });
+
+  test('meta.parse_data refuses what it can not parse safely and stays within its limits', async () => {
+    await assert.rejects(runtime.query(`select * from meta.parse_data('\\x504b0304'::bytea)`), /Excel/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>', 'UTF8'))`), /XML is not parsed/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_delimiter => '"')`), /delimiter is one character/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_format => 'pdf')`), /format is auto/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('[1, 2]', 'UTF8'))`), /must be an object/);
+    // values are data: a quote or SQL in a cell is just text
+    const r = (await runtime.query(`select cols, data from meta.parse_data(convert_to($1, 'UTF8'))`, [`"x'); drop table meta.app; --",b\n"<script>",2\n`])).rows;
+    assert.deepEqual(r[0].cols, ['<script>', '2']);
+    assert.deepEqual(Object.keys(r[0].data), ['b', 'x_drop_table_meta_app']);
+    // the row limit is capped
+    await assert.rejects(runtime.query(`select count(*) from meta.parse_data(convert_to(repeat(E'1\\n', 3), 'UTF8'), p_headers => false, p_max_rows => 2)`), /at most 2/);
+  });
+});

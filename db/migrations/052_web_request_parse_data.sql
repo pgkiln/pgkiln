@@ -167,12 +167,13 @@ begin
 end
 $$;
 
--- The response body as text (UTF-8, or Latin-1 when it isn't valid UTF-8).
+-- The response body as text (UTF-8, or Latin-1 when it isn't valid UTF-8;
+-- null for binary content with NUL bytes).
 create function meta.web_response_text(p_body bytea) returns text
 language plpgsql immutable set search_path = pg_catalog as $$
 begin
-  if p_body is null then
-    return null;
+  if p_body is null or position('\x00'::bytea in p_body) > 0 then
+    return null;  -- binary: see meta.web_response_blob
   end if;
   begin
     return convert_from(p_body, 'UTF8');
@@ -198,7 +199,7 @@ begin
   if not found then
     return null;
   end if;
-  v_text := replace(meta.web_response_text(r.response_body), chr(0), '');
+  v_text := meta.web_response_text(r.response_body);
   if v_text is not null and (r.response_headers ->> 'content-type' ~* 'json' or v_text ~ '^\s*[\[{]') then
     begin
       v_json := v_text::jsonb;
