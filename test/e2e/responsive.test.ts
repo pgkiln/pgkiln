@@ -314,6 +314,25 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('data reporter (page 36): a saved report with its chart, and a new report with the editor open', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      const r = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 36 and r.type = 'data_reporter'`);
+      const saved = (await owner.one(`select id from meta.data_report where region_id = $1 and name = 'Salary by department'`, [r.id])).id;
+      await page.goto(`${base}/a/hr/36?dr${r.id}_open=${saved}`);
+      assert.equal(await page.locator('.reporter figure.chart').count(), 1);
+      await check(page, 'app-36-saved', vp);
+      // the editor without JavaScript-only parts: pick the source, open the editor, filter and run
+      await page.goto(`${base}/a/hr/36`);
+      await Promise.all([page.waitForNavigation(), page.locator('.reporter-new button').click()]);
+      await page.locator(`select[name="dr${r.id}_fc"]`).first().selectOption('job');
+      await page.locator(`input[name="dr${r.id}_fv"]`).first().fill('CLERK');
+      await Promise.all([page.waitForNavigation(), page.locator('.reporter-editor button.btn-hot').click()]);
+      assert.equal(await page.locator('.reporter-table tbody tr').count(), 4);
+      await check(page, 'app-36-editor', vp);
+      await page.context().close();
+    });
+
     test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
@@ -576,6 +595,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           await subscribe(sub, lib, 'lov', 'DEPARTMENTS_WITH_A_LONG_NAME', 'admin');
           return { subscriptions: `/builder/apps/${sub}/subscriptions`, subscribers: `/builder/apps/${lib}/subscriptions` };
         })()),
+        // (sprint 35) the Data Reporter region's settings (data sources and their columns)
+        data_reporter_region: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 36 and r.type = 'data_reporter'`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
