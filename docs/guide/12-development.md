@@ -42,7 +42,8 @@ src/
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers, psql commands), runScript() (stop/continue, transaction, savepoints)
   quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
   xlsx.ts                  Excel writer for report downloads (typed cells, streamed through fflate's Zip)
-  automations.ts           cron parser, next run in a time zone, scheduler, running automations
+  automations.ts           cron parser, next run in a time zone, scheduler, running automations (the actions run
+                           in PL/pgSQL: meta.automation_execute, shared with meta.run_automation; migration 044)
   html.ts                  auto-escaping html`` templates
   richtext.ts              rich text and Markdown items: allow-list HTML sanitiser, Markdown renderer
   qrcode.ts                QR code encoder (byte mode, versions 1–40) and SVG output for the qrcode item
@@ -108,7 +109,7 @@ src/
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
     layouts.ts             report layouts: logo upload, PDF preview
-    automations.ts         automations: next run, Run now, run history
+    automations.ts         automations: actions (add, reorder), next run, Run now, run history with errors per row
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)

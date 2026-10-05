@@ -371,32 +371,83 @@ needed (pg_cron isn't available on every managed PostgreSQL service).
 |---|---|
 | Schedule | cron syntax, `minute hour day-of-month month day-of-week`: `0 7 * * 1-5` (07:00 on weekdays), `*/15 * * * *` (every 15 minutes), `0 2 1 * *` (02:00 on the 1st), `30 6 1 jan,jul *`; or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. When both day fields are set, either may match, as in cron |
 | Time zone | the schedule's time zone, e.g. `Europe/Amsterdam` (daylight saving included) or `UTC` |
-| For each row of | optional query: the code then runs once per row, with the row's columns as binds (APEX's query-based automations) |
-| Code | one or more SQL statements, a `do $$ … $$` block or `call`. Binds: `:APP_ID`, `:APP_ALIAS`, `:APP_USER` (`automation:<name>`), `:AUTOMATION_NAME` and the row's columns. Binds aren't replaced inside `$$ … $$`: pass them to a function instead |
+| For each row of | optional query: the actions then run once per row, with the row's columns as binds (APEX's query-based automations). Empty: the actions run once |
+| Error handling | `stop` (default): an error rolls the whole run back · `skip`: a failing row is rolled back and recorded, the other rows go on (APEX: *Ignore*; needs a query) · `disable`: like `stop`, and the automation is switched off (APEX: *Disable Automation*) |
 | Roles | what `meta.has_role()` returns true for while it runs (read at every run) |
-| Timeout | the statement timeout of a run (default 300 s) |
+| Timeout | the statement timeout of a scheduled run or Run now (default 300 s) |
 
-A run is **one transaction as the application's database role**, so grants and row level security
-apply, and an error rolls the whole run back. The editor shows the next run, a **Run now**
-button (it also works while the automation is disabled) and the last runs with their status, row
-count and error message; the last 100 runs are kept in `meta.automation_log`.
+### Actions
 
-The HR sample's *Remind managers* runs at 08:00 on weekdays and reminds managers of leave requests
-that have waited more than two days (`examples/hr/hr_08_automations.sql`):
+An automation has one or more **actions**, run in order (by sequence) for each row, or once (the
+**Actions** box under the automation: *Add action*, the arrows reorder, click an action to edit
+or delete it). Each action has:
+
+| Field | |
+|---|---|
+| Name | e.g. `Remind the manager`; it appears in error messages and the run history |
+| Sequence | the order |
+| Code | one or more SQL statements, a `do $$ … $$` block or `call`. Binds: `:APP_ID`, `:APP_ALIAS`, `:APP_USER` (`automation:<name>`), `:AUTOMATION_NAME` and the row's columns. Binds aren't replaced inside `$$ … $$`: pass them to a function instead |
+| Server-side condition | optional boolean SQL expression with the same binds: the action runs only when it is true, e.g. `:DAYS_PENDING::int >= 7` |
+
+All actions of a run share **one transaction as the application's database role**, so grants
+and row level security apply, and a later action sees what an earlier one wrote. With error
+handling `skip`, every row runs in a savepoint: when an action of a row fails, that row's changes
+are undone, the error is recorded and the next row runs. A statement timeout always stops the
+whole run.
+
+The editor shows the next run, a **Run now** button (it also works while the automation is
+disabled) and the last runs: who started them (`schedule`, `manual` or `sql` with the user), the
+status (`ok`; `warning` when some rows failed; `error`), the rows processed, the failed rows with
+each row's error (row number, action, message and the row's values), and the error message. The
+last 100 runs are kept in `meta.automation_log`.
+
+The HR sample's *Remind managers* runs at 08:00 on weekdays (`examples/hr/hr_08_automations.sql`,
+`hr_33_automation_actions.sql`):
 
 ```sql
--- For each row of
-select id from hr.leave_request
+-- For each row of (error handling: skip)
+select id, current_date - created_at::date as days_pending
+  from hr.leave_request
  where status = 'PENDING' and created_at < now() - interval '2 days'
--- Code
+-- Action 10 "Remind the manager"
 select hr.remind_pending_leave(:ID::int);
+-- Action 20 "Escalate after a week", condition :DAYS_PENDING::int >= 7
+select hr.escalate_pending_leave(:ID::int);
 ```
+
+### Running an automation from SQL
+
+Application code (a page process, an application process, a workflow, another automation) runs an
+automation of the **current application** with `meta.run_automation`, like
+`APEX_AUTOMATION.EXECUTE`:
+
+```sql
+select meta.run_automation('Remind managers');                    -- raises an error if the run fails
+select meta.run_automation('Remind managers', p_raise => false);  -- returns {"status": "error", …} instead
+```
+
+It runs **synchronously, in the caller's transaction**, as the caller's database role (the
+application's role), with the automation's roles and user (`automation:<name>`) while it runs;
+afterwards the caller's user and roles apply again. It returns
+`{"status": "ok" | "warning" | "error", "rows": …, "failed": …, "errors": [...], "message": …}`
+and records the run (trigger `sql`, with the calling user). Because it is part of the caller's
+transaction, a rollback of the caller undoes the run *and* its log entry; with `p_raise => false` a
+failed run is undone on its own and the log entry is kept when the caller commits. The automation
+need not be enabled. While the run's transaction is open nobody else can run the same automation
+(the scheduler and Run now report it as busy, another `run_automation` raises an error), and an
+automation can't run itself. The caller's statement timeout applies, not the automation's.
+
+The HR sample's *Leave requests* page (6) has a *Send reminders now* button for admins whose
+process is `select meta.run_automation('Remind managers');`.
 
 **Running more than one pgapex server?** Every server runs the scheduler (every 30 seconds,
 `SCHEDULER_INTERVAL_S`). Due automations are claimed with `FOR UPDATE SKIP LOCKED` and a run holds
 an advisory lock, so an automation never runs twice at the same time. Set `AUTOMATIONS=off` on
-servers that shouldn't run them. Exported applications include their automations; an imported
-copy starts with them **switched off**, so a copy never runs the original's jobs unasked.
+servers that shouldn't run them. Exported applications include their automations and actions; an
+imported copy starts with them **switched off**, so a copy never runs the original's jobs unasked.
+Export files of pgapex 0.23 and older (one code field per automation) still import: the code
+becomes the automation's single action. Scripts may still write `meta.automation.code`: it
+creates or replaces the single action (the column itself stays empty).
 
 If you prefer the database to schedule work, [pg_cron](15-extensions.md) still works next to this.
 

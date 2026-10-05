@@ -349,6 +349,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         shared: `/builder/apps/${appId}/shared`,
         layout: `/builder/apps/${appId}/shared?c=report_layout-${(await owner.one(`select id from meta.report_layout where app_id = $1 and name = 'HR_DIRECTORY'`, [appId])).id}`,
         automation: `/builder/apps/${appId}/shared?c=automation-${(await owner.one(`select id from meta.automation where app_id = $1 and name = 'Remind managers'`, [appId])).id}`,
+        automation_action: `/builder/apps/${appId}/shared?c=automation_action-${(await owner.one(`select id from meta.automation_action where app_id = $1 and automation_name = 'Remind managers' and seq = 20`, [appId])).id}`,
+        automation_action_new: `/builder/apps/${appId}/shared?new=automation_action&automation=Remind%20managers`,
         settings: `/builder/apps/${appId}/settings`,
         activity: `/builder/apps/${appId}/activity`,
         api: `/builder/apps/${appId}/api`,
