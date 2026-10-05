@@ -9,6 +9,8 @@ import { autoMap, LoadError, LoadFailed, loadRows, loadWithDefinition, parseFile
 import { esc } from '../html.ts';
 import { invokeApi, restFetchRow, restFormDml } from './rest-sources.ts';
 import { runPending } from '../webrequests.ts';
+import { runPendingAi } from '../ai/requests.ts';
+import { runAiProcess } from './ai.ts';
 import { itemMask, lovLookup, ratingMax } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { conditionHolds } from './logic.ts';
@@ -408,6 +410,11 @@ async function shouldRun(ctx: PageContext, p: Process) {
   // a grid's DML runs on that grid's Save button unless a button is named
   if (p.type === 'grid_dml' && !p.when_button && ctx.request !== `GRID_SAVE_${p.region_id}`) return false;
   if (!(await isAuthorized(ctx, p.authz))) return false;
+  return processConditionHolds(ctx, p);
+}
+
+/** A process's server-side condition (also checked when a dynamic action runs it). */
+export function processConditionHolds(ctx: PageContext, p: Process) {
   const cond = { condition_type: p.condition_type ?? null, condition_expr: p.condition_expr ?? null, condition_value: p.condition_value ?? null };
   return conditionHolds(ctx, cond, `condition of process "${p.name}"`);
 }
@@ -457,6 +464,7 @@ async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, dept
       case 'data_load': return await dataLoad(ctx, p);
       case 'invoke_api': return await invokeApi(ctx, p, names);
       case 'workflow': return await workflowProcess(ctx, p, names);
+      case 'ai_generate': return (await runAiProcess(ctx, p, names)).message;
       case 'download':
         // sent instead of the page (routes.ts); the first download of a request wins
         ctx.download ??= await downloadFile(ctx, p);
@@ -472,6 +480,8 @@ async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, dept
         // web requests the process queued (meta.web_request): made now, before the next process
         await runPending(ctx.client!, ctx.app.id, (r, res, ms) =>
           dbg(ctx, 6, 'web', () => `web request ${r.id} (${r.source ? `source ${r.source}` : r.method}): ${res.status === 'ok' ? `HTTP ${res.statusCode}` : res.message} in ${ms} ms`));
+        // AI requests it queued (meta.ai_generate): likewise
+        await runPendingAi(ctx.client!, { appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, debug: (level, text) => dbg(ctx, level, 'ai', text) });
         return p.success_message;
     }
   } catch (e) {

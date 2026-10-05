@@ -257,7 +257,7 @@ document.documentElement.classList.add('js');
         const r = document.getElementById(`R${id}`);
         if (r) replaceHtml(r, markup);
       }
-      if (da.action === 'set_value' || da.action === 'execute_sql')
+      if (da.action === 'set_value' || da.action === 'execute_sql' || da.action === 'ai_generate')
         for (const [name, value] of Object.entries(res.items || {})) setItemValue(name, value);
       if (res.flash) showMessage(res.flash, 'success');
     } catch (e) {
@@ -278,7 +278,21 @@ document.documentElement.classList.add('js');
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-button]');
     if (!btn) return;
-    for (const da of das) if (da.event === 'click' && da.trigger.includes(btn.dataset.button)) runDa(da, false);
+    const run = das.filter((da) => da.event === 'click' && da.trigger.includes(btn.dataset.button));
+    // "Generate text with AI" on a submit button: the AJAX call replaces the submit
+    // (without JavaScript the button submits and the page process runs instead)
+    const ai = run.some((da) => da.action === 'ai_generate');
+    if (ai && btn.type === 'submit') e.preventDefault();
+    const pending = run.map((da) => runDa(da, false));
+    if (ai && btn.tagName === 'BUTTON') {
+      // one request at a time: the button waits for the answer
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      Promise.allSettled(pending).then(() => {
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+      });
+    }
   });
   for (const da of das) {
     if (da.event !== 'dialog_closed' && ['show', 'hide', 'enable', 'disable'].includes(da.action)) runDa(da, true);
@@ -418,7 +432,7 @@ document.documentElement.classList.add('js');
     if (!handlers.length) return location.reload();
     // the first action that goes to the server brings the dialog's success message along
     let first = true;
-    const serverSide = ['set_value', 'execute_sql', 'refresh_region', 'refresh_item'];
+    const serverSide = ['set_value', 'execute_sql', 'refresh_region', 'refresh_item', 'ai_generate'];
     (async () => {
       for (const da of handlers) {
         const extra = first && serverSide.includes(da.action) ? { __dialog_closed: '1' } : undefined;

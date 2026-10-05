@@ -300,6 +300,12 @@ export function startScheduler() {
       console.error('web requests:', (e as Error).message);
     }
     try {
+      // AI requests queued from SQL (meta.ai_generate; src/ai/requests.ts)
+      await (await import('./ai/requests.ts')).aiRequestTick();
+    } catch (e) {
+      console.error('AI requests:', (e as Error).message);
+    }
+    try {
       // debug messages past their retention (at most once an hour; src/debug.ts)
       await (await import('./debug.ts')).purgeDebug();
     } catch (e) {

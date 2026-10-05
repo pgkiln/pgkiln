@@ -46,6 +46,7 @@
     "test:e2e": "tsx --test --test-concurrency=1 test/e2e/*.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@fastify/cookie": "^11.1.2",
     "@fastify/formbody": "^9.0.0",
     "@fastify/multipart": "^10.1.2",
@@ -56,6 +57,7 @@
     "jose": "^6.2.12",
     "ldapts": "^9.2.0",
     "leaflet": "^1.9.4",
+    "openai": "^7.28.0",
     "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "read-excel-file": "^9.3.10"
