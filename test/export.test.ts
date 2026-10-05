@@ -22,6 +22,7 @@ const NOT_EXPORTED = new Set([
   'builder_lock', // page and application locks of this installation's developers
   'dev_comment', // developer comments: builder notes of this installation
   'debug_view', // debug messages: requests recorded by this installation
+  'web_request_log', // web requests queued from SQL and their responses (kept 24 hours)
 ]);
 
 /** Where each exported table appears in the document. */

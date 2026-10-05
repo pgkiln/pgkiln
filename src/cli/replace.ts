@@ -26,7 +26,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (042) builder state of this installation: locks and developer comments (by page number)
   'builder_lock', 'dev_comment',
   // (051) debug messages recorded by this installation
-  'debug_view'];
+  'debug_view',
+  // (052) web requests queued from SQL and their responses
+  'web_request_log'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */

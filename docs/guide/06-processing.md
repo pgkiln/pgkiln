@@ -141,6 +141,10 @@ application item) sets that item. Here the new request id lands in `P7_ID`. Cast
 Procedures work too (`call my_proc(:P1_X)`), as do several statements separated by `;`. For
 `DO` blocks, read items with `meta.v('P1_X')`.
 
+A web request queued in a process with [`meta.web_request()`](09-reference.md#web-requests-from-sql)
+is made by the server right after that process, so the **next** process can read
+`meta.web_response(id)`; the process that queued it can't wait for it.
+
 ### Error handling
 
 In PL/pgSQL, raise errors with messages written for the end user:
