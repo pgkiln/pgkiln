@@ -3482,3 +3482,539 @@ describe('sprint 31 builder: custom authentication, lists, locks, comments, supp
     });
   });
 });
+
+describe('sprint 32 automations: actions, error handling per row, meta.run_automation', () => {
+  const OTHER = 'sec32-automations';
+  let other: number;
+  let hrAuto: number;
+
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [OTHER]);
+    other = (await owner.one(`insert into meta.app (alias, name) values ($1, 'S32 automations') returning id`, [OTHER])).id;
+    await owner.query(`insert into meta.automation (app_id, name, enabled, code) values ($1, 'sec32 other', false, 'select 1')`, [other]);
+    hrAuto = (await owner.one(`insert into meta.automation (app_id, name, enabled, code, roles) values ($1, 'sec32 hr', false, 'select 1', '{admin}') returning id`, [appId])).id;
+  });
+
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [other]);
+    await owner.query(`delete from meta.automation where app_id = $1 and name like 'sec32%'`, [appId]);
+  });
+
+  const dev = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder');
+    return b;
+  };
+  /** In a transaction as the HR application's role (as application code runs). */
+  const asHr = <T>(fn: (c: import('pg').PoolClient) => Promise<T>) =>
+    runtime.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'allen', true)`, [String(appId)]);
+      await c.query('set local role hr_app');
+      return fn(c);
+    });
+
+  test('applications cannot read or change actions, definitions or logs directly', async () => {
+    for (const sql of [
+      'select * from meta.automation_action',
+      `insert into meta.automation_action (app_id, automation_name, name, code) values (${appId}, 'sec32 hr', 'x', 'select 1')`,
+      `update meta.automation_action set code = 'drop table hr.emp'`,
+      `select meta.automation_definition(${hrAuto})`,
+    ])
+      await assert.rejects(asHr((c) => c.query(sql)), /permission denied/, sql);
+  });
+
+  test('meta.run_automation runs only automations of the current application, as the caller\'s role', async () => {
+    await assert.rejects(asHr((c) => c.query(`select meta.run_automation('sec32 other')`)), /does not exist in this application/);
+    // the definition helper is limited to the current application too
+    await assert.rejects(asHr((c) => c.query(`select meta.automation_begin('sec32 other')`)), /does not exist in this application/);
+    // the code runs with the caller's grants: pgapex's own tables stay closed
+    await owner.query(`update meta.automation_action set code = 'select password_hash from meta.account' where app_id = $1 and automation_name = 'sec32 hr'`, [appId]);
+    await assert.rejects(asHr((c) => c.query(`select meta.run_automation('sec32 hr')`)), /permission denied/);
+    // binds are literals: a row value can't inject SQL
+    await owner.query(`create table if not exists public.sec32_auto (v text)`);
+    await owner.query(`grant insert, select on public.sec32_auto to hr_app`);
+    try {
+      await owner.query(`update meta.automation set query = $2 where id = $1`, [hrAuto, `select $x$'); drop table public.sec32_auto; --$x$ as v`]);
+      await owner.query(`update meta.automation_action set code = 'insert into public.sec32_auto values (:V)' where app_id = $1 and automation_name = 'sec32 hr'`, [appId]);
+      const r = (await asHr((c) => c.query(`select meta.run_automation('sec32 hr') as r`))).rows[0].r;
+      assert.equal(r.status, 'ok');
+      assert.equal((await owner.one(`select v from public.sec32_auto`)).v, `'); drop table public.sec32_auto; --`);
+    } finally {
+      await owner.query(`drop table if exists public.sec32_auto`);
+      await owner.query(`update meta.automation set query = null where id = $1`, [hrAuto]);
+    }
+    // finishing a run of another application is refused
+    const log = (await owner.one(`insert into meta.automation_log (automation_id, trigger) values ((select id from meta.automation where app_id = $1), 'sql') returning id`, [other])).id;
+    await assert.rejects(asHr((c) => c.query(`select meta.automation_end($1, 'ok', '{}', null)`, [log])), /is not running/);
+    assert.equal((await owner.one('select status from meta.automation_log where id = $1', [log])).status, 'running');
+  });
+
+  test('builder: actions need a developer and a CSRF token, and belong to an automation of the same application', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.post(`/builder/apps/${appId}/shared/automation_action`, { automation_name: 'sec32 hr', name: 'x', code: 'select 1' })).statusCode, 302);
+    const b = await dev();
+    await b.get(`/builder/apps/${appId}/shared?c=automation-${hrAuto}`);
+    assert.equal((await b.post(`/builder/apps/${appId}/shared/automation_action`, { automation_name: 'sec32 hr', name: 'x', code: 'select 1' })).statusCode, 403);
+    // an automation of another application, posted under this one: refused by the foreign key
+    await b.post(`/builder/apps/${appId}/shared/automation_action`, { __csrf: b.lastCsrf, automation_name: 'sec32 other', name: 'sneaky', seq: '10', code: 'select 1' });
+    assert.equal((await owner.one(`select count(*)::int as n from meta.automation_action where name = 'sneaky'`)).n, 0);
+    // moving: CSRF, and only actions of this application
+    const act = (await owner.one(`select id from meta.automation_action where app_id = $1 and automation_name = 'sec32 other'`, [other])).id;
+    await b.get(`/builder/apps/${appId}/shared?c=automation-${hrAuto}`);
+    assert.equal((await b.post(`/builder/apps/${appId}/shared/automation_action/${act}/move`, { __csrf: b.lastCsrf, dir: 'up' })).statusCode, 404);
+    assert.equal((await b.post(`/builder/apps/${other}/shared/automation_action/${act}/move`, { dir: 'up' })).statusCode, 403);
+    // the run history escapes row errors
+    await owner.query(
+      `insert into meta.automation_log (automation_id, trigger, status, finished_at, rows, rows_failed, errors, message)
+       values ($1, 'manual', 'warning', now(), 2, 1, $2, '1 of 2 row(s) failed')`,
+      [hrAuto, JSON.stringify([{ row: 1, action: '<b>x</b>', message: '<script>alert(1)</script>', values: '{"v": "<img src=x onerror=alert(1)>"}' }])],
+    );
+    const page = (await b.get(`/builder/apps/${appId}/shared?c=automation-${hrAuto}`)).body;
+    assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(page, /<script>alert|<img src=x/);
+  });
+});
+
+describe('sprint 32 item 2: workflow invoke_api steps', () => {
+  const env = { ...process.env };
+  const OTHER = 'sec32-invoke';
+  let other: number;
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { host: string; url: string; auth: string | null }[] = [];
+  let runWorkflow: (id: string) => Promise<number>;
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    ({ runWorkflow } = await import('../src/workflow.ts'));
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      hits.push({ host: req.headers.host ?? '', url: req.url!, auth: req.headers.authorization ?? null });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ items: [{ detail_pk: 'forged', workflow_id: '1', initiator: 'king', v: "x'); drop table hr.emp; --" }] }));
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+    await owner.query(`delete from meta.app where alias = $1`, [OTHER]);
+    other = (await owner.one(`insert into meta.app (alias, name) values ($1, 'S32 invoke') returning id`, [OTHER])).id;
+    await owner.query(`insert into meta.rest_source (app_id, name, url) values ($1, 'SEC32_FOREIGN', $2)`, [other, `${mockBase}/foreign`]);
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc, valid_for) values ($1, 'SEC32_CRED', 'bearer', $2, $3)`,
+      [appId, encryptSecret('sec32-secret'), ['https://api.example.com/']]);
+    await owner.query(`insert into meta.rest_source (app_id, name, url, row_selector, columns) values ($1, 'SEC32_ROWS', $2, 'items', $3)`,
+      [appId, `${mockBase}/rows`, JSON.stringify([{ name: 'detail_pk', type: 'text' }, { name: 'workflow_id', type: 'text' }, { name: 'initiator', type: 'text' }, { name: 'v', type: 'text' }])]);
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.workflow where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query(`delete from meta.workflow_definition where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query('delete from meta.app where id = $1', [other]);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  /** Define (straight into the table, as SQL or an import could) and run a one-step workflow. */
+  const run = async (name: string, steps: unknown, vars: Record<string, unknown> = {}, detail: string | null = null) => {
+    await owner.query(`insert into meta.workflow_definition (app_id, name, title, steps) values ($1, $2, 'x', $3)`, [appId, name, JSON.stringify(steps)]);
+    const id = await owner.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'allen', true)`, [String(appId)]);
+      return (await c.query('select meta.start_workflow($1, $2, $3) as id', [name, detail, vars])).rows[0].id as string;
+    });
+    await runWorkflow(id);
+    return owner.one('select state, error, vars from meta.workflow where id = $1', [id]);
+  };
+
+  test('variable values are URL-encoded after a fixed host; a host from a variable is refused, even in a definition written by SQL', async () => {
+    let n = hits.length;
+    const w = await run('SEC32_PATH', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x/&V.?q=&V.` }], { v: '@evil.example/../a?b=1#c' });
+    assert.equal(w.state, 'completed', w.error);
+    assert.deepEqual(hits.slice(n).map((h) => [h.host, h.url]), [[new URL(mockBase).host, '/x/%40evil.example%2F..%2Fa%3Fb%3D1%23c?q=%40evil.example%2F..%2Fa%3Fb%3D1%23c']]);
+    n = hits.length;
+    for (const [i, url] of ['http://&HOST./x', `${mockBase}&P./x`, 'http://{h}.example.com/'].entries()) {
+      const bad = await run(`SEC32_HOST_${i}`, [{ name: 'CALL', type: 'invoke_api', url }], { host: '127.0.0.1' });
+      assert.equal(bad.state, 'faulted', url);
+      assert.match(bad.error, /fixed host/, url);
+    }
+    const dot = await run('SEC32_DOT', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x/&V./y` }], { v: '..' });
+    assert.match(dot.error, /not a valid value in a URL/);
+    assert.equal(hits.length, n, 'no request');
+  });
+
+  test('the outgoing allow-list and address checks apply; private addresses need PGAPEX_REST_PRIVATE_HOSTS', async () => {
+    const n = hits.length;
+    for (const [i, url] of ['http://169.254.169.254/latest/meta-data/', 'http://10.0.0.1/', 'https://example.com/', 'file:///etc/passwd'].entries()) {
+      const w = await run(`SEC32_SSRF_${i}`, [{ name: 'CALL', type: 'invoke_api', url }]);
+      assert.equal(w.state, 'faulted', url);
+      assert.match(w.error, /allow-list|private|http/, url);
+    }
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '';
+    try {
+      const w = await run('SEC32_LOOPBACK', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x` }]);
+      assert.equal(w.state, 'faulted');
+      assert.match(w.error, /private, loopback/);
+    } finally {
+      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    }
+    assert.equal(hits.length, n, 'no request');
+  });
+
+  test('REST data sources and credentials of another application are not found; "valid for" keeps a secret to its URLs', async () => {
+    const n = hits.length;
+    const w = await run('SEC32_FOREIGN', [{ name: 'CALL', type: 'invoke_api', source: 'SEC32_FOREIGN' }]);
+    assert.equal(w.state, 'faulted');
+    assert.match(w.error, /REST data source SEC32_FOREIGN does not exist/);
+    const c = await run('SEC32_VALIDFOR', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x`, credential: 'SEC32_CRED' }]);
+    assert.equal(c.state, 'faulted');
+    assert.match(c.error, /not valid for this URL/);
+    assert.doesNotMatch(JSON.stringify(c), /sec32-secret/);
+    assert.equal(hits.length, n, 'no request');
+  });
+
+  test('response values are data: they never replace DETAIL_PK, WORKFLOW_ID or INITIATOR, and bind as literals in later SQL', async () => {
+    const w = await run('SEC32_ROWS', [
+      { name: 'CALL', type: 'invoke_api', source: 'SEC32_ROWS' },
+      { name: 'USE', type: 'sql', code: 'select :V as v_back, :DETAIL_PK as pk_back, :INITIATOR as who_back' },
+    ], {}, '7369');
+    assert.equal(w.state, 'completed', w.error);
+    assert.equal(w.vars.DETAIL_PK, undefined);
+    assert.equal(w.vars.INITIATOR, undefined);
+    assert.equal(w.vars.V_BACK, "x'); drop table hr.emp; --");
+    assert.equal(w.vars.PK_BACK, '7369');
+    assert.equal(w.vars.WHO_BACK, 'allen');
+    assert.ok((await owner.one(`select count(*)::int as n from hr.emp`)).n > 0);
+  });
+
+  test('builder: saving steps checks them, needs a developer and a CSRF token', async () => {
+    const anon = new Browser();
+    const form = { name: 'SEC32_BUILDER', title: 'x', steps: JSON.stringify([{ name: 'CALL', type: 'invoke_api', url: 'http://&HOST./x' }]) };
+    assert.equal((await anon.post(`/builder/apps/${appId}/shared/workflow_definition`, form)).statusCode, 302);
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get(`/builder/apps/${appId}/shared`);
+    assert.equal((await b.post(`/builder/apps/${appId}/shared/workflow_definition`, form)).statusCode, 403);
+    await b.get(`/builder/apps/${appId}/shared`);
+    const res = await b.post(`/builder/apps/${appId}/shared/workflow_definition`, { __csrf: b.lastCsrf, ...form });
+    assert.notEqual(res.statusCode, 500);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.workflow_definition where name = 'SEC32_BUILDER'`)).n, 0);
+    // the same form with a valid step is saved
+    await b.get(`/builder/apps/${appId}/shared`);
+    await b.post(`/builder/apps/${appId}/shared/workflow_definition`, { __csrf: b.lastCsrf, ...form, steps: JSON.stringify([{ name: 'CALL', type: 'invoke_api', url: 'http://api.example.com/&HOST.' }]) });
+    assert.equal((await owner.one(`select count(*)::int as n from meta.workflow_definition where name = 'SEC32_BUILDER'`)).n, 1);
+  });
+});
+
+describe('sprint 32 item 3: SQL Workshop unload data', () => {
+  const builder = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder/sql/unload?source=query');
+    return b;
+  };
+  before(async () => {
+    await owner.query(`drop table if exists public.sec32_unload; create table public.sec32_unload (id int, note text);
+      insert into public.sec32_unload values (1, '=1+2'), (2, '@SUM(A1)'), (3, '<x>&</x>'), (4, '-cmd');
+      create or replace function public.sec32_unload_write() returns int language sql as $$ insert into public.sec32_unload values (99, 'written') returning id $$;`);
+  });
+  after(async () => {
+    delete process.env.UNLOAD_STATEMENT_TIMEOUT;
+    await owner.query('drop function if exists public.sec32_unload_write(); drop table if exists public.sec32_unload');
+  });
+
+  test('needs a builder login; an application session is not enough; POST needs the CSRF token', async () => {
+    const king = new Browser();
+    await king.login('king');
+    for (const b of [new Browser(), king]) {
+      const res = await b.get('/builder/sql/unload');
+      assert.equal(res.statusCode, 302);
+      assert.match(String(res.headers.location), /^\/builder\/login/);
+      const post = await b.post('/builder/sql/unload', { source: 'query', query: 'select * from public.sec32_unload', format: 'csv' });
+      assert.equal(post.statusCode, 302);
+      assert.doesNotMatch(post.body, /cmd/);
+    }
+    const dev = await builder();
+    for (const token of [undefined, 'wrong']) {
+      const form = { source: 'query', query: 'select * from public.sec32_unload', format: 'csv' };
+      const res = await dev.post('/builder/sql/unload', token ? { __csrf: token, ...form } : form);
+      assert.equal(res.statusCode, 403);
+      assert.doesNotMatch(res.body, /cmd/);
+    }
+  });
+
+  test('read only: no writes through a data-modifying CTE or a function; one statement only', async () => {
+    const dev = await builder();
+    for (const query of [
+      'select public.sec32_unload_write()',
+      'with w as (insert into public.sec32_unload values (98, \'x\') returning id) select * from w',
+      'select 1; insert into public.sec32_unload values (97, \'x\')',
+      'insert into public.sec32_unload values (96, \'x\') returning id',
+      'select 1 \\g /tmp/x',
+    ]) {
+      const res = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query, format: 'csv' });
+      assert.equal(res.statusCode, 422, query);
+    }
+    // WHERE / ORDER BY text of the table form can't smuggle in a second statement either
+    for (const [where, order] of [['true); insert into public.sec32_unload values (95, \'x\'); select (1', ''], ['', '1; insert into public.sec32_unload values (94, \'x\')']]) {
+      const res = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'table', table: 'sec32_unload', columns: 'id', where, order, format: 'csv' });
+      assert.equal(res.statusCode, 422, where + order);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from public.sec32_unload')).n, 4);
+  });
+
+  test('settings made by the query do not leak into the pool; the statement timeout applies', async () => {
+    const dev = await builder();
+    const res = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: `select set_config('application_name', 'sec32_leak', false) as x`, format: 'csv' });
+    assert.equal(res.statusCode, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal((await owner.one(`select count(*)::int as n from pg_stat_activity where application_name = 'sec32_leak'`)).n, 0, 'the connection was closed');
+    process.env.UNLOAD_STATEMENT_TIMEOUT = '200ms';
+    const slow = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select pg_sleep(3)', format: 'csv' });
+    delete process.env.UNLOAD_STATEMENT_TIMEOUT;
+    assert.equal(slow.statusCode, 422);
+    assert.match(slow.body, /statement timeout/);
+  });
+
+  test('CSV neutralises formulas, XML escapes markup; the unload is in the activity log; the table must exist', async () => {
+    const dev = await builder();
+    const csv = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select note from public.sec32_unload order by id', format: 'csv', header: '1' });
+    assert.equal(csv.body, `note\r\n'=1+2\r\n'@SUM(A1)\r\n<x>&</x>\r\n'-cmd\r\n`);
+    const xml = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select note as "a<b" from public.sec32_unload where id = 3', format: 'xml' });
+    assert.match(xml.body, /<a_b>&lt;x&gt;&amp;&lt;\/x&gt;<\/a_b>/);
+    const bad = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select 1', format: 'xml', row_tag: 'r><evil', root_tag: 'x' });
+    assert.equal(bad.statusCode, 422);
+    assert.doesNotMatch(bad.body, /<evil/);
+    const log = await owner.one(`select username, detail from meta.activity_log where event = 'sql_unload' order by id desc limit 1`);
+    assert.equal(log.username, 'admin');
+    assert.match(log.detail, /^xml: select note as "a<b"/);
+    const missing = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'table', table: 'pg_catalog.pg_authid', columns: 'rolpassword', format: 'csv' });
+    assert.equal(missing.statusCode, 422, 'only listed tables and views');
+  });
+});
+
+describe('sprint 32 item 4: create page wizards', () => {
+  const alias = 'sec32-wizards';
+  let wizApp: number;
+  const builder = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get(`/builder/apps/${wizApp}`);
+    return b;
+  };
+  const generate = (table: string, kind: string, page: number, options: Record<string, unknown>) =>
+    owner.one('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb) as id', [alias, kind, table, page, JSON.stringify(options)]);
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = '${alias}'`);
+    await owner.query(`drop table if exists public.sec32_wiz; create table public.sec32_wiz (id int primary key, "na""me; drop table x" text, d date, n int);
+      insert into public.sec32_wiz values (1, '<script>alert(1)</script>', current_date, 5); grant select on public.sec32_wiz to pgapex_runtime`);
+    wizApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Wizard security', 'none') returning id`, [alias])).id;
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [wizApp]);
+    await owner.query('delete from meta.builder_lock where app_id = $1', [wizApp]).catch(() => undefined);
+    await owner.query('drop table if exists public.sec32_wiz');
+  });
+
+  test('needs a builder login (an application session is not enough); POST needs the CSRF token', async () => {
+    const king = new Browser();
+    await king.login('king');
+    const form = { kind: 'cards', table: 'public.sec32_wiz', report_page: '10' };
+    for (const b of [new Browser(), king]) {
+      const res = await b.get(`/builder/apps/${wizApp}/wizard?kind=cards&table=public.sec32_wiz`);
+      assert.equal(res.statusCode, 302);
+      assert.equal((await b.post(`/builder/apps/${wizApp}/wizard`, form)).statusCode, 302);
+    }
+    const dev = await builder();
+    for (const token of [undefined, 'wrong']) assert.equal((await dev.post(`/builder/apps/${wizApp}/wizard`, token ? { __csrf: token, ...form } : form)).statusCode, 403);
+    assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [wizApp])).n, 0);
+  });
+
+  test('an application locked by another developer refuses the wizard', async () => {
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'sec32_other')`, [wizApp]);
+    try {
+      const dev = await builder();
+      const res = await dev.post(`/builder/apps/${wizApp}/wizard`, { __csrf: dev.lastCsrf, kind: 'cards', table: 'public.sec32_wiz', report_page: '10' });
+      assert.equal(res.statusCode, 303);
+      assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [wizApp])).n, 0);
+    } finally {
+      await owner.query(`delete from meta.builder_lock where app_id = $1`, [wizApp]);
+    }
+  });
+
+  test('option values never become SQL: columns must exist and are quoted, kinds and functions come from lists', async () => {
+    for (const [kind, options, error] of [
+      ['cards', { title: 'id as title from public.sec32_wiz; drop table public.sec32_wiz; --' }, /is not a column/],
+      ['chart', { label_column: 'd', function: 'pg_sleep' }, /unknown function/],
+      ['chart', { label_column: 'd', chart: "bar'; drop" }, /unknown chart type/],
+      ['calendar', { start: 'n' }, /date or timestamp start column/],
+      ['facets', { facets: ['n) or (true'] }, /is not a column/],
+      ['master_detail', { detail: 'public.sec32_wiz; drop table x', detail_column: 'id' }, /./],
+      ['cards', { form_page: '1 or 1=1' }, /./],
+    ] as [string, Record<string, unknown>, RegExp][])
+      await assert.rejects(generate('public.sec32_wiz', kind, 20, options), error, `${kind} ${JSON.stringify(options)}`);
+    // an odd column name is quoted: the generated query runs and shows the value escaped
+    await generate('public.sec32_wiz', 'cards', 21, { title: 'na"me; drop table x', label: '<img src=x onerror=alert(1)>' });
+    const src = (await owner.one(`select r.source from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 21`, [wizApp])).source;
+    assert.match(src, /t\."na""me; drop table x" as title/);
+    await owner.query('update meta.page set requires_auth = false where app_id = $1', [wizApp]);
+    const page = (await new Browser().get(`/a/${alias}/21`)).body;
+    assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.equal((await owner.one(`select to_regclass('public.sec32_wiz') is not null as ok`)).ok, true);
+  });
+
+  test("pgapex's and the system's tables are refused; the functions are not granted to application roles", async () => {
+    for (const t of ['meta.account', 'pg_catalog.pg_authid', 'information_schema.tables'])
+      await assert.rejects(generate(t, 'cards', 30, {}), /can't be generated/, t);
+    const dev = await builder();
+    const res = await dev.get(`/builder/apps/${wizApp}/wizard?kind=cards&table=meta.account`);
+    assert.equal(res.statusCode, 303, 'step 2 refuses it too');
+    const post = await dev.post(`/builder/apps/${wizApp}/wizard`, { __csrf: dev.lastCsrf, kind: 'facets', table: 'meta.account', report_page: '30' });
+    assert.equal(post.statusCode, 303);
+    assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1 and page_no = 30', [wizApp])).n, 0);
+    for (const fn of ['meta.generate_page(text, text, regclass, int, jsonb)', 'meta.wizard_defaults(text, regclass)', 'meta.wizard_catalog(regclass)', 'meta.wizard_form(meta.app, regclass, int, text, int, boolean, text[])'])
+      for (const role of ['pgapex_runtime', 'hr_app'])
+        assert.equal((await owner.one('select has_function_privilege($1, $2, \'execute\') as ok', [role, fn])).ok, false, `${role} ${fn}`);
+  });
+
+  test('drag and drop is off unless chosen; the generated move statement uses the binds as typed literals', async () => {
+    await generate('public.sec32_wiz', 'calendar', 40, {});
+    const off = (await owner.one(`select r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 40`, [wizApp])).config;
+    assert.equal(off.move, undefined);
+    await generate('public.sec32_wiz', 'calendar', 41, { drag: true });
+    const on = (await owner.one(`select r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 41`, [wizApp])).config;
+    assert.equal(on.move, 'update public.sec32_wiz set d = :NEW_START::date where id = :EVENT_ID::integer');
+    assert.equal(on.key, 'id');
+  });
+});
+
+describe('sprint 32 item 5: create application from a file', () => {
+  const ALIASES = ['sec32-ff', 'sec32-ff-meta', 'sec32-ff-blank'];
+  const DEV = 'sec32_ff_dev';
+  const DEV_PW = 'Sec32-ff-developer!';
+  const CSV = 'Name,"<script>alert(1)</script>",Amount\nAnn,<b>x</b>,5\nBob,y,7\n';
+  const cleanup = async () => {
+    for (const alias of ALIASES) {
+      const schema = alias.replace(/-/g, '_');
+      await owner.query('delete from meta.app where alias = $1', [alias]);
+      await owner.query(`drop schema if exists ${schema} cascade`);
+      if ((await owner.query('select 1 from pg_roles where rolname = $1', [`app_${schema}`])).rowCount) {
+        await owner.query(`drop owned by app_${schema}`);
+        await owner.query(`drop role app_${schema}`);
+      }
+    }
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  };
+  const builder = async (user = 'admin', password = 'admin') => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password })).statusCode, 303);
+    await b.get('/builder/create/file');
+    return b;
+  };
+  const file = { file: { name: 'sec.csv', type: 'text/csv', data: Buffer.from(CSV) } };
+  const step2 = async (b: FileBrowser) => {
+    const res = await b.upload('/builder/create/file', { headers: 'true' }, file);
+    assert.equal(res.statusCode, 303);
+    const url = res.headers.location as string;
+    const page = await b.get(url);
+    return { url, body: page.body };
+  };
+  const base = { h: '1', name: 'Sec ff', alias: 'sec32-ff', schema: '', authentication: 'none', table: 'sec', name_0: 'name', type_0: 'text', name_1: 'note', type_1: 'text', name_2: 'amount', type_2: 'integer' };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
+  });
+  after(cleanup);
+
+  test('needs a builder login (an application session is not enough) and the CSRF token on both steps', async () => {
+    const king = new FileBrowser(app);
+    await king.login('king');
+    for (const b of [new FileBrowser(app), king]) {
+      assert.equal((await b.get('/builder/create/file')).statusCode, 302);
+      assert.equal((await b.upload('/builder/create/file', { headers: 'true' }, file)).statusCode, 302);
+    }
+    const dev = await builder();
+    const good = dev.lastCsrf;
+    dev.lastCsrf = 'wrong';
+    assert.equal((await dev.upload('/builder/create/file', { headers: 'true' }, file)).statusCode, 403);
+    dev.lastCsrf = good;
+    const { url } = await step2(dev);
+    for (const token of [undefined, 'wrong']) assert.equal((await dev.post(url, token ? { __csrf: token, ...base } : base)).statusCode, 403);
+    assert.equal((await new FileBrowser(app).post(url, base)).statusCode, 302);
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec32-ff'`)).rowCount, 0);
+  });
+
+  test("another developer's session can't use the uploaded file", async () => {
+    const admin = await builder();
+    const { url } = await step2(admin);
+    const other = await builder(DEV, DEV_PW);
+    const get = await other.get(url);
+    assert.equal(get.statusCode, 302);
+    assert.equal(get.headers.location, '/builder/create/file');
+    const post = await other.submit(url, base);
+    assert.equal(post.statusCode, 303);
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec32-ff'`)).rowCount, 0);
+    for (const bad of ['/builder/create/file/not-a-uuid', "/builder/create/file/00000000-0000-0000-0000-000000000000'"])
+      assert.equal((await admin.get(bad)).statusCode, 302);
+  });
+
+  test("file headings and values are escaped; table and column names never become SQL", async () => {
+    const dev = await builder();
+    const { url, body } = await step2(dev);
+    assert.doesNotMatch(body, /<script>alert\(1\)<\/script>/);
+    assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(body, /name="name_1" value="script_alert_1_script"/, 'a heading becomes a plain identifier');
+    for (const [form, error] of [
+      [{ table: 'sec; drop table meta.app; --' }, /lower-case name/],
+      [{ table: 'meta.app' }, /without a schema/],
+      [{ name_0: 'name text); drop table meta.app; --' }, /is not a valid column name/],
+      [{ type_2: 'int); drop table meta.app; --' }, /Unknown column type/],
+      [{ alias: "x'; drop table meta.app; --" }, /The alias must start with a letter/],
+    ] as [Record<string, string>, RegExp][]) {
+      const res = await dev.submit(url, { ...base, ...form });
+      assert.equal(res.statusCode, 422, JSON.stringify(form));
+      assert.match(res.body, error);
+    }
+    assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
+    const ok = await dev.submit(url, base);
+    assert.equal(ok.statusCode, 200);
+    // the values are data: shown escaped by the generated report
+    const page = (await new FileBrowser(app).get('/a/sec32-ff/2')).body;
+    assert.match(page, /&lt;b&gt;x&lt;\/b&gt;/);
+    assert.doesNotMatch(page, /<b>x<\/b>/);
+  });
+
+  test("the new app's role can use only its own schema; pgapex's and the system's schemas are refused", async () => {
+    const priv = await owner.one(
+      `select has_table_privilege('app_sec32_ff', 'sec32_ff.sec', 'select,insert,update,delete') as own,
+              has_table_privilege('app_sec32_ff', 'meta.account', 'select') as meta,
+              has_schema_privilege('app_sec32_ff', 'hr', 'usage') as other,
+              pg_has_role('pgapex_runtime', 'app_sec32_ff', 'member') as runtime`,
+    );
+    assert.deepEqual(priv, { own: true, meta: false, other: false, runtime: true });
+    const dev = await builder();
+    const { url } = await step2(dev);
+    for (const schema of ['meta', 'pg_catalog', 'information_schema', 'PG_TOAST']) {
+      const res = await dev.submit(url, { ...base, alias: 'sec32-ff-meta', schema });
+      assert.equal(res.statusCode, 422, schema);
+      assert.match(res.body, /can&#39;t be the parsing schema/);
+    }
+    // the blank application wizard refuses them too
+    await dev.get('/builder/create');
+    const blank = await dev.submit('/builder/apps', { name: 'Blank', alias: 'sec32-ff-blank', schema: 'meta', authentication: 'none' });
+    assert.equal(blank.statusCode, 303);
+    assert.equal(blank.headers.location, '/builder/create');
+    assert.equal((await owner.query(`select 1 from meta.app where alias in ('sec32-ff-meta', 'sec32-ff-blank')`)).rowCount, 0);
+    assert.equal((await owner.one(`select has_schema_privilege('app_sec32_ff_meta', 'meta', 'usage') as x where exists (select 1 from pg_roles where rolname = 'app_sec32_ff_meta')`))?.x ?? false, false);
+  });
+});

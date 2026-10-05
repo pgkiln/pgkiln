@@ -71,6 +71,38 @@ Creating the app also:
   so tables you create later (as the owner, e.g. in the SQL Workshop) are usable by the app straight away;
 - creates page 1 *Home*, a navigation entry, and an authorization scheme `ADMIN` (role `admin`).
 
+The parsing schema can't be `meta`, `information_schema` or a `pg_*` schema.
+
+### Creating an application from a file
+
+**Create → From a file** (`/builder/create/file`, APEX: *Create App from a File*) starts an
+application from a spreadsheet:
+
+1. **Upload** a CSV or TSV file (UTF-8 or Windows-1252; the delimiter is detected), an Excel `.xlsx`
+   file (the first sheet), JSON (an array of objects) or XML, up to `DATA_LOAD_MAX_MB` (50 MB) and
+   `DATA_LOAD_MAX_ROWS` (100,000 rows). Untick *First row contains column names* when it doesn't.
+2. **Check the proposal**: a preview of the first rows; the application's name, alias, parsing schema,
+   authentication and first user (as for a blank application); the table name (`employee_list.xlsx`
+   → `employee_list`) and, per file column, a few sample values, the column name (`Hire Date` →
+   `hire_date`; empty skips the column) and the type inferred from the values (text, integer, bigint,
+   numeric, boolean, date, timestamp: dates and timestamps in ISO format). Choose the pages:
+   - always: page 2, an interactive report of the table, with a modal form (page 3) to create, change
+     and delete rows;
+   - *Dashboard* (page 4): a bar chart with the number of rows per value of the first text, yes/no or
+     date column whose values repeat (2 to 50 different values); left out when there is none;
+   - *Faceted search* (page 5): a report with a filter panel: values with counts for repeating text
+     and yes/no columns, ranges for numbers and dates, and a search field.
+3. **Create application**: in one transaction, the schema and the role `app_<alias>` (as above), the
+   table in the app's schema with an identity primary key `id`, the rows, and the pages (made with
+   `meta.generate_page`, the [page wizards](#create-page-wizards)) with a navigation entry each. When a
+   row doesn't fit its column's type, **nothing is created**: the form comes back with the failed
+   rows (the first 100) and your choices; fix the types, or tick *Skip rows with errors* to load the
+   others (the result page lists the skipped rows).
+
+Everything is a plain form (no JavaScript needed). The file is kept as a temporary file of your
+builder session between the steps; it is deleted when the application is created. To load more files
+into the table later, use the SQL Workshop's [Load Data](16-files.md#sql-workshop--load-data) or a data load definition.
+
 ### Importing
 
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new
@@ -88,13 +120,36 @@ authorization and protection. The tabs under its name lead to **Shared Component
 
 ### Create pages from a table (wizards)
 
-| Page type | What is generated |
-|---|---|
-| **Report and form** | An interactive report page listing the table (with an edit link per row and a Create button) and a **modal dialog** form page with Create, Apply Changes and Delete, a form DML process, fields per column (foreign keys become select lists, booleans become switches, NOT NULL columns without default become required) and a navigation entry |
-| **Interactive grid** | One page with an editable grid (foreign keys become select lists, NOT NULL columns become required), a grid DML process and a navigation entry |
+The wizards are two plain forms (they work without JavaScript). On the app's Pages tab, choose a
+**page type** and a **table or view** (tables the app's database role can't read are marked) and
+press **Next**. The second step proposes everything from the database catalog: the columns, the
+primary key, date and number columns, positions and foreign keys. Change what you like, choose the
+page number, name and menu icon, and press **Create page**: the builder opens the new page in the
+page designer. An error (a page number in use, a column that doesn't fit) shows on the second
+step, which keeps the table and type.
 
-The table needs a single-column primary key. Make sure the app's database role has privileges
-on it (automatic for its own schema).
+| Page type | What is generated | Proposed from the catalog |
+|---|---|---|
+| **Report and form** | An interactive report page listing the table (with an edit link per row and a Create button) and a **modal dialog** form page with Create, Apply Changes and Delete, a form DML process, fields per column (foreign keys become select lists, booleans become switches, NOT NULL columns without default become required) and a navigation entry | |
+| **Interactive grid** | One page with an editable grid (foreign keys become select lists, NOT NULL columns become required), a grid DML process and a navigation entry | |
+| **Form** | One form page (normal or modal) with the chosen columns, Cancel / Delete / Apply Changes / Create and a form DML process; the buttons return to a page you choose (default: the home page). No navigation entry unless you tick it | All columns except binary ones; NOT NULL columns without a default are always included |
+| **Cards** | A [cards](04-pages-and-regions.md#cards) region with a title, subtitle, body and badge column | Title: a name, title or label column; subtitle: the first foreign key (showing the parent's name) or the next text column |
+| **Calendar** | A [calendar](04-pages-and-regions.md#calendar) region (month, week, day and list views) | Start: a date or timestamp column named like *start*, *begin* or *…_date* (not *created*/*updated*); end: one named like *end* or *until*; title: a name column, else the first foreign key's name |
+| **Chart** | A [chart](04-pages-and-regions.md#chart) region: bar, column, line, area, donut, pie or funnel of the row count, or the sum, average, minimum or maximum of a number column, per label | Label: the first foreign key (its parent's name), else a text column that isn't unique |
+| **Map** | A [map](04-pages-and-regions.md#map) region with popups and, if ticked, an interactive report of the same rows that the map filters (*Show this area in the list*) | Position: a PostGIS geometry or geography (markers, and lines and areas as shapes), a `point`, `lat`/`lng`-like number columns, or a *location* text column with `latitude,longitude` |
+| **Faceted search** | An interactive report (9 columns wide) and a [facets](04-pages-and-regions.md#facets-faceted-search) panel (3 columns, collapsible) with a search field | Up to six facets: foreign keys (values of the parent's name, which the report shows next to the key), booleans, text columns with few values, dates and numbers as ranges with *from*/*to* |
+| **Master detail** | One page with a grid of the table and an editable grid of the selected row's details below it (the grids' [master-detail](04-pages-and-regions.md#grid-interactive-grid)): a hidden item for the selection, both grids with a grid DML process; new detail rows get the master's key | The detail table: a table with a foreign key to this table's primary key |
+
+Cards, Calendar, Map and Faceted search take an optional **Form page** number: it adds a modal
+form page for a row, a link from each card, event, popup or report row, and a **Create** button
+(on a calendar also a **+** on every day and hour, with the start date filled in). A calendar can
+also get **drag and drop**: an `UPDATE` of the start (and end) column as the app's role, so row
+level security applies; set the region's `move_authz` to limit who may move events.
+
+Report and form, Interactive grid, Form, a Form page and Master detail need a single-column
+primary key; the other types also work on views. Make sure the app's database role has privileges
+on the table (automatic for its own schema): the second step warns when it hasn't. The same
+generators can be called from SQL with [`meta.generate_page`](09-reference.md#functions-for-developers-and-scripts).
 
 ### Create a blank page
 
@@ -259,7 +314,7 @@ Components used by the whole application:
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
 | **REST modules** | REST endpoints (method, path, SQL) served by pgapex, with an OpenAPI description ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)) |
-| **Workflows** | Multi-step processes of tasks, SQL, decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
+| **Workflows** | Multi-step processes of tasks, SQL, web service calls (invoke API), decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
 | **Build options** | Include / exclude switches for features; pages and their components name one in their *Build option* property, and *Used in* lists them ([chapter 6](06-processing.md#build-options)) |
@@ -350,7 +405,9 @@ Database code (views, functions, RLS policies) isn't part of the application, so
   without running them (`notify`, `call`, `set`, …) are listed as notes.
 - **References:** pages, items, lists of values, authorization schemes, report layouts and
   regions that a component names but that don't exist (also build options, which leave the
-  component out, and the items computations set or copy); grids without a key or a save process.
+  component out, and the items computations set or copy); grids without a key or a save process;
+  workflow `invoke_api` steps that name a REST data source, parameter or web credential that
+  doesn't exist, leave a required parameter empty or use a `&VAR.` no step sets.
 - **PL/pgSQL functions:** when the `plpgsql_check` extension is installed, the functions in the
   schemas the application's role can use are checked with `plpgsql_check_function_tb` (see
   [extensions](15-extensions.md)).
@@ -427,6 +484,9 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
   types) or an existing one (append, merge by primary key, or replace), with a per-row error
   report, or with a saved **data load definition**; a mapping can be saved as one
   ([chapter 16](16-files.md#sql-workshop--load-data)).
+- **Unload Data**: download a table or view (chosen columns, an optional WHERE and ORDER BY) or a
+  query as CSV, JSON, Excel or XML, streamed from a cursor in a read-only transaction
+  ([chapter 16](16-files.md#sql-workshop--unload-data)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

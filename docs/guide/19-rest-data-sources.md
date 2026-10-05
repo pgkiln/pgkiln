@@ -10,7 +10,8 @@ Web Credentials and the Invoke API process):
   JSON response becomes typed rows. Reports, cards, charts, calendars, maps, trees, template
   components and shared lists of values can read those rows like a table;
 - the **`invoke_api` process** calls a source or a URL when a page is submitted (or loaded) and
-  puts values of the response into items.
+  puts values of the response into items; the **`invoke_api` workflow step** does the same on the
+  server, with workflow variables ([chapter 6](06-processing.md#invoke-api-steps)).
 
 Both are **Shared Components**. The server only calls hosts its administrator allows
 ([below](#server-configuration-and-the-allow-list)): out of the box, no outgoing request is made.
@@ -175,12 +176,16 @@ Only items of the page and application items can be set. A failing call stops th
 like a failing SQL process: the user sees a message with a reference, the details go to the
 activity log ([chapter 6](06-processing.md#error-handling)).
 
+A workflow calls a web service with an **`invoke_api` step** instead: the same keys, with
+`variables`, `status_variable` and `response_variable` for the items, `&VAR.` for workflow
+variables and an optional `timeout` ([chapter 6](06-processing.md#invoke-api-steps)).
+
 ## Export, import and application files
 
 The export ([chapter 3](03-builder.md#export-format)) has two new sections: `web_credentials`
 (without secrets) and `rest_sources`. In the directory format they are
 `shared/web-credentials/` and `shared/rest-sources/` ([chapter 18](18-cli.md)). Regions, lists of
-values and processes refer to sources and credentials by name, so nothing needs remapping.
+values, processes and workflow steps refer to sources and credentials by name, so nothing needs remapping.
 
 ## Security notes
 

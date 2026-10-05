@@ -68,6 +68,7 @@ hr/
     web-credentials/ rest-sources/      (web credentials never contain their secret)
     lists/hr_shortcuts.json           (a query list's query in hr_departments.query.sql)
     list-entries.json                 the entries of every list, per list as a tree
+    automation-actions/remind-managers/0010-remind-the-manager.json   (per automation; code in .code.sql, condition in .condition.sql)
     supporting-objects/check-the-sample-data.json   (the script in .script.sql; never run on import)
     group-roles.json
   globalization/

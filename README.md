@@ -79,7 +79,7 @@ For a full comparison with Oracle APEX 26.1, including what's missing, see
 - Validations, processes (form DML, grid DML, any SQL/PL/pgSQL), branches, application items and processes
 
 **Builder**
-- App Builder home, app dashboard, and wizards: *Report and form* and *Interactive grid* from any table
+- App Builder home, app dashboard, and create page wizards from any table: *Report and form*, *Interactive grid*, *Form*, *Cards*, *Calendar*, *Chart*, *Map*, *Faceted search* and *Master detail*, with defaults from the catalog
 - A **page designer** with a component tree and a grouped property editor
 - **Shared components**: navigation menu, authorization schemes, lists of values, application items and processes, users
 - Settings with theme and a security checklist, and an **activity monitor**
@@ -145,6 +145,7 @@ Inside functions and `DO` blocks, use `meta.v('P1_X')`.
 | `meta.v('P1_ITEM')` | Session state value |
 | `meta.page_url(3, '{"P3_ID": 7}')` | Link with a valid checksum |
 | `meta.generate_crud('app', 'schema.table', 2, 3)` | The page wizard |
+| `meta.generate_page('app', 'calendar', 'schema.table', 4)` | The other page wizards (form, cards, calendar, chart, map, facets, master_detail) |
 | `meta.export_app('alias')` / `meta.import_app(json)` | Deployment (or `pgapex export` / `pgapex import`, [chapter 18](docs/guide/18-cli.md)) |
 
 ## Project layout

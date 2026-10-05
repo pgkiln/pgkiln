@@ -559,3 +559,99 @@ export function parseJson(res: WebResponse, what: string) {
     throw new WebError(`${what}: the response is not JSON.`);
   }
 }
+
+// ---------------------------------------------------------------- invoke API
+
+/**
+ * The call of an "invoke API" configuration, shared by the invoke_api page
+ * process (src/runtime/rest-sources.ts) and the invoke_api workflow step
+ * (src/workflow.ts): a REST data source (its URL, method, credential,
+ * parameters), or a URL with a method, a credential and a body. Values come
+ * in through &NAME. substitutions, resolved by the caller's lookup.
+ */
+export interface InvokeConfig {
+  /** a REST data source of the app */
+  source?: string;
+  /** its parameter values ({"city": "&P5_CITY."}); missing ones take their default */
+  params?: Record<string, string>;
+  /** or a URL (&NAME. substitutions after the host, URL-encoded), method, credential and body */
+  url?: string;
+  method?: string;
+  credential?: string;
+  body?: string;
+}
+
+export const INVOKE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+/** Problems with the call part of an invoke API configuration (empty: fine); `what` starts the first message. */
+export function invokeCallProblems(conf: unknown, what = 'An invoke_api process'): string[] {
+  const c = (conf ?? {}) as InvokeConfig;
+  const out: string[] = [];
+  if (!c.source === !c.url) out.push(`${what} needs either "source" (a REST data source) or "url".`);
+  if (c.source !== undefined && typeof c.source !== 'string') out.push('"source" names a REST data source.');
+  if (c.url !== undefined && (typeof c.url !== 'string' || !/^https?:\/\/[^/?#&{]+([/?#]|$)/i.test(c.url)))
+    out.push('"url" starts with http:// or https:// and a fixed host (substitutions only after the host).');
+  if (c.method !== undefined && !INVOKE_METHODS.includes(String(c.method).toUpperCase())) out.push(`"method" is one of ${INVOKE_METHODS.join(', ')}.`);
+  for (const k of ['credential', 'body'] as const) if (c[k] !== undefined && typeof c[k] !== 'string') out.push(`"${k}" is a string.`);
+  if (c.params !== undefined && !isStringMap(c.params)) out.push('"params" is an object of strings.');
+  return out;
+}
+
+export const isStringMap = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string');
+
+/** A value for &NAME. (NAME upper case), or undefined to leave the text as written. */
+export type Lookup = (name: string) => string | undefined;
+
+const SUBST = /&([A-Za-z][A-Za-z0-9_]*)\./g;
+
+/** &NAME. substitutions in a text. */
+export const substitute = (text: string, lookup: Lookup) => text.replace(SUBST, (m, name: string) => lookup(name.toUpperCase()) ?? m);
+
+/** Values for every parameter of the source: given ones (with substitutions), else the default (with substitutions). */
+export function sourceParamValues(s: RestSource, given: Record<string, unknown> | undefined, lookup: Lookup) {
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(given ?? {}))
+    if (!s.params.some((p) => p.name === k)) throw new WebError(`REST data source ${s.name} has no parameter ${k}.`);
+  for (const p of s.params) {
+    const v = given?.[p.name] ?? p.default;
+    out[p.name] = v === undefined || v === null ? '' : substitute(String(v), lookup);
+  }
+  return out;
+}
+
+/**
+ * Make the call of an invoke API configuration (checked by the caller with
+ * invokeCallProblems). Through call(): the host allow-list, the address
+ * checks at connect time and the credential's "valid for" URLs apply.
+ * `timeoutS` overrides the source's time limit (default 10 s for a URL).
+ */
+export async function invoke(appId: number, conf: InvokeConfig, lookup: Lookup, what: string, timeoutS?: number): Promise<{ res: WebResponse; source: RestSource | null }> {
+  if (conf.source) {
+    const source = await loadSource(appId, conf.source);
+    const req = buildRequest(source, sourceParamValues(source, conf.params, lookup));
+    const credential = source.credential ? await loadCredential(appId, source.credential) : null;
+    return { res: await call({ ...req, credential, timeoutMs: (timeoutS ?? source.timeout_s) * 1000 }), source };
+  }
+  // values are URL-encoded and only follow the host (invokeCallProblems), so the host is always the developer's
+  const url = conf.url!.replace(SUBST, (m, name: string) => {
+    const v = lookup(name.toUpperCase());
+    if (v === undefined) return m;
+    if (v === '.' || v === '..') throw new WebError(`${what}: "${v}" is not a valid value in a URL.`);
+    return encodeURIComponent(v);
+  });
+  const method = (conf.method ?? 'GET').toUpperCase();
+  const body = conf.body ? conf.body.replace(SUBST, (m, name: string) => {
+    const v = lookup(name.toUpperCase());
+    return JSON.stringify(v ?? m);
+  }) : undefined;
+  const credential = conf.credential ? await loadCredential(appId, conf.credential) : null;
+  const res = await call({ url, method, headers: body ? { 'content-type': 'application/json' } : {}, body, credential, timeoutMs: (timeoutS ?? 10) * 1000 });
+  return { res, source: null };
+}
+
+/** The JSON of a successful response (null when empty); an error status fails unless the caller keeps the status. */
+export function invokeJson(res: WebResponse, what: string, keepStatus: boolean): unknown {
+  const ok = res.status >= 200 && res.status <= 299;
+  if (!ok && !keepStatus) throw new WebError(`${what}: the web service answered ${res.status}.`, res.status);
+  return ok ? parseJson(res, what) : null;
+}

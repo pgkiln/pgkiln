@@ -25,6 +25,8 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_09_documents.sql` | The employee sheet (document template) and its Print button |
 | `hr_10_approvals.sql` | Leave approvals as tasks, and the *My tasks* page |
 | `hr_20_items.sql` | *Reviews* (page 20): rich text, Markdown, star rating, combobox (tags), date range, QR code and password reveal items |
+| `hr_33_automation_actions.sql` | *Remind managers* with two actions (escalation after a week, a condition per row), error handling *skip*, and a *Send reminders now* button on page 6 (`meta.run_automation`) |
+| `hr_34_workflow_invoke_api.sql` | Workflow `DEPARTMENT_CHECK` with an `invoke_api` step (the `DEPARTMENT` REST data source of part 23, the status into a variable, a switch, a notification for the initiator), started by *Check in a workflow* on page 23 |
 
 The files run in order, each once (recorded in `public.pgapex_seed`), so new ones can be added
 later. pgapex's own tests use this application as their fixture (`npm test` installs it first).

@@ -14,6 +14,7 @@ This chapter covers three things that deal with files:
 | File Browse item, storage "Table APEX_APPLICATION_TEMP_FILES" | Item type `file` without a source column; read the file from `meta.temp_files` |
 | File Browse item, "Allow Multiple Files" | Item type `file` with `"multiple": true`: one row per file in a child table, or a list of temporary files |
 | SQL Workshop → Data Workshop → Load Data | SQL Workshop → **Load Data** |
+| SQL Workshop → Data Workshop → Unload Data | SQL Workshop → **Unload Data** |
 | Shared Components → Data Load Definitions | Shared Components → **Data load definitions** |
 | Data Load Definition + "Execute Data Load" process | Process type `data_load` with `"definition"` |
 | Interactive report → Download → CSV / Excel / PDF | Actions → **Download CSV / Excel / PDF** |
@@ -187,6 +188,10 @@ skip the others instead, tick *Skip rows with errors* (or use `skip_errors` in a
 
 ### SQL Workshop → Load Data
 
+(To start a new application from a spreadsheet, with the table, its rows and the pages, use
+**Create → From a file**: [chapter 3](03-builder.md#creating-an-application-from-a-file). It uses the same
+parsing, type inference and limits.)
+
 1. Choose a file (up to `DATA_LOAD_MAX_MB`, default 50 MB, and `DATA_LOAD_MAX_ROWS` rows). For
    XML you can name the row element. To load with a [data load
    definition](#data-load-definitions), choose it here: the next step previews the file after its
@@ -210,6 +215,35 @@ skip the others instead, tick *Skip rows with errors* (or use `skip_errors` in a
    Object Browser.
 
 Load Data runs as the builder's owner connection, like SQL Commands.
+
+### SQL Workshop → Unload Data
+
+The other direction: download data as a file.
+
+1. Choose the source. **Table or view**: pick one (the list holds the tables, views and
+   materialized views of every schema, as in the Object Browser), then tick the columns and
+   optionally type a condition (*Where*, without the word `where`) and a sort (*Order by*).
+   **Query**: type one `select` (or `with … select`, `values`, `table`) statement.
+2. Choose the format and download:
+
+   | Format | Output |
+   |---|---|
+   | CSV | Separator comma, semicolon, tab or pipe; enclosed by double or single quotes (only values that contain the separator, the enclosure or a line break are enclosed); optional heading row and UTF-8 byte order mark (Excel then reads UTF-8). Text that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, like report downloads, so a spreadsheet doesn't run it as a formula |
+   | JSON | An array of objects, one per row (`[{"id":1,"name":"…"}, …]`). Numbers stay exact JSON numbers (a `bigint` or `numeric` isn't rounded), `json`/`jsonb` columns are embedded as JSON, booleans are `true`/`false`, null is `null`, everything else a string |
+   | Excel (.xlsx) | One sheet with a frozen, filtered heading row; numbers, booleans, dates and timestamps keep their type; text is never a formula (at most 1,048,575 rows) |
+   | XML | `<ROWSET><ROW><ID>1</ID>…</ROW></ROWSET>`: the root and row element names can be changed (letters, digits, `_ . -`). One child element per column, named after it (other characters become `_`); null values are left out; text is escaped |
+
+Values are written as Postgres prints them (dates `2026-10-05`, timestamps with their time zone,
+`bytea` as `\x…`), not as a page would format them. The rows come from a cursor
+(`declare … fetch`) in batches of 1,000 and each batch is sent before the next is read, so memory
+stays flat for any table, up to `DOWNLOAD_MAX_ROWS` rows (default 1,000,000).
+
+Unload Data runs as the builder's owner connection (any table the owner can read), on a connection
+of its own in a **read-only transaction**: a statement other than one SELECT is refused, and a
+data-modifying `with`, `select … into` or a function that writes fails. Each statement has a
+timeout (`UNLOAD_STATEMENT_TIMEOUT`, default `5min`). A failing query shows its error on the form;
+an error after the first rows (e.g. the timeout) ends the file early. Every unload is recorded in
+the activity log (event `sql_unload`, with the format and the statement).
 
 ### Data load definitions
 

@@ -349,6 +349,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         shared: `/builder/apps/${appId}/shared`,
         layout: `/builder/apps/${appId}/shared?c=report_layout-${(await owner.one(`select id from meta.report_layout where app_id = $1 and name = 'HR_DIRECTORY'`, [appId])).id}`,
         automation: `/builder/apps/${appId}/shared?c=automation-${(await owner.one(`select id from meta.automation where app_id = $1 and name = 'Remind managers'`, [appId])).id}`,
+        automation_action: `/builder/apps/${appId}/shared?c=automation_action-${(await owner.one(`select id from meta.automation_action where app_id = $1 and automation_name = 'Remind managers' and seq = 20`, [appId])).id}`,
+        automation_action_new: `/builder/apps/${appId}/shared?new=automation_action&automation=Remind%20managers`,
         settings: `/builder/apps/${appId}/settings`,
         activity: `/builder/apps/${appId}/activity`,
         api: `/builder/apps/${appId}/api`,
@@ -393,6 +395,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',
+        unload: '/builder/sql/unload',
+        unload_table: '/builder/sql/unload?table=hr.emp',
+        unload_query: '/builder/sql/unload?source=query',
         scripts: '/builder/sql/scripts',
         script_new: '/builder/sql/scripts/new',
         script: `/builder/sql/scripts/${(await owner.one(`insert into meta.sql_script (name, content) values ('E2E script', 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp;\nselect 1/0;')
@@ -419,6 +424,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         })(),
         supporting_objects: `/builder/apps/${appId}/supporting-objects?imported=1`,
         locked_page: `/builder/pages/${(await owner.one('select id from meta.page where app_id = $1 and page_no = 31', [appId])).id}`,
+        // (sprint 32) step 2 of the create page wizards
+        ...Object.fromEntries(
+          [['form', 'hr.emp'], ['cards', 'hr.emp'], ['calendar', 'hr.leave_request'], ['chart', 'hr.emp'], ['map', 'hr.dept'], ['facets', 'hr.emp'], ['master_detail', 'hr.dept'], ['report_form', 'hr.dept']]
+            .map(([kind, table]) => [`wizard_${kind}`, `/builder/apps/${appId}/wizard?kind=${kind}&table=${table}`]),
+        ),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -431,6 +441,39 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
+      }
+      // (sprint 32) create an application from a file: upload, step 2, the result and the generated pages
+      const alias = `e2e-ff-${size.width}`;
+      const schema = alias.replace(/-/g, '_');
+      const dropApp = async () => {
+        await owner.query('delete from meta.app where alias = $1', [alias]);
+        await owner.query(`drop schema if exists ${schema} cascade`);
+        if ((await owner.query('select 1 from pg_roles where rolname = $1', [`app_${schema}`])).rowCount) {
+          await owner.query(`drop owned by app_${schema}`);
+          await owner.query(`drop role app_${schema}`);
+        }
+      };
+      await dropApp();
+      try {
+        await page.goto(`${base}/builder/create/file`);
+        await check(page, 'builder-create_file', vp);
+        const csv = ['Product name,Category,Description of the product,Price,In stock,Released', ...Array.from({ length: 12 }, (_, i) =>
+          `Product ${i + 1},${['Tools', 'Toys', 'Garden'][i % 3]},A rather long description of product number ${i + 1} to see how wide text fits,${(i * 3.5 + 1).toFixed(2)},${i % 2 ? 'yes' : 'no'},2026-0${(i % 9) + 1}-1${i % 9}`)].join('\n');
+        await page.setInputFiles('#f_file', { name: 'e2e-products.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+        await Promise.all([page.waitForURL(/\/builder\/create\/file\/[0-9a-f-]{36}/), page.locator('main button.btn-hot').click()]);
+        await check(page, 'builder-create_file_step2', vp);
+        await page.fill('#f_alias', alias);
+        await page.selectOption('#f_authentication', 'none');
+        await Promise.all([page.waitForNavigation(), page.locator('main button.btn-hot').click()]);
+        assert.match(await page.locator('main').innerText(), /12 row\(s\) loaded/);
+        await check(page, 'builder-create_file_done', vp);
+        for (const p of [2, 4, 5]) {
+          const res = await page.goto(`${base}/a/${alias}/${p}`);
+          assert.equal(res?.status(), 200, `${alias} page ${p}`);
+          await check(page, `app-from-file-${p}`, vp);
+        }
+      } finally {
+        await dropApp();
       }
       await page.context().close();
     });

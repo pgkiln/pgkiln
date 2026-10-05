@@ -17,10 +17,11 @@ export interface Lookups {
   restSources: string[];
   lists: string[];
   listEntries: { id: number; list_name: string; label: string }[];
+  automations: string[];
 }
 
 export async function lookups(appId: number, pageId?: number): Promise<Lookups> {
-  const [regions, pages, authz, nav, buildOptions, rest, lists, listEntries] = await Promise.all([
+  const [regions, pages, authz, nav, buildOptions, rest, lists, listEntries, automations] = await Promise.all([
     pageId ? owner.query('select id, title, type from meta.region where page_id = $1 order by seq, id', [pageId]) : Promise.resolve({ rows: [] }),
     owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId]),
     owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId]),
@@ -29,8 +30,9 @@ export async function lookups(appId: number, pageId?: number): Promise<Lookups> 
     owner.query('select name from meta.rest_source where app_id = $1 order by name', [appId]),
     owner.query('select name from meta.list where app_id = $1 order by name', [appId]),
     owner.query('select id, list_name, label from meta.list_entry where app_id = $1 order by list_name, seq, id', [appId]),
+    owner.query('select name from meta.automation where app_id = $1 order by name', [appId]),
   ]);
-  return { regions: regions.rows, pages: pages.rows, authz: authz.rows.map((r) => r.name), nav: nav.rows, buildOptions: buildOptions.rows, restSources: rest.rows.map((r) => r.name), lists: lists.rows.map((r) => r.name), listEntries: listEntries.rows };
+  return { regions: regions.rows, pages: pages.rows, authz: authz.rows.map((r) => r.name), nav: nav.rows, buildOptions: buildOptions.rows, restSources: rest.rows.map((r) => r.name), lists: lists.rows.map((r) => r.name), listEntries: listEntries.rows, automations: automations.rows.map((r) => r.name) };
 }
 
 /** Choices of a build option field: each option and its negation, plus a missing current value. */
@@ -70,6 +72,12 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       case 'list_name': {
         const list: [string, string][] = lk.lists.map((n): [string, string] => [n, n]);
         if (v && !lk.lists.includes(v)) list.push([v, `${v} (missing!)`]);
+        control = opts(list);
+        break;
+      }
+      case 'automation_name': {
+        const list: [string, string][] = lk.automations.map((n): [string, string] => [n, n]);
+        if (v && !lk.automations.includes(v)) list.push([v, `${v} (missing!)`]);
         control = opts(list);
         break;
       }

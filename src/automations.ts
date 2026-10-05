@@ -1,9 +1,13 @@
 import pg from 'pg';
-import { applyBinds, type BindValues } from './binds.ts';
 import { owner, runtime } from './db.ts';
 
 // Automations (Shared Components → Automations): SQL or PL/pgSQL on a cron
 // schedule, run by the pgapex server as the application's database role.
+// An automation has ordered actions (meta.automation_action), each with an
+// optional condition, run once or once per row of a query. The actions run
+// in PL/pgSQL (meta.automation_execute, migration 044), the same code that
+// meta.run_automation() uses for runs from SQL; error handling "skip" rolls
+// back a failing row only and records it in the run log.
 //
 // Every SCHEDULER_INTERVAL_S seconds the scheduler claims the automations
 // that are due (FOR UPDATE SKIP LOCKED, so several servers don't take the
@@ -134,18 +138,46 @@ export interface AutomationRow {
   schedule: string;
   time_zone: string;
   query: string | null;
-  code: string;
   timeout_s: number;
   enabled: boolean;
+  error_handling: 'stop' | 'skip' | 'disable';
+}
+
+export interface RowError {
+  row: number;
+  action: string;
+  message: string;
+  values?: string;
 }
 
 export interface RunResult {
-  status: 'ok' | 'error' | 'busy';
+  status: 'ok' | 'warning' | 'error' | 'busy';
+  /** rows of the query processed (0 without a query) */
   rows?: number;
+  /** rows that failed (error handling "skip") */
+  failed?: number;
+  errors?: RowError[];
   message?: string;
 }
 
-const LOCK_CLASS = 0x70676178; // "pgax": advisory lock namespace of automation runs
+/** Advisory lock namespace of automation runs ("pgax"); meta.run_automation() uses it too. */
+const LOCK_CLASS = 0x70676178;
+
+/** What meta.automation_definition() returns: the automation, its actions and binds. */
+interface Definition {
+  id: number;
+  app_id: number;
+  name: string;
+  timeout_s: number;
+  db_role: string | null;
+  error_handling: 'stop' | 'skip' | 'disable';
+  binds: Record<string, string>;
+}
+
+/** The status of a run that finished without an error. */
+export function runStatus(rows: number, failed: number): 'ok' | 'warning' | 'error' {
+  return failed === 0 ? 'ok' : failed >= rows ? 'error' : 'warning';
+}
 
 /**
  * Run one automation now, as its application's database role, in one
@@ -157,23 +189,24 @@ export async function runAutomation(id: number, trigger: 'schedule' | 'manual' =
     const got = (await lock.query('select pg_try_advisory_lock($1, $2) as ok', [LOCK_CLASS, id])).rows[0].ok;
     if (!got) return { status: 'busy', message: 'This automation is running already.' };
     try {
-      const a = (
-        await lock.query<AutomationRow & { alias: string; db_role: string | null }>(
-          `select x.*, a.alias, a.db_role from meta.automation x join meta.app a on a.id = x.app_id where x.id = $1`,
-          [id],
-        )
-      ).rows[0];
-      if (!a) return { status: 'error', message: 'Automation not found.' };
+      const def: Definition | null = (await lock.query('select meta.automation_definition($1) as d', [id])).rows[0].d;
+      if (!def) return { status: 'error', message: 'Automation not found.' };
       const log = (await lock.query('insert into meta.automation_log (automation_id, trigger) values ($1, $2) returning id', [id, trigger])).rows[0].id;
       let result: RunResult;
       try {
-        const rows = await execute(a);
-        result = { status: 'ok', rows };
+        const r = await execute(def);
+        const status = runStatus(r.rows, r.failed);
+        result = { status, rows: r.rows, failed: r.failed, errors: r.errors, ...(status === 'ok' ? {} : { message: `${r.failed} of ${r.rows} row(s) failed` }) };
       } catch (e) {
         result = { status: 'error', message: (e as Error).message.slice(0, 2000) };
       }
-      await lock.query(`update meta.automation_log set finished_at = now(), status = $2, rows = $3, message = $4 where id = $1`, [log, result.status, result.rows ?? null, result.message ?? null]);
-      await lock.query(`update meta.automation set last_run_at = now(), last_status = $2 where id = $1`, [id, result.status]);
+      const disable = result.status === 'error' && def.error_handling === 'disable';
+      if (disable) result.message = `${result.message ?? 'The automation failed.'} (the automation was disabled)`;
+      await lock.query(
+        `update meta.automation_log set finished_at = now(), status = $2, rows = $3, rows_failed = $4, errors = $5, message = $6 where id = $1`,
+        [log, result.status, result.rows ?? null, result.failed ?? null, result.errors?.length ? JSON.stringify(result.errors) : null, result.message?.slice(0, 2000) ?? null],
+      );
+      await lock.query(`update meta.automation set last_run_at = now(), last_status = $2, enabled = enabled and not $3 where id = $1`, [id, result.status, disable]);
       // keep the last 100 runs
       await lock.query(
         `delete from meta.automation_log where automation_id = $1 and id not in (select id from meta.automation_log where automation_id = $1 order by started_at desc, id desc limit 100)`,
@@ -188,27 +221,17 @@ export async function runAutomation(id: number, trigger: 'schedule' | 'manual' =
   }
 }
 
-async function execute(a: AutomationRow & { alias: string; db_role: string | null }): Promise<number> {
-  const binds: BindValues = { APP_ID: String(a.app_id), APP_ALIAS: a.alias, APP_USER: `automation:${a.name}`, AUTOMATION_NAME: a.name };
+/** The actions, as the application's role, through meta.automation_execute() (also used by meta.run_automation). */
+async function execute(def: Definition): Promise<{ rows: number; failed: number; errors: RowError[] }> {
   return runtime.tx(async (c) => {
     await c.query(
       `select set_config('pgapex.app_user', $1, true), set_config('pgapex.app_id', $2, true),
               set_config('pgapex.automation_id', $3, true), set_config('pgapex.session_id', '', true),
-              set_config('statement_timeout', $4, true)`,
-      [binds.APP_USER, String(a.app_id), String(a.id), `${a.timeout_s}s`],
+              set_config('pgapex.automation_chain', $4, true), set_config('statement_timeout', $5, true)`,
+      [def.binds.APP_USER, String(def.app_id), String(def.id), `,${def.id},`, `${def.timeout_s}s`],
     );
-    if (a.db_role) await c.query(`set local role ${pg.escapeIdentifier(a.db_role)}`);
-    if (!a.query?.trim()) {
-      await c.query(applyBinds(a.code, binds));
-      return 0;
-    }
-    const res = await c.query(applyBinds(a.query.trim().replace(/;+\s*$/, ''), binds));
-    for (const row of res.rows) {
-      const rowBinds: BindValues = { ...binds };
-      for (const [k, v] of Object.entries(row)) rowBinds[k.toUpperCase()] = v === null || v === undefined ? null : typeof v === 'object' && !(v instanceof Date) ? JSON.stringify(v) : String(v);
-      await c.query(applyBinds(a.code, rowBinds));
-    }
-    return res.rows.length;
+    if (def.db_role) await c.query(`set local role ${pg.escapeIdentifier(def.db_role)}`);
+    return (await c.query('select meta.automation_execute($1::jsonb) as r', [JSON.stringify(def)])).rows[0].r;
   });
 }
 

@@ -1048,6 +1048,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 /* ---- sprint 23: workflow parallel branches and versions ---- */
 .wf-parallel rect, .wf-join rect { stroke: #7b52c7; stroke-width: 2; }
 .wf-edge-branch { stroke-dasharray: 6 3; }
+.wf-invoke_api rect { stroke: #1f7a8c; stroke-width: 2; stroke-dasharray: 2 2; }
 .wf-active rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 3; }
 .wf-active .wf-name { fill: var(--text); }
 .wf-warnings { background: var(--warning-soft); color: var(--text); border-color: var(--border); }

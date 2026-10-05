@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05. Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
+Last updated: 2026-10-05. Sprints 3–32 are merged into `main` and released as **v0.24.0** (migrations 001–047 are released: add 048+; 033, 035, 045 and 046 were never used). HR example files up to `hr_32` are released.
 
 ## Project in one paragraph
 
@@ -1142,10 +1142,117 @@ AFTER trigger (the BEFORE trigger broke `pgapex import --replace` depending on r
 8 skip, e2e 90/90; clean worktree with CI env only: fresh 713/8 and upgrade from v0.22.0 713/8. Released as
 **v0.23.0** (parity 79/26/10/6). Sprint 32 not started (owner).
 
-## Sprint 32 (PLANNED, owner 2026-10-05)
+## Sprint 32 (DONE, v0.24.0): parity items one after another (owner: "keep going with the handoff.md, sprint and apex-feature-parity, with only 1 agent at the time", 2026-10-05)
 
-- **CI: move GitHub Actions off Node.js 20** (deprecated; the runs show a warning): `actions/checkout`,
-  `actions/setup-node` and `actions/upload-artifact` in `.github/workflows/ci.yml` to their current major versions
-  (check the latest releases first); confirm the warning is gone in the run annotations. Also note: `ubuntu-latest`
-  moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres service, Playwright deps).
-- Further items: pick from the parity matrix after sprint 31 is merged.
+Branch `sprint-32` from `main` (v0.23.0 + 3bb983a, the custom-auth test flake fix (same race as 68d8b65, which made
+every CI upgrade job red after the sprint 31 merge) + 192f0af, CI actions checkout/setup-node/upload-artifact moved
+to v7 (Node.js 24), both committed straight to `main`). **One agent at a time** works in the main checkout (no
+worktree), dev DB `pgapex-db` on 5434, app 3100. Rules: `docs/development/sprint-32-agent-rules.md`. Items in order;
+each one is finished, tested and committed on `sprint-32` (and pushed) before the next agent starts, so the branch
+can be merged after any item:
+
+| # | Item (parity row) | Reserved | Status |
+|---|---|---|---|
+| 0 | CI: actions off Node.js 20; custom-auth flake | (none) | done on `main` (3bb983a, 192f0af); CI run 37286030252 green, no Node 20 warning |
+| 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | **done** (bcfec61..14943e4) |
+| 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045 (unused), `hr_34` | **done** (ca079be..c6066d2) |
+| 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | **done** (40da186, 00d6d40, a972bb6) |
+| 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 | **done** (497fd88..6561f5f) |
+| 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (unused) | **done** (379e32c..b18e83d) |
+
+Later CI note: `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres
+service, Playwright deps).
+
+**State at the handoff (2026-10-05, owner: "stop and create a handoff"):** items 0–3 are done and pushed;
+`sprint-32` is clean and equal to `origin/sprint-32`; no agent and no dev server is running. Items 4 and 5 are not
+started (no code, migrations 045–048 unused). `main` CI is green (run 37286030252). Nothing of sprint 32 is merged
+into `main` yet; the branch is mergeable as it is (full suite last run by an agent after item 3: 760 pass / 8 skip,
+e2e 90/90). To continue: launch one agent with "Read `docs/development/sprint-32-agent-rules.md` and follow it.
+Item 4 of the Sprint 32 table in HANDOFF.md." (the item 4 row above has the scope: cards, calendar, chart, map,
+faceted search, form only, master-detail; defaults from the catalog; functional + security tests), record its
+report below, then item 5, then release 0.24.0 as described under "If a session ends". The owner may also choose to
+release 0.24.0 with items 1–3 only.
+
+**Coordinator already did (so a successor doesn't redo it):** parity rows Automations (✅) and Workflow (invoke API)
+plus the summary counts (80/25/10/6) and the "Last reviewed" line; CHANGELOG `[Unreleased]` for items 0–3; Data Workshop row ✅ (counts 81/24/10/6); `.env.example` `UNLOAD_STATEMENT_TIMEOUT`; item 4: Create page wizards row ✅ (counts 82/23/10/6) and its CHANGELOG entry. Still to do
+at release: rows for items 4–5, CHANGELOG entries for them, SECURITY.md (notes in the item reports below), version,
+CI matrix + v0.24.0.
+
+**If a session ends:** `git log --oneline main..sprint-32` and `git status`; make sure no agent is still editing (the
+`git status` output stops changing); commit any uncommitted work as `wip:`;
+launch the next agent with "Read `docs/development/sprint-32-agent-rules.md` and follow it. Item <n> of the Sprint 32
+table in HANDOFF.md." When the items are done (or usage runs low): parity rows + summary counts, CHANGELOG 0.24.0,
+SECURITY.md, `.env.example`, version, CI upgrade matrix + v0.24.0, chapter 12 version line, this file; clean-worktree
+CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check `gh run list -R NickVrgr/Postgresql_APEX`.
+
+**Item reports:** (filled in as agents finish)
+
+- **1 automations: DONE** (4 `wip:` commits bcfec61..14943e4, pushed). Migration `044_automation_actions.sql`:
+  `meta.automation_action` (automation name, seq, name, code, condition with row binds; FK on `(app_id,
+  automation_name)`, cascades), each old automation's code became one action "Action"; `meta.automation.code` stays
+  but is always empty (writing it creates/replaces the single action, error if there are several: old scripts,
+  `hr_08`, old exports keep working). `error_handling` stop (default) / skip (savepoint per row) / disable; run log
+  has failed rows, first 50 row errors, status `warning`. One runner for all runs: PL/pgSQL `meta.automation_execute`
+  (bind substitution ported from `src/binds.ts`, parity test). `meta.run_automation(p_name, p_raise default true)`:
+  synchronous in the caller's transaction as the caller's role, current app only, automation's roles and user
+  `automation:<name>` while running, same advisory lock as the scheduler, trigger `sql`. **044 redefines
+  `export_app`/`import_app`** from 043 (section `automation_actions`, `code` left out). CLI dir layout
+  `shared/automation-actions/<automation>/<seq>-<action>.json`. Builder Actions box (reorder without JS), error
+  handling, row errors in the run history. HR `hr_33_automation_actions.sql` ("Remind managers" with 2 actions, skip;
+  page 6 button "Send reminders now"). No env vars. Security: action table closed to app roles; `automation_begin/end`
+  are security definer limited to `meta.app_id()` (an app can read its own automation definitions: same trust model as
+  `pgapex.app_id`); `has_role()` answers with the automation's roles during a SQL run (treat them like a security
+  definer function's); row values become escaped literals. Parity row → ✅ (text in the agent report: actions with
+  conditions, stop/skip/disable, `meta.run_automation()`). Tests 730 pass / 8 skip, e2e 90/90, upgrade from v0.23.0 ok.
+- **2 workflow invoke API: DONE** (ca079be..c6066d2, pushed). Step type `invoke_api` in `src/workflow.ts`: a REST
+  data source of the app (`source` + `params`, its web credential) or a URL (`url`, `method`, `credential`, `body`);
+  `&VAR.` from workflow variables; `variables` (variable → JSON path, or the source's first-row columns),
+  `status_variable` (then an error status doesn't fault), `response_variable`, `timeout` 1–60 s. The page process's
+  call code moved into `invoke()` in `src/websources.ts` (shared; allow-list, SSRF checks, credential URLs unchanged).
+  **No transaction during the call:** the path is committed as `waiting` with a lease (3 × timeout + 30 s), the call
+  runs, then a new transaction checks the path still waits with the same lease (terminated/retried meanwhile → result
+  dropped); a server dying mid-call → lease expires → fault "didn't finish" (no automatic repeat of a POST). Limit: the
+  in-process runner awaits each call. Builder help/validation, diagram class `.wf-invoke_api`, Advisor
+  (`invokeStepReferences`). Steps are jsonb: no migration, export/import **not** redefined. HR
+  `hr_34_workflow_invoke_api.sql` (workflow `DEPARTMENT_CHECK`, `hr.notify_me`, button on page 23). No env vars.
+  Security: only own-app sources/credentials; host fixed by the developer (no substitutions in the host, URL-encoded
+  after it); fields re-checked before each call; response can't overwrite `DETAIL_PK`/`WORKFLOW_ID`/`INITIATOR`;
+  secrets never in variables/events/errors. Parity: add invoke API to the Workflow row, missing stays e-mail activity
+  (not planned) and multi-tenancy. Tests 748 pass / 8 skip, e2e 90/90 (coordinator re-ran the full suite).
+- **3 unload data: DONE** (40da186, 00d6d40, a972bb6, pushed). `/builder/sql/unload` (tab in `workshopTabs`, linked
+  from Load Data): a table/view (columns, where, order by) or a query → CSV (separator, enclosure, heading, BOM;
+  `csvField` from report.ts generalised), JSON (exact numbers, json embedded), XLSX (streaming `XlsxWriter`), XML
+  (validated element names). DECLARE/FETCH batches of 1000 with back pressure, cap `DOWNLOAD_MAX_ROWS` (XLSX
+  1,048,575). `unloadStatement()` reuses `splitScript`: exactly one SELECT/WITH/VALUES/TABLE; where/order text checked
+  the same way. Own owner connection, `begin transaction read only` + `statement_timeout`, connection closed after
+  (`release(true)`); logged `sql_unload`. Files `src/unload.ts`, `src/builder/unload.ts`. No migration (046 unused), no
+  HR part, export/import not redefined. Env `UNLOAD_STATEMENT_TIMEOUT` (default 5min). Security: owner + developer
+  session + CSRF like SQL Commands; read-only/one statement guard against mistakes, not a boundary (a developer can
+  already run any SQL); nothing leaks into the pool. Tests 760 pass / 8 skip, e2e 90/90.
+- **4 create page wizards: DONE** (497fd88..6561f5f, pushed). Migration `047_page_wizards.sql`: `meta.wizard_catalog`,
+  `meta.wizard_defaults(kind, table)`, `meta.generate_page(app, kind, table, page, options jsonb)` for `form`, `cards`,
+  `calendar`, `chart`, `map`, `facets`, `master_detail` (`report_form`/`grid` hand over to generate_crud/generate_grid).
+  Builder `src/builder/wizards.ts`: step 1 type + table (GET), step 2 options with catalog defaults, POST creates the
+  pages and opens the designer; no JS needed. Optional modal form page, navigation entry, calendar drag and drop off by
+  default. Export/import not redefined; no HR part, no env vars. Security (for SECURITY.md): option column names must
+  exist in the table and go into SQL only as `%I`, table names schema-qualified, fixed lists for types/functions/icons;
+  `meta`, `pg_*`, `information_schema` refused; functions run as the caller, revoked from PUBLIC (tested for
+  `pgapex_runtime` and an app role); developer session + CSRF + app lock; generated calendar move SQL runs as the app
+  role (RLS) and the wizard warns to set `move_authz`. Limitation: the PostGIS map branch was checked only for its SQL
+  (no PostGIS in dev/CI). Tests 776 pass / 8 skip, e2e 90/90.
+- **5 create application from a file: DONE** (379e32c..b18e83d, pushed). `/builder/create/file` (upload, reuses
+  `parseFile`, type inference and limits of `src/dataload.ts`, stored as a builder-session temporary file) →
+  `/builder/create/file/:id` preview (app name, alias, schema, authentication, first user; table name; per column
+  name/type, empty name skips) → one owner transaction: schema + role, table with identity `id`, rows via `loadRows`
+  (all or nothing unless "skip rows with errors"), `analyze`, pages via `meta.generate_page` (2 report + 3 modal form,
+  4 dashboard chart, 5 faceted search) with navigation. App creation moved to `src/builder/newapp.ts` (shared with the
+  blank wizard); new `src/builder/appfromfile.ts`. No migration, no HR part, no env vars, export/import not
+  redefined. Security: developer session + CSRF (also multipart), temp file only for the uploading session and
+  deleted after, quoted lower-case identifiers in the app schema, fixed types; **behaviour change**: `meta`,
+  `information_schema`, `pg_*` refused as parsing schema (also blank apps), blank app needs a name, alias ≤ 50 chars.
+  Tests 789 pass / 8 skip, e2e 90/90.
+
+**Released 2026-10-05 as v0.24.0:** parity rows (Create page wizards ✅, Create application wizard text; counts
+82/23/10/6), CHANGELOG 0.24.0, SECURITY.md (five 0.24.0 rows), version, CI matrix + v0.24.0, chapter 12 line.
+CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446): 789 pass / 8 skip. Next: pick the
+next sprint from the parity matrix (AI features still wait for the owner's decision on provider and API keys).

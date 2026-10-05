@@ -371,32 +371,83 @@ needed (pg_cron isn't available on every managed PostgreSQL service).
 |---|---|
 | Schedule | cron syntax, `minute hour day-of-month month day-of-week`: `0 7 * * 1-5` (07:00 on weekdays), `*/15 * * * *` (every 15 minutes), `0 2 1 * *` (02:00 on the 1st), `30 6 1 jan,jul *`; or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. When both day fields are set, either may match, as in cron |
 | Time zone | the schedule's time zone, e.g. `Europe/Amsterdam` (daylight saving included) or `UTC` |
-| For each row of | optional query: the code then runs once per row, with the row's columns as binds (APEX's query-based automations) |
-| Code | one or more SQL statements, a `do $$ … $$` block or `call`. Binds: `:APP_ID`, `:APP_ALIAS`, `:APP_USER` (`automation:<name>`), `:AUTOMATION_NAME` and the row's columns. Binds aren't replaced inside `$$ … $$`: pass them to a function instead |
+| For each row of | optional query: the actions then run once per row, with the row's columns as binds (APEX's query-based automations). Empty: the actions run once |
+| Error handling | `stop` (default): an error rolls the whole run back · `skip`: a failing row is rolled back and recorded, the other rows go on (APEX: *Ignore*; needs a query) · `disable`: like `stop`, and the automation is switched off (APEX: *Disable Automation*) |
 | Roles | what `meta.has_role()` returns true for while it runs (read at every run) |
-| Timeout | the statement timeout of a run (default 300 s) |
+| Timeout | the statement timeout of a scheduled run or Run now (default 300 s) |
 
-A run is **one transaction as the application's database role**, so grants and row level security
-apply, and an error rolls the whole run back. The editor shows the next run, a **Run now**
-button (it also works while the automation is disabled) and the last runs with their status, row
-count and error message; the last 100 runs are kept in `meta.automation_log`.
+### Actions
 
-The HR sample's *Remind managers* runs at 08:00 on weekdays and reminds managers of leave requests
-that have waited more than two days (`examples/hr/hr_08_automations.sql`):
+An automation has one or more **actions**, run in order (by sequence) for each row, or once (the
+**Actions** box under the automation: *Add action*, the arrows reorder, click an action to edit
+or delete it). Each action has:
+
+| Field | |
+|---|---|
+| Name | e.g. `Remind the manager`; it appears in error messages and the run history |
+| Sequence | the order |
+| Code | one or more SQL statements, a `do $$ … $$` block or `call`. Binds: `:APP_ID`, `:APP_ALIAS`, `:APP_USER` (`automation:<name>`), `:AUTOMATION_NAME` and the row's columns. Binds aren't replaced inside `$$ … $$`: pass them to a function instead |
+| Server-side condition | optional boolean SQL expression with the same binds: the action runs only when it is true, e.g. `:DAYS_PENDING::int >= 7` |
+
+All actions of a run share **one transaction as the application's database role**, so grants
+and row level security apply, and a later action sees what an earlier one wrote. With error
+handling `skip`, every row runs in a savepoint: when an action of a row fails, that row's changes
+are undone, the error is recorded and the next row runs. A statement timeout always stops the
+whole run.
+
+The editor shows the next run, a **Run now** button (it also works while the automation is
+disabled) and the last runs: who started them (`schedule`, `manual` or `sql` with the user), the
+status (`ok`; `warning` when some rows failed; `error`), the rows processed, the failed rows with
+each row's error (row number, action, message and the row's values), and the error message. The
+last 100 runs are kept in `meta.automation_log`.
+
+The HR sample's *Remind managers* runs at 08:00 on weekdays (`examples/hr/hr_08_automations.sql`,
+`hr_33_automation_actions.sql`):
 
 ```sql
--- For each row of
-select id from hr.leave_request
+-- For each row of (error handling: skip)
+select id, current_date - created_at::date as days_pending
+  from hr.leave_request
  where status = 'PENDING' and created_at < now() - interval '2 days'
--- Code
+-- Action 10 "Remind the manager"
 select hr.remind_pending_leave(:ID::int);
+-- Action 20 "Escalate after a week", condition :DAYS_PENDING::int >= 7
+select hr.escalate_pending_leave(:ID::int);
 ```
+
+### Running an automation from SQL
+
+Application code (a page process, an application process, a workflow, another automation) runs an
+automation of the **current application** with `meta.run_automation`, like
+`APEX_AUTOMATION.EXECUTE`:
+
+```sql
+select meta.run_automation('Remind managers');                    -- raises an error if the run fails
+select meta.run_automation('Remind managers', p_raise => false);  -- returns {"status": "error", …} instead
+```
+
+It runs **synchronously, in the caller's transaction**, as the caller's database role (the
+application's role), with the automation's roles and user (`automation:<name>`) while it runs;
+afterwards the caller's user and roles apply again. It returns
+`{"status": "ok" | "warning" | "error", "rows": …, "failed": …, "errors": [...], "message": …}`
+and records the run (trigger `sql`, with the calling user). Because it is part of the caller's
+transaction, a rollback of the caller undoes the run *and* its log entry; with `p_raise => false` a
+failed run is undone on its own and the log entry is kept when the caller commits. The automation
+need not be enabled. While the run's transaction is open nobody else can run the same automation
+(the scheduler and Run now report it as busy, another `run_automation` raises an error), and an
+automation can't run itself. The caller's statement timeout applies, not the automation's.
+
+The HR sample's *Leave requests* page (6) has a *Send reminders now* button for admins whose
+process is `select meta.run_automation('Remind managers');`.
 
 **Running more than one pgapex server?** Every server runs the scheduler (every 30 seconds,
 `SCHEDULER_INTERVAL_S`). Due automations are claimed with `FOR UPDATE SKIP LOCKED` and a run holds
 an advisory lock, so an automation never runs twice at the same time. Set `AUTOMATIONS=off` on
-servers that shouldn't run them. Exported applications include their automations; an imported
-copy starts with them **switched off**, so a copy never runs the original's jobs unasked.
+servers that shouldn't run them. Exported applications include their automations and actions; an
+imported copy starts with them **switched off**, so a copy never runs the original's jobs unasked.
+Export files of pgapex 0.23 and older (one code field per automation) still import: the code
+becomes the automation's single action. Scripts may still write `meta.automation.code`: it
+creates or replaces the single action (the column itself stays empty).
 
 If you prefer the database to schedule work, [pg_cron](15-extensions.md) still works next to this.
 
@@ -491,6 +542,7 @@ steps; the builder checks them and draws the flow.
 | `sql` | Runs SQL; the columns of the row it returns become variables | `code`, `next` |
 | `switch` | Goes to the first case whose condition is true | `cases: [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}]`, `otherwise` |
 | `wait` | Waits before going on | `for` (`30 minutes`, `2 days`), `next` |
+| `invoke_api` | Calls a REST data source or a URL on the server; values of the response become variables ([below](#invoke-api-steps)) | `source` + `params`, or `url`, `method`, `credential`, `body`; `variables`, `status_variable`, `response_variable`, `timeout`, `next` |
 | `parallel` | Starts a branch at each of its steps; they run side by side | `branches` (the first step of each, at least two), `join` |
 | `join` | Where the branches of a `parallel` step meet | `wait_for` (`all`, the default, or `any`), `next` |
 | `end` | Ends the workflow | |
@@ -527,6 +579,52 @@ servers can share a database: each instance is locked while it runs.
 A step that fails puts the workflow in **faulted** with the error; an administrator (the
 definition's administrator role) fixes the cause and **retries** the step. A task that is
 cancelled ends the workflow unless the step has a `cancelled` branch.
+
+### Invoke API steps
+
+An `invoke_api` step (APEX: the *Invoke API* activity) calls a web service: a
+[REST data source](19-rest-data-sources.md) of the application (its URL, method, parameters and web
+credential), or a URL. It is the same code as the [invoke_api page process](19-rest-data-sources.md#the-invoke_api-process),
+with the same protections: only hosts on the server's allow-list (`PGAPEX_REST_ALLOWED_HOSTS`,
+`PGAPEX_REST_PRIVATE_HOSTS`), addresses checked when the connection is made, a credential only sent to
+its *valid for* URLs, a size limit on the response.
+
+```json
+[{"name": "RATE",  "type": "invoke_api", "source": "EXCHANGE", "params": {"currency": "&CURRENCY."},
+                   "variables": {"RATE": "rates.EUR", "RATE_DATE": "date"}, "status_variable": "HTTP_STATUS", "timeout": 20},
+ {"name": "ORDER", "type": "invoke_api", "url": "https://shop.example.com/api/orders/&ORDER_ID./confirm", "method": "POST",
+                   "credential": "SHOP_API", "body": "{\"note\": &NOTE., \"rate\": &RATE.}", "response_variable": "CONFIRMATION"},
+ {"name": "BOOK",  "type": "sql", "code": "select expenses.book(:DETAIL_PK::int, :RATE::numeric) as booked_at"}]
+```
+
+| Field | |
+|---|---|
+| `source`, `params` | A REST data source and its parameter values; parameters left out take their default |
+| `url`, `method`, `credential`, `body` | Or a URL (`GET` by default; `POST`, `PUT`, `PATCH`, `DELETE`), a web credential and a JSON body. The host is fixed: `&VAR.` only after it, URL-encoded; in the body a value becomes a JSON string |
+| `variables` | Variable → JSON path in the response (`rates.EUR`, `items[0].id`). Without it, the first row's columns of a source become variables |
+| `status_variable` | Gets the HTTP status; then an error status doesn't fault the step (the response isn't read), so a `switch` can decide |
+| `response_variable` | Gets the whole JSON response |
+| `timeout` | Seconds (1–60); default the source's time limit, 10 for a URL |
+
+`&VAR.` in parameters, the URL and the body is a variable (or `DETAIL_PK`, `WORKFLOW_ID`,
+`INITIATOR`, `TASK_OUTCOME`, `TASK_APPROVER`); a name that is no variable is sent as written. A call
+that fails (a refused host, a time-out, an error status without `status_variable`, a response that
+isn't JSON) **faults the step** like a failing SQL step, with the reason in the console; an
+administrator retries it there, which calls again.
+
+**No transaction during the call.** The step first commits its path as *waiting* at the step,
+with a lease well past the time limit (the history says `calling REST data source EXCHANGE`); the
+server makes the call, then a new transaction checks that the path still waits at that step with
+that lease and goes on with the response. A workflow terminated meanwhile keeps its state and the
+response is dropped; other parallel branches go on during the call. If the server stops during a
+call, the lease runs out and the step faults (*didn't finish*) instead of calling again, since a
+`POST` may not be safe to repeat: retry it from the console. While a call runs the server's runner
+waits for it, so long time limits delay other workflows on that server.
+
+The builder checks the fields; the Advisor also reports a REST data source, parameter or web
+credential that doesn't exist (errors), a required parameter without a value, and a `&VAR.` that no
+step sets and the title doesn't name (warnings: give it to `meta.start_workflow`). The diagram shows
+the step as *invoke API* with its source.
 
 **Parallel branches.** A `parallel` step (APEX: parallel activities) starts a branch at each step
 in `branches`; every branch runs on its own (its own step, wait and task) until it reaches the
@@ -576,5 +674,8 @@ branches are cancelled); administrators can retry a faulted one.
 created. Its version 2 (part 18) prepares the workplace (the manager's task) and, in a parallel
 branch, the access that employees with a salary of 2500 or more need (a switch and an
 administrator's task); when both branches are done, the manager is notified (SQL). Version 1, which
-did this one after the other, is inactive. *My tasks* (page 14) shows the workflows.
+did this one after the other, is inactive. *My tasks* (page 14) shows the workflows. Part 34 adds
+`DEPARTMENT_CHECK`, started by *Check in a workflow* on page 23: an `invoke_api` step reads the
+department from the example's own REST API (the `DEPARTMENT` source of part 23, so the server must
+allow `127.0.0.1:3100`), a `switch` on `HTTP_STATUS`, and SQL that notifies the initiator.
 

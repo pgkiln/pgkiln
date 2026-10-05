@@ -94,10 +94,11 @@ which is read at startup; real environment variables take precedence.
 | `STATEMENT_TIMEOUT` | `30s` | Maximum run time of any application SQL statement |
 | `DB_POOL_SIZE` | `10` | Connections per pool (there are two pools) |
 | `MAX_UPLOAD_MB` | `10` | Largest file a file item accepts (an item's `max_mb` can only lower it) |
-| `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data |
+| `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data and Create → From a file |
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
 | `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (1 to 100,000; read with a cursor in batches) |
-| `DOWNLOAD_MAX_ROWS` | `1000000` | Most rows in a report's CSV or Excel download (streamed; at most 1,048,575) |
+| `DOWNLOAD_MAX_ROWS` | `1000000` | Most rows in a report's CSV or Excel download and in a SQL Workshop → Unload Data file (streamed; at most 1,048,575) |
+| `UNLOAD_STATEMENT_TIMEOUT` | `5min` | Statement timeout of SQL Workshop → Unload Data (each statement: the cursor and every batch of rows) |
 | `REGION_CACHE_MAX_ENTRIES` | `1000` | Most regions in the [region cache](04-pages-and-regions.md#large-tables) of one server process (`0` turns caching off) |
 | `REGION_CACHE_MAX_MB` | `64` | Memory for the region cache of one server process |
 | `AUTOMATIONS` | on | `off` stops this server from running [automations](06-processing.md#automations) |

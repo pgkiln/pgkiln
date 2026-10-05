@@ -5,6 +5,9 @@ import { strToU8, Zip, ZipDeflate } from 'fflate';
 // stay numbers/dates in Excel). Text is written as inline strings, which
 // Excel never evaluates, so cells that look like formulas are harmless.
 
+/** The Excel content type. */
+export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 export type XlsxCell = string | number | boolean | null | { date: string; time?: boolean };
 
 export interface XlsxSheet {
@@ -15,7 +18,8 @@ export interface XlsxSheet {
   widths?: number[];
 }
 
-const esc = (s: string) =>
+/** Text for XML content or attributes: characters XML 1.0 doesn't allow are dropped, the rest escaped. */
+export const esc = (s: string) =>
   s
     // characters XML 1.0 does not allow
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]/g, '')

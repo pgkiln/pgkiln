@@ -2,7 +2,6 @@ import { appLocks, isAdmin, lockPanel, lockText } from './locks.ts';
 import { parseRoleList, validRoleName } from '../dbauth.ts';
 import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import type { FastifyInstance } from 'fastify';
-import pg from 'pg';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -10,12 +9,14 @@ import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
-import { ICON_OPTIONS } from './components.ts';
 import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
+import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
+import { checkNewApp, createApp, createAppError } from './newapp.ts';
+import { appFromFileRoutes } from './appfromfile.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -117,56 +118,20 @@ export async function builderRoutes(app: FastifyInstance) {
 
   // the workspace pages (App Builder home, Create, Import, Dashboard, Utilities) are in home.ts
   await homeRoutes(app);
+  await wizardRoutes(app);
+  await appFromFileRoutes(app);
 
   app.post(`${BASE}/apps`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const b = req.body ?? {};
     try {
-      const alias = (b.alias ?? '').trim().toLowerCase();
-      if (!/^[a-z][a-z0-9_-]*$/.test(alias)) throw new Error('The alias must start with a letter and contain only a-z, 0-9, _ and -.');
-      let existingAccount = false;
-      if (b.authentication !== 'none') {
-        if (!b.admin_user?.trim()) throw new Error('Apps with a login page need a first user.');
-        const known = await owner.one('select 1 from meta.account where lower(username) = lower($1)', [b.admin_user.trim()]);
-        const problem = known ? null : await passwordProblem(b.admin_password);
-        if (problem) throw new Error(problem);
-      }
-      const id = await owner.tx(async (c) => {
-        const schema = b.schema?.trim() || alias.replace(/-/g, '_');
-        const role = `app_${alias.replace(/-/g, '_')}`;
-        const S = pg.escapeIdentifier(schema);
-        const R = pg.escapeIdentifier(role);
-        // The parsing schema: a role that can only use this schema.
-        await c.query(`create schema if not exists ${S}`);
-        if (!(await c.query('select 1 from pg_roles where rolname = $1', [role])).rowCount) await c.query(`create role ${R} nologin`);
-        await c.query(`grant ${R} to pgapex_runtime`);
-        await c.query(`grant usage on schema ${S} to ${R}`);
-        await c.query(`grant select, insert, update, delete on all tables in schema ${S} to ${R}`);
-        await c.query(`grant usage, select on all sequences in schema ${S} to ${R}`);
-        await c.query(`grant execute on all functions in schema ${S} to ${R}`);
-        await c.query(`alter default privileges in schema ${S} grant select, insert, update, delete on tables to ${R}`);
-        await c.query(`alter default privileges in schema ${S} grant usage, select on sequences to ${R}`);
-        await c.query(`alter default privileges in schema ${S} grant execute on functions to ${R}`);
-
-        const a = await c.query('insert into meta.app (alias, name, authentication, db_role) values ($1, $2, $3, $4) returning id', [alias, b.name?.trim(), b.authentication ?? 'app_users', role]);
-        const appId = a.rows[0].id;
-        const p = await c.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appId]);
-        await c.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Welcome', 'static', '<p>Hello, &APP_USER.! Edit this page in the builder.</p>')`, [p.rows[0].id]);
-        await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page) values ($1, 1, 'Home', 'home', 1)`, [appId]);
-        await c.query(`insert into meta.authz_scheme (app_id, name, type, value, error_message) values ($1, 'ADMIN', 'role', 'admin', 'Only administrators can access this page.')`, [appId]);
-        if (b.authentication !== 'none') {
-          // an existing account just gets access; otherwise create it
-          const existing = await c.query('select id from meta.account where lower(username) = lower($1)', [b.admin_user!.trim()]);
-          const accountId = existing.rows[0]?.id
-            ?? (await c.query('insert into meta.account (username, password_hash) values ($1, meta.hash_password($2)) returning id', [b.admin_user!.trim(), b.admin_password])).rows[0].id;
-          await c.query(`insert into meta.app_access (app_id, account_id, roles) values ($1, $2, '{admin}')`, [appId, accountId]);
-          existingAccount = !!existing.rowCount;
-        }
-        return appId;
+      const checked = await checkNewApp(b);
+      const { id, existingAccount } = await owner.tx((c) => createApp(c, checked)).catch((e) => {
+        throw new Error(createAppError(e, checked.alias));
       });
       flash(s, existingAccount
-        ? `Application created. The existing account ${b.admin_user!.trim()} got the admin role (its password was not changed).`
+        ? `Application created. The existing account ${checked.adminUser} got the admin role (its password was not changed).`
         : 'Application created.');
       return back(reply, s, `${BASE}/apps/${id}`);
     } catch (e) {
@@ -209,11 +174,7 @@ export async function builderRoutes(app: FastifyInstance) {
            from meta.page p where p.app_id = $1 order by p.page_no`,
         [a.id],
       ),
-      owner.query(
-        `select c.oid::regclass::text as t from pg_class c join pg_namespace n on n.oid = c.relnamespace
-          where c.relkind in ('r', 'p', 'v') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
-          order by 1`,
-      ),
+      wizardTables(a.db_role),
     ]);
     const nextPage = Math.max(0, ...pages.rows.map((p) => p.page_no)) + 1;
     const locks = new Map((await appLocks(a.id)).map((l) => [l.page_no, l]));
@@ -235,17 +196,13 @@ export async function builderRoutes(app: FastifyInstance) {
       ${region('Application lock and comments', await lockPanel(s, a.id, 0, { headings: true }))}
       <div class="columns">
         ${region('Create pages from a table', html`
-          <p class="muted u-mt0">"Report and form" generates an interactive report and a modal form with create/update/delete; "Interactive grid" generates one editable grid page. Both add a menu entry.</p>
-          <form method="post" action="${BASE}/apps/${a.id}/wizard">${csrf(s)}
+          <p class="muted u-mt0">Choose a page type and a table or view; the next step proposes the columns, key, dates, positions and foreign keys from the database, and creates the page with a menu entry.</p>
+          <form method="get" action="${BASE}/apps/${a.id}/wizard">
             <div class="form-grid">
-              ${select('kind', 'Page type', 'report_form', [['report_form', 'Report and form'], ['grid', 'Interactive grid']])}
-              ${select('table', 'Table or view', '', tables.rows.map((t) => t.t))}
-              ${input('label', 'Label', '', { placeholder: 'defaults to the table name' })}
-              ${input('report_page', 'Page number', nextPage, { type: 'number', required: true })}
-              ${input('form_page', 'Form page (report and form)', nextPage + 1, { type: 'number' })}
-              ${select('icon', 'Menu icon', 'table', ICON_OPTIONS.filter(Boolean))}
+              ${select('kind', 'Page type', 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, label]))}
+              ${select('table', 'Table or view (master table for master detail)', '', tables.map((t): [string, string] => [t.t, t.access ? t.t : `${t.t} (no access for ${a.db_role})`]))}
             </div>
-            <div class="buttons"><button class="btn btn-hot">Generate pages</button></div>
+            <div class="buttons"><button class="btn btn-hot">Next</button></div>
           </form>`)}
         ${region('Create blank page', html`
           <form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
@@ -259,29 +216,6 @@ export async function builderRoutes(app: FastifyInstance) {
           </form>`)}
       </div>`;
     return send(reply, s, shell(s, a.name, [['App Builder', BASE], [a.name]], main));
-  });
-
-  app.post(`${BASE}/apps/:id/wizard`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const b = req.body ?? {};
-    try {
-      await owner.tx(async (c) => {
-        const a = await c.query('select alias from meta.app where id = $1', [req.params.id]);
-        if (b.kind === 'grid')
-          await c.query('select meta.generate_grid($1, $2::regclass, $3, $4, $5)', [a.rows[0].alias, b.table, Number(b.report_page), b.label?.trim() || null, b.icon || 'grid']);
-        else
-          await c.query('select meta.generate_crud($1, $2::regclass, $3, $4, $5, $6)', [
-            a.rows[0].alias, b.table, Number(b.report_page), Number(b.form_page), b.label?.trim() || null, b.icon || 'table',
-          ]);
-      });
-      flash(s, b.kind === 'grid'
-        ? `Grid page ${b.report_page} created for ${b.table}. Make sure the app's database role has privileges on it.`
-        : `Pages ${b.report_page} and ${b.form_page} created for ${b.table}. Make sure the app's database role has privileges on it.`);
-    } catch (e) {
-      flash(s, (e as Error).message, 'error');
-    }
-    return back(reply, s, `${BASE}/apps/${req.params.id}`);
   });
 
   app.post(`${BASE}/apps/:id/pages`, async (req: Req, reply) => {

@@ -86,7 +86,7 @@ async function definition(id: unknown) {
   return owner.one<DataLoadDefinition & { id: number; app_id: number }>('select * from meta.data_load_def where id = $1', [id]);
 }
 
-const MAX_MB = Number(process.env.DATA_LOAD_MAX_MB ?? 50);
+export const MAX_MB = Number(process.env.DATA_LOAD_MAX_MB ?? 50);
 const PREVIEW_ROWS = 10;
 
 async function uploaded(s: Session, id: string) {
@@ -113,12 +113,12 @@ const tableName = (filename: string) =>
       .slice(0, 50) || 'imported_data'
   }`;
 
-function preview(sheet: Sheet) {
+export function preview(sheet: Sheet) {
   return html`<div class="table-wrap"><table class="report"><thead><tr>${sheet.headers.map((h) => html`<th>${h}</th>`)}</tr></thead>
     <tbody>${sheet.rows.slice(0, PREVIEW_ROWS).map((r) => html`<tr>${r.map((v) => html`<td>${v === null ? html`<span class="null">null</span>` : v}</td>`)}</tr>`)}</tbody></table></div>`;
 }
 
-function resultHtml(r: LoadResult, failed: boolean) {
+export function resultHtml(r: LoadResult, failed: boolean) {
   const errors = r.errors.length
     ? html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Row</th><th>Error</th></tr></thead>
         <tbody>${r.errors.map((e) => html`<tr><td class="num">${e.row}</td><td>${e.message}</td></tr>`)}</tbody></table></div>
@@ -147,7 +147,8 @@ export async function dataLoadRoutes(app: FastifyInstance) {
       'Load data from a file',
       html`${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
       <p class="muted">CSV or TSV (UTF-8 or Windows-1252; the delimiter is detected), Excel .xlsx (the first sheet), JSON (an array of objects, or JSON Lines) or XML (rows from a repeating element), up to ${MAX_MB} MB.
-        Next you choose a new or existing table. Loading runs as the builder's owner connection.</p>
+        Next you choose a new or existing table. Loading runs as the builder's owner connection.
+        To download a table or a query as a file, use <a href="${BASE}/sql/unload">Unload Data</a>.</p>
       <form method="post" enctype="multipart/form-data">${csrf(s)}
         <div class="form-grid">
           <div class="field"><label class="label" for="f_file">File</label>

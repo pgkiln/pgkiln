@@ -29,7 +29,8 @@ src/
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
-  workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
+  workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), invoke_api steps
+                           (the call between two transactions, with a lease), Advisor references, the diagram
   process-jobs.ts          background execution chains: the job queue (SKIP LOCKED, NOTIFY + polling), running a job as the app role
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
@@ -38,11 +39,13 @@ src/
   numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
+  unload.ts                Unload Data: unloadStatement() (one SELECT), openUnload() (cursor, batches, CSV/JSON/XLSX/XML encoders on Postgres text values)
   xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested)
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers, psql commands), runScript() (stop/continue, transaction, savepoints)
   quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
-  xlsx.ts                  Excel writer for report downloads (typed cells, streamed through fflate's Zip)
-  automations.ts           cron parser, next run in a time zone, scheduler, running automations
+  xlsx.ts                  Excel writer for report downloads and Unload Data (typed cells, streamed through fflate's Zip)
+  automations.ts           cron parser, next run in a time zone, scheduler, running automations (the actions run
+                           in PL/pgSQL: meta.automation_execute, shared with meta.run_automation; migration 044)
   html.ts                  auto-escaping html`` templates
   richtext.ts              rich text and Markdown items: allow-list HTML sanitiser, Markdown renderer
   qrcode.ts                QR code encoder (byte mode, versions 1–40) and SVG output for the qrcode item
@@ -51,7 +54,8 @@ src/
   maptiles.ts              map tile server URL, attribution and CSP origin
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
-  websources.ts            web credentials (incl. OAuth2 token cache) and REST data sources: requests, JSON paths, typed rows, response cache
+  websources.ts            web credentials (incl. OAuth2 token cache) and REST data sources: requests, JSON paths, typed rows, response cache;
+                           invoke(): the invoke API call shared by the invoke_api process and workflow step
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
@@ -82,7 +86,7 @@ src/
     maps.ts                map region (data for Leaflet: markers or heat, report filter; list fallback, head assets)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
-    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process
+    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke())
     tree.ts                tree region
     lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
@@ -93,8 +97,13 @@ src/
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
-    routes.ts              sign-in, app home, settings, activity, developers, create/import (POST)
+    routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
+    wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
+                           (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
+    newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app and from a file
+    appfromfile.ts         Create → From a file: upload (src/dataload.ts parsing), proposed table/columns, one transaction:
+                           app + table + rows (loadRows) + pages (meta.generate_page: report and form, chart, facets)
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
@@ -107,8 +116,9 @@ src/
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
+    unload.ts              SQL Workshop → Unload Data: table/view (columns, where, order) or query form, streamed download (read-only transaction, own connection)
     layouts.ts             report layouts: logo upload, PDF preview
-    automations.ts         automations: next run, Run now, run history
+    automations.ts         automations: actions (add, reorder), next run, Run now, run history with errors per row
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
@@ -145,6 +155,8 @@ test/
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
+  unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
+  app-from-file.test.ts    Create → From a file: proposed names and types, app + table + rows + pages, row errors, login, validation
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
@@ -158,10 +170,12 @@ test/
   charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
+  workflow-invoke.test.ts  workflow invoke_api steps: the call between transactions, faults, retry, lease, Advisor, export (mock service)
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
+  page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
@@ -209,7 +223,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.23.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.24.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

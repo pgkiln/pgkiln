@@ -32,6 +32,9 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 |---|---|
 | `meta.generate_crud(app, table, report_page, form_page, label default null, icon default 'table')` | Report page + modal form page + menu entry for a table |
 | `meta.generate_grid(app, table, page, label default null, icon default 'grid')` | Interactive grid page + menu entry |
+| `meta.generate_page(app, kind, table, page, options default '{}')` | The create page wizards: `kind` is `form`, `cards`, `calendar`, `chart`, `map`, `facets`, `master_detail` (or `report_form`, `grid`). Options left out take the defaults of `meta.wizard_defaults`; JSON `null` means none. Returns the new page's id (below) |
+| `meta.wizard_defaults(kind, table)` | The options a wizard proposes for a table, from the catalog |
+| `meta.wizard_catalog(table)` | The columns as the wizards see them: kind (`text`, `number`, `date`, `timestamp`, `boolean`, `point`, `geometry`, `binary`, `other`), key, unique, foreign key and the parent's display column |
 | `meta.export_app(alias)` | The application as JSON (`pgapex/2` format) |
 | `meta.import_app(json, alias default null)` | Import an export, optionally under a new alias; returns the new app id |
 | `meta.hash_password(text)` | A bcrypt hash for `meta.app_user.password_hash` / `meta.developer.password_hash` |
@@ -41,6 +44,26 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 | `meta.expire_password(username)`, `meta.unexpire_password(username)` | Require (or no longer require) a new password at the next sign-in |
 | `meta.change_password(app_id, username, old, new, keep_session)` | Change a password knowing the current one (used by My account; runtime only) |
 | `meta.api_check()` | PostgREST's pre-request function (`db-pre-request`): rejects tokens whose app doesn't use the current role as its API role, or whose account is inactive or has no access |
+
+Options of `meta.generate_page` (all optional; column names must be columns of the table):
+
+| Kind | Options |
+|---|---|
+| all | `label` (page name and menu entry), `icon`, `nav` (add a navigation entry; default true, false for `form`) |
+| `form` | `columns` (array), `mode` (`normal` or `modal`), `return_page` |
+| `cards` | `title`, `subtitle`, `body`, `badge`, `form_page` |
+| `calendar` | `start`, `end`, `title`, `drag` (boolean), `form_page` |
+| `chart` | `chart` (`bar`, `column`, `line`, `area`, `donut`, `pie`, `funnel`), `label_column`, `function` (`count`, `sum`, `avg`, `min`, `max`), `value_column` |
+| `map` | `location` (geometry, point or `lat,lng` text) or `lat` + `lng`, `title`, `body`, `report` (boolean), `form_page` |
+| `facets` | `columns` (report columns, array), `facets` (array), `search` (boolean), `form_page` |
+| `master_detail` | `detail` (a table), `detail_column` (its column referring to this table) |
+| `report_form` | `form_page` (required) |
+
+```sql
+select meta.generate_page('shop', 'calendar', 'shop.meeting', 12, '{"form_page": 13, "drag": true}');
+select meta.generate_page('shop', 'facets', 'shop.product', 14, '{"facets": ["category_id", "price"]}');
+select meta.generate_page('shop', 'master_detail', 'shop.orders', 15);
+```
 
 ## Metadata tables
 

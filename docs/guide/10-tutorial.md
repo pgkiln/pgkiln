@@ -66,6 +66,9 @@ On the **App Builder** home, fill in *Create application*:
 This creates the role `app_tasks` with access to schema `tasks` (including the function), page 1,
 and the account `ann` with access to the app. Create `bob` under **Users** and give him access to *Tasks* (on his account page, or under **Shared Components → Access control**).
 
+> Have the data in a spreadsheet already? **Create → From a file** makes the application, a table with
+> the rows and its pages in one go ([chapter 3](03-builder.md#creating-an-application-from-a-file)).
+
 > The SQL script creates the role itself instead: `create role app_tasks nologin; grant app_tasks to pgapex_runtime; grant …`.
 
 ## Step 3: row level security
@@ -85,7 +88,8 @@ function, only sees the current user's rows. There is nothing to remember in the
 ## Step 4: report and form pages
 
 Open the app and use **Create pages from a table**: page type *Report and form*, table
-`tasks.task`, label `My tasks`, report page `1`, form page `2`, icon `check`.
+`tasks.task`, **Next**, then name `My tasks`, page number `1`, form page `2`, menu icon `check`,
+and **Create page**.
 
 > The app already has a page 1 (*Home*). Delete it first (open it, **Delete page**), or use pages 2 and 3.
 

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import type { Session } from '../session.ts';
-import { stepProblems, stepWarnings, workflowDiagram, type Step } from '../workflow.ts';
+import { invokeStepReferences, stepProblems, stepWarnings, workflowDiagram, type Step } from '../workflow.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 
@@ -58,8 +58,14 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
   const tasks = new Set((await owner.query('select name from meta.task_definition where app_id = $1', [appId])).rows.map((r) => r.name as string));
   const dev = row.dev_version !== null && row.dev_version !== undefined;
   const shown = dev ? (row.dev_steps ?? []) : row.steps;
-  const problems = stepProblems(shown, tasks);
-  const warnings = problems.length ? [] : stepWarnings(shown);
+  const refs = {
+    sources: new Map((await owner.query('select name, params, columns from meta.rest_source where app_id = $1', [appId])).rows.map((r) => [r.name as string, r])),
+    credentials: new Set((await owner.query('select name from meta.web_credential where app_id = $1', [appId])).rows.map((r) => r.name as string)),
+    startVars: [...String((row as { title?: string }).title ?? '').matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1]),
+  };
+  const invokeRefs = invokeStepReferences(shown, refs);
+  const problems = [...stepProblems(shown, tasks), ...invokeRefs.errors];
+  const warnings = problems.length ? [] : [...stepWarnings(shown), ...invokeRefs.warnings];
   const perVersion = new Map(
     (await owner.query(`select coalesce(version, '1') as version, count(*)::int as n, (count(*) filter (where state in ('active', 'waiting', 'faulted')))::int as running
                           from meta.workflow where definition_id = $1 group by 1`, [row.id])).rows.map((r) => [r.version as string, r]),

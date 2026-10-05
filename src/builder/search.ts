@@ -29,7 +29,7 @@ export interface Hit {
   snippet: Raw;
 }
 
-const TEXT_KINDS = new Set<string>(['text', 'code', 'json', 'select', 'upper', 'textarea', 'list', 'authz', 'page', 'icon', 'build_option', 'list_name']);
+const TEXT_KINDS = new Set<string>(['text', 'code', 'json', 'select', 'upper', 'textarea', 'list', 'authz', 'page', 'icon', 'build_option', 'list_name', 'automation_name']);
 const PAGE_FIELDS = [
   { name: 'name', label: 'Name', kind: 'text' as const },
   { name: 'title', label: 'Title', kind: 'text' as const },
