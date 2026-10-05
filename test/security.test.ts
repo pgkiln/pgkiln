@@ -5207,3 +5207,189 @@ describe('sprint 35 sampledata', () => {
     assert.match(big.body, /At most 100,000 rows/);
   });
 });
+
+describe('sprint 36 ai foundation', () => {
+  const env = { ...process.env };
+  const SVC = 'SEC_AI';
+  const KEY = 'sk-ant-sec36-secret-key-value';
+  const DEV = 'sec36_dev';
+  const DEV_PW = 'Sec36-dev-password!';
+  let mock: Awaited<ReturnType<typeof import('./ai-mock.ts').startAiMock>>;
+  let admin: Browser;
+  let plain: Browser;
+  let svcId = 0;
+  let other = 0;
+  let role = '';
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    mock = await (await import('./ai-mock.ts')).startAiMock();
+    await owner.query(`delete from meta.ai_service where name like 'SEC_AI%'`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+    admin = new Browser();
+    await admin.get('/builder/login');
+    await admin.post('/builder/login', { __csrf: admin.lastCsrf, username: 'admin', password: 'admin' });
+    plain = new Browser();
+    await plain.get('/builder/login');
+    await plain.post('/builder/login', { __csrf: plain.lastCsrf, username: DEV, password: DEV_PW });
+    role = (await owner.one(`select db_role from meta.app where id = $1`, [appId])).db_role;
+    other = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec36-other', 'Other', 'none', $1) returning id`, [role])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.ai_service where name like 'SEC_AI%'`);
+    await owner.query('delete from meta.app where id = $1', [other]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (env[k] === undefined) delete process.env[k];
+    else process.env[k] = env[k];
+  });
+
+  test('AI services are for administrators: anonymous users sign in, developers get 403, forged CSRF tokens 403', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get('/builder/ai')).statusCode, 302);
+    assert.equal((await anon.post('/builder/ai', { __csrf: 'x', name: 'SEC_AI_ANON', provider: 'anthropic', model: 'm' })).statusCode, 302);
+    const page = await plain.get('/builder/ai');
+    assert.equal(page.statusCode, 403);
+    assert.doesNotMatch((await plain.get('/builder/utilities')).body, /href="\/builder\/ai"/);
+    await plain.get('/builder');
+    assert.equal((await plain.post('/builder/ai', { __csrf: plain.lastCsrf, name: 'SEC_AI_DEV', provider: 'anthropic', model: 'm', base_url: 'http://evil.example' })).statusCode, 403);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.ai_service where name = 'SEC_AI_DEV'`)).n, 0);
+    await admin.get('/builder/ai');
+    assert.equal((await admin.post('/builder/ai', { __csrf: 'forged', name: 'SEC_AI_FORGED', provider: 'anthropic', model: 'm' })).statusCode, 403);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.ai_service where name = 'SEC_AI_FORGED'`)).n, 0);
+    // the administrator adds the service used below
+    await admin.get('/builder/ai');
+    const res = await admin.post('/builder/ai', { __csrf: admin.lastCsrf, name: SVC, provider: 'anthropic', model: 'claude-opus-5-5', effort: 'medium',
+      max_tokens: '1000', timeout_s: '30', base_url: `${mock.base}/claude`, api_key: KEY, enabled: 'true', refusal_fallback: 'true', description: '<img src=x onerror=alert(1)>' });
+    assert.equal(res.statusCode, 303);
+    svcId = (await owner.one('select id from meta.ai_service where name = $1', [SVC])).id;
+    for (const [url, form] of [[`/builder/ai/${svcId}`, { model: 'x', base_url: 'http://evil.example' }], [`/builder/ai/${svcId}/apps`, { allow: String(appId) }],
+      [`/builder/ai/${svcId}/test`, { prompt: 'hi' }], [`/builder/ai/${svcId}/delete`, {}]] as const) {
+      assert.equal((await plain.get(`/builder/ai/${svcId}`)).statusCode, 403);
+      assert.equal((await plain.post(url, { __csrf: plain.lastCsrf, ...form })).statusCode, 403, url);
+      assert.equal((await admin.post(url, { __csrf: 'forged', ...form })).statusCode, 403, url);
+    }
+    const row = await owner.one('select model, base_url from meta.ai_service where id = $1', [svcId]);
+    assert.deepEqual(row, { model: 'claude-opus-5-5', base_url: `${mock.base}/claude` });
+    assert.equal((await owner.one('select count(*)::int as n from meta.app_ai_service where service_id = $1', [svcId])).n, 0);
+    assert.equal(mock.seen.length, 0, 'no test request was made');
+  });
+
+  test('the API key is stored encrypted, never shown, logged, exported or readable by applications', async () => {
+    const enc = (await owner.one('select api_key_enc from meta.ai_service where id = $1', [svcId])).api_key_enc;
+    assert.match(enc, /^v1:/);
+    assert.ok(!enc.includes(KEY));
+    const page = (await admin.get(`/builder/ai/${svcId}`)).body;
+    const list = (await admin.get('/builder/ai')).body;
+    for (const body of [page, list]) {
+      assert.ok(!body.includes(KEY) && !body.includes(enc.slice(3, 30)), 'neither the key nor its ciphertext reaches the page');
+      assert.doesNotMatch(body, /<img src=x/);
+    }
+    assert.match(page, /stored \(encrypted\)|A key is stored/);
+    // saving without a key keeps it; the field never carries a value
+    assert.doesNotMatch(page, /name="api_key"[^>]*value="[^"]/);
+    await admin.post(`/builder/ai/${svcId}`, { __csrf: admin.lastCsrf, provider: 'anthropic', model: 'claude-opus-5-5', effort: 'medium', max_tokens: '1000', timeout_s: '30', base_url: `${mock.base}/claude`, enabled: 'true', refusal_fallback: 'true', api_key: '' });
+    assert.equal((await owner.one('select api_key_enc from meta.ai_service where id = $1', [svcId])).api_key_enc, enc);
+    // applications can't read services, access, usage or requests
+    for (const t of ['ai_service', 'app_ai_service', 'ai_usage', 'ai_request'])
+      await assert.rejects(runtime.query(`select * from meta.${t}`), /permission denied/, t);
+    await assert.rejects(runtime.tx(async (c) => {
+      await c.query(`set local role ${role}`);
+      await c.query('select api_key_enc from meta.ai_service');
+    }), /permission denied/);
+    // an export of an application that uses the service names neither the key nor the service row
+    await admin.get(`/builder/ai/${svcId}`);
+    await admin.post(`/builder/ai/${svcId}/apps`, { __csrf: admin.lastCsrf, allow: String(appId) });
+    const doc = JSON.stringify((await owner.one(`select meta.export_app('hr') as d`)).d);
+    assert.ok(!doc.includes(enc) && !doc.includes(KEY));
+    assert.doesNotMatch(doc, /SEC_AI/);
+  });
+
+  test('settings are checked: base URL scheme, model name, limits; base URL only from the administrator page', async () => {
+    await admin.get(`/builder/ai/${svcId}`);
+    for (const [field, value] of [['base_url', 'javascript:alert(1)'], ['base_url', 'file:///etc/passwd'], ['model', 'claude"; drop table x'], ['max_tokens', '999999'], ['timeout_s', '1']]) {
+      await admin.post(`/builder/ai/${svcId}`, { __csrf: admin.lastCsrf, provider: 'anthropic', model: 'claude-opus-5-5', max_tokens: '1000', timeout_s: '30', base_url: `${mock.base}/claude`, enabled: 'true', [field]: value });
+      const row = await owner.one('select model, base_url, max_tokens, timeout_s from meta.ai_service where id = $1', [svcId]);
+      assert.deepEqual(row, { model: 'claude-opus-5-5', base_url: `${mock.base}/claude`, max_tokens: 1000, timeout_s: 30 }, `${field}=${value}`);
+    }
+    await assert.rejects(owner.query(`update meta.ai_service set base_url = 'ftp://x' where id = $1`, [svcId]), /check constraint/);
+    await assert.rejects(owner.query(`insert into meta.ai_service (name, provider, model) values ('sec_ai_lower', 'anthropic', 'm')`), /check constraint/);
+    await assert.rejects(owner.query(`insert into meta.ai_service (name, provider, model) values ('SEC_AI_P', 'evil', 'm')`), /check constraint/);
+    await admin.get(`/builder/ai/${svcId}`);
+    for (const v of ['-1', '1.5', 'abc'])
+      await admin.post(`/builder/ai/${svcId}/apps`, { __csrf: admin.lastCsrf, allow: String(appId), [`req_${appId}`]: v });
+    assert.equal((await owner.one('select max_requests from meta.app_ai_service where app_id = $1 and service_id = $2', [appId, svcId])).max_requests, null);
+  });
+
+  test('the builder test shows the model\'s answer escaped and logs no prompt or answer', async () => {
+    mock.mode = 'text';
+    mock.answer = '<script>alert(1)</script> answer';
+    await admin.get(`/builder/ai/${svcId}`);
+    assert.equal((await admin.post(`/builder/ai/${svcId}/test`, { __csrf: admin.lastCsrf, prompt: 'Say <b>hi</b>' })).statusCode, 303);
+    const body = (await admin.get(`/builder/ai/${svcId}`)).body;
+    assert.doesNotMatch(body, /<script>alert\(1\)<\/script> answer/);
+    assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt; answer/);
+    assert.equal(mock.seen.at(-1)!.headers['x-api-key'], KEY);
+    const u = await owner.one(`select * from meta.ai_usage where service_id = $1 order by id desc limit 1`, [svcId]);
+    assert.equal(u.source, 'builder');
+    assert.doesNotMatch(JSON.stringify(u), /hi|script|answer|sk-ant/);
+  });
+
+  test('SQL requests are confined to the calling application and its own transaction', async () => {
+    const asApp = <T>(app: number, fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>) =>
+      runtime.tx(async (c) => {
+        await c.query(`select set_config('pgapex.app_id', $1, true)`, [String(app)]);
+        await c.query(`set local role ${role}`);
+        return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
+      });
+    // the other application is not allowed: it can't queue, and meta.ai_available says so
+    assert.equal((await asApp(other, (q) => q('select meta.ai_available($1) as ok', [SVC])))[0].ok, false);
+    assert.equal((await asApp(appId, (q) => q('select meta.ai_available($1) as ok', [SVC])))[0].ok, true);
+    await assert.rejects(asApp(other, (q) => q(`select meta.ai_generate($1, 'x')`, [SVC])), /may not use it/);
+    const id = (await asApp(appId, (q) => q(`select meta.ai_generate($1, 'secret prompt') as id`, [SVC])))[0].id;
+    try {
+      assert.equal((await asApp(other, (q) => q('select meta.ai_result($1) as r', [id])))[0].r, null, 'another application sees nothing');
+      // a later transaction can neither take nor complete it
+      const taken = await asApp(appId, async (q) => {
+        await q(`select set_config('pgapex.ai_pending', '1', true)`);
+        return q('select * from meta.ai_request_take(10)');
+      });
+      assert.equal(taken.length, 0);
+      await asApp(appId, (q) => q(`select meta.ai_request_done($1, 'ok', 'forged', null)`, [id]));
+      assert.equal((await owner.one('select status, response from meta.ai_request where id = $1', [id])).response, null);
+      // size limits and the queue limit
+      await assert.rejects(asApp(appId, (q) => q(`select meta.ai_generate($1, repeat('x', 200001))`, [SVC])), /1 to 200000 characters/);
+      await assert.rejects(asApp(appId, (q) => q(`select meta.ai_generate($1, '')`, [SVC])), /1 to 200000 characters/);
+      await assert.rejects(asApp(appId, async (q) => {
+        for (let i = 0; i < 21; i++) await q(`select meta.ai_generate($1, 'x')`, [SVC]);
+      }), /20 AI requests waiting/);
+    } finally {
+      await owner.query('delete from meta.ai_request where app_id = $1', [appId]);
+    }
+  });
+
+  test('a dynamic action runs only a Generate text with AI process of its page, with that process\'s authorization', async () => {
+    const pageId = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 936, 'AI sec', false) returning id`, [other])).id;
+    try {
+      await owner.query(`insert into meta.app_ai_service (app_id, service_id) values ($1, $2)`, [other, svcId]);
+      await owner.query(`insert into meta.authz_scheme (app_id, name, type, value, error_message) values ($1, 'NOBODY', 'sql', 'false', 'No.')`, [other]);
+      const region = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'R', 'static', '') returning id`, [pageId])).id;
+      await owner.query(`insert into meta.item (page_id, region_id, seq, name, type) values ($1, $2, 1, 'P936_TEXT', 'text'), ($1, $2, 2, 'P936_OUT', 'text')`, [pageId, region]);
+      const conf = JSON.stringify({ service: SVC, prompt: '&P936_TEXT.', output_item: 'P936_OUT' });
+      await owner.query(`insert into meta.process (page_id, seq, name, type, point, config, authz) values ($1, 1, 'Locked', 'ai_generate', 'submit', $2, 'NOBODY'), ($1, 2, 'Sql', 'sql', 'submit', '{}', null)`, [pageId, conf]);
+      await owner.query(`update meta.process set code = 'select 1' where page_id = $1 and name = 'Sql'`, [pageId]);
+      const das = (await owner.query(`insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, code) values
+        ($1, 1, 'locked', 'click', 'X', 'ai_generate', 'Locked'), ($1, 2, 'not ai', 'click', 'X', 'ai_generate', 'Sql') returning id`, [pageId])).rows.map((r) => r.id);
+      const b = new Browser();
+      await b.get(`/a/sec36-other/936`);
+      const before = mock.seen.length;
+      assert.equal((await b.post(`/a/sec36-other/936/da/${das[0]}`, { __csrf: b.lastCsrf, P936_TEXT: 'x' })).statusCode, 403);
+      const res = await b.post(`/a/sec36-other/936/da/${das[1]}`, { __csrf: b.lastCsrf, P936_TEXT: 'x' });
+      assert.equal(res.statusCode, 400);
+      assert.match(res.body, /no \\"Generate text with AI\\" process named/);
+      assert.equal(mock.seen.length, before, 'no AI call');
+    } finally {
+      await owner.query('delete from meta.page where id = $1', [pageId]);
+      await owner.query('delete from meta.app_ai_service where app_id = $1', [other]);
+    }
+  });
+});

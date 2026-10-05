@@ -36,7 +36,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (056) subscriptions to other applications' components (by name)
   'subscription',
   // (057) users' Data Reporter reports (user data, like saved reports)
-  'data_report'];
+  'data_report',
+  // (060) which AI services an application may use (installation data), its AI usage log and AI requests from SQL
+  'app_ai_service', 'ai_usage', 'ai_request'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */

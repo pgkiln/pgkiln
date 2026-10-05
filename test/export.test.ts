@@ -27,6 +27,9 @@ const NOT_EXPORTED = new Set([
   'working_copy', // working copies: builder state of this installation
   'subscription', // subscribed components: links between this installation's applications
   'data_report', // users' Data Reporter reports: user data, like saved reports (the sources travel in the region's config)
+  'app_ai_service', // which AI services an application may use: installation data (services and keys are never exported)
+  'ai_usage', // the AI usage log of this installation
+  'ai_request', // AI requests queued from SQL and their answers (kept 24 hours)
 ]);
 
 /** Where each exported table appears in the document. */
