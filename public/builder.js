@@ -495,6 +495,28 @@
     if (count) count.textContent = shown === rows.length ? `${rows.length} application${rows.length === 1 ? '' : 's'}` : `${shown} of ${rows.length}`;
   });
 
+  // icon picker (forms.ts iconPicker): the filter box narrows the grid; the summary shows the choice
+  document.addEventListener('input', (e) => {
+    const box = e.target;
+    if (!box.matches?.('input[data-icon-filter]')) return;
+    const q = box.value.trim().toLowerCase();
+    for (const c of box.closest('.icon-picker').querySelectorAll('.icon-choice')) c.hidden = !!q && !c.textContent.toLowerCase().includes(q);
+  });
+  document.addEventListener('change', (e) => {
+    const radio = e.target;
+    const picker = radio.closest?.('.icon-picker');
+    if (!picker || radio.type !== 'radio') return;
+    const summary = picker.querySelector('summary');
+    const choice = radio.closest('.icon-choice');
+    const svg = choice.querySelector('svg');
+    summary.replaceChildren();
+    if (svg) summary.append(svg.cloneNode(true));
+    const label = document.createElement('span');
+    label.textContent = radio.value || '- none -';
+    if (!radio.value) label.className = 'muted';
+    summary.append(label);
+  });
+
   // Theme Roller: the style form's values on the preview (CSS variables through the CSSOM, which the CSP allows)
   function setupThemePreview() {
     const preview = document.querySelector('[data-tr-preview]');

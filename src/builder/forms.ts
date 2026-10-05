@@ -1,6 +1,7 @@
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Session } from '../session.ts';
+import { icon } from '../icons.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
 import { csrf, type Body } from './ui.ts';
 import { codeAttrs } from './code-editor.ts';
@@ -42,6 +43,27 @@ export function buildOptionChoices(lk: Lookups, v: string | null | undefined): [
   return list;
 }
 
+/**
+ * (0.30) An icon field: the icons as a grid of radio buttons inside a
+ * disclosure that shows the current one (works without script; a filter box
+ * narrows the grid as you type, builder.js data-icon-filter).
+ */
+export function iconPicker(id: string, name: string, label: string, current: string, help: Raw | '' = '') {
+  const known = (ICON_OPTIONS as readonly string[]).includes(current);
+  return html`<div class="field icon-field"><span class="label" id="${id}_label">${label}</span>
+    <details class="icon-picker">
+      <summary aria-describedby="${id}_label">${current && known ? html`${icon(current)}<span>${current}</span>` : html`<span class="muted">- none -</span>`}</summary>
+      <div class="icon-picker-panel">
+        <label class="sr-only" for="${id}_filter">Filter icons</label>
+        <input id="${id}_filter" type="search" placeholder="Filter icons…" data-icon-filter autocomplete="off">
+        <fieldset class="icon-grid"><legend class="sr-only">${label}</legend>
+          <label class="icon-choice"><input type="radio" name="${name}" value=""${current === '' || !known ? raw(' checked') : ''}><span class="icon-none" aria-hidden="true">∅</span><span class="icon-name">none</span></label>
+          ${ICON_OPTIONS.filter(Boolean).map((n) => html`<label class="icon-choice" title="${n}"><input type="radio" name="${name}" value="${n}"${current === n ? raw(' checked') : ''}>${icon(n)}<span class="icon-name">${n}</span></label>`)}
+        </fieldset>
+      </div>
+    </details>${help}</div>`;
+}
+
 /** Property editor for one component, grouped like APEX's property editor. */
 export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups, action: string, s: Session, submit: string, opts: { id?: string } = {}) {
   const field = (f: Field) => {
@@ -63,8 +85,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
         control = opts(f.options!.map((o) => [o, o || '- none -']));
         break;
       case 'icon':
-        control = opts(ICON_OPTIONS.map((o) => [o, o || '- none -']));
-        break;
+        return iconPicker(id, f.name, f.label, String(v ?? ''), help);
       case 'region':
         control = opts([['', '- none (page level) -'], ...lk.regions.map((r): [string, string] => [String(r.id), `${r.title ?? '(untitled)'} (${r.type})`])]);
         break;

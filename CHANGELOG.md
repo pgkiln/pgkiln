@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Icons**: 136 line icons (was 39), and an icon picker in the builder (a grid with a filter box, without script a list of radio buttons).
+
 ## [0.29.0] - 2026-10-06
 
 ### Added
