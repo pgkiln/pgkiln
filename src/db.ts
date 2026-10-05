@@ -57,6 +57,8 @@ export interface AppContext {
   sessionId: string;
   /** language of the request (meta.app_language()) */
   lang?: string;
+  /** time zone of the request (validated against pg_timezone_names); unset: the database's */
+  timeZone?: string | null;
 }
 
 /**
@@ -72,9 +74,10 @@ export async function appTx<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): 
               set_config('pgapex.app_id', $3, true),
               set_config('statement_timeout', $4, true),
               set_config('pgapex.lang', $5, true),
-              set_config('pgapex.public_url', $6, true)`,
+              set_config('pgapex.public_url', $6, true),
+              set_config('TimeZone', coalesce($7, current_setting('TimeZone')), true)`,
       [ctx.appUser, ctx.sessionId, String(ctx.appId), process.env.STATEMENT_TIMEOUT ?? '30s', ctx.lang ?? '',
-       (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, '')],
+       (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, ''), ctx.timeZone ?? null],
     );
     if (ctx.dbRole) await c.query(`set local role ${pg.escapeIdentifier(ctx.dbRole)}`);
     return fn(c);

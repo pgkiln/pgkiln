@@ -268,7 +268,11 @@ describe('parsing typed numbers (number items)', () => {
     assert.equal(parseNumber('1.234.567', '999G999G990', es), '1234567');
   });
   test('a group separator in the wrong place is an error, not a different number', () => {
-    assert.equal(parseNumber('1.5', '999G990D00', de), null);
+    // "1.5" can't be German grouping: it is read as a plain number, like a dynamic action sets it
+    assert.equal(parseNumber('1.5', '999G990D00', de), '1.5');
+    assert.equal(parseNumber('1234.5', '999G990D00', de), '1234.5');
+    assert.equal(parseNumber('1.500', '999G990D00', de), '1500');
+    assert.equal(parseNumber('1.5,5', '999G990D00', de), null);
     assert.equal(parseNumber('1,5', '999G990D00', en), null);
     assert.equal(parseNumber('12,34.5', '999G990D00', en), null);
     assert.equal(parseNumber('1,234,5', '999G990D00', en), null);
@@ -329,7 +333,7 @@ describe('parsing typed numbers (number items)', () => {
         for (const v of values) {
           const shown = formatNumber(v, mask, sym)!;
           if (shown.startsWith('#')) continue;
-          const expected = decText(roundDec(toDec(v)!, compileMask(mask) && (compileMask(mask) as { frac: string[] }).frac.length));
+          const expected = decText(roundDec(toDec(v)!, (compileMask(mask) as { frac: string[] }).frac.length));
           assert.equal(parseNumber(shown, mask, sym), expected, `${mask} ${v} → ${shown}`);
         }
   });

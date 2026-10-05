@@ -12,6 +12,28 @@ document.documentElement.classList.add('js');
   const meta = metaEl ? JSON.parse(metaEl.textContent) : { das: [], csrf: '' };
   const form = document.querySelector('form.page-form');
 
+  // ------------------------------------------------------------ automatic time zone
+  // The app shows times in the browser's time zone: send it once per session; when it
+  // changes what the page shows, load the page again (as a GET, unless the user typed).
+  if (meta.tz) {
+    let tz = '';
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    } catch {
+      tz = '';
+    }
+    if (tz) {
+      let typed = false;
+      document.addEventListener('input', () => (typed = true), { capture: true, once: true });
+      fetch(meta.tz, { method: 'POST', body: new URLSearchParams({ tz, __csrf: meta.csrf }), headers: { accept: 'application/json' }, credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          if (r && r.reload && !typed && !document.querySelector('.alert-error, .has-error, dialog[open]')) location.replace(location.href);
+        })
+        .catch(() => {});
+    }
+  }
+
   // ------------------------------------------------------------ items
   const fieldsNamed = (name) => [...document.getElementsByName(name)].filter((el) => el.form === form || !el.form);
   const wrapperOf = (name) => document.querySelector(`[data-item="${CSS.escape(name)}"]`);

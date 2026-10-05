@@ -97,12 +97,15 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   await destroySession(reply, oldSession, base);
   const s = await createSession(reply, a.id, base, username, roles);
   logActivity({ appId: a.id, username, event: 'login', ip: clientIp(req), detail });
-  // the account's preferences: light/dark and language
-  const pref = await runtime.one<{ theme_pref: string; language: string | null }>(
-    'select theme_pref, language from meta.account where lower(username) = lower($1)', [username]);
+  // the browser's time zone (sent before signing in) stays with the new session
+  if (typeof oldSession.state.__TZ === 'string') s.state.__TZ = oldSession.state.__TZ;
+  // the account's preferences: light/dark, language and time zone
+  const pref = await runtime.one<{ theme_pref: string; language: string | null; time_zone: string | null }>(
+    'select theme_pref, language, time_zone from meta.account where lower(username) = lower($1)', [username]);
   if (pref) {
     s.state.__THEME = pref.theme_pref;
     if (pref.language) s.state.__LANG = pref.language;
+    if (pref.time_zone) s.state.__TZ_PREF = pref.time_zone;
     if (a.theme?.user_choice !== false) reply.setCookie(THEME_COOKIE, pref.theme_pref, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
   }
   await saveState(s);
@@ -177,6 +180,7 @@ export const txContext = (ctx: PageContext) => ({
   appUser: ctx.user,
   sessionId: ctx.session.id,
   lang: ctx.locale.lang,
+  timeZone: ctx.locale.timeZone,
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */

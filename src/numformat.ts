@@ -442,9 +442,10 @@ function fromRoman(s: string): string | null {
 
 /**
  * Read text typed into a number item with a mask back into a number
- * ("1.234,50 €" with nl → "1234.50"). Lenient about what the mask adds
+ * ("1.234,50 €" with nl → "1234.5"). Lenient about what the mask adds
  * (currency, %, signs, spaces, literal text) but strict about separators:
- * groups must have three digits, so "1.5" in German is an error, not 15.
+ * groups must have three digits, so "1.5" in German is not 15; it is read
+ * as a plain number (1.5), as a dynamic action or SQL would set it.
  * Returns the canonical number text, '' for empty input, or null when it
  * isn't a number.
  */
@@ -499,8 +500,10 @@ export function parseNumber(text: string, mask: string | null | undefined, sym: 
     const d = escapeRe(decimal);
     const re = new RegExp(`^(?:(\\d{1,3}(?:${g}\\d{3})+)|(\\d*))(?:${d}(\\d*))?$`);
     const x = re.exec(s);
-    if (!x || !/\d/.test(s)) return null;
-    dec = toDec(`${(x[1] ?? x[2] ?? '').split(group).join('')}.${x[3] ?? ''}`);
+    if (x && /\d/.test(s)) dec = toDec(`${(x[1] ?? x[2] ?? '').split(group).join('')}.${x[3] ?? ''}`);
+    // not in the language's notation: a plain number as SQL writes it ("1234.5", e.g. set by a
+    // dynamic action) is read as such; "1.500" in German stays 1500 (it matched above)
+    else dec = /^\d*\.?\d*$/.test(s) && /\d/.test(s) ? toDec(s) : null;
     if (!dec) return null;
   }
   if (fixed?.shift) {
