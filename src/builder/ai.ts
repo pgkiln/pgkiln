@@ -155,7 +155,7 @@ export async function aiRoutes(app: FastifyInstance) {
     const recent = (await owner.query(`select u.*, a.alias as app from meta.ai_usage u left join meta.app a on a.id = u.app_id where u.service_id = $1 order by u.id desc limit 50`, [x.id])).rows;
     const view = { ...x, api_key_enc: x.api_key_enc ? 'stored' : null }; // the key itself never reaches the page
     const main = html`
-      <div class="title-row"><h1>${x.name}</h1></div>
+      <div class="title-row"><h1 class="ai-name">${x.name}</h1></div>
       <div class="columns wide-left">
         ${region('Settings', html`${serviceForm(view, `${BASE}/ai/${x.id}`, csrf(s), false)}
           <form method="post" action="${BASE}/ai/${x.id}/delete" class="danger-zone">${csrf(s)}
@@ -268,7 +268,7 @@ export async function aiRoutes(app: FastifyInstance) {
     const recent = (await owner.query('select * from meta.ai_usage where app_id = $1 order by id desc limit 100', [a.id])).rows;
     const admin = await isAdmin(s.username);
     const main = html`
-      <div class="title-row"><h1>AI usage · ${a.name}</h1></div>
+      <div class="title-row"><h1 class="ai-name">AI usage · ${a.name}</h1></div>
       <p class="muted u-mt0">The AI services this application may use (an administrator allows them${admin ? html` under <a href="${BASE}/ai">AI services</a>` : ''}), today's use against their limits, and the recent requests.</p>
       ${region('Services', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Service</th><th>Model</th><th class="num">Requests today</th><th class="num">Tokens today</th><th>Status</th></tr></thead>
         <tbody>${allowed.length ? allowed.map((x, i) => html`<tr><td data-label="Service">${x.name}</td><td data-label="Model">${x.provider === 'anthropic' ? 'Claude' : 'OpenAI'} ${x.model}</td>

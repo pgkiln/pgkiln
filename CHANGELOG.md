@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **AI services and *Generate text with AI*** (migration 060): Workspace utilities → AI services
+  (administrators) configures Claude (official `@anthropic-ai/sdk`, default model `claude-opus-5-5`, effort
+  and server-side refusal fallback) or OpenAI (official `openai` SDK) with an encrypted, write-only API key
+  (or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`), base URL, limits, per-app access with daily request and
+  token limits, a Test button and a usage log (tokens, model, duration; never prompt or answer text
+  below debug level 9). Page process `ai_generate`: text into an item, or structured output into several
+  items (a schema built from the items, or your own). A dynamic action runs it without a page submit.
+  From SQL: `meta.ai_generate`, `meta.ai_result`, `meta.ai_available`. Builder: AI usage per application.
+  HR example page 37 "Leave assistant". Prompts, including item values, are sent to the chosen provider.
+
 ## [0.27.0] - 2026-10-05
 
 ### Added
