@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { generate, type CallInfo } from '../ai/service.ts';
+import { generate } from '../ai/service.ts';
 import { AiError } from '../ai/types.ts';
 import { applyBinds } from '../binds.ts';
 import { appTx, owner } from '../db.ts';
@@ -192,7 +192,7 @@ export async function aiFilterRoutes(app: FastifyInstance) {
       });
       ctx.client = undefined;
       const res = await generate(conf.service!, { system: filterSystem(columns, new Date().toISOString().slice(0, 10)), prompt: question, schema: filterSchema(columns), maxTokens: 2000 }, {
-        appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, source: 'nl2ir' as CallInfo['source'], debug: (l, x) => dbg(ctx, l, 'ai', x),
+        appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, source: 'nl2ir', debug: (l, x) => dbg(ctx, l, 'ai', x),
       });
       const a = checkAnswer(res.json, columns);
       dbg(ctx, 6, 'ai', () => `report filters from the question: ${JSON.stringify(a)}`);

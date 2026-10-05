@@ -75,12 +75,12 @@ export interface CallInfo {
   appId: number | null;
   pageNo?: number | null;
   user?: string | null;
-  source: 'process' | 'dynamic_action' | 'sql' | 'builder';
+  source: 'process' | 'dynamic_action' | 'sql' | 'builder' | 'assistant' | 'nl2ir';
   /** debug messages of the request (level, text) */
   debug?: (level: number, text: string) => void;
 }
 
-interface Usage {
+export interface Usage {
   service: AiService;
   model: string;
   inputTokens: number;
@@ -90,7 +90,7 @@ interface Usage {
   message: string | null;
 }
 
-async function logUsage(info: CallInfo, u: Usage) {
+export async function logUsage(info: Pick<CallInfo, 'appId' | 'pageNo' | 'user' | 'source'>, u: Usage) {
   try {
     await owner.query(
       `insert into meta.ai_usage (app_id, page_no, username, service_id, service, provider, model, source, input_tokens, output_tokens, duration_ms, status, message)

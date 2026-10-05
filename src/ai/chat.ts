@@ -4,7 +4,7 @@ import { owner } from '../db.ts';
 import { decryptSecret } from '../secrets.ts';
 import { claudeError } from './anthropic.ts';
 import { openAiError } from './openai.ts';
-import { envKeyName, MAX_PROMPT_CHARS, MAX_SYSTEM_CHARS, serviceForApp, usageToday, type AiService } from './service.ts';
+import { envKeyName, MAX_PROMPT_CHARS, MAX_SYSTEM_CHARS, serviceForApp, usageToday, logUsage, type AiService, type CallInfo } from './service.ts';
 import { AiError } from './types.ts';
 
 // Conversations with tools (AI assistant regions, src/runtime/assistant.ts):
@@ -62,7 +62,7 @@ export interface ChatInfo {
   appId: number;
   pageNo?: number | null;
   user?: string | null;
-  source: string;
+  source: CallInfo['source'];
   debug?: (level: number, text: string) => void;
 }
 
@@ -80,18 +80,6 @@ function apiKey(s: AiService) {
   return key;
 }
 
-async function logUsage(info: ChatInfo, s: AiService, u: { model: string; input: number; output: number; ms: number; status: string; message: string | null }) {
-  try {
-    await owner.query(
-      `insert into meta.ai_usage (app_id, page_no, username, service_id, service, provider, model, source, input_tokens, output_tokens, duration_ms, status, message)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-      [info.appId, info.pageNo ?? null, info.user ?? null, s.id, s.name, s.provider, u.model.slice(0, 200), info.source, u.input, u.output, Math.round(u.ms), u.status, u.message?.slice(0, 500) ?? null],
-    );
-  } catch {
-    // the log must not fail the call
-  }
-}
-
 const clip = (text: string) => (text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n[cut off: the result was longer]` : text);
 
 /** One provider call: the daily limits first, then the call, then the usage log. */
@@ -101,21 +89,21 @@ async function metered<T extends { model: string; input: number; output: number 
   if (limits && (limits.max_requests !== null || limits.max_tokens !== null)) {
     const today = await usageToday(info.appId, s.id);
     if ((limits.max_requests !== null && today.requests >= limits.max_requests) || (limits.max_tokens !== null && today.tokens >= Number(limits.max_tokens))) {
-      await logUsage(info, s, { model: s.model, input: 0, output: 0, ms: 0, status: 'limited', message: 'daily limit' });
+      await logUsage(info, { service: s, model: s.model, inputTokens: 0, outputTokens: 0, ms: 0, status: 'limited', message: 'daily limit' });
       throw new AiError('limit', `This application has reached its daily limit for AI service ${s.name}: try again tomorrow.`);
     }
   }
   const t0 = performance.now();
   try {
     const r = await call();
-    await logUsage(info, s, { model: r.model, input: r.input, output: r.output, ms: performance.now() - t0, status: 'ok', message: null });
+    await logUsage(info, { service: s, model: r.model, inputTokens: r.input, outputTokens: r.output, ms: performance.now() - t0, status: 'ok', message: null });
     info.debug?.(6, `AI answer from ${r.model}: ${r.input} input + ${r.output} output tokens in ${Math.round(performance.now() - t0)} ms`);
     return r;
   } catch (e) {
     const err = e instanceof AiError ? e : new AiError('server', 'The AI request failed.');
     const extra = e as { usage?: { input: number; output: number }; model?: string };
-    await logUsage(info, s, {
-      model: extra.model ?? s.model, input: extra.usage?.input ?? 0, output: extra.usage?.output ?? 0, ms: performance.now() - t0,
+    await logUsage(info, {
+      service: s, model: extra.model ?? s.model, inputTokens: extra.usage?.input ?? 0, outputTokens: extra.usage?.output ?? 0, ms: performance.now() - t0,
       status: err.kind === 'refused' ? 'refused' : 'error', message: err.kind + (err.status ? ` ${err.status}` : ''),
     });
     info.debug?.(1, `AI service ${s.name}: ${err.kind}: ${err.message}`);
