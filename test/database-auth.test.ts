@@ -56,7 +56,7 @@ describe('database accounts', () => {
     const home = await b.get(`/a/${alias}/1`);
     assert.equal(home.statusCode, 200);
     assert.match(home.body, new RegExp(`Signed in as ${ANN}`));
-    const log = await owner.one(`select event, detail from meta.activity_log where app_id = $1 and username = $2 order by id desc limit 1`, [appId, ANN]);
+    const log = await owner.one(`select event, detail from meta.activity_log where app_id = $1 and username = $2 and event <> 'page_view' order by id desc limit 1`, [appId, ANN]);
     assert.deepEqual(log, { event: 'login', detail: 'database' });
   });
 
