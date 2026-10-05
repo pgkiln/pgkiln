@@ -15,6 +15,18 @@ All notable changes to this project are documented here. The format follows
   filtered by the distance from the map's centre (`r<id>_near`) as well as by the visible area; with
   PostGIS installed the filters use `ST_Intersects`/`ST_DWithin`, otherwise latitude/longitude. HR
   example page 33 "Field visits".
+- **REST data sources write back and synchronise**: insert, update, delete and fetch operations (path
+  and JSON body templates) let forms and interactive grids edit a web service's rows; a
+  synchronisation copies a source's rows into a local table (merge on key columns, optionally
+  deleting missing rows; replace; append) from the builder, on a cron schedule or from SQL with
+  `meta.request_rest_sync(name)` / `meta.rest_sync_status(id)`, with a run log. HR example page 34
+  "Contacts (REST)". Migration 050.
+- **OAuth2 password and refresh-token grants** for web credentials; refresh tokens returned by the
+  token endpoint are stored encrypted (and replaced when rotated), so they survive restarts.
+
+### Changed
+- The export leaves out OAuth2 passwords, refresh tokens and a synchronisation's run state; an
+  imported synchronisation starts switched off. `pgapex import --replace` keeps the new secrets.
 
 ### Fixed
 - The Gantt "today" line uses the session's time zone.

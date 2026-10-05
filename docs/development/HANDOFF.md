@@ -1267,7 +1267,7 @@ tested, committed and pushed on `sprint-33` before the next agent starts, so the
 |---|---|---|---|
 | 1 | Charts: Gantt (tasks with start/end, progress, dependencies optional), pyramid and polar charts, server-side SVG like the others, with drill-down and the data-table alternative | 048 (unused), `hr_35` | **done** (5d857e8..acf68b0) |
 | 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (unused), `hr_36` | **done** (1d885c6..9b67ee1) |
-| 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | **in progress** |
+| 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | **done** (3875dd2..87ad118) |
 | 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | to do |
 | 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | to do |
 | 6 | Theme Roller: style variants (several saved styles per app, switch per user) and template options on regions/buttons (a fixed list of CSS classes per component) | 053, (no HR) | to do |
@@ -1302,6 +1302,30 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   9 skip, e2e 95/95. **Note:** an `npm run dev` (`tsx watch`, started 13:34 outside this session) shared the dev DB
   and made workflow/job tests fail; the agent stopped its listener on 3100 but its watcher (pid 144937) restarts it
   on file changes. Not killed by the coordinator (may be the owner's).
+- **3 REST write-back, synchronisation, OAuth2: DONE** (3875dd2..87ad118, pushed; the agent's session ended after
+  the e2e commit, the coordinator wrote the chapter 19/12 docs and fixed the Advisor). Migration
+  `050_rest_writeback_sync.sql`: `meta.rest_source` gets `key_columns`, `operations` (insert/update/delete/fetch:
+  method, path after the source's URL with `{column}`/`{param}` URL-encoded, JSON body template, row_selector) and
+  `sync_*` (table, merge/replace/append, delete missing, cron schedule + time zone, enabled, run state);
+  `meta.rest_sync_log` (last 100 per source); `meta.request_rest_sync(name)` (queues a run for the scheduler,
+  current app only) and `meta.rest_sync_status(id)`. `meta.web_credential`: `grant_type`
+  (client_credentials/password/refresh_token), `oauth_username`, `password_enc`, `refresh_token_enc` (stored and
+  rotated by the server, owner connection only), `token_refreshed_at`. **050 redefines `export_app`/`import_app`**
+  from 044 (new secrets and sync state left out, imported syncs switched off). Code: `src/restsync.ts` (writeRows as
+  the app role in one transaction, `meta.app_user()` = `rest_sync:<SOURCE>`, advisory lock per source, `syncTick()`
+  from the automations scheduler), write-back in `src/runtime/rest-sources.ts` + `grid.ts` + `engine.ts` (form fetch
+  and form_dml, grid Add/Save/Delete only for defined operations; updates send the row as read in this request plus
+  the changes), `callOperation` in `src/websources.ts`; builder Write back / Synchronisation groups, Synchronise now,
+  run history, OAuth2 fields; `pgapex import --replace` keeps the new secrets and sync state. HR
+  `hr_37_rest_writeback.sql` page 34 "Contacts (REST)" (`hr.crm_contact` behind an HR REST module, copy
+  `hr.crm_contact_copy`). No env vars. Security (for SECURITY.md): operation paths validated (no host, `..`, `:`,
+  `//`), values URL-encoded, host fixed, allow-list/SSRF checks and credential URL limits on every call; password and
+  refresh token encrypted, write-only, not readable by the runtime role, never exported or logged; grid writes only
+  writable columns (key, read-only and master columns excluded); sync writes as the app role (grants/RLS);
+  `request_rest_sync` limited to `meta.app_id()`. Limits: no transaction across web-service calls (a grid save
+  failing halfway leaves earlier rows sent); no OAuth2 authorization code flow; no XML/SOAP. Coordinator: parity row
+  ✅, Data and integration 7/1/1/2, totals 84/21/10/3, CHANGELOG `[Unreleased]`. Tests (clean worktree, no `.env`,
+  throwaway postgres:17 on 5446): 844 pass / 10 skip, e2e 99/99.
 
 ## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
 
