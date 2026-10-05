@@ -41,6 +41,8 @@ before(async () => {
         return send(200, { base: decodeURIComponent(u.pathname.slice(7)), rates: [{ currency: 'EUR', rate: 0.9 }, { currency: 'GBP', rate: 0.8 }], date: u.searchParams.get('date') });
       if (u.pathname === '/orders') return send(201, { id: 42, echo: JSON.parse(body || 'null') });
       if (u.pathname === '/flaky') return failing ? send(503, { error: 'down' }) : send(200, { ok: true });
+      if (u.pathname.startsWith('/dept/'))
+        return u.pathname === '/dept/10' ? send(200, { deptno: 10, dname: 'ACCOUNTING', location: 'New York' }) : send(404, { error: 'not found' });
       if (u.pathname === '/missing') return send(404, { error: 'no such thing' });
       if (u.pathname === '/hold') {
         arrived?.();
@@ -320,5 +322,38 @@ describe('invoke_api steps: running', () => {
     assert.ok(def);
     const found = (doc.workflow_definitions ?? []).find((d: any) => d.name === 'TEST_WF_EXPORT');
     assert.deepEqual(found.steps, steps);
+    // the CLI's directory format (one file per component) and back
+    const { docToFiles, filesToDoc } = await import('../src/appfiles.ts');
+    const files = docToFiles(doc);
+    const file = [...files].find(([path, text]) => path.startsWith('shared/workflow-definitions/') && String(text).includes('TEST_WF_EXPORT'));
+    assert.ok(file, 'a file for the definition');
+    const back = filesToDoc(files) as any;
+    assert.deepEqual(back.workflow_definitions.find((d: any) => d.name === 'TEST_WF_EXPORT').steps, steps);
+  });
+});
+
+describe('HR example, part 34: DEPARTMENT_CHECK', () => {
+  test('the workflow calls the DEPARTMENT source, notifies its initiator, and the Advisor finds nothing', async () => {
+    const src = await owner.one(`select url from meta.rest_source where app_id = $1 and name = 'DEPARTMENT'`, [appId]);
+    // CI has no web service on port 3100: point the source at the mock for the test
+    await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'DEPARTMENT'`, [appId, `${mockBase}/dept/{deptno}`]);
+    try {
+      await owner.query(`delete from hr.notification where username = 'blake' and message like '%HR API%'`);
+      const found = await start('DEPARTMENT_CHECK', { deptno: '10' }, '10');
+      const missing = await start('DEPARTMENT_CHECK', { deptno: '99' }, '99');
+      await settle(found);
+      await settle(missing);
+      assert.equal((await wf(found)).state, 'completed', (await wf(found)).error);
+      assert.equal((await wf(missing)).state, 'completed', (await wf(missing)).error);
+      const notes = (await owner.query(`select message from hr.notification where username = 'blake' and message like '%HR API%' order by id`)).rows.map((r) => r.message);
+      assert.deepEqual(notes, ['Department ACCOUNTING is in New York (checked by a workflow through the HR API).', 'The HR API does not know department 99 (HTTP 404).']);
+    } finally {
+      await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'DEPARTMENT'`, [appId, src.url]);
+      await owner.query(`delete from hr.notification where username = 'blake' and message like '%HR API%'`);
+      await owner.query(`delete from meta.workflow where app_id = $1 and name = 'DEPARTMENT_CHECK'`, [appId]);
+    }
+    const { advise } = await import('../src/builder/advisor.ts');
+    const mine = (await advise(appId)).findings.filter((f) => f.entry?.label === 'DEPARTMENT_CHECK');
+    assert.deepEqual(mine, []);
   });
 });
