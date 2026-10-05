@@ -40,7 +40,7 @@ export function applyBinds(sql: string, values: BindValues): string {
  * When a comment, quoted string or identifier, or dollar-quoted body starts
  * at sql[i], the index just past its end; otherwise null.
  */
-function skipQuoted(sql: string, i: number): number | null {
+export function skipQuoted(sql: string, i: number): number | null {
   const n = sql.length;
   const c = sql[i];
   const next = sql[i + 1];

@@ -383,6 +383,18 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',
+        scripts: '/builder/sql/scripts',
+        script_new: '/builder/sql/scripts/new',
+        script: `/builder/sql/scripts/${(await owner.one(`insert into meta.sql_script (name, content) values ('E2E script', 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp;\nselect 1/0;')
+          on conflict (name) do update set content = excluded.content returning id`)).id}`,
+        script_run: `/builder/sql/scripts/runs/${(await owner.one(`insert into meta.sql_script_run (script_name, run_by, statements, succeeded, failed, results) values ('E2E script', 'admin', 2, 1, 1, $1) returning id`, [JSON.stringify([
+          { n: 1, line: 1, sql: 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp', status: 'ok', command: 'SELECT', rows: 2, ms: 1,
+            columns: ['empno', 'ename', 'job', 'hiredate', 'sal', 'comm', 'deptno'], sample: [['7369', 'SMITH', 'CLERK', '1980-12-17', '850.00', null, '20'], ['7499', 'ALLEN', 'SALESMAN', '1981-02-20', '1600.00', '300.00', '30']] },
+          { n: 2, line: 2, sql: 'select 1/0', status: 'error', error: 'division by zero', ms: 0 },
+        ])])).id}`,
+        quick_sql: '/builder/sql/quick',
+        query_builder: '/builder/sql/query?schema=hr&t=emp&t=dept&c=t1.ename&c=t1.job&c=t2.dname&wc=t1.sal&wo=%3E&wv=1000&oc=t1.ename',
+        data_load_def: `/builder/apps/${appId}/shared?c=data_load_def-${(await owner.one(`select id from meta.data_load_def where app_id = $1 and name = 'EMP_XML'`, [appId])).id}`,
         developers: '/builder/developers',
         users: '/builder/users',
         providers: '/builder/users/providers',

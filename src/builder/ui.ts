@@ -200,10 +200,14 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 };
 
 /** Tabs of the SQL Workshop. */
-export const workshopTabs = (active: 'sql' | 'objects' | 'load') => html`<nav class="ide-tabs u-mb1" aria-label="SQL Workshop">
-    <a class="ide-tab" href="${BASE}/sql"${active === 'sql' ? raw(' aria-current="page"') : ''}>${icon('code')}<span>SQL Commands</span></a>
-    <a class="ide-tab" href="${BASE}/sql/objects"${active === 'objects' ? raw(' aria-current="page"') : ''}>${icon('database')}<span>Object Browser</span></a>
-    <a class="ide-tab" href="${BASE}/sql/load"${active === 'load' ? raw(' aria-current="page"') : ''}>${icon('upload')}<span>Load Data</span></a></nav>`;
+export type WorkshopTab = 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load';
+export const workshopTabs = (active: WorkshopTab) => {
+  const tab = (key: WorkshopTab, href: string, ic: string, label: string) =>
+    html`<a class="ide-tab" href="${BASE}${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
+  return html`<nav class="ide-tabs u-mb1" aria-label="SQL Workshop">
+    ${tab('sql', '/sql', 'code', 'SQL Commands')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('quicksql', '/sql/quick', 'bolt', 'Quick SQL')}
+    ${tab('query', '/sql/query', 'filter', 'Query Builder')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('load', '/sql/load', 'upload', 'Load Data')}</nav>`;
+};
 
 /** Number of app tile colours (.app-color-0 … -7 in app.css). */
 export const APP_COLORS = 8;

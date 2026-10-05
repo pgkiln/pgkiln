@@ -13,6 +13,7 @@ import { handlerProblems } from '../runtime/rest.ts';
 import { TEMPLATE_COMPONENT_SPEC } from './template-spec.ts';
 import { REST_SOURCE_SPEC, WEB_CREDENTIAL_SPEC } from './websources.ts';
 import { invokeProblems } from '../runtime/rest-sources.ts';
+import { DATA_LOAD_DEF_SPEC } from './dataload.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -228,7 +229,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
         help: 'e.g. select sales.ship_order(:P3_ID::int) as p3_status — returned columns named like items set them. RAISE EXCEPTION messages are shown to the user; USING COLUMN = \'sal\' puts it on that field.' },
       { name: 'region_id', label: 'Form / grid region (form_dml, grid_dml)', kind: 'region' },
       { name: 'config', label: 'Configuration (data_load, invoke_api)', kind: 'json', wide: true,
-        help: 'data_load: {"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped. · invoke_api: {"source":"WEATHER","params":{"city":"&P5_CITY."},"items":{"P5_TEMP":"current.temp"},"status_item":"P5_STATUS"} or {"url":"https://api.example.com/orders/&P5_ID.","method":"POST","credential":"SHOP_API","body":"{\\"note\\": &P5_NOTE.}","items":{…}} — without "items", the first row\'s columns set the items named like them.' },
+        help: 'data_load: {"file_item":"P5_FILE","definition":"ORDERS_LOAD"} (a data load definition: table, format, mapping, transformations) or {"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"format":"auto | csv | xlsx | json | xml","row_tag":"order","columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped. · invoke_api: {"source":"WEATHER","params":{"city":"&P5_CITY."},"items":{"P5_TEMP":"current.temp"},"status_item":"P5_STATUS"} or {"url":"https://api.example.com/orders/&P5_ID.","method":"POST","credential":"SHOP_API","body":"{\\"note\\": &P5_NOTE.}","items":{…}} — without "items", the first row\'s columns set the items named like them.' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper' },
       { name: 'success_message', label: 'Success message', kind: 'text' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
@@ -457,6 +458,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
   template_component: TEMPLATE_COMPONENT_SPEC,
   web_credential: WEB_CREDENTIAL_SPEC,
   rest_source: REST_SOURCE_SPEC,
+  data_load_def: DATA_LOAD_DEF_SPEC,
   document_template: {
     table: 'meta.document_template',
     scope: 'app',

@@ -148,6 +148,7 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['build_options', 'shared/build-options', 'build_option'],
   ['web_credentials', 'shared/web-credentials', 'web_credential'],
   ['rest_sources', 'shared/rest-sources', 'rest_source'],
+  ['data_load_definitions', 'shared/data-load-definitions', 'data_load_def'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */

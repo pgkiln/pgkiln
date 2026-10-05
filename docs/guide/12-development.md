@@ -35,7 +35,10 @@ src/
   i18n/                    de.ts, fr.ts, es.ts: the built-in texts in German, French and Spanish
   numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
-  dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
+  dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
+  xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested)
+  sqlscript.ts             SQL scripts: splitScript() (statements, line numbers, psql commands), runScript() (stop/continue, transaction, savepoints)
+  quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
   xlsx.ts                  Excel writer for report downloads (typed cells, streamed through fflate's Zip)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
@@ -93,10 +96,13 @@ src/
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: SQL commands, object browser
+    scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
+    quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
+    querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key, buildQuery() from the URL
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
-    dataload.ts            SQL Workshop → Load Data
+    dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: next run, Run now, run history
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
@@ -132,6 +138,9 @@ test/
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
+  workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
+  quicksql.test.ts         Quick SQL parser and DDL generator
+  xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates

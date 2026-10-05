@@ -13,6 +13,8 @@ import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
 import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/runtime/region-cache.ts';
 import { maxRows } from '../src/runtime/report.ts';
 import { lovMax } from '../src/runtime/items.ts';
+import { loadWithDefinition } from '../src/dataload.ts';
+import { Browser as FileBrowser } from './helpers.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -2637,5 +2639,208 @@ describe('sprint 31 i18n: time zones and format masks', () => {
       assert.equal(res.body.includes('<b>1</b>'), false);
     }
     assert.equal((await owner.one(`select count(*)::int as n from hr.emp`)).n > 0, true);
+  });
+});
+
+describe('sprint 31 workshop: SQL scripts, Quick SQL, query builder, XML loading, data load definitions', () => {
+  const builder = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal(res.statusCode, 303, 'builder login');
+    return b;
+  };
+  const csv = (text: string) => ({ name: 'x.csv', type: 'text/csv', data: Buffer.from(text) });
+  after(async () => {
+    await owner.query(`delete from meta.sql_script_run where script_name like 'sec31%'; delete from meta.sql_script where name like 'sec31%';
+      delete from meta.data_load_def where name like 'SEC31%'; delete from meta.app where alias = 'sec31other'; drop table if exists public.sec31_csrf, public.sec31_qs`);
+  });
+
+  test('SQL Workshop pages need a builder login; an application session is not enough', async () => {
+    const king = await as('king');
+    for (const url of ['/builder/sql/scripts', '/builder/sql/scripts/new', '/builder/sql/quick', '/builder/sql/query', '/builder/sql/load', '/builder/sql/scripts/runs/1']) {
+      for (const b of [new Browser(), king]) {
+        const res = await b.get(url);
+        assert.equal(res.statusCode, 302, url);
+        assert.match(String(res.headers.location), /^\/builder\/login/, url);
+      }
+    }
+    const anon = new Browser();
+    const res = await anon.post('/builder/sql/scripts', { name: 'sec31 anon', content: 'create table public.sec31_csrf ()', action: 'run' });
+    assert.equal(res.statusCode, 302);
+    assert.equal((await owner.one(`select to_regclass('public.sec31_csrf') as t`)).t, null);
+  });
+
+  test('every workshop POST needs the CSRF token', async () => {
+    const dev = await builder();
+    await dev.get('/builder/sql/scripts/new');
+    const script = (await owner.one(`insert into meta.sql_script (name, content) values ('sec31 keep', 'select 1') returning id`)).id;
+    const posts: [string, Record<string, string>][] = [
+      ['/builder/sql/scripts', { name: 'sec31 csrf', content: 'create table public.sec31_csrf ()', action: 'run' }],
+      [`/builder/sql/scripts/${script}`, { name: 'sec31 keep', content: 'create table public.sec31_csrf ()', action: 'run' }],
+      [`/builder/sql/scripts/${script}/delete`, {}],
+      ['/builder/sql/quick', { source: 'sec31_qs\n  name', action: 'run' }],
+      [`/builder/apps/${appId}/shared/data_load_def`, { name: 'SEC31_CSRF', table_name: 'hr.emp', columns: '[]' }],
+    ];
+    for (const [url, form] of posts) {
+      for (const token of [undefined, 'wrong']) {
+        const res = await dev.post(url, token ? { __csrf: token, ...form } : form);
+        assert.equal(res.statusCode, 403, `${url} ${token ?? 'no token'}`);
+      }
+    }
+    dev.lastCsrf = 'wrong';
+    for (const url of ['/builder/sql/scripts/upload', '/builder/sql/load']) {
+      const res = await dev.upload(url, {}, { file: { name: 'sec31.sql', type: 'application/sql', data: Buffer.from('create table public.sec31_csrf ()') } });
+      assert.equal(res.statusCode, 403, url);
+    }
+    assert.equal((await owner.one(`select to_regclass('public.sec31_csrf') as t, to_regclass('public.sec31_qs') as q`)).t, null);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.sql_script where name like 'sec31%'`)).n, 1, 'nothing saved, nothing deleted');
+    assert.equal(await owner.one(`select 1 from meta.data_load_def where name = 'SEC31_CSRF'`), undefined);
+    assert.equal(await owner.one(`select 1 from meta.sql_script_run where script_id = $1`, [script]), undefined, 'not run');
+  });
+
+  test('script names, SQL, results and errors are escaped; the download file name is safe', async () => {
+    const dev = await builder();
+    await dev.get('/builder/sql/scripts/new');
+    const name = 'sec31 <img src=x onerror=alert(1)>"; x=1';
+    const res = await dev.submit('/builder/sql/scripts', {
+      name,
+      content: `select '<script>alert(1)</script>' as "<b>col</b>";\nselect 1/0 as "<i>x</i>";`,
+      action: 'run',
+      on_error: 'continue',
+    });
+    assert.equal(res.statusCode, 303);
+    const run = await dev.get(String(res.headers.location));
+    assert.equal(run.statusCode, 200);
+    assert.doesNotMatch(run.body, /<script>alert|<img src=x|<b>col<\/b>|<i>x<\/i>/);
+    assert.match(run.body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(run.body, /division by zero/);
+    const list = await dev.get('/builder/sql/scripts');
+    assert.doesNotMatch(list.body, /<img src=x/);
+    const id = (await owner.one('select id from meta.sql_script where name = $1', [name])).id;
+    const dl = await dev.get(`/builder/sql/scripts/${id}/download`);
+    assert.equal(dl.statusCode, 200);
+    const disposition = String(dl.headers['content-disposition']);
+    assert.match(disposition, /^attachment; filename="[\w.-]+\.sql"$/);
+    // ids that are not numbers: 404, not an error
+    for (const url of [`/builder/sql/scripts/1'`, '/builder/sql/scripts/x/download', '/builder/sql/scripts/runs/1%20or%201=1']) assert.equal((await dev.get(url)).statusCode, 404, url);
+  });
+
+  test('Quick SQL: names and values become quoted identifiers and literals; the preview is escaped', async () => {
+    const dev = await builder();
+    await dev.get('/builder/sql/quick');
+    const src = `sec31_qs\n  "x; drop table hr.emp; --" vc20\n  status /check a'); drop table hr.emp; --, b /default '); drop table hr.dept; --\n  note [<script>alert(1)</script>]`;
+    const preview = await dev.submit('/builder/sql/quick', { source: src, action: 'preview' });
+    assert.equal(preview.statusCode, 200);
+    assert.doesNotMatch(preview.body, /<script>alert/);
+    await dev.get('/builder/sql/quick');
+    const res = await dev.submit('/builder/sql/quick', { source: src, action: 'run', name: 'sec31 qs' });
+    assert.equal(res.statusCode, 303);
+    assert.ok((await owner.one(`select to_regclass('hr.emp') as e, to_regclass('hr.dept') as d`)).e, 'hr.emp still there');
+    assert.ok((await owner.one(`select to_regclass('hr.dept') as d`)).d, 'hr.dept still there');
+  });
+
+  test('query builder: only catalog names, fixed operators, literal values; the page escapes them', async () => {
+    const dev = await builder();
+    const res = await dev.get(`/builder/sql/query?schema=hr&t=emp&t=${encodeURIComponent('dept"; drop table hr.emp; --')}&wc=t1.ename&wo=${encodeURIComponent('= 1 or 1=1 --')}&wv=1&wc=t1.ename&wo=%3D&wv=${encodeURIComponent("x'); drop table hr.emp; --<script>")}`);
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /drop table hr\.emp; --&quot;|1=1|<script>/);
+    assert.match(res.body, /where t1\.&quot;ename&quot; = &#39;x&#39;&#39;\); drop table hr\.emp; --&lt;script&gt;&#39;/);
+    assert.equal((await dev.get(`/builder/sql/query?schema=${encodeURIComponent("hr'; drop")}`)).statusCode, 200);
+  });
+
+  test('XML loading refuses DTDs, entity declarations and deep nesting; nothing is fetched or expanded', async () => {
+    const dev = await builder();
+    const files = {
+      xxe: `<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r><row><a>&x;</a></row></r>`,
+      laughs: `<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]><r><row><a>&b;</a></row></r>`,
+      param: `<!DOCTYPE r SYSTEM "http://127.0.0.1:1/evil.dtd"><r><row><a>1</a></row></r>`,
+      undeclared: `<r><row><a>&x;</a></row></r>`,
+      deep: `<r>${'<a>'.repeat(5000)}1${'</a>'.repeat(5000)}</r>`,
+    };
+    for (const [k, xml] of Object.entries(files)) {
+      await dev.get('/builder/sql/load');
+      const res = await dev.upload('/builder/sql/load', {}, { file: { name: `${k}.xml`, type: 'application/xml', data: Buffer.from(xml) } });
+      assert.equal(res.statusCode, 200, k);
+      assert.match(res.body, /This is not XML that can be loaded/, k);
+      assert.doesNotMatch(res.body, /root:|aaaaaaaaaaaaaaaaaaaa/, k);
+      assert.equal(await owner.one(`select 1 from meta.temp_file where filename = $1`, [`${k}.xml`]), undefined, `${k}: not kept`);
+    }
+  });
+
+  test('Load Data: the temporary file belongs to the builder session that uploaded it', async () => {
+    const a = await builder();
+    await a.get('/builder/sql/load');
+    const up = await a.upload('/builder/sql/load', { headers: 'true' }, { file: csv('ename\nsec31\n') });
+    assert.equal(up.statusCode, 303);
+    const url = String(up.headers.location);
+    assert.equal((await a.get(url)).statusCode, 200);
+    const b = await builder();
+    const other = await b.get(url);
+    assert.equal(other.statusCode, 302, 'another session');
+    await b.get('/builder/sql/load');
+    const post = await b.submit(url.split('?')[0], { h: '1', target: 'existing', table: 'hr.emp', map_0: 'ename' });
+    assert.equal(post.statusCode, 302);
+    assert.equal(await owner.one(`select 1 from hr.emp where ename = 'sec31'`), undefined);
+    assert.equal((await b.get('/builder/sql/load/..%2F..%2Fetc')).statusCode, 302);
+  });
+
+  test('data load definitions: table names and mappings are validated; format masks and values are never SQL', async () => {
+    const dev = await builder();
+    for (const [table, columns] of [
+      ['hr.emp; drop table hr.dept', '[]'],
+      ['hr.emp', '[{"source": "ename", "column": "ename", "transform": ["upper); drop"]}]'],
+      ['hr.emp', '{"ename": "ename"}'],
+      ['hr.emp', '[{"source": "ename", "column": "ename", "evil": 1}]'],
+    ]) {
+      await dev.get(`/builder/apps/${appId}/shared?new=data_load_def`);
+      await dev.submit(`/builder/apps/${appId}/shared/data_load_def`, { name: 'SEC31_BAD', table_name: table, columns });
+      assert.equal(await owner.one(`select 1 from meta.data_load_def where name = 'SEC31_BAD'`), undefined, `${table} ${columns}`);
+    }
+    await assert.rejects(owner.query(`insert into meta.data_load_def (app_id, name, table_name) values ($1, 'SEC31_SQL', 'hr.emp; drop table hr.dept')`, [appId]), /check/);
+    const def = {
+      name: 'SEC31_MASK', table_name: 'hr.emp', format: 'csv' as const, headers: true, row_tag: null, mode: 'append' as const, skip_errors: false,
+      columns: [
+        { source: 'empno', column: 'empno' },
+        { source: 'ename', column: 'ename', default: "'); drop table hr.dept; --" },
+        { source: 'hiredate', column: 'hiredate', format: "YYYY'); drop table hr.dept; --" },
+      ],
+    };
+    const ok = def;
+    const r = await owner.tx(async (c) => {
+      const out = await loadWithDefinition(c, ok, { filename: 'x.csv', content: Buffer.from('empno,ename,hiredate\n9531,,2026\n') });
+      const row = (await c.query('select ename, hiredate::text from hr.emp where empno = 9531')).rows[0];
+      await c.query('rollback; begin');
+      return { out, row };
+    });
+    assert.equal(r.out.inserted, 1);
+    assert.equal(r.row.ename, "'); drop table hr.dept; --", 'the default is a value');
+    assert.equal(r.row.hiredate, '2026-01-01', 'the mask is a to_date literal');
+    assert.ok((await owner.one(`select to_regclass('hr.dept') as d`)).d);
+  });
+
+  test('the data_load process: definitions of other applications are not found; it loads as the application role', async () => {
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec31other', 'Other 31', 'hr_app') returning id`)).id;
+    await owner.query(`insert into meta.data_load_def (app_id, name, table_name, format) values ($1, 'SEC31_OTHER', 'hr.emp', 'csv'), ($2, 'SEC31_META', 'meta.app', 'csv')`, [other, appId]);
+    const proc = await owner.one(`select p.id, p.config from meta.process p join meta.page g on g.id = p.page_id where g.app_id = $1 and g.page_no = 13 and p.type = 'data_load'`, [appId]);
+    try {
+      for (const [name, file] of [
+        ['sec31_other', 'empno,ename\n9532,SEC31\n'],
+        ['sec31_meta', 'alias,name\nsec31x,Sec 31\n'],
+      ]) {
+        await owner.query(`update meta.process set config = $2 where id = $1`, [proc.id, JSON.stringify({ file_item: 'P13_FILE', definition: name })]);
+        const king = new FileBrowser(app);
+        await king.get('/a/hr/login');
+        await king.post('/a/hr/login', { __csrf: king.lastCsrf, username: 'king', password: 'king' });
+        await king.get('/a/hr/13');
+        const res = await king.upload('/a/hr/13', { __request: 'LOAD' }, { P13_FILE: csv(file) });
+        assert.equal(res.statusCode, 422, name);
+        assert.doesNotMatch(res.body, /permission denied|meta\.app/, `${name}: no internals`);
+      }
+      assert.equal(await owner.one(`select 1 from hr.emp where empno = 9532`), undefined);
+      assert.equal(await owner.one(`select 1 from meta.app where alias = 'sec31x'`), undefined, 'the app role cannot write meta tables');
+    } finally {
+      await owner.query('update meta.process set config = $2 where id = $1', [proc.id, proc.config]);
+    }
   });
 });

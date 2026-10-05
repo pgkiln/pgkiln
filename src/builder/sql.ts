@@ -4,11 +4,19 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { BASE, csrf, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import { clientIp, logActivity } from '../session.ts';
 import { clearCompletions } from './code-editor.ts';
+import { scriptRoutes } from './scripts.ts';
+import { quickSqlRoutes } from './quicksql.ts';
+import { queryBuilderRoutes } from './querybuilder.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection).
 
 export async function sqlRoutes(app: FastifyInstance) {
+  // SQL Scripts, Quick SQL and the query builder (sprint 31)
+  await app.register(scriptRoutes);
+  await app.register(quickSqlRoutes);
+  await app.register(queryBuilderRoutes);
   // ---------------------------------------------------------------- SQL workshop
   const resultTable = (res: pg.QueryResult<any[]>, limit = 500) => {
     const rows = (res.rows ?? []).slice(0, limit);
@@ -24,7 +32,15 @@ export async function sqlRoutes(app: FastifyInstance) {
     if (req.method === 'POST' && sql.trim()) {
       const started = performance.now();
       try {
-        const out = await owner.pool.query({ text: sql, rowMode: 'array' });
+        // a connection of its own, closed afterwards: the SQL may SET ROLE or change settings,
+        // which must not leak into the builder's pooled owner connections
+        const c = await owner.pool.connect();
+        let out;
+        try {
+          out = await c.query({ text: sql, rowMode: 'array' });
+        } finally {
+          c.release(true);
+        }
         const res = Array.isArray(out) ? out[out.length - 1] : out;
         const ms = (performance.now() - started).toFixed(0);
         result = res.fields?.length
@@ -34,6 +50,7 @@ export async function sqlRoutes(app: FastifyInstance) {
         result = html`<div class="alert alert-error"><strong>Error:</strong> ${(e as Error).message}</div>`;
       }
       clearCompletions(); // the script may have changed tables or grants
+      await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), elapsedMs: Math.round(performance.now() - started), detail: sql.length > 2000 ? `${sql.slice(0, 2000)}…` : sql });
     }
     const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sql')}
       <p class="muted">Runs as the builder's owner connection (not as an application role). Multiple statements are allowed; results of the last one are shown.</p>

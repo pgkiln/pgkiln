@@ -11,6 +11,7 @@ import { automationExtras } from './automations.ts';
 import { layoutExtras } from './layouts.ts';
 import { templateExtras, templateImport } from './templates.ts';
 import { credentialExtras, restSourceExtras } from './websources.ts';
+import { dataLoadDefExtras } from './dataload.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
@@ -20,7 +21,7 @@ import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def'];
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -54,7 +55,7 @@ export async function sharedRoutes(app: FastifyInstance) {
       const [formSpec, formRow] = row && selKind === 'workflow_definition' ? workflowForm(spec, row) : [spec, row];
       editor = row
         ? region(`${spec.label}: ${spec.summary(row)}`, html`${componentForm(formSpec, selKind, formRow, lk, `${BASE}/apps/${a.id}/shared/${selKind}/${row.id}`, s, 'Save')}
-            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : selKind === 'web_credential' ? credentialExtras(a.id, row, s) : selKind === 'rest_source' ? restSourceExtras(a.id, row, s) : ''}
+            ${selKind === 'report_layout' ? layoutExtras(a.id, row, s) : selKind === 'automation' ? await automationExtras(a.id, row, s) : selKind === 'document_template' ? documentExtras(a.id, row) : selKind === 'workflow_definition' ? await workflowExtras(a.id, row, s, req.query) : selKind === 'rest_module' ? restExtras(a, row) : selKind === 'template_component' ? templateExtras(a.id, row, req.query) : selKind === 'web_credential' ? credentialExtras(a.id, row, s) : selKind === 'rest_source' ? restSourceExtras(a.id, row, s) : selKind === 'data_load_def' ? dataLoadDefExtras(row) : ''}
             ${await usedInPanel(a.id, selKind, row)}
             <form method="post" action="${BASE}/apps/${a.id}/shared/${selKind}/${row.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete</button></form>`)
         : html`<p>Not found.</p>`;
