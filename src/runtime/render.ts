@@ -11,6 +11,7 @@ import { isAuthorized, pageAllowed } from './authz.ts';
 import { substitute, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
+import { listTree, navbarMarkup, navMarkup } from './lists.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -67,6 +68,11 @@ function initiallyHidden(ctx: PageContext) {
 // ---------------------------------------------------------------- navigation
 
 async function navTree(ctx: PageContext, topNav = false) {
+  // a list as the navigation menu (falls back to the navigation entries when the list is missing)
+  if (ctx.app.nav_list) {
+    const nodes = await listTree(ctx, ctx.app.nav_list);
+    if (nodes) return navMarkup(nodes, topNav);
+  }
   const current = new Set<number>();
   for (let p: number | null | undefined = ctx.page.page_no, guard = 0; p && guard < 10; guard++) {
     current.add(p);
@@ -168,6 +174,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
   const nav = await navTree(ctx, topNav);
+  const navbarNodes = ctx.app.navbar_list ? await listTree(ctx, ctx.app.navbar_list) : null;
+  const navbar = navbarNodes ? navbarMarkup(navbarNodes, t('list.navbar')) : '';
   return documentShell(
     `${title} · ${ctx.app.name}`,
     html`<a class="skip-link" href="#main">${t('common.skip')}</a>
@@ -175,6 +183,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="${t('common.toggle_nav')}" aria-controls="t-nav">${icon('menu')}</a>
       <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
       <span class="t-spacer"></span>
+      ${navbar}
       ${ctx.app.authentication !== 'none'
         ? signedIn
           ? html`<details class="menu t-user">

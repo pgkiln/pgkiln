@@ -245,6 +245,9 @@ const COMMANDS: Record<string, Command> = {
           out(exists
             ? `Replaced ${alias} (application ${id}).\n`
             : `Imported ${alias} (application ${id}). Check its database role and grant access in the builder.\n`);
+          // supporting objects never run on import: the developer reviews and runs them in the builder
+          const scripts = (await db.query('select count(*)::int as n from meta.supporting_script where app_id = $1', [id])).rows[0].n;
+          if (scripts) out(`It has ${scripts} supporting object script(s); they were not run. Review and run them in the builder: Shared Components → Supporting objects.\n`);
           return EXIT.ok;
         } catch (e) {
           await db.query('rollback').catch(() => {});

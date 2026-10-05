@@ -8,6 +8,8 @@ import Fastify from 'fastify';
 import { apiRoutes } from './builder/api.ts';
 import { globalizationRoutes } from './builder/globalization.ts';
 import { designerRoutes } from './builder/designer.ts';
+import { lockRoutes } from './builder/locks.ts';
+import { supportingRoutes } from './builder/supporting.ts';
 import { sharedRoutes } from './builder/shared.ts';
 import { webSourceRoutes } from './builder/websources.ts';
 import { sqlRoutes } from './builder/sql.ts';
@@ -70,6 +72,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(builderRoutes);
   await app.register(sharedRoutes);
   await app.register(designerRoutes);
+  await app.register(lockRoutes);
+  await app.register(supportingRoutes);
   await app.register(sqlRoutes);
   await app.register(usersRoutes);
   await app.register(dataLoadRoutes);

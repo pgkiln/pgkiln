@@ -18,9 +18,13 @@ export const REPLACED = [
   'authz_scheme', 'app_item', 'app_process', 'lov', 'app_group_role', 'text_message', 'translation',
   'report_layout', 'automation', 'document_template', 'task_definition', 'workflow_definition',
   'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'nav_entry', 'page',
+  // (042) a list before its entries (they follow it by name), supporting objects
+  'list', 'list_entry', 'supporting_script',
 ];
 /** Tables of an application that belong to the installation: kept. */
-export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow'];
+export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow',
+  // (042) builder state of this installation: locks and developer comments (by page number)
+  'builder_lock', 'dev_comment'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */

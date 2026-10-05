@@ -22,6 +22,8 @@ export type FieldKind =
   | 'authz'    // authorization scheme of the app
   | 'page'     // page of the app
   | 'nav'      // navigation entry of the app (parent)
+  | 'list_name'   // list of the app (by name)
+  | 'list_parent' // entry of the app's lists (parent of a list entry)
   | 'build_option' // build option of the app (NAME or !NAME)
   | 'rest_source' // REST data source of the app (by name)
   | 'secret'   // write-only: never shown; empty keeps the stored value
@@ -85,7 +87,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     defaults: { type: 'report', columns: 12, template: 'standard' },
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'static', 'dynamic'], group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'list', 'static', 'dynamic'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
         help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · template_component: any SELECT (its columns are #COLUMN# in the template), or empty for one instance · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
       { name: 'rest_source', label: 'REST data source', kind: 'rest_source', group: 'Source',
@@ -100,7 +102,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
-        help: 'report: {"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000} · cards: {"style":"metric","link":{...},"max_rows":500} · dynamic: {"max_rows":1000} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true}; any region: {"display_selector":true} puts it in the page\'s display selector; report, chart, cards, dynamic, tree and template component regions: {"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)' },
+        help: 'report: {"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000} · cards: {"style":"metric","link":{...},"max_rows":500} · dynamic: {"max_rows":1000} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true} · list: {"list":"NAME","template":"links"|"badges"|"cards"|"tabs"} (lists under Shared Components → Lists); any region: {"display_selector":true} puts it in the page\'s display selector; report, chart, cards, dynamic, tree and template component regions: {"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)' },
     ],
   },
   item: {
@@ -292,6 +294,62 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
       buildOption(),
+    ],
+  },
+  list: {
+    table: 'meta.list',
+    scope: 'app',
+    label: 'List',
+    plural: 'Lists',
+    icon: 'list',
+    summary: (l) => l.name,
+    defaults: { type: 'static' },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'upper', help: 'Show it with a list region ({"list": "NAME"}), or as the navigation menu or bar (Settings).' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['static', 'sql'], help: 'static: the list entries below · sql: the rows of the query.' },
+      { name: 'query', label: 'Query (sql)', kind: 'code', wide: true,
+        help: 'select label, page, items, url, icon, badge, description, id, parent_id from … (only label is required). page: a page of this app; items: a JSON object of item values (sent with a checksum); url: a path inside the app or an http(s) address; parent_id nests a row under the row with that id. Runs as the application\'s role with :ITEM binds.' },
+      { name: 'description', label: 'Description', kind: 'textarea' },
+    ],
+    validate: (v) => (v.type === 'sql' && !v.query ? 'A sql list needs a query.' : null),
+  },
+  list_entry: {
+    table: 'meta.list_entry',
+    scope: 'app',
+    label: 'List entry',
+    plural: 'List entries',
+    icon: 'chevron',
+    summary: (e) => `${e.list_name}: ${e.label}`,
+    fields: [
+      { name: 'list_name', label: 'List', kind: 'list_name', group: 'Entry' },
+      { name: 'label', label: 'Label', kind: 'text', group: 'Entry', help: '&ITEM. allowed.' },
+      { name: 'icon', label: 'Icon', kind: 'icon', group: 'Entry' },
+      { name: 'parent_id', label: 'Parent entry', kind: 'list_parent', group: 'Entry', help: 'An entry of the same list: this entry is shown below it (a sub menu).' },
+      { name: 'seq', label: 'Sequence', kind: 'int', group: 'Entry' },
+      { name: 'badge', label: 'Badge', kind: 'text', group: 'Entry', help: 'A short text or number, &ITEM. allowed (e.g. &P1_OPEN_COUNT.).' },
+      { name: 'description', label: 'Description', kind: 'textarea', group: 'Entry', help: 'Shown by the cards template.' },
+      { name: 'target_page', label: 'Page', kind: 'page', group: 'Target', help: 'Empty with no URL: a heading for its child entries.' },
+      { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Target', help: '{"P3_ID": "&P1_ID."} — sent with a checksum.' },
+      { name: 'target_url', label: 'Or URL', kind: 'text', group: 'Target', help: 'A path after /a/<alias>/ (e.g. 10?tab=open), or an http(s) address of another site. &ITEM. values are URL-encoded.' },
+      { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'Boolean expression; the entry shows only when true.' },
+      { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
+    ],
+    validate: (v) => (v.target_page && v.target_url ? 'Choose a page or a URL, not both.' : null),
+  },
+  supporting_script: {
+    table: 'meta.supporting_script',
+    scope: 'app',
+    label: 'Supporting script',
+    plural: 'Supporting objects',
+    icon: 'code',
+    summary: (s) => s.name,
+    defaults: { kind: 'install' },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'text' },
+      { name: 'kind', label: 'Kind', kind: 'select', options: ['install', 'upgrade', 'deinstall'], help: 'Scripts of a kind run together, by sequence, when a developer chooses to (Supporting objects page). Never on import.' },
+      { name: 'seq', label: 'Sequence', kind: 'int' },
+      { name: 'script', label: 'Script', kind: 'code', wide: true, help: 'SQL statements separated by semicolons (DDL, inserts, DO blocks). They run as the application\'s database role, in one transaction: an error undoes the whole run.' },
     ],
   },
   authz_scheme: {
@@ -546,6 +604,7 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'region':
       case 'page':
       case 'nav':
+      case 'list_parent':
         values[f.name] = v === '' ? null : Number.parseInt(v, 10);
         if (Number.isNaN(values[f.name])) throw new Error(`${f.label} must be a number`);
         break;
@@ -563,6 +622,7 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'authz':
       case 'build_option':
       case 'rest_source':
+      case 'list_name':
         values[f.name] = v === '' ? null : v.trim().toUpperCase();
         break;
       case 'secret':

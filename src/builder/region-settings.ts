@@ -11,6 +11,7 @@ import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 import { columnTemplatesForm, templateRegionForm } from './templates.ts';
+import { LIST_TEMPLATES } from '../runtime/lists.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
 // for grid, chart, cards, calendar and faceted search regions (report
@@ -29,7 +30,7 @@ export interface Allowed {
   authz?: Set<string>; // the app's authorization scheme names (upper case)
 }
 
-export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree'] as const;
+export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'list'] as const;
 type SettingsType = (typeof SETTINGS_TYPES)[number];
 
 const GRID_PAGE_SIZES = ['5', '10', '15', '25', '50', '100', '200'];
@@ -289,6 +290,15 @@ export function mergeDisplaySelectorSettings(config: Config, b: Body): Config {
   return out;
 }
 
+export function mergeListSettings(config: Config, b: Body): Config {
+  const out = { ...config };
+  const set = setter(out);
+  const name = (b.list ?? '').trim().toUpperCase();
+  set('list', /^[A-Z][A-Z0-9_]{0,59}$/.test(name) ? name : undefined);
+  set('template', (LIST_TEMPLATES as readonly string[]).includes(b.template ?? '') && b.template !== 'links' ? b.template : undefined);
+  return out;
+}
+
 export function mergeTasksSettings(config: Config, b: Body): Config {
   const out = { ...config };
   const set = setter(out);
@@ -343,6 +353,7 @@ const MERGES: Record<SettingsType, (c: Config, b: Body, a: Allowed) => Config> =
   facets: mergeFacetsSettings,
   smart_filters: mergeSmartFiltersSettings,
   display_selector: (c, b) => mergeDisplaySelectorSettings(c, b),
+  list: (c, b) => mergeListSettings(c, b),
 };
 
 // ---------------------------------------------------------------- forms
@@ -586,6 +597,18 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       title = 'Display selector settings';
       body = await displaySelectorFields(r, pageId, id);
       break;
+    case 'list': {
+      title = 'List settings';
+      const lists = (await owner.query('select name, type from meta.list where app_id = $1 order by name', [appId])).rows;
+      body = html`<p class="muted u-mt0">Shows a list from Shared Components → Lists. Entries the user may not open are left out.</p>
+        <fieldset class="prop-group"><legend>List</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('list')}">List</label>
+            <select id="${id('list')}" name="list">${opt('', '- choose -', cfg.list)}${lists.map((l) => opt(l.name, `${l.name} (${l.type})`, cfg.list))}${cfg.list && !lists.some((l) => l.name === cfg.list) ? opt(cfg.list, `${cfg.list} (missing!)`, cfg.list) : ''}</select></div>
+          <div class="field"><label class="label" for="${id('template')}">Template</label>
+            <select id="${id('template')}" name="template">${opt('', 'Links (nested)', cfg.template)}${opt('badges', 'Badge list', cfg.template)}${opt('cards', 'Cards (menu)', cfg.template)}${opt('tabs', 'Tabs', cfg.template)}</select></div>
+        </div></fieldset>`;
+      break;
+    }
     case 'map':
       title = 'Map settings';
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}

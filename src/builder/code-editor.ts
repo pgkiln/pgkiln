@@ -24,20 +24,20 @@ import { BASE, developer, type Req } from './ui.ts';
 export type CodeLang = 'sql' | 'plpgsql' | 'json' | 'html' | 'text';
 
 /** Fields that hold statements (PL/pgSQL calls, DO blocks) rather than one query. */
-const STATEMENTS = new Set(['process.code', 'app_process.code', 'automation.code', 'task_definition.action_code', 'dynamic_action.code']);
+const STATEMENTS = new Set(['supporting_script.script', 'process.code', 'app_process.code', 'automation.code', 'task_definition.action_code', 'dynamic_action.code']);
 /** The Advisor check per field (none: no check). */
 const CHECKS: Record<string, SqlShape> = {
   'region.source': 'select', 'region.condition': 'boolean', 'item.lov': 'select', 'item.readonly_condition': 'boolean',
   'button.condition': 'boolean', 'validation.expression': 'boolean', 'process.code': 'statements', 'authz_scheme.value': 'boolean',
   'lov.query': 'select', 'app_process.code': 'statements', 'automation.query': 'select', 'automation.code': 'statements',
   'document_template.query': 'select', 'task_definition.action_code': 'statements', 'dynamic_action.code': 'statements',
-  'button.badge_query': 'select',
+  'button.badge_query': 'select', 'list.query': 'select', 'list_entry.condition': 'boolean',
 };
 /** Fields whose check follows the component's type select, like SWITCH ("none": no check). */
 const CHECK_SWITCH: Record<string, string> = {
   'dynamic_action.code': 'action:set_value=select,*=statements',
   'process.code': 'type:sql=statements,*=none',
-  'region.source': 'type:static=none,form=none,facets=none,smart_filters=none,display_selector=none,tasks=none,workflows=none,*=select',
+  'region.source': 'type:static=none,form=none,facets=none,smart_filters=none,display_selector=none,tasks=none,workflows=none,list=none,*=select',
   'computation.expression': 'type:sql_query=select,*=none',
   'computation.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
   'branch.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
