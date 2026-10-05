@@ -191,3 +191,28 @@ Under **Settings → Theme**, *Theme style* is **Automatic** (follow the device,
 *Enable End Users to Choose Theme Style*), the user menu has an *Appearance* switch and My account
 has the same choice. The choice is saved on the account, so it applies in every application that
 allows it. For public applications it's kept in a cookie.
+
+## Style variants (Theme Roller)
+
+APEX lets an application keep several *theme styles* and lets users pick one. In pgapex:
+**Settings → Theme → Theme Roller** (`/builder/apps/:id/theme`) keeps up to 10 named **styles** per
+application. The base colours under Settings → Theme are the *Standard* style; each style can change:
+
+| Property | Values |
+|---|---|
+| Accent colour, header colour | `#rrggbb` (or "as the base"); like the base colours they apply to the light theme, dark mode keeps its own palette |
+| Font | *System* (default), *Humanist sans*, *Geometric sans*, *Serif*, *Rounded*, *Monospace* (font stacks of fonts on the device; nothing is downloaded) |
+| Font size | 14, 15 (default), 16 or 17 px |
+| Corners | Square, 4, 8 (default) or 14 px, for regions, buttons and fields |
+
+*Default style* is what everyone sees; with **Users may choose a style** (APEX: *Enable End Users
+to Choose Theme Style*) the user menu and My account list the styles (*Standard* plus each style).
+A signed-in user's choice is kept per application on the account (`meta.account_style`) and applied
+at the next sign-in; signed out it lasts for the session. A choice is only honoured while the
+application offers it: a deleted style falls back to the default, and a renamed one keeps its users.
+
+The styles are part of the application's definition: they are stored in `meta.app.theme`
+(`"styles"`, `"style"`, `"style_choice"`) and travel with export and import; users' choices
+don't (they belong to the installation, and `pgapex import --replace` keeps them). Only values from
+the fixed lists become CSS, in the page's one nonce'd `<style>`; a style's name is shown as text and
+never reaches the CSS. Regions and buttons can add [template options](04-pages-and-regions.md#template-options).

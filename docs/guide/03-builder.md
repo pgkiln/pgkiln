@@ -366,6 +366,8 @@ register at the provider, and has a *Test discovery* button. See
 - **Theme**: accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu
   (instead of the navigation entries) and as the navigation bar (links in the header), the theme style (automatic, light or dark) and whether users may choose light or dark.
+  **Theme Roller** opens the [style variants](14-globalization.md#style-variants-theme-roller): several
+  saved styles (colours, font, font size, corners), the default one, and whether users may choose.
 - **Globalization**: primary language, translated languages, how the language is chosen, date formats.
 - **Security checklist**: whether the app has its own role, debug mode, debug messages, and pages without
   checksum protection or without authentication.

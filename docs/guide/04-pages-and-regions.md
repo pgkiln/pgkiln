@@ -29,6 +29,39 @@ Region **templates**:
 Every region also has `seq` (order), `condition` (a SQL boolean expression; the region renders
 only when true) and `authz` (an authorization scheme).
 
+### Template options
+
+Like APEX's *Template Options*, regions and buttons have **Template options** (Page Designer, group
+*Appearance*): checkboxes for CSS classes from a fixed list per component type, kept in the
+component's `template_options` column (text[]) and added to its `class`. Only classes from the list
+are written into the page; anything else (an older export, a hand edit) is ignored. The styles are
+in `public/app.css`, and follow the app's [style variant](14-globalization.md#style-variants-theme-roller)
+(accent colour, corners).
+
+| Region option | Class | Effect |
+|---|---|---|
+| Accent top border | `to-accent` | A 3 px top border in the accent colour |
+| Flat | `to-flat` | No shadow |
+| No border or background | `to-borderless` | Transparent, no border or shadow |
+| Compact | `to-compact` | Less padding in header and body |
+| No body padding | `to-no-padding` | The body content touches the frame (tables, maps) |
+| Scroll the body | `to-scroll` | The body is at most 24 rem high and scrolls |
+| Stretch to the row height | `to-stretch` | Regions side by side get the same height |
+| Centre the text | `to-center` | Body text centred |
+| Hide the header | `to-hide-header` | The header is hidden visually but kept for screen readers (standard template) |
+
+| Button option | Class | Effect |
+|---|---|---|
+| Small / Large | `to-small`, `to-large` | Smaller or larger button |
+| Full width | `to-block` | The button takes the full width |
+| Pill | `to-pill` | Rounded ends |
+| Outline | `to-outline` | Transparent with an accent-coloured border and text |
+| Looks like a link | `to-link` | No frame, underlined accent text |
+| Success / Danger | `to-success`, `to-danger` | Green or red button |
+
+In SQL: `update meta.region set template_options = '{to-accent,to-compact}' where id = 12;` The
+database only checks the shape (at most 12 names of lower case letters, digits and `-`).
+
 ## Region types
 
 | Type | Purpose |

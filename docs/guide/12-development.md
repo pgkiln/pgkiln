@@ -73,7 +73,10 @@ src/
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations, branches (page, URL, function returning a URL, another application) and their conditions
-    render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
+    render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
+    styles.ts              Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
+                           style (user choice, default), themeCss() (only hex values and constants reach the CSS)
+    template-options.ts    template options: the fixed CSS class list per region and button, templateClasses() (unknown values ignored)
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts, items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
@@ -86,7 +89,7 @@ src/
     facet-state.ts         facet definitions (checkbox, range, star; exclude, custom range), filters read from the URL, their SQL as query parameters
     smart-filters.ts       smart_filters region: search field, filter chips, suggestions
     display-selector.ts    display_selector region: tabs / select list over the page's regions (app.js makes them ARIA tabs)
-    account.ts             My account (details, own password, preferences)
+    account.ts             My account (details, own password, preferences), the light/dark and style switches (POST …/account/theme, …/account/style)
     locale.ts              language, theme, text messages, translations, number symbols and time zone of a request
     format.ts              date masks; maskedFormatter() applies a column's or item's number or date mask
     files.ts               file items: multipart parsing, temporary files, signed downloads
@@ -140,6 +143,7 @@ src/
     ldap.ts                Users → LDAP directories
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
+    themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     process-jobs.ts        page designer: the Jobs tab of a background chain process
@@ -151,7 +155,7 @@ src/
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
     supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
-  app.css                  theme (light/dark, responsive)
+  app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)
   app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
@@ -193,6 +197,7 @@ test/
                            meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
+  theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page) and template options
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers

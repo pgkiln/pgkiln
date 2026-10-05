@@ -412,6 +412,42 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('style variants and template options: the user menu switch, the CSS, the fit', async () => {
+      const app = await owner.one(`select id, theme from meta.app where alias = 'hr'`);
+      const r = await owner.one(`select r.id, r.template_options from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 1 order by r.seq limit 1`, [app.id]);
+      await owner.query(`update meta.app set theme = theme || $2::jsonb where id = $1`, [app.id, JSON.stringify({
+        styles: [{ name: 'Square serif', accent: '#7a1f5c', font: 'serif', font_size: 'large', radius: 'none' }, { name: 'Round', radius: 'large' }],
+        style_choice: true,
+      })]);
+      await owner.query(`update meta.region set template_options = '{to-accent,to-compact}' where id = $1`, [r.id]);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        await page.goto(`${base}/a/hr/1`);
+        assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()), '8px');
+        await page.click('details.t-user > summary');
+        await check(page, 'app-style-menu', vp);
+        await Promise.all([page.waitForNavigation(), page.click('.style-switch button[value="Square serif"]')]);
+        const look = await page.evaluate((id) => ({
+          radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
+          font: getComputedStyle(document.body).fontFamily,
+          size: getComputedStyle(document.body).fontSize,
+          border: getComputedStyle(document.getElementById(`R${id}`)!).borderTopWidth,
+        }), r.id);
+        assert.deepEqual({ ...look, font: /Charter|Georgia|serif/.test(look.font) }, { radius: '0px', font: true, size: '16px', border: '3px' });
+        await check(page, 'app-style-square-serif', vp);
+        // back to Standard
+        await page.click('details.t-user > summary');
+        await Promise.all([page.waitForNavigation(), page.click('.style-switch button[value=""]')]);
+        assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()), '8px');
+      } finally {
+        await page.context().close();
+        await owner.query(`update meta.app set theme = $2 where id = $1`, [app.id, JSON.stringify(app.theme)]);
+        await owner.query(`update meta.region set template_options = $2 where id = $1`, [r.id, r.template_options]);
+        await owner.query(`delete from meta.account_style where app_id = $1`, [app.id]);
+      }
+    });
+
     test('builder pages fit the screen', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
@@ -431,6 +467,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         automation_action: `/builder/apps/${appId}/shared?c=automation_action-${(await owner.one(`select id from meta.automation_action where app_id = $1 and automation_name = 'Remind managers' and seq = 20`, [appId])).id}`,
         automation_action_new: `/builder/apps/${appId}/shared?new=automation_action&automation=Remind%20managers`,
         settings: `/builder/apps/${appId}/settings`,
+        theme_roller: `/builder/apps/${appId}/theme`,
         activity: `/builder/apps/${appId}/activity`,
         api: `/builder/apps/${appId}/api`,
         search: `/builder/apps/${appId}/search?q=empno`,

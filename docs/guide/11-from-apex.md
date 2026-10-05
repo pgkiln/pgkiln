@@ -50,7 +50,8 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
 | Number format masks (`FML999G999G990D00`) on columns and items | `{"formats": {...}}` on report, grid and cards columns, `{"format_mask": "..."}` on charts and number/display items ([chapter 14](14-globalization.md#number-formats)) |
 | Automatic Time Zone | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
-| Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark* |
+| Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark*; Theme Roller style variants with *Users may choose a style* ([chapter 14](14-globalization.md#style-variants-theme-roller)) |
+| Template Options (regions, buttons) | *Template options* in the Page Designer: CSS classes from a fixed list ([chapter 4](04-pages-and-regions.md#template-options)) |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
 

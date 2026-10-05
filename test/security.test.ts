@@ -4585,3 +4585,107 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     await assert.rejects(runtime.query(`select count(*) from meta.parse_data(convert_to(repeat(E'1\\n', 3), 'UTF8'), p_headers => false, p_max_rows => 2)`), /at most 2/);
   });
 });
+
+describe('sprint 33 item 6: Theme Roller style variants and template options', () => {
+  const styleTag = (body: string) => /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec(body)?.[1] ?? '';
+
+  test('stored style values and names cannot inject CSS or HTML', async () => {
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    const evil = [
+      { name: 'Evil', accent: 'red;}body{display:none', header: '#123456', font: 'serif;}*{color:red', radius: '0;}x{', font_size: '99px' },
+      { name: '</style><script>alert(1)</script>', accent: '#654321' },
+      { name: 'Fine', accent: '#0a0b0c', font: 'mono' },
+    ];
+    await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify({ styles: evil, style: 'Evil', style_choice: true })]);
+    try {
+      const king = await as('king');
+      let body = (await king.get('/a/hr/1')).body;
+      let css = styleTag(body);
+      assert.doesNotMatch(css, /display:none|color:red|x\{|99px|#123456/, 'an invalid style is skipped entirely');
+      assert.doesNotMatch(body, /<script>alert\(1\)/);
+      assert.doesNotMatch(body, /value="&lt;\/style&gt;/, 'an invalid name is not offered');
+      // a forged choice of the invalid style is refused; a valid one works
+      await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: '</style><script>alert(1)</script>', next: '/a/hr/1' });
+      css = styleTag((await king.get('/a/hr/1')).body);
+      assert.doesNotMatch(css, /#654321/);
+      await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: 'Fine', next: '/a/hr/1' });
+      body = (await king.get('/a/hr/1')).body;
+      assert.match(styleTag(body), /--accent:#0a0b0c/);
+      assert.match(styleTag(body), /--font:ui-monospace/);
+    } finally {
+      await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify(before)]);
+      await owner.query('delete from meta.account_style where app_id = $1', [appId]);
+    }
+  });
+
+  test('the style switch needs the CSRF token, stays in the app and only picks the app\'s own styles', async () => {
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    await owner.query(`update meta.app set theme = theme || $2::jsonb where id = $1`, [appId, JSON.stringify({ styles: [{ name: 'Own', accent: '#0a0b0c' }], style_choice: true })]);
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication, theme) values ('sec6-other', 'Other', 'none', $1) returning id`,
+      [JSON.stringify({ styles: [{ name: 'Foreign', accent: '#fe0000' }], style_choice: true })])).id;
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/1');
+      const forged = await king.post('/a/hr/account/style', { __csrf: 'forged', style: 'Own', next: '/a/hr/1' });
+      assert.equal(forged.statusCode, 303);
+      assert.doesNotMatch(styleTag((await king.get('/a/hr/1')).body), /#0a0b0c/, 'forged post ignored');
+      const away = await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: 'Own', next: 'https://evil.example/' });
+      assert.equal(away.headers.location, '/a/hr/1', 'no open redirect');
+      assert.match(styleTag((await king.get('/a/hr/1')).body), /#0a0b0c/);
+      await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: 'Foreign', next: '/a/hr/1' });
+      const css = styleTag((await king.get('/a/hr/1')).body);
+      assert.doesNotMatch(css, /#fe0000/, 'another app\'s style can not be chosen');
+      assert.match(css, /#0a0b0c/);
+      // the account table refuses a malformed name even from the runtime connection
+      await assert.rejects(runtime.query(`insert into meta.account_style (account_id, app_id, style) select id, $1, '}<x' from meta.account where username = 'king'
+                                          on conflict (account_id, app_id) do update set style = excluded.style`, [appId]), /check constraint/);
+      // the runtime can not read or change the apps' definitions through it
+      await assert.rejects(runtime.query(`update meta.app set theme = '{}' where id = $1`, [appId]), /permission denied/);
+    } finally {
+      await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify(before)]);
+      await owner.query('delete from meta.account_style where app_id = $1', [appId]);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('the Theme Roller pages need a developer and the CSRF token; values are checked', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.get(`/builder/apps/${appId}/theme`)).statusCode, 302);
+    assert.equal((await anon.post(`/builder/apps/${appId}/theme/styles`, { __csrf: 'x', name: 'X' })).statusCode, 302);
+    const dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.get(`/builder/apps/${appId}/theme`);
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    try {
+      assert.equal((await dev.post(`/builder/apps/${appId}/theme/styles`, { __csrf: 'forged', name: 'X' })).statusCode, 403);
+      assert.equal((await dev.post(`/builder/apps/${appId}/theme/settings`, { __csrf: 'forged', style_choice: 'true' })).statusCode, 403);
+      for (const bad of <Record<string, string>[]>[
+        { name: '<script>' }, { name: 'x;}' }, { name: 'A', accent: 'red', accent_own: 'true' }, { name: 'A', font: 'Comic Sans' },
+        { name: 'A', font_size: '100px' }, { name: 'A', radius: '__proto__' },
+      ])
+        await dev.submit(`/builder/apps/${appId}/theme/styles`, bad);
+      const theme = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+      assert.deepEqual(theme.styles ?? [], before.styles ?? [], 'nothing invalid saved');
+      assert.equal((await dev.get('/builder/apps/999999999/theme')).statusCode, 404);
+      assert.equal((await dev.get('/builder/apps/x/theme')).statusCode, 404);
+    } finally {
+      await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify(before)]);
+    }
+  });
+
+  test('template options: the database checks the shape, the page keeps only the fixed list', async () => {
+    const r = await owner.one(`select r.id, r.template_options from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 1 order by r.seq limit 1`, [appId]);
+    await assert.rejects(owner.query(`update meta.region set template_options = '{"x\\" onclick=alert(1)"}' where id = $1`, [r.id]), /check constraint/);
+    await assert.rejects(owner.query(`update meta.region set template_options = $2 where id = $1`, [r.id, Array.from({ length: 13 }, (_, i) => `a${i}`)]), /check constraint/);
+    await owner.query(`update meta.region set template_options = '{to-accent,btn-hot,t-header}' where id = $1`, [r.id]);
+    try {
+      const body = (await (await as('king')).get('/a/hr/1')).body;
+      const cls = new RegExp(`<section class="([^"]*)" id="R${r.id}"`).exec(body)?.[1] ?? '';
+      assert.match(cls, / to-accent/);
+      assert.doesNotMatch(cls, /btn-hot|t-header/, 'well-formed but unlisted classes are ignored');
+    } finally {
+      await owner.query(`update meta.region set template_options = $2 where id = $1`, [r.id, r.template_options]);
+    }
+  });
+});

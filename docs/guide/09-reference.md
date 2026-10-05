@@ -200,12 +200,15 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `debug` | boolean | Show database error details to users |
 | `debug_level` | smallint | [Debug messages](06-processing.md#debug-messages): 0 off, 1, 2, 4, 6 or 9 (APEX levels) |
 | `debug_retention_days` | int | Days debug messages are kept (1–90, default 7) |
-| `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top"}` |
+| `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top", "mode": "auto", "user_choice": true, "styles": [{"name": "Ocean", "accent": "#0b7285", "font": "serif", "font_size": "large", "radius": "small"}], "style": "Ocean", "style_choice": true}` ([style variants](14-globalization.md#style-variants-theme-roller)) |
 
 **`account`** (the user directory): `username` (unique, case-insensitive), `display_name`, `email`,
 `password_hash` (bcrypt; NULL = no password), `active`, `created_at`, `last_login_at`.
 
 **`app_access`**: `app_id`, `account_id`, `roles` (text[]); who may use which application.
+
+**`account_style`**: `account_id`, `app_id`, `style` (`''` = Standard); the [style variant](14-globalization.md#style-variants-theme-roller)
+a user chose in an application (installation data: not exported).
 
 **`app_user`**: a *view* over `account` + `app_access` (`id`, `app_id`, `username`, `password_hash`,
 `roles`, `active`, `last_login_at`), kept for compatibility. Inserting creates the account if
@@ -277,13 +280,15 @@ navigation entries and application processes have the same `build_option` column
 | `condition`, `authz` | Visibility |
 | `config` | Attributes per type ([chapter 4](04-pages-and-regions.md)) |
 | `rest_source` | A REST data source the region reads; `source` is then SQL over `rest` ([chapter 19](19-rest-data-sources.md)) |
+| `template_options` | text[]: CSS classes from a fixed list ([template options](04-pages-and-regions.md#template-options)) |
 
 **`item`**: `page_id`, `region_id`, `seq`, `name`, `label`, `type`, `lov`, `source_column`,
 `default_value`, `required`, `help`, `readonly_condition`, `authz`, `config` ([chapter 5](05-items.md)).
 
 **`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da` /
 `document` / `menu`), `target_page`, `target_items` (jsonb), `condition`, `authz`, `hot`, `confirm`,
-`menu` (jsonb, for `menu`), `badge`, `badge_query` ([chapter 6](06-processing.md)).
+`menu` (jsonb, for `menu`), `badge`, `badge_query` ([chapter 6](06-processing.md)), `template_options`
+(text[], [template options](04-pages-and-regions.md#template-options)).
 
 **`dynamic_action`**: `page_id`, `seq`, `name`, `event`, `trigger_element`, `condition_type`,
 `condition_value`, `action`, `affected_items`, `affected_region_id`, `code`, `items_to_submit`,
@@ -404,7 +409,7 @@ Usable in navigation entries and cards (`icon` column):
 | any page `?doc=NAME` | Download a document template filled with the page's values |
 | `POST /a/:alias/account/devices` | Sign out on all devices ("Keep me signed in") |
 | `POST /a/:alias/password` | Change an expired password while signing in |
-| `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme` | My account, own password, the light/dark switch |
+| `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme`, `POST /a/:alias/account/style` | My account, own password, the light/dark switch, the [style variant](14-globalization.md#style-variants-theme-roller) switch |
 | `POST /a/:alias/tz` | The browser's time zone for the session (automatic time zone; sent by `app.js`, CSRF token required) |
 | any page `?lang=xx` | Switch the language for the session |
 | `/builder/...` | Builder |
