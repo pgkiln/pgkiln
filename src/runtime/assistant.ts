@@ -301,13 +301,33 @@ export function formatAnswer(text: string): Raw {
       .replace(/`([^`\n]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   const out: string[] = [];
-  for (const block of text.replace(/\r\n?/g, '\n').split(/\n{2,}/)) {
-    const lines = block.split('\n').filter((l) => l.trim());
-    if (!lines.length) continue;
-    if (lines.every((l) => /^\s*[-*•]\s+/.test(l))) out.push(`<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*•]\s+/, ''))}</li>`).join('')}</ul>`);
-    else if (lines.every((l) => /^\s*\d+[.)]\s+/.test(l))) out.push(`<ol>${lines.map((l) => `<li>${inline(l.replace(/^\s*\d+[.)]\s+/, ''))}</li>`).join('')}</ol>`);
-    else out.push(`<p>${lines.map((l) => inline(l.replace(/^#{1,6}\s+/, ''))).join('<br>')}</p>`);
+  let open: 'p' | 'ul' | 'ol' | null = null;
+  let para: string[] = [];
+  const close = () => {
+    if (open === 'p') out.push(`<p>${para.join('<br>')}</p>`);
+    else if (open) out.push(`</${open}>`);
+    open = null;
+    para = [];
+  };
+  for (const line of text.replace(/\r\n?/g, '\n').split('\n')) {
+    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
+    const numbered = bullet ? null : /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (!line.trim()) close();
+    else if (bullet || numbered) {
+      const kind = bullet ? 'ul' : 'ol';
+      if (open !== kind) {
+        close();
+        out.push(`<${kind}>`);
+        open = kind;
+      }
+      out.push(`<li>${inline((bullet ?? numbered)![1])}</li>`);
+    } else {
+      if (open !== 'p') close();
+      open = 'p';
+      para.push(inline(line.replace(/^#{1,6}\s+/, '')));
+    }
   }
+  close();
   return raw(out.join(''));
 }
 
