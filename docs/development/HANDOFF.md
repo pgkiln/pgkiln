@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05. Sprint 32 is in progress on `sprint-32` (see its section). Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
+Last updated: 2026-10-05. Sprint 32 is in progress on `sprint-32` (items 0–3 done, 4–5 to do, not merged; see its section). Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
 
 ## Project in one paragraph
 
@@ -1157,11 +1157,21 @@ can be merged after any item:
 | 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | **done** (bcfec61..14943e4) |
 | 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045 (unused), `hr_34` | **done** (ca079be..c6066d2) |
 | 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | **done** (40da186, 00d6d40, a972bb6) |
-| 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | **in progress** (agent launched 2026-10-05; check `git status` for uncommitted work) |
+| 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | to do (an agent started, the owner stopped it before it changed anything) |
 | 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | to do |
 
 Later CI note: `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres
 service, Playwright deps).
+
+**State at the handoff (2026-10-05, owner: "stop and create a handoff"):** items 0–3 are done and pushed;
+`sprint-32` is clean and equal to `origin/sprint-32`; no agent and no dev server is running. Items 4 and 5 are not
+started (no code, migrations 045–048 unused). `main` CI is green (run 37286030252). Nothing of sprint 32 is merged
+into `main` yet; the branch is mergeable as it is (full suite last run by an agent after item 3: 760 pass / 8 skip,
+e2e 90/90). To continue: launch one agent with "Read `docs/development/sprint-32-agent-rules.md` and follow it.
+Item 4 of the Sprint 32 table in HANDOFF.md." (the item 4 row above has the scope: cards, calendar, chart, map,
+faceted search, form only, master-detail; defaults from the catalog; functional + security tests), record its
+report below, then item 5, then release 0.24.0 as described under "If a session ends". The owner may also choose to
+release 0.24.0 with items 1–3 only.
 
 **Coordinator already did (so a successor doesn't redo it):** parity rows Automations (✅) and Workflow (invoke API)
 plus the summary counts (80/25/10/6) and the "Last reviewed" line; CHANGELOG `[Unreleased]` for items 0–3; Data Workshop row ✅ (counts 81/24/10/6); `.env.example` `UNLOAD_STATEMENT_TIMEOUT`. Still to do
