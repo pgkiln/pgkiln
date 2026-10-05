@@ -51,8 +51,8 @@ insert into meta.item (page_id, region_id, seq, name, label, type, help)
 select p.id, r.id, i.seq, i.name, i.label, i.type, i.help
   from (values
   (10, 'Parse a file', 'P35_TEXT', 'File contents', 'textarea', 'CSV, TSV or JSON text.'),
-  (10, 'Call a web service', 'P35_REQUEST', 'Request', 'hidden', null),
-  (20, 'Call a web service', 'P35_STATUS', 'Result', 'display', 'The status of the request: the HTTP status code, or error with the reason.')
+  (20, 'Call a web service', 'P35_REQUEST', 'Request', 'hidden', null),
+  (30, 'Call a web service', 'P35_STATUS', 'Result', 'display', 'The status of the request: the HTTP status code, or error with the reason.')
   ) as i (seq, region, name, label, type, help)
   join meta.page p on p.page_no = 35 join meta.app a on a.id = p.app_id and a.alias = 'hr'
   join meta.region r on r.page_id = p.id and r.title = i.region;
@@ -61,7 +61,7 @@ insert into meta.button (page_id, region_id, seq, name, label, action, hot)
 select p.id, r.id, b.seq, b.name, b.label, 'submit', b.hot
   from (values
   (10, 'Parse a file', 'PARSE', 'Parse', true),
-  (10, 'Call a web service', 'FETCH', 'Fetch the contacts', false)
+  (20, 'Call a web service', 'FETCH', 'Fetch the contacts', false)
   ) as b (seq, region, name, label, hot)
   join meta.page p on p.page_no = 35 join meta.app a on a.id = p.app_id and a.alias = 'hr'
   join meta.region r on r.page_id = p.id and r.title = b.region;
