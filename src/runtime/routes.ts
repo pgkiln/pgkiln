@@ -19,7 +19,8 @@ import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './a
 import { bindValues, publicError, stripSemicolon, toState, writeOut, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
-import { comboMultiple, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
+import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
+import { parseNumber } from '../numformat.ts';
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
@@ -30,7 +31,7 @@ import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
 import { pwaHead } from './pwa.ts';
-import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
+import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -97,12 +98,15 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   await destroySession(reply, oldSession, base);
   const s = await createSession(reply, a.id, base, username, roles);
   logActivity({ appId: a.id, username, event: 'login', ip: clientIp(req), detail });
-  // the account's preferences: light/dark and language
-  const pref = await runtime.one<{ theme_pref: string; language: string | null }>(
-    'select theme_pref, language from meta.account where lower(username) = lower($1)', [username]);
+  // the browser's time zone (sent before signing in) stays with the new session
+  if (typeof oldSession.state.__TZ === 'string') s.state.__TZ = oldSession.state.__TZ;
+  // the account's preferences: light/dark, language and time zone
+  const pref = await runtime.one<{ theme_pref: string; language: string | null; time_zone: string | null }>(
+    'select theme_pref, language, time_zone from meta.account where lower(username) = lower($1)', [username]);
   if (pref) {
     s.state.__THEME = pref.theme_pref;
     if (pref.language) s.state.__LANG = pref.language;
+    if (pref.time_zone) s.state.__TZ_PREF = pref.time_zone;
     if (a.theme?.user_choice !== false) reply.setCookie(THEME_COOKIE, pref.theme_pref, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
   }
   await saveState(s);
@@ -177,6 +181,7 @@ export const txContext = (ctx: PageContext) => ({
   appUser: ctx.user,
   sessionId: ctx.session.id,
   lang: ctx.locale.lang,
+  timeZone: ctx.locale.timeZone,
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */
@@ -297,7 +302,11 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
     else if (item.type === 'markdown') ctx.session.state[item.name] = posted ? String(posted).replace(/\r\n?/g, '\n') : null;
     else if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
     else if (item.type === 'password' && !posted) continue;
-    else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
+    else if (itemMask(item) && posted !== undefined && posted !== '') {
+      // "1.234,50 €" → "1234.5"; text that isn't a number is kept as typed, and validate() reports it
+      const parsed = parseNumber(String(posted), itemMask(item), ctx.locale.numbers);
+      ctx.session.state[item.name] = parsed === null ? String(posted) : parsed || null;
+    } else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
   }
 }
 
@@ -740,6 +749,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
             ? html`<form method="post" class="login-form">
                 <input type="hidden" name="__csrf" value="${session.csrf_token}">
                 <input type="hidden" name="next" value="${next}">
+                ${app.time_zone_auto ? html`<input type="hidden" name="__tz" value="">` : ''}
                 <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
                 <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
                 ${app.remember_me_days ? html`<label class="check"><input type="checkbox" name="remember" value="true"> ${t('login.remember', { days: app.remember_me_days })}</label>` : ''}
@@ -793,6 +803,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ip = clientIp(req);
     const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
     if (req.body?.__csrf !== session.csrf_token) return fail(locale.t('login.expired_session'), 403), null;
+    // automatic time zone: app.js filled in the browser's (signIn() keeps it for the new session)
+    if (a.time_zone_auto) {
+      const zone = await validTimeZone(req.body?.__tz);
+      if (zone) session.state.__TZ = zone;
+    }
     if (a.authentication === 'header') return fail(locale.t('login.method_unavailable'), 403), null;
     if (!a.local_login && a.authentication !== 'database') return fail(locale.t('login.password_disabled'), 403), null;
     // a NUL byte can't be a user name (and PostgreSQL text refuses it)

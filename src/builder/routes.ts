@@ -14,6 +14,7 @@ import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash,
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
+import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -374,6 +375,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('date_format', 'Date format', a.date_format, { placeholder: 'e.g. DD-MM-YYYY (empty: per language)', help: 'Masks: YYYY YY MM MON MONTH DD DY DAY HH24 HH MI SS AM' })}
               ${input('timestamp_format', 'Date and time format', a.timestamp_format, { placeholder: 'e.g. DD-MM-YYYY HH24:MI' })}
             </div>
+            ${await timeZoneSettings(a)}
             <div class="buttons"><button class="btn btn-hot">Save settings</button></div>
           </form>
           <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
@@ -427,6 +429,7 @@ export async function builderRoutes(app: FastifyInstance) {
          ((roles) => (roles.length ? roles : null))(parseRoleList(b.db_auth_roles)),
          validRoleName(b.db_auth_member_of)],
       );
+      await saveTimeZoneSettings(req.params.id, b);
       flash(s, 'Settings saved.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');

@@ -1033,6 +1033,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .u-m0 { margin: 0 !important; }
 .u-mwnone { max-width: none !important; }
 .u-mw6 { max-width: 6rem !important; }
+.u-mw10 { max-width: 10rem !important; }
 .u-inline { display: inline !important; }
 .u-selfend { align-self: end !important; }
 .u-inherit { color: inherit !important; }

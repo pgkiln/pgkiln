@@ -32,6 +32,8 @@ src/
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
+  i18n/                    de.ts, fr.ts, es.ts: the built-in texts in German, French and Spanish
+  numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
   xlsx.ts                  Excel writer for report downloads (typed cells, streamed through fflate's Zip)
@@ -66,8 +68,8 @@ src/
     smart-filters.ts       smart_filters region: search field, filter chips, suggestions
     display-selector.ts    display_selector region: tabs / select list over the page's regions (app.js makes them ARIA tabs)
     account.ts             My account (details, own password, preferences)
-    locale.ts              language, theme, text messages and translations of a request
-    format.ts              date masks
+    locale.ts              language, theme, text messages, translations, number symbols and time zone of a request
+    format.ts              date masks; maskedFormatter() applies a column's or item's number or date mask
     files.ts               file items: multipart parsing, temporary files, signed downloads
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
@@ -125,6 +127,8 @@ test/
   api.test.ts              REST API: SQL as the API role; HTTP tests skip without PostgREST
   accounts.test.ts         own password, expiry, admin reset, preferences
   i18n.test.ts             languages, translations, text messages, date masks, XLIFF/CSV
+  numformat.test.ts        number format masks: every element, rounding, parsing, separators
+  globalization.test.ts    masks on HR page 29, time zones, the de/fr/es texts
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
@@ -144,11 +148,12 @@ test/
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
+  e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
 ```
 
 ## Principles
 
-- **User-facing texts go through the translator**: `ctx.locale.t('key')` for pgapex's own texts (add the key to `en` and `nl` in `src/i18n.ts`; TypeScript checks that `nl` has every key), `ctx.locale.tr(text)` for texts derived from application metadata.
+- **User-facing texts go through the translator**: `ctx.locale.t('key')` for pgapex's own texts (add the key to `en` and `nl` in `src/i18n.ts` and to `src/i18n/de.ts`, `fr.ts`, `es.ts`; TypeScript checks that every language has every key), `ctx.locale.tr(text)` for texts derived from application metadata.
 
 1. **Metadata first.** A feature is a column or row in `meta.*`, rendered by the runtime, editable
    in the builder, included in export/import and usable from SQL.

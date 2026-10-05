@@ -7,7 +7,7 @@ import type { Button, Process, Region } from '../metadata.ts';
 import { checksumValid, urlChecksum } from '../security.ts';
 import { publicError, toState, type PageContext } from './context.ts';
 import { lovOptions, type LovOption } from './items.ts';
-import { buildSql, cell, headingOf, key, pageInfo, pagerNav, regionUrl, reportState, visibleColumns } from './report.ts';
+import { buildSql, cell, columnFormats, headingOf, key, pageInfo, pagerNav, regionUrl, reportState, visibleColumns } from './report.ts';
 
 // Interactive grid: an editable report on one table (APEX's Interactive
 // Grid). The region's SELECT must include the table's primary key column.
@@ -127,6 +127,8 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     (col) => html`<th scope="col" class="${NUMERIC.has(col.typeOid) ? 'num' : null}">${headingOf(r, col.name, ctx.locale.tr)}${col.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}</th>`,
   );
 
+  // read-only cells show their column's format mask; editable cells keep the raw value
+  const fmtOf = columnFormats(ctx, r);
   const rows = info.rows.map((row, i) => {
     const pk = toState(row[pkIdx]) ?? '';
     const pi = postedByPk.get(pk);
@@ -135,7 +137,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       const dbValue = toState(row[col.idx]) ?? '';
       orig[ci] = dbValue;
       const label = headingOf(r, col.name, ctx.locale.tr);
-      if (!col.editable) return html`<td class="${NUMERIC.has(col.typeOid) ? 'num' : null}" data-label="${label}">${cell(row[col.idx], col.typeOid, ctx.locale.format)}</td>`;
+      if (!col.editable) return html`<td class="${NUMERIC.has(col.typeOid) ? 'num' : null}" data-label="${label}">${cell(row[col.idx], col.typeOid, fmtOf(col.name))}</td>`;
       const name = `${g}_${i}_c${ci}`;
       const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${ci}`) ?? dbValue)) : dbValue;
       return html`<td data-label="${label}">${control(col, name, value, `${label}, row ${i + 1}`)}</td>`;

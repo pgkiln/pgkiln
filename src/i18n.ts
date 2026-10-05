@@ -1,7 +1,12 @@
 // pgapex's own user-facing texts (login, account pages, reports, messages)
-// in several languages, like APEX's translated runtime messages. An
+// in several languages, like APEX's translated runtime messages (en and nl
+// here, de, fr and es in src/i18n/). An
 // application can override any of them with a text message of the same
 // name (Shared Components → Text messages), as in APEX.
+
+import { de } from './i18n/de.ts';
+import { es } from './i18n/es.ts';
+import { fr } from './i18n/fr.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -55,6 +60,12 @@ const en = {
   'theme.light': 'Light',
   'theme.dark': 'Dark',
   'language.label': 'Language',
+  'timezone.label': 'Time zone',
+  'timezone.auto': 'Automatic (the browser\'s time zone)',
+  'timezone.auto_browser': 'Automatic (the browser\'s: {zone})',
+  'timezone.current': 'Dates and times are shown in {zone}.',
+  'timezone.server': 'the server\'s time zone',
+  'timezone.invalid': 'Choose a time zone from the list.',
   'common.save': 'Save',
   'common.cancel': 'Cancel',
   'common.back': 'Go back',
@@ -72,6 +83,7 @@ const en = {
   'error.required': '{label} is required.',
   'error.location': '{label}: enter a position as latitude,longitude, e.g. 52.01160,4.35710.',
   'error.not_number': '{label} must be a number.',
+  'error.number_format': '{label} must be a number, e.g. {example}.',
   'error.not_date': '{label} must be a valid date.',
   'error.reference': 'An unexpected error occurred (reference #{ref}).',
   'dialog.done': 'Done.',
@@ -374,6 +386,7 @@ const en = {
   // date formats (masks, see src/runtime/format.ts); empty = as PostgreSQL sends it (ISO)
   'format.date': '',
   'format.timestamp': '',
+  'format.currency': 'USD',
   'report.edit': 'Edit',
   'report.clear_search': 'Clear search',
   'report.search_chip': 'Search',
@@ -523,6 +536,12 @@ const nl: Record<MessageKey, string> = {
   'theme.light': 'Licht',
   'theme.dark': 'Donker',
   'language.label': 'Taal',
+  'timezone.label': 'Tijdzone',
+  'timezone.auto': 'Automatisch (de tijdzone van de browser)',
+  'timezone.auto_browser': 'Automatisch (van de browser: {zone})',
+  'timezone.current': 'Datums en tijden worden getoond in {zone}.',
+  'timezone.server': 'de tijdzone van de server',
+  'timezone.invalid': 'Kies een tijdzone uit de lijst.',
   'common.save': 'Opslaan',
   'common.cancel': 'Annuleren',
   'common.back': 'Terug',
@@ -539,6 +558,7 @@ const nl: Record<MessageKey, string> = {
   'error.required': '{label} is verplicht.',
   'error.location': '{label}: geef een positie als breedtegraad,lengtegraad, bijv. 52.01160,4.35710.',
   'error.not_number': '{label} moet een getal zijn.',
+  'error.number_format': '{label} moet een getal zijn, bijvoorbeeld {example}.',
   'error.not_date': '{label} moet een geldige datum zijn.',
   'error.reference': 'Er is een onverwachte fout opgetreden (referentie #{ref}).',
   'dialog.done': 'Klaar.',
@@ -838,6 +858,7 @@ const nl: Record<MessageKey, string> = {
   'load.failed': 'Er is niets geladen: {failed} rij(en) bevatten fouten (rij: fout): {errors}',
   'format.date': 'DD-MM-YYYY',
   'format.timestamp': 'DD-MM-YYYY HH24:MI',
+  'format.currency': 'EUR',
   'report.edit': 'Bewerken',
   'report.clear_search': 'Zoekopdracht wissen',
   'report.search_chip': 'Zoeken',
@@ -939,10 +960,13 @@ const nl: Record<MessageKey, string> = {
   'login.no_access_title': 'Geen toegang',
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es };
+
+/** pgapex's own texts in a built-in language (undefined: not built in). */
+export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {

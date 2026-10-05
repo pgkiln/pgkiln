@@ -79,6 +79,7 @@ Attributes (`config`):
 | `size` | `qrcode`: width and height in pixels (64–1024; default 4 per module) |
 | `show_value` | `qrcode`: `true` also prints the text under the code |
 | `reveal` | `password`: `true` adds a *Show*/*Hide* button (shown only when JavaScript runs) |
+| `format_mask` | `number`, `display`: a number format mask such as `999G999G990D00`; the value is shown in the language's notation and read back into a plain number on submit (see [number formats](14-globalization.md#number-formats)) |
 
 ## Rich text and Markdown
 

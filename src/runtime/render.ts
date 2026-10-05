@@ -228,6 +228,13 @@ const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k
 /** The current page's URL (for returning after a preference change). */
 const here = (ctx: PageContext) => `${ctx.base}/${ctx.page.page_no}`;
 
+/**
+ * Automatic time zone: until the session knows the browser's time zone, app.js
+ * sends it (POST …/tz) and shows the page again when the zone changes.
+ */
+const timeZoneMeta = (ctx: PageContext) =>
+  ctx.app.time_zone_auto && typeof ctx.session.state.__TZ !== 'string' ? { tz: `${ctx.base}/tz` } : {};
+
 export async function renderPage(ctx: PageContext) {
   const t = ctx.locale.t;
   const hidden = initiallyHidden(ctx);
@@ -267,7 +274,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}
     </div>
     <script type="application/json" id="pgapex-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx) }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), ...timeZoneMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }

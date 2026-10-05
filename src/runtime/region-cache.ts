@@ -9,7 +9,7 @@ import { bindValues, type PageContext } from './context.ts';
 //
 // config.cache = {"scope": "user" | "session" | "all", "seconds": 300} keeps a
 // region's rendered HTML in this server's memory. The key always holds the
-// application, page, region definition, language, the user's roles, the
+// application, page, region definition, language, time zone, the user's roles, the
 // request's query string, the values of the items and built-in substitutions
 // the region refers to and of its own items, and, per scope, the user name or
 // the session; so a cached region never crosses applications, and never
@@ -83,7 +83,7 @@ export function cacheKey(ctx: PageContext, r: Region, setting: CacheSetting) {
     : setting.scope === 'user' ? ['user', ctx.user]
     : ['all', ctx.user === 'nobody'];
   const parts = [
-    ctx.app.id, ctx.page.page_no, r, ctx.locale.lang, ctx.dialog, who, [...ctx.roles].sort(),
+    ctx.app.id, ctx.page.page_no, r, ctx.locale.lang, ctx.locale.timeZone, ctx.dialog, who, [...ctx.roles].sort(),
     [...(ctx.vis?.regions ?? [])].sort((a, b) => a - b), params, used, own,
   ];
   return `${ctx.app.id}:${ctx.page.page_no}:${r.id}:${createHash('sha256').update(JSON.stringify(parts)).digest('base64url')}`;

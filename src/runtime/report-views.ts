@@ -5,7 +5,7 @@ import { html, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { renderChartBody, type ChartKind } from './charts.ts';
 import { publicError, type PageContext } from './context.ts';
-import { AGGREGATES, cell, filtered, headingOf, isNumeric, q, type ReportState } from './report.ts';
+import { aggregateFormat, AGGREGATES, cell, columnFormats, filtered, headingOf, isNumeric, q, type ReportState } from './report.ts';
 
 // The other views of an interactive report (APEX: Group By, Pivot, Chart),
 // chosen with ?r<id>_v=group|pivot|chart. Each runs one aggregate query
@@ -52,14 +52,16 @@ async function groupBy(ctx: PageContext, r: Region, st: ReportState): Promise<Ra
     }),
   );
   const rows = res.rows.slice(0, MAX_GROUPS);
-  const fmt = ctx.locale.format;
+  // group columns and sums, averages, minimums and maximums keep their column's format mask
+  const fmtOf = columnFormats(ctx, r);
+  const fmts = [...groupCols.map((col) => fmtOf(col)), ctx.locale.format, ...fns.map((f) => aggregateFormat(f.fn, f.column, fmtOf, ctx.locale.format))];
   const num = (i: number) => isNumeric(res.fields[i].dataTypeID);
   const heads = [...groupCols.map((col) => headingOf(r, col, ctx.locale.tr)), ...measures.map((m) => m.label)];
   return html`<div class="table-wrap"><table class="report report-reflow report-group">
       <caption class="sr-only">${t('report.view_group')}</caption>
       <thead><tr>${heads.map((h, i) => html`<th scope="col" class="${num(i) ? 'num' : null}">${h}</th>`)}</tr></thead>
       <tbody>${rows.length
-        ? rows.map((row) => html`<tr>${row.map((v, i) => html`<td class="${num(i) ? 'num' : null}" data-label="${heads[i]}">${cell(v, res.fields[i].dataTypeID, fmt) || (i < groupCols.length ? '—' : '')}</td>`)}</tr>`)
+        ? rows.map((row) => html`<tr>${row.map((v, i) => html`<td class="${num(i) ? 'num' : null}" data-label="${heads[i]}">${cell(v, res.fields[i].dataTypeID, fmts[i]) || (i < groupCols.length ? '—' : '')}</td>`)}</tr>`)
         : html`<tr><td colspan="${heads.length}" class="empty">${r.config.empty ?? t('report.no_data')}</td></tr>`}</tbody>
     </table></div>
     ${res.rows.length > MAX_GROUPS ? notice(t('report.view_truncated', { rows: MAX_GROUPS })) : ''}`;
@@ -91,7 +93,9 @@ async function pivot(ctx: PageContext, r: Region, st: ReportState): Promise<Raw>
     }),
   );
   const rows = res.rows.slice(0, MAX_GROUPS);
-  const fmt = ctx.locale.format;
+  const fmtOf = columnFormats(ctx, r);
+  const rowFmt = fmtOf(pv.row);
+  const valueFmt = aggregateFormat(pv.fn, pv.value, fmtOf, ctx.locale.format);
   const heads = [headingOf(r, pv.row, ctx.locale.tr), ...shown.map((v) => v ?? '—'), t('report.total')];
   const num = (i: number) => i > 0 && isNumeric(res.fields[i].dataTypeID);
   return html`<p class="muted view-note">${t(`agg.${pv.fn}`)}: ${headingOf(r, pv.value, ctx.locale.tr)} · ${headingOf(r, pv.column, ctx.locale.tr)}</p>
@@ -100,7 +104,7 @@ async function pivot(ctx: PageContext, r: Region, st: ReportState): Promise<Raw>
       <thead><tr>${heads.map((h, i) => html`<th scope="col" class="${i > 0 ? 'num' : null}">${h}</th>`)}</tr></thead>
       <tbody>${rows.length
         ? rows.map((row) => html`<tr>${row.map((v, i) =>
-            i === 0 ? html`<th scope="row">${cell(v, res.fields[0].dataTypeID, fmt) || '—'}</th>` : html`<td class="${num(i) ? 'num' : null}">${cell(v, res.fields[i].dataTypeID, fmt)}</td>`)}</tr>`)
+            i === 0 ? html`<th scope="row">${cell(v, res.fields[0].dataTypeID, rowFmt) || '—'}</th>` : html`<td class="${num(i) ? 'num' : null}">${cell(v, res.fields[i].dataTypeID, valueFmt)}</td>`)}</tr>`)
         : html`<tr><td colspan="${heads.length}" class="empty">${r.config.empty ?? t('report.no_data')}</td></tr>`}</tbody>
     </table></div>
     ${values.length > MAX_PIVOT_VALUES ? notice(t('report.pivot_truncated', { values: MAX_PIVOT_VALUES })) : ''}
