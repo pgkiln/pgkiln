@@ -4495,7 +4495,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     // a committed request of another application: not taken, not finished, not readable
     const id = (await asApp(other, (q) => q(`select meta.web_request('https://api.example.com/x') as id`), null))[0].id;
     const r = await asApp(appId, async (q) => ({
-      taken: await q(`select set_config('pgapex.web_pending', '1', true); select * from meta.web_request_take(20)`),
+      taken: await q(`select set_config('pgapex.web_pending', '1', true)`).then(() => q('select * from meta.web_request_take(20)')),
       response: (await q('select meta.web_response($1) as r, meta.web_response_blob($1) as b', [id]))[0],
     }));
     assert.deepEqual(r.taken, []);

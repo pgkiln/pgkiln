@@ -244,6 +244,33 @@ describe('meta.web_request: queued from SQL, made by the server', () => {
   });
 });
 
+describe('HR example page 35: parse and fetch', () => {
+  test('the sample file is parsed in SQL; Fetch calls the sample CRM and the next process reads the response', async () => {
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const publicUrl = process.env.PUBLIC_URL;
+    process.env.PUBLIC_URL = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+    try {
+      const b = new Browser(app);
+      await b.login('king', 'king');
+      const page = await b.get('/a/hr/35');
+      assert.equal(page.statusCode, 200);
+      assert.match(page.body, /hire_date/);
+      assert.match(page.body, />date</);
+      assert.match(page.body, /Hopper; Grace/);
+      assert.doesNotMatch(page.body, /alert-error/);
+      const res = await b.submit('/a/hr/35', { __request: 'FETCH', P35_TEXT: 'a,b\n1,2' });
+      assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+      const after = await b.get(res.headers.location as string);
+      assert.match(after.body, /HTTP 200/);
+      const names = (await owner.query('select name from hr.crm_contact order by id limit 2')).rows.map((r) => r.name);
+      for (const n of names) assert.ok(after.body.includes(n), n);
+    } finally {
+      if (publicUrl === undefined) delete process.env.PUBLIC_URL;
+      else process.env.PUBLIC_URL = publicUrl;
+    }
+  });
+});
+
 describe('meta.parse_data: CSV and JSON in SQL, like the data loader', () => {
   const sql = async (content: string | Buffer, opts: { file?: string; headers?: boolean } = {}) => {
     const data = typeof content === 'string' ? Buffer.from(content) : content;

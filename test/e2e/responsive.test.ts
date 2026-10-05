@@ -289,6 +289,29 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('parse and fetch (page 35): the parsed file and the response of a web request from SQL', async () => {
+      const env = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS, url: process.env.PUBLIC_URL };
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+      process.env.PUBLIC_URL = base;
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        const res = await page.goto(`${base}/a/hr/35`);
+        assert.equal(res?.status(), 200);
+        assert.ok((await page.locator('table.report td, .report-reflow td').filter({ hasText: 'hire_date' }).count()) >= 1, 'the columns of the sample file');
+        await Promise.all([page.waitForNavigation(), page.click('button[data-button="FETCH"]')]);
+        assert.match(await page.locator('body').innerText(), /HTTP 200/);
+        assert.equal(await page.locator('.alert-error').count(), 0);
+        await check(page, 'app-35-fetched', vp);
+      } finally {
+        for (const [k, v] of [['PGAPEX_REST_ALLOWED_HOSTS', env.allowed], ['PGAPEX_REST_PRIVATE_HOSTS', env.priv], ['PUBLIC_URL', env.url]] as const)
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        await page.context().close();
+      }
+    });
+
     test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
