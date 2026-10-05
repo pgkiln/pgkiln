@@ -21,6 +21,9 @@ const NOT_EXPORTED = new Set([
   'process_job', // background runs of chain processes: data of this installation
   'builder_lock', // page and application locks of this installation's developers
   'dev_comment', // developer comments: builder notes of this installation
+  'debug_view', // debug messages: requests recorded by this installation
+  'web_request_log', // web requests queued from SQL and their responses (kept 24 hours)
+  'account_style', // the style variant each user chose (installation data, like accounts)
 ]);
 
 /** Where each exported table appears in the document. */
@@ -141,6 +144,28 @@ describe('application export', () => {
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_old_format') as id`, [JSON.stringify(doc)])).id;
     try {
       assert.ok((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [id])).n > 5);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [id]);
+    }
+  });
+
+  test('an export made before 050–053 (v0.24.0) still imports with the column defaults', async () => {
+    const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
+    delete doc.app.debug_level; // 051
+    delete doc.app.debug_retention_days;
+    for (const p of doc.pages) for (const c of [...p.regions, ...p.buttons]) delete c.template_options; // 053
+    const restKeys = ['key_columns', 'operations', 'sync_table', 'sync_mode', 'sync_delete', 'sync_schedule', 'sync_time_zone', 'sync_enabled']; // 050
+    for (const s of doc.rest_sources ?? []) for (const k of restKeys) delete s[k];
+    for (const c of doc.web_credentials ?? []) for (const k of ['grant_type', 'oauth_username']) delete c[k];
+    const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_v024') as id`, [JSON.stringify(doc)])).id;
+    try {
+      const app = await owner.one('select debug_level, debug_retention_days from meta.app where id = $1', [id]);
+      assert.deepEqual(app, { debug_level: 0, debug_retention_days: 7 });
+      const opts = await owner.one(
+        `select count(*)::int as n from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.template_options <> '{}'`,
+        [id],
+      );
+      assert.equal(opts.n, 0);
     } finally {
       await owner.query('delete from meta.app where id = $1', [id]);
     }

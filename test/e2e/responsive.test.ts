@@ -233,6 +233,85 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('project plan (page 32): Gantt bars and dependencies line up with their rows; pyramid and polar draw', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      const res = await page.goto(`${base}/a/hr/32`);
+      assert.equal(res?.status(), 200);
+      const g = await page.evaluate(() => {
+        const chart = document.querySelector('.chart-gantt')!;
+        const labels = [...chart.querySelectorAll('.gantt-labels li')].map((li) => li.getBoundingClientRect());
+        const lanes = [...chart.querySelectorAll('.gantt-lane')].map((l) => l.getBoundingClientRect());
+        const bar = chart.querySelector('.gantt-bar')!.getBoundingClientRect();
+        const deps = chart.querySelector('.gantt-deps')!.getBoundingClientRect();
+        const plot = chart.querySelector('.gantt-plot')!.getBoundingClientRect();
+        return { offsets: labels.map((l, i) => Math.abs(l.top - lanes[i].top)), bar: bar.width, depsH: deps.height, plotH: plot.height };
+      });
+      assert.ok(g.offsets.every((d) => d < 1), `labels and lanes share their rows: ${g.offsets}`);
+      assert.ok(g.bar > 4, 'a bar has a width');
+      assert.ok(Math.abs(g.depsH - g.plotH) < 1, 'the dependency layer covers the rows');
+      assert.ok((await page.locator('.chart-pyramid .pyramid-seg').count()) >= 3);
+      assert.ok((await page.locator('.chart-polar .polar-sector').count()) >= 3);
+      await page.locator('.chart-gantt .gantt-bar').first().hover();
+      await check(page, 'app-32-charts', vp);
+      await page.context().close();
+    });
+
+    test('contacts (page 34): a grid and a form on a REST data source read and write the service', async () => {
+      const env = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS };
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+      const url = (await owner.one(`select s.url from meta.rest_source s join meta.app a on a.id = s.app_id where a.alias = 'hr' and s.name = 'CRM_CONTACTS'`)).url;
+      await owner.query(`update meta.rest_source s set url = $1 from meta.app a where a.id = s.app_id and a.alias = 'hr' and s.name = 'CRM_CONTACTS'`, [`${base}/a/hr/rest/crm/contacts`]);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        const res = await page.goto(`${base}/a/hr/34`);
+        assert.equal(res?.status(), 200);
+        assert.equal(await page.locator('.region-grid .alert-error').count(), 0);
+        assert.ok((await page.locator('.region-grid tr[data-row]').count()) >= 4, 'the contacts of the service');
+        await check(page, 'app-34-rest-grid', vp);
+        // the form: a new contact through the service's POST, then its row is fetched
+        const name = `E2E ${vp}`;
+        await page.fill('#P34_NAME', name);
+        await page.fill('#P34_COMPANY', 'Playwright');
+        await Promise.all([page.waitForNavigation(), page.click('button[data-button="CREATE"]')]);
+        assert.equal(await page.inputValue('#P34_NAME'), name);
+        assert.ok(await owner.one(`select 1 from hr.crm_contact where name = $1`, [name]));
+        await check(page, 'app-34-rest-form', vp);
+      } finally {
+        await owner.query(`delete from hr.crm_contact where name like 'E2E %'`);
+        await owner.query(`update meta.rest_source s set url = $1 from meta.app a where a.id = s.app_id and a.alias = 'hr' and s.name = 'CRM_CONTACTS'`, [url]);
+        for (const [k, v] of [['PGAPEX_REST_ALLOWED_HOSTS', env.allowed], ['PGAPEX_REST_PRIVATE_HOSTS', env.priv]] as const)
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        await page.context().close();
+      }
+    });
+
+    test('parse and fetch (page 35): the parsed file and the response of a web request from SQL', async () => {
+      const env = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS, url: process.env.PUBLIC_URL };
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+      process.env.PUBLIC_URL = base;
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        const res = await page.goto(`${base}/a/hr/35`);
+        assert.equal(res?.status(), 200);
+        assert.ok((await page.locator('table.report td, .report-reflow td').filter({ hasText: 'hire_date' }).count()) >= 1, 'the columns of the sample file');
+        await Promise.all([page.waitForNavigation(), page.click('button[data-button="FETCH"]')]);
+        assert.match(await page.locator('body').innerText(), /HTTP 200/);
+        assert.equal(await page.locator('.alert-error').count(), 0);
+        await check(page, 'app-35-fetched', vp);
+      } finally {
+        for (const [k, v] of [['PGAPEX_REST_ALLOWED_HOSTS', env.allowed], ['PGAPEX_REST_PRIVATE_HOSTS', env.priv], ['PUBLIC_URL', env.url]] as const)
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        await page.context().close();
+      }
+    });
+
     test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
@@ -333,6 +412,42 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('style variants and template options: the user menu switch, the CSS, the fit', async () => {
+      const app = await owner.one(`select id, theme from meta.app where alias = 'hr'`);
+      const r = await owner.one(`select r.id, r.template_options from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 1 order by r.seq limit 1`, [app.id]);
+      await owner.query(`update meta.app set theme = theme || $2::jsonb where id = $1`, [app.id, JSON.stringify({
+        styles: [{ name: 'Square serif', accent: '#7a1f5c', font: 'serif', font_size: 'large', radius: 'none' }, { name: 'Round', radius: 'large' }],
+        style_choice: true,
+      })]);
+      await owner.query(`update meta.region set template_options = '{to-accent,to-compact}' where id = $1`, [r.id]);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        await page.goto(`${base}/a/hr/1`);
+        assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()), '8px');
+        await page.click('details.t-user > summary');
+        await check(page, 'app-style-menu', vp);
+        await Promise.all([page.waitForNavigation(), page.click('.style-switch button[value="Square serif"]')]);
+        const look = await page.evaluate((id) => ({
+          radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
+          font: getComputedStyle(document.body).fontFamily,
+          size: getComputedStyle(document.body).fontSize,
+          border: getComputedStyle(document.getElementById(`R${id}`)!).borderTopWidth,
+        }), r.id);
+        assert.deepEqual({ ...look, font: /Charter|Georgia|serif/.test(look.font) }, { radius: '0px', font: true, size: '16px', border: '3px' });
+        await check(page, 'app-style-square-serif', vp);
+        // back to Standard
+        await page.click('details.t-user > summary');
+        await Promise.all([page.waitForNavigation(), page.click('.style-switch button[value=""]')]);
+        assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()), '8px');
+      } finally {
+        await page.context().close();
+        await owner.query(`update meta.app set theme = $2 where id = $1`, [app.id, JSON.stringify(app.theme)]);
+        await owner.query(`update meta.region set template_options = $2 where id = $1`, [r.id, r.template_options]);
+        await owner.query(`delete from meta.account_style where app_id = $1`, [app.id]);
+      }
+    });
+
     test('builder pages fit the screen', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
@@ -352,11 +467,22 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         automation_action: `/builder/apps/${appId}/shared?c=automation_action-${(await owner.one(`select id from meta.automation_action where app_id = $1 and automation_name = 'Remind managers' and seq = 20`, [appId])).id}`,
         automation_action_new: `/builder/apps/${appId}/shared?new=automation_action&automation=Remind%20managers`,
         settings: `/builder/apps/${appId}/settings`,
+        theme_roller: `/builder/apps/${appId}/theme`,
         activity: `/builder/apps/${appId}/activity`,
         api: `/builder/apps/${appId}/api`,
         search: `/builder/apps/${appId}/search?q=empno`,
         advisor: `/builder/apps/${appId}/advisor`,
         top_sql: `/builder/apps/${appId}/top-sql`,
+        debug: `/builder/apps/${appId}/debug`,
+        debug_view: `/builder/apps/${appId}/debug/${await (async () => {
+          const v = (await owner.one(`insert into meta.debug_view (app_id, page_no, username, method, path, status, level, elapsed_ms, entries)
+            values ($1, 3, 'king', 'GET', '/a/hr/3', 200, 9, 42.5, 3) returning id`, [appId])).id;
+          await owner.query(`insert into meta.debug_message (view_id, seq, elapsed_ms, duration_ms, level, component, message) values
+            ($1, 1, 0, null, 4, 'request', 'GET /a/hr/3 (parameters: P3_EMPNO, cs)'), ($1, 2, 1.2, 38.1, 6, 'region', 'region "Employees" (report)'),
+            ($1, 3, 40, null, 4, 'meta.debug', repeat('a long message without spaces ', 3) || repeat('x', 300))`, [v]);
+          return v;
+        })()}`,
+        installation: '/builder/installation',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,
@@ -441,6 +567,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
       }
       // (sprint 32) create an application from a file: upload, step 2, the result and the generated pages
       const alias = `e2e-ff-${size.width}`;

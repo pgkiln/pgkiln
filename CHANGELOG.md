@@ -5,6 +5,60 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-05
+
+### Added
+- **Gantt, pyramid and polar charts**: Gantt with start/end, progress, milestones, dependencies, a
+  today line and a time axis from hours to years; pyramid (area-proportional, or two series back to
+  back as a population pyramid); polar area. Server-side SVG with tooltips, a data table and
+  drill-down links like the other charts. HR example page 32 "Project plan".
+- **Map layers and clustering**: up to 8 layers per map, each with its own query (markers, GeoJSON or
+  PostGIS lines and areas, heat map), a legend to switch them, and marker clustering. A report can be
+  filtered by the distance from the map's centre (`r<id>_near`) as well as by the visible area; with
+  PostGIS installed the filters use `ST_Intersects`/`ST_DWithin`, otherwise latitude/longitude. HR
+  example page 33 "Field visits".
+- **REST data sources write back and synchronise**: insert, update, delete and fetch operations (path
+  and JSON body templates) let forms and interactive grids edit a web service's rows; a
+  synchronisation copies a source's rows into a local table (merge on key columns, optionally
+  deleting missing rows; replace; append) from the builder, on a cron schedule or from SQL with
+  `meta.request_rest_sync(name)` / `meta.rest_sync_status(id)`, with a run log. HR example page 34
+  "Contacts (REST)". Migration 050.
+- **OAuth2 password and refresh-token grants** for web credentials; refresh tokens returned by the
+  token endpoint are stored encrypted (and replaced when rotated), so they survive restarts.
+
+- **Debug messages** (APEX_DEBUG): a debug level per application (1–9) and a retention (1–90 days);
+  `meta.debug(level, text)` and `meta.debug_enabled(level)` from application SQL; timed entries per
+  request (page steps, regions, processes, branches, errors, SQL notices), viewed per page view under
+  Activity → Debug messages. With debug off nothing is written. Migration 051.
+- **Installation log**: every migration run is logged in `public.pgapex_install_log`; Workspace
+  utilities → Installation (administrators) shows the version, install and upgrade runs, applied
+  migrations and mismatches.
+
+- **Web requests from SQL** (APEX_WEB_SERVICE): `meta.web_request(url, method, body, headers,
+  credential, timeout_s)` and `meta.web_request_source(source, params)` queue a call that the server
+  makes (right after the page process that queued it, otherwise on the scheduler pass after commit)
+  through the allow-list, address checks and the app's web credentials; `meta.web_response(id)` /
+  `meta.web_response_blob(id)` read the result. Responses are kept 24 hours. Migration 052.
+- **Parsing files in SQL** (APEX_DATA_PARSER): `meta.parse_data()` and `meta.parse_data_columns()` for
+  CSV/TSV and JSON in a bytea, with the data loader's column names and types (XLSX and XML: use the
+  data loader). HR example page 35 "Parse and fetch".
+
+- **Theme Roller style variants**: up to 10 saved styles per application (accent and header colour,
+  font, font size, corner radius) with a default; users may pick one in the user menu or on My
+  account (kept per app on the account). **Template options** on regions and buttons: fixed lists of
+  CSS classes, chosen in the Page Designer. Migration 053.
+
+### Changed
+- The export leaves out OAuth2 passwords, refresh tokens and a synchronisation's run state; an
+  imported synchronisation starts switched off. `pgapex import --replace` keeps the new secrets.
+
+### Fixed
+- The Gantt "today" line uses the session's time zone.
+
+### Security
+- See SECURITY.md for the notes on charts, map layers, REST write-back and synchronisation, debug
+  messages, `meta.web_request()`/`meta.parse_data()` and the Theme Roller.
+
 ## [0.24.0] - 2026-10-05
 
 ### Added

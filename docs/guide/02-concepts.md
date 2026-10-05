@@ -230,3 +230,5 @@ can't be set, even by a hand-crafted request. Conditions that raise an error cou
 - Any other database error is logged in the activity log and shown as "An unexpected error
   occurred (reference #123)". Turn on **debug mode** in the application settings during
   development to see full error messages. Never leave it on in production.
+- To see what a request did and how long each step took, turn on
+  [debug messages](06-processing.md#debug-messages) and write your own with `meta.debug(level, text)`.

@@ -19,9 +19,13 @@ import { cell } from './report.ts';
 // data table carries the same links for the keyboard. Marks that are not
 // focusable themselves (SVG slices, line hit areas) take tabindex="-1": the
 // data table or the legend is their keyboard path.
+//
+// A Gantt chart is the exception to "label + numeric series": label, start and
+// end columns (dates or timestamps), plus optional progress, task_id and
+// depends_on columns by name; it has its own time axis and data table.
 
-export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar';
-export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar'];
+export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar' | 'gantt' | 'pyramid' | 'polar';
+export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar'];
 
 /** A gauge's scale and thresholds (config.gauge): warning above critical means low values are bad. */
 export interface GaugeConfig {
@@ -39,6 +43,8 @@ export interface ChartOptions {
   gauge?: GaugeConfig;
   /** values in labels, tips and the data table (a format mask, see numformat.ts); axes stay compact */
   format?: (v: number) => string;
+  /** a Gantt chart's "today" line (milliseconds, wall clock as UTC); default now */
+  now?: number;
 }
 /** The interactive report's chart view has one series with text labels: no stacked, combo or scatter. */
 export const REPORT_CHART_KINDS: ChartKind[] = ['bar', 'column', 'line', 'area', 'donut', 'pie'];
@@ -78,7 +84,11 @@ let texts = {
   critical: 'Critical',
   ofFirst: 'of the first stage',
   size: 'size',
+  noGantt: 'A Gantt chart needs a label column, a start date and an end date (milestones may leave the end empty).',
+  noData: 'No data to show.',
+  today: 'Today',
 };
+let chartLang = 'en';
 const pct = (v: number) => `${Math.max(0, Math.min(100, v)).toFixed(3)}%`;
 
 /** Round axis bounds and 4-6 clean ticks (0, 1,000, 2,000, …). Value axes start at zero; a scatter's need not. */
@@ -491,9 +501,278 @@ function radar(labels: string[], series: Series[]) {
   </div></div>`;
 }
 
+// ---------------------------------------------------------------- pyramid
+function pyramid(labels: string[], series: Series[]) {
+  // Two series: back-to-back bars (a population pyramid), the first to the left.
+  if (series.length >= 2) return population(labels, series.slice(0, 2));
+  // One series: a triangle cut into segments from the top (the first row) down,
+  // each segment's area in proportion to its value; more than 8 fold into "Other".
+  let entries = labels.map((l, i) => ({ label: l, value: Math.max(0, series[0].values[i]), i })).filter((e) => e.value > 0);
+  if (!entries.length) return html`<p class="empty">${texts.noData}</p>`;
+  if (entries.length > 8) entries = [...entries.slice(0, 7), { label: texts.other, value: entries.slice(7).reduce((a, e) => a + e.value, 0), i: -1 }];
+  const href = (e: { i: number }) => (e.i >= 0 ? (link?.(e.i, 0) ?? null) : null);
+  const total = entries.reduce((a, e) => a + e.value, 0);
+  // the area of the triangle above height h grows with h², so a share c ends at sqrt(c)
+  let cum = 0;
+  const share = (e: { value: number }) => `${((e.value / total) * 100).toFixed(0)}%`;
+  const segments = entries.map((e, k) => {
+    const h0 = Math.sqrt(cum / total) * 100;
+    cum += e.value;
+    const h1 = Math.sqrt(cum / total) * 100;
+    const pts = [[50 - h0 / 2, h0], [50 + h0 / 2, h0], [50 + h1 / 2, h1], [50 - h1 / 2, h1]].map((p) => p.map((c) => c.toFixed(3)).join(',')).join(' ');
+    let seg = html`<polygon class="pyramid-seg s${k + 1}" points="${pts}" vector-effect="non-scaling-stroke"><title>${e.label}: ${fmt.format(e.value)} (${share(e)})</title></polygon>`;
+    const h = href(e);
+    if (h) seg = html`<a class="drill" ${h} tabindex="-1">${seg}</a>`;
+    return seg;
+  });
+  return html`<div class="chart-donut chart-pyramid-body">
+    <div class="pyramid-figure"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${segments}</svg></div>
+    <ul class="chart-legend donut-legend">${entries.map((e, k) => {
+      const inner = html`<span class="swatch s${k + 1}"></span><span class="lg-label">${e.label}</span><span class="lg-value">${fmt.format(e.value)} · ${share(e)}</span>`;
+      const h = href(e);
+      return html`<li data-tip="${e.label}: ${fmt.format(e.value)}">${h ? html`<a class="drill" ${h}>${inner}</a>` : inner}</li>`;
+    })}</ul>
+  </div>`;
+}
+
+function population(labels: string[], series: Series[]) {
+  // Rows top to bottom in the query's order (sort the oldest group first); one scale for
+  // both sides. Negative values count as their size, so data with one side negative works too.
+  const max = Math.max(...series.flatMap((s) => s.values.map(Math.abs)), 1e-9);
+  const side = (i: number, si: number) => {
+    const v = series[si].values[i];
+    const b = html`<span class="pop-bar s${si + 1} ${css.cls(`width:${pct((Math.abs(v) / max) * 100)}`)}"></span>`;
+    return mark('span', i, si, `pop-track ${si ? 'right' : 'left'}`, `${labels[i]} · ${series[si].name}: ${fmt.format(v)}`, b);
+  };
+  return html`<div class="chart-population">${labels.map(
+    (l, i) => html`<div class="pop-row">${side(i, 0)}<span class="pop-label" title="${l}">${l}</span>${side(i, 1)}</div>`,
+  )}<div class="pop-row pop-scale" aria-hidden="true"><span class="pop-track left"><span>${compact.format(max)}</span><span>0</span></span><span class="pop-label"></span><span class="pop-track right"><span>0</span><span>${compact.format(max)}</span></span></div></div>`;
+}
+
+// ---------------------------------------------------------------- polar
+function polar(labels: string[], series: Series[]) {
+  // A polar area (rose) chart: one equal sector per row (up to 24) from 12 o'clock
+  // clockwise, split between the series; the radius grows linearly with the value.
+  const n = Math.min(labels.length, 24);
+  const m = series.length;
+  const scale = niceScale(0, Math.max(...series.flatMap((s) => s.values.slice(0, n)), 0));
+  const R = 36;
+  const at = (a: number, r: number) => [50 + r * Math.cos(a), 50 + r * Math.sin(a)].map((c) => c.toFixed(3)).join(',');
+  const radius = (v: number) => (Math.max(0, v) / scale.hi) * R;
+  const slice = (2 * Math.PI) / n;
+  const start = (k: number) => -Math.PI / 2 + k * slice;
+  const sectors = labels.slice(0, n).map((l, k) =>
+    series.map((s, si) => {
+      const v = s.values[k];
+      const r = radius(v);
+      if (r <= 0) return '';
+      const a0 = start(k) + (si * slice) / m;
+      const a1 = a0 + slice / m;
+      const shape =
+        a1 - a0 >= 2 * Math.PI - 1e-9
+          ? html`<circle class="polar-sector s${si + 1}" cx="50" cy="50" r="${r.toFixed(3)}"><title>${tip(l, [s], k)}</title></circle>`
+          : html`<path class="polar-sector s${si + 1}" d="${`M50,50 L${at(a0, r)} A${r.toFixed(3)},${r.toFixed(3)} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${at(a1, r)} Z`}"><title>${m === 1 ? tip(l, series, k) : `${l} · ${s.name}: ${fmt.format(v)}`}</title></path>`;
+      const h = link?.(k, si) ?? null;
+      return h ? html`<a class="drill" ${h} tabindex="-1">${shape}</a>` : shape;
+    }),
+  );
+  const rings = scale.ticks.filter((t) => t > 0).map((t) => html`<circle class="radar-ring" cx="50" cy="50" r="${radius(t).toFixed(3)}"></circle>`);
+  const spokes = n > 1 ? labels.slice(0, n).map((_, k) => html`<line class="radar-spoke" x1="50" y1="50" x2="${at(start(k), R).split(',')[0]}" y2="${at(start(k), R).split(',')[1]}"></line>`) : '';
+  const axisLabels = labels.slice(0, n).map((l, k) => {
+    const a = start(k) + slice / 2;
+    const x = 50 + (R + 6) * Math.cos(a);
+    const y = 50 + (R + 6) * Math.sin(a);
+    const sideCls = Math.abs(x - 50) < 2 ? 'mid' : x < 50 ? 'left' : 'right';
+    return mark('span', k, m === 1 ? 0 : null, `radar-label ${sideCls} ${css.cls(`left:${pct(x)};top:${pct(y)}`)}`, tip(l, series, k), l);
+  });
+  const ticks = scale.ticks.filter((t) => t > 0).map((t) => html`<span class="radar-tick ${css.cls(`top:${pct(50 - radius(t))}`)}">${compact.format(t)}</span>`);
+  return html`<div class="chart-radar"><div class="radar-figure">
+    <svg viewBox="0 0 100 100" aria-hidden="true">${rings}${sectors}${spokes}</svg>
+    <span aria-hidden="true">${ticks}</span>
+    ${axisLabels}
+  </div></div>`;
+}
+
+// ---------------------------------------------------------------- gantt
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
+/**
+ * A date or timestamp from the database (the pg driver hands them over as text) in
+ * milliseconds, its wall clock read as UTC: timestamptz values are already in the
+ * session's time zone, so every row and the axis use the same clock. NaN when it is none.
+ */
+export function wallClock(v: unknown): number {
+  if (v === null || v === undefined || v === '') return NaN;
+  if (v instanceof Date) return v.getTime();
+  const m = /^(\d{4,})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?)?/.exec(String(v).trim());
+  if (!m) return NaN;
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0), m[7] ? Math.round(Number(m[7]) * 1000) : 0);
+  return Number.isFinite(t) ? t : NaN;
+}
+
+/**
+ * The wall clock time in a time zone as "UTC" milliseconds, like wallClock() reads the
+ * timestamps a query returns (the session's TimeZone): a Gantt chart's "today" line.
+ */
+export function wallClockIn(zone: string | null | undefined, at = new Date()): number {
+  try {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', { timeZone: zone || 'UTC', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        .formatToParts(at)
+        .map((x) => [x.type, x.value]),
+    );
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  } catch {
+    return at.getTime();
+  }
+}
+
+type Unit = 'hour' | 'day' | 'week' | 'month' | 'year';
+const STEPS: [Unit, number, number][] = [
+  ['hour', 1, HOUR], ['hour', 2, 2 * HOUR], ['hour', 3, 3 * HOUR], ['hour', 6, 6 * HOUR], ['hour', 12, 12 * HOUR],
+  ['day', 1, DAY], ['day', 2, 2 * DAY], ['week', 1, 7 * DAY], ['week', 2, 14 * DAY],
+  ['month', 1, 30 * DAY], ['month', 2, 61 * DAY], ['month', 3, 91 * DAY], ['month', 6, 182 * DAY],
+  ['year', 1, 365 * DAY], ['year', 2, 730 * DAY], ['year', 5, 1826 * DAY], ['year', 10, 3652 * DAY], ['year', 25, 9131 * DAY], ['year', 100, 36524 * DAY],
+];
+
+/** The time axis: the range snapped to whole units, and at most ~10 ticks on unit boundaries. */
+export function timeScale(lo: number, hi: number) {
+  if (hi <= lo) {
+    lo -= DAY / 2;
+    hi += DAY / 2;
+  }
+  // hours only within about a day and a half (their labels show no date)
+  const [unit, step] = STEPS.find(([u, , ms]) => (hi - lo) / ms <= 10 && (u !== 'hour' || hi - lo <= 1.5 * DAY)) ?? STEPS[STEPS.length - 1];
+  const floor = (t: number) => {
+    const d = new Date(t);
+    const y = d.getUTCFullYear();
+    const mo = d.getUTCMonth();
+    const day = d.getUTCDate();
+    switch (unit) {
+      case 'hour':
+        return Date.UTC(y, mo, day, Math.floor(d.getUTCHours() / step) * step);
+      case 'day':
+        return Date.UTC(y, mo, day);
+      case 'week':
+        return Date.UTC(y, mo, day - ((d.getUTCDay() + 6) % 7)); // Monday
+      case 'month':
+        return Date.UTC(y, Math.floor(mo / step) * step, 1);
+      default:
+        return Date.UTC(Math.floor(y / step) * step, 0, 1);
+    }
+  };
+  const next = (t: number) => {
+    const d = new Date(t);
+    if (unit === 'hour') return t + step * HOUR;
+    if (unit === 'day') return t + step * DAY;
+    if (unit === 'week') return t + step * 7 * DAY;
+    if (unit === 'month') return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + step, 1);
+    return Date.UTC(d.getUTCFullYear() + step, 0, 1);
+  };
+  const ticks = [floor(lo)];
+  while (ticks[ticks.length - 1] < hi) ticks.push(next(ticks[ticks.length - 1]));
+  return { lo: ticks[0], hi: ticks[ticks.length - 1], ticks, unit };
+}
+
+function dateFormat(opts: Intl.DateTimeFormatOptions) {
+  try {
+    return new Intl.DateTimeFormat(chartLang, { ...opts, timeZone: 'UTC' });
+  } catch {
+    return new Intl.DateTimeFormat('en', { ...opts, timeZone: 'UTC' });
+  }
+}
+
+function gantt(title: string, rows: unknown[][], fields: { name: string }[], now: number) {
+  // label, start, end (empty or equal to the start: a milestone); optional columns by name:
+  // progress (0-100), task_id and depends_on (ids of the tasks it waits for: "3" or "3,4")
+  if (fields.length < 3) return html`<p class="empty">${texts.noGantt}</p>`;
+  const col = (name: string) => fields.findIndex((f, i) => i > 2 && f.name.toLowerCase() === name);
+  const [cProgress, cId, cDeps] = [col('progress'), col('task_id'), col('depends_on')];
+  const tasks = rows
+    .map((r, i) => {
+      const start = wallClock(r[1]);
+      const end = wallClock(r[2]);
+      const p = cProgress >= 0 && r[cProgress] !== null && r[cProgress] !== '' ? Number(r[cProgress]) : NaN;
+      return { i, label: cell(r[0]), start, end: Number.isFinite(end) && end > start ? end : start, progress: Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : null };
+    })
+    .filter((t) => Number.isFinite(t.start));
+  if (!tasks.length) return html`<p class="empty">${texts.noGantt}</p>`;
+  const first = Math.min(...tasks.map((t) => t.start));
+  const last = Math.max(...tasks.map((t) => t.end));
+  // a little room on the right, so a milestone on the last day is not cut in half
+  const scale = timeScale(first, last + Math.max((last - first) * 0.03, HOUR));
+  const x = (t: number) => ((t - scale.lo) / (scale.hi - scale.lo)) * 100;
+  const n = tasks.length;
+  // a date, with its time when it is not midnight
+  const dateOnly = dateFormat({ dateStyle: 'medium' });
+  const dateTime = dateFormat({ dateStyle: 'medium', timeStyle: 'short' });
+  const when = { format: (t: number) => (t % DAY ? dateTime.format(t) : dateOnly.format(t)) };
+  const tickFmt = dateFormat(
+    scale.unit === 'hour' ? { hour: '2-digit', minute: '2-digit' } : scale.unit === 'month' ? { month: 'short', year: '2-digit' } : scale.unit === 'year' ? { year: 'numeric' } : { day: 'numeric', month: 'short' },
+  );
+  const span = (t: (typeof tasks)[number]) => (t.end > t.start ? `${when.format(t.start)} – ${when.format(t.end)}` : when.format(t.start));
+  const tipOf = (t: (typeof tasks)[number]) => `${t.label}: ${span(t)}${t.progress === null ? '' : ` · ${fmt.format(t.progress)}%`}`;
+
+  // dependencies: from the end of each task it waits for to its start (elbow lines in row units)
+  const byId = new Map<string, number>();
+  if (cId >= 0) tasks.forEach((t, k) => byId.set(cell(rows[t.i][cId]), k));
+  const deps: [number, number][] = [];
+  if (cId >= 0 && cDeps >= 0)
+    tasks.forEach((t, k) => {
+      for (const id of cell(rows[t.i][cDeps]).replace(/[{}"]/g, '').split(/[,;\s]+/)) {
+        const from = id ? byId.get(id) : undefined;
+        if (from !== undefined && from !== k) deps.push([from, k]);
+      }
+    });
+  const lines = deps.map(([a, b]) => {
+    const xa = x(tasks[a].end);
+    const xb = x(tasks[b].start);
+    const elbow = Math.min(xa + 1.2, 100);
+    return html`<path class="gantt-dep" d="${`M${xa.toFixed(3)},${a + 0.5} H${elbow.toFixed(3)} V${b + 0.5} H${xb.toFixed(3)}`}" vector-effect="non-scaling-stroke"></path>`;
+  });
+  const arrows = [...new Set(deps.map(([, b]) => b))].map(
+    (b) => html`<span class="gantt-arrow ${css.cls(`left:${pct(x(tasks[b].start))};top:${pct(((b + 0.5) / n) * 100)}`)}"></span>`,
+  );
+
+  const lanes = tasks.map((t) => {
+    if (t.end === t.start) return html`<div class="gantt-lane">${mark('span', t.i, null, `gantt-milestone s1 ${css.cls(`left:${pct(x(t.start))}`)}`, tipOf(t), '')}</div>`;
+    const geo = css.cls(`left:${pct(x(t.start))};width:${pct(x(t.end) - x(t.start))}`);
+    const done = t.progress === null ? '' : html`<span class="gantt-progress ${css.cls(`width:${pct(t.progress)}`)}"></span>`;
+    return html`<div class="gantt-lane">${mark('span', t.i, null, `gantt-bar s1${t.progress === null ? '' : ' partial'} ${geo}`, tipOf(t), done)}</div>`;
+  });
+  const everyTick = Math.ceil(scale.ticks.length / 8);
+  const today = now >= scale.lo && now <= scale.hi ? html`<span class="gantt-today ${css.cls(`left:${pct(x(now))}`)}" title="${texts.today}"></span>` : '';
+  const head = (k: number) => fields[k]?.name ?? '';
+  return html`<div class="gantt">
+    <span class="gantt-corner">${head(0)}</span>
+    <div class="gantt-axis" aria-hidden="true">${scale.ticks.slice(0, -1).map(
+      // every other shown label is "odd": hidden on narrow screens (app.css)
+      (t, k) => html`<span class="${k % everyTick ? 'skip ' : (k / everyTick) % 2 ? 'odd ' : ''}${css.cls(`left:${pct(x(t))}`)}">${tickFmt.format(t)}</span>`,
+    )}</div>
+    <ul class="gantt-labels" aria-hidden="true">${tasks.map((t) => html`<li title="${t.label}">${t.label}</li>`)}</ul>
+    <div class="gantt-plot">
+      ${scale.ticks.map((t) => html`<span class="gantt-grid ${css.cls(`left:${pct(x(t))}`)}" aria-hidden="true"></span>`)}
+      ${today}
+      ${lines.length ? html`<svg class="gantt-deps" viewBox="0 0 100 ${n}" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>${arrows}` : ''}
+      ${lanes}
+    </div>
+  </div>
+  <details class="chart-data"><summary>${texts.table}</summary>
+    <div class="table-wrap"><table class="report">
+      <caption class="sr-only">${title}</caption>
+      <thead><tr><th scope="col">${head(0)}</th><th scope="col">${head(1)}</th><th scope="col">${head(2)}</th>${cProgress >= 0 ? html`<th scope="col" class="num">${head(cProgress)}</th>` : ''}${cDeps >= 0 ? html`<th scope="col">${head(cDeps)}</th>` : ''}</tr></thead>
+      <tbody>${tasks.map((t) => {
+        const l = link?.(t.i, null);
+        return html`<tr><th scope="row">${l ? html`<a ${l}>${t.label}</a>` : t.label}</th><td>${when.format(t.start)}</td><td>${t.end > t.start ? when.format(t.end) : ''}</td>${cProgress >= 0 ? html`<td class="num">${t.progress === null ? '' : `${fmt.format(t.progress)}%`}</td>` : ''}${cDeps >= 0 ? html`<td>${cell(rows[t.i][cDeps])}</td>` : ''}</tr>`;
+      })}</tbody>
+    </table></div></details>`;
+}
+
 /** A chart's markup; its geometry goes into `sheet` as classes (no inline styles: see css.ts). */
 export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], sheet: PageCss, lang = 'en', t?: Translate, opts: ChartOptions = {}): Raw {
   css = sheet;
+  chartLang = lang;
   link = opts.link;
   if (opts.format) fmt = { format: opts.format };
   try {
@@ -507,7 +786,11 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
     texts = {
       ...texts, table: t('chart.table'), other: t('chart.other'), label: t('chart.label'), noBubble: t('chart.no_bubble'), noRadar: t('chart.no_radar'),
       good: t('chart.status_good'), warning: t('chart.status_warning'), critical: t('chart.status_critical'), ofFirst: t('chart.of_first'), size: t('chart.size'),
+      noGantt: t('chart.no_gantt'), noData: t('chart.no_data'), today: t('chart.today'),
     };
+  // a Gantt chart reads its date columns itself (its series are not numbers)
+  if (kind === 'gantt')
+    return html`<figure class="chart chart-gantt" aria-label="${title}">${gantt(title, rows, fields, opts.now ?? Date.now())}</figure>`;
   const { labels, series } = parse(rows, fields, opts.hidden);
   if (!series.length) return html`<p class="empty">${texts.noSeries}</p>`;
   let body: Raw;
@@ -544,12 +827,18 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
     case 'radar':
       body = radar(labels, series);
       break;
+    case 'pyramid':
+      body = pyramid(labels, series);
+      break;
+    case 'polar':
+      body = polar(labels, series);
+      break;
     default:
       body = bar(labels, series);
   }
   return html`<figure class="chart chart-${kind}" aria-label="${title}">
-    ${['donut', 'pie', 'bubble', 'gauge', 'funnel'].includes(kind) ? '' : legend(series)}
+    ${['donut', 'pie', 'bubble', 'gauge', 'funnel'].includes(kind) || (kind === 'pyramid' && series.length < 2) ? '' : legend(kind === 'pyramid' ? series.slice(0, 2) : series)}
     ${body}
-    ${dataTable(title, labels, kind === 'gauge' || kind === 'funnel' ? series.slice(0, 1) : series, fields[0]?.name ?? texts.label, kind === 'bubble')}
+    ${dataTable(title, labels, kind === 'gauge' || kind === 'funnel' ? series.slice(0, 1) : kind === 'pyramid' ? series.slice(0, 2) : series, fields[0]?.name ?? texts.label, kind === 'bubble')}
   </figure>`;
 }

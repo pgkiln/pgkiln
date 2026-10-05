@@ -105,8 +105,8 @@ two combine well; see error handling below.
 
 | `type` | What it does |
 |---|---|
-| `form_dml` | Insert/update/delete the row of a **form region** (see [forms](04-pages-and-regions.md#form)) |
-| `grid_dml` | Save the changes of an **interactive grid** region; runs on the grid's Save button |
+| `form_dml` | Insert/update/delete the row of a **form region** (see [forms](04-pages-and-regions.md#form)); on a REST data source through its operations ([chapter 19](19-rest-data-sources.md#writing-back-from-forms-and-grids)) |
+| `grid_dml` | Save the changes of an **interactive grid** region; runs on the grid's Save button (a grid on a REST data source saves through the source's operations) |
 | `sql` | Run `code`: one or more SQL statements with bind variables |
 | `data_load` | Load the CSV/XLSX file of a file item into a table ([chapter 16](16-files.md#data-loading-in-an-application)) |
 | `invoke_api` | Call a web service (a REST data source or a URL, with a web credential) and put values of the response into items ([chapter 19](19-rest-data-sources.md#the-invoke_api-process)) |
@@ -141,6 +141,10 @@ application item) sets that item. Here the new request id lands in `P7_ID`. Cast
 Procedures work too (`call my_proc(:P1_X)`), as do several statements separated by `;`. For
 `DO` blocks, read items with `meta.v('P1_X')`.
 
+A web request queued in a process with [`meta.web_request()`](09-reference.md#web-requests-from-sql)
+is made by the server right after that process, so the **next** process can read
+`meta.web_response(id)`; the process that queued it can't wait for it.
+
 ### Error handling
 
 In PL/pgSQL, raise errors with messages written for the end user:
@@ -160,6 +164,52 @@ end if;
 
 All changes of the submit are rolled back, and the page is shown again with the entered
 values so the user can correct them.
+
+### Debug messages
+
+Like APEX's debug, pgapex can record what each request of an application did and how long every
+step took. Set the **debug level** under Activity → **Debug messages** (or follow the link in the
+application's settings):
+
+| Level | Records |
+|---|---|
+| 0 | Nothing (the default): no extra work and no writes |
+| 1 errors | Errors: failed processes and computations, database errors (also those shown as "reference #id"), unhandled errors |
+| 2 warnings | Also refused requests (403), failed validations and SQL `WARNING`s |
+| 4 information | Also the request (method, path, the *names* of URL parameters), the steps of the page (authorization, application processes, form rows, computations, load and submit processes, visibility, rendering) with their durations, the pressed button and branches |
+| 6 trace | Also each region, process, application process and computation with its duration, and the session (page, user, language, time zone) |
+| 9 everything | Also the posted item values, computed values, skipped processes, hidden regions and other SQL notices |
+
+Each recorded request lists its entries with the time since the start of the request and, for
+timed steps, their duration. Add your own from any application SQL (processes, region sources,
+conditions, your PL/pgSQL functions), as with `apex_debug.message`:
+
+```sql
+select meta.debug('Recalculating the totals for ' || :P3_DEPTNO);   -- level 4
+perform meta.debug(6, format('%s rows changed', n));               -- inside PL/pgSQL
+if meta.debug_enabled(9) then                                       -- skip expensive texts
+  perform meta.debug(9, (select string_agg(ename, ', ') from hr.emp));
+end if;
+```
+
+`meta.debug()` raises a `NOTICE` that the runtime collects on its connection, so the messages
+written before an error, or in a transaction that rolls back, are kept too. With the level below
+the message's (or outside a page request: background jobs, automations, the REST API), it returns
+at once. Texts are cut at 4000 characters, and a request keeps at most 2000 entries.
+
+The entries are stored after the response is sent (`meta.debug_view`, `meta.debug_message`) and
+deleted after the retention you choose (1–90 days, default 7; at most 5000 requests per
+application). Recording costs some time and space on every request: turn it off when you are
+done, and don't leave it on in production.
+
+What is and isn't recorded:
+
+- Only developers (in the builder) see debug messages; application users and application roles
+  can't read the tables. Messages of `meta.debug()` hold whatever your SQL writes into them: don't
+  write secrets.
+- Values of password items are never recorded, at any level; URL parameter values and the query
+  string are left out (only their names). Posted and computed item values appear at level 9 only,
+  cut at 200 characters.
 
 ### Download
 

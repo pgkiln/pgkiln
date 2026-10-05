@@ -20,9 +20,115 @@ triggers, your own functions).
 | `meta.url_encode(text)` | text | Percent-encodes a URL component |
 | `meta.temp_files` (view) | rows | The current session's uploaded files: `id`, `item_name`, `filename`, `mime_type`, `size`, `content`, `created_at` (like `APEX_APPLICATION_TEMP_FILES`; [chapter 16](16-files.md)) |
 | `meta.delete_temp_file(id)` | void | Removes one of the current session's uploaded files |
+| `meta.debug(level, text)`, `meta.debug(text)` | void | A [debug message](06-processing.md#debug-messages) (APEX: `apex_debug.message`): recorded with the request when the app's debug level is at least `level` (1 error, 2 warning, 4 information (the default), 6 trace, 9 everything); otherwise it returns at once. Texts are cut at 4000 characters |
+| `meta.debug_enabled(level default 4)` | boolean | Whether a message of this level would be recorded (skip building expensive texts) |
+| `meta.debug_level()` | int | The request's debug level (0: off, and outside a request) |
+| `meta.web_request(url, method default 'GET', body default null, headers jsonb default null, credential default null, timeout_s default 10)` | bigint | Queue an HTTP request (APEX: `apex_web_service.make_rest_request`); the **server** makes it, see [web requests from SQL](#web-requests-from-sql). Returns the request's id |
+| `meta.web_request_source(source, params jsonb default null, timeout_s default null)` | bigint | Queue a call of a [REST data source](19-rest-data-sources.md) of the app (its URL, method, headers and web credential; parameter values as text) |
+| `meta.web_response(id)` | jsonb | The request's state and response: `status` (`queued`, `running`, `ok`, `error`), `status_code`, `headers`, `content_type`, `body` (text), `json` (the body parsed when it is JSON), `size`, `url`, `message`, times. NULL for a request of another application |
+| `meta.web_response_blob(id)` | bytea | The response body as bytes (files, images) |
+| `meta.parse_data(content bytea, file_name, format, headers, delimiter, row_selector, skip_rows, max_rows)` | table | The rows of a CSV/TSV or JSON file (APEX: `apex_data_parser.parse`): `line_number`, `cols` (text[] by position), `data` (jsonb by column name). See [parsing files](#parsing-files-in-sql) |
+| `meta.parse_data_columns(…the same arguments)` | table | The file's columns (APEX: `apex_data_parser.get_columns`): `column_position`, `column_name`, `heading`, `data_type` |
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
-`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`.
+`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.debug_level`, `pgapex.public_url`
+(the server's `PUBLIC_URL`), `pgapex.web_pending` (set by `meta.web_request`).
+
+### Web requests from SQL
+
+PostgreSQL can't make an HTTP request without an extension (see [chapter 15](15-extensions.md) for
+`http` and `pg_net`), so `meta.web_request()` doesn't wait for the answer: it **queues** the request in
+`meta.web_request_log` and returns its id. The pgapex server makes the request and stores the response,
+which `meta.web_response(id)` returns. When that happens depends on where the SQL runs:
+
+| Queued in | Made | Read the response |
+|---|---|---|
+| A page process of type `sql` (also inside a chain or a background chain) | Right after that process, **in the same transaction**, before the next process runs (at most 5 per process; more wait for the scheduler) | In the next process of the same submit |
+| Anything else: automations, workflow steps, computations, validations, region sources, triggers, PostgREST requests, `psql` | After the transaction **commits**, by the next pass of the scheduler (`SCHEDULER_INTERVAL_S`, default 30 seconds; up to 50 per pass, 5 at a time) | Later: from another page view, an automation, a workflow step |
+
+A rolled-back transaction takes its queued requests with it (one made in a page process has been
+sent anyway, as with the `invoke_api` process). With `AUTOMATIONS=off` on every server, requests
+outside page processes are never made (they end as `error` after 24 hours).
+
+```sql
+-- process 1 (button FETCH): queue the request, keep its id in an item
+select meta.web_request('https://api.example.com/rates?base=' || meta.url_encode(:P5_CURRENCY),
+                        p_credential => 'RATES_API') as p5_request;
+
+-- process 2: the server has made it by now
+select r -> 'json' ->> 'rate' as p5_rate,
+       case r ->> 'status' when 'ok' then null else r ->> 'message' end as p5_error
+  from meta.web_response(:P5_REQUEST::bigint) r;
+
+-- POST with a JSON body and headers; a REST data source with parameters
+select meta.web_request('https://api.example.com/orders', 'POST', json_build_object('id', 42)::text,
+                        '{"Content-Type": "application/json"}');
+select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
+```
+
+- **The same protections as REST data sources** ([chapter 19](19-rest-data-sources.md)): the host
+  must be on `PGAPEX_REST_ALLOWED_HOSTS` (unset: no calls), private and loopback addresses are refused
+  when the connection is made unless the host is in `PGAPEX_REST_PRIVATE_HOSTS`, redirects (at most 3)
+  go through the same checks, the response is cut off at `PGAPEX_REST_MAX_BYTES` (default 5 MB) and
+  the time limit is 1–60 seconds.
+- **Web credentials** are named, never passed: `p_credential => 'NAME'` signs the request with a
+  credential of the current application (basic, bearer, header, OAuth2), and only for the URLs it is
+  valid for. The secret is decrypted by the server for the request only and is never stored with it
+  or visible to SQL.
+- `status` is `ok` when an answer came back, **whatever its status code** (check `status_code`,
+  like `apex_web_service.g_status_code`); `error` means no answer (`message` says why: the host is
+  not allowed, a time-out, the size limit, the credential).
+- Limits per call: URL ≤ 4000 characters, body ≤ 1 MB (text), ≤ 30 headers (no `Host`,
+  `Content-Length`, `Connection` and the like, no line breaks), methods `GET`, `HEAD`, `POST`, `PUT`,
+  `PATCH`, `DELETE`; at most 100 requests of an application waiting at a time.
+- Requests and responses are kept **24 hours** (at most 500 finished ones per application), then
+  removed by the scheduler. They belong to the application, not to a user: any code of the app that
+  knows an id can read the response, so don't let users choose the id when responses differ per user.
+- Application roles can't read `meta.web_request_log`; the owner can, e.g. in the SQL Workshop:
+  `select id, status, status_code, url, message from meta.web_request_log order by id desc`.
+
+### Parsing files in SQL
+
+`meta.parse_data()` reads CSV/TSV and JSON in a `bytea` (an uploaded file in `meta.temp_files`, a
+file column, a web response) with the same rules as the data loader ([chapter 16](16-files.md)):
+
+```sql
+-- the columns: names (SQL names, the keys of "data"), headings and inferred types
+select * from meta.parse_data_columns((select content from meta.temp_files where item_name = 'P8_FILE'));
+
+-- the rows, typed through a table's row type
+insert into app.employee (name, hire_date, salary)
+select e.name, e.hire_date, e.salary
+  from meta.parse_data((select content from meta.temp_files where item_name = 'P8_FILE')) p,
+       jsonb_populate_record(null::app.employee, p.data) e;
+
+-- or by position
+select p.cols[1] as name, p.cols[3]::numeric as salary from meta.parse_data(:file) p;
+```
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `p_content` | | The file |
+| `p_file_name` | null | Helps detecting the format (`.csv`, `.tsv`, `.json`, `.jsonl`, `.ndjson`) |
+| `p_format` | `auto` | `csv`, `tsv`, `json`; `auto` looks at the name and the first bytes |
+| `p_headers` | true | CSV: the first row holds the headings (else `column_1`, `column_2`, …) |
+| `p_delimiter` | detected | CSV: one character; detected from the first line (`,` `;` tab `\|`) |
+| `p_row_selector` | null | JSON: the path to the array of records (`data`, `result.items`); without it an array, an object holding one array, or JSON Lines |
+| `p_skip_rows` | 0 | Rows to skip before the headings |
+| `p_max_rows` | 100000 | More rows is an error (at most 1,000,000) |
+
+- Values are text (blank → NULL), as written in the file; nested JSON values are JSON text.
+  Column names are lower-case SQL names made from the headings (`Hire Date` → `hire_date`, made
+  unique); types are inferred over all rows: `integer`, `bigint`, `numeric`, `boolean`, `date`
+  (ISO), `timestamp`, else `text`.
+- Text is read as UTF-8 (with or without a byte order mark), else as Windows-1252.
+- **Excel (.xlsx) is not supported in SQL**: an `.xlsx` file is a zip archive of compressed parts and
+  PostgreSQL has no function to decompress them. `meta.parse_data` says so; load Excel files with a
+  [`data_load` process or a data load definition](16-files.md#data-loading) (which read `.xlsx` in
+  the server), or save the sheet as CSV. **XML** isn't parsed either: use PostgreSQL's `xmltable()`
+  or the data loader.
+- It runs as the caller (no special rights) and within the statement time limit (a 4 MB CSV file
+  of 100,000 rows takes about a second).
 
 ## Functions for developers and scripts
 
@@ -92,12 +198,17 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `language`, `languages`, `language_from` | text, text[], text | Primary language, translated languages, `browser` / `user` / `primary` |
 | `date_format`, `timestamp_format` | text | Display masks (e.g. `DD-MM-YYYY`); NULL: the language's default |
 | `debug` | boolean | Show database error details to users |
-| `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top"}` |
+| `debug_level` | smallint | [Debug messages](06-processing.md#debug-messages): 0 off, 1, 2, 4, 6 or 9 (APEX levels) |
+| `debug_retention_days` | int | Days debug messages are kept (1–90, default 7) |
+| `theme` | jsonb | `{"accent": "#0b63c5", "header": "#13294b", "nav": "side" \| "top", "mode": "auto", "user_choice": true, "styles": [{"name": "Ocean", "accent": "#0b7285", "font": "serif", "font_size": "large", "radius": "small"}], "style": "Ocean", "style_choice": true}` ([style variants](14-globalization.md#style-variants-theme-roller)) |
 
 **`account`** (the user directory): `username` (unique, case-insensitive), `display_name`, `email`,
 `password_hash` (bcrypt; NULL = no password), `active`, `created_at`, `last_login_at`.
 
 **`app_access`**: `app_id`, `account_id`, `roles` (text[]); who may use which application.
+
+**`account_style`**: `account_id`, `app_id`, `style` (`''` = Standard); the [style variant](14-globalization.md#style-variants-theme-roller)
+a user chose in an application (installation data: not exported).
 
 **`app_user`**: a *view* over `account` + `app_access` (`id`, `app_id`, `username`, `password_hash`,
 `roles`, `active`, `last_login_at`), kept for compatibility. Inserting creates the account if
@@ -169,13 +280,15 @@ navigation entries and application processes have the same `build_option` column
 | `condition`, `authz` | Visibility |
 | `config` | Attributes per type ([chapter 4](04-pages-and-regions.md)) |
 | `rest_source` | A REST data source the region reads; `source` is then SQL over `rest` ([chapter 19](19-rest-data-sources.md)) |
+| `template_options` | text[]: CSS classes from a fixed list ([template options](04-pages-and-regions.md#template-options)) |
 
 **`item`**: `page_id`, `region_id`, `seq`, `name`, `label`, `type`, `lov`, `source_column`,
 `default_value`, `required`, `help`, `readonly_condition`, `authz`, `config` ([chapter 5](05-items.md)).
 
 **`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da` /
 `document` / `menu`), `target_page`, `target_items` (jsonb), `condition`, `authz`, `hot`, `confirm`,
-`menu` (jsonb, for `menu`), `badge`, `badge_query` ([chapter 6](06-processing.md)).
+`menu` (jsonb, for `menu`), `badge`, `badge_query` ([chapter 6](06-processing.md)), `template_options`
+(text[], [template options](04-pages-and-regions.md#template-options)).
 
 **`dynamic_action`**: `page_id`, `seq`, `name`, `event`, `trigger_element`, `condition_type`,
 `condition_value`, `action`, `affected_items`, `affected_region_id`, `code`, `items_to_submit`,
@@ -203,6 +316,9 @@ navigation entries and application processes have the same `build_option` column
 |---|---|---|
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
 | `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`; builder: `lock_broken`, `supporting_objects`, …), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
+| `debug_view` | [Debug messages](06-processing.md#debug-messages): one row per recorded request: `app_id`, `page_no`, `username`, `session_id`, `method`, `path` (without the query string), `status`, `level`, `started_at`, `elapsed_ms`, `entries`. Written through `meta.debug_save()` (runtime role only), not exported | no |
+| `debug_message` | The entries of a recorded request: `view_id`, `seq`, `elapsed_ms` (since the start), `duration_ms` (timed steps), `level`, `component`, `message` | no |
+| `web_request_log` | [Web requests from SQL](#web-requests-from-sql): `app_id`, `status`, the request (`url` or `source` + `params`, `method`, `headers`, `body`, `credential` name, `timeout_s`), `requested_by`, times, the response (`status_code`, `response_url`, `response_headers`, `response_body`), `message`. Kept 24 hours, not exported | no (through `meta.web_response`) |
 | `developer` | Builder accounts (`is_admin`: manages developers, breaks locks) | no |
 | `builder_lock` | Page (`page_no`) and application (`page_no` 0) locks: `locked_by`, `locked_at`, `note` | no |
 | `dev_comment` | Developer comments on an application (`page_no` 0) or page: `author`, `body`, `created_at` | no |
@@ -228,7 +344,14 @@ navigation entries and application processes have the same `build_option` column
 | `translation` | Per app and language: `source` (primary-language text) → `target` | yes |
 | `temp_file` | Uploaded files per session (deleted with the session; at most 20 per session). Read through the view `meta.temp_files` | no (through the view) |
 
-Retention: expired sessions are purged automatically. The activity log is kept until you delete
+Outside `meta`: `public.pgapex_migration` (applied migrations), `public.pgapex_seed` (applied example
+scripts) and `public.pgapex_install_log` (each migration run that applied or failed a file: `started_at`,
+`finished_at`, `version`, `kind` `install`/`upgrade`, `applied` files, `status`, `error`, `db_user`),
+shown under Workspace utilities → **Installation**.
+
+Retention: expired sessions are purged automatically; debug messages after the application's
+`debug_retention_days` (and at most 5000 requests per application), and web requests after 24 hours
+(at most 500 per application), by the scheduler. The activity log is kept until you delete
 from it, for example with a scheduled
 `delete from meta.activity_log where at < now() - interval '90 days'`.
 
@@ -286,7 +409,7 @@ Usable in navigation entries and cards (`icon` column):
 | any page `?doc=NAME` | Download a document template filled with the page's values |
 | `POST /a/:alias/account/devices` | Sign out on all devices ("Keep me signed in") |
 | `POST /a/:alias/password` | Change an expired password while signing in |
-| `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme` | My account, own password, the light/dark switch |
+| `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme`, `POST /a/:alias/account/style` | My account, own password, the light/dark switch, the [style variant](14-globalization.md#style-variants-theme-roller) switch |
 | `POST /a/:alias/tz` | The browser's time zone for the session (automatic time zone; sent by `app.js`, CSRF token required) |
 | any page `?lang=xx` | Switch the language for the session |
 | `/builder/...` | Builder |

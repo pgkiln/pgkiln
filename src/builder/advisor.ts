@@ -183,6 +183,16 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
         if (problem) findings.push({ ...problem, entry, field: label });
       }
     }
+    // a map region's further layers (config.layers[].source)
+    for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'map')) {
+      const entry = byKey.get(`${kind}-${row.id}`) ?? null;
+      for (const l of Array.isArray(row.config?.layers) ? row.config.layers : []) {
+        if (typeof l?.source !== 'string' || !l.source.trim()) continue;
+        checked++;
+        const problem = await checkSql(c, l.source, 'select');
+        if (problem) findings.push({ ...problem, entry, field: `Layer "${typeof l.name === 'string' ? l.name : ''}" query` });
+      }
+    }
     // REST handlers
     for (const { kind, row } of all.filter((x) => x.kind === 'rest_module')) {
       const entry = byKey.get(`${kind}-${row.id}`) ?? null;
@@ -258,7 +268,12 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
   // forms and grids
   for (const { kind, row } of all) {
     const e = byKey.get(`${kind}-${row.id}`) ?? null;
-    if (kind === 'region' && row.type === 'grid' && (!row.table_name || !row.pk_column)) missing(e, 'Source', 'A grid needs a table and a primary key column.');
+    // a grid on a REST data source takes its key from the source's key columns when it has no primary key column
+    const restKeys = row.rest_source
+      ? all.find((x) => x.kind === 'rest_source' && String(x.row.name).toUpperCase() === String(row.rest_source).toUpperCase())?.row.key_columns
+      : null;
+    if (kind === 'region' && row.type === 'grid' && (!(row.table_name || row.rest_source) || !(row.pk_column || restKeys?.length)))
+      missing(e, 'Source', 'A grid needs a table (or a REST data source with key columns) and a primary key column.');
     if (kind === 'region' && row.type === 'grid' && !all.some((x) => x.kind === 'process' && x.row.type === 'grid_dml' && x.row.region_id === row.id))
       missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
     if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);

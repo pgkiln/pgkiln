@@ -138,6 +138,8 @@ the files any more are removed. What belongs to this installation stays:
   automations arrive switched off, as with every import.
 - the **secrets of web credentials** with the same name (exports never contain them; see
   [chapter 19](19-rest-data-sources.md#web-credentials)).
+- the **style variant each user chose** ([chapter 14](14-globalization.md#style-variants-theme-roller));
+  a style that the file no longer has falls back to the default.
 
 It all happens in one transaction; any error leaves the application unchanged. Without an
 application with that alias, `--replace` simply imports, so the same command deploys the first

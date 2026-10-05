@@ -3,7 +3,7 @@ import { applyBinds } from '../binds.ts';
 import { runtime, savepoint } from '../db.ts';
 import type { Branch, Computation, Condition } from '../metadata.ts';
 import { isAuthorized, sqlTrue } from './authz.ts';
-import { bindValues, publicError, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
+import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type PageContext } from './context.ts';
 import { pageHref } from './links.ts';
 import { urlChecksum } from '../security.ts';
 import { logActivity } from '../session.ts';
@@ -124,7 +124,8 @@ export async function runComputations(ctx: PageContext, point: Computation['poin
     if (!(await isAuthorized(ctx, comp.authz))) continue;
     if (!(await conditionHolds(ctx, comp, `condition of the ${where}`))) continue;
     try {
-      ctx.session.state[comp.item_name] = await computeValue(ctx, comp);
+      ctx.session.state[comp.item_name] = await timed(ctx, 6, 'computation', `computation of ${comp.item_name} (${comp.type})`, () => computeValue(ctx, comp));
+      dbg(ctx, 9, 'computation', () => `${comp.item_name} := ${ctx.page.items.some((i) => i.name === comp.item_name && i.type === 'password') ? '(password, not shown)' : JSON.stringify((ctx.session.state[comp.item_name] ?? '').slice(0, 200))}`);
     } catch (e) {
       const message = await publicError(ctx, e, where);
       if (point === 'after_submit') throw new ComputationFailed(message);

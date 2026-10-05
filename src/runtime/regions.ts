@@ -5,11 +5,12 @@ import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Button, Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
-import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
+import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { fillItems, linkAttrs, linkColumns } from './links.ts';
 import { renderCalendar } from './calendar.ts';
-import { CHART_KINDS, renderChartBody, type GaugeConfig } from './charts.ts';
+import { CHART_KINDS, renderChartBody, wallClockIn, type GaugeConfig } from './charts.ts';
+import { databaseTimeZone } from './locale.ts';
 import { renderFacets } from './facets.ts';
 import { renderSmartFilters } from './smart-filters.ts';
 import { renderListRegion } from './lists.ts';
@@ -25,6 +26,7 @@ import { formatNumber, maskError } from '../numformat.ts';
 import { cell, columnFormats, maxRows, regionUrl, renderReport } from './report.ts';
 import { cacheKey, cacheOf, lazyOf, renderCaching, useCached } from './region-cache.ts';
 import { resolveRestRegion } from './rest-sources.ts';
+import { templateClasses } from './template-options.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -71,7 +73,7 @@ async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw |
 }
 
 export async function renderButton(ctx: PageContext, b: Button) {
-  const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}`;
+  const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}${templateClasses('button', b.template_options)}`;
   const confirm = b.confirm ? raw(` data-confirm="${esc(b.confirm)}"`) : '';
   const badge = b.badge || b.badge_query ? await badgeOf(ctx, b) : '';
   if (b.action === 'menu') return renderMenu(ctx, b, cls, badge);
@@ -134,6 +136,8 @@ async function renderChart(ctx: PageContext, r: Region) {
     ...(await chartLink(ctx, r, res.rows, res.fields)),
     gauge: gaugeConfig(r.config.gauge),
     ...chartFormat(ctx, r),
+    // the query's timestamps are in the session's time zone: so is "today"
+    ...(kind === 'gantt' ? { now: wallClockIn(ctx.locale.timeZone ?? (await databaseTimeZone())) } : {}),
   })}${firstRows(ctx, res)}`;
 }
 
@@ -253,11 +257,20 @@ function lazyPlaceholder(ctx: PageContext, r: Region) {
 }
 
 export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<string> = new Set()) {
-  if (!ctx.vis!.regions.has(r.id)) return '';
+  if (!ctx.vis!.regions.has(r.id)) {
+    dbg(ctx, 9, 'region', () => `region "${r.title ?? r.id}" (${r.type}) not rendered (authorization or condition)`);
+    return '';
+  }
+  if (ctx.debug?.on(6)) return timed(ctx, 6, 'region', `region "${r.title ?? r.id}" (${r.type})`, () => renderRegionNow(ctx, r, hidden));
+  return renderRegionNow(ctx, r, hidden);
+}
+
+async function renderRegionNow(ctx: PageContext, r: Region, hidden: Set<string>) {
   let body: Raw | null = null;
   const setting = cacheOf(r);
   const cacheKeyOf = setting ? cacheKey(ctx, r, setting) : null;
   if (cacheKeyOf && !ctx.cacheRefresh) body = useCached(ctx, cacheKeyOf);
+  if (body) dbg(ctx, 6, 'region', 'from the region cache');
   if (!body && lazyOf(r) && ctx.loadNow !== r.id && !ctx.params.has(`r${r.id}_load`)) body = lazyPlaceholder(ctx, r);
   if (!body)
     body = setting ? await renderCaching(ctx, r, setting, cacheKeyOf!, () => renderBody(ctx, r, hidden)) : await renderBody(ctx, r, hidden);
@@ -348,7 +361,7 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
   // (a grid renders its own Save button in its toolbar)
-  const cls = `region region-${r.type} region-${r.template} col-${r.columns}`;
+  const cls = `region region-${r.type} region-${r.template} col-${r.columns}${templateClasses('region', r.template_options)}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
   const titleId = `R${r.id}_title`;
 

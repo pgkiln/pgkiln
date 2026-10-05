@@ -141,6 +141,10 @@ npm run db:migrate
 
 Back up the database before upgrading. Released migrations are never modified.
 
+Each run that applies a file (or fails) is recorded in `public.pgapex_install_log`; administrators
+see it, with the applied migrations and any the database still misses, under Builder → Workspace
+utilities → [Installation](03-builder.md#installation).
+
 ## Production deployment
 
 A typical setup: pgapex runs as a service behind a reverse proxy that terminates HTTPS.

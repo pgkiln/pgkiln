@@ -14,12 +14,13 @@ scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)
-  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate)
+  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
+                           or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
   cli/                     the command line: main.ts (commands, help, exit codes), files.ts (directories,
                            zip), diff.ts, replace.ts (import --replace in place)
   app.ts / server.ts       Fastify setup / entry point
-  db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings), savepoints
+  db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings, NOTICEs to the debug log), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
@@ -54,39 +55,52 @@ src/
   maptiles.ts              map tile server URL, attribution and CSP origin
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
-  websources.ts            web credentials (incl. OAuth2 token cache) and REST data sources: requests, JSON paths, typed rows, response cache;
-                           invoke(): the invoke API call shared by the invoke_api process and workflow step
+  websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
+                           tokens) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
+                           (callOperation); invoke(): the invoke API call shared by the invoke_api process and workflow step
+  restsync.ts              REST data source synchronisation into a local table (merge/replace/append as the app role), run log,
+                           syncTick() (scheduled and SQL-queued runs, called by the automations scheduler)
+  webrequests.ts           web requests from SQL (meta.web_request, migration 052): runPending() after each sql page process
+                           (same transaction), webRequestTick() for committed ones (automations scheduler), retention purge;
+                           calls go through websources.ts call()/invoke() (allow-list, SSRF checks, credentials)
+  debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
+                           loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
-    context.ts             PageContext, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
+    context.ts             PageContext, dbg()/timed() debug helpers, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
-    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains), application processes
+    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations, branches (page, URL, function returning a URL, another application) and their conditions
-    render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
+    render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
+    styles.ts              Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
+                           style (user choice, default), themeCss() (only hex values and constants reach the CSS)
+    template-options.ts    template options: the fixed CSS class list per region and button, templateClasses() (unknown values ignored)
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts, items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
-    charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, drill-down marks, data table
+    charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, Gantt (time axis, dependencies), pyramid, polar, drill-down marks, data table
     calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
                            the route POST …/calendar/:id/move is in routes.ts)
     links.ts               page links with checksums; fillItems() fills #column# in link items
     facet-state.ts         facet definitions (checkbox, range, star; exclude, custom range), filters read from the URL, their SQL as query parameters
     smart-filters.ts       smart_filters region: search field, filter chips, suggestions
     display-selector.ts    display_selector region: tabs / select list over the page's regions (app.js makes them ARIA tabs)
-    account.ts             My account (details, own password, preferences)
+    account.ts             My account (details, own password, preferences), the light/dark and style switches (POST …/account/theme, …/account/style)
     locale.ts              language, theme, text messages, translations, number symbols and time zone of a request
     format.ts              date masks; maskedFormatter() applies a column's or item's number or date mask
     files.ts               file items: multipart parsing, temporary files, signed downloads
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
-    maps.ts                map region (data for Leaflet: markers or heat, report filter; list fallback, head assets)
+    maps.ts                map region (data for Leaflet: layers with a query each, markers, clusters or heat, PostGIS geometry as GeoJSON, report filter by area or distance; list fallback, head assets)
+    spatial.ts             spatial filtering on the server: map area and distance parsing, PostGIS detection and SQL (ST_Intersects, ST_DWithin), lat/lng fallback (bounding box, haversine)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
-    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke())
+    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke()),
+                           write-back of forms (fetch, form_dml) and grids (grid_dml) through the source's operations
     tree.ts                tree region
     lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
@@ -124,21 +138,25 @@ src/
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
+    diagnostics.ts         Activity → Debug messages (level, list, one request's entries, purge); Workspace utilities →
+                           Installation (version, install/upgrade runs, applied and missing migrations; administrators)
     ldap.ts                Users → LDAP directories
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
+    themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     process-jobs.ts        page designer: the Jobs tab of a background chain process
     template-spec.ts       template component property form (Shared Components)
-    websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns
+    websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns,
+                           write-back operations, synchronisation settings, Synchronise now and run history
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
     supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
-  app.css                  theme (light/dark, responsive)
-  app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions (no inline JS)
+  app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)
+  app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
@@ -167,15 +185,19 @@ test/
   page-logic.test.ts       download, chain (background jobs) and workflow processes, function/app branches, dialog_closed (HR page 28)
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
-  charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
+  charts.test.ts           chart markup per kind (geometry as classes), gauges, Gantt time axis and dependencies, pyramid, polar, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
   workflow-invoke.test.ts  workflow invoke_api steps: the call between transactions, faults, retry, lease, Advisor, export (mock service)
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
+  web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and
+                           meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
+  theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page) and template options
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
@@ -223,7 +245,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.24.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.25.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

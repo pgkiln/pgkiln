@@ -7,12 +7,13 @@ import { gridDml } from './grid.ts';
 import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, tempIds } from './files.ts';
 import { autoMap, LoadError, LoadFailed, loadRows, loadWithDefinition, parseFile, tableColumns, type DataLoadDefinition, type FileFormat, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
-import { invokeApi } from './rest-sources.ts';
+import { invokeApi, restFetchRow, restFormDml } from './rest-sources.ts';
+import { runPending } from '../webrequests.ts';
 import { itemMask, lovLookup, ratingMax } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { conditionHolds } from './logic.ts';
 import { BACKGROUND_TYPES, downloadFile, workflowProcess, type ChainConfig } from './processes.ts';
-import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
+import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type Errors, type PageContext } from './context.ts';
 
 const ident = pg.escapeIdentifier;
 
@@ -61,9 +62,14 @@ export async function runSql(ctx: PageContext, code: string, names = assignable(
 export async function fetchForms(ctx: PageContext) {
   const c = ctx.client!;
   for (const r of ctx.page.regions) {
-    if (r.type !== 'form' || !r.table_name || !r.pk_column || !r.pk_item) continue;
+    if (r.type !== 'form' || !r.pk_item) continue;
     const pk = ctx.session.state[r.pk_item];
     if (pk === null || pk === undefined) continue;
+    if (r.rest_source) {
+      await fetchRestForm(ctx, r, pk);
+      continue;
+    }
+    if (!r.table_name || !r.pk_column) continue;
     // files are not loaded into session state; the item shows the stored file's name
     const items = formItems(ctx, r).filter((i) => i.type !== 'file');
     for (const f of formItems(ctx, r)) if (f.type === 'file') ctx.session.state[f.name] = null;
@@ -83,6 +89,22 @@ export async function fetchForms(ctx: PageContext) {
     } catch (e) {
       ctx.errors.page.push(await publicError(ctx, e, `fetch of ${r.title ?? 'form'}`));
     }
+  }
+}
+
+/** A form on a REST data source: the row from the service (its fetch operation, or its rows searched for the key). */
+async function fetchRestForm(ctx: PageContext, r: Region, pk: string) {
+  const items = formItems(ctx, r).filter((i) => i.type !== 'file');
+  try {
+    const row = await restFetchRow(ctx, r, pk);
+    if (!row) {
+      ctx.errors.page.push(ctx.locale.t('form.not_found', { region: r.title ?? ctx.locale.t('form.record') }));
+      clearPageItems(ctx);
+      return;
+    }
+    for (const item of items) ctx.session.state[item.name] = toState(row[item.source_column!] ?? null);
+  } catch (e) {
+    ctx.errors.page.push(await publicError(ctx, e, `fetch of ${r.title ?? 'form'}`));
   }
 }
 
@@ -187,14 +209,15 @@ const UPDATE = new Set(['SAVE', 'UPDATE', 'APPLY', 'APPLY_CHANGES']);
 async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   const c = ctx.client!;
   const r = ctx.page.regions.find((x) => x.id === p.region_id);
-  if (!r?.table_name || !r.pk_column || !r.pk_item) throw new Error(`Process "${p.name}" needs a form region with a table and primary key.`);
+  if (!r?.pk_item || (!r.rest_source && (!r.table_name || !r.pk_column))) throw new Error(`Process "${p.name}" needs a form region with a table (or a REST data source) and primary key.`);
   if (!ctx.vis!.regions.has(r.id)) return null;
   const op = ctx.request === 'DELETE' ? 'delete' : INSERT.has(ctx.request) ? 'insert' : UPDATE.has(ctx.request) ? 'update' : null;
   if (!op) return null;
+  if (r.rest_source) return restForm(ctx, p, r, op);
 
   const state = ctx.session.state;
-  const table = await resolveTable(c, r.table_name);
-  const pkCol = ident(r.pk_column);
+  const table = await resolveTable(c, r.table_name!);
+  const pkCol = ident(r.pk_column!);
   const pk = state[r.pk_item] ?? null;
   // Columns written: items the user may see and that are not read-only
   // (hidden non-key items carry server-set values and are included too).
@@ -265,6 +288,27 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
   clearPageItems(ctx);
   return p.success_message ?? ctx.locale.t('form.deleted');
+}
+
+/**
+ * form_dml on a REST data source: the items the user may change (as for a
+ * table, without file items) go to the source's insert, update or delete
+ * operation, by their source column.
+ */
+async function restForm(ctx: PageContext, p: Process, r: Region, op: 'insert' | 'update' | 'delete'): Promise<string | null> {
+  const state = ctx.session.state;
+  const pk = state[r.pk_item!] ?? null;
+  if (op !== 'insert' && pk === null) throw new Error(ctx.locale.t('form.no_record'));
+  const values: Record<string, string | null> = {};
+  for (const i of formItems(ctx, r))
+    if (i.source_column !== r.pk_column && i.type !== 'file' && i.type !== 'display' && ctx.vis!.items.has(i.name) && (i.type === 'hidden' || ctx.vis!.editable.has(i.name)))
+      values[i.source_column!] = state[i.name] ?? null;
+  await restFormDml(ctx, r, op, values, pk);
+  if (op === 'delete') {
+    clearPageItems(ctx);
+    return p.success_message ?? ctx.locale.t('form.deleted');
+  }
+  return p.success_message ?? ctx.locale.t(op === 'insert' ? 'form.created' : 'form.saved');
 }
 
 interface DataLoadConfig {
@@ -400,7 +444,11 @@ export async function runChain(ctx: PageContext, chain: Process, names: Set<stri
   return messages;
 }
 
-async function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
+function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
+  return timed(ctx, 6, 'process', () => `process "${p.name}" (${p.type})`, () => runOneStep(ctx, p, names, depth));
+}
+
+async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
   try {
     if (ctx.background && !BACKGROUND_TYPES.has(p.type)) throw new Error(ctx.locale.t('process.background_type', { name: p.name, type: p.type }));
     switch (p.type) {
@@ -421,6 +469,9 @@ async function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: n
       }
       default:
         await runSql(ctx, p.code ?? '', names);
+        // web requests the process queued (meta.web_request): made now, before the next process
+        await runPending(ctx.client!, ctx.app.id, (r, res, ms) =>
+          dbg(ctx, 6, 'web', () => `web request ${r.id} (${r.source ? `source ${r.source}` : r.method}): ${res.status === 'ok' ? `HTTP ${res.statusCode}` : res.message} in ${ms} ms`));
         return p.success_message;
     }
   } catch (e) {
@@ -450,7 +501,10 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
   for (const p of ctx.page.processes) {
     // a chain's children run inside their chain only
     if (p.point !== point || p.parent_process) continue;
-    if (!(await shouldRun(ctx, p))) continue;
+    if (!(await shouldRun(ctx, p))) {
+      dbg(ctx, 9, 'process', () => `process "${p.name}" skipped (button, authorization or condition)`);
+      continue;
+    }
     const msg = await runOne(ctx, p, names, 0);
     if (msg) messages.push(msg);
   }
@@ -462,7 +516,7 @@ export async function runAppProcesses(ctx: PageContext, point: 'after_login' | '
   for (const p of ctx.app.app_processes) {
     if (p.point !== point || !(await isAuthorized(ctx, p.authz))) continue;
     try {
-      await savepoint(ctx.client!, () => runSql(ctx, p.code, new Set(ctx.app.app_items)));
+      await timed(ctx, 6, 'process', () => `application process "${p.name}"`, () => savepoint(ctx.client!, () => runSql(ctx, p.code, new Set(ctx.app.app_items))));
     } catch (e) {
       ctx.errors.page.push(await publicError(ctx, e, `application process "${p.name}"`));
     }

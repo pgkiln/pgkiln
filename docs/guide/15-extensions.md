@@ -104,7 +104,7 @@ Audit triggers record such changes as made by `nobody`, which is what you want f
 |---|---|---|
 | **[orafce](https://pgxn.org/dist/orafce/)** | Porting PL/SQL from APEX apps: `nvl`, `decode`, `add_months`, `trunc` for dates, `dbms_output`, `utl_file` and more | Eases migration. Prefer plain PostgreSQL (`coalesce`, `case`) in new code |
 | **pgTAP** | Unit tests for your PL/pgSQL business rules, run in CI | Complements pgapex's own test suites |
-| **[http](https://github.com/pramsey/pgsql-http)** | Call a REST API from SQL synchronously (`select content from http_get(…)`) | Like `APEX_WEB_SERVICE`. Blocks the transaction while it waits |
+| **[http](https://github.com/pramsey/pgsql-http)** | Call a REST API from SQL synchronously (`select content from http_get(…)`) | Like `APEX_WEB_SERVICE`. Blocks the transaction while it waits, and bypasses pgapex's allow-list and web credentials. Without an extension, pgapex's own [`meta.web_request()`](09-reference.md#web-requests-from-sql) queues the request for the server (made after the page process, or by the scheduler) |
 | **[pg_net](https://github.com/supabase/pg_net)** | Fire-and-forget HTTP calls from triggers (webhooks) | Asynchronous: the request is sent after commit by a background worker |
 | **[pgmq](https://github.com/pgmq/pgmq)** | A message queue in Postgres for background work handled by a worker service | Like AWS SQS, transactional |
 | **pg_partman** | Partition big append-only tables such as `meta.activity_log` by month | Only needed at high volume |

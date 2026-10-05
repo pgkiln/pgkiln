@@ -1,7 +1,7 @@
 // Import an application document *over* an existing application, keeping
 // what belongs to this installation: the application's id and alias, who has
 // access, API clients, sessions, saved reports, running tasks and workflows,
-// the on/off state of automations, and the secrets of web credentials. Components are matched by their static
+// the on/off state of automations and REST synchronisations, and the secrets of web credentials. Components are matched by their static
 // id (see src/appfiles.ts): saved reports follow their region (page number +
 // region key), tasks and workflows their definition (name), automation logs and
 // state their automation (name), background process jobs their chain (page + name).
@@ -24,11 +24,19 @@ export const REPLACED = [
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',
   // (042) builder state of this installation: locks and developer comments (by page number)
-  'builder_lock', 'dev_comment'];
+  'builder_lock', 'dev_comment',
+  // (051) debug messages recorded by this installation
+  'debug_view',
+  // (052) web requests queued from SQL and their responses
+  'web_request_log',
+  // (053) the style variant each user chose
+  'account_style'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
-const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.definition_id', 'automation_log.automation_id', 'process_job.process_id'];
+const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.definition_id', 'automation_log.automation_id', 'process_job.process_id',
+  // (050) synchronisation runs follow their REST data source (name)
+  'rest_sync_log.source_id'];
 
 type Db = pg.ClientBase | pg.Pool;
 
@@ -65,8 +73,8 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
   const neu = (await db.query<{ id: number }>('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), tmpAlias])).rows[0].id;
 
   // kept data follows its component
-  for (const [table, ref] of [['task', 'task_definition'], ['workflow', 'workflow_definition'], ['automation_log', 'automation']] as const) {
-    const col = table === 'automation_log' ? 'automation_id' : 'definition_id';
+  for (const [table, ref] of [['task', 'task_definition'], ['workflow', 'workflow_definition'], ['automation_log', 'automation'], ['rest_sync_log', 'rest_source']] as const) {
+    const col = table === 'automation_log' ? 'automation_id' : table === 'rest_sync_log' ? 'source_id' : 'definition_id';
     await db.query(
       `update meta.${table} t set ${col} = n.id
          from meta.${ref} o join meta.${ref} n on n.name = o.name and n.app_id = $2
@@ -84,8 +92,15 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
   );
   // web credentials keep this installation's secrets (an export has none), matched by name
   await db.query(
-    `update meta.web_credential n set secret_enc = o.secret_enc
-       from meta.web_credential o where o.app_id = $1 and n.app_id = $2 and n.name = o.name and n.secret_enc is null`,
+    `update meta.web_credential n set secret_enc = coalesce(n.secret_enc, o.secret_enc), password_enc = coalesce(n.password_enc, o.password_enc),
+            refresh_token_enc = coalesce(n.refresh_token_enc, o.refresh_token_enc), token_refreshed_at = coalesce(n.token_refreshed_at, o.token_refreshed_at)
+       from meta.web_credential o where o.app_id = $1 and n.app_id = $2 and n.name = o.name`,
+    [old, neu],
+  );
+  // (050) REST synchronisations keep this installation's switch and schedule state
+  await db.query(
+    `update meta.rest_source n set sync_enabled = o.sync_enabled, sync_next_at = o.sync_next_at, sync_last_at = o.sync_last_at, sync_last_status = o.sync_last_status
+       from meta.rest_source o where o.app_id = $1 and n.app_id = $2 and n.name = o.name`,
     [old, neu],
   );
   // automations keep this installation's switch and schedule state

@@ -4018,3 +4018,674 @@ describe('sprint 32 item 5: create application from a file', () => {
     assert.equal((await owner.one(`select has_schema_privilege('app_sec32_ff_meta', 'meta', 'usage') as x where exists (select 1 from pg_roles where rolname = 'app_sec32_ff_meta')`))?.x ?? false, false);
   });
 });
+
+describe('sprint 33 item 1: Gantt, pyramid and polar charts', () => {
+  const region = async (title: string) =>
+    (await owner.one(`select r.id, r.source, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 32 and r.title = $2`, [appId, title])) as { id: number; source: string; config: any };
+
+  test('the leave Gantt runs as the app role: each user sees only the leave RLS lets them see', async () => {
+    const blake = (await (await as('blake')).get('/a/hr/32')).body;
+    assert.match(blake, /WARD \(approved\)/, 'blake manages Ward');
+    assert.doesNotMatch(blake, /FORD \(approved\)|CLARK \(approved\)/);
+    const king = (await (await as('king')).get('/a/hr/32')).body;
+    assert.match(king, /FORD \(approved\)/, 'king is an admin');
+  });
+
+  test('drill-down from a task: checksummed links per user; forged or reused links are refused', async () => {
+    const blake = await as('blake');
+    const body = (await blake.get('/a/hr/32')).body;
+    const href = /<a class="gantt-bar s1 \w+ \w+ drill" href="(\/a\/hr\/7\?[^"]+)"/.exec(body)![1].replace(/&amp;/g, '&');
+    const q = new URLSearchParams(href.split('?')[1]);
+    assert.equal(q.get('cs'), urlChecksum(appId, 7, 'blake', { P7_ID: q.get('P7_ID')! }));
+    assert.equal((await blake.get(href)).statusCode, 200);
+    assert.equal((await blake.get(href.replace(/P7_ID=\d+/, 'P7_ID=1'))).statusCode, 403);
+    assert.equal((await (await as('allen')).get(href)).statusCode, 403);
+  });
+
+  test('labels, dates and dependency ids from the query are escaped and never become markup or styles; no links to pages the user may not open', async () => {
+    const r = await region('Office move');
+    try {
+      await owner.query(`update meta.region set source = $2, config = '{"kind": "gantt", "link": {"page": 3, "items": {"P3_EMPNO": "#task_id#"}}}' where id = $1`, [r.id,
+        `select '"><img src=x onerror=alert(1)>' as task, '2026-01-01' as s, '2026-01-09"><script>' as e, '50"><b>' as progress, 1 as task_id, '1"><svg onload=alert(1)>' as depends_on
+         union all select '<script>alert(2)</script>', '2026-01-03', null, null, 2, '1,"><x'`]);
+      const allen = await as('allen');
+      const page = (await allen.get('/a/hr/32')).body;
+      assert.ok(!page.includes('<img src=x') && !page.includes('<script>alert') && !page.includes('<svg onload') && !page.includes('"><b>'));
+      assert.match(page, /&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
+      assert.doesNotMatch(page, /\sstyle=/, 'geometry goes into the nonce stylesheet');
+      assert.doesNotMatch(page, /\/a\/hr\/3\?/, 'page 3 needs MANAGER: no drill-down for allen');
+      // path data is numbers only
+      for (const [, d] of page.matchAll(/class="gantt-dep" d="([^"]*)"/g)) assert.match(d, /^[MHV\d., ]+$/);
+      for (const kind of ['pyramid', 'polar']) {
+        await owner.query(`update meta.region set source = $2, config = $3 where id = $1`, [r.id, `select '<img src=y>' as l, 3 as a, 2 as b union all select 'b', 1, 4`, JSON.stringify({ kind })]);
+        const body = (await allen.get('/a/hr/32')).body;
+        assert.ok(!body.includes('<img src=y>'), kind);
+        assert.match(body, new RegExp(`chart-${kind}`), kind);
+      }
+    } finally {
+      await owner.query(`update meta.region set source = $2, config = $3 where id = $1`, [r.id, r.source, JSON.stringify(r.config)]);
+    }
+  });
+
+  test('a query that is no Gantt data shows a message, not an error', async () => {
+    const r = await region('Office move');
+    try {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [r.id, `select 'a' as t, 'tomorrow' as s, 'later' as e`]);
+      assert.match((await (await as('king')).get('/a/hr/32')).body, /A Gantt chart needs a label column, a start date and an end date/);
+    } finally {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [r.id, r.source]);
+    }
+  });
+});
+
+describe('sprint 33 item 2: map layers, clustering and spatial filtering', () => {
+  const regions = async () =>
+    (await owner.query(`select r.id, r.type, r.source, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 33 order by r.seq`, [appId])).rows as { id: number; type: string; source: string; config: any }[];
+  const mapData = (page: string) => JSON.parse(/<script type="application\/json" class="map-data">([^<]*)<\/script>/.exec(page)![1]);
+
+  test("every layer's query runs as the app role: no owner rights, the other layers still draw", async () => {
+    const [map] = await regions();
+    try {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify({ ...map.config, layers: [
+        { name: 'Who', source: `select current_user as title, 1 as lat, 1 as lng` },
+        { name: 'Meta', source: `select name as title, 1 as lat, 1 as lng from meta.app` },
+      ] })]);
+      const page = (await (await as('allen')).get('/a/hr/33')).body;
+      const d = mapData(page);
+      assert.deepEqual(d.layers.map((l: any) => l.name), ['Visits', 'Who']);
+      assert.equal(d.layers[1].points[0].title, 'hr_app');
+      assert.match(page, /<div class="alert alert-error" role="alert">/, 'the meta schema is not readable by the app role');
+      assert.doesNotMatch(page, /Directory test|"title":"HR/, 'no application names leak');
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify(map.config)]);
+    }
+  });
+
+  test("a layer's link only to a page the user may open; names, titles and texts are escaped", async () => {
+    const [map] = await regions();
+    try {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify({ ...map.config, layers: [
+        { name: '</script><img src=x onerror=alert(1)>', source: `select '<img src=y onerror=alert(2)>' as title, '</script><script>alert(3)</script>' as body, empno, 1 as lat, 1 as lng from hr.emp where empno = 7499`, link: { page: 3, items: { P3_EMPNO: '#empno#' } } },
+      ] })]);
+      const allen = (await (await as('allen')).get('/a/hr/33')).body;
+      assert.ok(!allen.includes('<img src=x') && !allen.includes('<img src=y') && !allen.includes('<script>alert(3)'));
+      assert.match(allen, /&lt;\/script&gt;&lt;img src=x onerror=alert\(1\)&gt;: 1 place\(s\) as a list/);
+      const layer = mapData(allen).layers[1];
+      assert.equal(layer.name, '</script><img src=x onerror=alert(1)>', 'the JSON keeps the text; the page escapes "<" in it');
+      assert.equal(layer.points[0].href, null, 'page 3 needs MANAGER: no link for allen');
+      const king = mapData((await (await as('king')).get('/a/hr/33')).body).layers[1];
+      assert.match(king.points[0].href, /^\/a\/hr\/3\?.*P3_EMPNO=7499/);
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify(map.config)]);
+    }
+  });
+
+  test('the distance and area from the URL: numbers only, otherwise ignored; they only narrow the rows the user may see', async () => {
+    const [, report] = await regions();
+    const allen = await as('allen');
+    for (const bad of ["41,-87,10'; drop table hr.emp; --", '41,-87,10,1', '41,-87,1e9', '41,-87,Infinity', '41,-87,NaN', '0x10,0,1', '41,-87,-1'])
+      assert.doesNotMatch((await allen.get(`/a/hr/33?r${report.id}_near=${encodeURIComponent(bad)}`)).body, /Within|alert-error/, bad);
+    const { parseNear, nearCondition, postgisNearCondition } = await import('../src/runtime/spatial.ts');
+    const near = parseNear('41.5,-87.25,12.5')!;
+    // the only things in the SQL besides fixed text are the parsed numbers and quoted column names
+    assert.doesNotMatch(nearCondition(near, { lat: 'lat', lng: 'lng' }).replace(/"__q"\."(lat|lng)"/g, ''), /["';]/);
+    assert.doesNotMatch(postgisNearCondition({ schema: 'public', version: '3', geometry: 1, geography: 2 }, { name: 'g', kind: 'geometry' }, near).replace(/"(__q|g|public)"/g, ''), /["';]/);
+    // a report with RLS stays filtered by it: the area only takes rows away
+    const all = (await allen.get(`/a/hr/33?r${report.id}_n=100`)).body;
+    const near100 = (await allen.get(`/a/hr/33?r${report.id}_n=100&r${report.id}_near=${encodeURIComponent('41.8781,-87.6298,2000')}`)).body;
+    const count = (p: string) => (p.match(/<td[^>]*>(Chicago|Boston|New York|Dallas)<\/td>/g) ?? []).length;
+    assert.ok(count(near100) <= count(all) && count(near100) > 0);
+  });
+
+  test('only developers save map layers (CSRF-checked), and a layer link only to a page of the application', async () => {
+    const [map] = await regions();
+    const pageId = (await owner.one('select page_id from meta.region where id = $1', [map.id])).page_id;
+    const url = `/builder/pages/${pageId}/region/${map.id}/settings`;
+    const res = await new FileBrowser(app).post(url, { layers: '1', layer0_source: 'select 1' });
+    assert.equal(res.statusCode, 302, 'not signed in to the builder');
+    assert.deepEqual((await owner.one('select config from meta.region where id = $1', [map.id])).config, map.config);
+    const { mergeMapSettings } = await import('../src/builder/region-settings.ts');
+    const merged = mergeMapSettings({}, { layers: '1', layer0_source: 'select 1', layer0_link_page: '424242' }, { pages: new Set([1]), lovs: new Set(), reports: new Map() });
+    assert.deepEqual(merged.layers, [{ name: 'Layer 2', source: 'select 1' }]);
+  });
+});
+
+describe('sprint 33 item 3: REST write-back, synchronisation, OAuth2 password and refresh tokens', () => {
+  const env = { ...process.env };
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { method: string; url: string; body: string }[] = [];
+  const dev = new Browser();
+  const cleanup: string[] = [];
+  let crmUrl = '';
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        hits.push({ method: req.method!, url: req.url!, body });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ items: [{ id: 1, name: 'one' }, { id: 2, name: 'two' }] }));
+      });
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    crmUrl = (await owner.one(`select url from meta.rest_source where app_id = $1 and name = 'CRM_CONTACTS'`, [appId])).url;
+  });
+
+  after(async () => {
+    await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'CRM_CONTACTS'`, [appId, crmUrl]);
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name like 'SEC3\\_%'`, [appId]);
+    await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC3\\_%'`, [appId]);
+    for (const sql of cleanup) await owner.query(sql);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  test('row values in an operation can not change the host or the path above the source', async () => {
+    const ws = await import('../src/websources.ts');
+    const s = {
+      id: 0, app_id: appId, name: 'SEC3', url: `${mockBase}/api/items?x=1`, method: 'GET', credential: null, headers: {}, body: null, row_selector: null,
+      params: [], columns: [{ name: 'id' }, { name: 'name' }], cache_seconds: 0, timeout_s: 5, max_rows: 10, key_columns: ['id'],
+      operations: { update: { path: '/{id}', body: '{"name": {name}}' }, delete: { path: '?id={id}' } },
+    };
+    for (const id of ['@evil.example/', '//evil.example/x', '../../admin', 'x?y=1#z', 'http://evil.example/', '%2e%2e']) {
+      const u = new URL(ws.buildOperation(s, 'update', { id, name: 'n' }).url);
+      assert.equal(u.host, new URL(mockBase).host, id);
+      assert.ok(u.pathname.startsWith('/api/items/') && u.pathname.split('/').length === 4, `${id}: one segment under the source's path`);
+      assert.equal(new URL(ws.buildOperation(s, 'delete', { id }).url).searchParams.get('id'), id, 'a query value stays one value');
+    }
+    for (const id of ['.', '..']) assert.throws(() => ws.buildOperation(s, 'update', { id, name: 'n' }), /not a valid value/);
+    // a body template takes JSON values: a value can't add keys
+    const body = JSON.parse(ws.buildOperation(s, 'update', { id: 1, name: '", "admin": true, "x": "' }).body!);
+    assert.deepEqual(Object.keys(body), ['name']);
+    // a definition written straight into the table is checked again before a call
+    assert.throws(() => ws.buildOperation({ ...s, operations: { update: { path: '/../../{id}' } } }, 'update', { id: 1 }), /"path" follows/);
+    assert.equal(new URL(ws.buildOperation({ ...s, operations: { update: { path: '@evil.example/{id}' } } }, 'update', { id: 1 }).url).host, new URL(mockBase).host);
+    assert.throws(() => ws.buildOperation({ ...s, operations: { update: { path: '//evil.example/{id}' } } }, 'update', { id: 1 }), /"path" follows/);
+  });
+
+  test('a REST grid: row keys are signed, and only the operations the source defines are used', async () => {
+    await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'CRM_CONTACTS'`, [appId, `${mockBase}/crm`]);
+    const { clearResponseCache } = await import('../src/websources.ts');
+    clearResponseCache();
+    const grid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 34 and r.type = 'grid'`, [appId])).id;
+    const king = await as('king');
+    const page = (await king.get('/a/hr/34')).body;
+    const g = `g${grid}`;
+    const pk = (n: string) => new RegExp(`name="${g}_(\\d+)_pk" value="${n}"`).exec(page)?.[1];
+    const cs = /name="g\d+_\d+_cs" value="([^"]+)"/.exec(page)![1];
+    assert.ok(pk('1') && pk('2'), 'the rows of the service');
+    // a key that was not signed for this row: refused, nothing is sent
+    let n = hits.length;
+    const res = await king.post('/a/hr/34', { __csrf: king.lastCsrf, __request: `GRID_SAVE_${grid}`, [`${g}_0_pk`]: '999', [`${g}_0_cs`]: cs, [`${g}_0_del`]: 'true' });
+    assert.notEqual(res.statusCode, 303);
+    assert.ok(!hits.slice(n).some((h) => h.method === 'DELETE'), 'no DELETE for an unsigned key');
+    // without a delete operation, Delete is not offered and a posted delete does nothing
+    const ops = (await owner.one(`select operations from meta.rest_source where app_id = $1 and name = 'CRM_CONTACTS'`, [appId])).operations;
+    try {
+      await owner.query(`update meta.rest_source set operations = operations - 'delete' where app_id = $1 and name = 'CRM_CONTACTS'`, [appId]);
+      const p2 = (await king.get('/a/hr/34')).body;
+      assert.doesNotMatch(p2, new RegExp(`name="${g}_\\d+_del"`));
+      const i = new RegExp(`name="${g}_(\\d+)_pk" value="1"`).exec(p2)![1];
+      const sig = new RegExp(`name="${g}_${i}_cs" value="([^"]+)"`).exec(p2)![1];
+      n = hits.length;
+      await king.post('/a/hr/34', { __csrf: king.lastCsrf, __request: `GRID_SAVE_${grid}`, [`${g}_${i}_pk`]: '1', [`${g}_${i}_cs`]: sig, [`${g}_${i}_del`]: 'true' });
+      assert.ok(!hits.slice(n).some((h) => h.method === 'DELETE'));
+    } finally {
+      await owner.query(`update meta.rest_source set operations = $2 where app_id = $1 and name = 'CRM_CONTACTS'`, [appId, JSON.stringify(ops)]);
+    }
+    // the form's key item is signed like a table form's: a forged P34_ID is refused
+    n = hits.length;
+    const forged = await king.post('/a/hr/34', { __csrf: king.lastCsrf, __request: 'DELETE', P34_ID: '2', P34_NAME: 'x' });
+    assert.ok(!hits.slice(n).some((h) => h.method === 'DELETE'), `status ${forged.statusCode}: no DELETE with a forged key`);
+  });
+
+  test('a synchronisation writes as the application role: grants and RLS apply, the meta schema is out of reach', async () => {
+    const { runSync } = await import('../src/restsync.ts');
+    const src = await owner.one(
+      `insert into meta.rest_source (app_id, name, url, row_selector, columns, key_columns, sync_table, sync_mode)
+       values ($1, 'SEC3_SYNC', $2, 'items', '[{"name": "id", "type": "integer"}, {"name": "name", "type": "text"}]', '{id}', 'meta.app', 'merge') returning id`,
+      [appId, `${mockBase}/sync`],
+    );
+    const before = (await owner.one('select count(*)::int as n from meta.app')).n;
+    let r = await runSync(src.id, 'manual');
+    assert.equal(r.status, 'error');
+    assert.match(r.message!, /permission denied/);
+    assert.equal((await owner.one('select count(*)::int as n from meta.app')).n, before);
+    // a table the app role may only read
+    await owner.query(`update meta.rest_source set sync_table = 'hr.dept' where id = $1`, [src.id]);
+    r = await runSync(src.id, 'manual');
+    assert.equal(r.status, 'error');
+    // the log and the request function: the current application's sources only
+    await assert.rejects(runtime.query('select * from meta.rest_sync_log'), /permission denied/);
+    await assert.rejects(runtime.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', '0', true)`);
+      await c.query(`select meta.request_rest_sync('SEC3_SYNC')`);
+    }), /does not exist in this application/);
+    await assert.rejects(runtime.query(`select meta.request_rest_sync('SEC3_SYNC')`), /no current application/);
+    // the table name is checked in the builder
+    const { syncProblems } = await import('../src/restsync.ts');
+    assert.ok(syncProblems({ sync_table: 'hr.dept; drop table hr.emp', key_columns: ['id'] }).length);
+  });
+
+  test('builder: synchronise now and removing secrets need a developer, the CSRF token and the right application', async () => {
+    const src = await owner.one(`insert into meta.rest_source (app_id, name, url, sync_table, sync_mode) values ($1, 'SEC3_NOW', $2, 'hr.t_none', 'append') returning id`, [appId, `${mockBase}/now`]);
+    const url = `/builder/apps/${appId}/rest-sources/${src.id}/sync`;
+    const n = hits.length;
+    assert.equal((await new Browser().post(url, { __csrf: 'x' })).statusCode, 302);
+    assert.equal((await dev.post(url, { __csrf: 'wrong' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/apps/${appId + 100000}/rest-sources/${src.id}/sync`, { __csrf: dev.lastCsrf })).statusCode, 404);
+    assert.equal(hits.length, n, 'no request was made');
+    assert.equal((await dev.post(url, { __csrf: dev.lastCsrf })).statusCode, 303);
+    assert.equal(hits.length, n + 1);
+    // "what" only picks from a fixed list of secret columns
+    const { encryptSecret } = await import('../src/secrets.ts');
+    const c = await owner.one(
+      `insert into meta.web_credential (app_id, name, type, username, token_url, grant_type, oauth_username, secret_enc, password_enc, refresh_token_enc)
+       values ($1, 'SEC3_PW', 'oauth2', 'cid', $2, 'password', 'robot', $3, $4, $5) returning id`,
+      [appId, `${mockBase}/token`, encryptSecret('cs'), encryptSecret('pw-Secret-42'), encryptSecret('rt-Secret-43')],
+    );
+    await dev.get(`/builder/apps/${appId}/shared?c=web_credential-${c.id}`);
+    await dev.post(`/builder/apps/${appId}/web-credentials/${c.id}/clear`, { __csrf: dev.lastCsrf, what: 'name' });
+    const row = await owner.one('select name, secret_enc, password_enc, refresh_token_enc from meta.web_credential where id = $1', [c.id]);
+    assert.equal(row.name, 'SEC3_PW');
+    assert.equal(row.secret_enc, null, 'an unknown "what" means the secret');
+    assert.ok(row.password_enc && row.refresh_token_enc);
+    await dev.post(`/builder/apps/${appId}/web-credentials/${c.id}/clear`, { __csrf: dev.lastCsrf, what: 'refresh' });
+    assert.equal((await owner.one('select refresh_token_enc from meta.web_credential where id = $1', [c.id])).refresh_token_enc, null);
+  });
+
+  test('OAuth2 passwords and refresh tokens are write-only: encrypted, never shown, exported, imported or readable by the runtime role', async () => {
+    const { decryptSecret, encryptSecret } = await import('../src/secrets.ts');
+    const res = await dev.post(`/builder/apps/${appId}/shared/web_credential`, {
+      __csrf: dev.lastCsrf, name: 'SEC3_OAUTH', type: 'oauth2', username: 'cid', token_url: `${mockBase}/token`, grant_type: 'password', oauth_username: 'robot',
+      password: 'pw-Plain-777', refresh_token: 'rt-Plain-888', password_enc: 'v1:forged', refresh_token_enc: 'v1:forged',
+    });
+    assert.equal(res.statusCode, 303);
+    const row = await owner.one(`select id, password_enc, refresh_token_enc from meta.web_credential where app_id = $1 and name = 'SEC3_OAUTH'`, [appId]);
+    assert.equal(decryptSecret(row.password_enc), 'pw-Plain-777');
+    assert.equal(decryptSecret(row.refresh_token_enc), 'rt-Plain-888');
+    const page = (await dev.get(`/builder/apps/${appId}/shared?c=web_credential-${row.id}`)).body;
+    assert.match(page, /A password is stored/);
+    assert.match(page, /A refresh token is stored/);
+    for (const v of ['pw-Plain-777', 'rt-Plain-888', row.password_enc, row.refresh_token_enc]) assert.ok(!page.includes(v));
+    // empty keeps them
+    await dev.post(`/builder/apps/${appId}/shared/web_credential/${row.id}`, { __csrf: dev.lastCsrf, name: 'SEC3_OAUTH', type: 'oauth2', username: 'cid', token_url: `${mockBase}/token`, grant_type: 'password', oauth_username: 'robot', password: '', refresh_token: '' });
+    assert.equal((await owner.one('select password_enc from meta.web_credential where id = $1', [row.id])).password_enc, row.password_enc);
+    for (const col of ['password_enc', 'refresh_token_enc']) await assert.rejects(runtime.query(`select ${col} from meta.web_credential`), /permission denied/, col);
+    assert.equal((await runtime.query(`select grant_type, oauth_username from meta.web_credential where name = 'SEC3_OAUTH'`)).rows[0].grant_type, 'password');
+    const doc = JSON.stringify((await owner.one(`select meta.export_app('hr') as d`)).d);
+    assert.ok(doc.includes('SEC3_OAUTH') && !doc.includes('password_enc') && !doc.includes('refresh_token_enc') && !doc.includes(row.password_enc) && !doc.includes('sync_last_at'));
+    // an import can't bring them along, and synchronisations arrive switched off
+    const imported = await owner.one(`select meta.import_app(meta.export_app('hr') || jsonb_build_object(
+        'web_credentials', jsonb_build_array(jsonb_build_object('name', 'SEC3_IMP', 'type', 'oauth2', 'password_enc', $1::text, 'refresh_token_enc', $1::text)),
+        'rest_sources', jsonb_build_array(jsonb_build_object('name', 'SEC3_IMPSRC', 'url', 'https://api.example.com/x', 'sync_table', 'hr.dept', 'sync_enabled', true, 'sync_schedule', '@hourly'))),
+      'sec_import_33_3') as id`, [encryptSecret('x')]);
+    cleanup.push(`delete from meta.app where id = ${Number(imported.id)}`);
+    const cred = await owner.one(`select password_enc, refresh_token_enc, grant_type from meta.web_credential where app_id = $1 and name = 'SEC3_IMP'`, [imported.id]);
+    assert.deepEqual(cred, { password_enc: null, refresh_token_enc: null, grant_type: 'client_credentials' });
+    assert.equal((await owner.one(`select sync_enabled from meta.rest_source where app_id = $1 and name = 'SEC3_IMPSRC'`, [imported.id])).sync_enabled, false);
+  });
+});
+
+describe('sprint 33 item 4: debug messages and the installation log', () => {
+  const dev = new Browser();
+  let reviewId: string;
+  const hrViews = async () => (await owner.query('select id from meta.debug_view where app_id = $1 order by id', [appId])).rows.map((r) => r.id as string);
+
+  before(async () => {
+    reviewId = String((await owner.one(`insert into hr.review (empno, period, rating, created_by) values (7698, '2026-01-01:2026-06-30', 3, 'sec33-4') returning id`)).id);
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+  });
+  after(async () => {
+    await owner.query(`update meta.app set debug_level = 0, debug_retention_days = 7 where id = $1`, [appId]);
+    await owner.query('delete from meta.debug_view where app_id = $1', [appId]);
+    await owner.query(`delete from hr.review where created_by = 'sec33-4'`);
+    await owner.query(`delete from meta.developer where username = 'sec33_dev'`);
+  });
+
+  test('application roles can not read or write the debug tables, nor call the save and purge functions', async () => {
+    const role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    for (const t of ['meta.debug_view', 'meta.debug_message'])
+      for (const r of [role, 'pgapex_runtime'])
+        assert.equal((await owner.one(`select has_table_privilege($1, $2, 'select,insert,update,delete') as ok`, [r, t])).ok, false, `${r} ${t}`);
+    for (const fn of ['meta.debug_save(int, int, text, uuid, text, text, int, int, timestamptz, numeric, jsonb)', 'meta.debug_purge()'])
+      assert.equal((await owner.one(`select has_function_privilege($1, $2, 'execute') as ok`, [role, fn])).ok, false, `${role} ${fn}`);
+    assert.equal((await owner.one(`select has_function_privilege($1, 'meta.debug(int, text)', 'execute') as ok`, [role])).ok, true);
+  });
+
+  test('with debug off a request writes nothing; meta.debug_save refuses an application not in debug', async () => {
+    await owner.query('update meta.app set debug_level = 0 where id = $1', [appId]);
+    await owner.query('delete from meta.debug_view where app_id = $1', [appId]);
+    const b = await as('king');
+    await b.get('/a/hr/1');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.deepEqual(await hrViews(), []);
+    assert.equal((await runtime.one(`select meta.debug_save($1, 1, 'x', null, 'GET', '/forged', 200, 9, now(), 1, '[]') as id`, [appId])).id, null);
+  });
+
+  test('password item values and query string values are never recorded, even at level 9', async () => {
+    await owner.query('update meta.app set debug_level = 9 where id = $1', [appId]);
+    const b = await as('king');
+    const url = `/a/hr/20?${new URLSearchParams({ P20_ID: reviewId, cs: urlChecksum(appId, 20, 'king', { P20_ID: reviewId }) })}`;
+    await b.get(url);
+    const res = await b.post('/a/hr/20', { __csrf: b.lastCsrf, __request: 'SAVE', P20_EMPNO: '7698', P20_PERIOD: ['2026-01-01', '2026-06-30'], P20_RATING: '99', P20_SKILLS: 'Sales', P20_NOTES: '', P20_PIN: 'pin-s33-secret' });
+    assert.equal(res.statusCode, 422);
+    let rows: unknown[] = [];
+    for (let i = 0; i < 50 && !rows.some((r) => JSON.stringify(r).includes('P20_PIN')); i++) {
+      await new Promise((r) => setTimeout(r, 40));
+      rows = (await owner.query('select v.path, m.message from meta.debug_view v join meta.debug_message m on m.view_id = v.id where v.app_id = $1', [appId])).rows;
+    }
+    const all = JSON.stringify(rows);
+    assert.match(all, /P20_PIN posted: \(password, not shown\)/);
+    assert.doesNotMatch(all, /pin-s33-secret/);
+    assert.doesNotMatch(all, new RegExp(`P20_ID=${reviewId}|cs=`), 'query values are left out');
+  });
+
+  test('the viewer escapes messages and only shows a page view under its own application', async () => {
+    await owner.query('update meta.app set debug_level = 9 where id = $1', [appId]);
+    const id = (await runtime.one(`select meta.debug_save($1, 1, 'x', null, 'GET', '/a/hr/1', 200, 9, now(), 1, $2::jsonb) as id`,
+      [appId, JSON.stringify([{ ms: 0, level: 4, component: '<b>c</b>', text: '<script>alert(1)</script>' }])])).id;
+    const res = await dev.get(`/builder/apps/${appId}/debug/${id}`);
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /<script>alert\(1\)/);
+    assert.match(res.body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec33-other', 'Other', 'none') returning id`)).id;
+    try {
+      assert.equal((await dev.get(`/builder/apps/${other}/debug/${id}`)).statusCode, 404);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+    assert.equal((await dev.get(`/builder/apps/${appId}/debug/1%20or%201=1`)).statusCode, 404);
+    // filters are parameters: a quote in the user filter is just text
+    assert.equal((await dev.get(`/builder/apps/${appId}/debug?user=${encodeURIComponent("x' or '1'='1")}&page=abc&before=1;drop`)).statusCode, 200);
+  });
+
+  test('the viewer needs a developer session, and its changes need the CSRF token', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get(`/builder/apps/${appId}/debug`)).statusCode, 302);
+    assert.equal((await anon.get('/builder/installation')).statusCode, 302);
+    const before = (await owner.one('select count(*)::int as n from meta.debug_view where app_id = $1', [appId])).n;
+    assert.ok(before > 0);
+    assert.equal((await dev.post(`/builder/apps/${appId}/debug/purge`, { __csrf: 'wrong' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/apps/${appId}/debug/settings`, { __csrf: 'wrong', debug_level: '0', debug_retention_days: '7' })).statusCode, 403);
+    assert.equal((await owner.one('select count(*)::int as n from meta.debug_view where app_id = $1', [appId])).n, before);
+    assert.equal((await owner.one('select debug_level from meta.app where id = $1', [appId])).debug_level, 9);
+    // out-of-range settings are refused
+    await dev.get(`/builder/apps/${appId}/debug`);
+    await dev.post(`/builder/apps/${appId}/debug/settings`, { __csrf: dev.lastCsrf, debug_level: '9', debug_retention_days: '3650' });
+    assert.equal((await owner.one('select debug_retention_days from meta.app where id = $1', [appId])).debug_retention_days, 7);
+  });
+
+  test('the installation log is for administrators only', async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec33_dev', meta.hash_password('Sec33-dev-password!'), false) on conflict do nothing`);
+    const d = new Browser();
+    await d.get('/builder/login');
+    await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'sec33_dev', password: 'Sec33-dev-password!' });
+    const res = await d.get('/builder/installation');
+    assert.equal(res.statusCode, 403);
+    assert.doesNotMatch(res.body, /051_debug_messages/);
+    assert.doesNotMatch((await d.get('/builder/utilities')).body, /\/builder\/installation/);
+    assert.equal((await dev.get('/builder/installation')).statusCode, 200);
+  });
+});
+
+describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
+  const env = { ...process.env };
+  let role = '';
+  let other = 0;
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { url: string; headers: Record<string, unknown> }[] = [];
+  /** SQL as an application's code (its role, meta.app_id() set). */
+  const asApp = <T>(app: number, fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>, dbRole: string | null = role) =>
+    runtime.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'sec', true)`, [String(app)]);
+      if (dbRole) await c.query(`set local role ${dbRole}`);
+      return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
+    });
+  const fails = (app: number, sql: string, params: unknown[], re: RegExp, dbRole?: string | null) =>
+    assert.rejects(asApp(app, (q) => q(sql, params), dbRole), re);
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1,api.example.com';
+    delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+    role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec33-wr', 'Other', 'none') returning id`)).id;
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc) values ($1, 'SEC5_TOKEN', 'bearer', $2)`, [other, encryptSecret('other-app-s3cret')]);
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      hits.push({ url: req.url!, headers: req.headers });
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('private');
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+  });
+
+  after(async () => {
+    await owner.query('delete from meta.web_request_log where app_id = any($1)', [[appId, other]]);
+    await owner.query('delete from meta.app where id = $1', [other]);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  test('application roles can not read or change the request table; take/done only see their own transaction', async () => {
+    for (const sql of ['select * from meta.web_request_log', `insert into meta.web_request_log (app_id, url) values (${other}, 'http://x')`, 'update meta.web_request_log set status = $$ok$$', 'delete from meta.web_request_log'])
+      await fails(appId, sql, [], /permission denied/);
+    await assert.rejects(runtime.query('select * from meta.web_request_log'), /permission denied/);
+    await assert.rejects(runtime.query('select meta.web_request_check()'), /permission denied/);
+    // a committed request of another application: not taken, not finished, not readable
+    const id = (await asApp(other, (q) => q(`select meta.web_request('https://api.example.com/x') as id`), null))[0].id;
+    const r = await asApp(appId, async (q) => ({
+      taken: await q(`select set_config('pgapex.web_pending', '1', true)`).then(() => q('select * from meta.web_request_take(20)')),
+      response: (await q('select meta.web_response($1) as r, meta.web_response_blob($1) as b', [id]))[0],
+    }));
+    assert.deepEqual(r.taken, []);
+    assert.deepEqual(r.response, { r: null, b: null });
+    // even the same application can't take or finish a committed request from SQL: only the scheduler does
+    const own = await asApp(other, async (q) => {
+      await q(`select set_config('pgapex.web_pending', '1', true)`);
+      const taken = await q('select * from meta.web_request_take(20)');
+      await q(`select meta.web_request_done($1, 'ok', 200, null, '{}', 'forged', null)`, [id]);
+      return taken;
+    }, null);
+    assert.equal(own.length, 0);
+    const row = await owner.one('select status, response_body from meta.web_request_log where id = $1', [id]);
+    assert.deepEqual([row.status, row.response_body], ['queued', null]);
+  });
+
+  test('requests are checked when queued: URL, method, headers, credential of the app, sizes, the queue limit', async () => {
+    const bad: [string, unknown[], RegExp][] = [
+      ['select meta.web_request($1)', ['file:///etc/passwd'], /must start with http/],
+      ['select meta.web_request($1)', ['javascript:alert(1)'], /must start with http/],
+      ['select meta.web_request($1)', ['http://user:pw@api.example.com/'], /must start with http/],
+      ['select meta.web_request($1)', ['http://api.example.com/a b'], /no spaces/],
+      ['select meta.web_request($1)', ['http://api.example.com/\r\nX: y'], /no spaces/],
+      ['select meta.web_request($1, $2)', ['http://api.example.com/', 'TRACE'], /method is one of/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"X-A": "1\\r\\nInjected: yes"}'], /without line breaks/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"Bad Name": "1"}'], /not a valid header name/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"Host": "evil.example.com"}'], /set by the server/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '{"X-N": 1}'], /is a string/],
+      ['select meta.web_request($1, p_headers => $2)', ['http://api.example.com/', '["x"]'], /JSON object/],
+      ['select meta.web_request($1, p_body => $2)', ['http://api.example.com/', 'x'.repeat(1_000_001)], /larger than 1 MB/],
+      ['select meta.web_request($1, p_timeout_s => 3600)', ['http://api.example.com/'], /1 to 60 seconds/],
+      // another application's credential is not found from this one
+      ['select meta.web_request($1, p_credential => $2)', ['http://api.example.com/', 'SEC5_TOKEN'], /web credential SEC5_TOKEN does not exist/],
+      ['select meta.web_request_source($1)', ['NO_SUCH_SOURCE'], /does not exist in this application/],
+      ['select meta.web_request_source($1, $2)', ['CRM_CONTACTS', '{"a": 1}'], /JSON object of strings/],
+    ];
+    for (const [sql, params, re] of bad) await fails(appId, sql, params, re);
+    // no application: refused
+    await assert.rejects(runtime.query(`select meta.web_request('https://api.example.com/')`), /no current application/);
+    // the queue limit
+    await fails(other, `select meta.web_request('https://api.example.com/q') from generate_series(1, 101)`, [], /100 requests waiting/, null);
+    await owner.query('delete from meta.web_request_log where app_id = $1', [other]);
+  });
+
+  test('the server makes it with the allow-list, the address checks and the credential URL limits', async () => {
+    const wr = await import('../src/webrequests.ts');
+    const at = (url: string, more: Record<string, unknown> = {}) =>
+      wr.execute(other, { id: '0', source: null, params: null, url, method: 'GET', headers: {}, body: null, credential: null, timeout_s: 5, ...more });
+    // 127.0.0.1 is allowed but private (PGAPEX_REST_PRIVATE_HOSTS unset): refused before connecting
+    let r = await at(`${mockBase}/x`);
+    assert.equal(r.status, 'error');
+    assert.match(r.message!, /private, loopback or link-local/);
+    r = await at('http://169.254.169.254/latest/meta-data/');
+    assert.match(r.message!, /allow-list/);
+    r = await at('http://evil.example.org/');
+    assert.match(r.message!, /allow-list/);
+    assert.equal(hits.length, 0);
+    // a credential that is valid for one URL only is not sent elsewhere
+    await owner.query(`update meta.web_credential set valid_for = '{https://api.example.com/only}' where app_id = $1 and name = 'SEC5_TOKEN'`, [other]);
+    r = await at('https://api.example.com/other', { credential: 'SEC5_TOKEN' });
+    assert.match(r.message!, /not valid for this URL/);
+    assert.ok(!JSON.stringify(r).includes('other-app-s3cret'));
+    // a header that smuggles a line break (edited in the table by the owner) is dropped, not sent
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    try {
+      r = await at(`${mockBase}/h`, { headers: { 'x-ok': 'fine', 'x-bad': 'a\r\nInjected: 1' } });
+      assert.equal(r.status, 'ok');
+      assert.equal(hits.at(-1)!.headers['x-ok'], 'fine');
+      assert.equal(hits.at(-1)!.headers['injected'], undefined);
+      assert.equal(hits.at(-1)!.headers['x-bad'], undefined);
+    } finally {
+      delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+    }
+  });
+
+  test('meta.parse_data refuses what it can not parse safely and stays within its limits', async () => {
+    await assert.rejects(runtime.query(`select * from meta.parse_data('\\x504b0304'::bytea)`), /Excel/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>', 'UTF8'))`), /XML is not parsed/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_delimiter => '"')`), /delimiter is one character/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_format => 'pdf')`), /format is auto/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('[1, 2]', 'UTF8'))`), /must be an object/);
+    // values are data: a quote or SQL in a cell is just text
+    const r = (await runtime.query(`select cols, data from meta.parse_data(convert_to($1, 'UTF8'))`, [`"x'); drop table meta.app; --",b\n"<script>",2\n`])).rows;
+    assert.deepEqual(r[0].cols, ['<script>', '2']);
+    assert.deepEqual(Object.keys(r[0].data), ['b', 'x_drop_table_meta_app']);
+    // the row limit is capped
+    await assert.rejects(runtime.query(`select count(*) from meta.parse_data(convert_to(repeat(E'1\\n', 3), 'UTF8'), p_headers => false, p_max_rows => 2)`), /at most 2/);
+  });
+});
+
+describe('sprint 33 item 6: Theme Roller style variants and template options', () => {
+  const styleTag = (body: string) => /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec(body)?.[1] ?? '';
+
+  test('stored style values and names cannot inject CSS or HTML', async () => {
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    const evil = [
+      { name: 'Evil', accent: 'red;}body{display:none', header: '#123456', font: 'serif;}*{color:red', radius: '0;}x{', font_size: '99px' },
+      { name: '</style><script>alert(1)</script>', accent: '#654321' },
+      { name: 'Fine', accent: '#0a0b0c', font: 'mono' },
+    ];
+    await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify({ styles: evil, style: 'Evil', style_choice: true })]);
+    try {
+      const king = await as('king');
+      let body = (await king.get('/a/hr/1')).body;
+      let css = styleTag(body);
+      assert.doesNotMatch(css, /display:none|color:red|x\{|99px|#123456/, 'an invalid style is skipped entirely');
+      assert.doesNotMatch(body, /<script>alert\(1\)/);
+      assert.doesNotMatch(body, /value="&lt;\/style&gt;/, 'an invalid name is not offered');
+      // a forged choice of the invalid style is refused; a valid one works
+      await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: '</style><script>alert(1)</script>', next: '/a/hr/1' });
+      css = styleTag((await king.get('/a/hr/1')).body);
+      assert.doesNotMatch(css, /#654321/);
+      await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: 'Fine', next: '/a/hr/1' });
+      body = (await king.get('/a/hr/1')).body;
+      assert.match(styleTag(body), /--accent:#0a0b0c/);
+      assert.match(styleTag(body), /--font:ui-monospace/);
+    } finally {
+      await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify(before)]);
+      await owner.query('delete from meta.account_style where app_id = $1', [appId]);
+    }
+  });
+
+  test('the style switch needs the CSRF token, stays in the app and only picks the app\'s own styles', async () => {
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    await owner.query(`update meta.app set theme = theme || $2::jsonb where id = $1`, [appId, JSON.stringify({ styles: [{ name: 'Own', accent: '#0a0b0c' }], style_choice: true })]);
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication, theme) values ('sec6-other', 'Other', 'none', $1) returning id`,
+      [JSON.stringify({ styles: [{ name: 'Foreign', accent: '#fe0000' }], style_choice: true })])).id;
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/1');
+      const forged = await king.post('/a/hr/account/style', { __csrf: 'forged', style: 'Own', next: '/a/hr/1' });
+      assert.equal(forged.statusCode, 303);
+      assert.doesNotMatch(styleTag((await king.get('/a/hr/1')).body), /#0a0b0c/, 'forged post ignored');
+      const away = await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: 'Own', next: 'https://evil.example/' });
+      assert.equal(away.headers.location, '/a/hr/1', 'no open redirect');
+      assert.match(styleTag((await king.get('/a/hr/1')).body), /#0a0b0c/);
+      await king.post('/a/hr/account/style', { __csrf: king.lastCsrf,  style: 'Foreign', next: '/a/hr/1' });
+      const css = styleTag((await king.get('/a/hr/1')).body);
+      assert.doesNotMatch(css, /#fe0000/, 'another app\'s style can not be chosen');
+      assert.match(css, /#0a0b0c/);
+      // the account table refuses a malformed name even from the runtime connection
+      await assert.rejects(runtime.query(`insert into meta.account_style (account_id, app_id, style) select id, $1, '}<x' from meta.account where username = 'king'
+                                          on conflict (account_id, app_id) do update set style = excluded.style`, [appId]), /check constraint/);
+      // the runtime can not read or change the apps' definitions through it
+      await assert.rejects(runtime.query(`update meta.app set theme = '{}' where id = $1`, [appId]), /permission denied/);
+    } finally {
+      await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify(before)]);
+      await owner.query('delete from meta.account_style where app_id = $1', [appId]);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('the Theme Roller pages need a developer and the CSRF token; values are checked', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.get(`/builder/apps/${appId}/theme`)).statusCode, 302);
+    assert.equal((await anon.post(`/builder/apps/${appId}/theme/styles`, { __csrf: 'x', name: 'X' })).statusCode, 302);
+    const dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.get(`/builder/apps/${appId}/theme`);
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    try {
+      assert.equal((await dev.post(`/builder/apps/${appId}/theme/styles`, { __csrf: 'forged', name: 'X' })).statusCode, 403);
+      assert.equal((await dev.post(`/builder/apps/${appId}/theme/settings`, { __csrf: 'forged', style_choice: 'true' })).statusCode, 403);
+      for (const bad of <Record<string, string>[]>[
+        { name: '<script>' }, { name: 'x;}' }, { name: 'A', accent: 'red', accent_own: 'true' }, { name: 'A', font: 'Comic Sans' },
+        { name: 'A', font_size: '100px' }, { name: 'A', radius: '__proto__' },
+      ])
+        await dev.submit(`/builder/apps/${appId}/theme/styles`, bad);
+      const theme = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+      assert.deepEqual(theme.styles ?? [], before.styles ?? [], 'nothing invalid saved');
+      assert.equal((await dev.get('/builder/apps/999999999/theme')).statusCode, 404);
+      assert.equal((await dev.get('/builder/apps/x/theme')).statusCode, 404);
+    } finally {
+      await owner.query(`update meta.app set theme = $2 where id = $1`, [appId, JSON.stringify(before)]);
+    }
+  });
+
+  test('template options: the database checks the shape, the page keeps only the fixed list', async () => {
+    const r = await owner.one(`select r.id, r.template_options from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 1 order by r.seq limit 1`, [appId]);
+    await assert.rejects(owner.query(`update meta.region set template_options = '{"x\\" onclick=alert(1)"}' where id = $1`, [r.id]), /check constraint/);
+    await assert.rejects(owner.query(`update meta.region set template_options = $2 where id = $1`, [r.id, Array.from({ length: 13 }, (_, i) => `a${i}`)]), /check constraint/);
+    await owner.query(`update meta.region set template_options = '{to-accent,btn-hot,t-header}' where id = $1`, [r.id]);
+    try {
+      const body = (await (await as('king')).get('/a/hr/1')).body;
+      const cls = new RegExp(`<section class="([^"]*)" id="R${r.id}"`).exec(body)?.[1] ?? '';
+      assert.match(cls, / to-accent/);
+      assert.doesNotMatch(cls, /btn-hot|t-header/, 'well-formed but unlisted classes are ignored');
+    } finally {
+      await owner.query(`update meta.region set template_options = $2 where id = $1`, [r.id, r.template_options]);
+    }
+  });
+});

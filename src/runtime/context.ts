@@ -9,6 +9,7 @@ import type { App, Button, Page } from '../metadata.ts';
 import type { Locale } from './locale.ts';
 import { english, type Translate } from '../i18n.ts';
 import { logActivity, type Session } from '../session.ts';
+import type { DebugLog } from '../debug.ts';
 
 export interface Errors {
   page: string[];
@@ -62,6 +63,19 @@ export interface PageContext {
   download?: Download;
   /** running a background chain (process-jobs.ts): no request, no browser */
   background?: boolean;
+  /** debug messages of this request, when the app's debug level is on (src/debug.ts) */
+  debug?: DebugLog;
+}
+
+/** Write a debug message when this request records them (no-op otherwise). */
+export function dbg(ctx: { debug?: DebugLog }, level: number, component: string, text: string | (() => string)) {
+  if (ctx.debug?.on(level)) ctx.debug.add(level, component, typeof text === 'function' ? text() : text);
+}
+
+/** Run `fn` as a timed debug step when this request records level `level`. */
+export function timed<T>(ctx: { debug?: DebugLog }, level: number, component: string, text: string | (() => string), fn: () => Promise<T>): Promise<T> {
+  if (!ctx.debug?.on(level)) return fn();
+  return ctx.debug.time(level, component, typeof text === 'function' ? text() : text, fn);
 }
 
 /** Session state plus the built-in substitution strings. */
@@ -127,9 +141,10 @@ const FRIENDLY: Record<string, (e: pg.DatabaseError, t: Translate) => string> = 
  * shown as-is; common constraint errors get friendly text; anything else is
  * logged and replaced by a reference number unless the app is in debug mode.
  */
-export async function publicError(ctx: Pick<PageContext, 'app' | 'page' | 'user' | 'ip'> & { locale?: Locale }, e: unknown, where: string) {
+export async function publicError(ctx: Pick<PageContext, 'app' | 'page' | 'user' | 'ip'> & { locale?: Locale; debug?: DebugLog }, e: unknown, where: string) {
   const t = ctx.locale?.t ?? english;
   const err = e as pg.DatabaseError;
+  dbg(ctx, 1, 'error', () => `${where}: ${err.code ? `[${err.code}] ` : ''}${err.message}${err.where ? ` (${err.where.split('\n')[0]})` : ''}`);
   if (!err.code) return err.message;
   if (err.code === 'P0001') return err.message;
   const friendly = FRIENDLY[err.code]?.(err, t);

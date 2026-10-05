@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05. Sprints 3–32 are merged into `main` and released as **v0.24.0** (migrations 001–047 are released: add 048+; 033, 035, 045 and 046 were never used). HR example files up to `hr_32` are released.
+Last updated: 2026-10-05 (sprint 33 released as v0.25.0; sprint 34 next). Sprints 3–33 are merged into `main` and released as **v0.25.0** (migrations 001–054 are released: add 055+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
 
 ## Project in one paragraph
 
@@ -48,7 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 31, released as **v0.23.0** (tags: v0.2.0, v0.6.0–v0.23.0; 0.3.0–0.5.0 were never tagged). Migrations 001–043 are released |
+| `main` | Everything up to sprint 33, released as **v0.25.0** (tags: v0.2.0, v0.6.0–v0.25.0; 0.3.0–0.5.0 were never tagged). Migrations 001–054 are released |
+| (sprint branches) | `sprint-32` and `sprint-33` were merged (v0.24.0, v0.25.0) |
 | (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
@@ -1256,3 +1257,182 @@ CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check
 82/23/10/6), CHANGELOG 0.24.0, SECURITY.md (five 0.24.0 rows), version, CI matrix + v0.24.0, chapter 12 line.
 CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446): 789 pass / 8 skip. Next: pick the
 next sprint from the parity matrix (AI features still wait for the owner's decision on provider and API keys).
+
+## Sprint 33 (DONE, v0.25.0): parity items one after another (owner: "please keep going, read the handoff and parity", 2026-10-05)
+
+Branch `sprint-33` from `main` (v0.24.0). As in sprint 32: **one agent at a time** in the main checkout (no worktree),
+dev DB `pgapex-db` on 5434, app 3100. Rules: `docs/development/sprint-33-agent-rules.md`. Each item is finished,
+tested, committed and pushed on `sprint-33` before the next agent starts, so the branch can be merged after any item.
+
+| # | Item (parity row) | Reserved | Status |
+|---|---|---|---|
+| 1 | Charts: Gantt (tasks with start/end, progress, dependencies optional), pyramid and polar charts, server-side SVG like the others, with drill-down and the data-table alternative | 048 (unused), `hr_35` | **done** (5d857e8..acf68b0) |
+| 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (unused), `hr_36` | **done** (1d885c6..9b67ee1) |
+| 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | **done** (3875dd2..87ad118) |
+| 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | **done** (02afbf9..2b10cc4) |
+| 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | **done** (58da370..f10b12e) |
+| 6 | Theme Roller: style variants (several saved styles per app, switch per user) and template options on regions/buttons (a fixed list of CSS classes per component) | 053, (no HR) | **done** (565281a..86f0088) |
+
+**State at the handoff (2026-10-05, owner: "stop and commit / update handoff and feature parity for switching to
+another Claude account"):** all six items are done, committed and pushed; `sprint-33` is clean and equal to
+`origin/sprint-33`; no agent is running. Nothing of sprint 33 is merged into `main` and 0.25.0 is not released.
+Last full runs on the throwaway DB: after item 5 on a **fresh** database in a clean worktree without `.env`: 877 pass /
+10 skip, e2e 103/103. Item 6's agent: e2e 107/107, unit 891 pass / 1 fail (export.test.ts, then fixed in 86f0088 and
+re-run for export/cli only) → **a full `npm test` after item 6 is still owed** (expected 892 pass / 10 skip).
+
+**Release (2026-10-05, next session):** item 1 below fixed by migration `054_import_app_debug_defaults.sql` (a
+`before insert or update` trigger on `meta.app` coalescing `debug_level`/`debug_retention_days`, like 053) and a test
+in `test/export.test.ts` that strips the 050–053 keys from an export. 050's keys were already defaulted by
+import_app. CI-style run in a clean worktree without `.env` on a fresh postgres:17 (5446): **893 pass / 10 skip,
+e2e 107/107**. Released as 0.25.0 (SECURITY.md rows for items 1–6, CI matrix v0.25.0, CHANGELOG, chapter 12).
+
+**Next, in order (as it was at the handoff; all done):**
+1. **Fix (bug found at the handoff, blocks the release):** importing an export made before migration 051 (e.g. any
+   v0.24.0 export) fails: `null value in column "debug_level" of relation "app" violates not-null constraint` (also
+   `debug_retention_days`). `meta.import_app` builds the app row with `jsonb_populate_record`, so a missing key becomes
+   an explicit NULL and the column default doesn't apply. Reproduce: `begin; select
+   meta.import_app(meta.export_app('hr') #- '{app,debug_level}', 'zz_t'); rollback;`. 051 is **not released**, so
+   fix it in a way that also works for databases that already ran 051 (dev DB, CI-style DBs): e.g. a new migration 054
+   (sprint 34 then starts at 055) with a `before insert` trigger on `meta.app` that coalesces both columns to their
+   defaults (053 did the same for `template_options` on region/button: copy that pattern), plus a test in
+   `test/export.test.ts` that imports an export without the 051/053 keys. Check the other columns added by 050–053
+   the same way (050's are filled by import_app's defaults; 053's `meta.app.theme` keys are inside jsonb).
+2. Full `npm test` + `npm run test:e2e` in a clean worktree without `.env` against a **fresh** throwaway postgres:17
+   (memory: CI has no `.env`). Env for that: `DATABASE_URL=postgres://pgapex:pgapex@localhost:5446/pgapex
+   RUNTIME_DATABASE_URL=postgres://pgapex_runtime:pgapex_runtime@localhost:5446/pgapex
+   API_JWT_SECRET=ci-only-api-secret-not-for-production-0123456789 API_URL=http://127.0.0.1:1`. The container
+   `pgapex-ci` (port 5446) may still exist: `docker rm -f pgapex-ci` and start a new one.
+3. Release 0.25.0: SECURITY.md (security notes of items 1–6 are in the reports below), `.env.example` (no new vars
+   in sprint 33), version in package.json, CHANGELOG `[Unreleased]` → `[0.25.0]`, CI upgrade matrix + v0.25.0,
+   chapter 12 version line, this file (migrations 048–053 released; 048 and 049 unused), then merge into `main`, tag
+   v0.25.0, push, check `gh run list -R NickVrgr/Postgresql_APEX` (the local `gh` may lack access: give compare URLs).
+4. Sprint 34 (planned below).
+
+Environment notes for the next session: a `tsx watch src/server.ts` (pid 144937, started 13:37, maybe the owner's)
+keeps a dev server on 3100 against the dev DB; its scheduler made scheduler/workflow tests flaky, which is why the
+agents ran tests on the throwaway DB. It was not killed.
+
+**If a session ends:** `git log --oneline main..sprint-33` and `git status`; make sure no agent is still editing;
+commit any uncommitted work as `wip:`; launch the next agent with "Read `docs/development/sprint-33-agent-rules.md`
+and follow it. Item <n> of the Sprint 33 table in HANDOFF.md." The coordinator records each report below and updates
+the parity row(s) + summary counts and CHANGELOG `[Unreleased]` after each item. At the end (or when usage runs low):
+SECURITY.md, `.env.example`, version 0.25.0, CI upgrade matrix + v0.25.0, chapter 12 version line, this file;
+CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446), merge into `main`, tag, push, check CI.
+
+**Item reports:** (filled in as agents finish)
+
+- **1 charts: DONE** (5d857e8..acf68b0, pushed). `gantt`, `pyramid`, `polar` in `src/runtime/charts.ts` (SVG, nonce'd
+  classes, tooltips, data table, checksummed drill-down); Gantt columns label/start/end + optional `progress`,
+  `task_id`, `depends_on`. Page Designer chart settings; `chart.*` texts in 5 languages. HR `hr_35_project_charts.sql`
+  (`hr.project_task`, page 32 "Project plan"). No migration, export/import not redefined, no env vars. Not done: the
+  create-page wizard's chart types (fixed list inside 047's `meta.generate_page`; would need a migration). Known
+  issue: the Gantt "today" line uses the server's UTC time, not the session time zone. Security: region query as
+  the app role (RLS), values escaped, dependency ids only used as map keys, `kind` allow-listed. Tests 802 pass /
+  8 skip, e2e 94/94. Coordinator: Charts row ✅, Regions 17/3, totals 83/22/10/3, CHANGELOG `[Unreleased]`.
+- **2 maps: DONE** (1d885c6..9b67ee1, pushed). `config.layers` (≤7 extra: name, source SQL as the app role, markers or
+  heat, cluster, link, hidden), legend toggle, colour per layer, per-layer errors; clustering in `public/app.js`;
+  `src/runtime/spatial.ts` (area helpers moved from report.ts): `r<id>_bb` and new `r<id>_near=lat,lng,km` (map
+  `filter: "distance"`), PostGIS detected via `pg_extension` (cached 1 min) → `ST_Intersects`/`ST_DWithin`, else
+  lat/lng box + haversine (poles, antimeridian). Builder map settings per layer, Advisor checks layer SQL. Gantt today
+  line in the session time zone. HR `hr_36_map_layers.sql` page 33 "Field visits" (`hr.field_visit`). No migration,
+  export/import not redefined, no env vars. Verified against `postgis/postgis:17-3.5` (throwaway, port 5447); a
+  real-PostGIS test skips without the extension. Security (for SECURITY.md): layer SQL as the app role (RLS), links
+  only to openable pages, names/texts as escaped JSON or HTML and DOM-built popups, `_near`/`_bb` parsed as numbers
+  with range checks (only narrow visible rows), the app role needs USAGE on the PostGIS schema. Tests 823 pass /
+  9 skip, e2e 95/95. **Note:** an `npm run dev` (`tsx watch`, started 13:34 outside this session) shared the dev DB
+  and made workflow/job tests fail; the agent stopped its listener on 3100 but its watcher (pid 144937) restarts it
+  on file changes. Not killed by the coordinator (may be the owner's).
+- **3 REST write-back, synchronisation, OAuth2: DONE** (3875dd2..87ad118, pushed; the agent's session ended after
+  the e2e commit, the coordinator wrote the chapter 19/12 docs and fixed the Advisor). Migration
+  `050_rest_writeback_sync.sql`: `meta.rest_source` gets `key_columns`, `operations` (insert/update/delete/fetch:
+  method, path after the source's URL with `{column}`/`{param}` URL-encoded, JSON body template, row_selector) and
+  `sync_*` (table, merge/replace/append, delete missing, cron schedule + time zone, enabled, run state);
+  `meta.rest_sync_log` (last 100 per source); `meta.request_rest_sync(name)` (queues a run for the scheduler,
+  current app only) and `meta.rest_sync_status(id)`. `meta.web_credential`: `grant_type`
+  (client_credentials/password/refresh_token), `oauth_username`, `password_enc`, `refresh_token_enc` (stored and
+  rotated by the server, owner connection only), `token_refreshed_at`. **050 redefines `export_app`/`import_app`**
+  from 044 (new secrets and sync state left out, imported syncs switched off). Code: `src/restsync.ts` (writeRows as
+  the app role in one transaction, `meta.app_user()` = `rest_sync:<SOURCE>`, advisory lock per source, `syncTick()`
+  from the automations scheduler), write-back in `src/runtime/rest-sources.ts` + `grid.ts` + `engine.ts` (form fetch
+  and form_dml, grid Add/Save/Delete only for defined operations; updates send the row as read in this request plus
+  the changes), `callOperation` in `src/websources.ts`; builder Write back / Synchronisation groups, Synchronise now,
+  run history, OAuth2 fields; `pgapex import --replace` keeps the new secrets and sync state. HR
+  `hr_37_rest_writeback.sql` page 34 "Contacts (REST)" (`hr.crm_contact` behind an HR REST module, copy
+  `hr.crm_contact_copy`). No env vars. Security (for SECURITY.md): operation paths validated (no host, `..`, `:`,
+  `//`), values URL-encoded, host fixed, allow-list/SSRF checks and credential URL limits on every call; password and
+  refresh token encrypted, write-only, not readable by the runtime role, never exported or logged; grid writes only
+  writable columns (key, read-only and master columns excluded); sync writes as the app role (grants/RLS);
+  `request_rest_sync` limited to `meta.app_id()`. Limits: no transaction across web-service calls (a grid save
+  failing halfway leaves earlier rows sent); no OAuth2 authorization code flow; no XML/SOAP. Coordinator: parity row
+  ✅, Data and integration 7/1/1/2, totals 84/21/10/3, CHANGELOG `[Unreleased]`. Tests (clean worktree, no `.env`,
+  throwaway postgres:17 on 5446): 844 pass / 10 skip, e2e 99/99.
+- **4 debug messages: DONE** (02afbf9..2b10cc4, pushed). Migration `051_debug_messages.sql`: `meta.app.debug_level`
+  (0, 1/2/4/6/9) and `debug_retention_days` (1–90, default 7); `meta.debug_view` (one row per recorded request) and
+  `meta.debug_message`; `meta.debug(level, text)`, `meta.debug(text)`, `meta.debug_enabled(level)`,
+  `meta.debug_level()` (public); `meta.debug_save`/`debug_purge` security definer, runtime only (≤5000 requests per
+  app). `meta.debug()` raises a NOTICE tagged `pgapex.debug`, collected per connection by `appTx` while debug is on
+  (kept on rollback); other warnings level 2, notices level 9. `src/debug.ts` (DebugLog only when level > 0; steps,
+  regions, processes, branches, errors; saved in a root `onResponse` hook; purge from the scheduler hourly). Debug
+  off: no writes, only one more `set_config` in the existing statement. Builder Activity → Debug messages
+  (`/builder/apps/:id/debug`), Workspace utilities → Installation (`/builder/installation`, admins);
+  `src/migrate.ts` logs runs in `public.pgapex_install_log`. **Export/import not redefined** (the two app columns
+  travel; an imported app keeps the exporter's debug level, like the old `debug` flag). No env vars, no HR part.
+  Security (for SECURITY.md): app roles/runtime have no rights on the debug tables; viewer needs a developer session +
+  CSRF, request shown only under its own app; password item values and URL query values never recorded, item values
+  only at level 9 (cut at 200 chars); DB error messages may quote values (level 1, like the activity log); any
+  developer can see any app's debug (no per-app developer access); Installation page admins only. Not done:
+  background jobs/automations/REST API not recorded; no per-user/session debug switch. Coordinator: Debug messages
+  ✅, Instance administration stays 🟡 (text extended), Administration 3/1/1/0, totals 85/20/10/3, CHANGELOG.
+  Tests (throwaway DB on 5446): 859 pass / 10 skip, e2e 99/99.
+- **5 SQL API equivalents: DONE** (58da370..f10b12e, pushed). Migration `052_web_request_parse_data.sql`:
+  `meta.web_request(url, method, body, headers, credential, timeout_s)` / `meta.web_request_source(source, params,
+  timeout_s)` queue a row in `meta.web_request_log` (URL/method/header/body checks, ≤100 waiting per app, own-app
+  credential/source); `meta.web_response(id)` (jsonb) / `meta.web_response_blob(id)` (NULL for other apps). Made by
+  `src/webrequests.ts`: `runPending()` right after a `sql` page process (same transaction, ≤5 per process, also in
+  chains) and `webRequestTick()` on the scheduler pass after commit (≤50 per pass, 5 at a time, SKIP LOCKED);
+  through `websources.ts` `call()`/`invoke()` (new `secretHeaders` option: app auth-like headers dropped on
+  cross-origin redirects). Retention 24 h / 500 per app; stuck running → error after 15 min. `meta.parse_data()` /
+  `meta.parse_data_columns()` in PL/pgSQL for CSV/TSV/JSON (names, types, delimiter detection, Windows-1252 fallback
+  as `src/dataload.ts`, compared in tests; 100k rows ≈ 1.2 s); XLSX (no inflate in SQL) and XML refused with a hint.
+  HR `hr_38_parse_and_fetch.sql` page 35. **Export/import not redefined** (`web_request_log` in `KEPT` of
+  `src/cli/replace.ts`). No env vars (`PUBLIC_URL` now also visible to SQL as `pgapex.public_url`). Security (for
+  SECURITY.md): allow-list/SSRF/redirect/size/credential URL checks on every call; secrets never in the log or SQL;
+  log table closed to app/runtime roles, security definer functions limited to `meta.app_id()`;
+  `web_request_take/done` only act on requests queued in the caller's own transaction; headers re-filtered before
+  sending; responses belong to the app, not a user (any app code with the id can read it); `parse_data` runs as the
+  caller, row cap 1,000,000, XML refused. Not done: synchronous call inside one statement, XLSX/XML parsing, a
+  builder page for web requests, binary/multipart bodies, debug entries for scheduler-made requests. Coordinator:
+  APEX PL/SQL APIs row text (stays 🟡), extensions table note, CHANGELOG, hr_37 row in `examples/hr/README.md`.
+  Agent tests (reused DB on 5446): 877 pass / 10 skip, e2e 103/103.
+  Coordinator re-ran on a fresh DB in a clean worktree: 877 pass / 10 skip, e2e 103/103.
+- **6 Theme Roller: DONE** (565281a..86f0088, pushed). Migration `053_theme_styles_template_options.sql`. Style
+  variants in `meta.app.theme` (`styles` ≤10, `style` default, `style_choice`): accent/header `#rrggbb`, 6 fixed font
+  stacks, size 14–17 px, radius 0/4/8/14; "Standard" = the base colours. `src/runtime/styles.ts` (lists, `parseStyle`,
+  `appStyles`, request style, `themeCss()` into the nonce'd `<style id="pgapex-css">`); `public/app.css` uses
+  `--font`, `--font-size`, `--radius`. Builder Settings → Theme → Theme Roller (`/builder/apps/:id/theme`,
+  `src/builder/themeroller.ts`; rename/delete move or drop users' choices; Settings saves only its own theme keys).
+  User choice: user menu + My account → `POST /a/:alias/account/style`, kept in `meta.account_style` (per app,
+  loaded at sign-in; session only when signed out). Template options: `template_options text[]` on `meta.region` and
+  `meta.button` (fixed lists in `src/runtime/template-options.ts`, `to-*` classes; Page Designer checkboxes, new
+  `options` field kind); a trigger turns NULL into `'{}'` so older exports import. **Export/import not redefined**
+  (styles travel in `meta.app.theme`; `account_style` in `KEPT`/`NOT_EXPORTED`). No env vars, no HR part. Docs ch. 4
+  (Template options), 14 (Style variants), 3, 9, 11, 12, 18. Security (for SECURITY.md): only checked hex values and
+  fixed constants become CSS, re-checked on every render (a bad hand-edited style is skipped); style names only as
+  escaped HTML; list lookups by own keys (`__proto__` refused); style switch CSRF + `safeNext`, only the app's own
+  styles; `account_style.style` format check, runtime role rights on that table only; Theme Roller needs developer
+  session + CSRF, respects app locks; template options shape-checked in the DB, only listed classes rendered; no
+  inline styles. Not done: live preview, style colours in dark mode, conditional/dynamic properties, template options
+  on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
+  Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
+
+## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
+
+Start after sprint 33 is released (one agent at a time unless the owner says otherwise); migration numbers from **055** (054 was used for the import fix).
+
+| # | Item (parity row) | Notes |
+|---|---|---|
+| 1 | **Working copies, merge, team development** (App Builder ❌) | APEX 24.1+: a working copy of an app to change in isolation, compare it with the main app, merge back (with conflicts shown per component). Build on the per-component export (`pgapex export --format dir`, static ids) and `pgapex diff`; a copy is a second app linked to its main app; merge per component; locks from sprint 31 respected |
+| 2 | **Theme, library and boilerplate application types** (App Builder ❌, APEX 26.1) | App types: a *theme* app (styles/templates shared by subscribing apps), a *library* app (shared components such as lists of values, authorization schemes, template components, plug-ins that other apps subscribe to and refresh from), a *boilerplate* app (a starting point copied by the create-application wizard). Subscriptions refresh on demand and are shown in "Used in" |
+
+Owner's decision the same day: the parity matrix no longer lists *Forgot password for end users*, *App launcher /
+portal* and *Sending e-mail* (all were ➖; the summary is now 82/23/10/3 of 118). No e-mail features stays the rule.

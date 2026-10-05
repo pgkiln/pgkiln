@@ -18,6 +18,7 @@ import { columnTemplates } from './template-components.ts';
 import { facetFilterSql, facetFilters, reportFacetDefs, searchSql } from './facet-state.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { checksumValid, signText } from '../security.ts';
+import { parseArea, parseNear, postgis, spatialConditions, type MapArea, type Near } from './spatial.ts';
 
 // Interactive report: the developer's SELECT is wrapped as a subquery and the
 // end user's search, filters, sort and paging are applied around it. User
@@ -202,51 +203,13 @@ export interface ReportState {
   chart: { kind: string; label: string; fn: string; value: string } | null;
   /** the visible area of a map region that filters this report (r<id>_bb) */
   area: MapArea | null;
+  /** places within a distance of a point, from a map region (r<id>_near=lat,lng,km) */
+  near: Near | null;
   /** keyset position from Next/Previous (r<id>_k), see keysetColumns */
   seek: Seek | null;
 }
 
-/** A map's visible area: south, west, north, east (west > east when it spans the antimeridian). */
-export interface MapArea {
-  s: number;
-  w: number;
-  n: number;
-  e: number;
-}
-
-/** "south,west,north,east" → a map area, or null when it isn't one. */
-export function parseArea(v: string | null): MapArea | null {
-  const parts = (v ?? '').split(',');
-  if (parts.length !== 4 || parts.some((x) => !/^\s*-?\d{1,3}(\.\d{1,8})?\s*$/.test(x))) return null;
-  const [s, w, n, e] = parts.map(Number);
-  return Math.abs(s) <= 90 && Math.abs(n) <= 90 && s <= n && Math.abs(w) <= 180 && Math.abs(e) <= 180 ? { s, w, n, e } : null;
-}
-
-/**
- * The columns a report's rows have their position in, as for a map region:
- * lat/lng (or latitude/longitude, lon), or location as "lat,lng" text.
- */
-export type Position = { lat: string; lng: string } | { location: string };
-export function positionColumns(names: string[]): Position | null {
-  const find = (...want: string[]) => names.find((n) => want.includes(n.toLowerCase()));
-  const lat = find('lat', 'latitude');
-  const lng = find('lng', 'lon', 'longitude');
-  if (lat && lng) return { lat, lng };
-  const location = find('location');
-  return location ? { location } : null;
-}
-
-const LOCATION_RE = `'^\\s*-?\\d{1,2}(\\.\\d+)?\\s*,\\s*-?\\d{1,3}(\\.\\d+)?\\s*$'`;
-
-/** SQL for "the row lies in the area" (the numbers are parsed, never text from the URL). */
-export function areaCondition(area: MapArea, pos: Position) {
-  const [lat, lng] =
-    'lat' in pos
-      ? [`(${q(pos.lat)})::float8`, `(${q(pos.lng)})::float8`]
-      : [1, 2].map((i) => `(case when ${q(pos.location)}::text ~ ${LOCATION_RE} then trim(split_part(${q(pos.location)}::text, ',', ${i}))::float8 end)`);
-  const lngIn = area.w <= area.e ? `${lng} between ${area.w} and ${area.e}` : `(${lng} >= ${area.w} or ${lng} <= ${area.e})`;
-  return `(${lat} between ${area.s} and ${area.n} and ${lngIn})`;
-}
+export { areaCondition, parseArea, positionColumns, type MapArea, type Near, type Position } from './spatial.ts';
 
 export const MAX_COMPUTATIONS = 5;
 const MAX_GROUP_COLUMNS = 3;
@@ -312,6 +275,7 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
       return (REPORT_CHART_KINDS as string[]).includes(kind) && label && AGGREGATES[fn] && value ? { kind, label, fn, value } : null;
     })(),
     area: parseArea(p.get(key(r, 'bb'))),
+    near: parseNear(p.get(key(r, 'near'))),
     seek: null as Seek | null,
   };
   st.seek = parseSeek(ctx, r, st);
@@ -448,7 +412,7 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const p = new SqlParams();
   if (st.search) where.push(searchSql(st.search, p));
   const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions));
-  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || keysetColumns(r);
+  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r);
   // column name → type oid
   const fields = needCols ? await fieldsOf(ctx, src) : [];
   const cols = new Map<string, number>(fields.map((f) => [f.name, f.dataTypeID]));
@@ -457,8 +421,8 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
     const cond = facetFilterSql(f, cols, p);
     if (cond) where.push(cond);
   }
-  const pos = st.area ? positionColumns([...cols.keys()]) : null;
-  if (st.area && pos) where.push(areaCondition(st.area, pos));
+  // the map area and distance: PostGIS on a geometry/geography column when installed, else lat/lng
+  if (st.area || st.near) where.push(...spatialConditions(st, cols, await postgis()).where);
   return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols, names: fields.map((f) => f.name), params: p, values: queryValues(p.values) };
 }
 
@@ -941,11 +905,14 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   if (st.chart)
     chips.push(html`<span class="chip">${t('report.chart')}: <b>${t(`chart.${st.chart.kind}`)}, ${headingOf(r, st.chart.label, ctx.locale.tr)}</b>
       <a href="${regionUrl(ctx, r, (p) => dropView(p, 'chart', ['ch']))}" aria-label="${t('report.remove')}">×</a></span>`);
-  if (st.area) {
-    // a report without position columns can't be filtered by a map: say so on the chip
-    const pos = positionColumns(cols.map(({ f }) => f.name));
-    chips.push(html`<span class="chip${pos ? '' : ' chip-error'}"${pos ? '' : raw(` title="${esc(t('report.no_position'))}"`)}>${t('report.map_area')}
-      <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'bb')); p.delete(key(r, 'p')); })}" aria-label="${t('report.remove')}">×</a></span>`);
+  if (st.area || st.near) {
+    // a report without position columns (or a PostGIS geometry) can't be filtered by a map: say so on the chip
+    const { ok } = spatialConditions(st, new Map(fields.map((f) => [f.name, f.dataTypeID])), await postgis());
+    const chip = (label: unknown, param: string) =>
+      html`<span class="chip${ok ? '' : ' chip-error'}"${ok ? '' : raw(` title="${esc(t('report.no_position'))}"`)}>${label}
+      <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, param)); p.delete(key(r, 'p')); })}" aria-label="${t('report.remove')}">×</a></span>`;
+    if (st.area) chips.push(chip(t('report.map_area'), 'bb'));
+    if (st.near) chips.push(chip(t('report.near', { km: ctx.locale.number.format(st.near.km) }), 'near'));
   }
   if (st.search)
     chips.unshift(

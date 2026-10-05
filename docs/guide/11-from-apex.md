@@ -17,6 +17,10 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
 | `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
 | `APEX_ACL` / `apex_acl.has_user_role` | `meta.has_role('role')` |
+| `APEX_DEBUG` (`message`, `error`, `warn`, `info`, `trace`), debug levels, *View Debug* | `meta.debug(level, text)`, `meta.debug_enabled(level)`; the app's debug level; Activity → Debug messages ([chapter 6](06-processing.md#debug-messages)) |
+| Instance administration: install/upgrade log | Workspace utilities → Installation (administrators) |
+| `APEX_WEB_SERVICE.make_rest_request`, `g_status_code` | `meta.web_request(url, method, body, headers, credential)` or `meta.web_request_source(source, params)`, then `meta.web_response(id)`. **Asynchronous**: the server makes the request after the page process that queued it, or after the commit ([chapter 9](09-reference.md#web-requests-from-sql)) |
+| `APEX_DATA_PARSER.parse`, `get_columns` | `meta.parse_data(blob, …)` (rows with `cols` and `data`), `meta.parse_data_columns(blob, …)`; CSV/TSV and JSON, not Excel or XML ([chapter 9](09-reference.md#parsing-files-in-sql)) |
 | Workspace users (APEX accounts), Application Access Control | `meta.account` (Builder → Users), `meta.app_access` (Access control) |
 | Page access protection "Arguments must have checksum" | `protection = 'checksum'` (the default) |
 | Automatic row processing (DML) | Process type `form_dml` |
@@ -46,7 +50,8 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
 | Number format masks (`FML999G999G990D00`) on columns and items | `{"formats": {...}}` on report, grid and cards columns, `{"format_mask": "..."}` on charts and number/display items ([chapter 14](14-globalization.md#number-formats)) |
 | Automatic Time Zone | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
-| Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark* |
+| Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark*; Theme Roller style variants with *Users may choose a style* ([chapter 14](14-globalization.md#style-variants-theme-roller)) |
+| Template Options (regions, buttons) | *Template options* in the Page Designer: CSS classes from a fixed list ([chapter 4](04-pages-and-regions.md#template-options)) |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
 

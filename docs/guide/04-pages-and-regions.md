@@ -29,6 +29,39 @@ Region **templates**:
 Every region also has `seq` (order), `condition` (a SQL boolean expression; the region renders
 only when true) and `authz` (an authorization scheme).
 
+### Template options
+
+Like APEX's *Template Options*, regions and buttons have **Template options** (Page Designer, group
+*Appearance*): checkboxes for CSS classes from a fixed list per component type, kept in the
+component's `template_options` column (text[]) and added to its `class`. Only classes from the list
+are written into the page; anything else (an older export, a hand edit) is ignored. The styles are
+in `public/app.css`, and follow the app's [style variant](14-globalization.md#style-variants-theme-roller)
+(accent colour, corners).
+
+| Region option | Class | Effect |
+|---|---|---|
+| Accent top border | `to-accent` | A 3 px top border in the accent colour |
+| Flat | `to-flat` | No shadow |
+| No border or background | `to-borderless` | Transparent, no border or shadow |
+| Compact | `to-compact` | Less padding in header and body |
+| No body padding | `to-no-padding` | The body content touches the frame (tables, maps) |
+| Scroll the body | `to-scroll` | The body is at most 24 rem high and scrolls |
+| Stretch to the row height | `to-stretch` | Regions side by side get the same height |
+| Centre the text | `to-center` | Body text centred |
+| Hide the header | `to-hide-header` | The header is hidden visually but kept for screen readers (standard template) |
+
+| Button option | Class | Effect |
+|---|---|---|
+| Small / Large | `to-small`, `to-large` | Smaller or larger button |
+| Full width | `to-block` | The button takes the full width |
+| Pill | `to-pill` | Rounded ends |
+| Outline | `to-outline` | Transparent with an accent-coloured border and text |
+| Looks like a link | `to-link` | No frame, underlined accent text |
+| Success / Danger | `to-success`, `to-danger` | Green or red button |
+
+In SQL: `update meta.region set template_options = '{to-accent,to-compact}' where id = 12;` The
+database only checks the shape (at most 12 names of lower case letters, digits and `-`).
+
 ## Region types
 
 | Type | Purpose |
@@ -36,7 +69,7 @@ only when true) and `authz` (an authorization scheme).
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail and copy/paste of cells |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
-| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel or radar chart from a SELECT, with drill-down links |
+| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid or polar chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month, week, day and list views of dated rows, with create on click and drag and drop |
 | [`facets`](#facets-faceted-search) | Checkbox, range and star filters with counts and a search field for a report |
@@ -196,6 +229,11 @@ select deptno, dname, loc from hr.dept
 It is saved by a **process of type `grid_dml`** whose region is the grid, which the wizard
 creates. **Without such a process the grid is read-only.**
 
+A grid can also edit the rows of a **REST data source** (region property *REST data source*
+instead of a table; the key column is `pk_column` or the source's first key column): Save, Add
+row and Delete then call the source's update, insert and delete operations, and are offered only
+for the operations the source defines ([chapter 19](19-rest-data-sources.md#writing-back-from-forms-and-grids)).
+
 End users can edit cells inline, add rows (**Add row**), tick rows for deletion, search, page, and
 **Save**. On save:
 
@@ -294,7 +332,9 @@ that column.
 
 - **Fetch**: when the page is shown and `pk_item` has a value, the row is read into the items. A
   row that doesn't exist (or is hidden by RLS) gives "record not found".
-- **Save**: a process of type **`form_dml`** does the DML according to the pressed button:
+- **Save**: a process of type **`form_dml`** does the DML according to the pressed button
+  (a form on a **REST data source** calls the source's insert, update and delete operations
+  instead, and fetches its row through the source: [chapter 19](19-rest-data-sources.md#writing-back-from-forms-and-grids)):
 
 | Button name | Operation |
 |---|---|
@@ -329,7 +369,7 @@ Attributes:
 
 | Key | Meaning |
 |---|---|
-| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel` or `radar` |
+| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel`, `radar`, `gantt`, `pyramid` or `polar` |
 | `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
 | `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
 | `format_mask` | A number format mask for the values in labels, tips and the data table, e.g. `"FML999G990"` (see [number formats](14-globalization.md#number-formats)) |
@@ -348,6 +388,9 @@ Attributes:
 | `gauge` | one value against a target, per row | a half dial per row (up to 12) from `min` (default 0) to `max` (default: rounded up from the values). With `warning` and/or `critical` thresholds each dial shows a status (*On target*, *Warning*, *Critical*) with an icon and a label, and the thresholds as a coloured ring. A `warning` above `critical` means low values are bad |
 | `funnel` | stages of a process | the first series, in the query's order (sort it); each stage shows its share of the first stage |
 | `radar` | several measures per series, side by side | **one axis per row** (3 to 12 rows), one polygon per series, all on one scale from zero |
+| `gantt` | tasks over time | **label, start, end** (dates or timestamps; an empty end, or one equal to the start, is a milestone ◆), then optional columns **by name**: `progress` (0 to 100, the filled part of the bar), `task_id` and `depends_on` (the ids a task waits for: `3`, `3,4` or an array). A time axis in hours, days, weeks, months or years, a dashed line for now (in the session's time zone, like the timestamps the query returns), and elbow lines from the end of each predecessor to the start of the task. Rows without a start are left out |
+| `pyramid` | levels of a hierarchy, or two groups compared per band | **one series**: a triangle cut into segments from the top (the first row) down, each segment's **area** in proportion to its value (≤ 8; more fold into "Other"). **Two series**: back-to-back bars (a population pyramid), the first series to the left, both on one scale; negative values count as their size |
+| `polar` | values per period or direction (months, weekdays) | a polar area chart: **one equal sector per row** (up to 24) clockwise from 12 o'clock, the radius in proportion to the value on rings from zero; several series share a row's sector |
 
 A stacked chart, a combination of columns and a line, and a scatter plot:
 
@@ -393,6 +436,32 @@ select initcap(job) as job,
   from hr.emp group by job order by 1
 ```
 
+Gantt, pyramid and polar charts (HR page 32 "Project plan"):
+
+```sql
+-- gantt: progress, task_id and depends_on by name; deptno only for the link
+select t.name as "Task", t.starts as "Starts", t.ends as "Ends", t.progress,
+       t.id as task_id, array_to_string(t.depends_on, ',') as depends_on, t.deptno
+  from hr.project_task t order by t.starts, t.id
+
+-- pyramid with two series: back to back per salary band
+select b.band as "Salary",
+       count(e.empno) filter (where e.deptno = 20) as "Research",
+       count(e.empno) filter (where e.deptno = 30) as "Sales"
+  from (values (1, '3000+', 3000, null), (2, '2000–2999', 2000, 3000)) b(k, band, lo, hi)
+  left join hr.emp e on e.sal >= b.lo and (b.hi is null or e.sal < b.hi)
+ group by b.k, b.band order by b.k
+
+-- polar: a sector per month
+select to_char(make_date(2000, m, 1), 'Mon') as month, count(e.empno) as "Hires"
+  from generate_series(1, 12) m left join hr.emp e on extract(month from e.hiredate) = m
+ group by m order by m
+```
+
+A Gantt chart reads dates as their wall clock (a `timestamptz` in the session's time zone), shows a
+time only when it is not midnight, and has its own data table (label, start, end, progress,
+dependencies). Its rows count toward the chart's row limit (`max_rows`, default 1000).
+
 Up to 8 series; two or more get a legend. Every chart has hover/focus **tooltips** and a
 **Data table** toggle (the accessible alternative). Colours come from a palette checked for
 colour-vision deficiency, in light and dark mode; the gauge's status colours are reserved for
@@ -412,9 +481,10 @@ there are no links when the user may not open the target page.
 Columns that only the link refers to (here `deptno`) are **not drawn** as a series, so the query
 can return a key next to the label. What links: bars, columns and stacked segments (per series),
 line and area points, scatter dots and bubbles, gauge dials, funnel stages, radar axis labels, pie
-and donut slices and their legend entries (not "Other"). The marks are for the mouse; from the
+and donut slices and their legend entries (not "Other"), Gantt bars and milestones (the whole row:
+`#series#` is empty), pyramid segments and bars, and polar sectors and their labels. The marks are for the mouse; from the
 keyboard the **data table** has the same links (the labels, or each value when there are several
-series), and so do the radar labels and donut legend.
+series), and so do the radar and polar labels and the donut and pyramid legends.
 
 ---
 
@@ -631,7 +701,9 @@ excludable job facet, salary ranges with from/to, a hire date range and a star r
 **Source**: a SELECT with one row per place. The position comes from `lat` and `lng` (or
 `latitude`/`longitude`), or from a `location` column holding `latitude,longitude` text (what a
 [`location` item](05-items.md) stores). Optional columns: `title` and `body` (the popup), and
-`geojson` (a GeoJSON geometry or feature, e.g. PostGIS `st_asgeojson(geom)`) to draw lines and areas.
+`geojson` (a GeoJSON geometry or feature, e.g. PostGIS `st_asgeojson(geom)`) to draw lines and areas;
+a GeoJSON point is a place like a row with `lat`/`lng`. With [PostGIS](#postgis) installed, a
+`geometry` or `geography` column (in WGS 84, SRID 4326) is enough: the server turns it into GeoJSON.
 
 ```sql
 select dname as title, initcap(loc) as body, lat, lng, deptno
@@ -647,7 +719,11 @@ The map zooms to fit all places. Attributes:
 | `zoom` | Zoom level (1–19) when there is one place; default 14 |
 | `empty` | Text when no row has a position |
 | `layer` | `markers` (default) or `heat`: a heat map of the places, each weighted by its `weight` column (default 1) |
+| `cluster` | `true`: group markers that are close together (below) |
+| `name` | The name of the region's own layer in the legend (default: the region title) |
+| `layers` | More layers, each with its own query (below) |
 | `report` | The id of a report region on the same page that the map filters (below) |
+| `filter` | `area` (default) or `distance`: how the map filters that report |
 
 **Heat map.** With `"layer": "heat"` the places are drawn as a heat map instead of markers: where
 places (or heavier weights) are close together, the colour is darker. It suits many points, such as
@@ -656,6 +732,34 @@ visits, incidents or sales. A legend (fewer → more) sits in the corner. GeoJSO
 ```sql
 select lat, lng, sal as weight from hr.emp join hr.dept using (deptno)   -- {"layer": "heat"}
 ```
+
+**Marker clustering.** With `"cluster": true` markers that are close together at the current zoom
+level are drawn as one round marker with their number; clicking it zooms in to them. Zooming
+regroups them, and at the two highest zoom levels every place is shown by itself. Use it for
+hundreds or thousands of places (a map shows at most 5,000 per layer).
+
+**Several layers** (APEX: map layers). The region's query is the first layer; `layers` adds up to
+seven more, each with its own query (the same columns as above) and its own settings:
+
+```json
+{"name": "Visits", "cluster": true,
+ "layers": [
+   {"name": "Offices", "source": "select lat, lng, dname as title, deptno from hr.dept",
+    "link": {"page": 5, "items": {"P5_DEPTNO": "#deptno#"}}},
+   {"name": "Sales areas", "source": "select dname as title, st_asgeojson(area) as geojson from hr.sales_area"},
+   {"name": "Visit density", "source": "select lat, lng from hr.field_visit", "layer": "heat", "hidden": true}
+ ]}
+```
+
+Each layer has `name` (shown in the legend, translatable like other texts), `source`, and optionally
+`layer` (`markers` or `heat`), `cluster`, `link` and `hidden` (off until the user switches it on).
+On a map with more than one layer each layer's places, lines and areas get their own colour, and a
+**Layers** legend in the corner switches them on and off. Without JavaScript the list below the map
+has a part per layer. A layer whose query fails shows its error above the map; the other layers are
+still drawn. In the Page Designer the map's settings have a fieldset per layer (and one empty to add
+a layer; emptying a layer's query removes it), and the Advisor checks every layer's query. The HR
+example's page 33 (Field visits) has four layers: clustered customer visits, the offices, sales areas
+with delivery routes, and a heat map of the visits.
 
 **Filtering a report by the map area** (APEX: map as a spatial filter). Give the map
 `"report": <region id>` of an [interactive report](#report-interactive-report) on the same page.
@@ -666,6 +770,26 @@ like a map's (`lat`/`lng`, `latitude`/`longitude` or `location`). Without them t
 and nothing is filtered. The area is in the URL (`r<id>_bb=south,west,north,east`), so it can be
 bookmarked and saved with a saved report. It also applies to the report's downloads. The HR example's
 page 16 (Locations) has a heat map of the payroll and an offices map that filters the employee list.
+
+With `"filter": "distance"` the button reads **Show places within … km of the centre** instead: the
+distance is from the map's centre to its nearest edge, and the report shows the rows within that
+distance (a **Within … km** chip; the map draws the circle). In the URL it is
+`r<id>_near=latitude,longitude,km`. The HR example's page 33 filters its list of visits this way.
+
+<a id="postgis"></a>**Spatial filtering on the server, with or without PostGIS.** Both filters run in
+the report's SQL, never in the browser. When the [PostGIS](https://postgis.net) extension is installed
+in the database and the report has a `geometry` or `geography` column (one named `geom`, `geometry`,
+`geog`, `geography`, `the_geom`, `shape` or `location` first, else the first such column), pgapex uses
+PostGIS: the area becomes `ST_Intersects(column, ST_MakeEnvelope(west, south, east, north, 4326))`
+(two envelopes across the antimeridian) and the distance `ST_DWithin(column::geography, point, metres)`,
+so spatial indexes can be used and lines and areas count when they touch the area. Geometry columns
+are expected in WGS 84 (SRID 4326). pgapex finds PostGIS by itself (it looks in `pg_extension` once a
+minute) and calls its functions in the extension's schema, so the application's database role needs
+`USAGE` on that schema (PostGIS's default, `public`, has it). Without PostGIS, or for a report without
+such a column, the report's `lat`/`lng` (or `location`) columns are compared with numbers: a bounding
+box for the area, and for the distance a box around the circle first and then the great-circle
+(haversine) distance on a sphere of 6,371 km. The numbers in the URL are parsed and range-checked
+first (anything else is ignored), so no text from the URL reaches the SQL.
 
 Below the map a collapsed list names every place, so the data is reachable without JavaScript and
 by screen readers. The map uses [Leaflet](https://leafletjs.com) (shipped with pgapex, loaded only
