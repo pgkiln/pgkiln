@@ -1,7 +1,7 @@
 // Security regression tests. They run the real app (in-process, via
 // fastify.inject) against the development database with the HR sample:
 //   npm run setup && npm test
-import { after, before, describe, test } from 'node:test';
+import { after, afterEach, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
@@ -2507,5 +2507,157 @@ describe('sprint 30', () => {
     const res = await blake.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(token(['199990']))}`);
     if (res.statusCode === 200) assert.equal(firstId(res.body), 199991);
     else assert.ok([302, 303, 403].includes(res.statusCode));
+  });
+});
+
+// ---------------------------------------------------------------- sprint 31 logic
+// Download processes, execution chains (background jobs), workflow processes,
+// branches to a function's URL or another application, "dialog closed".
+describe('sprint 31 logic', () => {
+  let page28: number;
+  const undo: string[] = [];
+  const browser = async (user: string) => {
+    const { Browser: B } = await import('./helpers.ts');
+    const b = new B(app);
+    assert.equal((await b.login(user)).statusCode, 303);
+    await b.get('/a/hr/28');
+    return b;
+  };
+  /** A process on page 28 for one test (deleted at the end). */
+  const process28 = async (cols: Record<string, unknown>) => {
+    const names = Object.keys(cols);
+    const p = await owner.one(
+      `insert into meta.process (page_id, ${names.join(', ')}) values ($1, ${names.map((_, i) => `$${i + 2}`).join(', ')}) returning id`,
+      [page28, ...Object.values(cols)],
+    );
+    undo.push(`delete from meta.process where id = ${Number(p.id)}`);
+    return p.id as number;
+  };
+  before(async () => {
+    page28 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 28', [appId])).id;
+  });
+  afterEach(async () => {
+    for (const sql of undo.splice(0).reverse()) await owner.query(sql);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.process_job where app_id = $1`, [appId]);
+  });
+
+  test('download: file name and MIME type from the data cannot inject headers or paths', async () => {
+    const { safeFileName, safeMime, disposition } = await import('../src/runtime/processes.ts');
+    const name = safeFileName('a"b\r\nSet-Cookie: x=1;/..\\c.txt');
+    assert.doesNotMatch(name, /[\r\n"\\/]/);
+    assert.doesNotMatch(disposition('attachment', 'ü "x"\r\n.txt'), /[\r\n]|"x"/);
+    assert.equal(safeMime('text/html\r\nX-Evil: 1'), 'application/octet-stream');
+    assert.equal(safeMime('../../x'), 'application/octet-stream');
+    assert.equal(safeFileName('...'), 'download');
+    await process28({ seq: 1, name: 'sec download', type: 'download', when_button: 'CARD', config: '{}',
+      code: `select 'x' as content, E'evil"\\r\\nSet-Cookie: a=1.html' as filename, E'text/html\\r\\nX-Evil: 1' as mime_type` });
+    const b = await browser('king');
+    const res = await b.submit('/a/hr/28', { P28_EMPNO: '7839', __request: 'CARD' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['x-evil'], undefined);
+    assert.equal(res.headers['set-cookie'] === undefined || !String(res.headers['set-cookie']).includes('a=1'), true);
+    assert.equal(res.headers['content-type'], 'application/octet-stream');
+    assert.match(String(res.headers['content-disposition']), /^attachment; /);
+    assert.match(String(res.headers['content-security-policy']), /sandbox/);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+  });
+
+  test('download: an "inline" HTML file is still an attachment; the query runs as the app role with literal binds', async () => {
+    const id = await process28({ seq: 1, name: 'sec inline', type: 'download', when_button: 'CARD', config: '{"disposition": "inline"}',
+      code: `select '<script>alert(1)</script>' as content, 'x.html' as filename, 'text/html' as mime_type` });
+    const b = await browser('king');
+    let res = await b.submit('/a/hr/28', { P28_EMPNO: '7839', __request: 'CARD' });
+    assert.match(String(res.headers['content-disposition']), /^attachment; /);
+    await owner.query(`update meta.process set code = $2 where id = $1`, [id, `select convert_to(password_hash, 'UTF8'), username, 'text/plain' from meta.app_user`]);
+    res = await b.submit('/a/hr/28', { P28_EMPNO: '7839', __request: 'CARD' });
+    assert.equal(res.statusCode, 422, 'the app role cannot read pgapex\'s tables');
+    assert.doesNotMatch(res.body, /\$2[aby]\$|scrypt/);
+    await owner.query(`update meta.process set code = $2 where id = $1`, [id, `select ename, ename || '.txt', 'text/plain' from hr.emp where empno::text = :P28_EMPNO`]);
+    res = await b.submit('/a/hr/28', { P28_EMPNO: "7839' or '1'='1", __request: 'CARD' });
+    assert.notEqual(res.headers['content-type'], 'text/plain', 'the value is a literal: no row');
+  });
+
+  test('background jobs: not readable by applications, queued only for a background chain of the app, with the session\'s roles', async () => {
+    const hrApp = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    const chain = (await owner.one(`select id from meta.process where page_id = $1 and name = 'Year-end check'`, [page28])).id;
+    const onboard = (await owner.one(`select id from meta.process where page_id = $1 and name = 'Onboard'`, [page28])).id;
+    const asApp = async <T>(user: string, fn: (q: (sql: string, p?: unknown[]) => Promise<any>) => Promise<T>) =>
+      runtime.tx(async (c) => {
+        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true)`, [String(appId), user]);
+        await c.query(`set local role ${hrApp}`);
+        return fn((sql, p) => c.query(sql, p));
+      });
+    await assert.rejects(asApp('king', (q) => q('select * from meta.process_job')), /permission denied/);
+    await assert.rejects(asApp('king', (q) => q('select meta.enqueue_process_job($1, $2)', [onboard, '{}'])), /not a background chain/);
+    const other = await owner.one(`insert into meta.app (alias, name) values ('logic-other-sec', 'Other') returning id`);
+    undo.push(`delete from meta.app where id = ${Number(other.id)}`);
+    await assert.rejects(
+      runtime.tx(async (c) => {
+        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true)`, [String(other.id)]);
+        await c.query('select meta.enqueue_process_job($1, $2)', [chain, '{}']);
+      }),
+      /not a background chain of this application/,
+    );
+    // called by application SQL without a session: no roles at all
+    const id = await asApp('king', async (q) => (await q('select meta.enqueue_process_job($1, $2)::text as id', [chain, '{"P28_EMPNO": "7839"}'])).rows[0].id);
+    const job = await owner.one('select roles, app_user from meta.process_job where id = $1', [id]);
+    assert.deepEqual(job.roles, []);
+    // a forged job id does not lend its roles: only the running job of the same user
+    await owner.query(`update meta.process_job set roles = '{admin}', state = 'completed' where id = $1`, [id]);
+    const forged = await runtime.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'scott', true), set_config('pgapex.process_job_id', $2, true)`, [String(appId), id]);
+      return (await c.query(`select meta.has_role('admin') as ok`)).rows[0].ok;
+    });
+    assert.equal(forged, false);
+    // the view shows each user their own jobs only
+    const seen = await asApp('scott', async (q) => (await q('select id from meta.process_jobs')).rows.map((r: any) => r.id));
+    assert.ok(!seen.map(String).includes(String(id)));
+  });
+
+  test('background chains: no passwords in the job; the job runs as the app role and shows no SQL details', async () => {
+    const region = (await owner.one(`select id from meta.region where page_id = $1 and title = 'Employee'`, [page28])).id;
+    const item = await owner.one(`insert into meta.item (page_id, region_id, seq, name, label, type) values ($1, $2, 99, 'P28_PIN', 'PIN', 'password') returning id`, [page28, region]);
+    undo.push(`delete from meta.item where id = ${Number(item.id)}`);
+    await process28({ seq: 59, name: 'sec read pgapex', type: 'sql', parent_process: 'Year-end check', code: 'select count(*) from meta.session' });
+    const b = await browser('king');
+    assert.equal((await b.submit('/a/hr/28', { P28_EMPNO: '7839', P28_PIN: 'secret-pin', __request: 'RECALC' })).statusCode, 303);
+    const job = await owner.one(`select id, binds from meta.process_job where app_id = $1 order by id desc limit 1`, [appId]);
+    assert.equal(job.binds.P28_PIN, undefined);
+    assert.doesNotMatch(JSON.stringify(job.binds), /secret-pin/);
+    const { runProcessJobs } = await import('../src/process-jobs.ts');
+    await runProcessJobs();
+    const done = await owner.one('select state, error from meta.process_job where id = $1', [job.id]);
+    assert.equal(done.state, 'failed');
+    assert.doesNotMatch(done.error, /meta\.session/, 'details go to the activity log');
+  });
+
+  test('branches: a function result is a path inside the app; another app only if it exists, signed for it', async () => {
+    for (const [path, ok] of [['10?x=1', true], ['account', true], ['//evil.example', false], ['https://evil.example', false], ['java\tscript:x', false],
+      ['../builder', false], ['.', false], ['\\\\evil', false], ['10\r\nX: y', false], ['javascript:alert(1)', false], ['', false]] as const)
+      assert.equal((await owner.one('select meta.branch_path_ok($1) as ok', [path])).ok, ok, path);
+    await assert.rejects(owner.query(`insert into meta.branch (page_id, name, target_type, target_app, target_page) values ($1, 'x', 'app', 'Bad App', 1)`, [page28]), /check/);
+    await assert.rejects(owner.query(`insert into meta.branch (page_id, name, target_type, target_app) values ($1, 'x', 'app', 'other')`, [page28]), /check/);
+    await assert.rejects(owner.query(`insert into meta.branch (page_id, name, target_type) values ($1, 'x', 'function')`, [page28]), /check/);
+    const br = await owner.one(`insert into meta.branch (page_id, seq, name, when_button, target_type, target_app, target_page) values ($1, 1, 'sec app', 'OPEN', 'app', 'no-such-app', 1) returning id`, [page28]);
+    undo.push(`delete from meta.branch where id = ${Number(br.id)}`);
+    const b = await browser('king');
+    const res = await b.submit('/a/hr/28', { P28_EMPNO: '7839', __request: 'OPEN' });
+    assert.doesNotMatch(String(res.headers.location), /no-such-app/);
+    // a checksum is bound to its application
+    assert.notEqual(urlChecksum(appId, 1, 'king', { P1_X: '1' }), urlChecksum(appId + 1, 1, 'king', { P1_X: '1' }));
+  });
+
+  test('dialog closed: a dynamic action the user may not run is neither sent nor accepted', async () => {
+    const da = await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, action, message, authz) values ($1, 99, 'sec dlg', 'dialog_closed', 'execute_sql', null, 'NO_SUCH_SCHEME') returning id`, [page28]);
+    undo.push(`delete from meta.dynamic_action where id = ${Number(da.id)}`);
+    await owner.query(`update meta.dynamic_action set code = 'select 1' where id = $1`, [da.id]);
+    const b = await browser('king');
+    const body = (await b.get('/a/hr/28')).body;
+    assert.doesNotMatch(body, new RegExp(`"id":${da.id},`));
+    const res = await b.submit(`/a/hr/28/da/${da.id}`, { __dialog_closed: '1' });
+    assert.equal(res.statusCode, 403);
+    assert.equal((await b.post(`/a/hr/28/da/${da.id}`, { __dialog_closed: '1' })).statusCode, 403, 'no CSRF token');
   });
 });
