@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PageCss } from '../src/css.ts';
 import { raw } from '../src/html.ts';
-import { CHART_KINDS, gaugeStatus, niceScale, renderChartBody, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
+import { CHART_KINDS, gaugeStatus, niceScale, renderChartBody, timeScale, wallClock, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
 
 const fields = (...names: string[]) => names.map((name) => ({ name }));
 const render = (kind: ChartKind, rows: unknown[][], f = fields('label', 'A', 'B'), opts: ChartOptions = {}) => {
@@ -25,7 +25,9 @@ describe('chart kinds', () => {
   test('every kind: no style attributes, a data table, tooltips, escaped labels', () => {
     for (const kind of CHART_KINDS) {
       // (a bubble chart needs x, y and size; a radar three axes)
-      const { body } = render(kind, [['<img src=x>', 1, 2, 3], ['2', 3, 4, 5], ['3', 5, 6, 7]], fields('label', 'A', 'B', 'C'));
+      // (a Gantt chart reads dates: start and end)
+      const data = kind === 'gantt' ? [['<img src=x>', '2026-01-01', '2026-01-05', 3], ['2', '2026-01-03', '2026-01-09', 5], ['3', '2026-01-09', null, 7]] : [['<img src=x>', 1, 2, 3], ['2', 3, 4, 5], ['3', 5, 6, 7]];
+      const { body } = render(kind, data, fields('label', 'A', 'B', 'C'));
       assert.doesNotMatch(body, /\sstyle=/, kind);
       assert.doesNotMatch(body, /<img src=x>/, kind);
       assert.match(body, new RegExp(`<figure class="chart chart-${kind}"`), kind);
@@ -165,5 +167,123 @@ describe('sprint 26: drill-down links', () => {
     const { body } = render('funnel', [['a', 1]], fields('label', 'A'));
     assert.match(body, /<div class="funnel-row" data-tip="a: 1" aria-label="a: 1" tabindex="0">/);
     assert.doesNotMatch(body, /<a /);
+  });
+});
+
+describe('sprint 33: Gantt, pyramid and polar charts', () => {
+  const NOW = wallClock('2026-03-04');
+  const tasks = [
+    ['Design', '2026-03-02', '2026-03-06', 100, 1, null],
+    ['Build', '2026-03-09', '2026-03-20', 40, 2, '1'],
+    ['Test', '2026-03-16 12:00', '2026-03-27', null, 3, '{1,2}'],
+    ['Go live', '2026-03-30', null, null, 4, '3'],
+    ['No start', null, '2026-03-30', null, 5, null],
+  ];
+  const ganttFields = fields('task', 'starts', 'ends', 'progress', 'task_id', 'depends_on');
+
+  test('wallClock: dates and timestamps (with or without a zone) as their wall clock; NaN otherwise', () => {
+    assert.equal(wallClock('2026-03-02'), Date.UTC(2026, 2, 2));
+    assert.equal(wallClock('2026-03-02 09:30:00'), Date.UTC(2026, 2, 2, 9, 30));
+    assert.equal(wallClock('2026-03-02 09:30:00.5+02'), Date.UTC(2026, 2, 2, 9, 30, 0, 500));
+    assert.equal(wallClock('2026-03-02T09:30'), Date.UTC(2026, 2, 2, 9, 30));
+    for (const v of [null, '', 'soon', 42]) assert.ok(Number.isNaN(wallClock(v)), String(v));
+  });
+
+  test('timeScale: whole units, at most about ten ticks', () => {
+    const days = timeScale(Date.UTC(2026, 2, 2, 10), Date.UTC(2026, 2, 6, 15));
+    assert.equal(days.unit, 'day');
+    assert.equal(days.lo, Date.UTC(2026, 2, 2));
+    assert.equal(days.hi, Date.UTC(2026, 2, 7));
+    const weeks = timeScale(Date.UTC(2026, 2, 4), Date.UTC(2026, 3, 20));
+    assert.equal(weeks.unit, 'week');
+    assert.equal(new Date(weeks.lo).getUTCDay(), 1, 'weeks start on Monday');
+    const months = timeScale(Date.UTC(2026, 0, 15), Date.UTC(2026, 9, 1));
+    assert.equal(months.unit, 'month');
+    assert.equal(months.lo, Date.UTC(2026, 0, 1));
+    assert.ok(timeScale(Date.UTC(1990, 0, 1), Date.UTC(2026, 0, 1)).ticks.length <= 11);
+    assert.equal(timeScale(Date.UTC(2026, 2, 2, 8), Date.UTC(2026, 2, 2, 17)).unit, 'hour');
+    const one = timeScale(Date.UTC(2026, 0, 1), Date.UTC(2026, 0, 1));
+    assert.ok(one.lo < Date.UTC(2026, 0, 1) && one.hi > Date.UTC(2026, 0, 1), 'a single moment gets room around it');
+  });
+
+  test('gantt: a bar per task from start to end, progress, milestones, rows without a start left out', () => {
+    const { body, sheet } = render('gantt', tasks, ganttFields, { now: NOW });
+    const bars = decls(body, sheet, /class="gantt-bar s1(?: partial)? ([^"]+)"/g);
+    assert.equal(bars.length, 3);
+    // bars keep their order and grow with their length: Build (11 days) is longer than Design (4)
+    const width = (d: string) => Number(/width:([\d.]+)%/.exec(d)![1]);
+    const left = (d: string) => Number(/left:([\d.]+)%/.exec(d)![1]);
+    assert.ok(width(bars[1]) > width(bars[0]) * 2.5);
+    assert.ok(left(bars[0]) < left(bars[1]) && left(bars[1]) < left(bars[2]));
+    assert.deepEqual(decls(body, sheet, /class="gantt-progress ([^"]+)"/g), ['width:100.000%', 'width:40.000%']);
+    assert.equal(body.match(/class="gantt-milestone s1 /g)?.length, 1, 'no end: a milestone');
+    assert.doesNotMatch(body, /No start/, 'a row without a start is left out');
+    assert.match(body, /data-tip="Build: Mar 9, 2026 – Mar 20, 2026 · 40%"/);
+    assert.match(body, /data-tip="Test: Mar 16, 2026, 12:00 PM – Mar 27, 2026"/, 'times when a row has one');
+    assert.match(body, /<span class="gantt-today \w+" title="Today">/);
+    assert.doesNotMatch(render('gantt', tasks, ganttFields, { now: wallClock('2027-01-01') }).body, /gantt-today/, 'today outside the range: no line');
+    assert.match(body, /<span class="gantt-corner">task<\/span>/);
+    assert.match(body, /<th scope="col">starts<\/th><th scope="col">ends<\/th><th scope="col" class="num">progress<\/th><th scope="col">depends_on<\/th>/);
+  });
+
+  test('gantt: dependencies from the end of a task to the start of the one that waits for it', () => {
+    const { body } = render('gantt', tasks, ganttFields, { now: NOW });
+    // Build after Design, Test after Design and Build, Go live after Test
+    assert.equal(body.match(/<path class="gantt-dep"/g)?.length, 4);
+    assert.match(body, /<svg class="gantt-deps" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">/);
+    assert.match(body, /d="M[\d.]+,0\.5 H[\d.]+ V1\.5 H[\d.]+"/, 'row 0 to row 1');
+    assert.equal(body.match(/class="gantt-arrow /g)?.length, 3, 'one arrow per task that waits');
+    // no task_id/depends_on columns: no lines
+    assert.doesNotMatch(render('gantt', tasks.map((r) => r.slice(0, 4)), fields('task', 'starts', 'ends', 'progress'), { now: NOW }).body, /gantt-dep/);
+    // unknown ids and self-references are ignored
+    assert.doesNotMatch(render('gantt', [['a', '2026-01-01', '2026-01-02', 1, 1, '1,9']], fields('t', 's', 'e', 'progress', 'task_id', 'depends_on')).body, /gantt-dep/);
+  });
+
+  test('gantt: drill-down per task (the whole row), and the data table links the task', () => {
+    const { body } = render('gantt', tasks, ganttFields, { now: NOW, link: drill });
+    assert.match(body, /<a class="gantt-bar s1 partial \w+ drill" href="\/p\?row=1&amp;s=null"/);
+    assert.match(body, /<a class="gantt-milestone s1 \w+ drill" href="\/p\?row=3&amp;s=null"/);
+    assert.match(body, /<th scope="row"><a href="\/p\?row=0&amp;s=null">Design<\/a><\/th>/);
+  });
+
+  test('gantt: no usable start dates, or too few columns: a message', () => {
+    assert.match(render('gantt', [['a', 'x', 'y']], fields('t', 's', 'e')).body, /needs a label column, a start date and an end date/);
+    assert.match(render('gantt', [['a', '2026-01-01']], fields('t', 's')).body, /needs a label column/);
+  });
+
+  test('pyramid: one series as segments from the top whose areas follow the values; more than 8 fold into "Other"', () => {
+    const { body } = render('pyramid', [['Top', 1], ['Middle', 3], ['Zero', 0], ['Base', 5]], fields('level', 'N'));
+    // shares 1/9, 4/9, 9/9: the segments end at heights sqrt(c) = 1/3, 2/3 and 1
+    assert.match(body, /<polygon class="pyramid-seg s1" points="50\.000,0\.000 50\.000,0\.000 66\.667,33\.333 33\.333,33\.333"/);
+    assert.match(body, /<polygon class="pyramid-seg s2" points="33\.333,33\.333 66\.667,33\.333 83\.333,66\.667 16\.667,66\.667"/);
+    assert.equal(body.match(/class="pyramid-seg /g)?.length, 3, 'zero values get no segment');
+    assert.match(body, /<span class="lg-label">Base<\/span><span class="lg-value">5 · 56%<\/span>/);
+    const many = render('pyramid', Array.from({ length: 10 }, (_, i) => [`r${i}`, 1]), fields('l', 'N'), { link: drill }).body;
+    assert.equal(many.match(/class="pyramid-seg /g)?.length, 8);
+    assert.match(many, /<li data-tip="Other: 3"><span class="swatch s8">/, '"Other" has no link');
+    assert.match(many, /<a class="drill" href="\/p\?row=0&amp;s=0" tabindex="-1"><polygon/);
+    assert.match(render('pyramid', [['a', 0]], fields('l', 'N')).body, /No data to show/);
+  });
+
+  test('pyramid: two series back to back on one scale (negative values count as their size)', () => {
+    const { body, sheet } = render('pyramid', [['60+', 2, -4], ['0-19', 8, 6]], fields('age', 'Men', 'Women'), { link: drill });
+    assert.deepEqual(decls(body, sheet, /class="pop-bar s\d ([^"]+)"/g), ['width:25.000%', 'width:50.000%', 'width:100.000%', 'width:75.000%']);
+    assert.match(body, /<span class="swatch s2"><\/span>Women/, 'a legend');
+    assert.match(body, /<a class="pop-track right drill" href="\/p\?row=0&amp;s=1"/);
+    assert.match(body, /<td class="num"><a href="\/p\?row=1&amp;s=1">6<\/a><\/td>/);
+  });
+
+  test('polar: equal sectors per row, the radius follows the value; several series share a row\'s sector', () => {
+    const one = render('polar', [['a', 1], ['b', 2], ['c', 0], ['d', 4]], fields('l', 'N'), { link: drill }).body;
+    assert.equal(one.match(/class="polar-sector s1"/g)?.length, 3, 'zero values get no sector');
+    // four rows: quarters from 12 o'clock; d (4 of 0..4) reaches the full radius 36
+    assert.match(one, /d="M50,50 L14\.000,50\.000 A36\.000,36\.000 0 0 1 50\.000,14\.000 Z"/);
+    assert.equal(one.match(/<line class="radar-spoke"/g)?.length, 4);
+    assert.match(one, /<a class="drill" href="\/p\?row=1&amp;s=0" tabindex="-1"><path class="polar-sector s1"/);
+    assert.match(one, /<a class="radar-label [^"]+ drill" href="\/p\?row=0&amp;s=0"/, 'labels: the keyboard path');
+    const two = render('polar', [['a', 1, 2], ['b', 2, 2]], fields('l', 'A', 'B')).body;
+    assert.equal(two.match(/class="polar-sector s2"/g)?.length, 2);
+    assert.match(two, /<span class="swatch s2"><\/span>B/);
+    assert.match(render('polar', [['all', 5]], fields('l', 'A')).body, /<circle class="polar-sector s1" cx="50" cy="50" r="36\.000">/, 'one row: a full circle');
   });
 });

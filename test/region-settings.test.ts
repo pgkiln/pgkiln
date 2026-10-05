@@ -37,7 +37,7 @@ describe('region settings: merges', () => {
     assert.deepEqual(mergeChartSettings({ kind: 'donut', other: 1 }, { kind: 'bar', empty: ' ' }, allowed), { other: 1 });
     assert.deepEqual(mergeChartSettings({}, { kind: 'area', empty: 'Nothing yet' }, allowed), { kind: 'area', empty: 'Nothing yet' });
     assert.deepEqual(mergeChartSettings({}, { kind: 'pie3d' }, allowed), {});
-    for (const kind of ['stacked', 'combo', 'scatter', 'pie', 'bubble', 'gauge', 'funnel', 'radar']) assert.deepEqual(mergeChartSettings({}, { kind }, allowed), { kind });
+    for (const kind of ['stacked', 'combo', 'scatter', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar']) assert.deepEqual(mergeChartSettings({}, { kind }, allowed), { kind });
   });
 
   test('chart: drill-down link to a page of the app; gauge numbers only', () => {

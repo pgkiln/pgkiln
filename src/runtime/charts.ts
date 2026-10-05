@@ -625,7 +625,8 @@ export function timeScale(lo: number, hi: number) {
     lo -= DAY / 2;
     hi += DAY / 2;
   }
-  const [unit, step] = STEPS.find(([, , ms]) => (hi - lo) / ms <= 10) ?? STEPS[STEPS.length - 1];
+  // hours only within about a day and a half (their labels show no date)
+  const [unit, step] = STEPS.find(([u, , ms]) => (hi - lo) / ms <= 10 && (u !== 'hour' || hi - lo <= 1.5 * DAY)) ?? STEPS[STEPS.length - 1];
   const floor = (t: number) => {
     const d = new Date(t);
     const y = d.getUTCFullYear();
@@ -682,12 +683,14 @@ function gantt(title: string, rows: unknown[][], fields: { name: string }[], now
   if (!tasks.length) return html`<p class="empty">${texts.noGantt}</p>`;
   const first = Math.min(...tasks.map((t) => t.start));
   const last = Math.max(...tasks.map((t) => t.end));
-  // a little room on both sides, so a milestone on the last day is not cut in half
-  const scale = timeScale(first - (last - first) * 0.01, last + Math.max((last - first) * 0.03, HOUR));
+  // a little room on the right, so a milestone on the last day is not cut in half
+  const scale = timeScale(first, last + Math.max((last - first) * 0.03, HOUR));
   const x = (t: number) => ((t - scale.lo) / (scale.hi - scale.lo)) * 100;
   const n = tasks.length;
-  const timed = tasks.some((t) => new Date(t.start).getUTCHours() || new Date(t.start).getUTCMinutes() || new Date(t.end).getUTCHours() || new Date(t.end).getUTCMinutes());
-  const when = dateFormat(timed ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' });
+  // a date, with its time when it is not midnight
+  const dateOnly = dateFormat({ dateStyle: 'medium' });
+  const dateTime = dateFormat({ dateStyle: 'medium', timeStyle: 'short' });
+  const when = { format: (t: number) => (t % DAY ? dateTime.format(t) : dateOnly.format(t)) };
   const tickFmt = dateFormat(
     scale.unit === 'hour' ? { hour: '2-digit', minute: '2-digit' } : scale.unit === 'month' ? { month: 'short', year: '2-digit' } : scale.unit === 'year' ? { year: 'numeric' } : { day: 'numeric', month: 'short' },
   );
@@ -727,7 +730,8 @@ function gantt(title: string, rows: unknown[][], fields: { name: string }[], now
   return html`<div class="gantt">
     <span class="gantt-corner">${head(0)}</span>
     <div class="gantt-axis" aria-hidden="true">${scale.ticks.slice(0, -1).map(
-      (t, k) => html`<span class="${k % everyTick ? 'skip ' : ''}${css.cls(`left:${pct(x(t))}`)}">${tickFmt.format(t)}</span>`,
+      // every other shown label is "odd": hidden on narrow screens (app.css)
+      (t, k) => html`<span class="${k % everyTick ? 'skip ' : (k / everyTick) % 2 ? 'odd ' : ''}${css.cls(`left:${pct(x(t))}`)}">${tickFmt.format(t)}</span>`,
     )}</div>
     <ul class="gantt-labels" aria-hidden="true">${tasks.map((t) => html`<li title="${t.label}">${t.label}</li>`)}</ul>
     <div class="gantt-plot">
