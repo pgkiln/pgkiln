@@ -54,6 +54,11 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
     switch (f.kind) {
       case 'bool':
         return html`<div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="${f.name}" value="true"${v ? raw(' checked') : ''}> ${f.label}</label>${help}</div>`;
+      case 'options': {
+        const chosen: unknown[] = Array.isArray(v) ? v : [];
+        return html`<fieldset class="field options-field"${f.wide ? raw(' data-wide') : ''}><legend class="label">${f.label}</legend>
+          ${(f.choices ?? []).map((c) => html`<label class="check"><input type="checkbox" name="${f.name}" value="${c.cls}"${chosen.includes(c.cls) ? raw(' checked') : ''}> ${c.label} <code>${c.cls}</code></label>`)}${help}</fieldset>`;
+      }
       case 'select':
         control = opts(f.options!.map((o) => [o, o || '- none -']));
         break;

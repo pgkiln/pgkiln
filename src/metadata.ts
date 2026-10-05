@@ -80,7 +80,11 @@ export interface App {
   app_items: string[];
   app_processes: AppProcess[];
   lovs: { name: string; query: string; rest_source?: string | null }[];
-  theme: { accent?: string; header?: string; nav?: 'side' | 'top'; mode?: 'auto' | 'light' | 'dark'; user_choice?: boolean };
+  theme: {
+    accent?: string; header?: string; nav?: 'side' | 'top'; mode?: 'auto' | 'light' | 'dark'; user_choice?: boolean;
+    /** (053) Theme Roller style variants, the default one, and whether users may choose (src/runtime/styles.ts) */
+    styles?: unknown[]; style?: string; style_choice?: boolean;
+  };
   /** primary language, translated languages, and how the language is chosen */
   language: string;
   languages: string[];
@@ -109,6 +113,8 @@ export interface Region {
   config: Record<string, any>;
   /** a REST data source the region reads (its source, if any, is SQL over the CTE "rest") */
   rest_source?: string | null;
+  /** (053) template options: CSS classes from REGION_OPTIONS (others are ignored) */
+  template_options?: string[];
 }
 
 export type ItemType =
@@ -154,6 +160,8 @@ export interface Button {
   /** a badge: static text with &ITEM. substitutions, or a query's first value (badge_query wins) */
   badge?: string | null;
   badge_query?: string | null;
+  /** (053) template options: CSS classes from BUTTON_OPTIONS (others are ignored) */
+  template_options?: string[];
 }
 
 export interface MenuEntry {

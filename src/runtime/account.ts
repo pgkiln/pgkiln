@@ -8,12 +8,23 @@ import { getSession, logActivity, saveState, takeFlash } from '../session.ts';
 import type { PageContext } from './context.ts';
 import { databaseTimeZone, isTheme, matchLanguage, sameOffset, THEME_COOKIE, timeZoneFor, timeZoneNames, validTimeZone } from './locale.ts';
 import { chrome } from './render.ts';
+import { appStyles, choosable, chosenStyleName, styleChoice } from './styles.ts';
 import { loadApp } from '../metadata.ts';
 import { appWithLocale, loadContext, safeNext, txContext, type Req } from './routes.ts';
 
 // "My account": details, own password, and preferences (light/dark and
 // language). APEX has the APIs for this (APEX_UTIL.CHANGE_CURRENT_USER_PW,
 // theme style per user); pgapex provides the page itself.
+
+/** Keep a signed-in user's style variant for this app (meta.account_style; '' = the base colours). */
+async function saveStyle(appId: number, username: string, style: string) {
+  await runtime.query(
+    `insert into meta.account_style (account_id, app_id, style)
+     select id, $2, $3 from meta.account where lower(username) = lower($1)
+     on conflict (account_id, app_id) do update set style = excluded.style`,
+    [username, appId, style],
+  );
+}
 
 const themeCookie = (reply: FastifyReply, theme: string) =>
   reply.setCookie(THEME_COOKIE, theme, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
@@ -62,12 +73,17 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
             ${ctx.roles.length ? html`<dt>${t('account.roles')}</dt><dd>${ctx.roles.join(', ')}</dd>` : ''}
           </dl>
         </div></section>
-        ${ctx.locale.themeChoice || ctx.locale.languages.length > 1 || ctx.app.time_zone_auto
+        ${ctx.locale.themeChoice || styleChoice(ctx.app) || ctx.locale.languages.length > 1 || ctx.app.time_zone_auto
           ? html`<section class="region region-standard col-6"><header class="region-header"><h2>${t('account.preferences')}</h2></header><div class="region-body">
               <form method="post" action="${ctx.base}/account">${csrf}
                 ${ctx.locale.themeChoice
                   ? html`<fieldset class="field"><legend class="label">${t('theme.label')}</legend><div class="pref-options">
                       ${(['auto', 'light', 'dark'] as const).map((m) => opt('theme', m, t(`theme.${m}`), ctx.locale.theme === m))}</div></fieldset>`
+                  : ''}
+                ${styleChoice(ctx.app)
+                  ? html`<div class="field"><label class="label" for="style">${t('style.label')}</label>
+                      <select id="style" name="style">${['', ...appStyles(ctx.app.theme).map((x) => x.name)].map((n) =>
+                        html`<option value="${n}"${n === chosenStyleName(ctx.app, ctx.session) ? raw(' selected') : ''}>${n || t('style.standard')}</option>`)}</select></div>`
                   : ''}
                 ${ctx.locale.languages.length > 1
                   ? html`<div class="field"><label class="label" for="language">${t('language.label')}</label>
@@ -139,6 +155,11 @@ export async function accountRoutes(app: FastifyInstance) {
       themeCookie(reply, theme);
     }
     if (language) ctx.session.state.__LANG = language;
+    // a style variant: only one of the app's own styles ('' = the base colours)
+    if (choosable(ctx.app, b.style)) {
+      ctx.session.state.__STYLE = b.style;
+      await saveStyle(ctx.app.id, ctx.user, b.style);
+    }
     // the confirmation in the newly chosen language
     const again = await appWithLocale(req, ctx.app.alias, ctx.session);
     ctx.session.state.__FLASH = (again?.locale.t ?? ctx.locale.t)('account.saved');
@@ -203,6 +224,20 @@ export async function accountRoutes(app: FastifyInstance) {
     await saveState(session);
     // show the page again only when its times change (UTC and Etc/UTC don't)
     return reply.send({ reload: !sameOffset(before, await effective()) });
+  });
+
+  // Quick style switch (Theme Roller style variants) from the user menu; signed out: this session only.
+  app.post('/a/:alias/account/style', async (req: Req, reply) => {
+    const a = await loadApp(req.params.alias);
+    if (!a) return reply.code(404).send('Not found');
+    const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
+    const b = req.body ?? {};
+    const to = safeNext(a, b.next);
+    if (b.__csrf !== session.csrf_token || !choosable(a, b.style)) return reply.redirect(to, 303);
+    session.state.__STYLE = b.style;
+    if (session.username) await saveStyle(a.id, session.username, b.style);
+    await saveState(session);
+    return reply.redirect(to, 303);
   });
 
   // Quick light/dark switch from the user menu; works signed out too (cookie only).

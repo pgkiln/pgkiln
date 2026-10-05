@@ -49,6 +49,8 @@ export const es: Record<MessageKey, string> = {
   'theme.auto': 'Automática (según el dispositivo)',
   'theme.light': 'Clara',
   'theme.dark': 'Oscura',
+  'style.label': 'Estilo',
+  'style.standard': 'Estándar',
   'language.label': 'Idioma',
   'timezone.label': 'Zona horaria',
   'timezone.auto': 'Automática (la zona horaria del navegador)',

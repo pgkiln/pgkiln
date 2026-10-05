@@ -26,6 +26,7 @@ import { formatNumber, maskError } from '../numformat.ts';
 import { cell, columnFormats, maxRows, regionUrl, renderReport } from './report.ts';
 import { cacheKey, cacheOf, lazyOf, renderCaching, useCached } from './region-cache.ts';
 import { resolveRestRegion } from './rest-sources.ts';
+import { templateClasses } from './template-options.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -72,7 +73,7 @@ async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw |
 }
 
 export async function renderButton(ctx: PageContext, b: Button) {
-  const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}`;
+  const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}${templateClasses('button', b.template_options)}`;
   const confirm = b.confirm ? raw(` data-confirm="${esc(b.confirm)}"`) : '';
   const badge = b.badge || b.badge_query ? await badgeOf(ctx, b) : '';
   if (b.action === 'menu') return renderMenu(ctx, b, cls, badge);
@@ -360,7 +361,7 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
   // (a grid renders its own Save button in its toolbar)
-  const cls = `region region-${r.type} region-${r.template} col-${r.columns}`;
+  const cls = `region region-${r.type} region-${r.template} col-${r.columns}${templateClasses('region', r.template_options)}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
   const titleId = `R${r.id}_title`;
 

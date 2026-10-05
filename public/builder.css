@@ -639,3 +639,8 @@ details.support-script pre.source { margin-top: 0.4rem; white-space: pre-wrap; o
 /* debug messages (src/builder/diagnostics.ts) */
 .debug-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 0.82rem; }
 .debug-log .debug-slowest td { background: var(--warning-soft); }
+
+/* Theme Roller (src/builder/themeroller.ts) and template options in the property editor */
+.ide input[type=color].swatch { width: 2rem; min-height: 1.4rem; padding: 0; vertical-align: middle; }
+.ide .options-field { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ide .options-field code { font-size: 0.75em; }

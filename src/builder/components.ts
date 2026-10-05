@@ -15,6 +15,7 @@ import { REST_SOURCE_SPEC, WEB_CREDENTIAL_SPEC } from './websources.ts';
 import { invokeProblems } from '../runtime/rest-sources.ts';
 import { DATA_LOAD_DEF_SPEC } from './dataload.ts';
 import { processProblems } from '../runtime/processes.ts';
+import { BUTTON_OPTIONS, REGION_OPTIONS } from '../runtime/template-options.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -31,6 +32,7 @@ export type FieldKind =
   | 'build_option' // build option of the app (NAME or !NAME)
   | 'rest_source' // REST data source of the app (by name)
   | 'secret'   // write-only: never shown; empty keeps the stored value
+  | 'options'  // checkboxes from `choices` into a text[] column (unknown values dropped)
   | 'icon';
 
 export interface Field {
@@ -38,6 +40,8 @@ export interface Field {
   label: string;
   kind: FieldKind;
   options?: string[];
+  /** kind 'options': value and label of each checkbox */
+  choices?: readonly { cls: string; label: string }[];
   help?: string;
   wide?: boolean;
   group?: string;
@@ -103,6 +107,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Layout' },
       { name: 'columns', label: 'Column span (1-12)', kind: 'int', group: 'Layout' },
       { name: 'template', label: 'Template', kind: 'select', options: ['standard', 'plain', 'collapsible'], group: 'Layout' },
+      { name: 'template_options', label: 'Template options', kind: 'options', choices: REGION_OPTIONS, group: 'Appearance',
+        help: 'CSS classes from a fixed list, added to the region (APEX: Template Options). "Hide the header" applies to the standard template.' },
       { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'Boolean expression; the region renders only when true.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
@@ -156,6 +162,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'menu', label: 'Menu entries (action menu, JSON)', kind: 'json', wide: true, group: 'Behaviour',
         help: '[{"label": "Details", "page": 3, "items": {"P3_ID": "&P2_ID."}}, {"label": "Archive", "request": "ARCHIVE", "confirm": "Archive it?", "authz": "ADMIN", "icon": "inbox"}] — a link to a page, or a submit with that request (processes and branches see it as the button pressed). At most 20.' },
       { name: 'hot', label: 'Primary (hot) button', kind: 'bool', group: 'Appearance' },
+      { name: 'template_options', label: 'Template options', kind: 'options', choices: BUTTON_OPTIONS, group: 'Appearance',
+        help: 'CSS classes from a fixed list, added to the button (APEX: Template Options).' },
       { name: 'badge', label: 'Badge', kind: 'text', group: 'Appearance', help: 'A short value shown on the button, e.g. &P2_OPEN_COUNT. (empty value: no badge).' },
       { name: 'badge_query', label: 'Badge (SQL)', kind: 'code', group: 'Appearance', help: 'Instead: a SELECT whose first value is the badge, e.g. select count(*) from sales.orders where status = \'OPEN\'. Runs as the application\'s role.' },
       { name: 'region_id', label: 'Region', kind: 'region', group: 'Layout' },
@@ -629,7 +637,9 @@ export const ICON_OPTIONS = ['', ...ICONS];
 export function parseFields(spec: ComponentSpec, body: Record<string, string | undefined>) {
   const values: Record<string, unknown> = {};
   for (const f of spec.fields) {
-    const raw = body[f.name];
+    // a repeated field (checkboxes) arrives as an array: only 'options' fields read it as one
+    const sent = body[f.name] as unknown;
+    const raw = Array.isArray(sent) ? (f.kind === 'options' ? undefined : String(sent[0] ?? '')) : (sent as string | undefined);
     const v = raw === undefined || raw.trim() === '' ? '' : raw;
     switch (f.kind) {
       case 'bool':
@@ -653,6 +663,12 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'list':
         values[f.name] = [...new Set(v.split(',').map((x) => x.trim()).filter(Boolean))];
         break;
+      case 'options': {
+        // a repeated form field arrives as an array; only values of the fixed list are kept
+        const sent = ([] as unknown[]).concat((body as Record<string, unknown>)[f.name] ?? []);
+        values[f.name] = (f.choices ?? []).map((c) => c.cls).filter((c) => sent.includes(c));
+        break;
+      }
       case 'upper':
       case 'authz':
       case 'build_option':

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { urlChecksum } from '../security.ts';
 import { pwaBody, pwaHead } from './pwa.ts';
 import { mapHead } from './maps.ts';
+import { appStyles, chosenStyle, chosenStyleName, styleChoice, themeCss } from './styles.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
@@ -117,15 +118,8 @@ async function breadcrumb(ctx: PageContext) {
 
 // ---------------------------------------------------------------- theme
 
-const HEX = /^#[0-9a-f]{6}$/i;
-
-/** Per-app colours (Theme Roller). Only strict hex values reach the CSS. */
-export function themeStyle(theme: PageContext['app']['theme']) {
-  const vars: string[] = [];
-  if (theme?.accent && HEX.test(theme.accent)) vars.push(`--accent:${theme.accent};--accent-soft:color-mix(in srgb, ${theme.accent} 14%, var(--surface));`);
-  if (theme?.header && HEX.test(theme.header)) vars.push(`--header:${theme.header};`);
-  return vars.length ? `:root{${vars.join('')}}` : '';
-}
+/** Per-app colours (Theme Roller) and the style variant in use. Only checked values reach the CSS (styles.ts). */
+export const themeStyle = (ctx: Pick<PageContext, 'app' | 'session'>) => themeCss(ctx.app.theme, chosenStyle(ctx.app, ctx.session));
 
 /**
  * The page's one inline <style>: theme colours and the data-dependent rules
@@ -133,7 +127,7 @@ export function themeStyle(theme: PageContext['app']['theme']) {
  * refreshed region can add its rules to it (app.js).
  */
 export const pageStyle = (ctx: PageContext) =>
-  html`<style nonce="${ctx.nonce}" id="pgapex-css">${raw([themeStyle(ctx.app.theme), ctx.css.text].filter(Boolean).join('\n'))}</style>`;
+  html`<style nonce="${ctx.nonce}" id="pgapex-css">${raw([themeStyle(ctx), ctx.css.text].filter(Boolean).join('\n'))}</style>`;
 
 // ---------------------------------------------------------------- language
 
@@ -158,6 +152,20 @@ export function themeSwitch(ctx: PageContext, back: string) {
     <span class="muted">${t('theme.label')}</span>
     <div class="segmented" role="group" aria-label="${t('theme.label')}">${(['auto', 'light', 'dark'] as const).map((m) =>
       html`<button name="theme" value="${m}"${theme === m ? raw(' aria-pressed="true"') : raw(' aria-pressed="false"')}>${t(`theme.${m}` as 'theme.auto').split(' (')[0]}</button>`)}</div>
+  </form>`;
+}
+
+/** The app's style variants (Theme Roller), when users may choose one. */
+export function styleSwitch(ctx: PageContext, back: string) {
+  if (!styleChoice(ctx.app)) return '';
+  const { t } = ctx.locale;
+  const current = chosenStyleName(ctx.app, ctx.session);
+  const names = ['', ...appStyles(ctx.app.theme).map((x) => x.name)];
+  return html`<form method="post" action="${ctx.base}/account/style" class="menu-section style-switch">
+    <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="next" value="${back}">
+    <span class="muted" id="style-switch-label">${t('style.label')}</span>
+    <div class="menu-links" role="group" aria-labelledby="style-switch-label">${names.map((n) =>
+      html`<button name="style" value="${n}" aria-pressed="${current === n ? 'true' : 'false'}">${current === n ? icon('check') : html`<span class="icon"></span>`}${n || t('style.standard')}</button>`)}</div>
   </form>`;
 }
 
@@ -192,6 +200,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
                 <div class="menu-section"><strong>${ctx.user}</strong>${ctx.roles.length ? html`<div class="muted">${t('account.roles')}: ${ctx.roles.join(', ')}</div>` : ''}</div>
                 <div class="menu-section"><a href="${ctx.base}/account">${icon('user')} ${t('account.menu')}</a></div>
                 ${themeSwitch(ctx, here(ctx))}
+                ${styleSwitch(ctx, here(ctx))}
                 <form method="post" action="${ctx.base}/logout" class="menu-section">
                   <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
                   <button class="link-button plain">${icon('logout')} ${t('login.sign_out')}</button>
@@ -199,9 +208,9 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
               </div>
             </details>`
           : html`<a href="${ctx.base}/login">${t('login.sign_in_link')}</a>`
-        : ctx.locale.themeChoice
+        : ctx.locale.themeChoice || styleChoice(ctx.app)
           ? html`<details class="menu t-user"><summary>${icon('settings')}<span class="sr-only">${t('theme.label')}</span></summary>
-              <div class="menu-panel align-right">${themeSwitch(ctx, here(ctx))}</div></details>`
+              <div class="menu-panel align-right">${themeSwitch(ctx, here(ctx))}${styleSwitch(ctx, here(ctx))}</div></details>`
           : ''}
     </header>
     <div class="t-body">

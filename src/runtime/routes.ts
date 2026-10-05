@@ -115,6 +115,11 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
     if (pref.time_zone) s.state.__TZ_PREF = pref.time_zone;
     if (a.theme?.user_choice !== false) reply.setCookie(THEME_COOKIE, pref.theme_pref, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
   }
+  // the account's style variant for this app (honoured only while the app offers it: styles.ts)
+  const style = await runtime.one<{ style: string }>(
+    `select s.style from meta.account_style s join meta.account a on a.id = s.account_id
+      where lower(a.username) = lower($1) and s.app_id = $2`, [username, a.id]);
+  if (style) s.state.__STYLE = style.style;
   await saveState(s);
 
   if (a.app_processes.some((p) => p.point === 'after_login')) {

@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
+import { appStyles } from '../runtime/styles.ts';
 import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
@@ -327,6 +328,8 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="user_choice" value="true"${a.theme?.user_choice !== false ? raw(' checked') : ''}> Users may choose light or dark</label>
               <small class="help">Adds a switch to the user menu and My account; the choice is saved on the account (APEX: "Enable End Users to Choose Theme Style").</small></div>
+            <p><a class="btn" href="${BASE}/apps/${a.id}/theme">${icon('settings')} Theme Roller: style variants…</a>
+              <span class="muted">${(() => { const n = appStyles(a.theme).length; return n ? `${n} style${n === 1 ? '' : 's'}` : 'no styles yet'; })()}</span></p>
             <h3>Globalization</h3>
             <div class="form-grid">
               ${input('language', 'Primary language', a.language, { help: 'The language the app is built in, e.g. en, nl, de, en-GB.' })}
@@ -364,7 +367,9 @@ export async function builderRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       await owner.query(
-        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
+        `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7,
+                -- (053) the Theme Roller's styles stay: only the keys of this form are replaced
+                theme = (theme - 'accent' - 'header' - 'nav' - 'mode' - 'user_choice') || $8::jsonb,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
                 header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
