@@ -154,7 +154,7 @@ export const OPERATORS: Record<string, { label: string; sql: (col: string, v: st
 const escapeLike = (v: string) => v.replace(/[\\%_]/g, '\\$&');
 
 /** Operator names in the user's language (symbols stay as they are). */
-const opLabel = (t: Translate, op: string) =>
+export const opLabel = (t: Translate, op: string) =>
   ({ contains: t('op.contains'), not_contains: t('op.not_contains'), null: t('op.null'), not_null: t('op.not_null') } as Record<string, string>)[op] ?? OPERATORS[op]?.label ?? op;
 
 interface Filter {

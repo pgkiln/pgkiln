@@ -4827,3 +4827,383 @@ describe('sprint 34 application types and subscriptions', () => {
     }
   });
 });
+
+describe('sprint 35 appwizard', () => {
+  const ALIASES = ['sec35-aw', 'sec35-aw-t'];
+  const SRC = 'sec35_aw_src';
+  const DEV = 'sec35_aw_dev';
+  const DEV_PW = 'Sec35-aw-developer!';
+  const cleanup = async () => {
+    for (const alias of ALIASES) {
+      const schema = alias.replace(/-/g, '_');
+      await owner.query('delete from meta.app where alias = $1', [alias]);
+      await owner.query(`drop schema if exists ${schema} cascade`);
+      if ((await owner.query('select 1 from pg_roles where rolname = $1', [`app_${schema}`])).rowCount) {
+        await owner.query(`drop owned by app_${schema}`);
+        await owner.query(`drop role app_${schema}`);
+      }
+    }
+    await owner.query(`drop schema if exists ${SRC} cascade`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  };
+  const builder = async (user = 'admin', password = 'admin', start = '/builder/create/paste') => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password })).statusCode, 303);
+    await b.get(start);
+    return b;
+  };
+  const PASTE = { title: 'Sec paste', data: 'Name,"<script>alert(1)</script>"\nAnn,<b>x</b>\n', headers: 'true' };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
+    await owner.query(`create schema ${SRC}`);
+    await owner.query(`create table ${SRC}.thing (id int primary key, name text)`);
+  });
+  after(cleanup);
+
+  test('pasted data and existing tables need a builder login and the CSRF token', async () => {
+    const king = new FileBrowser(app);
+    await king.login('king');
+    for (const b of [new FileBrowser(app), king]) {
+      assert.equal((await b.get('/builder/create/paste')).statusCode, 302);
+      assert.equal((await b.get(`/builder/create/tables?schema=${SRC}`)).statusCode, 302);
+      assert.equal((await b.post('/builder/create/paste', PASTE)).statusCode, 302);
+      assert.equal((await b.post('/builder/create/tables', { schema: SRC, t_0: 'thing', alias: 'sec35-aw-t', name: 'x', authentication: 'none' })).statusCode, 302);
+    }
+    const dev = await builder();
+    for (const token of [undefined, 'wrong']) {
+      const form: Record<string, string> = token ? { __csrf: token } : {};
+      assert.equal((await dev.post('/builder/create/paste', { ...form, ...PASTE })).statusCode, 403);
+      assert.equal((await dev.post('/builder/create/tables', { ...form, schema: SRC, t_0: 'thing', alias: 'sec35-aw-t', name: 'x', authentication: 'none' })).statusCode, 403);
+    }
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec35-aw-t'`)).rowCount, 0);
+  });
+
+  test("pasted data is a temporary file of the builder session; its text is escaped", async () => {
+    const admin = await builder();
+    const res = await admin.submit('/builder/create/paste', PASTE);
+    assert.equal(res.statusCode, 303);
+    const url = res.headers.location as string;
+    const own = await admin.get(url);
+    assert.equal(own.statusCode, 200);
+    assert.doesNotMatch(own.body, /<script>alert\(1\)<\/script>|<b>x<\/b>/);
+    const other = await builder(DEV, DEV_PW);
+    const get = await other.get(url);
+    assert.equal(get.statusCode, 302);
+    assert.equal(get.headers.location, '/builder/create/file');
+    const big = await admin.submit('/builder/create/paste', { ...PASTE, data: 'x'.repeat(4.5 * 1024 * 1024) });
+    assert.equal(big.statusCode, 422);
+    assert.match(big.body, /At most 4 MB of text can be pasted/);
+  });
+
+  test('existing tables: pgapex, system and unknown schemas are refused; only the schema\'s own tables count', async () => {
+    const dev = await builder('admin', 'admin', '/builder/create/tables');
+    const base = { alias: 'sec35-aw-t', name: 'Sec tables', authentication: 'none' };
+    for (const schema of ['meta', 'pg_catalog', 'information_schema', 'pg_toast', 'no_such_schema', "x'; drop table meta.app; --"]) {
+      const res = await dev.submit('/builder/create/tables', { ...base, schema, t_0: 'app', t_1: 'pg_class' });
+      assert.equal(res.statusCode, 422, schema);
+      assert.match(res.body, /Choose one of the schemas in the list/);
+    }
+    for (const t of ['app', 'meta.app', '../thing', 'thing"; drop table meta.app; --', 'pg_class'])
+      assert.match((await dev.submit('/builder/create/tables', { ...base, schema: SRC, t_0: t })).body, /Choose at least one table or view/, t);
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec35-aw-t'`)).rowCount, 0);
+    assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
+    // the app's role gets the schema it was built on, not pgapex's tables
+    const ok = await dev.submit('/builder/create/tables', { ...base, schema: SRC, t_0: 'thing' });
+    assert.equal(ok.statusCode, 200);
+    const priv = await owner.one(`select has_table_privilege('app_sec35_aw_t', '${SRC}.thing', 'select') as t, has_table_privilege('app_sec35_aw_t', 'meta.account', 'select') as m`);
+    assert.deepEqual(priv, { t: true, m: false });
+  });
+
+  test('several sheets: sheet names are escaped; table, column, key and foreign key fields never become SQL', async () => {
+    const { workbook } = await import('./xlsxbook.ts');
+    const book = workbook([
+      { name: '<img src=x onerror=alert(1)>', rows: [['ID', 'Name'], [1, 'A'], [2, 'B']] },
+      { name: 'Items', rows: [['ID', 'Name', 'Img src x onerror alert 1 ID'], [1, 'x', 1]] },
+    ]);
+    const dev = await builder('admin', 'admin', '/builder/create/file');
+    const up = await dev.upload('/builder/create/file', { headers: 'true' }, { file: { name: 'sec.xlsx', type: 'application/octet-stream', data: book } });
+    assert.equal(up.statusCode, 303);
+    const url = up.headers.location as string;
+    const page = await dev.get(url);
+    assert.doesNotMatch(page.body, /<img src=x/);
+    assert.match(page.body, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    const base: Record<string, string> = {
+      h: '1', name: 'Sec aw', alias: 'sec35-aw', schema: '', authentication: 'none',
+      s0_on: 'true', s0_table: 'img', s0_key: '0', s0_name_0: 'id', s0_type_0: 'integer', s0_name_1: 'name', s0_type_1: 'text',
+      s1_on: 'true', s1_table: 'items', s1_key: '0', s1_name_0: 'id', s1_type_0: 'integer', s1_name_1: 'name', s1_type_1: 'text', s1_name_2: 'other', s1_type_2: 'integer',
+    };
+    for (const [form, error] of [
+      [{ s0_table: 'img; drop table meta.app; --' }, /the table name must be lower-case/],
+      [{ s0_table: 'meta.app' }, /the table name must be lower-case/],
+      [{ s1_name_1: 'name text); drop table meta.app; --' }, /is not a valid column name/],
+      [{ s1_type_1: 'int); drop table meta.app; --' }, /unknown column type/],
+      [{ schema: 'meta' }, /can&#39;t be the parsing schema/],
+      [{ schema: 'pg_catalog' }, /can&#39;t be the parsing schema/],
+    ] as [Record<string, string>, RegExp][]) {
+      const res = await dev.submit(url, { ...base, ...form });
+      assert.equal(res.statusCode, 422, JSON.stringify(form));
+      assert.match(res.body, error);
+    }
+    assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
+    // a key or foreign key that wasn't proposed is ignored: no constraint to anything else
+    const res = await dev.submit(url, { ...base, s0_key: '0 or 1=1', s0_name_0: 'img_no', fk_1_2: '0', fk_1_1: "0); drop table meta.app; --", fk_0_1: '1', fkp_1_2: '0' });
+    assert.equal(res.statusCode, 200, res.body.slice(0, 1500));
+    const fks = (await owner.query(`select conrelid::regclass::text as t from pg_constraint where contype = 'f' and connamespace = 'sec35_aw'::regnamespace`)).rows;
+    assert.deepEqual(fks, [], 'img has no file key (s0_key was not a column index), so nothing can refer to it');
+    assert.equal((await owner.one(`select attidentity from pg_attribute where attrelid = 'sec35_aw.img'::regclass and attname = 'id'`)).attidentity, 'd');
+    assert.equal((await owner.one(`select count(*)::int as n from sec35_aw.img`)).n, 2);
+  });
+});
+
+describe('sprint 35 reporter', () => {
+  let rid: number; // the Data Reporter region on HR page 36
+  let pageId: number;
+  let reportRegion: number; // the interactive report on HR page 2
+  const P = () => `dr${rid}_`;
+  const user = async (name: string) => {
+    const b = new FileBrowser(app);
+    await b.login(name);
+    await b.get('/a/hr/36');
+    return b;
+  };
+  const params = (extra: [string, string][] = []) => new URLSearchParams([[`${P()}src`, 'employees'], ...extra.map(([k, v]): [string, string] => [`${P()}${k}`, v])]).toString();
+  const count = async (name: string) => (await owner.one(`select count(*)::int as n from meta.data_report where region_id = $1 and name = $2`, [rid, name])).n as number;
+  let config: unknown;
+  before(async () => {
+    const r = await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 36 and r.type = 'data_reporter'`, [appId]);
+    rid = r.id;
+    pageId = r.page_id;
+    config = r.config;
+    reportRegion = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.data_report where region_id = $1 and name like 'sec-%'`, [rid]);
+    await owner.query(`update meta.region set config = $2, authz = null where id = $1`, [rid, JSON.stringify(config)]);
+  });
+
+  test('saving and deleting need the CSRF token, a signed-in user and the visible Data Reporter region of that page', async () => {
+    const king = await user('king');
+    assert.equal((await king.post(`/a/hr/36/reporter/${rid}/save`, { __csrf: 'forged', params: params(), name: 'sec-a' })).statusCode, 403);
+    const anon = new FileBrowser(app);
+    assert.ok([302, 303, 403].includes((await anon.post(`/a/hr/36/reporter/${rid}/save`, { __csrf: '', params: params(), name: 'sec-a' })).statusCode));
+    assert.equal((await king.submit(`/a/hr/36/reporter/999999/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'unknown region');
+    assert.equal((await king.submit(`/a/hr/36/reporter/${reportRegion}/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'not a Data Reporter region');
+    assert.equal((await king.submit(`/a/hr/2/reporter/${rid}/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'a region of another page');
+    await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [rid]);
+    try {
+      const blake = await user('blake');
+      assert.equal((await blake.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'a region the user may not see');
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [rid]);
+    }
+    assert.equal(await count('sec-a'), 0);
+    // and unknown sources are refused
+    assert.equal((await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: `${P()}src=secret`, name: 'sec-a' })).statusCode, 403);
+    assert.equal(await count('sec-a'), 0);
+  });
+
+  test('a forged definition keeps only offered columns, whitelisted operators and functions', async () => {
+    const king = await user('king');
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, {
+      name: 'sec-forged',
+      params: params([['col', 'ename'], ['col', 'username'], ['col', 'photo'], ['col', 'ename") from pg_authid --'], ['fc', 'username'], ['fo', 'eq'], ['fv', 'x'],
+        ['fc', 'job'], ['fo', 'eq; drop table hr.emp'], ['fv', 'x'], ['g', 'username'], ['af', 'pg_sleep'], ['ac', 'sal'], ['af', 'sum'], ['ac', 'ename'], ['sc', 'username'], ['sd', 'desc'], ['ch', 'gantt']]),
+    });
+    const d = (await owner.one(`select definition from meta.data_report where region_id = $1 and name = 'sec-forged'`, [rid])).definition;
+    assert.deepEqual(d, { source: 'employees', columns: ['ename'], filters: [], group: [], aggregates: [], sort: [], chart: null });
+    // the same in the URL: not-offered columns never show
+    const page = (await king.get(`/a/hr/36?${params([['col', 'username'], ['col', 'ename'], ['g', 'username'], ['af', 'count'], ['ac', 'username']])}`)).body;
+    assert.doesNotMatch(page, /king<\/td>|data-label="Username"/);
+  });
+
+  test('filter values are literals and user text is escaped', async () => {
+    const king = await user('king');
+    const page = (await king.get(`/a/hr/36?${params([['fc', 'ename'], ['fo', 'eq'], ['fv', `x' or '1'='1`], ['col', 'ename']])}`)).body;
+    assert.match(page, /No data found/);
+    const xss = (await king.get(`/a/hr/36?${params([['fc', 'ename'], ['fo', 'contains'], ['fv', '"><script>alert(1)</script>']])}`)).body;
+    assert.doesNotMatch(xss, /<script>alert\(1\)/);
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-<img src=x onerror=alert(1)>', description: '<b>x</b>' });
+    const home = (await king.get('/a/hr/36')).body;
+    assert.doesNotMatch(home, /<img src=x|<b>x<\/b>/);
+    assert.match(home, /sec-&lt;img/);
+  });
+
+  test('other users\' reports: private ones stay hidden, no one else may change or delete them', async () => {
+    const king = await user('king');
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-private' });
+    const id = (await owner.one(`select id from meta.data_report where region_id = $1 and name = 'sec-private'`, [rid])).id;
+    const blake = await user('blake');
+    assert.match((await blake.get(`/a/hr/36?${P()}open=${id}`)).body, /That report is not available\./);
+    await blake.submit(`/a/hr/36/reporter/${rid}/save`, { params: params([['col', 'sal']]), name: 'sec-stolen', rep: String(id), shared: 'true' });
+    await blake.submit(`/a/hr/36/reporter/${rid}/delete`, { rep: String(id) });
+    const row = await owner.one('select name, shared, definition from meta.data_report where id = $1', [id]);
+    assert.deepEqual([row.name, row.shared, row.definition.columns], ['sec-private', false, []]);
+    assert.equal(await count('sec-stolen'), 0);
+    await owner.query(`update meta.data_report set shared = true where id = $1`, [id]);
+    assert.match((await blake.get(`/a/hr/36?${P()}open=${id}`)).body, /sec-private/, 'shared: visible');
+  });
+
+  test('sharing follows the region\'s settings', async () => {
+    await owner.query(`update meta.region set config = config || '{"share_authz": "ADMIN"}' where id = $1`, [rid]);
+    const blake = await user('blake');
+    assert.doesNotMatch((await blake.get(`/a/hr/36?${params()}`)).body, /name="shared"/);
+    await blake.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-share-b', shared: 'true' });
+    const king = await user('king');
+    assert.match((await king.get(`/a/hr/36?${params()}`)).body, /name="shared"/);
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-share-k', shared: 'true' });
+    await owner.query(`update meta.region set config = (config - 'share_authz') || '{"sharing": false}' where id = $1`, [rid]);
+    await king.get('/a/hr/36');
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-share-off', shared: 'true' });
+    const shared = Object.fromEntries((await owner.query(`select name, shared from meta.data_report where region_id = $1 and name like 'sec-share-%'`, [rid])).rows.map((r) => [r.name, r.shared]));
+    assert.deepEqual(shared, { 'sec-share-b': false, 'sec-share-k': true, 'sec-share-off': false });
+    await owner.query(`update meta.region set config = config - 'sharing' where id = $1`, [rid]);
+  });
+
+  test('reports run as the application\'s role with row level security; pgapex\'s own tables are never a source', async () => {
+    const scott = await user('scott');
+    const body = (await scott.get(`/a/hr/36?${new URLSearchParams([[`${P()}src`, 'leave'], [`${P()}col`, 'empno']])}`)).body;
+    const empno = (await owner.one(`select empno from hr.emp where username = 'scott'`)).empno;
+    const total = (await owner.one('select count(*)::int as n from hr.leave_request')).n;
+    const shown = [...body.matchAll(/data-label="Employee no\.">(\d+)</g)].map((m) => Number(m[1]));
+    assert.ok(shown.includes(empno), 'scott sees his own leave requests');
+    assert.ok(shown.length < total, 'but not everyone\'s');
+    const allen = await user('allen');
+    await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify({ sources: [{ id: 'acc', schema: 'meta', table: 'account', columns: [{ name: 'username' }, { name: 'password_hash' }] }] })]);
+    try {
+      const page = (await allen.get(`/a/hr/36?${P()}src=acc`)).body;
+      assert.match(page, /No data sources are set up/);
+      assert.doesNotMatch(page, /\$2[aby]\$/);
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify(config)]);
+    }
+  });
+
+  test('applications reach the reports only through the view and functions', async () => {
+    await assert.rejects(runtime.query('select * from meta.data_report'), /permission denied/);
+    await assert.rejects(runtime.query(`insert into meta.data_report (app_id, region_id, username, name, definition) values (${appId}, ${rid}, 'x', 'x', '{}')`), /permission denied/);
+    assert.equal((await runtime.query('select * from meta.data_reports')).rowCount, 0, 'no application context: nothing');
+    await assert.rejects(runtime.query(`select meta.save_data_report(${rid}, null, 'x', null, '{}'::jsonb, true)`), /sign in|unknown/);
+    assert.equal((await runtime.query(`select meta.delete_data_report(1) as d`)).rows[0].d, false);
+  });
+
+  test('the builder settings need a developer and the CSRF token, and refuse pgapex\'s own tables', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.post(`/builder/pages/${pageId}/region/${rid}/reporter`, { __csrf: 'x', new_object: '1' })).statusCode, 302);
+    const dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.get(`/builder/pages/${pageId}?c=region-${rid}`);
+    assert.equal((await dev.post(`/builder/pages/${pageId}/region/${rid}/reporter`, { __csrf: 'forged', new_object: '1' })).statusCode, 403);
+    assert.equal((await dev.submit(`/builder/pages/${pageId}/region/${reportRegion}/reporter`, {})).statusCode, 404, 'not a Data Reporter region');
+    const account = (await owner.one(`select 'meta.account'::regclass::oid::int as oid`)).oid;
+    try {
+      await dev.submit(`/builder/pages/${pageId}/region/${rid}/reporter`, { new_object: String(account), new_id: 'accounts' });
+      const cfg = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+      assert.ok(!(cfg.sources ?? []).some((s: any) => s.schema === 'meta'));
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify(config)]);
+    }
+  });
+});
+
+describe('sprint 35 sampledata', () => {
+  const S = 'sec_sd';
+  let dev: FileBrowser;
+  before(async () => {
+    await owner.query(`drop schema if exists ${S} cascade; create schema ${S};
+      create table ${S}.item (id int generated by default as identity primary key, "odd col" text, label text not null);
+      create table ${S}.slow (id int);
+      create function ${S}.sleepy() returns trigger language plpgsql as $$ begin perform pg_sleep(0.3); return new; end $$;
+      create trigger slow_ins before insert on ${S}.slow for each row execute function ${S}.sleepy();`);
+    dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+  });
+  after(async () => {
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query(`delete from meta.data_generator where schema_name = $1`, [S]);
+  });
+  const base = (extra: Record<string, string> = {}) => ({ schema: S, t: 'item', rows_0: '3', c_0_0: 'id', g_0_0: 'skip', c_0_1: 'odd col', g_0_1: 'word', c_0_2: 'label', g_0_2: 'word', action: 'insert', ...extra });
+  const items = async () => (await owner.one(`select count(*)::int as n from ${S}.item`)).n;
+
+  test('the pages need a developer session and the CSRF token', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.get('/builder/sql/sample-data')).statusCode, 302);
+    assert.equal((await anon.get(`/builder/sql/sample-data?schema=${S}&t=item`)).statusCode, 302);
+    assert.equal((await anon.post('/builder/sql/sample-data', { __csrf: 'x', ...base() })).statusCode, 302);
+    await dev.get('/builder/sql/sample-data');
+    assert.equal((await dev.post('/builder/sql/sample-data', { __csrf: 'forged', ...base() })).statusCode, 403);
+    assert.equal((await dev.post('/builder/sql/sample-data', { __csrf: 'forged', ...base({ action: 'save', name: 'forged' }) })).statusCode, 403);
+    assert.equal(await items(), 0);
+    const id = (await owner.one(`insert into meta.data_generator (name, schema_name) values ('sec gen', $1) returning id`, [S])).id;
+    assert.equal((await anon.post(`/builder/sql/sample-data/${id}/delete`, { __csrf: 'x' })).statusCode, 302);
+    assert.equal((await dev.post(`/builder/sql/sample-data/${id}/delete`, { __csrf: 'forged' })).statusCode, 403);
+    assert.ok(await owner.one('select 1 from meta.data_generator where id = $1', [id]));
+    assert.equal((await dev.get('/builder/sql/sample-data/1x')).statusCode, 404);
+  });
+
+  test('meta, pg_* and information_schema are refused; table and column names never reach SQL as text', async () => {
+    await dev.get('/builder/sql/sample-data');
+    const before = (await owner.one('select count(*)::int as n from meta.app')).n;
+    for (const schema of ['meta', 'pg_catalog', 'information_schema', 'pg_toast']) {
+      const step = await dev.get(`/builder/sql/sample-data?schema=${schema}&t=app`);
+      assert.doesNotMatch(step.body, /name="rows_0"/, schema);
+      const res = await dev.submit('/builder/sql/sample-data', { schema, t: 'app', rows_0: '2', c_0_0: 'alias', g_0_0: 'word', c_0_1: 'name', g_0_1: 'word', action: 'insert' });
+      assert.equal(res.statusCode, 422, schema);
+      assert.match(res.body, /not meta, information_schema or pg_\*/);
+      const save = await dev.submit('/builder/sql/sample-data', { schema, t: 'app', rows_0: '2', action: 'save', name: `sec ${schema}` });
+      assert.equal(save.statusCode, 422);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from meta.app')).n, before);
+    await assert.rejects(owner.query(`insert into meta.data_generator (name, schema_name) values ('bad', 'meta')`), /check constraint/);
+    await assert.rejects(owner.query(`insert into meta.data_generator (name, schema_name) values ('bad', 'pg_catalog')`), /check constraint/);
+    // a table name or a column name with SQL in it is only a name to look up
+    const evil = await dev.submit('/builder/sql/sample-data', base({ t: `item"; drop table ${S}.item; --` }));
+    assert.equal(evil.statusCode, 422);
+    assert.match(evil.body, /no such table/);
+    const col = await dev.submit('/builder/sql/sample-data', base({ c_0_1: `label") values ('x'); drop table ${S}.item; --`, g_0_1: 'word' }));
+    assert.equal(col.statusCode, 200, 'unknown columns are ignored');
+    assert.equal(await items(), 3);
+  });
+
+  test('values are bound: quotes, SQL and markup are stored as typed and shown escaped', async () => {
+    await dev.get('/builder/sql/sample-data');
+    const value = `x'); drop table ${S}.item; -- <script>alert(1)</script>`;
+    const res = await dev.submit('/builder/sql/sample-data', base({ g_0_1: 'fixed', o_0_1: value, g_0_2: 'list', o_0_2: `a'b, "c"` }));
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /<script>alert\(1\)/);
+    assert.match(res.body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.equal((await owner.one(`select count(*)::int as n from ${S}.item where "odd col" = $1`, [value])).n, 3);
+    // the SQL download quotes every value as a literal and every identifier
+    const sql = await dev.submit('/builder/sql/sample-data', base({ g_0_1: 'fixed', o_0_1: value, action: 'sql', name: `x*/ drop table x; /*\nselect 1` }));
+    assert.match(sql.body, /insert into "sec_sd"\."item" \("odd col", "label"\) values/);
+    assert.match(sql.body, /'x''\); drop table sec_sd\.item; -- <script>alert\(1\)<\/script>'/);
+    assert.match(String(sql.headers['content-disposition']), /^attachment; filename="[\w-]+\.sql"$/);
+    assert.match(sql.body.split('\n')[0], /^-- x\*\/ drop table x; \/\*/, 'the name stays on the comment line');
+    assert.equal(sql.body.split('\n')[1], 'begin;');
+  });
+
+  test('a run has a statement timeout and fails as a whole; the generator table is closed to the runtime', async () => {
+    const old = process.env.SAMPLE_DATA_STATEMENT_TIMEOUT;
+    const itemsBefore = await items();
+    process.env.SAMPLE_DATA_STATEMENT_TIMEOUT = '100ms';
+    try {
+      await dev.get('/builder/sql/sample-data');
+      const res = await dev.submit('/builder/sql/sample-data', { schema: S, t: ['item', 'slow'], rows_0: '2', c_0_0: 'id', g_0_0: 'skip', c_0_1: 'odd col', g_0_1: 'word', c_0_2: 'label', g_0_2: 'word', rows_1: '3', c_1_0: 'id', g_1_0: 'integer', o_1_0: '1..9', action: 'insert' });
+      assert.equal(res.statusCode, 422);
+      assert.match(res.body, /statement timeout/);
+    } finally {
+      if (old === undefined) delete process.env.SAMPLE_DATA_STATEMENT_TIMEOUT;
+      else process.env.SAMPLE_DATA_STATEMENT_TIMEOUT = old;
+    }
+    assert.equal((await owner.one(`select count(*)::int as n from ${S}.slow`)).n, 0);
+    assert.equal(await items(), itemsBefore, 'the rows of the first table are rolled back too');
+    await assert.rejects(runtime.query('select * from meta.data_generator'), /permission denied/);
+    // the row limit
+    const big = await dev.submit('/builder/sql/sample-data', base({ rows_0: '100001' }));
+    assert.equal(big.statusCode, 422);
+    assert.match(big.body, /At most 100,000 rows/);
+  });
+});

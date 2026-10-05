@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-05
+
+### Added
+- **Data Reporter** (migration 057): a region type where signed-in users build their own reports from
+  tables and views the developer offers: columns, filters, grouping with totals, sorting and a chart;
+  saved privately or shared with the application's users. Runs as the application's role (grants and
+  RLS apply). HR example page 36 "My reports".
+- **Sample data** (migration 058): SQL Workshop → Sample Data generates realistic rows for one or more
+  tables, with generators proposed from the catalog and column names, foreign keys, unique and simple
+  CHECK constraints respected, a seed, preview, insert in one transaction (parents first) or download
+  as SQL or CSV, and saved generator definitions. New settings `SAMPLE_DATA_STATEMENT_TIMEOUT` and
+  `SAMPLE_DATA_MAX_ROWS`.
+- **Create application** from an Excel workbook with several sheets (or JSON with several arrays) as
+  several tables with proposed foreign keys, from pasted CSV/TSV data, and from existing tables and
+  views of a schema.
+
 ## [0.26.0] - 2026-10-05
 
 ### Added

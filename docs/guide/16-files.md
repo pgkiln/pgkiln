@@ -15,6 +15,7 @@ This chapter covers three things that deal with files:
 | File Browse item, "Allow Multiple Files" | Item type `file` with `"multiple": true`: one row per file in a child table, or a list of temporary files |
 | SQL Workshop → Data Workshop → Load Data | SQL Workshop → **Load Data** |
 | SQL Workshop → Data Workshop → Unload Data | SQL Workshop → **Unload Data** |
+| SQL Workshop → Data Workshop → Data Generator | SQL Workshop → **Sample Data** |
 | Shared Components → Data Load Definitions | Shared Components → **Data load definitions** |
 | Data Load Definition + "Execute Data Load" process | Process type `data_load` with `"definition"` |
 | Interactive report → Download → CSV / Excel / PDF | Actions → **Download CSV / Excel / PDF** |
@@ -248,6 +249,70 @@ data-modifying `with`, `select … into` or a function that writes fails. Each s
 timeout (`UNLOAD_STATEMENT_TIMEOUT`, default `5min`). A failing query shows its error on the form;
 an error after the first rows (e.g. the timeout) ends the file early. Every unload is recorded in
 the activity log (event `sql_unload`, with the format and the statement).
+
+### SQL Workshop → Sample Data
+
+Rows to develop and test with (APEX 26.1's Data Generator / "sample data for development"):
+**SQL Workshop → Sample Data**.
+
+1. Choose a **schema** (`meta`, `information_schema` and `pg_*` are not offered), then tick one or
+   more of its **tables**: *Propose generators*.
+2. The form has, per table, the number of **rows**, and per column a **generator**, its
+   **options** and a percentage of **nulls**. Each column shows its type and the constraints that
+   matter (not null, unique, the foreign key, the default, a CHECK range). The proposal follows the
+   catalog first and the column name second:
+
+   | Column | Proposed |
+   |---|---|
+   | identity, `serial`, generated | *Skip*: the database fills it in (`GENERATED ALWAYS` and generated columns can only be skipped) |
+   | a foreign key | *Foreign key*: a random existing parent row (all columns of a composite key together) |
+   | an enum, or `CHECK (col in (…))` | *Value from a list* with those values |
+   | `CHECK (end_date >= start_date)` | `start_date + 0..14` (a date, timestamp or number relative to an earlier column) |
+   | a unique whole number | *Sequence* from the current maximum + 1 |
+   | numbers | a range inside the CHECK bounds and the column's precision (`price`, `salary` … 10..10000; `lat`/`lng`; `rating` 1..5; `age` 18..80) |
+   | dates, timestamps | the last five (two) years; `birth_date` 18 to 70 years ago |
+   | text by name | `first_name`, `last_name`, `name`/`full_name`, `email`, `username`/`created_by`, `phone`, `company`/`customer`, `job`, `city`/`location`, `country`, `address`, `postal_code`, `url`, `status`, `code`, `description`/`note` (a sentence), `title`/`…name` (words), otherwise a word |
+   | `json`/`jsonb`, other types | a fixed value (`{}`) when the column is NOT NULL without a default, otherwise skipped |
+
+   Generators and their options: first, last and full names, e-mail addresses (on the reserved
+   `example.com/org/net` domains, matching the names of the row), user names, phone numbers,
+   companies, job titles, street addresses, postal codes, cities, countries, a word, words
+   (`1..3`, capitalised), a sentence (`4..12` words), a code (pattern: `A` letter, `a` lower-case
+   letter, `9` digit, e.g. `AAA-9999`), web addresses, UUIDs, whole and decimal numbers
+   (`min..max`), dates and timestamps (`2021-01-01..2026-12-31`), times (`08:00..18:00`),
+   booleans (`50` = % true), a value from a list (`NEW, OPEN, CLOSED`; repeat a value to make it
+   likelier), a sequence (`1000` or `1000, 10`), a foreign key and a fixed value. Dates, timestamps
+   and numbers also take `column + min..max` (days for dates and timestamps). Text is cut to a
+   `varchar(n)` length. The word and name lists are built in (`src/sampledata-words.ts`).
+3. **Seed**: the same seed gives the same rows for the same definition and parent rows; every
+   column has a random stream of its own, so changing one column doesn't change the others. Empty:
+   a new seed per run, which the form then shows.
+4. The buttons:
+
+   | Button | Does |
+   |---|---|
+   | Preview | Inserts the rows and **rolls back**: shows the first 10 rows of each table as stored (identity values, defaults and trigger changes included), or the database's error. The seed is filled in, so *Insert* then adds the same values |
+   | Insert rows | The same in **one transaction**, committed: parent tables first (foreign keys between the chosen tables decide the order), so children refer to the existing and the new parent rows. Any error (a constraint, a trigger, the timeout) rolls back every table, and is shown |
+   | Download SQL | `begin; insert … values …; commit;` (100 rows per statement), identifiers quoted, values as literals |
+   | Download CSV | One table: a `.csv`; several: a `.zip` with one CSV per table (heading row, UTF-8 byte order mark, text formula-guarded as in Unload Data) |
+
+   Unique columns get values not used yet (in the table and the run): another draw, then a number
+   appended (e-mail addresses, names, codes); a list or range that runs out stops with a message.
+   For downloads, foreign keys pick existing parent rows and the generated rows of parents whose
+   key columns are generated too; a key from an identity column is only known after inserting, so
+   insert the parents first or use *Insert rows*. A NOT NULL foreign key to an empty parent
+   explains which table to generate first.
+5. **Save the definition** under a name to open and rerun it later (the list on the start page).
+   Definitions are shared by the developers of the installation, like SQL scripts, and not part of
+   an application export (they describe tables, not an application).
+
+Sample Data runs as the builder's owner connection (like SQL Commands: triggers run, row level
+security doesn't apply to the owner), on a connection of its own that is closed afterwards, with a
+statement timeout (`SAMPLE_DATA_STATEMENT_TIMEOUT`, default `5min`) and at most
+`SAMPLE_DATA_MAX_ROWS` rows per run (default 100,000). Table and column names come from the
+catalog and are always quoted; values are bound parameters. Every insert is recorded in the
+activity log (event `sample_data`, with the schema, the seed and the rows per table). The HR example
+has a saved generator, *HR demo staff* (departments, employees and leave requests).
 
 ### Data load definitions
 

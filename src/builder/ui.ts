@@ -202,13 +202,13 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 };
 
 /** Tabs of the SQL Workshop. */
-export type WorkshopTab = 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload';
+export type WorkshopTab = 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample';
 export const workshopTabs = (active: WorkshopTab) => {
   const tab = (key: WorkshopTab, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${BASE}${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
   return html`<nav class="ide-tabs u-mb1" aria-label="SQL Workshop">
     ${tab('sql', '/sql', 'code', 'SQL Commands')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('quicksql', '/sql/quick', 'bolt', 'Quick SQL')}
-    ${tab('query', '/sql/query', 'filter', 'Query Builder')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('load', '/sql/load', 'upload', 'Load Data')}${tab('unload', '/sql/unload', 'download', 'Unload Data')}</nav>`;
+    ${tab('query', '/sql/query', 'filter', 'Query Builder')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('load', '/sql/load', 'upload', 'Load Data')}${tab('unload', '/sql/unload', 'download', 'Unload Data')}${tab('sample', '/sql/sample-data', 'layers', 'Sample Data')}</nav>`;
 };
 
 /** Number of app tile colours (.app-color-0 … -7 in app.css). */

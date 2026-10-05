@@ -98,6 +98,8 @@ which is read at startup; real environment variables take precedence.
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
 | `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (1 to 100,000; read with a cursor in batches) |
 | `DOWNLOAD_MAX_ROWS` | `1000000` | Most rows in a report's CSV or Excel download and in a SQL Workshop → Unload Data file (streamed; at most 1,048,575) |
+| `SAMPLE_DATA_STATEMENT_TIMEOUT` | `5min` | Statement timeout of SQL Workshop → Sample Data (each insert of a preview or a run) |
+| `SAMPLE_DATA_MAX_ROWS` | `100000` | Most rows one Sample Data run generates (all tables together) |
 | `UNLOAD_STATEMENT_TIMEOUT` | `5min` | Statement timeout of SQL Workshop → Unload Data (each statement: the cursor and every batch of rows) |
 | `REGION_CACHE_MAX_ENTRIES` | `1000` | Most regions in the [region cache](04-pages-and-regions.md#large-tables) of one server process (`0` turns caching off) |
 | `REGION_CACHE_MAX_MB` | `64` | Memory for the region cache of one server process |

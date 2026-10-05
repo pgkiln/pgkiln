@@ -43,6 +43,8 @@ src/
   numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
+  sampledata.ts            Sample Data: describe() (catalog: identity, checks, enums, foreign keys), propose(), seeded generators, plan() (dependency order), insertRows() / generateAll(), SQL and CSV output
+  sampledata-words.ts      built-in name, city, company and word lists of Sample Data
   unload.ts                Unload Data: unloadStatement() (one SELECT), openUnload() (cursor, batches, CSV/JSON/XLSX/XML encoders on Postgres text values)
   xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested)
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers, psql commands), runScript() (stop/continue, transaction, savepoints)
@@ -109,6 +111,8 @@ src/
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
+    data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
+                           reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report)
     workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
   builder/
@@ -118,9 +122,14 @@ src/
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
-    newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app and from a file
+    newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app, from a file, from tables
     appfromfile.ts         Create → From a file: upload (src/dataload.ts parsing), proposed table/columns, one transaction:
                            app + table + rows (loadRows) + pages (meta.generate_page: report and form, chart, facets)
+    appsheets.ts           Create → From a file with several sheets/JSON arrays: parseBook, proposed keys and foreign keys,
+                           step 2 sections, one transaction (tables, rows, foreign keys, report+form per table); addDashboard
+                           (a chart per table on one page, also used for existing tables)
+    appwizard.ts           Create → From pasted data (kept as a temp file, then the From a file steps) and From existing tables
+                           (a schema's tables/views → report+form or report pages, navigation, dashboard)
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
@@ -133,6 +142,7 @@ src/
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
+    sampledata.ts          SQL Workshop → Sample Data: schema → tables → generator form; preview (rolled back), insert, SQL/CSV download, saved generators (meta.data_generator)
     unload.ts              SQL Workshop → Unload Data: table/view (columns, where, order) or query form, streamed download (read-only transaction, own connection)
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: actions (add, reorder), next run, Run now, run history with errors per row
@@ -148,6 +158,7 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
     subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
+    reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing)
     workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
@@ -178,6 +189,7 @@ test/
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
+  sampledata.test.ts       Sample Data: CHECK parsing, proposals, option errors, seeds and streams, preview/insert/rollback, parents first, downloads, saved generators
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
   app-from-file.test.ts    Create → From a file: proposed names and types, app + table + rows + pages, row errors, login, validation
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
@@ -250,7 +262,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.26.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.27.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 34 released as v0.26.0; sprint 35 not started, candidates under Sprint 34). Sprints 3–34 are merged into `main` and released as **v0.26.0** (migrations 001–056 are released: add 057+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
+Last updated: 2026-10-05 (sprint 35 released as v0.27.0; next sprint not planned, candidates under Sprint 35). Sprints 3–35 are merged into `main` and released as **v0.27.0** (migrations 001–058 are released: add 060+ (059 was reserved and not used); 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_40` are released.
 
 ## Project in one paragraph
 
@@ -48,8 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 34, released as **v0.26.0** (tags: v0.2.0, v0.6.0–v0.26.0; 0.3.0–0.5.0 were never tagged). Migrations 001–056 are released |
-| (sprint branches) | `sprint-32`, `sprint-33` and `sprint-34` were merged (v0.24.0, v0.25.0, v0.26.0) |
+| `main` | Everything up to sprint 35, released as **v0.27.0** (tags: v0.2.0, v0.6.0–v0.27.0; 0.3.0–0.5.0 were never tagged). Migrations 001–058 are released |
+| (sprint branches) | `sprint-32` … `sprint-35` (and `sprint-35-reporter`, `-sampledata`, `-appwizard`) were merged (v0.24.0–v0.27.0) |
 | (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
@@ -1424,6 +1424,78 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   inline styles. Not done: live preview, style colours in dark mode, conditional/dynamic properties, template options
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
+
+## Sprint 35 (DONE, v0.27.0): three parity workstreams in parallel (owner, 2026-10-05: "run 3 agents and move on with the next tasks to do")
+
+Branch `sprint-35` from `main` (v0.26.0). Three agents in git worktrees under `../pgapex-wt/<name>`, branch
+`sprint-35-<name>`, each with its own `postgres:17` container and app port in the worktree's `.env` (`node_modules` is a
+symlink: remove it with `rm`, never `rm -r`, before `git worktree remove`). Rules: `docs/development/sprint-35-agent-rules.md`.
+AI rows stay out. The coordinator merges the three branches into `sprint-35` (conflicts expected only in appended
+blocks: app.ts, security.test.ts, responsive.test.ts, replace.ts, export.test.ts, CSS, docs), then records reports,
+parity rows, CHANGELOG, SECURITY.md and releases 0.27.0.
+
+| Worktree / branch | Gap (parity row) | Container, ports | Reserved |
+|---|---|---|---|
+| `reporter` / `sprint-35-reporter` | **Data Reporter** (26.1, ❌): business users build their own reports in the running app from data sources the developer exposes (curated tables/views per app): pick columns, filters, sort, group with aggregates, optional chart; save privately or share with the app's users; run as the app's role (RLS); a region type or page the developer places, plus the builder side to define the sources | `pgapex-reporter`, 5451, app 3121 | migration 057, `hr_39`, HR page 36 |
+| `sampledata` / `sprint-35-sampledata` | **Sample data for development** (26.1, ❌; APEX Data Generator): SQL/Data Workshop page to generate realistic rows for one or more tables: per-column generators inferred from names and types (names, e-mail-like strings, dates in a range, numbers, values from a list, foreign keys picking existing parent rows, nulls %), row counts, preview, insert in one transaction (parents first) or download as SQL/CSV; saved generator definitions to rerun | `pgapex-sampledata`, 5452, app 3122 | migration 058, `hr_40` (only if useful) |
+| `appwizard` / `sprint-35-appwizard` | **Create application wizard** (🟡 → ✅): from a file with several sheets/tables (XLSX sheets → several tables, foreign keys proposed from matching columns), from pasted data (CSV/TSV text), and from existing tables (pick tables of a schema → report + form pages per table, navigation, dashboard); keep the current single-file flow working | `pgapex-appwizard`, 5453, app 3123 | migration 059 (only if needed), no HR |
+
+**If a session ends:** for each worktree `git -C ../pgapex-wt/<name> status` / `log --oneline sprint-35..`; commit leftovers
+as `wip:`; relaunch an agent with "Read `docs/development/sprint-35-agent-rules.md` and follow it. Your workstream: <name>
+in the Sprint 35 table of HANDOFF.md; your worktree is /home/nickquispel/projects/pgapex-wt/<name>."
+
+**Workstream reports:** (filled in as agents finish)
+
+**Release 0.27.0:** the three branches merged into `sprint-35` (conflicts only in appended blocks: security.test.ts,
+responsive.test.ts, app.ts, builder.css); worktrees and containers removed. CI-style run (clean worktree, no `.env`,
+fresh postgres:17 on 5446): **959 pass / 10 skip, e2e 111/111**. Parity: Create application wizard ✅, Sample data ✅,
+Data Reporter ✅ (App Builder 13/1/1/0, Data and integration 8/1/0/2, totals 90/19/6/3). SECURITY.md rows, CHANGELOG,
+CI matrix v0.27.0. **Next candidates** (owner to choose): Workspaces (multi-tenant); a new default style like "Iris";
+Blueprints / spec-driven development; the AI rows (provider decision pending); 🟡 rows (APEX PL/SQL APIs, Theme Roller
+conditional/dynamic properties, Instance administration, …). Data Reporter follow-ups: downloads, several sources.
+
+- **sampledata: DONE** (branch `sprint-35-sampledata`, merged). Migration `058_data_generator.sql`: `meta.data_generator`
+  (installation data like `meta.sql_script`, no app_id, not exported; schema check refuses meta/information_schema/pg_*;
+  closed to the runtime). `src/sampledata.ts` (proposals from the catalog and names, generators, unique avoidance,
+  per-column seeded streams, topological insert with RETURNING, SQL/CSV/zip), `src/sampledata-words.ts`,
+  `src/builder/sampledata.ts` (`/builder/sql/sample-data`, Workshop tab). Env `SAMPLE_DATA_STATEMENT_TIMEOUT` (5min),
+  `SAMPLE_DATA_MAX_ROWS` (100000). HR `hr_40_sample_data.sql` (saved generator "HR demo staff"). Tests
+  `test/sampledata.test.ts`, security block "sprint 35 sampledata". Docs ch. 1, 3, 8, 9, 11, 12, 16. Limits: SQL/CSV
+  downloads can only point FKs at existing parents with identity keys; only simple CHECK shapes parsed; preview runs the
+  full insert. Agent's tests: 923 pass / 10 skip, e2e 107/107.
+
+- **reporter: DONE** (branch `sprint-35-reporter`, merged into `sprint-35`; conflicts only in the appended test blocks).
+  Migration `057_data_reporter.sql`: `meta.data_report` (users' reports: user data, in `KEPT`, `REPOINTED`
+  `data_report.region_id`, `NOT_EXPORTED`), view `meta.data_reports`, security definer `meta.save_data_report(...)` /
+  `meta.delete_data_report(id)` (own reports only). New region type `data_reporter`: sources (table/view, static id,
+  label, description, offered columns with labels and format masks) in `meta.region.config.sources` (travel with the
+  export), sharing (everyone / nobody / authz scheme), rows per page. `src/runtime/data-reporter.ts` (list, editor as a
+  GET form: columns, ≤5 filters, ≤3 group-by, ≤5 totals, ≤3 sorts, chart via `renderChartBody`; save private/shared,
+  copy, delete; params `dr<id>_`), `src/builder/reporter.ts` (Page Designer settings). HR `hr_39_data_reporter.sql` page
+  36 "My reports" (`hr.staff_v`, two sources, a shared report of king). Texts in 5 languages. Tests
+  `test/data-reporter.test.ts`, security block "sprint 35 reporter", e2e "data reporter (page 36)" and builder page
+  `data_reporter_region`. Docs ch. 3, 4, 9, 12. Security (for SECURITY.md): runs as the app role (RLS, tested with two
+  users); definitions re-checked before running or saving (offered and readable columns only, whitelisted operators and
+  functions via `Object.hasOwn`, sum/avg numeric only, bounded counts and lengths); identifiers only the developer's,
+  quoted; values escaped literals; meta/pg_*/information_schema sources ignored at runtime and refused in the builder;
+  save/delete need CSRF, sign-in, page access and a visible region; definer functions only touch the user's own rows;
+  runtime role has no direct rights on `meta.data_report`. Limits: one source per report, no downloads, grouped results
+  ≤1000 rows, sources per region. Agent's tests: 929 pass / 10 skip, e2e 111/111. Parity row ✅ (text in the report).
+
+- **appwizard: DONE** (branch `sprint-35-appwizard`, merged into `sprint-35`). No migration (059 unused), no HR part, no new
+  tables or env vars. `src/builder/appsheets.ts` (several XLSX sheets / JSON arrays → several tables, key and foreign
+  keys proposed from names, types and values, "Update the proposals" without JS, one transaction: tables, rows, FKs with
+  indexes, report+form per table via `meta.generate_page`, navigation, optional dashboard with a chart per table);
+  `src/builder/appwizard.ts` (`/builder/create/paste`: CSV/TSV text ≤4 MB as a session temp file; `/builder/create/tables`:
+  tables/views of an existing schema → report+form or report per table). `dataload.ts` exports `cellText`, `tableSheet`.
+  Tests `test/app-wizard.test.ts` (+ `test/xlsxbook.ts`), security block "sprint 35 appwizard", e2e pages `create_paste`,
+  `create_tables` and a several-sheets flow. Docs ch. 3, 12. Security (for SECURITY.md): developer session + CSRF; pasted
+  data is a temp file owned by the builder session; names validated and quoted, key = a chosen column index, FKs
+  recomputed on the server and only proposed ones applied; meta/information_schema/pg_* refused as parsing and source
+  schema; posted table names only matched against a fresh catalog lookup; escaped output; one transaction. By design the
+  app from existing tables gets the blank-app grants on every table of the schema; an FK to another schema may give a
+  select list the app role can't read. Agent's tests: 925 pass / 10 skip, e2e 107/107. Parity row: ✅ (text in the
+  agent's report: several sheets, FKs proposed, pasted data, existing tables; missing: blueprints).
 
 ## Sprint 34 (DONE, v0.26.0, owner 2026-10-05: "add to the next sprint"; "read the handoff, apex feature parity and keep going")
 
