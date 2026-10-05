@@ -454,3 +454,32 @@ describe('export and import of actions', () => {
     await owner.query('delete from meta.automation where id = $1', [id]);
   });
 });
+
+describe('the HR sample (part 33)', () => {
+  test('escalates requests pending for a week; admins run it from page 6', async () => {
+    const id = (await owner.one(`select id from meta.automation where app_id = $1 and name = 'Remind managers'`, [appId])).id;
+    const req = (await owner.one(`insert into hr.leave_request (empno, start_date, end_date, days, created_at) values (7499, current_date + 50, current_date + 51, 2, now() - interval '8 days') returning id`)).id;
+    const count = async (user: string, like: string) => (await owner.one(`select count(*)::int as n from hr.notification where username = $1 and message like $2`, [user, like])).n;
+    try {
+      // allen (no roles) has no button, and a forged request is refused
+      const allen = new Browser(app);
+      await allen.login('allen');
+      assert.doesNotMatch((await allen.get('/a/hr/6')).body, /Send reminders now/);
+      await allen.submit('/a/hr/6', { __request: 'SEND_REMINDERS' });
+      assert.equal(await count('blake', 'Reminder: ALLEN%'), 0);
+      const king = new Browser(app);
+      await king.login('king');
+      assert.match((await king.get('/a/hr/6')).body, /Send reminders now/);
+      const res = await king.submit('/a/hr/6', { __request: 'SEND_REMINDERS' });
+      assert.equal(res.statusCode, 303);
+      assert.equal(await count('blake', 'Reminder: ALLEN%'), 1, 'the manager is reminded');
+      assert.equal(await count('king', 'Escalation: ALLEN has been waiting 8 day(s)%'), 1, "and the manager's manager after a week");
+      const log = await lastLog(id);
+      assert.deepEqual([log.trigger, log.status, log.run_by], ['sql', 'ok', 'king']);
+    } finally {
+      await owner.query(`delete from hr.notification where message like 'Reminder: ALLEN%' or message like 'Escalation: ALLEN%'`);
+      await owner.query('delete from hr.leave_request where id = $1', [req]);
+      await owner.query('delete from meta.automation_log where automation_id = $1', [id]);
+    }
+  });
+});
