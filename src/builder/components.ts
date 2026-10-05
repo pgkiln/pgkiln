@@ -3,6 +3,7 @@
 // from this spec, and SQL column names only ever come from here (never from
 // the request).
 
+import { formatSettingsProblem } from '../runtime/format.ts';
 import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
@@ -83,6 +84,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'layers',
     summary: (r) => r.title ?? `(${r.type})`,
     defaults: { type: 'report', columns: 12, template: 'standard' },
+    validate: (v) => formatSettingsProblem(v.config),
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
       { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'static', 'dynamic'], group: 'Identification' },
@@ -100,7 +102,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
-        help: 'report: {"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000} · cards: {"style":"metric","link":{...},"max_rows":500} · dynamic: {"max_rows":1000} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true}; any region: {"display_selector":true} puts it in the page\'s display selector; report, chart, cards, dynamic, tree and template component regions: {"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)' },
+        help: 'report: {"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · report, grid, cards: {"formats":{"sal":"FML999G990D00","hiredate":"DD-MON-YYYY"}} (number or date format masks per column) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000,"format_mask":"FML999G990"} · cards: {"style":"metric","link":{...},"max_rows":500} · dynamic: {"max_rows":1000} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true}; any region: {"display_selector":true} puts it in the page\'s display selector; report, chart, cards, dynamic, tree and template component regions: {"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)' },
     ],
   },
   item: {
@@ -111,6 +113,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'edit',
     summary: (i) => i.name,
     defaults: { type: 'text' },
+    validate: (v) => formatSettingsProblem(v.config),
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', help: 'Referenced in SQL as :NAME, e.g. P3_NAME', group: 'Identification' },
       { name: 'type', label: 'Type', kind: 'select', options: ['text', 'textarea', 'number', 'date', 'datetime', 'select', 'popup_lov', 'radio', 'checkbox', 'switch', 'checkbox_group', 'multiselect', 'email', 'tel', 'url', 'color', 'file', 'location', 'richtext', 'markdown', 'rating', 'combobox', 'daterange', 'qrcode', 'hidden', 'display', 'password'], group: 'Identification' },
@@ -125,7 +128,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'readonly_condition', label: 'Read-only condition (SQL)', kind: 'code', group: 'Security', help: 'When true the item is shown read-only and ignored on submit.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
-      { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. Lists of values read at most {"max_rows":5000} rows. File items: {"filename_column":"photo_name","mime_column":"photo_mime","accept":"image/*,.pdf","max_mb":2,"capture":"environment","max_px":1600} (capture opens the camera on phones; max_px makes photos smaller before upload). Several files: {"multiple":true,"max_files":5,"table":"doc.attachment","parent_column":"ticket_id","key_column":"id"} with the content column as source (one row per file). Text items: {"scan":true} adds a barcode/QR scan button where the browser can read codes. Location items hold "lat,lng" with a "Use my location" button. Rich text: sanitised HTML; markdown: Markdown text ({"rows":10}). Rating: {"max":5} stars, stored as 1..max. Combobox: free text with list-of-values suggestions, values colon-separated ({"multiple":false} for one value). Date range: "from:to" (ISO dates; split_part(:P1_X, \':\', 1)). QR code: shows the value as a QR code ({"ecc":"M","size":200,"show_value":true}). Password: {"reveal":true} adds a show/hide button.' },
+      { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. Lists of values read at most {"max_rows":5000} rows. File items: {"filename_column":"photo_name","mime_column":"photo_mime","accept":"image/*,.pdf","max_mb":2,"capture":"environment","max_px":1600} (capture opens the camera on phones; max_px makes photos smaller before upload). Several files: {"multiple":true,"max_files":5,"table":"doc.attachment","parent_column":"ticket_id","key_column":"id"} with the content column as source (one row per file). Text items: {"scan":true} adds a barcode/QR scan button where the browser can read codes. Location items hold "lat,lng" with a "Use my location" button. Rich text: sanitised HTML; markdown: Markdown text ({"rows":10}). Rating: {"max":5} stars, stored as 1..max. Combobox: free text with list-of-values suggestions, values colon-separated ({"multiple":false} for one value). Date range: "from:to" (ISO dates; split_part(:P1_X, \':\', 1)). QR code: shows the value as a QR code ({"ecc":"M","size":200,"show_value":true}). Password: {"reveal":true} adds a show/hide button. Number and display items: {"format_mask":"999G999G990D00"} shows the number in the language\'s notation (FML999G990D00 adds the currency) and reads it back on submit.' },
     ],
   },
   button: {

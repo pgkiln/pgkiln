@@ -4,6 +4,7 @@ import pg from 'pg';
 import { applyBinds } from '../binds.ts';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
+import { formatMaskError } from '../runtime/format.ts';
 import { heading } from '../runtime/items.ts';
 import type { Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
@@ -62,6 +63,7 @@ interface ReportConfig {
   empty?: string;
   hidden?: string[];
   headings?: Record<string, string>;
+  formats?: Record<string, string>;
   link?: { column: string; page: number; items?: Record<string, string> };
   saved_reports?: boolean;
   public_reports?: string;
@@ -88,7 +90,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
   const names = 'columns' in cols ? cols.columns : [];
   // columns in the settings that the query no longer returns stay visible, so they can be cleared
   const known = new Set(names);
-  const stale = [...new Set([...(cfg.hidden ?? []), ...Object.keys(cfg.headings ?? {}), ...(cfg.pdf?.columns ?? [])])].filter((n) => !known.has(n));
+  const stale = [...new Set([...(cfg.hidden ?? []), ...Object.keys(cfg.headings ?? {}), ...Object.keys(cfg.formats ?? {}), ...(cfg.pdf?.columns ?? [])])].filter((n) => !known.has(n));
   const all = [...names, ...stale];
   const hidden = new Set((cfg.hidden ?? []).map((h) => h.toLowerCase()));
   const printed = cfg.pdf?.columns?.length ? new Set(cfg.pdf.columns.map((c) => c.toLowerCase())) : null;
@@ -96,6 +98,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
   const columnRows = all.map((n, i) => html`<tr>
       <td data-label="Column"><code>${n}</code>${known.has(n) ? '' : html` <span class="tag tag-error">not in the query</span>`}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="Heading"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="Heading of ${n}"></td>
+      <td data-label="Format mask"><input name="fmt_${i}" value="${cfg.formats?.[n] ?? ''}" placeholder="e.g. 999G990D00" aria-label="Format mask of ${n}" class="u-mw10"></td>
       <td data-label="Shown"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="Show ${n}"></td>
       <td data-label="In PDF"><input type="checkbox" name="print_${i}" value="true"${(printed ? printed.has(n.toLowerCase()) : !hidden.has(n.toLowerCase())) ? raw(' checked') : ''} aria-label="Print ${n}"></td>
       <td data-label="PDF width (mm)"><input name="width_${i}" type="number" min="0" max="500" value="${cfg.pdf?.widths?.[n] ?? ''}" aria-label="PDF width of ${n}" class="u-mw6"></td>
@@ -140,8 +143,9 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
       </div></fieldset>
       <fieldset class="prop-group"><legend>Columns</legend>
         ${all.length
-          ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Shown</th><th>In PDF</th><th>PDF width (mm)</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
+          ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Format mask</th><th>Shown</th><th>In PDF</th><th>PDF width (mm)</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
           : html`<p class="muted">No columns yet.</p>`}
+        <small class="help">Format masks: numbers like 999G999G990D00, FML999G990D00 (currency), 990D0% or 0000 (G and D are the language's separators); dates like DD-MON-YYYY. Empty: the application's formats. Excel and CSV downloads keep the raw values.</small>
       </fieldset>
       <fieldset class="prop-group"><legend>Link</legend><div class="form-grid">
         <div class="field"><label class="label" for="${id('link_column')}">Link column</label>
@@ -201,9 +205,13 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
     shown: b[`shown_${i}`] === 'true',
     print: b[`print_${i}`] === 'true',
     width: Number(b[`width_${i}`]),
+    format: (b[`fmt_${i}`] ?? '').trim().slice(0, 64),
   })).filter((c) => c.name);
   const headings = Object.fromEntries(cols.filter((c) => c.heading).map((c) => [c.name, c.heading]));
   set('headings', Object.keys(headings).length ? headings : undefined);
+  // masks that aren't valid are left out (reportSettingsProblems names them)
+  const formats = Object.fromEntries(cols.filter((c) => c.format && !formatMaskError(c.format)).map((c) => [c.name, c.format]));
+  set('formats', Object.keys(formats).length ? formats : undefined);
   const hidden = cols.filter((c) => !c.shown).map((c) => c.name);
   set('hidden', hidden.length ? hidden : undefined);
 
@@ -227,6 +235,16 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
   } else set('link', undefined);
   set('selection', b.sel_column && cols.some((c) => c.name === b.sel_column) && b.sel_item && items.has(b.sel_item) ? { column: b.sel_column, item: b.sel_item } : undefined);
   return out;
+}
+
+/** The format masks in the Report settings form that are not valid: "sal: reason". */
+export function formatProblems(b: Record<string, string | undefined>) {
+  const n = Math.min(Number(b.n) || 0, 500);
+  return Array.from({ length: n }, (_, i) => [(b[`col_${i}`] ?? '').trim(), (b[`fmt_${i}`] ?? '').trim()] as const)
+    .flatMap(([col, mask]) => {
+      const e = col && mask ? formatMaskError(mask) : null;
+      return e ? [`${col}: ${e}`] : [];
+    });
 }
 
 export async function reportSettingsRoutes(app: FastifyInstance) {
@@ -253,7 +271,9 @@ export async function reportSettingsRoutes(app: FastifyInstance) {
       new Set(items.rows.map((x) => x.name)),
     );
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-    flash(s, 'Report settings saved.');
+    const bad = formatProblems((req.body ?? {}) as Record<string, string | undefined>);
+    if (bad.length) flash(s, `Report settings saved, without these format masks: ${bad.join('; ')}.`, 'error');
+    else flash(s, 'Report settings saved.');
     return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
   });
 }
