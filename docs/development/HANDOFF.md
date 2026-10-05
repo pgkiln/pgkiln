@@ -1153,8 +1153,8 @@ can be merged after any item:
 
 | # | Item (parity row) | Reserved | Status |
 |---|---|---|---|
-| 0 | CI: actions off Node.js 20; custom-auth flake | (none) | done on `main` (3bb983a, 192f0af) |
-| 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | to do |
+| 0 | CI: actions off Node.js 20; custom-auth flake | (none) | done on `main` (3bb983a, 192f0af); CI run 37286030252 green, no Node 20 warning |
+| 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | **done** (bcfec61..14943e4) |
 | 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045, `hr_34` | to do |
 | 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | to do |
 | 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | to do |
@@ -1170,3 +1170,21 @@ SECURITY.md, `.env.example`, version, CI upgrade matrix + v0.24.0, chapter 12 ve
 CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check `gh run list -R NickVrgr/Postgresql_APEX`.
 
 **Item reports:** (filled in as agents finish)
+
+- **1 automations: DONE** (4 `wip:` commits bcfec61..14943e4, pushed). Migration `044_automation_actions.sql`:
+  `meta.automation_action` (automation name, seq, name, code, condition with row binds; FK on `(app_id,
+  automation_name)`, cascades), each old automation's code became one action "Action"; `meta.automation.code` stays
+  but is always empty (writing it creates/replaces the single action, error if there are several: old scripts,
+  `hr_08`, old exports keep working). `error_handling` stop (default) / skip (savepoint per row) / disable; run log
+  has failed rows, first 50 row errors, status `warning`. One runner for all runs: PL/pgSQL `meta.automation_execute`
+  (bind substitution ported from `src/binds.ts`, parity test). `meta.run_automation(p_name, p_raise default true)`:
+  synchronous in the caller's transaction as the caller's role, current app only, automation's roles and user
+  `automation:<name>` while running, same advisory lock as the scheduler, trigger `sql`. **044 redefines
+  `export_app`/`import_app`** from 043 (section `automation_actions`, `code` left out). CLI dir layout
+  `shared/automation-actions/<automation>/<seq>-<action>.json`. Builder Actions box (reorder without JS), error
+  handling, row errors in the run history. HR `hr_33_automation_actions.sql` ("Remind managers" with 2 actions, skip;
+  page 6 button "Send reminders now"). No env vars. Security: action table closed to app roles; `automation_begin/end`
+  are security definer limited to `meta.app_id()` (an app can read its own automation definitions: same trust model as
+  `pgapex.app_id`); `has_role()` answers with the automation's roles during a SQL run (treat them like a security
+  definer function's); row values become escaped literals. Parity row → ✅ (text in the agent report: actions with
+  conditions, stop/skip/disable, `meta.run_automation()`). Tests 730 pass / 8 skip, e2e 90/90, upgrade from v0.23.0 ok.
