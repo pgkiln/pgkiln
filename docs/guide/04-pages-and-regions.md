@@ -1038,6 +1038,25 @@ A component has a **static id** (e.g. `status_badge`; regions and columns refer 
 a name, a version, the **template** of one instance, an optional **wrapper**, **layout classes**
 and **custom attributes**.
 
+#### Built-in template components
+
+Every application can use these without importing anything (APEX: the Universal Theme's template components,
+with 26.1's *Metric Card* and group support). Show a region as `multiple` to get the group:
+
+| Static id | Component | Attributes (default: the column of that name) | As `multiple` |
+|---|---|---|---|
+| `ut_avatar` | Avatar: a picture or initials | `NAME`, `INITIALS`, `IMAGE` (a relative or https URL), `SIZE` (small, medium, large), `SHAPE` (circle, square) | An avatar group (overlapping) |
+| `ut_badge` | Badge coloured by a state | `LABEL`, `STATE` (success, warning, danger, info, neutral; approved, pending, … are understood) | A row of badges |
+| `ut_comments` | Comments | `USER`, `INITIALS`, `DATE`, `COMMENT`, `ACTIONS` (extra text) | One conversation |
+| `ut_media_list` | Media list: picture or initials, title (linked when the region has a link), description, badge | `TITLE`, `DESCRIPTION`, `INITIALS`, `IMAGE`, `BADGE`, `STATE` | One list |
+| `ut_metric_card` | Metric card: a key figure with its unit, change and trend | `LABEL`, `VALUE`, `UNIT`, `CHANGE`, `TREND` (up, down, flat), `GOOD` (up or down: which direction shows green), `DESCRIPTION` | A row of cards |
+| `ut_timeline` | Timeline: when, who, title, text, a coloured marker | `TITLE`, `WHEN`, `WHO`, `BODY`, `STATE` | One timeline |
+
+They also work as report column templates (e.g. `ut_badge` on a status column). To change one, open Shared
+Components → Template components → **Add** and choose **Copy into this application**: the application's component
+with the same static id then replaces the built-in one everywhere in the application. HR page 39 *Team overview*
+uses all of them except the badge.
+
 #### The template language
 
 ```html

@@ -5749,3 +5749,17 @@ describe('sprint 37 drawers', () => {
     assert.equal((await owner.one('select dialog_position from meta.page where id = $1', [page.id])).dialog_position, 'right');
   });
 });
+
+describe('sprint 37 built-in template components', () => {
+  test('copying a built-in needs CSRF, a known static id and the application in the developer\'s workspace', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    assert.equal((await dev.post(`/builder/apps/${hr}/template-components/copy`, { __csrf: 'forged', static_id: 'ut_badge' })).statusCode, 403);
+    for (const id of ['../ut_badge', 'ut_badge"', 'contact_card', '__proto__'])
+      assert.equal((await dev.post(`/builder/apps/${hr}/template-components/copy`, { __csrf: dev.lastCsrf, static_id: id })).statusCode, 404, id);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.template_component where app_id = $1 and static_id = 'ut_badge'`, [hr])).n, 0);
+  });
+});

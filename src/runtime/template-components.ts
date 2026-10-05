@@ -4,6 +4,7 @@ import type { Region } from '../metadata.ts';
 import { pageAllowed } from './authz.ts';
 import { bindValues, type PageContext } from './context.ts';
 import { isModal, pageHref } from './links.ts';
+import { builtinComponents } from './builtin-components.ts';
 
 // Template components (APEX 23.1+): an HTML template with #NAME#
 // substitutions and {if}/{case}/{loop} directives, used as a region type
@@ -50,6 +51,8 @@ export interface TemplateComponent {
   wrapper?: string | null;
   css_classes?: string[] | null;
   attributes?: TcAttribute[] | null;
+  /** one of pgapex's own (builtin-components.ts), not the application's */
+  builtin?: boolean;
 }
 
 /** How a region or report column uses a component (region config, or config.column_templates[col]). */
@@ -532,13 +535,13 @@ export function renderInstances(c: Compiled, rows: Lookup[], wrapperLookup: Look
 
 const loaded = new WeakMap<PageContext, Promise<Map<string, TemplateComponent>>>();
 
-/** The application's components by static id (read once per request). */
+/** The application's components by static id, over the built-in ones (read once per request). */
 export function componentsOf(ctx: PageContext) {
   let p = loaded.get(ctx);
   if (!p) {
     p = runtime
       .query('select static_id, name, template, wrapper, css_classes, attributes from meta.template_component where app_id = $1', [ctx.app.id])
-      .then((r) => new Map(r.rows.map((x) => [x.static_id, x as TemplateComponent])));
+      .then((r) => new Map<string, TemplateComponent>([...builtinComponents(), ...r.rows.map((x): [string, TemplateComponent] => [x.static_id, x as TemplateComponent])]));
     loaded.set(ctx, p);
   }
   return p;

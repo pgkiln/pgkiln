@@ -342,3 +342,74 @@ describe('builder', () => {
     assert.equal((await b.submit(`/builder/pages/${page19.id + 100000}/region/${region.id}/template-settings`, {})).statusCode, 404);
   });
 });
+
+describe('built-in components', () => {
+  test('every built-in passes the same checks as a plug-in and survives a round trip', async () => {
+    const { BUILTIN_COMPONENTS } = await import('../src/runtime/builtin-components.ts');
+    assert.deepEqual(BUILTIN_COMPONENTS.map((c) => c.static_id).sort(), ['ut_avatar', 'ut_badge', 'ut_comments', 'ut_media_list', 'ut_metric_card', 'ut_timeline']);
+    for (const c of BUILTIN_COMPONENTS) {
+      assert.equal(componentProblem(c), null, c.static_id);
+      assert.equal(attributesProblem(c.attributes ?? []), null, c.static_id);
+      const back = parsePlugin(JSON.parse(JSON.stringify(pluginDocument(c))));
+      assert.ok(typeof back !== 'string', `${c.static_id}: ${back}`);
+    }
+  });
+
+  test('HR page 39 shows them; values are escaped; the media list links to the dialog with a checksum', async () => {
+    const king = new Browser(app);
+    await king.login('king');
+    const body = (await king.get('/a/hr/39')).body;
+    for (const cls of ['tc-metrics', 'tc-avatar-group', 'tc-timeline', 'tc-media-list', 'tc-comments']) assert.ok(body.includes(`class="${cls}"`), cls);
+    assert.match(body, /<a href="\/a\/hr\/5\?P5_DEPTNO=10&amp;cs=[0-9a-f]+" data-dialog>Accounting<\/a>/);
+    const leave = await owner.one(`insert into hr.leave_request (empno, start_date, end_date, days, reason) values (7839, current_date, current_date, 1, '<img src=x onerror=alert(1)>') returning id`);
+    try {
+      const again = (await king.get('/a/hr/39')).body;
+      assert.ok(again.includes('&lt;img src=x onerror=alert(1)&gt;'));
+      assert.ok(!again.includes('<img src=x'));
+    } finally {
+      await owner.query('delete from hr.leave_request where id = $1', [leave.id]);
+    }
+  });
+
+  test("the application's component with the same static id replaces the built-in one", async () => {
+    const king = new Browser(app);
+    await king.login('king');
+    await owner.query(
+      `insert into meta.template_component (app_id, static_id, name, template, attributes) values ($1, 'ut_avatar', 'My avatar', '<b class="tc-title">#NAME#</b>', '[{"name": "NAME", "default": "#NAME#"}]')`,
+      [appId],
+    );
+    try {
+      const body = (await king.get('/a/hr/39')).body;
+      assert.match(body, /<b class="tc-title">King<\/b>/);
+      assert.doesNotMatch(body, /class="tc-avatar tc-avatar-md" title="King"/);
+    } finally {
+      await owner.query(`delete from meta.template_component where app_id = $1 and static_id = 'ut_avatar'`, [appId]);
+    }
+  });
+
+  test('builder: listed under New template component, copied into the application, offered in region settings', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const page = (await b.get(`/builder/apps/${appId}/shared?new=template_component`)).body;
+    assert.match(page, /Built-in components/);
+    assert.match(page, /<code>ut_metric_card<\/code>/);
+    assert.equal((await b.submit(`/builder/apps/${appId}/template-components/copy`, { static_id: 'no_such' })).statusCode, 404);
+    await b.get(`/builder/apps/${appId}/shared?new=template_component`);
+    assert.equal((await b.post(`/builder/apps/${appId}/template-components/copy`, { __csrf: 'forged', static_id: 'ut_badge' })).statusCode, 403);
+    try {
+      assert.equal((await b.submit(`/builder/apps/${appId}/template-components/copy`, { static_id: 'ut_badge' })).statusCode, 303);
+      const row = await owner.one(`select name, template from meta.template_component where app_id = $1 and static_id = 'ut_badge'`, [appId]);
+      assert.equal(row.name, 'Badge');
+      // a second copy doesn't overwrite the application's own
+      await b.get(`/builder/apps/${appId}/shared?new=template_component`);
+      await b.submit(`/builder/apps/${appId}/template-components/copy`, { static_id: 'ut_badge' });
+      assert.equal((await owner.one(`select count(*)::int as n from meta.template_component where app_id = $1 and static_id = 'ut_badge'`, [appId])).n, 1);
+    } finally {
+      await owner.query(`delete from meta.template_component where app_id = $1 and static_id = 'ut_badge'`, [appId]);
+    }
+    const region = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 39 and r.seq = 10`, [appId]);
+    const designer = (await b.get(`/builder/pages/${region.page_id}?c=region-${region.id}`)).body;
+    assert.match(designer, /<option value="ut_metric_card" selected>Metric card \(built in\)<\/option>/);
+  });
+});

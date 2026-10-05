@@ -20,6 +20,9 @@ All notable changes to this project are documented here. The format follows
 - **Drawers** (migration 065): a modal page opens as a centred dialog or as a drawer from the left, right, top or
   bottom edge (APEX: the Drawer page template, 26.1's top and bottom drawers), small, medium or large (Page Designer
   → Page → Dialog position and size). HR example: *Leave request* (page 7) is a drawer from the right.
+- **Built-in template components**: avatar (and avatar groups), badge, comments, media list, metric card (APEX
+  26.1) and timeline, available in every application as regions and report column templates; *Copy into this
+  application* makes an editable copy that replaces the built-in one. HR example page 39 *Team overview*.
 
 ## [0.28.0] - 2026-10-06
 
