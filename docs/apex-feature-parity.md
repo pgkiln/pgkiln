@@ -239,7 +239,7 @@ downloads). Done in 0.18.0: calendar views, more chart types and drill-down; sma
 and facet types; computations, branches, build options and menu buttons; REST data sources and web
 credentials; rich text and the other new item types.
 
-Done in sprint 36 (AI with Claude and OpenAI): *Generate text with AI*, the AI assistant with tools, natural-language
+Done in 0.28.0 (AI with Claude and OpenAI): *Generate text with AI*, the AI assistant with tools, natural-language
 report filters, App Builder AI and blueprints.
 
 1. **Workspaces**, a new default style like "Iris", then the 🟡 rows (sprint 37).

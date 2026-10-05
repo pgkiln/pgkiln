@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 35 released as v0.27.0; sprint 36 (AI): all four items done and merged into `sprint-36`). Sprints 3–35 are merged into `main` and released as **v0.27.0** (migrations 001–058 are released: add 060+ (059 was reserved and not used); 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_40` are released.
+Last updated: 2026-10-06 (sprint 36 released as v0.28.0). Sprints 3–36 are merged into `main` and released as **v0.28.0** (migrations 001–063 are released: add 064+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_42` are released.
 
 ## Project in one paragraph
 
@@ -52,7 +52,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 35, released as **v0.27.0** (tags: v0.2.0, v0.6.0–v0.27.0; 0.3.0–0.5.0 were never tagged). Migrations 001–058 are released |
+| `main` | Everything up to sprint 36, released as **v0.28.0** (tags: v0.2.0, v0.6.0–v0.28.0; 0.3.0–0.5.0 were never tagged). Migrations 001–063 are released |
 | (sprint branches) | `sprint-32` … `sprint-35` (and `sprint-35-reporter`, `-sampledata`, `-appwizard`) were merged (v0.24.0–v0.27.0) |
 | (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
@@ -1456,7 +1456,7 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
 
-## Sprint 36 (IN PROGRESS): AI with Claude and OpenAI (owner, 2026-10-05: "keep going, I want Claude and OpenAI as options for the AI, work with 1 agent and keep going, don't stop")
+## Sprint 36 (DONE, v0.28.0): AI with Claude and OpenAI (owner, 2026-10-05: "keep going, I want Claude and OpenAI as options for the AI, work with 1 agent and keep going, don't stop")
 
 Branch `sprint-36` from `main` (v0.27.0). **One agent at a time** in the main checkout; tests on the throwaway DB
 `pgapex-ci` (5446). Rules: `docs/development/agent-rules.md`, mode A, plus its "Sprint 36" section (official SDKs
@@ -1473,6 +1473,13 @@ sprint 37 (Workspaces, a new default style like "Iris", 🟡 rows) without askin
 | 4 | **Blueprints / spec-driven development** (row "Blueprints, spec-driven development"): a JSON blueprint (tables, pages, navigation, sample data) → a new app; optionally drafted by AI from a description, always reviewed before creation | 063 | **done** (sprint-36-ai2) |
 
 **Item reports:** (filled in as agents finish)
+
+**Release 0.28.0 (2026-10-06):** the owner found 500s (`column "app_type" does not exist` on `/builder/create`,
+`column a.debug_level does not exist` on app pages): the dev DB was still at migration 050. Fixed by migrating, and the
+server now checks at start: missing migrations → every request gets a 503 naming them (or `MIGRATE_ON_START=true`
+applies them). A GET crawler (scratch script, not in the repo) visited the builder (1001 URLs), every Page Designer
+and Shared Components node (4078), the HR app as king/allen/blake (777/456/474 URLs) and every HR region refresh
+endpoint: no 500s and no SQL errors. CI-style run on 5446: 1029 pass / 10 skip, e2e 128/128.
 
 ## Sprint 35 (DONE, v0.27.0): three parity workstreams in parallel (owner, 2026-10-05: "run 3 agents and move on with the next tasks to do")
 

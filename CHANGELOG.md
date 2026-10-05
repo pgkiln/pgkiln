@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-06
+
 ### Added
 - **AI services and *Generate text with AI*** (migration 060): Workspace utilities → AI services
   (administrators) configures Claude (official `@anthropic-ai/sdk`, default model `claude-opus-5-5`, effort
@@ -28,6 +30,11 @@ All notable changes to this project are documented here. The format follows
 - **Blueprints** (migration 063): Create → From a blueprint: a JSON spec of tables, pages, navigation and
   sample data, optionally drafted by AI, always reviewed, then created as a new application in one
   transaction. Blueprints can be saved.
+
+### Fixed
+- A server whose database lacks migrations no longer fails page by page with "column … does not exist":
+  it answers every request with 503 and names the missing migrations, or applies them when started with
+  `MIGRATE_ON_START=true`.
 
 ## [0.27.0] - 2026-10-05
 
