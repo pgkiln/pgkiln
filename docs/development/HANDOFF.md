@@ -1446,6 +1446,24 @@ in the Sprint 35 table of HANDOFF.md; your worktree is /home/nickquispel/project
 
 **Workstream reports:** (filled in as agents finish)
 
+- **reporter: DONE** (branch `sprint-35-reporter`, merged into `sprint-35`; conflicts only in the appended test blocks).
+  Migration `057_data_reporter.sql`: `meta.data_report` (users' reports: user data, in `KEPT`, `REPOINTED`
+  `data_report.region_id`, `NOT_EXPORTED`), view `meta.data_reports`, security definer `meta.save_data_report(...)` /
+  `meta.delete_data_report(id)` (own reports only). New region type `data_reporter`: sources (table/view, static id,
+  label, description, offered columns with labels and format masks) in `meta.region.config.sources` (travel with the
+  export), sharing (everyone / nobody / authz scheme), rows per page. `src/runtime/data-reporter.ts` (list, editor as a
+  GET form: columns, ≤5 filters, ≤3 group-by, ≤5 totals, ≤3 sorts, chart via `renderChartBody`; save private/shared,
+  copy, delete; params `dr<id>_`), `src/builder/reporter.ts` (Page Designer settings). HR `hr_39_data_reporter.sql` page
+  36 "My reports" (`hr.staff_v`, two sources, a shared report of king). Texts in 5 languages. Tests
+  `test/data-reporter.test.ts`, security block "sprint 35 reporter", e2e "data reporter (page 36)" and builder page
+  `data_reporter_region`. Docs ch. 3, 4, 9, 12. Security (for SECURITY.md): runs as the app role (RLS, tested with two
+  users); definitions re-checked before running or saving (offered and readable columns only, whitelisted operators and
+  functions via `Object.hasOwn`, sum/avg numeric only, bounded counts and lengths); identifiers only the developer's,
+  quoted; values escaped literals; meta/pg_*/information_schema sources ignored at runtime and refused in the builder;
+  save/delete need CSRF, sign-in, page access and a visible region; definer functions only touch the user's own rows;
+  runtime role has no direct rights on `meta.data_report`. Limits: one source per report, no downloads, grouped results
+  ≤1000 rows, sources per region. Agent's tests: 929 pass / 10 skip, e2e 111/111. Parity row ✅ (text in the report).
+
 - **appwizard: DONE** (branch `sprint-35-appwizard`, merged into `sprint-35`). No migration (059 unused), no HR part, no new
   tables or env vars. `src/builder/appsheets.ts` (several XLSX sheets / JSON arrays → several tables, key and foreign
   keys proposed from names, types and values, "Update the proposals" without JS, one transaction: tables, rows, FKs with
