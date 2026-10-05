@@ -35,7 +35,7 @@ function serviceForm(s: Partial<AiService>, action: string, csrfField: ReturnTyp
       ${input('description', 'Description', s.description)}
       ${select('provider', 'Provider', s.provider ?? 'anthropic', PROVIDERS, 'Prompts, and the item values they contain, are sent to this provider.')}
       ${input('model', 'Model', s.model ?? (isNew ? DEFAULT_CLAUDE_MODEL : ''), { required: true, help: `Exactly as the provider names it, e.g. ${DEFAULT_CLAUDE_MODEL} (Claude) or the OpenAI model your account uses. pgapex never changes it.` })}
-      ${select('effort', 'Effort (Claude)', s.effort ?? '', EFFORTS, 'How deeply Claude thinks: lower is faster and cheaper. Claude Opus 5.5 uses medium by default.')}
+      ${select('effort', 'Effort (Claude)', isNew ? 'medium' : s.effort ?? '', EFFORTS, 'How deeply Claude thinks (thinking is always on for current Claude models): lower is faster and cheaper; high or more for hard tasks. Model default: medium for Claude Opus 5.5.')}
       ${input('max_tokens', 'Maximum output tokens', s.max_tokens ?? 4000, { type: 'number', help: 'Per request (1 – 128000); a process may ask for fewer.' })}
       ${input('timeout_s', 'Time limit (seconds)', s.timeout_s ?? 120, { type: 'number', help: '5 – 600. Pages wait for the answer.' })}
       ${input('base_url', 'Base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: 'A gateway or proxy that speaks the provider\'s API. Administrators only.' })}

@@ -260,7 +260,7 @@ describe('Generate text with AI: the dynamic action', () => {
     const da = meta?.das?.find((d: any) => d.id === daId);
     assert.ok(da, 'the dynamic action is on the page');
     assert.deepEqual(da.items, ['P1_SUMMARY'], 'busy: the process\'s output item');
-    assert.deepEqual(da.submit, ['P1_TEXT', 'P1_PW'], 'submitted: the items the prompts use');
+    assert.deepEqual(da.submit, ['P1_TEXT'], 'submitted: the items the prompts use (never a password item)');
     const res = await b.post(`/a/${alias}/1/da/${daId}`, { __csrf: b.lastCsrf, P1_TEXT: 'Long text' });
     assert.equal(res.statusCode, 200, res.body);
     const out = JSON.parse(res.body);
@@ -350,5 +350,46 @@ describe('providers', () => {
     assert.ok(aiProblems({ service: 'X', prompt: 'p', schema: { type: 'array' }, items: { P1_A: 'a' } }).length);
     assert.ok(aiProblems({ service: 'X', prompt: 'p', schema: { type: 'object' } }).length, 'a schema needs items');
     assert.ok(aiProblems({ service: "x'; drop", prompt: 'p', output_item: 'P1_A' }).length);
+  });
+});
+
+describe('HR example page 37 (Leave assistant)', () => {
+  const HR_SERVICE = 'HR_ASSISTANT';
+
+  test('without an AI service the page says so and hides the AI buttons', async () => {
+    await owner.query(`delete from meta.ai_service where name = $1`, [HR_SERVICE]);
+    const b = new Browser(app);
+    await b.login('king');
+    const body = (await b.get('/a/hr/37')).body;
+    assert.match(body, /No AI service is configured for this application yet/);
+    assert.doesNotMatch(body, /data-button="READ"/);
+    assert.match(body, /data-button="REQUEST"/);
+  });
+
+  test('with one (the mock): the message is read into the dates and the reason', async () => {
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const svc = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc, effort) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3, 'medium') returning id`,
+      [HR_SERVICE, `${mock.base}/claude`, encryptSecret('sk-ant-hr')])).id;
+    try {
+      await owner.query(`insert into meta.app_ai_service (app_id, service_id) values ($1, $2)`, [hr, svc]);
+      mock.mode = 'text';
+      mock.answer = JSON.stringify({ start_date: '2026-11-16', end_date: '2026-11-20', reason: 'Helping parents move house' });
+      const b = new Browser(app);
+      await b.login('king');
+      const shown = (await b.get('/a/hr/37')).body;
+      assert.doesNotMatch(shown, /No AI service is configured/);
+      assert.match(shown, /data-button="READ"/);
+      assert.equal((await b.submit('/a/hr/37', { __request: 'READ', P37_MESSAGE: 'I would like the week of 16 November off to help my parents move.' })).statusCode, 303);
+      const after = (await b.get('/a/hr/37')).body;
+      assert.equal(inputValue(after, 'P37_START_DATE'), '2026-11-16');
+      assert.equal(inputValue(after, 'P37_END_DATE'), '2026-11-20');
+      assert.equal(inputValue(after, 'P37_REASON'), 'Helping parents move house');
+      const r = lastClaude();
+      assert.match(r.body.messages[0].content, /^<data name="P37_MESSAGE">I would like the week/);
+      assert.match(r.body.system, /Today is <data name="P37_TODAY">\d{4}-\d\d-\d\d/);
+      assert.match(r.body.output_config.format.schema.properties.start_date.description, /YYYY-MM-DD/);
+    } finally {
+      await owner.query(`delete from meta.ai_service where id = $1`, [svc]);
+    }
   });
 });

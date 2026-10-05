@@ -22,6 +22,8 @@
 --   (like meta.web_request, migration 052): made by the server right after
 --   the page process (type sql) that queued them, or by the scheduler for
 --   committed ones; meta.ai_result(id) returns the answer. Kept 24 hours.
+--   meta.ai_available(service) tells application code whether it may use
+--   a service.
 --
 -- Process type "ai_generate" and dynamic action "ai_generate" (the latter
 -- runs a page process of that type through AJAX: its name is in "code").
@@ -214,6 +216,15 @@ language sql volatile security definer set search_path = meta, pg_catalog as $$
    where id = p_id and status = 'running' and requested_xact = pg_current_xact_id() and app_id = meta.app_id()
 $$;
 
+-- True when the current application may use the AI service (it exists, is enabled and the
+-- application is allowed). Whether the provider accepts the key shows only when a request is
+-- made. For conditions, e.g. a region that says no AI service is configured yet.
+create function meta.ai_available(p_service text) returns boolean
+language sql stable security definer set search_path = meta, pg_catalog as $$
+  select exists (select 1 from meta.ai_service s join meta.app_ai_service x on x.service_id = s.id and x.app_id = meta.app_id()
+                  where s.name = upper(p_service) and s.enabled)
+$$;
+
 -- like meta.web_request: application roles call them (each checks meta.app_id())
-grant execute on function meta.ai_generate(text, text, text, jsonb), meta.ai_result(bigint),
+grant execute on function meta.ai_available(text), meta.ai_generate(text, text, text, jsonb), meta.ai_result(bigint),
   meta.ai_request_take(int), meta.ai_request_done(bigint, text, text, text) to public;

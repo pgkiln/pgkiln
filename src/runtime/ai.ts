@@ -96,12 +96,15 @@ export function aiOutputs(conf: unknown): string[] {
   return names.filter((n) => typeof n === 'string').map((n) => n.toUpperCase());
 }
 
-/** The page items an ai_generate process's prompts refer to (&NAME.): what its dynamic action submits by default. */
-export function aiInputs(conf: unknown, page: { items: { name: string }[] }): string[] {
+/**
+ * The page items an ai_generate process's prompts refer to (&NAME.): what its dynamic action submits by default.
+ * Password items are left out (they are never put into a prompt).
+ */
+export function aiInputs(conf: unknown, page: { items: { name: string; type: string }[] }): string[] {
   const c = (conf ?? {}) as AiProcessConfig;
   const text = `${typeof c.system === 'string' ? c.system : ''}\n${typeof c.prompt === 'string' ? c.prompt : ''}`;
   const names = new Set([...text.matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1].toUpperCase()));
-  return page.items.filter((i) => names.has(i.name)).map((i) => i.name);
+  return page.items.filter((i) => names.has(i.name) && i.type !== 'password').map((i) => i.name);
 }
 
 /** The ai_generate process a dynamic action runs: named in its "code". */
@@ -122,7 +125,8 @@ export function schemaFromItems(ctx: PageContext, names: string[]) {
     if (prop in properties) prop = name.toLowerCase();
     const type = item?.type === 'number' ? 'number' : item?.type === 'checkbox' || item?.type === 'switch' ? 'boolean' : 'string';
     const label = item?.label ?? name;
-    properties[prop] = { type, description: `${label}${type === 'string' ? ' (an empty string when the text does not say)' : ''}` };
+    const format = item?.type === 'date' ? ', a date as YYYY-MM-DD' : item?.type === 'datetime' ? ', a date and time as YYYY-MM-DDTHH:MI' : '';
+    properties[prop] = { type, description: `${label}${type === 'string' ? ` (text${format}; an empty string when the text does not say)` : ''}` };
     map[name] = prop;
   }
   return { schema: { type: 'object', properties, required: Object.keys(properties), additionalProperties: false }, map };
