@@ -680,3 +680,10 @@ tr.row-conflict > td:first-child { border-left: 3px solid var(--warn); }
 
 /* (sprint 36) AI services: long service and application names wrap */
 .ai-name { overflow-wrap: anywhere; min-width: 0; }
+
+/* App Builder AI (src/builder/ai-builder.ts) */
+.ai-tables { columns: 14rem; padding-left: 1.1rem; overflow-wrap: anywhere; }
+.ai-tables a[aria-current] { font-weight: 600; }
+.ai-answer { overflow-wrap: anywhere; }
+.ai-answer pre, .ai-answer code { white-space: pre-wrap; }
+button.is-busy { opacity: 0.7; cursor: progress; }

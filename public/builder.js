@@ -504,3 +504,13 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+
+// App Builder AI (ai-builder.ts): while an AI request runs, its button says so and can't be pressed twice
+document.addEventListener('submit', (e) => {
+  const btn = e.submitter;
+  if (e.defaultPrevented || !btn || !btn.dataset || !btn.dataset.busy) return;
+  btn.textContent = btn.dataset.busy;
+  btn.setAttribute('aria-disabled', 'true');
+  btn.classList.add('is-busy');
+  btn.addEventListener('click', (x) => x.preventDefault());
+});

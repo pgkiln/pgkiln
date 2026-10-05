@@ -210,7 +210,8 @@ export async function builderRoutes(app: FastifyInstance) {
               ${select('table', 'Table or view (master table for master detail)', '', tables.map((t): [string, string] => [t.t, t.access ? t.t : `${t.t} (no access for ${a.db_role})`]))}
             </div>
             <div class="buttons"><button class="btn btn-hot">Next</button></div>
-          </form>`)}
+          </form>
+          <p><a href="${BASE}/apps/${a.id}/ai-pages">Create pages with AI ▸</a> <span class="muted">(describe them in your own words)</span></p>`)}
         ${region('Create blank page', html`
           <form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
             <div class="form-grid">

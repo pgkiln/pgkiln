@@ -2266,8 +2266,9 @@ function areaFilter(map, f) {
   });
   document.addEventListener('submit', (e) => {
     const f = e.target;
-    if (!f.id || e.defaultPrevented) return;
-    for (const btn of document.querySelectorAll(`button[form="${CSS.escape(f.id)}"][data-busy]`)) {
+    if (e.defaultPrevented) return;
+    const busy = e.submitter ? [e.submitter].filter((b) => b.dataset.busy) : f.id ? [...document.querySelectorAll(`button[form="${CSS.escape(f.id)}"][data-busy]`)] : [];
+    for (const btn of busy) {
       btn.textContent = btn.dataset.busy;
       btn.setAttribute('aria-disabled', 'true');
       btn.classList.add('is-busy');
