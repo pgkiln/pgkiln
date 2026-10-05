@@ -33,6 +33,7 @@ import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
 import { codeEditorRoutes } from './builder/code-editor.ts';
+import { sampleDataRoutes } from './builder/sampledata.ts';
 import { accountRoutes } from './runtime/account.ts';
 import { taskRoutes } from './runtime/tasks.ts';
 import { dataReporterRoutes } from './runtime/data-reporter.ts';
@@ -114,6 +115,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(codeEditorRoutes);
   await app.register(dataReporterRoutes);
   await app.register(reporterBuilderRoutes);
+  await app.register(sampleDataRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));
   return app;
 }

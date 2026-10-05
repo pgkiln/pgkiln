@@ -546,6 +546,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         unload: '/builder/sql/unload',
         unload_table: '/builder/sql/unload?table=hr.emp',
         unload_query: '/builder/sql/unload?source=query',
+        // (sprint 35) Sample Data: the start page, the tables of a schema, the generator form and a saved generator (HR example part 40)
+        sample_data: '/builder/sql/sample-data',
+        sample_data_tables: '/builder/sql/sample-data?schema=hr',
+        sample_data_form: '/builder/sql/sample-data?schema=hr&t=dept&t=emp&t=leave_request',
+        sample_data_saved: `/builder/sql/sample-data/${(await owner.one(`select id from meta.data_generator where name = 'HR demo staff'`)).id}`,
         scripts: '/builder/sql/scripts',
         script_new: '/builder/sql/scripts/new',
         script: `/builder/sql/scripts/${(await owner.one(`insert into meta.sql_script (name, content) values ('E2E script', 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp;\nselect 1/0;')
@@ -618,6 +623,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
+      }
+      // (sprint 35) Sample Data: a preview (inserted and rolled back) of the HR example's saved generator
+      {
+        await page.goto(`${base}${urls.sample_data_saved}`);
+        await Promise.all([page.waitForNavigation(), page.click('button[name=action][value=preview]')]);
+        assert.match(await page.content(), /Rolled back: nothing was saved/);
+        await check(page, 'builder-sample_data_preview', vp);
       }
       // (sprint 32) create an application from a file: upload, step 2, the result and the generated pages
       const alias = `e2e-ff-${size.width}`;
