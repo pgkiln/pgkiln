@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-05
+
+### Added
+- **Keyset ("seek") paging** for row-range reports (`"keyset": ["id"]`): Next and Previous carry the
+  last/first row's sort values in a signed parameter, so deep pages stay fast on an indexed sort.
+- **Database-account authentication** (APEX: Database Accounts; migration 037): an app type
+  `database` where users sign in with a PostgreSQL login role and its password, checked by
+  PostgreSQL through a short-lived connection. Only the listed roles or members of a role may sign
+  in; superusers and pgapex's own roles never.
+
+### Changed
+- Report PDFs read their rows from a cursor in batches of 500 and draw them as they arrive
+  (`PDF_MAX_ROWS`, default 5,000, at most 100,000).
+- REST collection handlers stream a chunked JSON array from a cursor.
+
 ## [0.21.0] - 2026-10-04
 
 ### Added
