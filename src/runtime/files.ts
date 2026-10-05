@@ -1,3 +1,4 @@
+import { disposition } from './processes.ts';
 import pg from 'pg';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { literal } from '../binds.ts';
@@ -290,12 +291,6 @@ export function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} kB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-/** Content-Disposition with an ASCII fallback and the UTF-8 name (RFC 6266). */
-function disposition(type: 'inline' | 'attachment', filename: string) {
-  const ascii = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
-  return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 type Loader = (req: any, reply: FastifyReply) => Promise<PageContext | null>;

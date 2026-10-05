@@ -53,6 +53,7 @@ function normalise(doc: any) {
     app: { ...doc.app, alias: '(alias)' },
     automations: doc.automations.map((a: any) => ({ ...a, enabled: '(any)' })),
     nav: doc.nav.map(strip).map((n: any) => stableJson(n)).sort(),
+    list_entries: (doc.list_entries ?? []).map(strip).map((n: any) => stableJson(n)).sort(),
     // the directory sorts these by code point, the database by its collation
     ...Object.fromEntries(['group_roles', 'text_messages', 'translations'].map((k) => [k, doc[k].map((r: any) => stableJson(r)).sort()])),
     pages: doc.pages.map((p: any) => ({

@@ -110,13 +110,18 @@ two combine well; see error handling below.
 | `sql` | Run `code`: one or more SQL statements with bind variables |
 | `data_load` | Load the CSV/XLSX file of a file item into a table ([chapter 16](16-files.md#data-loading-in-an-application)) |
 | `invoke_api` | Call a web service (a REST data source or a URL, with a web credential) and put values of the response into items ([chapter 19](19-rest-data-sources.md#the-invoke_api-process)) |
+| `download` | Send a file made by a query instead of the page ([below](#download)) |
+| `chain` | An **execution chain**: run the processes that name it as their chain, in sequence, optionally in the background ([below](#execution-chains)) |
+| `workflow` | Start a [workflow](#workflows), or terminate or retry an instance ([below](#workflow-processes)) |
 
 | Property | Meaning |
 |---|---|
 | `point` | `submit` (after validations) or `load` (when the page is shown, after form fetch) |
 | `when_button` | Only for this request (empty = every submit with a button) |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds (server-side condition, as for computations and branches) |
+| `parent_process` | The name of a `chain` process on the page: this process then runs only inside that chain |
 | `region_id` | The form or grid region, for `form_dml` / `grid_dml` |
-| `config` | Settings of a `data_load` or `invoke_api` process (JSON) |
+| `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain` or `workflow` process (JSON) |
 | `success_message` | Shown after the redirect; messages of several processes are joined |
 | `authz` | Skipped when the user isn't authorized |
 | `seq` | Order |
@@ -156,6 +161,88 @@ end if;
 All changes of the submit are rolled back, and the page is shown again with the entered
 values so the user can correct them.
 
+### Download
+
+A `download` process answers the request with a file instead of the page (APEX: *Download*). Its
+`code` is a query that returns the file's **content** (`bytea`, or text sent as UTF-8), its **file
+name** and its **MIME type**, by default the first three columns:
+
+```sql
+select content, filename, mime_type from hr.emp_document where empno = :P28_EMPNO::int
+```
+
+One row is sent as it is; **several rows go into one zip file** (duplicate names get " (2)"). No
+rows: the page shows "There is no file to download". `config` (all optional):
+
+| Key | Meaning |
+|---|---|
+| `content_column`, `filename_column`, `mime_column` | Column names, when not the first three |
+| `zip_name` | Name of the zip file, `&ITEM.` substitutions allowed (default `download.zip`) |
+| `disposition` | `inline` lets a browser show a single image or PDF; everything else is an attachment |
+
+On `submit`, the file is the answer to the button (the page stays as it was in the browser); on
+`load`, the file is sent instead of the page (a download page, e.g. linked with item values). The
+query runs as the application's database role, like every process, so grants and row level
+security decide what can be downloaded. File names lose path separators and control characters;
+a MIME type that doesn't look like one becomes `application/octet-stream`; the response is never
+sniffed (`nosniff`), is sandboxed by its Content-Security-Policy and isn't cached. At most 1000
+files and 100 MB per download.
+
+### Execution chains
+
+A `chain` process runs its **children**: the processes of the page whose `parent_process` is the
+chain's name, in their sequence, each with its own button, condition and authorization (APEX:
+*Execution Chain*). The chain itself has a point, button, condition and authorization like any
+process; a child's `point` doesn't matter. A chain can contain chains (five levels deep). A failing
+child stops the chain and, like any failing process, rolls back the whole submit.
+
+With `config` `{"background": true}` the chain runs **in the background**: the submit only queues
+it (in the same transaction, so nothing is queued when the submit fails) and the server runs it
+shortly after, in one transaction as the application's role, with the user who submitted as
+`:APP_USER` / `meta.app_user()` and their roles (`meta.has_role`). Its binds are the page's and the
+application's items as they were when it was queued (passwords left out); what the processes set
+isn't written back to the session. `form_dml`, `grid_dml`, `data_load` and `download` need the
+request and can't run in the background (the job fails with a message).
+
+| `config` key | Meaning |
+|---|---|
+| `background` | `true`: queue the chain as a background job |
+| `status_item` | An item that receives the job's id |
+
+The job's state is visible to the developer in the page designer (the chain's **Jobs** tab: the
+last runs for every user) and to the user through the view `meta.process_jobs` (the user's own
+jobs: `id`, `name`, `state` = `queued` / `running` / `completed` / `failed`, `steps_done`,
+`steps_total`, `current`, `message`, `error`, times), for example in a report region. Several
+pgapex servers can share the queue: each job is claimed once (`FOR UPDATE SKIP LOCKED`). A job
+whose server stopped while running it is marked failed after two minutes rather than run twice.
+Servers that should not run background processes set `BACKGROUND_PROCESSES=off`;
+`PROCESS_JOB_INTERVAL_S` (default 10) is how often a server looks for jobs besides being woken
+(`NOTIFY pgapex_process_job`). Finished jobs are kept for 30 days.
+
+### Workflow processes
+
+A `workflow` process starts a [workflow](#workflows) or acts on an instance (APEX: *Workflow*
+process), without SQL:
+
+```json
+{"action": "start", "definition": "ONBOARDING", "version": "2", "detail_pk": "&P28_EMPNO.",
+ "variables": {"ENAME": "&P28_ENAME.", "SAL": "&P28_SAL."}, "id_item": "P28_WORKFLOW_ID"}
+{"action": "terminate", "instance": "&P28_WORKFLOW_ID.", "comment": "Stopped from the toolkit."}
+{"action": "retry", "instance": "&P28_WORKFLOW_ID."}
+```
+
+`version` is optional: the active version, or an inactive or development version by its label.
+Item values are passed as query parameters, never as SQL. The new instance's id goes into
+`id_item`. Terminating and retrying check, in the database, that the user may (the initiator or
+the workflow's administrator for terminate, the administrator for retry). From SQL, the same is
+`meta.start_workflow_version(name, version, detail_pk, variables)`.
+
+**HR example, page 28 (Employee toolkit).** *Business card* downloads a vCard made by a query;
+*Documents* downloads the employee's documents, several in a zip file; *Onboard* is a chain that
+looks up the employee (a `sql` child) and then starts the ONBOARDING workflow (a `workflow` child);
+*Stop onboarding* terminates it; *Year-end check* is a background chain whose jobs the region
+"My background jobs" lists from `meta.process_jobs`.
+
 ## Computations
 
 A computation sets a page item or an application item without a process: a default, a value
@@ -167,7 +254,7 @@ looked up by SQL, a derived value.
 | `point` | `before_header`: when the page is shown (after the form fetch, before the `load` processes). `after_submit`: after the posted values are stored, before the validations |
 | `type` | How `expression` is read, see below |
 | `expression` | The value, item, query, expression or function body |
-| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-and-branches) holds |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds |
 | `authz` | Only for users who pass this authorization scheme |
 | `seq` | Order; later computations see the values of earlier ones |
 
@@ -196,15 +283,27 @@ dialog closes instead, and the calling page reloads.
 | `name` | A description, shown in the page designer |
 | `point` | `after_processing` (after a submit's processes) or `before_header` (before the page is shown: a redirect instead of the page, e.g. "nothing to do here, go to the list") |
 | `when_button` | `after_processing` only: the request (button) it is for; empty = any |
-| `target_type` | `page` or `url` |
-| `target_page`, `target_items` | A page of the application (empty = this page) and the items to set there, e.g. `{"P7_EMPNO": "&P22_EMPNO."}`; the link is signed with a checksum |
+| `target_type` | `page`, `url`, `function` or `app` |
+| `target_page`, `target_items` | A page of the application (empty = this page) and the items to set there, e.g. `{"P7_EMPNO": "&P22_EMPNO."}`; the link is signed with a checksum. For `app`: the page and items in the other application |
 | `target_url` | A path inside the application (after `/a/<alias>/`), e.g. `12?view=month` or `account`; `&ITEM.` values are URL-encoded. Other sites are refused (no scheme, `//`, `\` or `..`) |
-| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-and-branches) holds |
+| `target_function` | `function`: a PL/pgSQL function body that returns such a path (APEX: *Function returning a URL*), run as the application's role with binds; checked like `target_url` (`meta.branch_path_ok`). An empty result: the branch doesn't apply; a refused one shows a message and is logged |
+| `target_app` | `app`: the alias of another application of this installation (APEX: *Branch to page in another application*). It must exist with that page (else the branch doesn't apply and a message is shown); the items are signed for that application, page and user. That application's own sign-in and authorization apply when the browser gets there |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds |
 | `authz`, `seq`, `build_option` | As for other components |
 
 A `before_header` branch to the page itself is skipped (it would loop).
 
-### Conditions of computations and branches
+```sql
+-- function returning a URL (HR page 28, "Open")
+begin
+  if exists (select 1 from hr.leave_request where empno = :P28_EMPNO::int and status = 'PENDING') then
+    return '6';
+  end if;
+  return '12';
+end
+```
+
+### Conditions of computations, processes and branches
 
 | `condition_type` | Holds when |
 |---|---|

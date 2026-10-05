@@ -8,9 +8,9 @@ that needs JavaScript; without it, pages still work, just without these convenie
 
 | Property | Meaning |
 |---|---|
-| `event` | `change` (an item's value changed), `click` (a button was clicked) or `load` (the page loaded) |
-| `trigger_element` | For `change`: one or more item names, comma separated. For `click`: a button name |
-| `condition_type`, `condition_value` | Optional client-side condition on the (first) trigger item's value: `equals`, `not_equals`, `in_list` (comma-separated values), `is_null`, `is_not_null` |
+| `event` | `change` (an item's value changed), `click` (a button was clicked), `load` (the page loaded) or `dialog_closed` (a modal dialog opened from the page was submitted and closed) |
+| `trigger_element` | For `change`: one or more item names, comma separated. For `click`: a button name. For `dialog_closed`: the dialog page numbers, comma separated (empty: any dialog) |
+| `condition_type`, `condition_value` | Optional client-side condition on the (first) trigger item's value (for `dialog_closed`: on the dialog's page number): `equals`, `not_equals`, `in_list` (comma-separated values), `is_null`, `is_not_null` |
 | `action` | What to do, see below |
 | `affected_items`, `affected_region_id` | What it acts on |
 | `code` | SQL for server-side actions |
@@ -84,6 +84,19 @@ event `click`, trigger the button's name, action `refresh_region`.
 | click | `HIGHLIGHT` | | show_success | | The form is highlighted. |
 
 These are conveniences: the server still validates on submit.
+
+## Dialog closed
+
+When a modal dialog page is submitted successfully, the dialog closes and the page that opened it
+**reloads**. With `dialog_closed` dynamic actions for that dialog, the page runs them instead,
+typically `refresh_region` on a report that shows what the dialog changed (APEX: *Dialog Closed*).
+The dialog's success message comes along with the first action that goes to the server
+(`refresh_region`, `refresh_item`, `set_value`, `execute_sql`) and is shown at the top of the page.
+Closing a dialog with its close button (cancel) runs nothing. Without JavaScript there are no
+dialogs: the dialog page opens as a normal page and returns to the list after a submit.
+
+**HR example, page 28 (Employee toolkit):** editing a colleague in the *Team* report opens the
+employee form (page 3) in a dialog; `dialog_closed` with trigger `3` refreshes the *Team* region.
 
 ## Cascading lists without a dynamic action
 

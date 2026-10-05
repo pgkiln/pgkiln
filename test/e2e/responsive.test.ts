@@ -118,6 +118,16 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(res?.status(), 200, `calendar ${v}`);
         await check(page, `app-24-${v}`, vp);
       }
+      // page 27: the interactive grid with a selected master row, a row actions menu and its Actions menu
+      const masterId = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 27 and r.title = 'Departments'`)).id;
+      await page.goto(`${base}/a/hr/27`);
+      await Promise.all([page.waitForURL(new RegExp(`r${masterId}_sel=20&`)), page.locator(`#R${masterId} a.grid-pick-link[href*="_sel=20&"]`).click()]);
+      await page.locator('.region-grid:not([aria-busy]) tr[data-row] .row-menu').first().waitFor();
+      await check(page, 'app-27-selected', vp);
+      await page.locator('.region-grid tr[data-row] .row-menu > summary').last().click();
+      await check(page, 'app-27-row-menu', vp);
+      await page.locator('.region-grid .grid-actions-menu > summary').last().click();
+      await check(page, 'app-27-actions', vp);
       // row selection: select all checks every row
       const before = (await owner.one('select config from meta.region where id = $1', [rid])).config;
       const pageId = (await owner.one('select page_id from meta.region where id = $1', [rid])).page_id;
@@ -383,16 +393,44 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',
+        scripts: '/builder/sql/scripts',
+        script_new: '/builder/sql/scripts/new',
+        script: `/builder/sql/scripts/${(await owner.one(`insert into meta.sql_script (name, content) values ('E2E script', 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp;\nselect 1/0;')
+          on conflict (name) do update set content = excluded.content returning id`)).id}`,
+        script_run: `/builder/sql/scripts/runs/${(await owner.one(`insert into meta.sql_script_run (script_name, run_by, statements, succeeded, failed, results) values ('E2E script', 'admin', 2, 1, 1, $1) returning id`, [JSON.stringify([
+          { n: 1, line: 1, sql: 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp', status: 'ok', command: 'SELECT', rows: 2, ms: 1,
+            columns: ['empno', 'ename', 'job', 'hiredate', 'sal', 'comm', 'deptno'], sample: [['7369', 'SMITH', 'CLERK', '1980-12-17', '850.00', null, '20'], ['7499', 'ALLEN', 'SALESMAN', '1981-02-20', '1600.00', '300.00', '30']] },
+          { n: 2, line: 2, sql: 'select 1/0', status: 'error', error: 'division by zero', ms: 0 },
+        ])])).id}`,
+        quick_sql: '/builder/sql/quick',
+        query_builder: '/builder/sql/query?schema=hr&t=emp&t=dept&c=t1.ename&c=t1.job&c=t2.dname&wc=t1.sal&wo=%3E&wv=1000&oc=t1.ename',
+        data_load_def: `/builder/apps/${appId}/shared?c=data_load_def-${(await owner.one(`select id from meta.data_load_def where app_id = $1 and name = 'EMP_XML'`, [appId])).id}`,
         developers: '/builder/developers',
         users: '/builder/users',
         providers: '/builder/users/providers',
         directories: '/builder/users/directories',
         user: `/builder/users/${(await owner.one(`select id from meta.account where username = 'king'`)).id}`,
+        // (sprint 31) lists, the list region, supporting objects, a locked page with comments
+        list: `/builder/apps/${appId}/shared?c=list-${(await owner.one(`select id from meta.list where app_id = $1 and name = 'HR_SHORTCUTS'`, [appId])).id}`,
+        list_entry: `/builder/apps/${appId}/shared?c=list_entry-${(await owner.one(`select id from meta.list_entry where app_id = $1 and list_name = 'HR_SHORTCUTS' order by seq limit 1`, [appId])).id}`,
+        list_region: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 31 and r.type = 'list' order by r.seq, r.id limit 1`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
+        supporting_objects: `/builder/apps/${appId}/supporting-objects?imported=1`,
+        locked_page: `/builder/pages/${(await owner.one('select id from meta.page where app_id = $1 and page_no = 31', [appId])).id}`,
       };
-      for (const [name, url] of Object.entries(urls)) {
-        const res = await page.goto(`${base}${url}`);
-        assert.equal(res?.status(), 200, name);
-        await check(page, `builder-${name}`, vp);
+      await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
+      await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
+      try {
+        for (const [name, url] of Object.entries(urls)) {
+          const res = await page.goto(`${base}${url}`);
+          assert.equal(res?.status(), 200, name);
+          await check(page, `builder-${name}`, vp);
+        }
+      } finally {
+        await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
       }
       await page.context().close();
     });

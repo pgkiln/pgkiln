@@ -589,3 +589,41 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
   body.ide { padding-left: 0; }
   .ide-rail, .ide-bar, .ide-status { display: none !important; }
 }
+
+/* ---------------------------------------------------------------- SQL Workshop: scripts, Quick SQL, query builder */
+.tag-ok { background: var(--success-soft); color: var(--success); }
+.alert-note { background: var(--surface-2); color: var(--text); }
+.script-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.script-result { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.script-result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.script-sql summary { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.script-sql summary code { font-size: 0.82rem; }
+.script-sql pre.source { max-height: 20rem; overflow: auto; }
+.script-result .alert { margin: 6px 0 0; }
+.script-result .table-wrap { margin-top: 6px; }
+.qs-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.qs-columns textarea { width: 100%; }
+pre.ddl { max-height: 36rem; overflow: auto; }
+.qb-joins { list-style: none; margin: 0; padding: 0; }
+.qb-joins select { max-width: 100%; }
+.qb-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 4px 12px; }
+.qb-cond { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 2fr); gap: 6px; margin-bottom: 6px; }
+@media (max-width: 1023px) {
+  .qs-columns { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .qb-cond { grid-template-columns: minmax(0, 1fr); }
+}
+/* ---------- locks, developer comments, supporting objects ---------- */
+.lock-state { display: flex; align-items: center; gap: 0.4rem; }
+.lock-tag { display: inline-flex; align-items: center; gap: 0.3rem; }
+.dev-comments { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.dev-comments li { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
+.dev-comment-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+.dev-comment-body { margin: 0.3rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pd-lock { display: flex; align-items: center; gap: 0.4rem; margin: 0.5rem; }
+.support-results { padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.support-results li.failed > div { color: var(--danger); }
+.support-results pre.source { max-height: 200px; margin-top: 0.3rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+details.support-script { margin: 0.3rem 0; }
+details.support-script pre.source { margin-top: 0.4rem; white-space: pre-wrap; overflow-wrap: anywhere; }

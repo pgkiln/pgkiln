@@ -11,6 +11,7 @@ import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 import { columnTemplatesForm, templateRegionForm } from './templates.ts';
+import { LIST_TEMPLATES } from '../runtime/lists.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
 // for grid, chart, cards, calendar and faceted search regions (report
@@ -29,7 +30,7 @@ export interface Allowed {
   authz?: Set<string>; // the app's authorization scheme names (upper case)
 }
 
-export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree'] as const;
+export const SETTINGS_TYPES = ['grid', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'list'] as const;
 type SettingsType = (typeof SETTINGS_TYPES)[number];
 
 const GRID_PAGE_SIZES = ['5', '10', '15', '25', '50', '100', '200'];
@@ -199,7 +200,58 @@ export function mergeGridSettings(config: Config, b: Body, a: Allowed): Config {
     else delete columns[c.name];
   }
   set('columns', Object.keys(columns).length ? columns : undefined);
+  if (b.grid_features === '1') mergeGridFeatures(out, b, a, cols.map((c) => c.name));
   return out;
+}
+
+const ITEM_NAME = /^[A-Z][A-Z0-9_]{0,59}$/;
+const AGG_FNS = ['sum', 'avg', 'count', 'min', 'max'];
+
+/** "sal=sum,avg; ename=count" → {"sal": ["sum", "avg"], "ename": "count"}; unknown columns and functions left out. */
+export function parseAggregates(text: string | undefined, columns: string[]): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  for (const part of (text ?? '').split(';')) {
+    const [col, fns] = part.split('=').map((x) => x?.trim() ?? '');
+    if (!col || !columns.includes(col)) continue;
+    const list = [...new Set((fns ?? '').split(',').map((f) => f.trim().toLowerCase()).filter((f) => AGG_FNS.includes(f)))];
+    if (list.length) out[col] = list.length === 1 ? list[0] : list;
+  }
+  return out;
+}
+
+export const aggregatesText = (aggs: unknown) =>
+  aggs && typeof aggs === 'object' && !Array.isArray(aggs)
+    ? Object.entries(aggs as Record<string, unknown>).map(([c, f]) => `${c}=${[f].flat().join(',')}`).join('; ')
+    : '';
+
+/** Sprint 31 grid settings: aggregates, frozen columns, row actions, master-detail, Actions menu, saved reports. */
+function mergeGridFeatures(out: Config, b: Body, a: Allowed, columns: string[]) {
+  const set = setter(out);
+  const aggs = parseAggregates(b.aggregates, columns);
+  set('aggregates', Object.keys(aggs).length ? aggs : undefined);
+  const frozen = Number(b.frozen);
+  set('frozen', Number.isInteger(frozen) && frozen >= 1 && frozen <= 5 ? frozen : undefined);
+  set('actions', b.actions === 'true' ? undefined : false);
+  set('saved_reports', b.saved_reports === 'true' ? undefined : false);
+  const pub = (b.public_reports ?? '').trim().toUpperCase();
+  set('public_reports', pub && a.authz?.has(pub) ? pub : undefined);
+  // row actions: an edit link, duplicate and delete; custom links stay as written in the JSON
+  const edit = mergeLink(b, a.pages, 'edit');
+  const ra: Config = { ...(out.row_actions && typeof out.row_actions === 'object' ? out.row_actions : {}) };
+  if (edit) ra.edit = edit;
+  else delete ra.edit;
+  if (b.row_duplicate === 'true') delete ra.duplicate;
+  else ra.duplicate = false;
+  if (b.row_delete === 'true') delete ra.delete;
+  else ra.delete = false;
+  set('row_actions', b.row_actions === 'true' ? ra : undefined);
+  // master-detail
+  const selCol = (b.select_column ?? '').trim();
+  const selItem = (b.select_item ?? '').trim().toUpperCase();
+  set('select_row', selCol && columns.includes(selCol) && ITEM_NAME.test(selItem) ? { column: selCol, item: selItem } : undefined);
+  const mItem = (b.master_item ?? '').trim().toUpperCase();
+  const mCol = (b.master_column ?? '').trim();
+  set('master', ITEM_NAME.test(mItem) ? { item: mItem, ...(mCol && /^[a-z_][a-z0-9_$]{0,62}$/i.test(mCol) ? { column: mCol } : {}) } : undefined);
 }
 
 /** "from..to = label; …" (either bound may be empty; numbers or ISO dates) → ranges; malformed parts are left out. */
@@ -289,6 +341,15 @@ export function mergeDisplaySelectorSettings(config: Config, b: Body): Config {
   return out;
 }
 
+export function mergeListSettings(config: Config, b: Body): Config {
+  const out = { ...config };
+  const set = setter(out);
+  const name = (b.list ?? '').trim().toUpperCase();
+  set('list', /^[A-Z][A-Z0-9_]{0,59}$/.test(name) ? name : undefined);
+  set('template', (LIST_TEMPLATES as readonly string[]).includes(b.template ?? '') && b.template !== 'links' ? b.template : undefined);
+  return out;
+}
+
 export function mergeTasksSettings(config: Config, b: Body): Config {
   const out = { ...config };
   const set = setter(out);
@@ -343,6 +404,7 @@ const MERGES: Record<SettingsType, (c: Config, b: Body, a: Allowed) => Config> =
   facets: mergeFacetsSettings,
   smart_filters: mergeSmartFiltersSettings,
   display_selector: (c, b) => mergeDisplaySelectorSettings(c, b),
+  list: (c, b) => mergeListSettings(c, b),
 };
 
 // ---------------------------------------------------------------- forms
@@ -358,6 +420,8 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
   const cfg = r.config ?? {};
   const cols = await reportColumns(appId, await designSql(appId, r));
   const lovs = (await owner.query('select name from meta.lov where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
+  const authz = (await owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
+  const pages = (await owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId])).rows;
   const colCfg: Config = cfg.columns ?? {};
   const { all, known } = withStale('columns' in cols ? cols.columns : [], [...(cfg.hidden ?? []), ...(cfg.readonly ?? []), ...Object.keys(cfg.headings ?? {}), ...Object.keys(colCfg)]);
   const lower = (xs: string[] | undefined) => new Set((xs ?? []).map((x) => x.toLowerCase()));
@@ -389,6 +453,36 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
       ${check('allow_delete', 'Users may delete rows', allow.delete !== false)}
     </div>
     <small class="help">Saving needs a process of type "grid_dml" for this region; without one the grid is read-only.</small></fieldset>
+    <input type="hidden" name="grid_features" value="1">
+    <fieldset class="prop-group"><legend>Totals and columns</legend><div class="form-grid">
+      <div class="field" data-wide><label class="label" for="${id('aggregates')}">Aggregates in the footer</label>
+        <input id="${id('aggregates')}" name="aggregates" value="${aggregatesText(cfg.aggregates)}" placeholder="sal=sum,avg; empno=count">
+        <small class="help">column=sum, avg, count, min or max; separate columns with ";". Computed over all rows of the search, not only the page. Users can add their own (Actions → Aggregate).</small></div>
+      <div class="field"><label class="label" for="${id('frozen')}">Frozen columns</label>
+        <select id="${id('frozen')}" name="frozen">${['0', '1', '2', '3', '4', '5'].map((x) => opt(x, x === '0' ? 'none' : `the first ${x}`, cfg.frozen ?? 0))}</select>
+        <small class="help">Stay in view while the grid scrolls sideways. Users can change it, move, resize and hide columns; "layout" in the JSON sets the default order and widths.</small></div>
+      ${check('actions', 'Actions menu (columns, aggregates, saved reports)', cfg.actions !== false)}
+      ${check('saved_reports', 'Users may save grid reports', cfg.saved_reports !== false)}
+      <div class="field"><label class="label" for="${id('public_reports')}">Public reports by</label>
+        <select id="${id('public_reports')}" name="public_reports">${opt('', '- nobody -', cfg.public_reports)}${authz.map((n) => opt(n, n, cfg.public_reports))}</select></div>
+    </div></fieldset>
+    <fieldset class="prop-group"><legend>Row actions</legend><div class="form-grid">
+      ${check('row_actions', 'Row actions menu', !!cfg.row_actions)}
+      ${check('row_duplicate', 'Duplicate', cfg.row_actions?.duplicate !== false)}
+      ${check('row_delete', 'Delete', cfg.row_actions?.delete !== false)}
+    </div></fieldset>
+    ${linkFieldset(id, cfg.row_actions?.edit, pages, 'Edit', { prefix: 'edit', legend: 'Row actions: edit', placeholder: 'P3_ID=#id#' })}
+    <fieldset class="prop-group"><legend>Master-detail</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('select_column')}">As a master: column of the selected row</label>
+        <select id="${id('select_column')}" name="select_column">${opt('', '- not a master -', cfg.select_row?.column)}${all.map((n) => opt(n, n, cfg.select_row?.column))}</select></div>
+      <div class="field"><label class="label" for="${id('select_item')}">… goes into item</label>
+        <input id="${id('select_item')}" name="select_item" value="${cfg.select_row?.item ?? ''}" placeholder="P1_ID"></div>
+      <div class="field"><label class="label" for="${id('master_item')}">As a detail: follows item</label>
+        <input id="${id('master_item')}" name="master_item" value="${cfg.master?.item ?? ''}" placeholder="P1_ID"></div>
+      <div class="field"><label class="label" for="${id('master_column')}">… and new rows get it in column</label>
+        <input id="${id('master_column')}" name="master_column" value="${cfg.master?.column ?? ''}" placeholder="dept_id"></div>
+    </div>
+    <small class="help">A master grid's selected row puts its value into a page item; detail grids and reports use it in their query (:P1_ID) and are refreshed without reloading the page. Other region types follow with {"master": {"item": "P1_ID"}}.</small></fieldset>
     <fieldset class="prop-group"><legend>Columns</legend>
       ${all.length
         ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Shown</th><th>Read-only</th><th>Required</th><th>Edit as</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -586,6 +680,18 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
       title = 'Display selector settings';
       body = await displaySelectorFields(r, pageId, id);
       break;
+    case 'list': {
+      title = 'List settings';
+      const lists = (await owner.query('select name, type from meta.list where app_id = $1 order by name', [appId])).rows;
+      body = html`<p class="muted u-mt0">Shows a list from Shared Components → Lists. Entries the user may not open are left out.</p>
+        <fieldset class="prop-group"><legend>List</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('list')}">List</label>
+            <select id="${id('list')}" name="list">${opt('', '- choose -', cfg.list)}${lists.map((l) => opt(l.name, `${l.name} (${l.type})`, cfg.list))}${cfg.list && !lists.some((l) => l.name === cfg.list) ? opt(cfg.list, `${cfg.list} (missing!)`, cfg.list) : ''}</select></div>
+          <div class="field"><label class="label" for="${id('template')}">Template</label>
+            <select id="${id('template')}" name="template">${opt('', 'Links (nested)', cfg.template)}${opt('badges', 'Badge list', cfg.template)}${opt('cards', 'Cards (menu)', cfg.template)}${opt('tabs', 'Tabs', cfg.template)}</select></div>
+        </div></fieldset>`;
+      break;
+    }
     case 'map':
       title = 'Map settings';
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}

@@ -77,6 +77,29 @@ export function parseCsv(text: string) {
 
 // ------------------------------------------------------------------ routes
 
+// ------------------------------------------------------------------ app settings: time zone, currency
+
+/** Settings → Globalization: currency, time zone and automatic time zone. */
+export async function timeZoneSettings(a: { time_zone: string | null; time_zone_auto: boolean | null; currency: string | null }) {
+  const zones = (await owner.query<{ name: string }>(`select name from pg_timezone_names where name !~ '^(posix|right)/' order by name`)).rows.map((r) => r.name);
+  const dbZone = (await owner.one<{ tz: string }>(`select current_setting('TimeZone') as tz`))?.tz ?? '';
+  return html`<div class="form-grid">
+      ${input('currency', 'Currency', a.currency ?? '', { placeholder: 'e.g. EUR (empty: per language)', help: 'ISO 4217 code for L (symbol) and C (code) in number format masks such as FML999G990D00. A text message FORMAT.CURRENCY overrides it per language.' })}
+      ${select('time_zone', 'Time zone', a.time_zone ?? '', [['', `- the database's (${dbZone}) -`], ...zones], 'Queries run in this time zone (SET LOCAL timezone), so timestamp with time zone values show in it.')}
+    </div>
+    <div class="field"><label class="check"><input type="checkbox" name="time_zone_auto" value="true"${a.time_zone_auto ? raw(' checked') : ''}> Automatic time zone</label>
+      <small class="help">Each user sees times in their own time zone: the browser's (sent once per session), or the one they choose on My account. Without JavaScript the app's time zone applies (APEX: Automatic Time Zone).</small></div>`;
+}
+
+/** Save the currency and time zone settings; an unknown time zone or currency is an error. */
+export async function saveTimeZoneSettings(appId: string, b: Record<string, string | undefined>) {
+  const zone = b.time_zone?.trim() || null;
+  if (zone && !(await owner.one('select 1 from pg_timezone_names where name = $1', [zone]))) throw new Error(`Unknown time zone "${zone}".`);
+  const currency = b.currency?.trim().toUpperCase() || null;
+  if (currency && !/^[A-Z]{3}$/.test(currency)) throw new Error('Currency: a three-letter ISO 4217 code such as EUR or USD.');
+  await owner.query('update meta.app set time_zone = $2, time_zone_auto = $3, currency = $4 where id = $1', [appId, zone, b.time_zone_auto === 'true', currency]);
+}
+
 export async function globalizationRoutes(app: FastifyInstance) {
   const appOr404 = async (id: string) => owner.one('select * from meta.app where id = $1', [id]);
 
@@ -126,7 +149,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
             <li>Primary language: <b>${langName(a.language)}</b></li>
             <li>Translated into: ${langs.length ? langs.map((l, i) => html`${i ? ', ' : ''}<b>${langName(l)}</b>`) : html`<span class="muted">none yet</span>`}</li>
             <li>Language derived from: <b>${{ browser: 'the browser', user: 'the user’s preference, then the browser', primary: 'always the primary language' }[a.language_from as string]}</b></li>
-            <li>pgapex’s own texts (sign-in, reports, messages) exist in ${BUILTIN_LANGUAGES.map(([c, n]) => `${n}`).join(' and ')}; override any of them with a text message of the same name.</li>
+            <li>pgapex’s own texts (sign-in, reports, messages) exist in ${BUILTIN_LANGUAGES.slice(0, -1).map(([, n]) => n).join(', ')} and ${BUILTIN_LANGUAGES.at(-1)?.[1]}; override any of them with a text message of the same name.</li>
           </ul>
           <p><a class="btn" href="${BASE}/apps/${a.id}/settings">Change languages in Settings</a></p>`)}
         ${lang ? region('Export and import', html`

@@ -12,7 +12,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
 | Application, page, region, item, button | The same, stored in `meta.*` |
 | Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |
-| Shared components | Navigation menu, authorization schemes, lists of values, application items, application processes, build options |
+| Shared components | Navigation menu, lists, authorization schemes, lists of values, application items, application processes, build options, supporting objects |
 | `:P1_ITEM`, `:APP_USER`, `:REQUEST`, `&ITEM.` | The same syntax |
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
 | `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
@@ -21,6 +21,8 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Page access protection "Arguments must have checksum" | `protection = 'checksum'` (the default) |
 | Automatic row processing (DML) | Process type `form_dml` |
 | Interactive grid DML | Process type `grid_dml` |
+| Interactive grid: aggregates, frozen columns, column reorder/resize/hide, saved reports, row actions menu, copy/paste | Grid `aggregates`, `layout`/`frozen`, Actions → Columns (or drag), saved grid reports, `row_actions`; copy/paste of cell ranges in the browser ([chapter 4](04-pages-and-regions.md#grid-interactive-grid)) |
+| Master-detail (a detail region with a master region) | Master grid `select_row` (column → item), detail `master` (item, and the column new rows get) |
 | PL/SQL process | Process type `sql` calling PL/pgSQL (`select my_fn(:P1_X)`) |
 | `apex_error.add_error` / raising errors | `raise exception '…' using column = 'col'` |
 | Before-header processes | Process `point = 'load'` |
@@ -34,13 +36,16 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | APEX collections | Temporary or unlogged tables, or `jsonb` |
 | File Browse item, `APEX_APPLICATION_TEMP_FILES` | Item type `file`; view `meta.temp_files` ([chapter 16](16-files.md)) |
 | Rich Text Editor, Markdown Editor, Star Rating, Combobox, QR Code | Item types `richtext` (sanitised HTML), `markdown`, `rating`, `combobox` (colon-separated), `qrcode`; plus `daterange` (`from:to`) and `{"reveal": true}` on password items ([chapter 5](05-items.md)) |
-| Data Workshop / Data Load Definition, *Execute Data Load* process | SQL Workshop → Load Data; process type `data_load` ([chapter 16](16-files.md#data-loading)) |
+| Data Workshop (CSV, Excel, JSON, XML) / Data Load Definition, *Execute Data Load* process | SQL Workshop → Load Data; Shared Components → Data load definitions; process type `data_load` with `"definition"` ([chapter 16](16-files.md#data-loading)) |
+| SQL Workshop → SQL Scripts, Quick SQL, Query Builder | The same names in the SQL Workshop: saved scripts with a result per statement and a run history, shorthand → PostgreSQL DDL, a SELECT from tables joined by foreign keys ([chapter 3](03-builder.md#sql-workshop)) |
 | Interactive report *Download → PDF*, printing | Actions → Download PDF, Print ([chapter 16](16-files.md#printing)) |
 | Pagination *Row Ranges X to Y*, *Maximum Row Count*, region *Lazy Loading*, *Server Cache* | `"pagination": "range"`, `max_rows`, `"lazy": true`, `"cache": {"scope", "seconds"}` ([large tables](04-pages-and-regions.md#large-tables)) |
 | `APEX_UTIL.CHANGE_CURRENT_USER_PW`, `RESET_PASSWORD`, `EXPIRE_END_USER_ACCOUNT` | My account page; `meta.set_password()`, `meta.expire_password()` ([chapter 8](08-security.md#passwords-and-my-account)) |
 | `APEX_MAIL`, Send E-Mail process, e-mail templates | Not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` ([chapter 15](15-extensions.md)) |
 | Translated applications (XLIFF), `APEX_LANG.MESSAGE`, `&APP_TEXT$NAME.` | Translations in the app (XLIFF/CSV import and export), `meta.message()`, `&APP_TEXT$NAME.` ([chapter 14](14-globalization.md)) |
 | Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
+| Number format masks (`FML999G999G990D00`) on columns and items | `{"formats": {...}}` on report, grid and cards columns, `{"format_mask": "..."}` on charts and number/display items ([chapter 14](14-globalization.md#number-formats)) |
+| Automatic Time Zone | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
 | Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark* |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
@@ -73,7 +78,9 @@ APEX's "Social Sign-In" scheme, with identity-provider groups mapped to applicat
 in to a second app is then silent via the identity provider's session. See
 [chapter 8](08-security.md#single-sign-on-openid-connect). **SAML 2.0** providers and **LDAP /
 Active Directory** passwords work the same way (groups → roles), and *Keep me signed in* matches
-APEX's persistent authentication. Database accounts and custom PL/SQL schemes have no equivalent.
+APEX's persistent authentication. **Database accounts** sign in with PostgreSQL login roles, and
+**custom authentication** calls your own PL/pgSQL function (APEX: a custom PL/SQL scheme), see
+[chapter 8](08-security.md#custom-authentication-a-plpgsql-function).
 
 ## ORDS and PostgREST
 
@@ -142,7 +149,8 @@ Tips:
   together.
 - **Errors are hidden by default**: unexpected errors show a reference number unless the app is in
   debug mode.
-- **Dates**: date items use ISO format (`2026-10-01`) and the browser's date picker. Format masks
-  are not supported yet.
+- **Dates**: date items use ISO format (`2026-10-01`) and the browser's date picker; format masks
+  apply to report, grid and cards columns and to number and display items
+  ([number formats](14-globalization.md#number-formats)).
 - **Modal pages** open over the calling page, and close and refresh it after a successful submit,
   like an APEX "Close Dialog" process plus "Dialog Closed" refresh.

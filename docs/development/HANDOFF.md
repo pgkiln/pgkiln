@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05. Sprints 3–30 are merged into `main` and released as **v0.22.0** (migrations 001–037 are released: add 038+; 033 and 035 were never used). HR example files up to `hr_27` are released.
+Last updated: 2026-10-05. Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
 
 ## Project in one paragraph
 
@@ -48,7 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 30, released as **v0.22.0** (tags: v0.2.0, v0.6.0–v0.22.0; 0.3.0–0.5.0 were never tagged). Migrations 001–037 are released |
+| `main` | Everything up to sprint 31, released as **v0.23.0** (tags: v0.2.0, v0.6.0–v0.23.0; 0.3.0–0.5.0 were never tagged). Migrations 001–043 are released |
+| (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
@@ -988,3 +989,163 @@ push, check CI with `gh run list -R NickVrgr/Postgresql_APEX`.
 **Result (2026-10-05, v0.22.0):** keyset paging (`"keyset": [...]`, signed `r<id>_k`), report PDFs from a cursor in
 batches (`PDF_MAX_ROWS`), streamed REST collections, authentication type `database` (`src/dbauth.ts`, migration 037).
 Tests 527 + 8 skipped, e2e 78/78. HR `hr_28` was not used.
+
+## Sprint 31 (DONE, v0.23.0): five parity workstreams in parallel (owner: "read the handoff and the parity and keep building, multiple agents if necessary", 2026-10-05)
+
+Branch `sprint-31` from `main` (v0.22.0). Same set-up as sprint 26: five agents in git worktrees under
+`../pgapex-wt/<name>`, branch `sprint-31-<name>`, each with its own `postgres:17` container (`docker run`, not compose)
+and app port in the worktree's `.env`; `node_modules` is a symlink (remove it with `rm`, never `rm -r`, before
+`git worktree remove`). Rules for the agents: `docs/development/sprint-31-agent-rules.md`. AI features stay out
+(owner's decision on provider and API keys is pending).
+
+| Worktree / branch | Gaps (parity matrix) | Container, ports | Reserved |
+|---|---|---|---|
+| `grid` / `sprint-31-grid` | Interactive grid: aggregates, frozen columns, column reorder/resize/hide, saved grid reports per user, master-detail (a detail grid/report following the selected master row), row actions menu, copy/paste of cells | `pgapex-grid`, 5441, app 3111 | migration 038, `hr_28`, HR page 27 |
+| `logic` / `sprint-31-logic` | Page processes: download (file from a query/bytea), execution chains (child processes, optionally in the background), workflow processes (start, terminate); branches: function returning a URL, to another app; dynamic action event "dialog closed" | `pgapex-logic`, 5442, 3112 | 039, `hr_29`, page 28 |
+| `i18n` / `sprint-31-i18n` | Number format masks (report columns, items, charts), automatic time zone (browser time zone into the session, timestamptz shown in it), built-in runtime messages in German, French and Spanish | `pgapex-i18n`, 5443, 3113 | 040, `hr_30`, page 29 |
+| `workshop` / `sprint-31-workshop` | SQL Workshop: SQL scripts (saved, run, results per statement), Quick SQL (shorthand → DDL), a simple query builder; Data Workshop: XML loading, saved data load definitions | `pgapex-workshop`, 5444, 3114 | 041, `hr_31` (only if useful) |
+| `builder` / `sprint-31-builder` | Custom authentication (a PL/pgSQL function), generic Lists (shared component + list region), page locks and developer comments, supporting objects (install/upgrade/deinstall scripts in the export) | `pgapex-builder`, 5445, 3115 | 042, `hr_32`, page 31 |
+
+Several workstreams may redefine `meta.export_app`/`meta.import_app` (latest definitions: 034): the coordinator writes
+migration **043** combining all changes after merging.
+
+**How to resume after a session ends:** `docker start pgapex-grid pgapex-logic pgapex-i18n pgapex-workshop
+pgapex-builder pgapex-db`; per worktree `git -C ../pgapex-wt/<n> log --oneline sprint-31..` and `git status`. For an
+unfinished one, launch an agent: "Read `docs/development/sprint-31-agent-rules.md` and follow it. Worktree
+`../pgapex-wt/<n>`, branch `sprint-31-<n>`, DB `pgapex-<n>` port <db>, app port <app>, reserved migration <m>, HR
+`hr_<x>` page <p>. Continue the uncommitted/wip work for the gaps in the table above." Then finish like sprint 26
+(merge order: i18n, workshop, grid, logic, builder; migration 043; tsc, db:reset + test, e2e, upgrade test from v0.22.0;
+parity rows + counts, CHANGELOG 0.23.0, SECURITY.md, `.env.example`, version, CI matrix + v0.23.0, chapter 12 version
+line; merge, tag, push; remove worktrees, branches and containers).
+
+**State at the handoff (2026-10-05, ~08:15):** v0.22.0 is released and CI on `main` is green (a flaky
+database-auth test was fixed on `main` in 68d8b65: page views are logged without
+awaiting, so the "last log entry" raced). The five agents were still running; each had pushed nothing itself, but
+the coordinator pushed their `wip:` commits to `origin/sprint-31-<n>`. Uncommitted work may exist in the worktrees
+(only on the owner's machine, under `../pgapex-wt/<n>`). Progress at that moment:
+
+| Workstream | Committed (wip) | Uncommitted at handoff | Probably still to do |
+|---|---|---|---|
+| grid | aggregates, layout per user, master-detail, row actions; client side (move, resize, paste, master-detail refresh) | nothing | tests (security + functional), HR `hr_28` page 27, docs, e2e |
+| logic | migration 039; download, chain, workflow processes; branches; background jobs; dialog_closed event; builder fields, Advisor, jobs panel, replace; HR page 28 | `test/page-logic.test.ts` (new) | finish tests, security tests, docs, e2e |
+| i18n | `numformat.ts` + migration 040; time zone per request, locale number symbols, settings; masks on report/grid/cards/chart/PDF columns and number items | edits in format.ts, report-settings.ts, components.ts, app.css | German/French/Spanish messages, HR `hr_30` page 29, tests, docs, e2e |
+| workshop | migration 041; SQL script splitter/runner + pages; Quick SQL parser/DDL/page; query builder; workshop tests | `src/xml.ts`, `test/xml.test.ts`, dataload.ts edits | XML loading, saved data load definitions, security tests, docs, e2e |
+| builder | migration 042; custom authentication; lists (shared component, region, menu/bar) | `src/builder/locks.ts`, `supporting.ts`, edits in routes/designer/shared/ui/cli/export test | page locks + comments, supporting objects, export/import (migration 042 may redefine them), HR `hr_32` page 31, tests, docs, e2e |
+
+**How to take over (another Claude account / session):**
+1. If you are on the owner's machine (`/home/nickquispel/projects/postgres_apex`): the worktrees and containers exist.
+   Start the containers (`docker start pgapex-db pgapex-grid pgapex-logic pgapex-i18n pgapex-workshop pgapex-builder`).
+   Make sure no earlier agent is still editing a worktree (its `git status` stops changing). Commit any uncommitted
+   work as `wip: …` on the worktree's branch first, so nothing is lost.
+2. If you are on another machine: clone, `git fetch`, and recreate a worktree per workstream from `origin/sprint-31-<n>`
+   (`git worktree add ../pgapex-wt/<n> sprint-31-<n>`), symlink `node_modules`, write `.env` from the main `.env` with
+   the workstream's DB port and app port (table above), create the container (`docker run` command in sprint 26's
+   section), `npx tsx scripts/migrate.ts && npm run example:hr`. Uncommitted work from the owner's machine is then
+   missing: the table above says what to redo.
+3. Per unfinished workstream, launch an agent (several in parallel is fine) with: "Read
+   `docs/development/sprint-31-agent-rules.md` and follow it. Worktree `../pgapex-wt/<n>`, branch `sprint-31-<n>`, DB
+   `pgapex-<n>` port <db>, app port <app>, reserved migration <m>, HR `hr_<x>` page <p>. Continue the wip work (commits
+   and uncommitted changes) for the gaps of your row in the Sprint 31 table of HANDOFF.md; finish, test, and report."
+   Push each branch after the agent finishes (`git push origin sprint-31-<n>`), so another account can pick it up.
+4. Coordinator: collect each final report below, then finish as written above (merge order i18n, workshop, grid,
+   logic, builder; migration 043 combining every redefinition of `meta.export_app`/`meta.import_app`; full tests,
+   upgrade test from v0.22.0, docs, release 0.23.0, cleanup). Then sprint 32 (below).
+5. Keep this file updated and pushed after every milestone (merge of a workstream, release): usage can end without
+   warning.
+
+**Takeover (2026-10-05, ~08:15):** a new coordinator session found no agent still running (worktrees unchanged for
+20+ minutes; two orphaned dev servers stopped), committed every worktree's uncommitted work as `wip:` and pushed all
+five `sprint-31-<n>` branches. Five new agents were launched (one per workstream) to finish them.
+
+**Workstream reports:** (fill in as agents finish)
+
+**Owner (2026-10-05):** the coordinator merges `sprint-31` into `main` itself when finished (and releases 0.23.0);
+do **not** start sprint 32 in that session.
+
+- **logic: DONE** (pushed, not merged). Migration `039_page_logic.sql`, HR `hr_29_toolkit.sql` page 28. export/import
+  not redefined (`process_job` in `NOT_EXPORTED`). **039 redefines `meta.has_role`** (background-job branch): combine
+  in 043 if builder also redefines it. Env vars `BACKGROUND_PROCESSES`, `PROCESS_JOB_INTERVAL_S` (default 10) → `.env.example`.
+  Hotspots: engine.ts, routes.ts, logic.ts, render.ts, public/app.js, builder components/advisor/designer, metadata.ts,
+  i18n.ts, cli/replace.ts, server.ts, runtime/files.ts, end of security.test.ts, guide 01/06/12.
+  Security: download queries run as app role (logged `download`); function branches checked, off-app refused and logged
+  `forbidden`; app branches signed per target app/page/user; `meta.enqueue_process_job` only queues current-app chains
+  with session roles; passwords dropped from job binds; request-bound processes refused in background;
+  `meta.process_jobs` security_barrier own-jobs view; workflow terminate/retry checked in DB; `dialog_closed` same-origin.
+  Parity: Download process, execution chains (+ background), workflow process start/terminate/retry, branch function
+  returning URL, branch to another app, DA event Dialog Closed: all Yes. Tests 548 pass / 8 skip, e2e 81/81.
+- **grid: DONE** (pushed, not merged). Migration `038_grid_reports.sql` (saved_report.kind report/layout, new unique
+  key, redefines view `meta.saved_reports`, `meta.save_report`, `meta.delete_saved_report`; adds `save_grid_layout`,
+  `reset_grid_layout`), HR `hr_28_grid.sql` page 27, nav seq 28. export/import not redefined. No env vars.
+  **19 new i18n keys in en/nl: i18n's de/fr/es tables need them after merging.** Hotspots: public/app.js (large grid
+  section), runtime/routes.ts (region endpoint, grid routes), grid.ts, regions.ts, report.ts, builder region-settings/
+  components, i18n.ts, app.css, end of security.test.ts, responsive e2e, guide 03/04/08/09/11/12/18.
+  Security: master row selection HMAC-bound to app/page/user/region/value; `GET …/region/:id` only lazy regions or
+  details of a visible master; layout/apply routes check CSRF, page access, grid visible, Actions on; layout input
+  sanitised (identifiers, widths 40–1000, ≤5 frozen, ≤6000 chars); detail master column never editable, inserts
+  without a selection refused. Parity: IG aggregates, frozen columns, reorder/resize/hide, per-user layouts and saved
+  reports, master-detail, row actions menu, copy/paste of cell ranges: done. Tests 545 pass / 8 skip, e2e 83/83.
+- **builder: DONE**. The agent squashed the wip into 3 commits on a9f1ddd; that result is pushed as
+  **`origin/sprint-31-builder-final`** (merge this one). `origin/sprint-31-builder` still holds the older wip tip (not
+  force-pushed). Migration 042, HR `hr_32_lists.sql` page 31 (lists HR_SHORTCUTS, HR_DEPARTMENTS, HR_NAVBAR, two
+  supporting scripts). **042 redefines `export_app`/`import_app`** from 034 (adds `lists`, `list_entries`,
+  `supporting_scripts`; import sets list-entry parents after inserting): combine in 043. No env vars.
+  New i18n keys `list.missing`, `list.empty`, `list.navbar` (en/nl): de/fr/es need them. Existing tests changed:
+  logic.test.ts "Used in (3)" for LEAVE_FORECAST; page-3 link regex `/a\/hr\/3(?![0-9])/` in security and
+  template-components tests. Hotspots: builder routes.ts (settings form `$23`–`$27`, developers page), ui.ts (lock
+  check), runtime routes.ts (login), components.ts, shared.ts, region-settings, designer, search, render.ts,
+  regions.ts, appfiles.ts, cli replace/main, metadata.ts, i18n.ts, app.css, builder.css, end of security.test.ts,
+  responsive e2e, guide 03/04/08/09/11/12/18.
+  Security: custom auth runs as app role in a temp function, password only a parameter, failures logged by SQLSTATE,
+  same "invalid" answer + throttling, function name constrained, random dollar-quote tag, nothing configured = no
+  sign-in; list URLs limited to app paths or http(s) (constraint + `safeListUrl`), noopener, checksums, entries hidden
+  by authz/condition/build option/page access; locks enforced server-side on every builder POST (423 for JSON),
+  owner or admin unlocks, admin break logged `lock_broken`, developers get `is_admin` (existing + CLI-created default
+  admin); supporting objects never run on import, need developer session + CSRF, run as app role in one transaction
+  with 600s timeout, logged `supporting_objects`; locks/comments not exported.
+  Parity: Custom authentication, Lists (shared component, list region, nav menu/bar), page/app locks + developer
+  comments, supporting objects: all Yes. Left out: "Used in" doesn't count `nav_list`/`navbar_list`.
+  Tests 556 pass / 8 skip, e2e 78/78.
+- **workshop: DONE**. Squashed into 4 commits; pushed as **`origin/sprint-31-workshop-final`** (merge this one;
+  `origin/sprint-31-workshop` holds the older wip tip). Migration 041, HR `hr_31_data_load_xml.sql` (page 13 accepts
+  .xml, definition EMP_XML, sample `public/samples/employees.xml`; no new page). **041 redefines
+  `export_app`/`import_app`** from 034 (adds `data_load_definitions`; id/app_id replaced on import): combine in 043.
+  No env vars (`DATA_LOAD_MAX_MB/ROWS` apply to XML). Hotspots: builder components.ts, shared.ts (SHARED list),
+  runtime engine.ts (`dataLoad`), appfiles.ts (`NAMED`), builder ui.ts (`workshopTabs`), sql.ts, builder.css, top
+  and end of security.test.ts, responsive e2e, guide 03/08/11/12/16.
+  Security: workshop routes need builder login + CSRF and run as owner (like SQL Commands); XML refuses DOCTYPE/
+  entities, depth ≤100, element counts limited; definition table names regex + CHECK + regclass + quoted, masks as
+  literals, values as params, processes see only own-app definitions and load as app role; Load Data temp file bound
+  to the uploading session; script download names sanitised; **SQL Commands/Scripts text now logged (≤2000 chars),
+  passwords in statements end up in the activity log**; known limit: big SELECT results fully buffered.
+  Parity: SQL Scripts yes; Quick SQL yes (subset); Query Builder yes (simple, no canvas); XML loading yes; data load
+  definitions yes. Tests 585 pass / 8 skip, e2e all pass.
+- **i18n: DONE** (pushed `sprint-31-i18n`). Migration `040_globalization.sql`, HR `hr_30_formats.sql` page 29.
+  export/import not redefined (whole `meta.app` row copied). No env vars. **`src/i18n/de.ts`, `fr.ts`, `es.ts` are
+  `Record<MessageKey,string>`: every other branch's new keys must be added there (tsc flags them).** Behaviour change:
+  number items now refuse non-numbers (422), as APEX. Hotspots: builder components/routes/report-settings; runtime
+  routes (signIn, login form, posted items), engine (validate), report, regions, items, locale, account, charts, grid,
+  pdf, report-views, render; db.ts (appTx), metadata.ts, app.js, app.css, security.test.ts (end + P22 test), guide
+  04/05/09/11/12/14. Possible existing flake: files.test.ts "more files are added…" (order of contract/diploma.pdf).
+  Security: time zone names only if exact in `pg_timezone_names` (≤64), bound `set_config(..., true)`; check
+  constraints on app/account time_zone and app.currency `^[A-Z]{3}$`; `POST /a/:alias/tz` CSRF, own session only,
+  no-op without automatic time zone; runtime role column grant on `meta.account.time_zone`, always `ctx.user`; mask
+  literals/currency escaped, bad/over-long masks fall back, parser caps 200 chars, exponent 4 digits, NaN/Infinity
+  refused; `FORMAT.CURRENCY` only if `^[A-Z]{3}$`.
+  Parity: number format masks (report/grid/cards columns, charts, number/display items, locale separators, currency),
+  Automatic Time Zone, runtime messages en/nl/de/fr/es: Done. Tests 587 pass / 8 skip, e2e 82/82.
+
+**Merged and released (2026-10-05):** i18n, workshop-final, grid, logic, builder-final merged into `sprint-31`
+(conflicts: appended test blocks, help texts, imports; workshop's and builder's `.script-results` CSS clash solved by
+renaming builder's to `.support-results`; every new key of grid, logic and builder added to de/fr/es). Migration
+**043**: export/import with 041's and 042's sections (042 had dropped 041's), and the list-entry parent check as an
+AFTER trigger (the BEFORE trigger broke `pgapex import --replace` depending on row order). Tests: dev DB 713 pass /
+8 skip, e2e 90/90; clean worktree with CI env only: fresh 713/8 and upgrade from v0.22.0 713/8. Released as
+**v0.23.0** (parity 79/26/10/6). Sprint 32 not started (owner).
+
+## Sprint 32 (PLANNED, owner 2026-10-05)
+
+- **CI: move GitHub Actions off Node.js 20** (deprecated; the runs show a warning): `actions/checkout`,
+  `actions/setup-node` and `actions/upload-artifact` in `.github/workflows/ci.yml` to their current major versions
+  (check the latest releases first); confirm the warning is gone in the run annotations. Also note: `ubuntu-latest`
+  moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres service, Playwright deps).
+- Further items: pick from the parity matrix after sprint 31 is merged.

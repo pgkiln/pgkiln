@@ -66,6 +66,9 @@ hr/
     template-components/status_badge.json   (named by static id; the template in status_badge.template.html)
     automations/ document-templates/ task-definitions/ workflow-definitions/ rest-modules/
     web-credentials/ rest-sources/      (web credentials never contain their secret)
+    lists/hr_shortcuts.json           (a query list's query in hr_departments.query.sql)
+    list-entries.json                 the entries of every list, per list as a tree
+    supporting-objects/check-the-sample-data.json   (the script in .script.sql; never run on import)
     group-roles.json
   globalization/
     text-messages.json
@@ -127,7 +130,7 @@ the files any more are removed. What belongs to this installation stays:
 - the application's **id and alias** (links, API URLs and bookmarks keep working),
 - **who may sign in** and with which roles (accounts are never exported; identity-provider group
   mappings do come from the file), OAuth clients, sessions and "keep me signed in" tokens,
-- **saved reports** of users, which move to the new version of their region (same page number and
+- **saved reports** of users (and their grid column layouts), which move to the new version of their region (same page number and
   static id),
 - **running tasks and workflows**, which keep their definition (by name),
 - for **automations**: whether each one is switched on, its next and last run, and its log. New

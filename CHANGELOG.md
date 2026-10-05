@@ -5,6 +5,45 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-05
+
+### Added
+- **Interactive grid** (migration 038): aggregates over the whole result in a footer (developer and
+  user defined); 1–5 frozen columns; column reorder, resize and hide (Actions → Columns without
+  JavaScript, drag and drop with it); layouts and saved grid reports per user (private or public);
+  **master-detail** (a master grid's signed row selection sets a page item, detail regions refresh in
+  place, detail grids fill the master column); a row actions menu (edit, duplicate, delete, links);
+  copy and paste of cell ranges as tab-separated text. HR example page 27 "Departments and staff".
+- **Page logic** (migration 039): a **download** process (a file from a query; several rows in one
+  zip; on submit or on load); **execution chains** with child processes and their own conditions,
+  optionally run **in the background** (a queue with SKIP LOCKED, NOTIFY and polling, status view
+  `meta.process_jobs`, a Jobs tab in the designer); **workflow** processes (start a version, terminate,
+  retry); branches to a **function returning a URL** and to a page of **another application**; the
+  dynamic action event **Dialog Closed**. New settings `BACKGROUND_PROCESSES` and
+  `PROCESS_JOB_INTERVAL_S`. HR example page 28 "Employee toolkit".
+- **Globalization** (migration 040): Oracle-style **number format masks** on report, grid and cards
+  columns, charts, PDF columns and number/display items, with the language's separators and the app's
+  currency; **Automatic Time Zone** (the browser's zone at sign-in and from app.js, a choice on My
+  account, the app's or the database's), `timestamptz` shown in it; built-in runtime messages in
+  **German, French and Spanish**. HR example page 29.
+- **SQL Workshop and Data Workshop** (migration 041): **SQL Scripts** (saved, upload/download, a
+  result per statement, stop or continue, optionally one transaction, run history); **Quick SQL**
+  (shorthand to DDL); a simple **query builder**; **XML loading**; saved **data load definitions**
+  (mapping, transformations, format masks, defaults) for Load Data and the `data_load` process,
+  exported with the app.
+- **Builder** (migration 042): **custom authentication** (a PL/pgSQL function or body, with
+  post-authentication code); generic **Lists** as a shared component, a list region and the
+  navigation menu or bar; **page and application locks** and **developer comments**, with an
+  administrator flag for developers; **supporting objects** (install, upgrade and deinstall scripts in
+  the export, run from the builder). HR example page 31 "Shortcuts".
+
+### Changed
+- Export and import (migration 043) include data load definitions, lists, list entries and supporting
+  scripts.
+- Number items refuse text that isn't a number (422), as in APEX.
+- SQL Commands run on their own connection and are written to the activity log (up to 2,000
+  characters).
+
 ## [0.22.0] - 2026-10-05
 
 ### Added

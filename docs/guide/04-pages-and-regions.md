@@ -34,7 +34,7 @@ only when true) and `authz` (an authorization scheme).
 | Type | Purpose |
 |---|---|
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
-| [`grid`](#grid-interactive-grid) | Editable table on one database table |
+| [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail and copy/paste of cells |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
 | [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel or radar chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
@@ -44,6 +44,7 @@ only when true) and `authz` (an authorization scheme).
 | [`display_selector`](#display_selector-region-display-selector) | Tabs or a select list that show one region (or group of regions) of the page at a time |
 | [`map`](#map) | Places (markers) and shapes on an interactive map |
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
+| [`list`](#list-lists) | A list (Shared Components → Lists) as nested links, a badge list, cards or tabs |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
@@ -162,6 +163,7 @@ Attributes (most of them are also in the page designer's **Report settings** for
 | `mobile` | `"reflow"` | `"scroll"` keeps a horizontally scrolling table on phones |
 | `hidden` | `[]` | Column names to leave out of the display (they can still be used in links) |
 | `headings` | `{}` | Column headings, e.g. `{"sal": "Salary"}`; by default `hire_date` becomes "Hire Date" |
+| `formats` | `{}` | Format masks per column, e.g. `{"sal": "FML999G990D00", "hiredate": "DD-MON-YYYY"}` (see [number formats](14-globalization.md#number-formats)) |
 | `link` | none | Makes one column a link: `{"column": "empno", "page": 3, "items": {"P3_EMPNO": "#empno#"}}`. `#col#` is replaced by the row's value; the link carries a checksum and is hidden when the user may not open that page |
 | `empty` | "No data found" | Text when there are no rows |
 | `preformatted` | `[]` | Columns shown with preserved spaces (e.g. indented trees) |
@@ -218,10 +220,69 @@ Attributes:
 | `allow` | all `true` | `{"insert": false, "update": true, "delete": false}` |
 | `readonly` | `[]` | Columns that may not be edited |
 | `columns` | `{}` | Per column: `{"deptno": {"lov": "LOV:DEPARTMENTS", "required": true}}`. `lov` makes it a select list (any [list of values](05-items.md#lists-of-values)) |
-| `headings`, `hidden` | | As for reports |
+| `headings`, `hidden`, `formats` | | As for reports |
+| `aggregates` | | Totals in the footer: `{"sal": ["sum", "avg"], "empno": "count"}` (`sum`, `avg`, `count`, `min`, `max`) |
+| `layout` | | The default column layout: `{"order": ["ename", "sal"], "hidden": ["comm"], "widths": {"ename": 180}, "frozen": 1}` |
+| `frozen` | `0` | Shorthand for `layout.frozen`: the first 1 to 5 shown columns stay in view while the grid scrolls sideways |
+| `row_actions` | | A menu per row: `{"edit": {"page": 3, "items": {"P3_EMPNO": "#empno#"}}, "duplicate": true, "delete": true, "links": [{"label": "Reviews", "page": 20, "items": {"P20_EMPNO": "#empno#"}}]}` |
+| `select_row` | | Makes it a **master** grid: `{"column": "deptno", "item": "P27_DEPTNO"}` (below) |
+| `master` | | Makes it (or a report, chart, cards …) a **detail**: `{"item": "P27_DEPTNO", "column": "deptno"}` (below) |
+| `actions` | `true` | `false` hides the Actions menu (columns, aggregates, saved reports) |
+| `saved_reports`, `public_reports` | `true`, none | As for reports |
 
 Cell editors follow the column type: number, date, date-time, checkbox (boolean), select list
 (with `lov`) or text.
+
+**Aggregates** are computed in the database over **every row of the search**, not only the rows
+on the page, and shown in a footer row under their columns. Besides the developer's
+(`aggregates`), users add their own with **Actions → Aggregate** (kept in the URL as
+`r<id>_a=fn|column`, like a report's) and remove them with the × on their chip.
+
+**Column layout.** Users arrange the grid for themselves: **Actions → Columns** lists every
+column with *Shown*, *Position* and *Width (px)*, and how many columns are **frozen** (they stick
+to the left while the table scrolls sideways; the grid's leading columns, the delete box and
+the row menu, freeze along). With JavaScript, they can also drag a header to **move** a column
+and drag its right edge to **resize** it; the result is saved at once. A user's layout is kept per
+grid in `meta.saved_report` (kind `layout`; for the public user in the session) and applied
+whenever they open the page; **Reset** goes back to the developer's `layout`. Hidden columns are
+still part of the grid: their values are posted and saved as they were. The developer's `hidden`
+columns never show, whatever the layout.
+
+**Saved grid reports** work like a report's (Actions → Saved reports): they keep the search,
+the user's aggregates **and the column layout**. Applying one makes its layout the user's own.
+`public_reports` names the authorization scheme whose users may share a report with everyone.
+
+**Row actions.** With `row_actions`, each row gets a ⋮ menu: *Edit* opens a page with the row's
+values in its items (`#column#`; a signed link, shown only when the user may open that page,
+as a dialog when it is a modal page), *Duplicate* copies the row into a new, unsaved row,
+*Delete* ticks the row's delete box, and `links` adds more such links. Without JavaScript
+Duplicate is a link that shows the page again with the copy as a new row.
+
+**Master-detail.** A master grid with `select_row` gets a radio-style link in front of each
+row; choosing one puts the row's `column` value into the page item `item` (a hidden item on the
+page). Regions with `"master": {"item": …}` are its details: they use the item in their query,
+
+```sql
+select empno, ename, job, sal from hr.emp where deptno = :P27_DEPTNO::int
+```
+
+and show *"Select a row above"* until a row is selected. With JavaScript the details are
+refreshed in place (`GET …/region/:id`, no page reload); without, the link reloads the page.
+The selection is a signed link (bound to the application, page, user, region and value), so a
+user can only select a row the server showed them; the item is not taken from the URL or a
+submit otherwise. A detail **grid** with `master.column` fills that column with the selected value
+on its new rows (and never lets users edit it); saving new rows without a selection is refused.
+
+**Copy and paste.** Click a cell and Shift+click another to select a range; Ctrl+C copies it
+as tab-separated text (which spreadsheets paste as cells). Ctrl+V pastes such text (from a
+spreadsheet or another grid) from the focused cell on, adding rows when the grid allows inserts;
+one value pasted into a selected range fills it, Delete empties the range. Read-only cells are
+skipped, select lists match a value or its display text. Pasted values are only saved by
+**Save**, through the same validation as typed ones.
+
+The HR example's page 27 (*Departments and staff*) shows all of this: a master grid of
+departments, a detail grid of their staff (totals, a frozen name column, a row menu) and a
+detail report.
 
 ---
 
@@ -269,6 +330,7 @@ Attributes:
 | `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel` or `radar` |
 | `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
 | `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
+| `format_mask` | A number format mask for the values in labels, tips and the data table, e.g. `"FML999G990"` (see [number formats](14-globalization.md#number-formats)) |
 | `empty` | Text when there are no rows |
 
 | Kind | Best for | Notes |
@@ -373,6 +435,7 @@ Attributes:
 | `link` | `{"page": 5, "items": {"P5_DEPTNO": "#deptno#"}}` makes each card a link |
 | `empty` | Text when there are no rows |
 | `max_rows` | Most cards shown (default 500); when there are more, "Showing the first 500 rows." follows |
+| `formats` | Format masks for `title`, `subtitle`, `body` and `badge`, e.g. `{"badge": "FML999G999G990"}` |
 
 ---
 
@@ -623,6 +686,50 @@ Attributes: `expanded` (levels open at first, default 1), `link` (as for maps; `
 column), `empty`. The tree is drawn on the server with `<details>`: it works without JavaScript,
 and the browser's find-in-page opens closed branches. Clicking a label follows the link; the rest
 of the row opens and closes the branch. Up to 5000 nodes.
+
+### `list` (lists)
+
+A **list** (APEX: Shared Components → Lists) is a named set of links kept under **Shared Components
+→ Lists**. A list region shows it; the same list can also be the application's **navigation menu**
+or **navigation bar** (**Settings → Theme**: *Navigation menu list*, *Navigation bar list*). A list is:
+
+- **static**: its **entries** (Shared Components → Lists → a list → *Add entry*), each with a label,
+  an icon, a target, a badge, a description, a parent entry (a sub menu, up to 6 levels), a
+  sequence, a condition (SQL), an authorization scheme and a build option; or
+- **sql**: the rows of a query, run as the application's database role with the usual binds:
+
+```sql
+select d.dname as label, 2 as page, null::jsonb as items, 'building' as icon,
+       (select count(*) from hr.emp e where e.deptno = d.deptno)::text as badge,
+       initcap(d.loc) as description
+  from hr.dept d order by d.dname
+```
+
+  Only `label` is required; the other columns are `page`, `items` (JSON object of item values),
+  `url`, `icon`, `badge`, `description`, and `id` / `parent_id` for nesting. At most 500 rows.
+
+An entry's **target** is a page of the application with item values (`{"P3_ID": "&P2_ID."}`; links
+carry the [checksum](08-security.md#session-state-protection) like other generated links), a path
+inside the application (`2?tab=open`), or an `http(s)://` address (opened with
+`rel="noopener noreferrer"`); other URLs (`javascript:`, `//host`, `../`) are refused when saved and
+left out when they come from a query or a substitution. Labels, badges and descriptions take
+`&ITEM.` substitutions and are always escaped.
+
+Entries the user may not see are left out: a failing condition or authorization scheme, an excluded
+build option, or a target page the user may not open (the page's authorization, like the
+navigation menu); a heading without a target and without visible children too. The entry for the
+current page is marked (`aria-current="page"`); in the navigation menu its parents are open.
+
+Attributes (the region's **Settings** in the page designer):
+
+| Key | Meaning |
+|---|---|
+| `list` | The list's name (upper case) |
+| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description) or `tabs` (the top-level entries as tabs) |
+
+The HR example's page 31 (Shortcuts) shows a static list with each template (with a badge from an
+item, child entries, a manager-only entry and one of an excluded build option) and a department
+list from a query; its navigation bar is the list `HR_NAVBAR`.
 
 ### Template components
 

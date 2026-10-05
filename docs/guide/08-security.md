@@ -10,6 +10,9 @@ Each application chooses its **authentication** in **Settings**:
 | Authentication | Behaviour |
 |---|---|
 | **App users** | A login page at `/a/<alias>/login`, checked against the **user directory** |
+| **HTTP header** | A trusted reverse proxy names the user ([below](#http-header-authentication-reverse-proxy)) |
+| **Database accounts** | PostgreSQL login roles and their passwords ([below](#database-accounts-postgresql-roles)) |
+| **Custom** | Your own PL/pgSQL checks the user name and password ([below](#custom-authentication-a-plpgsql-function)) |
 | **None** | A public application. Everybody is `nobody` |
 
 In an app with a login, pages require sign-in unless *Requires authentication* is unchecked on
@@ -283,6 +286,42 @@ throttling (`LOGIN_MAX_FAILURES_PER_USER`, `LOGIN_MAX_FAILURES_PER_IP`); the act
 can't be reached the page says so (503). *Keep me signed in*, LDAP, single sign-on and the
 password-change form are not used by these apps.
 
+### Custom authentication (a PL/pgSQL function)
+
+APEX's *Custom* authentication scheme: your own code decides whether a user name and password are
+valid, e.g. against a users table of your application. In **Settings → Security** choose
+Authentication **Custom** and fill in, under *Custom authentication*, one of:
+
+- **Function name**: a function `(p_username text, p_password text) returns boolean`, in lower case,
+  optionally with its schema (`app.check_login`). The app's database role needs `EXECUTE` on it. It
+  takes precedence over the body.
+- **Or function body**: PL/pgSQL with `p_username` and `p_password`, returning `true` for a valid
+  sign-in, either a bare `return …;` or a whole `declare … begin … end` block:
+
+```sql
+return exists (select 1 from app.users
+                where name = p_username and not locked
+                  and pw_hash = crypt(p_password, pw_hash));
+```
+
+Optionally, **Post-authentication code** runs after a successful check with `p_username` (and
+`meta.app_user()` set to it), e.g. to record the last sign-in; raising an exception refuses the
+sign-in. *After login* application processes run afterwards as usual.
+
+Both run **as the application's database role**, in one transaction, in a temporary function that is
+dropped again; nothing is kept unless the check returns `true` and the post-authentication code
+succeeds. The password is only ever a query parameter: it is never part of the SQL text, never
+stored and never logged. A check that returns `false` or `null`, or raises an error, gets the same
+"invalid" answer as a wrong password and counts towards the sign-in throttling; the activity log has
+`login` (detail `custom`) and `login_failed` with `custom: check returned false`, `check failed
+(<SQLSTATE>)` or `post-authentication failed (<SQLSTATE>)`, never the error message (it could repeat
+the password). With neither a function nor a body nobody can sign in.
+
+The session's user (`:APP_USER`) is the user name as typed; app roles come from **Access control**
+like for other users (an account of the same name, if there is one), or from the app's own tables
+in authorization schemes. The login page has the user name and password form only: *Keep me signed
+in*, LDAP, single sign-on and the password-change form are not used by these apps.
+
 ### Keep me signed in
 
 Under **Settings → Sign-in methods**, *"Keep me signed in" for (days)* (1–365) adds a checkbox to the
@@ -392,6 +431,13 @@ grant execute on function hr.request_leave(date, date, text) to hr_app;
 Apps created in the builder get full DML on their schema by default; tighten this as the app
 matures. Privileges show up in **SQL Workshop → Object Browser**.
 
+A `data_load` process loads files as the app role too, also with a data load definition: a
+definition naming a table the role can't write fails like any other insert, and a process only
+finds the definitions of its own application. XML files with a document type declaration are
+refused ([chapter 16](16-files.md#data-loading)). The SQL Workshop (SQL Commands, SQL Scripts,
+Quick SQL, Load Data) runs as the owner instead, so every developer can change any table: keep
+developer accounts to people you trust with the database.
+
 ## Session state protection
 
 - **URL items**: on pages with protection *Arguments must have checksum* (the default), item
@@ -401,6 +447,20 @@ matures. Privileges show up in **SQL Workshop → Object Browser**.
 - **Submitted values**: only editable, visible items are taken from a submit. Hidden, display-only,
   read-only and unauthorized items keep their server-side values.
 - **Grid rows**: every row's primary key is signed the same way.
+- **Master-detail selection**: a master grid's select links carry a signature bound to the
+  application, page, user, region and value; only then does the value go into the item (hidden
+  items are never taken from a submit, and URL items need the page checksum). The detail
+  endpoint `GET …/region/:id` serves only lazy regions and details of a visible master, after
+  the page's and region's authorization and conditions. A detail grid's master column is filled
+  from the session item on insert and can't be edited.
+- **Grid layouts and saved grid reports**: the layout endpoints (`POST …/grid/:id/layout`,
+  `…/layout/reset`, `…/saved/:sid/apply`) check the CSRF token, page access and that the grid is
+  on the page and visible to the user. The layout is cleaned on the server (known shapes only,
+  widths numbers between 40 and 1000, at most 5 frozen columns, at most 6000 characters) and
+  only ever reorders columns the query returns anyway. In the database, `meta.save_grid_layout` /
+  `meta.reset_grid_layout` (security definer) only touch the signed-in user's own row of a grid
+  of the current application; layout rows are never visible to other users, even if marked
+  public. Applying a saved report works for the user's own and public reports of that grid only.
 - **Calendar drag and drop**: the browser only names an event (its key) and a slot. The server
   checks the token, the page's and region's authorization and condition and the region's
   `move_authz`, and that the event is in the region's query for this user (as the application's

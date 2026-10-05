@@ -1,3 +1,4 @@
+import { appLocks, isAdmin, lockPanel, lockText } from './locks.ts';
 import { parseRoleList, validRoleName } from '../dbauth.ts';
 import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import type { FastifyInstance } from 'fastify';
@@ -14,6 +15,7 @@ import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash,
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
+import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -179,8 +181,10 @@ export async function builderRoutes(app: FastifyInstance) {
     try {
       const doc = JSON.parse(req.body?.doc ?? '');
       const r = await owner.one('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null]);
-      flash(s, 'Application imported. Check its database role and users under Settings / Shared Components.');
-      return back(reply, s, `${BASE}/apps/${r.id}`);
+      // supporting objects are never run on import: the developer reviews them and chooses
+      const scripts = (await owner.one('select count(*)::int as n from meta.supporting_script where app_id = $1', [r.id])).n;
+      flash(s, `Application imported. Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}`);
+      return back(reply, s, scripts ? `${BASE}/apps/${r.id}/supporting-objects?imported=1` : `${BASE}/apps/${r.id}`);
     } catch (e) {
       flash(s, `Import failed: ${(e as Error).message}`, 'error');
       return back(reply, s, `${BASE}/import`);
@@ -212,17 +216,23 @@ export async function builderRoutes(app: FastifyInstance) {
       ),
     ]);
     const nextPage = Math.max(0, ...pages.rows.map((p) => p.page_no)) + 1;
+    const locks = new Map((await appLocks(a.id)).map((l) => [l.page_no, l]));
+    const commentsPerPage = new Map((await owner.query('select page_no, count(*)::int as n from meta.dev_comment where app_id = $1 group by 1', [a.id])).rows.map((r) => [r.page_no, r.n]));
+    const appLock = locks.get(0);
 
     const main = html`
       ${appHeader(a, 'pages')}
+      ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${icon('key')} ${lockText(appLock)} Changes are refused until it is unlocked.</div>` : ''}
       ${region('Pages', html`<div class="table-wrap"><table class="report">
-          <thead><tr><th class="num">Page</th><th>Name</th><th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th></th></tr></thead>
+          <thead><tr><th class="num">Page</th><th>Name</th><th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th>Lock</th><th></th></tr></thead>
           <tbody>${pages.rows.map((p) => html`<tr>
-            <td class="num">${p.page_no}</td><td><a href="${BASE}/pages/${p.id}">${p.name}</a></td><td>${p.mode}</td>
+            <td class="num">${p.page_no}</td><td><a href="${BASE}/pages/${p.id}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}</td><td>${p.mode}</td>
             <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
             <td>${p.requires_auth ? (p.authz ?? '—') : 'public'}</td><td>${p.protection}</td>
+            <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? 'you' : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
             <td><a href="/a/${a.alias}/${p.page_no}" target="_blank" rel="noopener">Run ▸</a></td></tr>`)}</tbody>
         </table></div>`)}
+      ${region('Application lock and comments', await lockPanel(s, a.id, 0, { headings: true }))}
       <div class="columns">
         ${region('Create pages from a table', html`
           <p class="muted u-mt0">"Report and form" generates an interactive report and a modal form with create/update/delete; "Interactive grid" generates one editable grid page. Both add a menu entry.</p>
@@ -317,6 +327,8 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const providers = (await owner.query('select name, display_name, enabled from meta.auth_provider order by display_name')).rows;
     const directories = (await owner.query('select name, display_name, enabled from meta.ldap_directory order by display_name')).rows;
+    const lists = (await owner.query('select name from meta.list where app_id = $1 order by name', [a.id])).rows.map((r) => r.name as string);
+    const listChoices = (v: string | null, none: string): [string, string][] => [['', none], ...lists.map((n): [string, string] => [n, n]), ...(v && !lists.includes(v) ? [[v, `${v} (missing!)`] as [string, string]] : [])];
     const main = html`${appHeader(a, 'settings')}
       <div class="columns">
         ${region('Application settings', html`
@@ -328,7 +340,7 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <h3>Security</h3>
             <div class="form-grid">
-              ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['header', 'HTTP header (reverse proxy)'], ['database', 'Database accounts (PostgreSQL roles)'], ['none', 'None (public)']])}
+              ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['header', 'HTTP header (reverse proxy)'], ['database', 'Database accounts (PostgreSQL roles)'], ['custom', 'Custom (a PL/pgSQL function)'], ['none', 'None (public)']])}
               ${input('db_role', 'Database role (parsing schema)', a.db_role, { help: 'All application SQL runs as this role (SET LOCAL ROLE), so grants and row level security apply. Leave empty only for trusted internal apps.' })}
               <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
                 <small class="help">Shows database error details to end users. Development only.</small></div>
@@ -347,6 +359,17 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('db_auth_roles', 'Allowed roles', (a.db_auth_roles ?? []).join(', '), { placeholder: 'e.g. alice, bob', help: 'Login roles that may sign in, comma separated (exact names).' })}
               ${input('db_auth_member_of', 'Or members of role', a.db_auth_member_of ?? '', { placeholder: 'e.g. app_users_group', help: 'Every member of this role may sign in too.' })}
             </div>
+            <h3>Custom authentication</h3>
+            <p class="muted">Only used when Authentication is "Custom". Your own PL/pgSQL checks the user name and password on the sign-in form, as the application's database role; the password is passed as a parameter and never logged. Failed attempts are throttled like other sign-ins. With neither field set nobody can sign in.</p>
+            <div class="form-grid">
+              ${input('custom_auth_function', 'Function name', a.custom_auth_function ?? '', { placeholder: 'e.g. app.check_login', help: 'A function (p_username text, p_password text) returns boolean, in lower case, optionally with its schema. The app\'s role needs EXECUTE on it. Takes precedence over the body below.' })}
+            </div>
+            <div class="field" data-wide><label class="label" for="f_custom_auth_code">Or function body</label>
+              <textarea id="f_custom_auth_code" name="custom_auth_code" class="code" rows="6" spellcheck="false" data-code="plpgsql">${a.custom_auth_code ?? ''}</textarea>
+              <small class="help">PL/pgSQL with p_username and p_password, returning true for a valid sign-in, e.g. <code>return exists (select 1 from app.users where name = p_username and pw_hash = crypt(p_password, pw_hash));</code></small></div>
+            <div class="field" data-wide><label class="label" for="f_custom_auth_post_code">Post-authentication code</label>
+              <textarea id="f_custom_auth_post_code" name="custom_auth_post_code" class="code" rows="4" spellcheck="false" data-code="plpgsql">${a.custom_auth_post_code ?? ''}</textarea>
+              <small class="help">Optional PL/pgSQL run after a successful check, with p_username (and meta.app_user()), e.g. to record the last sign-in. Raising an exception refuses the sign-in. Application processes "after login" run afterwards as usual.</small></div>
             <h3>Sign-in methods</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
             ${directories.length
@@ -362,6 +385,8 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('accent', 'Accent colour', a.theme?.accent ?? '#0b63c5', { type: 'color' })}
               ${input('header', 'Header colour', a.theme?.header ?? '#13294b', { type: 'color' })}
               ${select('nav', 'Navigation menu', a.theme?.nav ?? 'side', [['side', 'Side (collapsible)'], ['top', 'Top bar']], 'On tablets and phones the menu is always a drawer.')}
+              ${select('nav_list', 'Navigation menu list', a.nav_list ?? '', listChoices(a.nav_list, '- the navigation entries -'), 'A list (Shared Components → Lists) shown as the navigation menu instead of the navigation entries.')}
+              ${select('navbar_list', 'Navigation bar list', a.navbar_list ?? '', listChoices(a.navbar_list, '- none -'), 'A list shown as links in the header, next to the user menu.')}
               ${select('mode', 'Theme style', a.theme?.mode ?? 'auto', [['auto', 'Automatic (light or dark, following the device)'], ['light', 'Light'], ['dark', 'Dark']])}
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="user_choice" value="true"${a.theme?.user_choice !== false ? raw(' checked') : ''}> Users may choose light or dark</label>
@@ -374,6 +399,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('date_format', 'Date format', a.date_format, { placeholder: 'e.g. DD-MM-YYYY (empty: per language)', help: 'Masks: YYYY YY MM MON MONTH DD DY DAY HH24 HH MI SS AM' })}
               ${input('timestamp_format', 'Date and time format', a.timestamp_format, { placeholder: 'e.g. DD-MM-YYYY HH24:MI' })}
             </div>
+            ${await timeZoneSettings(a)}
             <div class="buttons"><button class="btn btn-hot">Save settings</button></div>
           </form>
           <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
@@ -385,6 +411,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
           ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGAPEX_AUTH_HEADER_PROXIES' : html`<b>refused: PGAPEX_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
           ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>no roles allowed</b>`})</li>` : ''}
+          ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : html`<b>no check configured: nobody can sign in</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
           ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
@@ -403,7 +430,8 @@ export async function builderRoutes(app: FastifyInstance) {
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
-                header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22, updated_at = now() where id = $1`,
+                header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
+                custom_auth_function = $23, custom_auth_code = $24, custom_auth_post_code = $25, nav_list = $26, navbar_list = $27, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
@@ -425,8 +453,14 @@ export async function builderRoutes(app: FastifyInstance) {
          b.header_auto_create === 'true',
          b.logout_url?.trim() || null,
          ((roles) => (roles.length ? roles : null))(parseRoleList(b.db_auth_roles)),
-         validRoleName(b.db_auth_member_of)],
+         validRoleName(b.db_auth_member_of),
+         b.custom_auth_function?.trim() || null,
+         b.custom_auth_code?.trim() || null,
+         b.custom_auth_post_code?.trim() || null,
+         b.nav_list?.trim().toUpperCase() || null,
+         b.navbar_list?.trim().toUpperCase() || null],
       );
+      await saveTimeZoneSettings(req.params.id, b);
       flash(s, 'Settings saved.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -494,7 +528,8 @@ export async function builderRoutes(app: FastifyInstance) {
   app.get(`${BASE}/developers`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const devs = (await owner.query('select username from meta.developer order by 1')).rows;
+    const devs = (await owner.query('select username, is_admin from meta.developer order by 1')).rows;
+    const admin = devs.some((d) => d.username === s.username && d.is_admin);
     const main = html`<h1 class="u-mb1">Developers</h1>
       <div class="columns">
         ${region('Change your password', html`<form method="post" action="${BASE}/developers/password">${csrf(s)}
@@ -504,15 +539,20 @@ export async function builderRoutes(app: FastifyInstance) {
           </div>
           <div class="buttons"><button class="btn btn-hot">Change password</button></div></form>`)}
         ${region('Developer accounts', html`
-          <table class="report"><thead><tr><th>Username</th><th></th></tr></thead><tbody>
-            ${devs.map((d) => html`<tr><td>${d.username}${d.username === s.username ? ' (you)' : ''}</td><td>${d.username === s.username ? '' : html`
-              <form method="post" action="${BASE}/developers/delete">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="Remove developer ${d.username}?">Remove</button></form>`}</td></tr>`)}
+          <p class="muted u-mt0">Administrators add and remove developers and can break other developers' page and application locks.</p>
+          <table class="report"><thead><tr><th>Username</th><th>Role</th><th></th></tr></thead><tbody>
+            ${devs.map((d) => html`<tr><td>${d.username}${d.username === s.username ? ' (you)' : ''}</td><td>${d.is_admin ? 'Administrator' : 'Developer'}</td><td>${d.username === s.username || !admin ? '' : html`
+              <form method="post" action="${BASE}/developers/admin" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="is_admin" value="${d.is_admin ? 'false' : 'true'}"><button class="link-button">${d.is_admin ? 'Make developer' : 'Make administrator'}</button></form>
+              · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="Remove developer ${d.username}?">Remove</button></form>`}</td></tr>`)}
           </tbody></table>
-          <h3>Add developer</h3>
-          <form method="post" action="${BASE}/developers">${csrf(s)}
-            <div class="form-grid">${input('username', 'Username', '', { required: true })}${input('password', 'Password', '', { type: 'password', required: true, auto: 'new-password' })}</div>
-            <div class="buttons"><button class="btn btn-hot">Add developer</button></div>
-          </form>`)}
+          ${admin
+            ? html`<h3>Add developer</h3>
+              <form method="post" action="${BASE}/developers">${csrf(s)}
+                <div class="form-grid">${input('username', 'Username', '', { required: true })}${input('password', 'Password', '', { type: 'password', required: true, auto: 'new-password' })}</div>
+                <div class="field"><label class="check"><input type="checkbox" name="is_admin" value="true"> Administrator</label></div>
+                <div class="buttons"><button class="btn btn-hot">Add developer</button></div>
+              </form>`
+            : html`<p class="muted">Only administrators add and remove developers.</p>`}`)}
       </div>`;
     return send(reply, s, shell(s, 'Developers', [['Developers']], main, 'developers'));
   });
@@ -520,10 +560,11 @@ export async function builderRoutes(app: FastifyInstance) {
   app.post(`${BASE}/developers`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators add developers.');
     try {
       const problem = await passwordProblem(req.body?.password);
       if (problem) throw new Error(problem);
-      await owner.query('insert into meta.developer (username, password_hash) values ($1, meta.hash_password($2))', [req.body?.username?.trim(), req.body?.password]);
+      await owner.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), $3)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true']);
       flash(s, 'Developer added.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -553,9 +594,21 @@ export async function builderRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/developers`);
   });
 
+  app.post(`${BASE}/developers/admin`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators change roles.');
+    if (req.body?.username && req.body.username !== s.username) {
+      await owner.query('update meta.developer set is_admin = $2 where username = $1', [req.body.username, req.body.is_admin === 'true']);
+      flash(s, 'Role changed.');
+    }
+    return back(reply, s, `${BASE}/developers`);
+  });
+
   app.post(`${BASE}/developers/delete`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators remove developers.');
     if (req.body?.username && req.body.username !== s.username) {
       await owner.query('delete from meta.developer where username = $1', [req.body.username]);
       await owner.query('delete from meta.session where app_id is null and username = $1', [req.body.username]);

@@ -281,7 +281,7 @@ describe('builder', () => {
     const dev = await developer();
     const opt = await owner.one(`select id from meta.build_option where app_id = $1 and name = 'LEAVE_FORECAST'`, [appId]);
     const body = (await dev.get(`/builder/apps/${appId}/shared?c=build_option-${opt.id}`)).body;
-    assert.match(body, /Used in \(2\)/);
+    assert.match(body, /Used in \(3\)/);
     const region = await owner.one(`select id from meta.region where page_id = $1 and title = 'Forecast'`, [pageId]);
     assert.match((await dev.get(`/builder/pages/${pageId}?c=region-${region.id}`)).body, /<option value="LEAVE_FORECAST" selected>LEAVE_FORECAST \(exclude\)<\/option>/);
     const advisor = (await dev.get(`/builder/apps/${appId}/advisor`)).body;

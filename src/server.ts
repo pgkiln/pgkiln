@@ -2,9 +2,11 @@ import './env.ts';
 import { buildApp } from './app.ts';
 import { startScheduler } from './automations.ts';
 import { startWorkflowRunner } from './workflow.ts';
+import { startProcessJobRunner } from './process-jobs.ts';
 
 const app = await buildApp();
 await app.listen({ port: Number(process.env.PORT ?? 3100), host: process.env.HOST ?? '127.0.0.1' });
-// automations and workflows (AUTOMATIONS=off / WORKFLOWS=off on servers that should not run them)
+// automations, workflows and background processes (AUTOMATIONS=off / WORKFLOWS=off / BACKGROUND_PROCESSES=off on servers that should not run them)
 startScheduler();
 await startWorkflowRunner();
+await startProcessJobRunner();

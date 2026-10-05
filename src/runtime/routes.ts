@@ -3,13 +3,14 @@ import { forgetRemember, issueRemember, useRemember } from '../remember.ts';
 import { appDirectories, ldapAuthenticate, LdapError, resolveLdapAccount } from '../ldap.ts';
 import { finishSamlSignIn, samlMetadata, startSamlSignIn } from '../saml.ts';
 import { dbAuthenticate } from '../dbauth.ts';
+import { customAuthenticate } from '../customauth.ts';
 import { headerValue, HeaderAuthError, peerAddress, resolveHeaderAccount, trustedPeer } from '../headerauth.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
-import { accountRoles, loadApp, loadPage, type App, type Page } from '../metadata.ts';
+import { accountRoles, loadApp, loadPage, type App, type Page, type Region } from '../metadata.ts';
 import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
 import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
@@ -19,18 +20,23 @@ import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './a
 import { bindValues, publicError, stripSemicolon, toState, writeOut, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
-import { comboMultiple, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
+import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
+import { parseNumber } from '../numformat.ts';
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
+import { downloadHeaders, type Download } from './processes.ts';
 import { moveCalendarEvent } from './calendar.ts';
 import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
 import { invalidatePage, lazyOf } from './region-cache.ts';
+import { applyRowSelection, mastersOf } from './master-detail.ts';
+import { currentLayout, layoutJson, layoutParam, parseLayout, storeLayout } from './grid-layout.ts';
+import { layoutFromForm, statePart } from './grid.ts';
 import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
 import { pwaHead } from './pwa.ts';
-import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
+import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -97,12 +103,15 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   await destroySession(reply, oldSession, base);
   const s = await createSession(reply, a.id, base, username, roles);
   logActivity({ appId: a.id, username, event: 'login', ip: clientIp(req), detail });
-  // the account's preferences: light/dark and language
-  const pref = await runtime.one<{ theme_pref: string; language: string | null }>(
-    'select theme_pref, language from meta.account where lower(username) = lower($1)', [username]);
+  // the browser's time zone (sent before signing in) stays with the new session
+  if (typeof oldSession.state.__TZ === 'string') s.state.__TZ = oldSession.state.__TZ;
+  // the account's preferences: light/dark, language and time zone
+  const pref = await runtime.one<{ theme_pref: string; language: string | null; time_zone: string | null }>(
+    'select theme_pref, language, time_zone from meta.account where lower(username) = lower($1)', [username]);
   if (pref) {
     s.state.__THEME = pref.theme_pref;
     if (pref.language) s.state.__LANG = pref.language;
+    if (pref.time_zone) s.state.__TZ_PREF = pref.time_zone;
     if (a.theme?.user_choice !== false) reply.setCookie(THEME_COOKIE, pref.theme_pref, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
   }
   await saveState(s);
@@ -177,6 +186,7 @@ export const txContext = (ctx: PageContext) => ({
   appUser: ctx.user,
   sessionId: ctx.session.id,
   lang: ctx.locale.lang,
+  timeZone: ctx.locale.timeZone,
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */
@@ -297,7 +307,11 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
     else if (item.type === 'markdown') ctx.session.state[item.name] = posted ? String(posted).replace(/\r\n?/g, '\n') : null;
     else if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
     else if (item.type === 'password' && !posted) continue;
-    else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
+    else if (itemMask(item) && posted !== undefined && posted !== '') {
+      // "1.234,50 €" → "1234.5"; text that isn't a number is kept as typed, and validate() reports it
+      const parsed = parseNumber(String(posted), itemMask(item), ctx.locale.numbers);
+      ctx.session.state[item.name] = parsed === null ? String(posted) : parsed || null;
+    } else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
   }
 }
 
@@ -330,6 +344,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (normalised !== null) return reply.redirect(`${ctx.base}/${ctx.page.page_no}${normalised ? `?${normalised}` : ''}`);
 
     if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
+    // a master grid's selected row (signed link) into its item
+    applyRowSelection(ctx);
     const flash = takeFlash(ctx.session);
     if (flash) ctx.messages.push(flash);
     const flashError = takeFlash(ctx.session, '__FLASH_ERROR');
@@ -339,7 +355,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // a document template: ?doc=NAME (see documents.ts)
     const docName = ctx.params.get('doc');
 
-    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string };
+    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string; download?: Download };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -357,6 +373,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         } catch (e) {
           ctx.errors.page.push((e as Error).message);
         }
+        // a download process on load sends its file instead of the page
+        if (ctx.download && !docName && !downloadKey) return { download: ctx.download };
         await computeVisibility(ctx);
         if (docName) return renderDocument(ctx, docName);
         if (downloadKey) {
@@ -393,6 +411,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (result.redirect) return reply.redirect(result.redirect, 303);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
     if (result.streamed) return reply;
+    if (result.download) return reply.headers(downloadHeaders(result.download)).send(result.download.content);
     if (result.file)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type(result.type!).send(result.file);
     return reply.type('text/html').send(result.html);
@@ -488,6 +507,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
       await saveState(ctx.session);
       return reply.redirect(self, 303);
     }
+    // a download process: the file is the answer (the page stays as it is in the browser)
+    if (ctx.download) {
+      await saveState(ctx.session);
+      logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'download', ip: ctx.ip, detail: ctx.download.name.slice(0, 200) });
+      return reply.headers(downloadHeaders(ctx.download)).send(ctx.download.content);
+    }
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     await saveState(ctx.session);
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx));
@@ -512,7 +537,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const da = ctx.page.dynamic_actions.find((d) => d.id === Number(req.params.id));
         if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         applyPostedItems(ctx, body, list(da.items_to_submit));
-        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string } = { items: {}, itemsHtml: {}, regions: {} };
+        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string; flash?: string } = { items: {}, itemsHtml: {}, regions: {} };
         const affected = list(da.affected_items).filter((n) => vis.items.has(n));
         switch (da.action) {
           case 'set_value': {
@@ -539,6 +564,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
             break;
         }
         for (const n of affected) out.items[n] = ctx.session.state[n] ?? '';
+        // the first action after a dialog closed: the dialog's success message is shown here, not on the next page
+        if (da.event === 'dialog_closed' && body.__dialog_closed === '1') {
+          const flash = takeFlash(ctx.session);
+          if (flash) out.flash = flash;
+        }
         return out;
       });
       await saveState(ctx.session);
@@ -554,23 +584,31 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // page's query string (report paging, filters) comes along. Page access,
   // the region's condition and authorization are checked as for the page;
   // session state is only read (several regions load at the same time).
+  // A detail region (master-detail.ts) is fetched the same way after a row
+  // of its master grid was selected: the signed selection in the query
+  // string goes into the master's item first (and is kept in the session).
   app.get('/a/:alias/:page/region/:id', async (req: Req, reply) => {
     const ctx = await loadContext(req, reply, { json: true });
     if (!ctx) return;
     ctx.params.delete('cs');
     ctx.dialog = ctx.params.get('dialog') === '1';
     reply.header('cache-control', 'private, no-store');
+    let selected = false;
     try {
       const out = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
         await checkPageAccess(ctx);
-        const vis = await computeVisibility(ctx);
         const r = ctx.page.regions.find((x) => x.id === Number(req.params.id));
-        if (!r || !lazyOf(r) || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        const masters = r ? mastersOf(ctx.page, r) : [];
+        if (masters.length) selected = applyRowSelection(ctx);
+        const vis = await computeVisibility(ctx);
+        const detail = masters.some((m) => vis.regions.has(m.id));
+        if (!r || !(lazyOf(r) || detail) || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
         ctx.loadNow = r.id;
         const markup = (await renderRegion(ctx, r)).toString();
         return { html: markup, css: ctx.css.text, detached: ctx.detached.map(String).join('') };
       });
+      if (selected) await saveState(ctx.session);
       return reply.send(out);
     } catch (e) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
@@ -587,7 +625,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (body.__csrf !== ctx.session.csrf_token) return forbidden(ctx, reply, ctx.locale.t('error.session_reload'), 'saved report: csrf');
     if (ctx.user === 'nobody') return forbidden(ctx, reply, ctx.locale.t('error.access_denied'), 'saved report: not signed in');
     const regionId = Number(req.params.id);
-    const region = ctx.page.regions.find((r) => r.id === regionId && r.type === 'report');
+    const region = ctx.page.regions.find((r) => r.id === regionId && (r.type === 'report' || r.type === 'grid'));
     // only the report's own parameters come back
     const params = region ? reportParams(region, new URLSearchParams(body.params ?? '')) : new URLSearchParams();
     try {
@@ -615,6 +653,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
       if (!name) return t('report.name_required');
       const region = ctx.page.regions.find((r) => r.id === regionId)!;
       const pub = req.body?.public === 'true' && typeof region.config.public_reports === 'string' && (await isAuthorized(ctx, region.config.public_reports));
+      // a grid report keeps the user's column layout too
+      if (region.type === 'grid') params.set(layoutParam(region), layoutJson((await currentLayout(ctx, region)).layout));
+      else params.delete(layoutParam(region));
       await ctx.client!.query('select meta.save_report($1, $2, $3, $4)', [regionId, name, params.toString(), pub]);
       return t('report.saved', { name });
     }),
@@ -624,6 +665,85 @@ export async function runtimeRoutes(app: FastifyInstance) {
     savedReport(req, reply, async (ctx) => {
       await ctx.client!.query('select meta.delete_saved_report($1)', [Number(req.params.sid) || 0]);
       return ctx.locale.t('report.saved_deleted');
+    }),
+  );
+
+  // ---------------------------------------------------------------- grid layout and grid reports
+  // Actions → Columns (or app.js after dragging or resizing a column): the
+  // user's own column layout of a grid; Reset goes back to the developer's.
+  // Applying a saved grid report makes its layout the user's. Any user who
+  // can see the grid may arrange it (the public user in the session only).
+  const gridAction = async (req: Req, reply: FastifyReply, run: (ctx: PageContext, r: Region, back: URLSearchParams) => Promise<string | null>) => {
+    const ctx = await loadContext(req, reply);
+    if (!ctx) return;
+    const body = req.body ?? {};
+    const json = /application\/json/.test(String(req.headers.accept ?? ''));
+    const refuse = async (detail: string) => {
+      await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail });
+      return json ? reply.code(403).send({ error: ctx.locale.t('error.access_denied') }) : forbidden(ctx, reply, ctx.locale.t('error.access_denied'), detail);
+    };
+    if (body.__csrf !== ctx.session.csrf_token)
+      return json ? reply.code(403).send({ error: ctx.locale.t('error.session_reload') }) : forbidden(ctx, reply, ctx.locale.t('error.session_reload'), 'grid layout: csrf');
+    const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'grid');
+    // back to the page with the reports' and grids' own parameters only
+    ctx.params = new URLSearchParams(typeof body.params === 'string' ? body.params.slice(0, 8000) : '');
+    const back = statePart(ctx);
+    let message: string | null = null;
+    try {
+      message = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        if (!r || !vis.regions.has(r.id) || r.config.actions === false) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        return run(ctx, r, back);
+      });
+    } catch (e) {
+      if (e instanceof Forbidden) return refuse(`grid layout: region ${req.params.id} on page ${ctx.page.page_no}`);
+      message = await publicError(ctx, e, 'grid layout');
+      if (json) return reply.code(400).send({ error: message });
+    }
+    if (json) {
+      await saveState(ctx.session);
+      return reply.send({ ok: true });
+    }
+    if (message) ctx.session.state.__FLASH = message;
+    await saveState(ctx.session);
+    const q = back.toString();
+    return reply.redirect(`${ctx.base}/${ctx.page.page_no}${q ? `?${q}` : ''}`, 303);
+  };
+
+  app.post('/a/:alias/:page/grid/:id/layout', async (req: Req, reply) =>
+    gridAction(req, reply, async (ctx, r) => {
+      const body = req.body ?? {};
+      // app.js posts the layout as JSON; the Columns form posts one field per column
+      const layout = typeof body.layout === 'string' ? parseLayout(body.layout) : layoutFromForm(body);
+      if (!layout) throw new Forbidden('layout');
+      await storeLayout(ctx, r, layout);
+      return null;
+    }),
+  );
+
+  app.post('/a/:alias/:page/grid/:id/layout/reset', async (req: Req, reply) =>
+    gridAction(req, reply, async (ctx, r, back) => {
+      await storeLayout(ctx, r, null);
+      for (const k of [...back.keys()]) if (k.startsWith(`r${r.id}_`)) back.delete(k);
+      return null;
+    }),
+  );
+
+  app.post('/a/:alias/:page/grid/:id/saved/:sid/apply', async (req: Req, reply) =>
+    gridAction(req, reply, async (ctx, r, back) => {
+      const c = ctx.client!;
+      // own or public reports of this grid only (the view shows no one else's)
+      const row = (
+        await c.query<{ params: string }>(`select params from meta.saved_reports where id = $1 and region_id = $2 and kind = 'report'`, [Number(req.params.sid) || 0, r.id])
+      ).rows[0];
+      if (!row) throw new Forbidden('saved report');
+      const saved = new URLSearchParams(row.params);
+      await storeLayout(ctx, r, parseLayout(saved.get(layoutParam(r))));
+      for (const k of [...back.keys()]) if (k.startsWith(`r${r.id}_`)) back.delete(k);
+      for (const [k, v] of saved) if (k.startsWith(`r${r.id}_`) && k !== layoutParam(r) && !/_(p|dup|sel|selcs)$/.test(k)) back.append(k, v);
+      return null;
     }),
   );
 
@@ -719,8 +839,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- login / logout
   const loginPage = async (app: App, locale: Locale, session: Session, next: string, error?: string) => {
     const t = locale.t;
-    // database accounts: the role name and password form only
-    const dbAuth = app.authentication === 'database';
+    // database accounts and custom authentication: the user name and password form only
+    const dbAuth = app.authentication === 'database' || app.authentication === 'custom';
     if (dbAuth) app = { ...app, local_login: true, remember_me_days: null };
     const providers = dbAuth ? [] : await enabledProviders(app.sso_providers ?? []);
     const nextQs = next ? `?next=${encodeURIComponent(next)}` : '';
@@ -740,6 +860,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
             ? html`<form method="post" class="login-form">
                 <input type="hidden" name="__csrf" value="${session.csrf_token}">
                 <input type="hidden" name="next" value="${next}">
+                ${app.time_zone_auto ? html`<input type="hidden" name="__tz" value="">` : ''}
                 <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
                 <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
                 ${app.remember_me_days ? html`<label class="check"><input type="checkbox" name="remember" value="true"> ${t('login.remember', { days: app.remember_me_days })}</label>` : ''}
@@ -793,8 +914,13 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ip = clientIp(req);
     const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
     if (req.body?.__csrf !== session.csrf_token) return fail(locale.t('login.expired_session'), 403), null;
+    // automatic time zone: app.js filled in the browser's (signIn() keeps it for the new session)
+    if (a.time_zone_auto) {
+      const zone = await validTimeZone(req.body?.__tz);
+      if (zone) session.state.__TZ = zone;
+    }
     if (a.authentication === 'header') return fail(locale.t('login.method_unavailable'), 403), null;
-    if (!a.local_login && a.authentication !== 'database') return fail(locale.t('login.password_disabled'), 403), null;
+    if (!a.local_login && a.authentication !== 'database' && a.authentication !== 'custom') return fail(locale.t('login.password_disabled'), 403), null;
     // a NUL byte can't be a user name (and PostgreSQL text refuses it)
     if (username.includes('\0')) return fail(locale.t('login.invalid'), 400), null;
     if (await loginThrottled(a.id, username, ip)) {
@@ -831,6 +957,15 @@ export async function runtimeRoutes(app: FastifyInstance) {
         return fail(r.reason === 'unavailable' ? locale.t('login.db_unavailable') : locale.t('login.invalid'), r.reason === 'unavailable' ? 503 : 401);
       }
       return completeLogin(req, reply, a, session, r.role, { next, method: 'database', detail: 'database' });
+    }
+    if (a.authentication === 'custom') {
+      // custom authentication: the app's own function decides, as the app's role (the password is never logged)
+      const r = await customAuthenticate(a, username, password);
+      if (!r.ok) {
+        await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: `custom: ${r.detail}` });
+        return fail(locale.t('login.invalid'), 401);
+      }
+      return completeLogin(req, reply, a, session, r.username, { next, method: 'custom', detail: 'custom' });
     }
     const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username, password]);
     if (!r?.username) {
@@ -877,7 +1012,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const r0 = await loginRequest(req, reply);
     if (!r0) return;
     const { a, locale, session, username, next, ip } = r0;
-    if (a.authentication === 'database') return reply.code(403).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), locale.t('login.method_unavailable')));
+    if (a.authentication === 'database' || a.authentication === 'custom') return reply.code(403).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), locale.t('login.method_unavailable')));
     const b = req.body ?? {};
     const again = (msg: string, code = 422) => reply.code(code).type('text/html').send(expiredPage(a, locale, session, username, safeNext(a, next), msg));
     if (b.new_password !== b.confirm_password) return again(locale.t('password.mismatch'));

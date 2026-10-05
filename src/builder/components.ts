@@ -3,6 +3,7 @@
 // from this spec, and SQL column names only ever come from here (never from
 // the request).
 
+import { formatSettingsProblem } from '../runtime/format.ts';
 import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
@@ -12,6 +13,8 @@ import { handlerProblems } from '../runtime/rest.ts';
 import { TEMPLATE_COMPONENT_SPEC } from './template-spec.ts';
 import { REST_SOURCE_SPEC, WEB_CREDENTIAL_SPEC } from './websources.ts';
 import { invokeProblems } from '../runtime/rest-sources.ts';
+import { DATA_LOAD_DEF_SPEC } from './dataload.ts';
+import { processProblems } from '../runtime/processes.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -22,6 +25,8 @@ export type FieldKind =
   | 'authz'    // authorization scheme of the app
   | 'page'     // page of the app
   | 'nav'      // navigation entry of the app (parent)
+  | 'list_name'   // list of the app (by name)
+  | 'list_parent' // entry of the app's lists (parent of a list entry)
   | 'build_option' // build option of the app (NAME or !NAME)
   | 'rest_source' // REST data source of the app (by name)
   | 'secret'   // write-only: never shown; empty keeps the stored value
@@ -83,9 +88,10 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'layers',
     summary: (r) => r.title ?? `(${r.type})`,
     defaults: { type: 'report', columns: 12, template: 'standard' },
+    validate: (v) => formatSettingsProblem(v.config),
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'static', 'dynamic'], group: 'Identification' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'list', 'static', 'dynamic'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
         help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · template_component: any SELECT (its columns are #COLUMN# in the template), or empty for one instance · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },
       { name: 'rest_source', label: 'REST data source', kind: 'rest_source', group: 'Source',
@@ -100,7 +106,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
-        help: 'report: {"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000} · cards: {"style":"metric","link":{...},"max_rows":500} · dynamic: {"max_rows":1000} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}}} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true}; any region: {"display_selector":true} puts it in the page\'s display selector; report, chart, cards, dynamic, tree and template component regions: {"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)' },
+        help: 'report: {"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · report, grid, cards: {"formats":{"sal":"FML999G990D00","hiredate":"DD-MON-YYYY"}} (number or date format masks per column) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000,"format_mask":"FML999G990"} · cards: {"style":"metric","link":{...},"max_rows":500} · dynamic: {"max_rows":1000} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}},"aggregates":{"sal":["sum","avg"]},"layout":{"order":["col"],"hidden":["col"],"widths":{"col":160},"frozen":1},"row_actions":{"edit":{"page":3,"items":{"P3_ID":"#id#"}},"duplicate":true,"delete":true,"links":[{"label":"…","page":4,"items":{}}]},"select_row":{"column":"id","item":"P1_ID"} (a master),"master":{"item":"P1_ID","column":"parent_id"} (a detail; any region type),"actions":true,"saved_reports":true,"public_reports":"SCHEME"} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true} · list: {"list":"NAME","template":"links"|"badges"|"cards"|"tabs"} (lists under Shared Components → Lists); any region: {"display_selector":true} puts it in the page\'s display selector; report, chart, cards, dynamic, tree and template component regions: {"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)' },
     ],
   },
   item: {
@@ -111,6 +117,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'edit',
     summary: (i) => i.name,
     defaults: { type: 'text' },
+    validate: (v) => formatSettingsProblem(v.config),
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', help: 'Referenced in SQL as :NAME, e.g. P3_NAME', group: 'Identification' },
       { name: 'type', label: 'Type', kind: 'select', options: ['text', 'textarea', 'number', 'date', 'datetime', 'select', 'popup_lov', 'radio', 'checkbox', 'switch', 'checkbox_group', 'multiselect', 'email', 'tel', 'url', 'color', 'file', 'location', 'richtext', 'markdown', 'rating', 'combobox', 'daterange', 'qrcode', 'hidden', 'display', 'password'], group: 'Identification' },
@@ -125,7 +132,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'readonly_condition', label: 'Read-only condition (SQL)', kind: 'code', group: 'Security', help: 'When true the item is shown read-only and ignored on submit.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
-      { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. Lists of values read at most {"max_rows":5000} rows. File items: {"filename_column":"photo_name","mime_column":"photo_mime","accept":"image/*,.pdf","max_mb":2,"capture":"environment","max_px":1600} (capture opens the camera on phones; max_px makes photos smaller before upload). Several files: {"multiple":true,"max_files":5,"table":"doc.attachment","parent_column":"ticket_id","key_column":"id"} with the content column as source (one row per file). Text items: {"scan":true} adds a barcode/QR scan button where the browser can read codes. Location items hold "lat,lng" with a "Use my location" button. Rich text: sanitised HTML; markdown: Markdown text ({"rows":10}). Rating: {"max":5} stars, stored as 1..max. Combobox: free text with list-of-values suggestions, values colon-separated ({"multiple":false} for one value). Date range: "from:to" (ISO dates; split_part(:P1_X, \':\', 1)). QR code: shows the value as a QR code ({"ecc":"M","size":200,"show_value":true}). Password: {"reveal":true} adds a show/hide button.' },
+      { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. Lists of values read at most {"max_rows":5000} rows. File items: {"filename_column":"photo_name","mime_column":"photo_mime","accept":"image/*,.pdf","max_mb":2,"capture":"environment","max_px":1600} (capture opens the camera on phones; max_px makes photos smaller before upload). Several files: {"multiple":true,"max_files":5,"table":"doc.attachment","parent_column":"ticket_id","key_column":"id"} with the content column as source (one row per file). Text items: {"scan":true} adds a barcode/QR scan button where the browser can read codes. Location items hold "lat,lng" with a "Use my location" button. Rich text: sanitised HTML; markdown: Markdown text ({"rows":10}). Rating: {"max":5} stars, stored as 1..max. Combobox: free text with list-of-values suggestions, values colon-separated ({"multiple":false} for one value). Date range: "from:to" (ISO dates; split_part(:P1_X, \':\', 1)). QR code: shows the value as a QR code ({"ecc":"M","size":200,"show_value":true}). Password: {"reveal":true} adds a show/hide button. Number and display items: {"format_mask":"999G999G990D00"} shows the number in the language\'s notation (FML999G990D00 adds the currency) and reads it back on submit.' },
     ],
   },
   button: {
@@ -168,8 +175,9 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     validate: (v) => (v.css_classes && !CLASS_LIST.test(String(v.css_classes)) ? 'CSS classes: up to five names of lower case letters, digits, - and _, separated by spaces.' : null),
     fields: [
       { name: 'name', label: 'Name', kind: 'text', group: 'When' },
-      { name: 'event', label: 'Event', kind: 'select', options: ['change', 'click', 'load'], group: 'When' },
-      { name: 'trigger_element', label: 'Item(s) / button', kind: 'upper', group: 'When', help: 'Comma separated item names, or a button name for click.' },
+      { name: 'event', label: 'Event', kind: 'select', options: ['change', 'click', 'load', 'dialog_closed'], group: 'When',
+        help: 'dialog_closed: a modal dialog opened from this page was submitted and closed (instead of reloading the page), e.g. refresh a region.' },
+      { name: 'trigger_element', label: 'Item(s) / button / dialog page', kind: 'upper', group: 'When', help: 'Comma separated item names, or a button name for click, or for dialog_closed the dialog page numbers (empty: any dialog).' },
       { name: 'condition_type', label: 'Client-side condition', kind: 'select', options: ['', 'equals', 'not_equals', 'in_list', 'is_null', 'is_not_null'], group: 'When' },
       { name: 'condition_value', label: 'Condition value', kind: 'text', group: 'When' },
       { name: 'action', label: 'Action', kind: 'select', options: ['show', 'hide', 'enable', 'disable', 'set_value', 'execute_sql', 'refresh_region', 'refresh_item', 'alert', 'submit', 'set_focus', 'add_class', 'remove_class', 'show_success', 'show_error', 'clear_errors'], group: 'Action',
@@ -213,20 +221,24 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     summary: (p) => p.name,
     defaults: { type: 'sql', point: 'submit' },
     validate: (v) => {
-      if (v.type !== 'invoke_api') return null;
-      const problems = invokeProblems(typeof v.config === 'string' ? JSON.parse(v.config) : v.config);
+      const conf = typeof v.config === 'string' ? JSON.parse(v.config || '{}') : v.config;
+      const problems = v.type === 'invoke_api' ? invokeProblems(conf) : processProblems(String(v.type), conf);
+      if (v.type === 'download' && !String(v.code ?? '').trim()) problems.push('A download process needs a query in Code.');
       return problems.length ? problems.join(' ') : null;
     },
     fields: [
       { name: 'name', label: 'Name', kind: 'text' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['sql', 'form_dml', 'grid_dml', 'data_load', 'invoke_api'] },
-      { name: 'point', label: 'Point', kind: 'select', options: ['submit', 'load'] },
+      { name: 'type', label: 'Type', kind: 'select', options: ['sql', 'form_dml', 'grid_dml', 'data_load', 'invoke_api', 'download', 'chain', 'workflow'],
+        help: 'download: a file from the query in Code · chain: runs the processes that name it as their chain, in sequence (optionally in the background) · workflow: start, terminate or retry a workflow' },
+      { name: 'point', label: 'Point', kind: 'select', options: ['submit', 'load'], help: 'A chain\'s processes run when the chain does (their own point is not used).' },
+      { name: 'parent_process', label: 'Chain (parent process)', kind: 'text', help: 'The name of a chain process on this page: this process then runs only inside that chain, in its sequence.' },
       { name: 'code', label: 'Code (SQL / PL/pgSQL call)', kind: 'code', wide: true,
-        help: 'e.g. select sales.ship_order(:P3_ID::int) as p3_status — returned columns named like items set them. RAISE EXCEPTION messages are shown to the user; USING COLUMN = \'sal\' puts it on that field.' },
+        help: 'e.g. select sales.ship_order(:P3_ID::int) as p3_status — returned columns named like items set them. RAISE EXCEPTION messages are shown to the user; USING COLUMN = \'sal\' puts it on that field. · download: a query returning the file\'s content (bytea or text), file name and MIME type, e.g. select content, filename, mime_type from docs.file where id = :P5_ID::int — several rows are sent as one zip file.' },
       { name: 'region_id', label: 'Form / grid region (form_dml, grid_dml)', kind: 'region' },
-      { name: 'config', label: 'Configuration (data_load, invoke_api)', kind: 'json', wide: true,
-        help: 'data_load: {"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped. · invoke_api: {"source":"WEATHER","params":{"city":"&P5_CITY."},"items":{"P5_TEMP":"current.temp"},"status_item":"P5_STATUS"} or {"url":"https://api.example.com/orders/&P5_ID.","method":"POST","credential":"SHOP_API","body":"{\\"note\\": &P5_NOTE.}","items":{…}} — without "items", the first row\'s columns set the items named like them.' },
+      { name: 'config', label: 'Configuration (data_load, invoke_api, download, chain, workflow)', kind: 'json', wide: true,
+        help: 'data_load: {"file_item":"P5_FILE","definition":"ORDERS_LOAD"} (a data load definition: table, format, mapping, transformations) or {"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"format":"auto | csv | xlsx | json | xml","row_tag":"order","columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped. · invoke_api: {"source":"WEATHER","params":{"city":"&P5_CITY."},"items":{"P5_TEMP":"current.temp"},"status_item":"P5_STATUS"} or {"url":"https://api.example.com/orders/&P5_ID.","method":"POST","credential":"SHOP_API","body":"{\\"note\\": &P5_NOTE.}","items":{…}} — without "items", the first row\'s columns set the items named like them. · download: {"content_column":"content","filename_column":"filename","mime_column":"mime_type","zip_name":"files-&P5_ID..zip","disposition":"attachment | inline"} (all optional; default: the first three columns). · chain: {"background": true, "status_item": "P5_JOB_ID"} runs it after the submit, on the server (status in meta.process_jobs). · workflow: {"action":"start","definition":"APPROVAL","version":"2","detail_pk":"&P5_ID.","variables":{"AMOUNT":"&P5_AMOUNT."},"id_item":"P5_WORKFLOW_ID"} or {"action":"terminate | retry","instance":"&P5_WORKFLOW_ID.","comment":"…"}' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper' },
+      ...conditionFields('Condition'),
       { name: 'success_message', label: 'Success message', kind: 'text' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
@@ -266,10 +278,14 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'point', label: 'Point', kind: 'select', options: ['after_processing', 'before_header'], group: 'Identification', help: 'after_processing: after a submit\'s processes · before_header: before the page is shown (a branch to the page itself is ignored)' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Identification', help: 'The first branch whose button and condition match is taken; without one, the button\'s target page.' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper', group: 'Identification', help: 'after_processing only; empty = any button' },
-      { name: 'target_type', label: 'Target', kind: 'select', options: ['page', 'url'], group: 'Target' },
-      { name: 'target_page', label: 'Page', kind: 'page', group: 'Target', help: 'Empty: this page.' },
+      { name: 'target_type', label: 'Target', kind: 'select', options: ['page', 'url', 'function', 'app'], group: 'Target',
+        help: 'page: a page of this application · url: a path inside it · function: a PL/pgSQL body returning such a path · app: a page of another application of this installation' },
+      { name: 'target_app', label: 'Application (app)', kind: 'text', group: 'Target', help: 'The alias of another application; its own sign-in and authorization apply. The page is the target page there.' },
+      { name: 'target_page', label: 'Page', kind: 'int', group: 'Target', help: 'Empty: this page. For app: the page number in that application.' },
       { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Target', help: '{"P3_ID": "&P2_ID."} — sent with a checksum.' },
       { name: 'target_url', label: 'URL (inside the application)', kind: 'text', group: 'Target', help: 'A path after /a/<alias>/, e.g. 10?tab=open or account; &ITEM. values are URL-encoded. No other sites.' },
+      { name: 'target_function', label: 'Function returning a URL (function)', kind: 'code', wide: true, group: 'Target',
+        help: 'PL/pgSQL, run as the application\'s role, e.g. begin if :P3_TOTAL::numeric > 1000 then return \'20?P20_ID=\' || :P3_ID; end if; return \'10\'; end — a path inside the application as for URL (checked the same way); null: the next branch.' },
       ...conditionFields('Condition'),
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
@@ -292,6 +308,62 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
       buildOption(),
+    ],
+  },
+  list: {
+    table: 'meta.list',
+    scope: 'app',
+    label: 'List',
+    plural: 'Lists',
+    icon: 'list',
+    summary: (l) => l.name,
+    defaults: { type: 'static' },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'upper', help: 'Show it with a list region ({"list": "NAME"}), or as the navigation menu or bar (Settings).' },
+      { name: 'type', label: 'Type', kind: 'select', options: ['static', 'sql'], help: 'static: the list entries below · sql: the rows of the query.' },
+      { name: 'query', label: 'Query (sql)', kind: 'code', wide: true,
+        help: 'select label, page, items, url, icon, badge, description, id, parent_id from … (only label is required). page: a page of this app; items: a JSON object of item values (sent with a checksum); url: a path inside the app or an http(s) address; parent_id nests a row under the row with that id. Runs as the application\'s role with :ITEM binds.' },
+      { name: 'description', label: 'Description', kind: 'textarea' },
+    ],
+    validate: (v) => (v.type === 'sql' && !v.query ? 'A sql list needs a query.' : null),
+  },
+  list_entry: {
+    table: 'meta.list_entry',
+    scope: 'app',
+    label: 'List entry',
+    plural: 'List entries',
+    icon: 'chevron',
+    summary: (e) => `${e.list_name}: ${e.label}`,
+    fields: [
+      { name: 'list_name', label: 'List', kind: 'list_name', group: 'Entry' },
+      { name: 'label', label: 'Label', kind: 'text', group: 'Entry', help: '&ITEM. allowed.' },
+      { name: 'icon', label: 'Icon', kind: 'icon', group: 'Entry' },
+      { name: 'parent_id', label: 'Parent entry', kind: 'list_parent', group: 'Entry', help: 'An entry of the same list: this entry is shown below it (a sub menu).' },
+      { name: 'seq', label: 'Sequence', kind: 'int', group: 'Entry' },
+      { name: 'badge', label: 'Badge', kind: 'text', group: 'Entry', help: 'A short text or number, &ITEM. allowed (e.g. &P1_OPEN_COUNT.).' },
+      { name: 'description', label: 'Description', kind: 'textarea', group: 'Entry', help: 'Shown by the cards template.' },
+      { name: 'target_page', label: 'Page', kind: 'page', group: 'Target', help: 'Empty with no URL: a heading for its child entries.' },
+      { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Target', help: '{"P3_ID": "&P1_ID."} — sent with a checksum.' },
+      { name: 'target_url', label: 'Or URL', kind: 'text', group: 'Target', help: 'A path after /a/<alias>/ (e.g. 10?tab=open), or an http(s) address of another site. &ITEM. values are URL-encoded.' },
+      { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'Boolean expression; the entry shows only when true.' },
+      { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
+      buildOption('Security'),
+    ],
+    validate: (v) => (v.target_page && v.target_url ? 'Choose a page or a URL, not both.' : null),
+  },
+  supporting_script: {
+    table: 'meta.supporting_script',
+    scope: 'app',
+    label: 'Supporting script',
+    plural: 'Supporting objects',
+    icon: 'code',
+    summary: (s) => s.name,
+    defaults: { kind: 'install' },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'text' },
+      { name: 'kind', label: 'Kind', kind: 'select', options: ['install', 'upgrade', 'deinstall'], help: 'Scripts of a kind run together, by sequence, when a developer chooses to (Supporting objects page). Never on import.' },
+      { name: 'seq', label: 'Sequence', kind: 'int' },
+      { name: 'script', label: 'Script', kind: 'code', wide: true, help: 'SQL statements separated by semicolons (DDL, inserts, DO blocks). They run as the application\'s database role, in one transaction: an error undoes the whole run.' },
     ],
   },
   authz_scheme: {
@@ -454,6 +526,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
   template_component: TEMPLATE_COMPONENT_SPEC,
   web_credential: WEB_CREDENTIAL_SPEC,
   rest_source: REST_SOURCE_SPEC,
+  data_load_def: DATA_LOAD_DEF_SPEC,
   document_template: {
     table: 'meta.document_template',
     scope: 'app',
@@ -546,6 +619,7 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'region':
       case 'page':
       case 'nav':
+      case 'list_parent':
         values[f.name] = v === '' ? null : Number.parseInt(v, 10);
         if (Number.isNaN(values[f.name])) throw new Error(`${f.label} must be a number`);
         break;
@@ -563,6 +637,7 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'authz':
       case 'build_option':
       case 'rest_source':
+      case 'list_name':
         values[f.name] = v === '' ? null : v.trim().toUpperCase();
         break;
       case 'secret':

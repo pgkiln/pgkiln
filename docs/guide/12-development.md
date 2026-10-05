@@ -27,13 +27,20 @@ src/
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   headerauth.ts            HTTP-header authentication: trusted proxies (PGAPEX_AUTH_HEADER_PROXIES), header checks, accounts
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
+  customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
+  process-jobs.ts          background execution chains: the job queue (SKIP LOCKED, NOTIFY + polling), running a job as the app role
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
+  i18n/                    de.ts, fr.ts, es.ts: the built-in texts in German, French and Spanish
+  numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
-  dataload.ts              CSV/XLSX parsing, type inference, batched loading with row errors
+  dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
+  xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested)
+  sqlscript.ts             SQL scripts: splitScript() (statements, line numbers, psql commands), runScript() (stop/continue, transaction, savepoints)
+  quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
   xlsx.ts                  Excel writer for report downloads (typed cells, streamed through fflate's Zip)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations
   html.ts                  auto-escaping html`` templates
@@ -50,11 +57,12 @@ src/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
     context.ts             PageContext, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
-    engine.ts              form fetch, validations, processes, application processes
-    logic.ts               computations, branches and their conditions (before header / after submit)
+    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains), application processes
+    processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
+    logic.ts               computations, branches (page, URL, function returning a URL, another application) and their conditions
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
-    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, facets.ts, items.ts
+    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts, items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
@@ -66,8 +74,8 @@ src/
     smart-filters.ts       smart_filters region: search field, filter chips, suggestions
     display-selector.ts    display_selector region: tabs / select list over the page's regions (app.js makes them ARIA tabs)
     account.ts             My account (details, own password, preferences)
-    locale.ts              language, theme, text messages and translations of a request
-    format.ts              date masks
+    locale.ts              language, theme, text messages, translations, number symbols and time zone of a request
+    format.ts              date masks; maskedFormatter() applies a column's or item's number or date mask
     files.ts               file items: multipart parsing, temporary files, signed downloads
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
@@ -76,6 +84,7 @@ src/
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
     rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process
     tree.ts                tree region
+    lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
@@ -91,14 +100,17 @@ src/
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: SQL commands, object browser
+    scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
+    quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
+    querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key, buildQuery() from the URL
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
-    dataload.ts            SQL Workshop → Load Data
+    dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: next run, Run now, run history
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
-    region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector
+    region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
@@ -107,13 +119,16 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
+    process-jobs.ts        page designer: the Jobs tab of a background chain process
     template-spec.ts       template component property form (Shared Components)
     websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
+    locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
+    supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
   app.css                  theme (light/dark, responsive)
-  app.js                   client runtime: dialogs, popup LOVs, dynamic actions (focus, classes, messages), grids, menus, lazy regions (no inline JS)
+  app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
@@ -125,30 +140,42 @@ test/
   api.test.ts              REST API: SQL as the API role; HTTP tests skip without PostgREST
   accounts.test.ts         own password, expiry, admin reset, preferences
   i18n.test.ts             languages, translations, text messages, date masks, XLIFF/CSV
+  numformat.test.ts        number format masks: every element, rounding, parsing, separators
+  globalization.test.ts    masks on HR page 29, time zones, the de/fr/es texts
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
+  workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
+  quicksql.test.ts         Quick SQL parser and DDL generator
+  xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
   printing.test.ts         report PDFs
   fixtures/                test files (employees.xlsx)
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates
   logic.test.ts            computations, branches, menu buttons and badges, new dynamic actions, build options, export
+  page-logic.test.ts       download, chain (background jobs) and workflow processes, function/app branches, dialog_closed (HR page 28)
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
   charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
+  grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
+  custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
+  e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
+  e2e/grid.test.ts         interactive grid in a browser: master-detail refresh, move/resize columns, row menu, copy/paste; without JavaScript
+  e2e/page-logic.test.ts   dialog_closed refreshes a region without a reload, download process in a browser, dialog link without JavaScript
 ```
 
 ## Principles
 
-- **User-facing texts go through the translator**: `ctx.locale.t('key')` for pgapex's own texts (add the key to `en` and `nl` in `src/i18n.ts`; TypeScript checks that `nl` has every key), `ctx.locale.tr(text)` for texts derived from application metadata.
+- **User-facing texts go through the translator**: `ctx.locale.t('key')` for pgapex's own texts (add the key to `en` and `nl` in `src/i18n.ts` and to `src/i18n/de.ts`, `fr.ts`, `es.ts`; TypeScript checks that every language has every key), `ctx.locale.tr(text)` for texts derived from application metadata.
 
 1. **Metadata first.** A feature is a column or row in `meta.*`, rendered by the runtime, editable
    in the builder, included in export/import and usable from SQL.
@@ -182,7 +209,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.22.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.23.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

@@ -1,9 +1,14 @@
 // Date and timestamp display formats (APEX: application date format masks).
 // Masks use Oracle/APEX tokens: YYYY YY MM MON MONTH DD DY DAY HH24 HH12 HH
 // MI SS AM PM. Text in double quotes is literal: DD "de" MONTH.
+// Number format masks (999G990D00) are in ../numformat.ts; maskedFormatter()
+// applies either kind to a column or item.
+import { compileMask, formatNumber, maskError, type NumberSymbols } from '../numformat.ts';
 
 export const DATE_OID = 1082;
 export const TIMESTAMP_OIDS = new Set([1114, 1184]);
+/** int2, int4, int8, oid, float4, float8, numeric */
+export const NUMBER_OIDS = new Set([20, 21, 23, 26, 700, 701, 1700]);
 
 export type Formatter = (value: unknown, typeOid?: number) => string | undefined;
 
@@ -77,4 +82,59 @@ export function dateFormatter(lang: string, dateMask: string | null, timestampMa
     if (TIMESTAMP_OIDS.has(oid)) return timestampMask ? applyMask(String(v), timestampMask, lang) : String(v).slice(0, 16);
     return undefined;
   };
+}
+
+/**
+ * A formatter with a column's or item's own format mask: a number mask for
+ * numbers, a date mask for dates and timestamps; anything else (and a value
+ * the mask doesn't fit) goes to `base`.
+ */
+export function maskedFormatter(base: Formatter, lang: string, numbers: NumberSymbols, mask: string | null | undefined): Formatter {
+  const m = typeof mask === 'string' ? mask.trim() : '';
+  if (!m) return base;
+  const numeric = typeof compileMask(m) !== 'string';
+  return (v, oid) => {
+    if (v === null || v === undefined) return undefined;
+    if (oid === DATE_OID || (oid !== undefined && TIMESTAMP_OIDS.has(oid))) return numeric ? base(v, oid) : applyMask(String(v), m, lang);
+    if (numeric && (typeof v === 'number' || typeof v === 'bigint' || (oid !== undefined && NUMBER_OIDS.has(oid)))) return formatNumber(v, m, numbers) ?? base(v, oid);
+    return base(v, oid);
+  };
+}
+
+/** Why a column's format mask (a number mask or a date mask) is not valid, or null. */
+export function formatMaskError(mask: unknown): string | null {
+  if (typeof mask !== 'string' || !mask.trim()) return 'a format mask is a non-empty text';
+  const number = maskError(mask.trim());
+  if (!number) return null;
+  return new RegExp(TOKEN.source, 'i').test(mask) && !/^[0-9GD.,$LSV]+$/i.test(mask.trim()) ? null : number;
+}
+
+/**
+ * The problems of the format settings in a region's or item's attributes:
+ * "formats" (column → mask) and "format_mask" (a number mask).
+ */
+export function formatSettingsProblem(config: unknown): string | null {
+  const c = typeof config === 'string' ? safeJson(config) : config;
+  if (!c || typeof c !== 'object') return null;
+  const { formats, format_mask: one } = c as Record<string, unknown>;
+  if (formats !== undefined) {
+    if (!formats || typeof formats !== 'object' || Array.isArray(formats)) return 'formats: an object of column names and format masks, e.g. {"sal": "FML999G990D00"}.';
+    for (const [col, m] of Object.entries(formats)) {
+      const e = formatMaskError(m);
+      if (e) return `formats.${col}: ${e}.`;
+    }
+  }
+  if (one !== undefined) {
+    const e = typeof one === 'string' && one.trim() ? maskError(one.trim()) : 'a number format mask such as 999G990D00';
+    if (e) return `format_mask: ${e}.`;
+  }
+  return null;
+}
+
+function safeJson(s: string) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
 }

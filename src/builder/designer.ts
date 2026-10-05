@@ -7,6 +7,8 @@ import { back, BASE, bicon, csrf, developer, flash, input, select, send, shell, 
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
 import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
+import { processJobsPanel } from './process-jobs.ts';
+import { appLocks, lockPanel, lockText } from './locks.ts';
 import { arrangeRoutes, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, REGION_LABELS, REGION_TYPES, undoState } from './arrange.ts';
 
 // Page designer, laid out like APEX's Page Designer: the component tree on
@@ -222,9 +224,16 @@ export async function designerRoutes(app: FastifyInstance) {
         <label class="label" for="pd-q">Search the application's pages and components</label>
         <div class="u-row"><input id="pd-q" name="q" type="search" placeholder="e.g. P${p.page_no}_ or a table name"><button class="btn btn-sm">${icon('search')} Search</button></div>
       </form>`;
-    const center = html`<div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="Page">
+    // a lock of another developer (on this page or the whole application) makes the page read-only
+    const locks = (await appLocks(p.app_id)).filter((l) => l.page_no === 0 || l.page_no === p.page_no);
+    const blocking = locks.find((l) => l.locked_by !== s.username);
+    const mine = locks.find((l) => l.locked_by === s.username);
+    const commentCount = (await owner.one('select count(*)::int as n from meta.dev_comment where app_id = $1 and page_no = $2', [p.app_id, p.page_no])).n;
+    const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} Your changes will be refused.</div>` : ''}
+      <div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="Page">
       ${tab('pd-c-layout', 'Layout', layout, true)}
       ${tab('pd-c-search', 'Page search', pageSearch)}
+      ${tab('pd-c-notes', `Lock and comments${commentCount ? ` (${commentCount})` : ''}${mine || blocking ? ' · locked' : ''}`, await lockPanel(s, p.app_id, p.page_no))}
       ${tab('pd-c-help', 'Help', help)}
     </div>`;
 
@@ -254,6 +263,7 @@ export async function designerRoutes(app: FastifyInstance) {
         props = html`${peTabs([
           tab('pd-r-props', spec.label, componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, 'Save', { id: formId }), true),
           ...(settings ? [tab('pd-r-attrs', 'Attributes', settings)] : []),
+          ...(kind === 'process' && row.type === 'chain' && row.config?.background ? [tab('pd-r-jobs', 'Jobs', await processJobsPanel(row.id))] : []),
         ])}
           ${await usedInPanel(p.app_id, kind, row)}
           <form method="post" action="${BASE}/pages/${p.id}/c/${kind}/${row.id}/delete" class="danger-zone">${csrf(s)}
@@ -366,10 +376,15 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     try {
+      const before = await owner.one('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
       await owner.query(
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null],
       );
+      // the page's lock and comments follow a new page number
+      if (before && before.page_no !== Number(b.page_no))
+        for (const t of ['builder_lock', 'dev_comment'])
+          await owner.query(`update meta.${t} set page_no = $3 where app_id = $1 and page_no = $2`, [before.app_id, before.page_no, Number(b.page_no)]);
       flash(s, 'Page saved.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -380,7 +395,8 @@ export async function designerRoutes(app: FastifyInstance) {
   app.post(`${BASE}/pages/:pid/delete`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const p = await owner.one('delete from meta.page where id = $1 returning app_id', [req.params.pid]);
+    const p = await owner.one('delete from meta.page where id = $1 returning app_id, page_no', [req.params.pid]);
+    if (p) for (const t of ['builder_lock', 'dev_comment']) await owner.query(`delete from meta.${t} where app_id = $1 and page_no = $2`, [p.app_id, p.page_no]);
     flash(s, 'Page deleted.');
     return back(reply, s, p ? `${BASE}/apps/${p.app_id}` : BASE);
   });

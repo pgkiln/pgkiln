@@ -1,3 +1,4 @@
+import type { Download } from './processes.ts';
 import type { PassThrough } from 'node:stream';
 import type { PageCss } from '../css.ts';
 import type pg from 'pg';
@@ -57,6 +58,10 @@ export interface PageContext {
   cacheRefresh?: boolean;
   /** the lazy region the request renders (GET …/region/:id), not as a placeholder */
   loadNow?: number;
+  /** a download process's file, sent instead of the page (processes.ts) */
+  download?: Download;
+  /** running a background chain (process-jobs.ts): no request, no browser */
+  background?: boolean;
 }
 
 /** Session state plus the built-in substitution strings. */

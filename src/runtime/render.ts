@@ -11,6 +11,7 @@ import { isAuthorized, pageAllowed } from './authz.ts';
 import { substitute, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
+import { listTree, navbarMarkup, navMarkup } from './lists.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -53,7 +54,7 @@ function conditionHolds(type: string | null, expected: string | null, value: str
 function initiallyHidden(ctx: PageContext) {
   const hidden = new Set<string>();
   for (const d of ctx.page.dynamic_actions) {
-    if (!ctx.vis!.dynamicActions.has(d.id) || (d.action !== 'show' && d.action !== 'hide')) continue;
+    if (!ctx.vis!.dynamicActions.has(d.id) || (d.action !== 'show' && d.action !== 'hide') || d.event === 'dialog_closed') continue;
     const trigger = list(d.trigger_element)[0];
     const value = trigger ? (ctx.session.state[trigger] ?? '') : '';
     const holds = conditionHolds(d.condition_type, d.condition_value, value);
@@ -67,6 +68,11 @@ function initiallyHidden(ctx: PageContext) {
 // ---------------------------------------------------------------- navigation
 
 async function navTree(ctx: PageContext, topNav = false) {
+  // a list as the navigation menu (falls back to the navigation entries when the list is missing)
+  if (ctx.app.nav_list) {
+    const nodes = await listTree(ctx, ctx.app.nav_list);
+    if (nodes) return navMarkup(nodes, topNav);
+  }
   const current = new Set<number>();
   for (let p: number | null | undefined = ctx.page.page_no, guard = 0; p && guard < 10; guard++) {
     current.add(p);
@@ -168,6 +174,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
   const nav = await navTree(ctx, topNav);
+  const navbarNodes = ctx.app.navbar_list ? await listTree(ctx, ctx.app.navbar_list) : null;
+  const navbar = navbarNodes ? navbarMarkup(navbarNodes, t('list.navbar')) : '';
   return documentShell(
     `${title} · ${ctx.app.name}`,
     html`<a class="skip-link" href="#main">${t('common.skip')}</a>
@@ -175,6 +183,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="${t('common.toggle_nav')}" aria-controls="t-nav">${icon('menu')}</a>
       <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
       <span class="t-spacer"></span>
+      ${navbar}
       ${ctx.app.authentication !== 'none'
         ? signedIn
           ? html`<details class="menu t-user">
@@ -228,6 +237,13 @@ const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k
 /** The current page's URL (for returning after a preference change). */
 const here = (ctx: PageContext) => `${ctx.base}/${ctx.page.page_no}`;
 
+/**
+ * Automatic time zone: until the session knows the browser's time zone, app.js
+ * sends it (POST …/tz) and shows the page again when the zone changes.
+ */
+const timeZoneMeta = (ctx: PageContext) =>
+  ctx.app.time_zone_auto && typeof ctx.session.state.__TZ !== 'string' ? { tz: `${ctx.base}/tz` } : {};
+
 export async function renderPage(ctx: PageContext) {
   const t = ctx.locale.t;
   const hidden = initiallyHidden(ctx);
@@ -267,7 +283,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}
     </div>
     <script type="application/json" id="pgapex-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx) }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), ...timeZoneMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }
@@ -278,7 +294,7 @@ export function dialogClosePage(ctx: PageContext) {
     ctx.app.name,
     html`<main class="t-dialog-main"><p>${ctx.locale.t('dialog.done')} <a href="${ctx.base}/${ctx.app.home_page}">${ctx.locale.t('dialog.continue')}</a></p></main>`,
     't-dialog-page',
-    { 'data-dialog-close': '1' },
+    { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no) },
     '',
     { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme },
   );

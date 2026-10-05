@@ -1,7 +1,12 @@
 // pgapex's own user-facing texts (login, account pages, reports, messages)
-// in several languages, like APEX's translated runtime messages. An
+// in several languages, like APEX's translated runtime messages (en and nl
+// here, de, fr and es in src/i18n/). An
 // application can override any of them with a text message of the same
 // name (Shared Components → Text messages), as in APEX.
+
+import { de } from './i18n/de.ts';
+import { es } from './i18n/es.ts';
+import { fr } from './i18n/fr.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -55,6 +60,12 @@ const en = {
   'theme.light': 'Light',
   'theme.dark': 'Dark',
   'language.label': 'Language',
+  'timezone.label': 'Time zone',
+  'timezone.auto': 'Automatic (the browser\'s time zone)',
+  'timezone.auto_browser': 'Automatic (the browser\'s: {zone})',
+  'timezone.current': 'Dates and times are shown in {zone}.',
+  'timezone.server': 'the server\'s time zone',
+  'timezone.invalid': 'Choose a time zone from the list.',
   'common.save': 'Save',
   'common.cancel': 'Cancel',
   'common.back': 'Go back',
@@ -72,6 +83,7 @@ const en = {
   'error.required': '{label} is required.',
   'error.location': '{label}: enter a position as latitude,longitude, e.g. 52.01160,4.35710.',
   'error.not_number': '{label} must be a number.',
+  'error.number_format': '{label} must be a number, e.g. {example}.',
   'error.not_date': '{label} must be a valid date.',
   'error.reference': 'An unexpected error occurred (reference #{ref}).',
   'dialog.done': 'Done.',
@@ -344,6 +356,9 @@ const en = {
   'rds.region': 'Region',
   'rds.show_all': 'Show all',
   'rds.empty': 'No regions to choose from: set "Show in the display selector" on the regions of this page.',
+  'list.missing': 'The list {list} does not exist.',
+  'list.empty': 'Nothing to show.',
+  'list.navbar': 'Navigation bar',
   'chart.table': 'Data table',
   'chart.no_data': 'No data to show.',
   'lov.none': '- Select -',
@@ -374,6 +389,7 @@ const en = {
   // date formats (masks, see src/runtime/format.ts); empty = as PostgreSQL sends it (ISO)
   'format.date': '',
   'format.timestamp': '',
+  'format.currency': 'USD',
   'report.edit': 'Edit',
   'report.clear_search': 'Clear search',
   'report.search_chip': 'Search',
@@ -400,6 +416,25 @@ const en = {
   'grid.added': '{n} added',
   'grid.updated': '{n} updated',
   'grid.deleted': '{n} deleted',
+  'grid.select': 'Select',
+  'grid.select_row': 'Select row {row}',
+  'grid.select_master': 'Select a row in the master grid first.',
+  'grid.select_master_hint': 'Select a row above to see its details.',
+  'grid.row_actions': 'Row actions',
+  'grid.row_actions_for': 'Actions for row {row}',
+  'grid.duplicate': 'Duplicate',
+  'grid.delete_toggle': 'Delete (or undo) on save',
+  'grid.columns': 'Columns',
+  'grid.shown': 'Shown',
+  'grid.position': 'Position',
+  'grid.width': 'Width (px)',
+  'grid.auto': 'auto',
+  'grid.freeze': 'Freeze the first columns',
+  'grid.columns_help': 'Freezing keeps columns in view while the grid scrolls sideways. With JavaScript you can also drag a heading to move a column and drag its right edge to resize it.',
+  'grid.show_column': 'Show {column}',
+  'grid.column_position': 'Position of {column}',
+  'grid.column_width': 'Width of {column} in pixels',
+  'grid.default_aggregates': 'Always shown: {list}.',
   'chart.other': 'Other',
   'chart.label': 'Label',
   'chart.bubble': 'Bubble',
@@ -460,6 +495,16 @@ const en = {
   'error.session_reload': 'Session expired; reload the page.',
   'error.unknown_da': 'Unknown dynamic action.',
   'logic.unknown_item': 'A computation sets {item}, which is not an item of this page or the application.',
+  'logic.branch_bad_url': 'Branch "{name}" returned a URL that is not a path inside the application.',
+  'logic.branch_no_app': 'Branch "{name}" goes to page {page} of application {app}, which does not exist.',
+  'download.none': 'There is no file to download.',
+  'download.too_large': 'The download is too large (at most 1000 files and 100 MB).',
+  'process.queued': 'Started in the background (job {id}).',
+  'process.background_type': 'Process "{name}" ({type}) cannot run in the background.',
+  'workflow.started': 'Workflow {id} started.',
+  'workflow.terminated': 'Workflow {id} terminated.',
+  'workflow.retried': 'Workflow {id} is running again.',
+  'workflow.no_instance': 'No workflow is selected.',
   'error.unknown_item': 'Unknown item.',
   'error.not_available': 'This page is not available.',
   'login.method_unavailable': 'This sign-in method is not available.',
@@ -523,6 +568,12 @@ const nl: Record<MessageKey, string> = {
   'theme.light': 'Licht',
   'theme.dark': 'Donker',
   'language.label': 'Taal',
+  'timezone.label': 'Tijdzone',
+  'timezone.auto': 'Automatisch (de tijdzone van de browser)',
+  'timezone.auto_browser': 'Automatisch (van de browser: {zone})',
+  'timezone.current': 'Datums en tijden worden getoond in {zone}.',
+  'timezone.server': 'de tijdzone van de server',
+  'timezone.invalid': 'Kies een tijdzone uit de lijst.',
   'common.save': 'Opslaan',
   'common.cancel': 'Annuleren',
   'common.back': 'Terug',
@@ -539,6 +590,7 @@ const nl: Record<MessageKey, string> = {
   'error.required': '{label} is verplicht.',
   'error.location': '{label}: geef een positie als breedtegraad,lengtegraad, bijv. 52.01160,4.35710.',
   'error.not_number': '{label} moet een getal zijn.',
+  'error.number_format': '{label} moet een getal zijn, bijvoorbeeld {example}.',
   'error.not_date': '{label} moet een geldige datum zijn.',
   'error.reference': 'Er is een onverwachte fout opgetreden (referentie #{ref}).',
   'dialog.done': 'Klaar.',
@@ -809,6 +861,9 @@ const nl: Record<MessageKey, string> = {
   'rds.region': 'Regio',
   'rds.show_all': 'Alles tonen',
   'rds.empty': 'Geen regio\'s om uit te kiezen: zet "Tonen in de regiokiezer" aan bij de regio\'s van deze pagina.',
+  'list.missing': 'De lijst {list} bestaat niet.',
+  'list.empty': 'Niets om te tonen.',
+  'list.navbar': 'Navigatiebalk',
   'chart.table': 'Gegevenstabel',
   'chart.no_data': 'Geen gegevens om te tonen.',
   'lov.none': '- Kies -',
@@ -838,6 +893,7 @@ const nl: Record<MessageKey, string> = {
   'load.failed': 'Er is niets geladen: {failed} rij(en) bevatten fouten (rij: fout): {errors}',
   'format.date': 'DD-MM-YYYY',
   'format.timestamp': 'DD-MM-YYYY HH24:MI',
+  'format.currency': 'EUR',
   'report.edit': 'Bewerken',
   'report.clear_search': 'Zoekopdracht wissen',
   'report.search_chip': 'Zoeken',
@@ -864,6 +920,25 @@ const nl: Record<MessageKey, string> = {
   'grid.added': '{n} toegevoegd',
   'grid.updated': '{n} gewijzigd',
   'grid.deleted': '{n} verwijderd',
+  'grid.select': 'Kiezen',
+  'grid.select_row': 'Rij {row} kiezen',
+  'grid.select_master': 'Kies eerst een rij in het hoofdraster.',
+  'grid.select_master_hint': 'Kies hierboven een rij om de details te zien.',
+  'grid.row_actions': 'Rijacties',
+  'grid.row_actions_for': 'Acties voor rij {row}',
+  'grid.duplicate': 'Dupliceren',
+  'grid.delete_toggle': 'Verwijderen (of niet) bij opslaan',
+  'grid.columns': 'Kolommen',
+  'grid.shown': 'Tonen',
+  'grid.position': 'Positie',
+  'grid.width': 'Breedte (px)',
+  'grid.auto': 'auto',
+  'grid.freeze': 'Eerste kolommen vastzetten',
+  'grid.columns_help': 'Vastgezette kolommen blijven in beeld als het raster opzij schuift. Met JavaScript kunt u ook een kolomkop verslepen om een kolom te verplaatsen en de rechterrand slepen om de breedte te wijzigen.',
+  'grid.show_column': '{column} tonen',
+  'grid.column_position': 'Positie van {column}',
+  'grid.column_width': 'Breedte van {column} in pixels',
+  'grid.default_aggregates': 'Altijd getoond: {list}.',
   'chart.other': 'Overig',
   'chart.label': 'Label',
   'chart.bubble': 'Bellen',
@@ -924,6 +999,16 @@ const nl: Record<MessageKey, string> = {
   'error.session_reload': 'Sessie verlopen; laad de pagina opnieuw.',
   'error.unknown_da': 'Onbekende dynamische actie.',
   'logic.unknown_item': 'Een berekening vult {item}, maar dat is geen item van deze pagina of de applicatie.',
+  'logic.branch_bad_url': 'Vertakking "{name}" gaf een URL die geen pad binnen de applicatie is.',
+  'logic.branch_no_app': 'Vertakking "{name}" gaat naar pagina {page} van applicatie {app}, die niet bestaat.',
+  'download.none': 'Er is geen bestand om te downloaden.',
+  'download.too_large': 'De download is te groot (hoogstens 1000 bestanden en 100 MB).',
+  'process.queued': 'Op de achtergrond gestart (taak {id}).',
+  'process.background_type': 'Proces "{name}" ({type}) kan niet op de achtergrond draaien.',
+  'workflow.started': 'Workflow {id} is gestart.',
+  'workflow.terminated': 'Workflow {id} is beëindigd.',
+  'workflow.retried': 'Workflow {id} loopt weer.',
+  'workflow.no_instance': 'Er is geen workflow gekozen.',
   'error.unknown_item': 'Onbekend item.',
   'error.not_available': 'Deze pagina is niet beschikbaar.',
   'login.method_unavailable': 'Deze aanmeldmethode is niet beschikbaar.',
@@ -939,10 +1024,13 @@ const nl: Record<MessageKey, string> = {
   'login.no_access_title': 'Geen toegang',
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es };
+
+/** pgapex's own texts in a built-in language (undefined: not built in). */
+export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {

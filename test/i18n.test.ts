@@ -173,7 +173,7 @@ describe('text messages', () => {
     const t = translator('nl');
     assert.equal(t('report.range', { from: 1, to: 15, total: 40 }), '1–15 van 40');
     assert.equal(translator('nl-BE')('login.submit'), 'Aanmelden');
-    assert.equal(translator('fr')('login.submit'), 'Sign in', 'unknown languages fall back to English');
+    assert.equal(translator('it')('login.submit'), 'Sign in', 'unknown languages fall back to English');
   });
 });
 

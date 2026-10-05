@@ -15,18 +15,22 @@ export interface Lookups {
   nav: { id: number; label: string }[];
   buildOptions: { name: string; status: string }[];
   restSources: string[];
+  lists: string[];
+  listEntries: { id: number; list_name: string; label: string }[];
 }
 
 export async function lookups(appId: number, pageId?: number): Promise<Lookups> {
-  const [regions, pages, authz, nav, buildOptions, rest] = await Promise.all([
+  const [regions, pages, authz, nav, buildOptions, rest, lists, listEntries] = await Promise.all([
     pageId ? owner.query('select id, title, type from meta.region where page_id = $1 order by seq, id', [pageId]) : Promise.resolve({ rows: [] }),
     owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId]),
     owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId]),
     owner.query('select id, label from meta.nav_entry where app_id = $1 order by seq, id', [appId]),
     owner.query('select name, status from meta.build_option where app_id = $1 order by name', [appId]),
     owner.query('select name from meta.rest_source where app_id = $1 order by name', [appId]),
+    owner.query('select name from meta.list where app_id = $1 order by name', [appId]),
+    owner.query('select id, list_name, label from meta.list_entry where app_id = $1 order by list_name, seq, id', [appId]),
   ]);
-  return { regions: regions.rows, pages: pages.rows, authz: authz.rows.map((r) => r.name), nav: nav.rows, buildOptions: buildOptions.rows, restSources: rest.rows.map((r) => r.name) };
+  return { regions: regions.rows, pages: pages.rows, authz: authz.rows.map((r) => r.name), nav: nav.rows, buildOptions: buildOptions.rows, restSources: rest.rows.map((r) => r.name), lists: lists.rows.map((r) => r.name), listEntries: listEntries.rows };
 }
 
 /** Choices of a build option field: each option and its negation, plus a missing current value. */
@@ -62,6 +66,15 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
         break;
       case 'nav':
         control = opts([['', '- top level -'], ...lk.nav.filter((n) => n.id !== row?.id).map((n): [string, string] => [String(n.id), n.label])]);
+        break;
+      case 'list_name': {
+        const list: [string, string][] = lk.lists.map((n): [string, string] => [n, n]);
+        if (v && !lk.lists.includes(v)) list.push([v, `${v} (missing!)`]);
+        control = opts(list);
+        break;
+      }
+      case 'list_parent':
+        control = opts([['', '- top level -'], ...lk.listEntries.filter((n) => n.id !== row?.id && (!row?.list_name || n.list_name === row.list_name)).map((n): [string, string] => [String(n.id), `${n.list_name}: ${n.label}`])]);
         break;
       case 'authz': {
         const names = ['MUST_NOT_BE_PUBLIC_USER', ...lk.authz];

@@ -37,6 +37,8 @@ export interface ChartOptions {
   /** columns only the link uses: left out of the series */
   hidden?: string[];
   gauge?: GaugeConfig;
+  /** values in labels, tips and the data table (a format mask, see numformat.ts); axes stay compact */
+  format?: (v: number) => string;
 }
 /** The interactive report's chart view has one series with text labels: no stacked, combo or scatter. */
 export const REPORT_CHART_KINDS: ChartKind[] = ['bar', 'column', 'line', 'area', 'donut', 'pie'];
@@ -61,7 +63,7 @@ const MAX_SERIES = 8;
 // Set per chart (rendering is synchronous): the page's stylesheet for the geometry
 // classes, and the number formats of the request's language.
 let css = new PageCss();
-let fmt = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
+let fmt: { format: (v: number) => string } = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
 let compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 let texts = {
   table: 'Data table',
@@ -493,8 +495,10 @@ function radar(labels: string[], series: Series[]) {
 export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], sheet: PageCss, lang = 'en', t?: Translate, opts: ChartOptions = {}): Raw {
   css = sheet;
   link = opts.link;
+  if (opts.format) fmt = { format: opts.format };
   try {
-    fmt = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
+    const intl = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
+    if (!opts.format) fmt = intl;
     compact = new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 });
   } catch {
     // unknown locale: keep the previous formats

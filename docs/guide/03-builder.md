@@ -9,10 +9,13 @@ Sign in with a developer account. The first one is `admin` / `admin`, and a red 
 to change it. On the **Developers** page you can:
 
 - change your own password (minimum 8 characters; other builder sessions of yours end);
-- add developer accounts;
-- remove other developers (their sessions end immediately).
+- as an **administrator**: add developer accounts (developers or administrators), make a developer
+  an administrator or the other way round, and remove other developers (their sessions end
+  immediately).
 
-All developers have full rights in the builder and the SQL Workshop.
+All developers have full rights in the builder and the SQL Workshop; administrators also manage
+developer accounts and can break other developers' [locks](#page-locks-and-comments). Accounts
+that existed before 0.23 and those made with the command line are administrators.
 
 ## The builder window
 
@@ -58,7 +61,7 @@ The home page is laid out like APEX's App Builder:
 | Name | Display name, shown in the header |
 | Alias | Lowercase URL name: `inventory` gives `/a/inventory` |
 | Parsing schema | The database schema the app works with. Choose an existing schema, or leave it on "new schema" to create one named after the alias |
-| Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)) or *None* (a public app) |
+| Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)), *Custom* (your own PL/pgSQL function, see [chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) or *None* (a public app) |
 | First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
 
 Creating the app also:
@@ -73,7 +76,9 @@ Creating the app also:
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new
 alias. A directory export (one file per component) is imported with `pgapex import`
 ([chapter 18](18-cli.md)). Imported apps keep the database role
-of the export; check it under **Settings**, and create users under **Shared Components**.
+of the export; check it under **Settings**, and create users under **Shared Components**. An
+application with [supporting objects](#supporting-objects) opens on their page after the import:
+they are **not** run until you choose to.
 
 ## App dashboard
 
@@ -119,7 +124,7 @@ choosing a component opens the Properties tab.
 - **Middle: the Layout**: the page's regions on the 12-column grid, each with its items and
   buttons, as they will be placed on the page; under it a **gallery** of region types, item types
   and button actions. The middle pane also has a **Page search** tab (searches the application)
-  and a **Help** tab (layout keys and the substitution cheat sheet). Zoom in, zoom out and
+  a **Lock and comments** tab ([below](#page-locks-and-comments)) and a **Help** tab (layout keys and the substitution cheat sheet). Zoom in, zoom out and
   maximize (hides the side panes) are above the layout.
 - **Right: the property editor** for the selected component, grouped (Identification, Source,
   Layout, Security, …) with help text for each property. Type in **Filter** to show only the
@@ -131,6 +136,23 @@ layout changes, the **Create** menu (region, item, button, dynamic action, compu
 process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
 **Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
 (opens the page in a new tab). Changes are live as soon as they are saved.
+
+### Page locks and comments
+
+APEX's page locks and developer comments, for teams. In the page designer's **Lock and comments**
+tab a developer **locks** the page (with an optional note); on the application's page (**Pages**,
+under the list) they can lock the **whole application**. While it is locked, other developers' changes
+to it are refused (with a message, or `423` for JSON requests) and the designer says who locked it
+and since when; the page list shows a lock column. Locking an application refuses changes to every
+page, the settings, shared components and deleting it. Only the developer who locked it or an
+**administrator** unlocks it; an administrator breaking another developer's lock is logged in the
+activity log (`lock_broken`). Running the application, the SQL Workshop and the command line are
+not affected.
+
+**Comments** are notes for the team on a page or the application: any developer adds one, the
+author or an administrator deletes it. The page list counts each page's comments. A page that gets
+another number keeps its lock and comments. Locks and comments belong to this installation and
+are not exported.
 
 ### Arranging the layout
 
@@ -200,7 +222,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 
 | Region | Settings form |
 |---|---|
-| `grid` | Rows per page; whether users may add, change and delete rows; per column its heading, shown, read-only, required and "Edit as" (a shared list of values) |
+| `grid` | Rows per page; whether users may add, change and delete rows; per column its heading, shown, read-only, required and "Edit as" (a shared list of values); aggregates in the footer, frozen columns, the Actions menu, saved and public grid reports, the row actions menu (edit link, duplicate, delete) and master-detail (the master's column and item, the detail's item and column) |
 | `chart` | Chart type, the text when there are no rows, the gauge's range and thresholds, and the drill-down link (page and items, `#column#` and `#series#`); lists the query's columns |
 | `cards` | Cards or KPI tiles, the text when there are no rows, and the link (page and items) |
 | `calendar` | The views and the one shown first, the hours of the week and day views, the edit link of each event, the create-on-click link (`#start#`, `#end#`, `#date#`), and drag and drop (the SQL with `:EVENT_ID`, `:NEW_START`, `:NEW_END`, the key column, who may drag); warns when the query lacks `start_date` or `title` |
@@ -244,6 +266,25 @@ Components used by the whole application:
 | **Web credentials** | How the application signs in to web services (basic, API key header, bearer token, OAuth2 client credentials); the secret is write-only and encrypted ([chapter 19](19-rest-data-sources.md#web-credentials)) |
 | **REST data sources** | Web service endpoints whose JSON becomes rows for regions and lists of values, with a **Test** button and suggested columns ([chapter 19](19-rest-data-sources.md#rest-data-sources)) |
 | **Template components** | HTML templates with placeholders and directives, used as a region type and as report column templates, with a preview; shared as plug-in files ([chapter 4](04-pages-and-regions.md#template-components)) |
+| **Data load definitions** | A target table, file format (CSV, Excel, JSON, XML with its row element) and column mapping with transformations, for SQL Workshop → Load Data and the `data_load` process ([chapter 16](16-files.md#data-load-definitions)) |
+| **Lists** | Named sets of links (static entries with nesting, badges, conditions and authorization, or a query) for list regions, the navigation menu and the navigation bar ([chapter 4](04-pages-and-regions.md#list-lists)) |
+| **Supporting objects** | Install, upgrade and deinstall scripts that travel with the export ([below](#supporting-objects)) |
+
+### Supporting objects
+
+APEX's *Supporting Objects*: SQL scripts that create, upgrade or remove what the application needs
+in the database (tables, views, functions, grants, seed data). Add them under **Shared Components →
+Supporting objects** with a name, a kind (*install*, *upgrade* or *deinstall*) and a sequence. They
+are part of the export (section `supporting_scripts`, and `shared/supporting-objects/` in a
+directory export), so an application can be moved with its database objects.
+
+They **never run by themselves**, also not on import (the builder and `pgapex import` say how many
+came along). **Review and run…** opens the *Supporting objects* page: it shows every script and
+runs the scripts of one kind on request, in sequence, **as the application's database role**
+(so they can only do what that role may: give it `CREATE` on its schema for an install script),
+statement by statement in **one transaction**: the first error undoes the whole run. The page then
+shows each statement with its result (up to 20 rows) or its error, and the activity log records the
+run (`supporting_objects`). Statements may take up to 10 minutes each.
 
 ## Users (the user directory)
 
@@ -261,11 +302,14 @@ register at the provider, and has a *Test discovery* button. See
 ## Settings
 
 - **Application**: name, alias, home page.
-- **Security**: authentication (*App users* / *None*), the database role, and **debug mode**
-  (shows full database errors to users; development only).
+- **Security**: authentication (*App users*, *HTTP header*, *Database accounts*, *Custom* or
+  *None*), the database role, and **debug mode** (shows full database errors to users; development
+  only). **Custom authentication**: the function name, or the function body, and the
+  post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)).
 - **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
 - **Theme**: accent colour, header colour, *side* or *top* navigation (on tablets and phones the
-  menu is always a drawer), the theme style (automatic, light or dark) and whether users may choose light or dark.
+  menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu
+  (instead of the navigation entries) and as the navigation bar (links in the header), the theme style (automatic, light or dark) and whether users may choose light or dark.
 - **Globalization**: primary language, translated languages, how the language is chosen, date formats.
 - **Security checklist**: whether the app has its own role, debug mode, and pages without
   checksum protection or without authentication.
@@ -279,7 +323,7 @@ register at the provider, and has a *Test discovery* button. See
 application: names, titles, SQL, conditions, settings JSON and help texts, case-insensitively,
 grouped by component type with the matching text marked. Each result links to the component.
 
-Under an **item**, **page**, **list of values**, **authorization scheme** or **report layout**, a
+Under an **item**, **page**, **list of values**, **list**, **authorization scheme** or **report layout**, a
 **Used in** list shows the components that refer to it:
 
 | Target | Found as |
@@ -289,6 +333,7 @@ Under an **item**, **page**, **list of values**, **authorization scheme** or **r
 | Authorization scheme | Authorization fields (also negated, `!NAME`) and `"public_reports"` |
 | Page | target pages, breadcrumb parents, navigation, `"page": n` in links, `meta.page_url(n, …)` |
 | Report layout | `"layout": "NAME"` in report settings |
+| List | `"list": "NAME"` in list regions (its entries are listed under the list itself) |
 
 Database code (views, functions, RLS policies) isn't part of the application, so it isn't searched.
 
@@ -349,8 +394,38 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
 - **Object Browser**: tables, views and functions per schema. For a table you see columns, types
   and defaults, **row level security policies**, **grants** and the first 25 rows; for a
   function, its source.
-- **Load Data**: load a CSV, TSV or Excel file into a new table (with inferred column types) or
-  an existing one (append, merge by primary key, or replace), with a per-row error report
+- **SQL Scripts**: saved scripts, shared by all developers. Create one in the editor, upload a
+  `.sql` file (UTF-8, up to 5 MB) or save one from Quick SQL; download it again as `.sql`. **Run**
+  splits the script into statements at semicolons (outside strings, comments, quoted identifiers,
+  `$$` bodies and `BEGIN ATOMIC … END`) and runs them one after another, with a **result per
+  statement**: OK or the error, the command and row count, the time, and the first 10 rows of a
+  query. Choose what happens when a statement fails: **stop** the script or **continue** with the
+  next one. With **Run in one transaction**, *stop* rolls the whole script back and *continue*
+  keeps the statements that worked (each runs in a savepoint). psql meta-commands (`\set`, `\i`,
+  `\connect`) are reported as skipped. Every run is kept in the **run history** (the last 500
+  runs), per script and overall, and in the activity log (`sql_script`). A script runs on a
+  connection of its own that is closed afterwards, so `SET ROLE` or `SET search_path` in a script
+  doesn't leak into other requests.
+- **Quick SQL**: write tables in a shorthand and get the PostgreSQL DDL; save it as a script or
+  run it. A table name on its own line with its columns indented below it; a table indented under
+  another becomes a child table with a foreign key `<parent>_id`. Types follow the column name
+  (`*_id` bigint, `*_at` timestamptz, `*_on`/`*_date` date, `is_*` boolean, `price`/`amount`
+  numeric, otherwise text) or are written after it (`vc200`, `num(10,2)`, `int`, `date`, `tstz`,
+  `json`, `bool`, `uuid` …). Column directives: `/nn`, `/pk`, `/unique`, `/idx`, `/fk table`,
+  `/check a, b`, `/between 1 and 10`, `/default value`, `/lower`, `/upper`, `[a comment]`; table
+  directive `/auditcols` (created/updated columns with a trigger). Settings: `# pk: identity | seq
+  | guid | none`, `# schema: name`, `# prefix: xx`, `# drop: true`, `# auditcols: true`. `view name
+  t1 t2` creates a view joining the tables by their foreign keys. Names become valid identifiers
+  and values literals, so the DDL is always well-formed; problems are listed with line numbers.
+- **Query Builder**: choose a schema and its tables and views; joins follow the **foreign keys**
+  (inner or left; tables without one are cross joined, with a note). Pick the columns, conditions
+  (`=`, `<>`, `<`, `like`, `in (a, b)`, `is null` …, combined with AND or OR), the sort, `distinct`
+  and a row limit. The SELECT is shown and opens in SQL Commands. The state is in the URL, so a
+  query can be bookmarked; it works without JavaScript. Only names from the catalog are used, and
+  condition values are string literals.
+- **Load Data**: load a CSV, TSV, Excel, JSON or XML file into a new table (with inferred column
+  types) or an existing one (append, merge by primary key, or replace), with a per-row error
+  report, or with a saved **data load definition**; a mapping can be saved as one
   ([chapter 16](16-files.md#sql-workshop--load-data)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
@@ -381,7 +456,10 @@ imports as empty. Import refuses other formats.
 | `report_layouts` | report layouts; the logo as base64 |
 | `template_components` | template components (regions and report columns refer to them by static id) |
 | `web_credentials`, `rest_sources` | web credentials **without their secrets**, and REST data sources ([chapter 19](19-rest-data-sources.md)) |
+| `data_load_definitions` | data load definitions ([chapter 16](16-files.md#data-load-definitions)) |
 | `nav` | navigation menu (with ids, so parents can be linked again) |
+| `lists`, `list_entries` | lists and their entries (with ids, so parents can be linked again) |
+| `supporting_scripts` | supporting objects: install, upgrade and deinstall scripts (never run on import) |
 | `pages` | every page with its `regions`, `items`, `buttons`, `dynamic_actions`, `validations` and `processes` |
 
 Rows appear as they are in the `meta` tables (without their ids and the id of their parent), so a
@@ -389,7 +467,7 @@ new column travels along automatically.
 
 **Not exported, on purpose:** accounts and who has access (they belong to an installation, not to
 an app), OAuth clients and their secrets, the secrets of web credentials (enter them again after an
-import), sessions, activity logs, temporary files, and your
+import), page locks and developer comments, sessions, activity logs, temporary files, and your
 database objects (tables, views, functions: keep those in your own migration scripts). After an
 import, check the app's database role under **Settings** and grant access under **Shared
 Components**.

@@ -3,8 +3,8 @@
 This chapter covers three things that deal with files:
 
 - **file upload items**, where users upload files into a table or a process;
-- **data loading**, which loads CSV and Excel files into tables, from the SQL Workshop or from
-  an application page;
+- **data loading**, which loads CSV, Excel, JSON and XML files into tables, from the SQL
+  Workshop or from an application page, optionally with a saved data load definition;
 - **downloads and printing**: reports as CSV, Excel and PDF (with adjustable report layouts),
   and printing any page from the browser.
 
@@ -14,7 +14,8 @@ This chapter covers three things that deal with files:
 | File Browse item, storage "Table APEX_APPLICATION_TEMP_FILES" | Item type `file` without a source column; read the file from `meta.temp_files` |
 | File Browse item, "Allow Multiple Files" | Item type `file` with `"multiple": true`: one row per file in a child table, or a list of temporary files |
 | SQL Workshop → Data Workshop → Load Data | SQL Workshop → **Load Data** |
-| Data Load Definition + "Execute Data Load" process | Process type `data_load` |
+| Shared Components → Data Load Definitions | Shared Components → **Data load definitions** |
+| Data Load Definition + "Execute Data Load" process | Process type `data_load` with `"definition"` |
 | Interactive report → Download → CSV / Excel / PDF | Actions → **Download CSV / Excel / PDF** |
 | Shared Components → Report Layouts | Shared Components → **Report layouts** |
 | Print (browser) | Actions → **Print**, and a print stylesheet on every page |
@@ -168,15 +169,28 @@ Both ways of loading accept:
   such array (`{"employees": [...]}`), or JSON Lines (one object per line). The keys are the
   columns, in the order they first appear; nested objects and arrays load as JSON text, so they
   fit `json`/`jsonb` columns.
+- XML: one row per **repeating element**. Name it (`employee`, or a path such as
+  `employees/employee`), or leave it empty and pgapex takes the element that occurs most often
+  among the elements with children or attributes. The columns are the row element's attributes
+  (`@empno`), its child elements (`ename`) and deeper elements by path (`address/city`,
+  `address/@type`); a row element holding only text is one column. Namespace prefixes are
+  dropped. CDATA, character references and the five predefined entities are read. **Document
+  type declarations (`<!DOCTYPE …>`) and entity declarations are refused**, so no external
+  entities are fetched and no entity expansion ("billion laughs") is possible; nesting is limited
+  to 100 levels. The reader is pgapex's own (`src/xml.ts`), not a library.
 
-The first row holds the column names. Empty cells become NULL. Rows are inserted in batches; if
+For CSV and Excel, the first row holds the column names (untick it when it doesn't). The format
+is detected from the file name and its first bytes. Empty cells become NULL. Rows are inserted in batches; if
 a batch fails, its rows are retried one by one to find the bad rows. **When a row fails, nothing
 is loaded**, and you get a list of the failed rows with their errors. To load the good rows and
 skip the others instead, tick *Skip rows with errors* (or use `skip_errors` in a process).
 
 ### SQL Workshop → Load Data
 
-1. Choose a file (up to `DATA_LOAD_MAX_MB`, default 50 MB, and `DATA_LOAD_MAX_ROWS` rows).
+1. Choose a file (up to `DATA_LOAD_MAX_MB`, default 50 MB, and `DATA_LOAD_MAX_ROWS` rows). For
+   XML you can name the row element. To load with a [data load
+   definition](#data-load-definitions), choose it here: the next step previews the file after its
+   mapping and transformations and loads it into the definition's table with its mode.
 2. Check the preview, then choose where the data goes:
    - **New table:** pgapex suggests column names (`Hire Date` → `hire_date`) and types from the
      data: `integer`, `bigint`, `numeric`, `boolean`, `date` or `timestamp` (ISO dates only), or
@@ -190,10 +204,55 @@ skip the others instead, tick *Skip rows with errors* (or use `skip_errors` in a
      | Append | Insert every row |
      | Merge | Update rows with the same primary key and insert the others (`insert … on conflict do update`); the key columns must be mapped |
      | Replace | Delete all rows first (`delete`, so triggers and foreign keys apply), then insert |
+     Under **Save this mapping as a data load definition**, the mapping, mode and file format are
+     saved as a definition of an application, to load files like this one again or from a page.
 3. The result shows the rows inserted, updated and skipped, with a link to the table in the
    Object Browser.
 
 Load Data runs as the builder's owner connection, like SQL Commands.
+
+### Data load definitions
+
+**Shared Components → Data load definitions** keeps how a kind of file is loaded, by name:
+
+| Property | Meaning |
+|---|---|
+| Name | Upper case, e.g. `EMP_XML`; a `data_load` process names it |
+| Table | `schema.table` |
+| Mode | `append`, `merge` (by primary key) or `replace` |
+| Skip rows with errors | Load the good rows and report the others (otherwise nothing is loaded) |
+| File format | `auto` (detected), `csv`, `xlsx`, `json` or `xml` |
+| Headers | CSV / Excel: the first row holds the column names |
+| XML row element | e.g. `employee` or `employees/employee`; empty: detected |
+| Columns | The mapping as a JSON array; empty: file columns match table columns by name |
+
+Each entry of **Columns** fills one table column:
+
+```json
+[
+  {"source": "@empno", "column": "empno"},
+  {"source": "Full name", "column": "ename", "transform": ["collapse_spaces", "upper"]},
+  {"source": "hired", "column": "hiredate", "format": "DD.MM.YYYY"},
+  {"source": "salary", "column": "sal", "format": "99999D99", "default": "0"},
+  {"column": "status", "default": "NEW"}
+]
+```
+
+- `source`: the file column: the heading (CSV, Excel), the key (JSON), or the element path or
+  `@attribute` (XML). It is matched exactly, then ignoring case, spaces and punctuation.
+  Without a source, `default` is loaded into every row as a constant.
+- `transform`: applied in order: `trim`, `upper`, `lower`, `initcap`, `collapse_spaces`,
+  `digits_only`.
+- `format`: a PostgreSQL format mask for `to_date` (date columns), `to_timestamp` (timestamp
+  columns) or `to_number` (number columns). `G` and `D` in a number mask follow the database's
+  `lc_numeric`; write `,` and `.` to be explicit.
+- `default`: used when the value is empty.
+
+The mapping is checked when the definition is saved (unknown keys and transformations, a
+column mapped twice). The definition page has **Load a file with this definition**. Definitions
+are exported and imported with the application (section `data_load_definitions`).
+
+The HR sample has `EMP_XML`, for XML files like `/static/samples/employees.xml`.
 
 ### Data loading in an application
 
@@ -204,11 +263,14 @@ security, triggers and the audit trail apply, just as they do for the form.
 | `config` key | Meaning |
 |---|---|
 | `file_item` | The file item (required) |
-| `table` | Target table (required) |
+| `definition` | A [data load definition](#data-load-definitions) of the application: table, format, mode and mapping come from it, and the keys below are ignored |
+| `table` | Target table (required without a definition) |
 | `mode` | `append` (default), `merge` or `replace` |
 | `skip_errors` | `true`: load the good rows and list the skipped ones |
 | `headers` | `false` when the file has no heading row (then use `columns` with `column_1`, `column_2`, …) |
 | `columns` | Mapping `{"Heading in the file": "column"}`; without it, columns are matched by name |
+| `format` | `auto` (default), `csv`, `xlsx`, `json` or `xml` |
+| `row_tag` | XML: the repeating row element (default: detected) |
 
 The success message may use `{inserted}`, `{updated}` and `{failed}`, for example
 `{inserted} employees added, {updated} updated.`. Row errors appear on the file item, one entry
@@ -223,8 +285,16 @@ The HR sample's page 13, **Administration → Import employees**, merges files i
 {"file_item": "P13_FILE", "table": "hr.emp", "mode": "merge"}
 ```
 
-Try it with `/static/samples/employees.csv`. A salary above the president's is refused by the
-database trigger, and then nothing is loaded.
+Try it with `/static/samples/employees.csv` or `/static/samples/employees.xml`. A salary above
+the president's is refused by the database trigger, and then nothing is loaded. With a
+definition instead:
+
+```json
+{"file_item": "P13_FILE", "definition": "EMP_XML"}
+```
+
+The definition is looked up in the page's own application only, and the load runs as the
+application's role like any other `data_load` process.
 
 ## Downloads and printing
 

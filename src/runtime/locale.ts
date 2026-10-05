@@ -3,7 +3,8 @@ import { runtime } from '../db.ts';
 import { baseLanguage, fromAcceptLanguage, RTL, translator, type Translate } from '../i18n.ts';
 import type { App, Page } from '../metadata.ts';
 import type { Session } from '../session.ts';
-import { dateFormatter, type Formatter } from './format.ts';
+import { numberSymbols, type NumberSymbols } from '../numformat.ts';
+import { dateFormatter, maskedFormatter, type Formatter } from './format.ts';
 
 // The language, texts and theme of a request (APEX: globalization and
 // theme styles). Language: ?lang= for the session, then the user's choice,
@@ -28,6 +29,14 @@ export interface Locale {
   /** dates and timestamps for display (undefined: not a date) */
   format: Formatter;
   number: Intl.NumberFormat;
+  /** separators and currency for number format masks */
+  numbers: NumberSymbols;
+  /** a formatter with a column's or item's format mask (number or date mask; empty: `format`) */
+  masked: (mask: string | null | undefined) => Formatter;
+  /** the time zone the app's queries run in (SET LOCAL timezone); null: the database's */
+  timeZone: string | null;
+  /** where the time zone came from */
+  timeZoneFrom: 'user' | 'browser' | 'app' | 'database';
 }
 
 export const THEME_COOKIE = 'pgapex_theme';
@@ -82,6 +91,65 @@ async function texts(app: App, lang: string) {
   return entry;
 }
 
+// ------------------------------------------------------------------ time zones
+
+let zones: { at: number; names: Set<string>; sorted: string[] } | null = null;
+
+/** The time zone names PostgreSQL knows (pg_timezone_names), read once an hour. */
+export async function timeZoneNames() {
+  if (!zones || Date.now() - zones.at > 3_600_000) {
+    const rows = (await runtime.query<{ name: string }>(`select name from pg_timezone_names where name !~ '^(posix|right)/' order by name`)).rows;
+    zones = { at: Date.now(), names: new Set(rows.map((r) => r.name)), sorted: rows.map((r) => r.name) };
+  }
+  return zones;
+}
+
+/** The name if PostgreSQL knows it as a time zone (exactly, as pg_timezone_names spells it). */
+export async function validTimeZone(name: unknown): Promise<string | undefined> {
+  if (typeof name !== 'string' || !name || name.length > 64) return undefined;
+  return (await timeZoneNames()).names.has(name) ? name : undefined;
+}
+
+let databaseZone: string | null = null;
+
+/** The database's own time zone setting (what queries use without an app time zone). */
+export async function databaseTimeZone() {
+  databaseZone ??= (await runtime.one<{ tz: string }>(`select current_setting('TimeZone') as tz`))?.tz ?? 'UTC';
+  return databaseZone;
+}
+
+/** The UTC offset of a time zone now, e.g. "GMT+02:00" (null: Intl doesn't know the name). */
+export function zoneOffset(zone: string, at = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' }).formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether two time zones show the same clock time now (UTC and Etc/UTC do). */
+export function sameOffset(a: string, b: string) {
+  if (a === b) return true;
+  const [x, y] = [zoneOffset(a), zoneOffset(b)];
+  return x !== null && x === y;
+}
+
+/**
+ * The request's time zone. With an automatic time zone (APEX: Automatic Time
+ * Zone) the user's own choice (My account), else the browser's (sent once per
+ * session by app.js), else the application's; without it, the application's.
+ */
+export async function timeZoneFor(app: App, session: Session | undefined): Promise<{ tz: string | null; from: Locale['timeZoneFrom'] }> {
+  if (app.time_zone_auto) {
+    const own = await validTimeZone(session?.state.__TZ_PREF);
+    if (own) return { tz: own, from: 'user' };
+    const browser = await validTimeZone(session?.state.__TZ);
+    if (browser) return { tz: browser, from: 'browser' };
+  }
+  const tz = await validTimeZone(app.time_zone);
+  return tz ? { tz, from: 'app' } : { tz: null, from: 'database' };
+}
+
 function themeFor(app: App, session: Session | undefined, req: FastifyRequest): ThemeMode {
   const mode = isTheme(app.theme?.mode) ? app.theme.mode : 'auto';
   if (app.theme?.user_choice === false) return mode;
@@ -115,6 +183,11 @@ export async function resolveLocale(req: FastifyRequest, app: App, session?: Ses
   } catch {
     number = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
   }
+  // the currency of L and C in number masks: a text message, the app's, the language's default
+  const iso = [messages['FORMAT.CURRENCY'], app.currency, t('format.currency')].find((c) => typeof c === 'string' && /^[A-Z]{3}$/.test(c)) ?? 'USD';
+  const numbers = numberSymbols(lang, iso);
+  const format = dateFormatter(lang, mask('format.date', app.date_format), mask('format.timestamp', app.timestamp_format));
+  const { tz, from } = await timeZoneFor(app, session);
   return {
     lang,
     dir: RTL.has(baseLanguage(lang)) ? 'rtl' : 'ltr',
@@ -124,8 +197,12 @@ export async function resolveLocale(req: FastifyRequest, app: App, session?: Ses
     languages,
     theme: themeFor(app, session, req),
     themeChoice: app.theme?.user_choice !== false,
-    format: dateFormatter(lang, mask('format.date', app.date_format), mask('format.timestamp', app.timestamp_format)),
+    format,
     number,
+    numbers,
+    masked: (m) => maskedFormatter(format, lang, numbers, m),
+    timeZone: tz,
+    timeZoneFrom: from,
   };
 }
 

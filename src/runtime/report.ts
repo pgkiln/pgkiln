@@ -553,7 +553,7 @@ export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: 
  * The aggregates over all filtered rows (not just the page): the totals,
  * and per control-break value when there is a break column.
  */
-async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numeric: (col: string) => boolean) {
+export async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numeric: (col: string) => boolean) {
   const { src, where, cols, values } = await filtered(ctx, r, st);
   const aggs = st.aggregates.filter((a) => cols.has(a.column) && (!AGGREGATES[a.fn].numeric || numeric(a.column)));
   if (!aggs.length) return null;
@@ -569,6 +569,25 @@ async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numer
   }
   return { aggs, types: total.fields.map((f) => f.dataTypeID), total: total.rows[0] ?? [], groups };
 }
+
+/**
+ * The format masks of a region's columns ({"formats": {"sal": "FML999G990D00", "hiredate": "DD-MON-YYYY"}}):
+ * a formatter per column name (case-insensitive); columns without a mask use the page's date formats.
+ */
+export function columnFormats(ctx: PageContext, r: Region) {
+  const masks = r.config.formats && typeof r.config.formats === 'object' ? (r.config.formats as Record<string, unknown>) : {};
+  const byName = new Map(Object.entries(masks).flatMap(([k, m]) => (typeof m === 'string' && m.trim() ? [[k.toLowerCase(), m] as const] : [])));
+  const made = new Map<string, Formatter>();
+  return (name: string): Formatter => {
+    const k = name.toLowerCase();
+    let f = made.get(k);
+    if (!f) made.set(k, (f = ctx.locale.masked(byName.get(k))));
+    return f;
+  };
+}
+
+/** An aggregate keeps its column's mask, except a count. */
+export const aggregateFormat = (fn: string, column: string, fmtOf: (name: string) => Formatter, plain: Formatter) => (fn === 'count' ? plain : fmtOf(column));
 
 export function cell(v: unknown, typeOid?: number, fmt?: Formatter) {
   if (v === null || v === undefined) return '';
@@ -774,6 +793,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const selected = new Set(selIdx >= 0 ? splitValues(ctx.session.state[selection!.item] ?? '') : []);
   const lead = selIdx >= 0 ? 1 : 0;
   // columns rendered through a template component (config.column_templates)
+  const fmtOf = columnFormats(ctx, r);
   const templated = st.view === 'report' ? await columnTemplates(ctx, r, fields, (v, oid) => cell(v, oid, ctx.locale.format), (v) => cell(v)) : new Map();
   let rowNum = (pageNo - 1) * st.size;
 
@@ -807,7 +827,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   // under their columns, the label in the first cell
   const aggRow = (values: unknown[], label: string, cls: string) =>
     html`<tr class="${cls}">${lead ? html`<td class="row-select"></td>` : ''}${cols.map(({ f }, ci) => {
-      const parts = agg!.aggs.flatMap((a, ai) => (a.column === f.name ? [`${t(`agg.${a.fn}`)}: ${cell(values[ai], agg!.types[ai], ctx.locale.format)}`] : []));
+      const parts = agg!.aggs.flatMap((a, ai) => (a.column === f.name ? [`${t(`agg.${a.fn}`)}: ${cell(values[ai], agg!.types[ai], aggregateFormat(a.fn, f.name, fmtOf, ctx.locale.format))}`] : []));
       const text = [ci === 0 ? label : '', ...parts].filter(Boolean).join(' · ');
       return html`<td class="${parts.length && NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null}" data-label="${parts.length ? headingOf(r, f.name, ctx.locale.tr) : ''}">${text}</td>`;
     })}</tr>`;
@@ -823,7 +843,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       if (k !== group) {
         if (group !== undefined && agg?.groups.has(group)) body.push(aggRow(agg.groups.get(group)!, t('report.subtotal'), 'agg-row subtotal'));
         group = k;
-        const value = cell(row[breakIdx], breakField.dataTypeID, ctx.locale.format);
+        const value = cell(row[breakIdx], breakField.dataTypeID, fmtOf(breakField.name));
         body.push(html`<tr class="break-row"><th colspan="${cols.length + lead || 1}" scope="colgroup">${headingOf(r, breakField.name, ctx.locale.tr)}: ${value || '—'}</th></tr>`);
       }
     }
@@ -833,7 +853,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       : '';
     rowNum++;
     body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${cols.map(({ f, i }) => {
-      const text = cell(row[i], f.dataTypeID, ctx.locale.format);
+      const text = cell(row[i], f.dataTypeID, fmtOf(f.name));
       const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
       const tpl = templated.get(i);

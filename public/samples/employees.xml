@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sample for HR page 13 (Import employees) and the data load definition EMP_XML -->
+<employees>
+  <employee empno="9201">
+    <ename>NOVAK</ename>
+    <job>ANALYST</job>
+    <mgr>7566</mgr>
+    <hiredate>2026-09-01</hiredate>
+    <sal>3100</sal>
+    <deptno>20</deptno>
+  </employee>
+  <employee empno="9202">
+    <ename>OKAFOR</ename>
+    <job>SALESMAN</job>
+    <mgr>7698</mgr>
+    <hiredate>2026-09-15</hiredate>
+    <sal>1450</sal>
+    <comm>200</comm>
+    <deptno>30</deptno>
+  </employee>
+</employees>
