@@ -15,7 +15,8 @@ import { owner, runtime } from './db.ts';
 // session advisory lock keeps a manual "Run now" from overlapping with it.
 // AUTOMATIONS=off switches the scheduler off (e.g. on extra web servers).
 // The same pass runs the synchronisations of REST data sources
-// (src/restsync.ts: scheduled ones and runs queued from SQL).
+// (src/restsync.ts: scheduled ones and runs queued from SQL) and the web
+// requests queued from SQL with meta.web_request (src/webrequests.ts).
 
 // ------------------------------------------------------------------ cron
 
@@ -291,6 +292,12 @@ export function startScheduler() {
       await (await import('./restsync.ts')).syncTick();
     } catch (e) {
       console.error('REST synchronisation:', (e as Error).message);
+    }
+    try {
+      // web requests queued from SQL (meta.web_request; src/webrequests.ts)
+      await (await import('./webrequests.ts')).webRequestTick();
+    } catch (e) {
+      console.error('web requests:', (e as Error).message);
     }
     try {
       // debug messages past their retention (at most once an hour; src/debug.ts)

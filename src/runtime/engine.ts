@@ -8,6 +8,7 @@ import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, stor
 import { autoMap, LoadError, LoadFailed, loadRows, loadWithDefinition, parseFile, tableColumns, type DataLoadDefinition, type FileFormat, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { invokeApi, restFetchRow, restFormDml } from './rest-sources.ts';
+import { runPending } from '../webrequests.ts';
 import { itemMask, lovLookup, ratingMax } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { conditionHolds } from './logic.ts';
@@ -468,6 +469,9 @@ async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, dept
       }
       default:
         await runSql(ctx, p.code ?? '', names);
+        // web requests the process queued (meta.web_request): made now, before the next process
+        await runPending(ctx.client!, ctx.app.id, (r, res, ms) =>
+          dbg(ctx, 6, 'web', () => `web request ${r.id} (${r.source ? `source ${r.source}` : r.method}): ${res.status === 'ok' ? `HTTP ${res.statusCode}` : res.message} in ${ms} ms`));
         return p.success_message;
     }
   } catch (e) {

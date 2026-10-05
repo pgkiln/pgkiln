@@ -560,6 +560,8 @@ export interface CallOptions {
   body?: string;
   credential?: WebCredential | null;
   timeoutMs?: number;
+  /** more header names (lower case) that carry secrets: dropped on a cross-origin redirect */
+  secretHeaders?: string[];
 }
 
 /** One request, signed with the credential; an OAuth2 token refused with 401 is renewed once. */
@@ -570,7 +572,7 @@ export async function call(o: CallOptions): Promise<WebResponse> {
     return webRequest(o.url, {
       method: o.method ?? 'GET',
       headers: { accept: 'application/json', ...o.headers, ...auth },
-      secretHeaders: Object.keys(auth),
+      secretHeaders: [...Object.keys(auth), ...(o.secretHeaders ?? [])],
       body: o.body,
       timeoutMs,
     });
