@@ -48,6 +48,9 @@ const CHART_LABELS: Record<string, string> = {
   gauge: 'Gauge (one dial per row)',
   funnel: 'Funnel (stages in the query order)',
   radar: 'Radar (one axis per row)',
+  gantt: 'Gantt (task, start and end columns)',
+  pyramid: 'Pyramid (one series; two series back to back)',
+  polar: 'Polar area (one sector per row)',
 };
 const GAUGE_KEYS = ['min', 'max', 'warning', 'critical'] as const;
 const CARD_COLUMNS = ['title', 'subtitle', 'body', 'badge', 'icon'];
@@ -639,7 +642,9 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
     case 'chart':
       title = 'Chart settings';
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
-        <p class="muted u-mt0">The first column is the label; each following numeric column is a series (up to 8).</p>
+        <p class="muted u-mt0">The first column is the label; each following numeric column is a series (up to 8).
+          A Gantt chart reads <code>label, start, end</code> (dates or timestamps; an empty end is a milestone) and optional columns named
+          <code>progress</code> (0 to 100), <code>task_id</code> and <code>depends_on</code> (the ids a task waits for, e.g. <code>3,4</code>).</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('kind')}">Chart type</label>
             <select id="${id('kind')}" name="kind">${CHART_KINDS.map((k) => opt(k, CHART_LABELS[k], cfg.kind ?? 'bar'))}</select></div>
