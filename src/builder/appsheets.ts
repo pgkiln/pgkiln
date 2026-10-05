@@ -137,10 +137,10 @@ export interface ForeignKey {
 /** The form's values for a sheet: field names s<k>_… when there are several sheets. */
 export const field = (k: number, name: string) => `s${k}_${name}`;
 
-/** The file column proposed as the primary key: id, <table>_id, <table>_code or <table>_no with a value in every row, all different. */
+/** The file column proposed as the primary key: id, code, <table>_id, <table>_code or <table>_no with a value in every row, all different. */
 export function proposeKey(sheet: Sheet, table: string): number | null {
   const one = singular(table);
-  const names = ['id', `${table}id`, `${one}id`, `${table}code`, `${one}code`, `${table}no`, `${one}no`, `${one}number`].map(squash);
+  const names = ['id', 'code', `${table}id`, `${one}id`, `${table}code`, `${one}code`, `${table}no`, `${one}no`, `${one}number`].map(squash);
   for (const name of names) {
     const i = sheet.headers.findIndex((h) => squash(h) === name);
     if (i < 0) continue;
