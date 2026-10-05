@@ -29,6 +29,7 @@ src/
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
+  process-jobs.ts          background execution chains: the job queue (SKIP LOCKED, NOTIFY + polling), running a job as the app role
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
@@ -50,8 +51,9 @@ src/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
     context.ts             PageContext, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
-    engine.ts              form fetch, validations, processes, application processes
-    logic.ts               computations, branches and their conditions (before header / after submit)
+    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains), application processes
+    processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
+    logic.ts               computations, branches (page, URL, function returning a URL, another application) and their conditions
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, facets.ts, items.ts
@@ -107,13 +109,14 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)
+    process-jobs.ts        page designer: the Jobs tab of a background chain process
     template-spec.ts       template component property form (Shared Components)
     websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
 public/
   app.css                  theme (light/dark, responsive)
-  app.js                   client runtime: dialogs, popup LOVs, dynamic actions (focus, classes, messages), grids, menus, lazy regions (no inline JS)
+  app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids, menus, lazy regions (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
@@ -132,6 +135,7 @@ test/
   fixtures/                test files (employees.xlsx)
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates
   logic.test.ts            computations, branches, menu buttons and badges, new dynamic actions, build options, export
+  page-logic.test.ts       download, chain (background jobs) and workflow processes, function/app branches, dialog_closed (HR page 28)
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
   charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
