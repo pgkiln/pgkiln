@@ -1269,7 +1269,7 @@ tested, committed and pushed on `sprint-33` before the next agent starts, so the
 | 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (unused), `hr_36` | **done** (1d885c6..9b67ee1) |
 | 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | **done** (3875dd2..87ad118) |
 | 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | **done** (02afbf9..2b10cc4) |
-| 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | to do |
+| 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | **done** (58da370..f10b12e) |
 | 6 | Theme Roller: style variants (several saved styles per app, switch per user) and template options on regions/buttons (a fixed list of CSS classes per component) | 053, (no HR) | to do |
 
 **If a session ends:** `git log --oneline main..sprint-33` and `git status`; make sure no agent is still editing;
@@ -1344,6 +1344,26 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   background jobs/automations/REST API not recorded; no per-user/session debug switch. Coordinator: Debug messages
   ✅, Instance administration stays 🟡 (text extended), Administration 3/1/1/0, totals 85/20/10/3, CHANGELOG.
   Tests (throwaway DB on 5446): 859 pass / 10 skip, e2e 99/99.
+- **5 SQL API equivalents: DONE** (58da370..f10b12e, pushed). Migration `052_web_request_parse_data.sql`:
+  `meta.web_request(url, method, body, headers, credential, timeout_s)` / `meta.web_request_source(source, params,
+  timeout_s)` queue a row in `meta.web_request_log` (URL/method/header/body checks, ≤100 waiting per app, own-app
+  credential/source); `meta.web_response(id)` (jsonb) / `meta.web_response_blob(id)` (NULL for other apps). Made by
+  `src/webrequests.ts`: `runPending()` right after a `sql` page process (same transaction, ≤5 per process, also in
+  chains) and `webRequestTick()` on the scheduler pass after commit (≤50 per pass, 5 at a time, SKIP LOCKED);
+  through `websources.ts` `call()`/`invoke()` (new `secretHeaders` option: app auth-like headers dropped on
+  cross-origin redirects). Retention 24 h / 500 per app; stuck running → error after 15 min. `meta.parse_data()` /
+  `meta.parse_data_columns()` in PL/pgSQL for CSV/TSV/JSON (names, types, delimiter detection, Windows-1252 fallback
+  as `src/dataload.ts`, compared in tests; 100k rows ≈ 1.2 s); XLSX (no inflate in SQL) and XML refused with a hint.
+  HR `hr_38_parse_and_fetch.sql` page 35. **Export/import not redefined** (`web_request_log` in `KEPT` of
+  `src/cli/replace.ts`). No env vars (`PUBLIC_URL` now also visible to SQL as `pgapex.public_url`). Security (for
+  SECURITY.md): allow-list/SSRF/redirect/size/credential URL checks on every call; secrets never in the log or SQL;
+  log table closed to app/runtime roles, security definer functions limited to `meta.app_id()`;
+  `web_request_take/done` only act on requests queued in the caller's own transaction; headers re-filtered before
+  sending; responses belong to the app, not a user (any app code with the id can read it); `parse_data` runs as the
+  caller, row cap 1,000,000, XML refused. Not done: synchronous call inside one statement, XLSX/XML parsing, a
+  builder page for web requests, binary/multipart bodies, debug entries for scheduler-made requests. Coordinator:
+  APEX PL/SQL APIs row text (stays 🟡), extensions table note, CHANGELOG, hr_37 row in `examples/hr/README.md`.
+  Agent tests (reused DB on 5446): 877 pass / 10 skip, e2e 103/103.
 
 ## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
 

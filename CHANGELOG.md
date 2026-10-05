@@ -32,6 +32,15 @@ All notable changes to this project are documented here. The format follows
   utilities → Installation (administrators) shows the version, install and upgrade runs, applied
   migrations and mismatches.
 
+- **Web requests from SQL** (APEX_WEB_SERVICE): `meta.web_request(url, method, body, headers,
+  credential, timeout_s)` and `meta.web_request_source(source, params)` queue a call that the server
+  makes (right after the page process that queued it, otherwise on the scheduler pass after commit)
+  through the allow-list, address checks and the app's web credentials; `meta.web_response(id)` /
+  `meta.web_response_blob(id)` read the result. Responses are kept 24 hours. Migration 052.
+- **Parsing files in SQL** (APEX_DATA_PARSER): `meta.parse_data()` and `meta.parse_data_columns()` for
+  CSV/TSV and JSON in a bytea, with the data loader's column names and types (XLSX and XML: use the
+  data loader). HR example page 35 "Parse and fetch".
+
 ### Changed
 - The export leaves out OAuth2 passwords, refresh tokens and a synchronisation's run state; an
   imported synchronisation starts switched off. `pgapex import --replace` keeps the new secrets.
