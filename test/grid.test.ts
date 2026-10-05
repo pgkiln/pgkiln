@@ -184,16 +184,18 @@ describe('grid regions on HR page 27', () => {
     assert.match(staff, /<th scope="col"[^>]*data-col-name="comm" hidden>/);
     assert.match(staff, /data-frozen="2"/);
     // inputs keep their names (the query's positions), hidden ones still post
-    const form = gridForm(staff, g);
-    const row = Object.keys(form).find((k) => form[k] === 'SMITH')!.replace(/_c\d+$/, '');
-    const pk = form[`${row}_pk`];
+    const rowOf = (form: Record<string, string>) => Object.keys(form).find((k) => form[k] === 'SMITH')!.replace(/_c\d+$/, '');
+    const pk = gridForm(staff, g)[`${rowOf(gridForm(staff, g))}_pk`];
     const before = await owner.one('select sal, comm from hr.emp where empno = $1', [pk]);
     await owner.query('update hr.emp set comm = 11 where empno = $1', [pk]);
     try {
+      // the update may move the row (no order by): find it again
       const fresh = gridForm(sectionOf((await king.get('/a/hr/27')).body, R.Staff), g);
+      const row = rowOf(fresh);
+      assert.equal(fresh[`${row}_pk`], String(pk));
+      assert.equal(fresh[`${row}_c6`], '11.00', 'the hidden column still posts its value');
       const saved = await king.submit('/a/hr/27', { ...fresh, __request: `GRID_SAVE_${R.Staff}`, [`${row}_c5`]: '901' });
-      assert.equal(saved.statusCode, 303, saved.body.match(/alert-error[^<]*<[^<]*/)?.[0]);
-      console.log(saved.headers.location, JSON.stringify(fresh).slice(0,600));
+      assert.equal(saved.statusCode, 303, saved.body.match(/alert-error[^<]*<[^<]*/)?.[0] ?? '');
       const after = await owner.one('select sal::text, comm::text from hr.emp where empno = $1', [pk]);
       assert.deepEqual(after, { sal: '901.00', comm: '11.00' });
     } finally {

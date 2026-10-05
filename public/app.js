@@ -544,10 +544,11 @@ document.documentElement.classList.add('js');
   // ------------------------------------------------------------ rows
   function addRow(grid) {
     const g = grid.dataset.grid;
-    const tpl = grid.querySelector('.grid-template tr');
+    const tpl = grid.querySelector('table.grid-table > .grid-template > tr');
     if (!tpl) return null;
-    const rows = grid.querySelector('tbody:not(.grid-template)');
-    const used = [...grid.querySelectorAll('tbody:not(.grid-template) [data-new-row]')].map((r) => Number(r.dataset.newRow));
+    // the grid's own rows (the Actions menu's Columns form has a table too)
+    const rows = grid.querySelector('table.grid-table > tbody:not(.grid-template)');
+    const used = [...rows.querySelectorAll(':scope > [data-new-row]')].map((r) => Number(r.dataset.newRow));
     const next = Math.max(Number(tpl.dataset.newRow), ...used.map((n) => n + 1));
     const row = tpl.cloneNode(true);
     row.dataset.newRow = String(next);
