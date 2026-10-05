@@ -1083,6 +1083,27 @@ do **not** start sprint 32 in that session.
   sanitised (identifiers, widths 40–1000, ≤5 frozen, ≤6000 chars); detail master column never editable, inserts
   without a selection refused. Parity: IG aggregates, frozen columns, reorder/resize/hide, per-user layouts and saved
   reports, master-detail, row actions menu, copy/paste of cell ranges: done. Tests 545 pass / 8 skip, e2e 83/83.
+- **builder: DONE**. The agent squashed the wip into 3 commits on a9f1ddd; that result is pushed as
+  **`origin/sprint-31-builder-final`** (merge this one). `origin/sprint-31-builder` still holds the older wip tip (not
+  force-pushed). Migration 042, HR `hr_32_lists.sql` page 31 (lists HR_SHORTCUTS, HR_DEPARTMENTS, HR_NAVBAR, two
+  supporting scripts). **042 redefines `export_app`/`import_app`** from 034 (adds `lists`, `list_entries`,
+  `supporting_scripts`; import sets list-entry parents after inserting): combine in 043. No env vars.
+  New i18n keys `list.missing`, `list.empty`, `list.navbar` (en/nl): de/fr/es need them. Existing tests changed:
+  logic.test.ts "Used in (3)" for LEAVE_FORECAST; page-3 link regex `/a\/hr\/3(?![0-9])/` in security and
+  template-components tests. Hotspots: builder routes.ts (settings form `$23`–`$27`, developers page), ui.ts (lock
+  check), runtime routes.ts (login), components.ts, shared.ts, region-settings, designer, search, render.ts,
+  regions.ts, appfiles.ts, cli replace/main, metadata.ts, i18n.ts, app.css, builder.css, end of security.test.ts,
+  responsive e2e, guide 03/04/08/09/11/12/18.
+  Security: custom auth runs as app role in a temp function, password only a parameter, failures logged by SQLSTATE,
+  same "invalid" answer + throttling, function name constrained, random dollar-quote tag, nothing configured = no
+  sign-in; list URLs limited to app paths or http(s) (constraint + `safeListUrl`), noopener, checksums, entries hidden
+  by authz/condition/build option/page access; locks enforced server-side on every builder POST (423 for JSON),
+  owner or admin unlocks, admin break logged `lock_broken`, developers get `is_admin` (existing + CLI-created default
+  admin); supporting objects never run on import, need developer session + CSRF, run as app role in one transaction
+  with 600s timeout, logged `supporting_objects`; locks/comments not exported.
+  Parity: Custom authentication, Lists (shared component, list region, nav menu/bar), page/app locks + developer
+  comments, supporting objects: all Yes. Left out: "Used in" doesn't count `nav_list`/`navbar_list`.
+  Tests 556 pass / 8 skip, e2e 78/78.
 
 ## Sprint 32 (PLANNED, owner 2026-10-05)
 
