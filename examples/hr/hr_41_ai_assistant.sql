@@ -1,5 +1,5 @@
 -- =====================================================================
--- HR example, part 41: Generate text with AI (docs/guide/05-items-and-logic.md,
+-- HR example, part 41: Generate text with AI (docs/guide/06-processing.md,
 -- "Generate text with AI")
 --
 -- Page 37 "Leave assistant": paste an employee's message about leave.

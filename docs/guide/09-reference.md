@@ -87,6 +87,40 @@ select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
 - Application roles can't read `meta.web_request_log`; the owner can, e.g. in the SQL Workshop:
   `select id, status, status_code, url, message from meta.web_request_log order by id desc`.
 
+### AI requests from SQL
+
+`meta.ai_generate(service, prompt, system, schema)` queues a request to an
+[AI service](06-processing.md#generate-text-with-ai) the current application may use and returns its id;
+`meta.ai_result(id)` returns `{"id", "status", "service", "text", "json", "message", times}`
+(`status`: `queued`, `running`, `ok`, `refused`, `error`; `json` is the parsed answer when a schema
+was given). Like web requests, the server makes the call right after the `sql` page process that
+queued it (at most 3 per process), in the same transaction, so the next process can read the answer;
+anything else is made by the scheduler after the commit.
+
+```sql
+-- process 1 (button SUMMARISE)
+select meta.ai_generate('CLAUDE', 'Summarise this complaint in one sentence: ' || :P5_TEXT,
+                        'You help a customer service team.') as p5_request;
+-- process 2
+select meta.ai_result(:P5_REQUEST::bigint) ->> 'text' as p5_summary;
+
+-- structured: a JSON schema of an object
+select meta.ai_generate('CLAUDE', 'Classify: ' || :P5_TEXT, null,
+  '{"type": "object", "properties": {"category": {"type": "string", "enum": ["billing", "delivery", "other"]}},
+    "required": ["category"], "additionalProperties": false}');
+```
+
+- The prompt is sent as your SQL built it (no `&ITEM.` substitutions and no data wrapping): when it
+  contains user input, say in the system prompt that it is data, and treat the answer as untrusted.
+- Limits: the prompt 1–200,000 characters, the system prompt 50,000, the schema 50 KB; at most 20
+  requests of an application waiting. The service's daily limits apply and every call is logged in
+  `meta.ai_usage` (without prompt or answer).
+- Requests and answers are kept 24 hours. Application roles can't read `meta.ai_request`, only their
+  own application's requests through `meta.ai_result`.
+- `meta.ai_available(service)`: true when the application may use the service (it exists, is
+  enabled and the application is allowed); whether the provider accepts the key shows only when a
+  request is made.
+
 ### Parsing files in SQL
 
 `meta.parse_data()` reads CSV/TSV and JSON in a `bytea` (an uploaded file in `meta.temp_files`, a
@@ -319,6 +353,10 @@ navigation entries and application processes have the same `build_option` column
 | `debug_view` | [Debug messages](06-processing.md#debug-messages): one row per recorded request: `app_id`, `page_no`, `username`, `session_id`, `method`, `path` (without the query string), `status`, `level`, `started_at`, `elapsed_ms`, `entries`. Written through `meta.debug_save()` (runtime role only), not exported | no |
 | `debug_message` | The entries of a recorded request: `view_id`, `seq`, `elapsed_ms` (since the start), `duration_ms` (timed steps), `level`, `component`, `message` | no |
 | `web_request_log` | [Web requests from SQL](#web-requests-from-sql): `app_id`, `status`, the request (`url` or `source` + `params`, `method`, `headers`, `body`, `credential` name, `timeout_s`), `requested_by`, times, the response (`status_code`, `response_url`, `response_headers`, `response_body`), `message`. Kept 24 hours, not exported | no (through `meta.web_response`) |
+| `ai_service` | [AI services](06-processing.md#generate-text-with-ai) of the installation: `name`, `provider` (`anthropic`, `openai`), `model`, `effort`, `refusal_fallback`, `max_tokens`, `timeout_s`, `base_url`, `api_key_enc` (encrypted with `PGAPEX_SECRET_KEY`, write-only), `enabled`. Not exported | no |
+| `app_ai_service` | Which applications may use which AI service, with daily limits `max_requests` and `max_tokens` (null: no limit). Not exported | no (through `meta.ai_available`) |
+| `ai_usage` | One row per AI request: `at`, `app_id`, `page_no`, `username`, `service`, `provider`, `model`, `source`, `input_tokens`, `output_tokens`, `duration_ms`, `status`, `message` (an error class, never prompt or answer text). Not exported | no |
+| `ai_request` | [AI requests from SQL](#ai-requests-from-sql) and their answers, kept 24 hours. Not exported | no (through `meta.ai_result`) |
 | `developer` | Builder accounts (`is_admin`: manages developers, breaks locks) | no |
 | `builder_lock` | Page (`page_no`) and application (`page_no` 0) locks: `locked_by`, `locked_at`, `note` | no |
 | `dev_comment` | Developer comments on an application (`page_no` 0) or page: `author`, `body`, `created_at` | no |
@@ -351,7 +389,8 @@ shown under Workspace utilities → **Installation**.
 
 Retention: expired sessions are purged automatically; debug messages after the application's
 `debug_retention_days` (and at most 5000 requests per application), and web requests after 24 hours
-(at most 500 per application), by the scheduler. The activity log is kept until you delete
+(at most 500 per application), and AI requests from SQL after 24 hours, by the scheduler. The AI usage log
+(`meta.ai_usage`) is kept until you delete from it. The activity log is kept until you delete
 from it, for example with a scheduled
 `delete from meta.activity_log where at < now() - interval '90 days'`.
 

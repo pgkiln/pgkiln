@@ -68,6 +68,12 @@ src/
   webrequests.ts           web requests from SQL (meta.web_request, migration 052): runPending() after each sql page process
                            (same transaction), webRequestTick() for committed ones (automations scheduler), retention purge;
                            calls go through websources.ts call()/invoke() (allow-list, SSRF checks, credentials)
+  ai/                      AI services (migration 060): types.ts (the provider interface, AiError kinds),
+                           anthropic.ts (Claude through @anthropic-ai/sdk: streamed, effort, structured outputs via
+                           output_config.format, refusal fallbacks, stop_reason checks, typed SDK errors), openai.ts (the openai
+                           SDK: Chat Completions, strict json_schema), service.ts (generate(): service allowed for the app, daily
+                           limits, the call, meta.ai_usage), requests.ts (meta.ai_generate from SQL: runPendingAi() after an sql
+                           process, aiRequestTick() in the scheduler, 24-hour purge)
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
                            loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -114,6 +120,8 @@ src/
     data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
                            reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report)
     workflows.ts           workflow console region and its actions
+    ai.ts                  Generate text with AI: the ai_generate process (config checks, &ITEM. as delimited escaped data,
+                           schemas from items, answers into items), aiInputs/aiOutputs for its dynamic action (route in routes.ts)
     pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
   builder/
     components.ts          property spec of every component (drives the property editor)
@@ -169,6 +177,8 @@ src/
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
+    ai.ts                  Workspace utilities → AI services (administrators: services, write-only encrypted keys, access and
+                           daily limits per app, Test, usage log) and Activity → AI usage per application
     supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
   app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)
@@ -215,6 +225,9 @@ test/
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page) and template options
+  ai.test.ts               AI services: Generate text with AI (text, structured outputs, errors, limits, keys), its dynamic action,
+                           meta.ai_generate, the providers, HR page 37; against ai-mock.ts (no real API calls)
+  ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
@@ -224,6 +237,7 @@ test/
   e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
   e2e/grid.test.ts         interactive grid in a browser: master-detail refresh, move/resize columns, row menu, copy/paste; without JavaScript
   e2e/page-logic.test.ts   dialog_closed refreshes a region without a reload, download process in a browser, dialog link without JavaScript
+  e2e/ai.test.ts           Generate text with AI on HR page 37 in a browser (mock Claude): dynamic actions without a submit, errors, no JavaScript
 ```
 
 ## Principles

@@ -561,6 +561,42 @@ texts needs `pg_read_all_stats` for the owner role, and resetting needs execute 
 `pg_stat_statements_reset`.
 
 
+**AI usage** shows the [AI services](#ai-services) the application may use, today's requests and
+tokens against their daily limits, and the last 100 AI requests (time, page, user, service, model,
+source, tokens, duration, status). Prompts and answers are not logged.
+
+## AI services
+
+Workspace utilities → **AI services** (administrators only; APEX: *Generative AI services*) lists the
+large language model services of this installation. A service has:
+
+- a **name** (upper case, e.g. `CLAUDE`) by which processes, dynamic actions and SQL refer to it;
+- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs;
+- a **model**, exactly as the provider names it (new Claude services start with `claude-opus-5-5`);
+  pgapex never changes or downgrades it;
+- for Claude, the **effort** (how deeply the model thinks; current Claude models always think, lower
+  effort is faster and cheaper, new services start at `medium`) and **refusal fallbacks** (when Claude
+  declines a request for safety reasons, Anthropic re-runs it on its recommended fallback model; on by
+  default, switch it off for models or gateways that don't support it);
+- the **maximum output tokens** per request (1–128,000) and a **time limit** (5–600 seconds; pages
+  wait for the answer);
+- an optional **base URL** for a gateway or proxy that speaks the provider's API (calls to the AI
+  service don't go through `PGAPEX_REST_ALLOWED_HOSTS`: only administrators set this URL);
+- the **API key**: stored encrypted with `PGAPEX_SECRET_KEY`, write-only (never shown again, never
+  exported or logged, not readable by applications). Without one the server's `ANTHROPIC_API_KEY` /
+  `OPENAI_API_KEY` is used.
+
+On a service's page, **Applications** sets which applications may use it, each with optional daily
+limits (requests and input + output tokens per UTC day; a request over a limit fails with a message
+and is logged as *limited*), and **Test** sends a prompt (logged as a builder test). Below that, and
+on the list page for all services, the usage log: the last requests and the totals per application
+and service of the last 30 days.
+
+**Prompts go to the provider.** Whatever a prompt contains, including the item values substituted
+into it, is sent to the chosen provider (or the gateway of the base URL). Choose providers and
+models that your organisation allows for that data. See
+[Generate text with AI](06-processing.md#generate-text-with-ai).
+
 ## Installation
 
 Workspace utilities → **Installation** (administrators only; APEX: the install/upgrade logs of
