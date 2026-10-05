@@ -223,7 +223,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
 
   const sampleTable = (columns: string[], rows: (string | null)[][]) =>
     html`<div class="table-wrap"><table class="report"><thead><tr>${columns.map((c) => html`<th>${c}</th>`)}</tr></thead>
-      <tbody>${rows.map((r) => html`<tr>${r.map((v) => html`<td>${v === null ? html`<span class="null">null</span>` : v}</td>`)}</tr>`)}</tbody></table></div>`;
+      <tbody>${rows.map((r) => html`<tr>${r.map((v) => html`<td>${v === null ? html`<span class="null">null</span>` : v.length > 200 ? `${v.slice(0, 200)}…` : v}</td>`)}</tr>`)}</tbody></table></div>`;
 
   const resultHtml = (r: RunResult, committed: boolean) =>
     region(
