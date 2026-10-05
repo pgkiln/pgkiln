@@ -148,6 +148,7 @@ test/
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
+  e2e/page-logic.test.ts   dialog_closed refreshes a region without a reload, download process in a browser, dialog link without JavaScript
 ```
 
 ## Principles
