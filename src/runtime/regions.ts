@@ -14,6 +14,7 @@ import { renderFacets } from './facets.ts';
 import { renderSmartFilters } from './smart-filters.ts';
 import { renderDisplaySelector } from './display-selector.ts';
 import { renderGrid } from './grid.ts';
+import { masterItemOf, mastersOf } from './master-detail.ts';
 import { renderTasks } from './tasks.ts';
 import { renderWorkflows } from './workflows.ts';
 import { renderMap } from './maps.ts';
@@ -272,6 +273,10 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
     await resolveRestRegion(ctx, r).catch(async (e) => {
       restFailed = html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `REST data source of region "${r.title ?? r.id}"`)}</div>`;
     });
+  // a detail region (master-detail.ts) waits until a row of its master grid is selected
+  const masterItem = masterItemOf(r);
+  if (!restFailed && masterItem && !ctx.session.state[masterItem] && mastersOf(ctx.page, r).length)
+    restFailed = html`<p class="muted grid-detail-hint">${ctx.locale.t('grid.select_master_hint')}</p>`;
   if (restFailed) body = restFailed;
   else switch (r.type) {
     case 'report':

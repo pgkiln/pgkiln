@@ -118,6 +118,16 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(res?.status(), 200, `calendar ${v}`);
         await check(page, `app-24-${v}`, vp);
       }
+      // page 27: the interactive grid with a selected master row, a row actions menu and its Actions menu
+      const masterId = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 27 and r.title = 'Departments'`)).id;
+      await page.goto(`${base}/a/hr/27`);
+      await Promise.all([page.waitForURL(new RegExp(`r${masterId}_sel=20&`)), page.locator(`#R${masterId} a.grid-pick-link[href*="_sel=20&"]`).click()]);
+      await page.locator('.region-grid:not([aria-busy]) tr[data-row] .row-menu').first().waitFor();
+      await check(page, 'app-27-selected', vp);
+      await page.locator('.region-grid tr[data-row] .row-menu > summary').last().click();
+      await check(page, 'app-27-row-menu', vp);
+      await page.locator('.region-grid .grid-actions-menu > summary').last().click();
+      await check(page, 'app-27-actions', vp);
       // row selection: select all checks every row
       const before = (await owner.one('select config from meta.region where id = $1', [rid])).config;
       const pageId = (await owner.one('select page_id from meta.region where id = $1', [rid])).page_id;

@@ -2844,3 +2844,157 @@ describe('sprint 31 workshop: SQL scripts, Quick SQL, query builder, XML loading
     }
   });
 });
+
+describe('sprint 31 grid: interactive grid layouts, saved grid reports, master-detail', () => {
+  const R: Record<string, number> = {};
+  const sel = (user: string, region: number, value: string) =>
+    `r${region}_sel=${encodeURIComponent(value)}&r${region}_selcs=${urlChecksum(appId, 27, user, { [`S${region}`]: value })}`;
+  const staffOf = (body: string) => {
+    const start = body.indexOf(`id="R${R.Staff}"`);
+    return body.slice(start, body.indexOf('</section>', start));
+  };
+  const shows = (body: string, ename: string) => new RegExp(`value="${ename}"`).test(staffOf(body));
+  before(async () => {
+    for (const r of (await owner.query(`select r.id, r.title from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 27`, [appId])).rows) R[r.title] = r.id;
+    await owner.query(`delete from meta.saved_report where region_id = any($1)`, [Object.values(R)]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.saved_report where region_id = any($1)`, [Object.values(R)]);
+  });
+
+  test('a master row selection needs this user\'s signature for this value and region', async () => {
+    const blake = await as('blake');
+    // unsigned, another user's signature, another value's signature, signed for another region
+    const forged = [
+      `r${R.Departments}_sel=10`,
+      sel('king', R.Departments, '10'),
+      `r${R.Departments}_sel=10&r${R.Departments}_selcs=${urlChecksum(appId, 27, 'blake', { [`S${R.Departments}`]: '20' })}`,
+      `r${R.Departments}_sel=10&r${R.Departments}_selcs=${urlChecksum(appId, 27, 'blake', { [`S${R.Staff}`]: '10' })}`,
+    ];
+    for (const q of forged) {
+      const res = await blake.get(`/a/hr/27?${q}`);
+      assert.equal(res.statusCode, 200, q);
+      assert.ok(!shows(res.body, 'KING'), `${q}: no selection`);
+      const json = await blake.get(`/a/hr/27/region/${R.Staff}?${q}`);
+      if (json.statusCode === 200) assert.ok(!shows(JSON.parse(json.body).html, 'KING'), `${q}: no selection through the region endpoint`);
+    }
+    // the item can't be set by URL (checksum protection) or by posting it (hidden items aren't posted)
+    assert.equal((await blake.get('/a/hr/27?P27_DEPTNO=10')).statusCode, 403);
+    await blake.post('/a/hr/27', { __csrf: blake.lastCsrf, P27_DEPTNO: '10', __request: `GRID_SAVE_${R.Staff}` });
+    assert.ok(!shows((await blake.get('/a/hr/27')).body, 'KING'));
+    // the right one works
+    assert.ok(shows((await blake.get(`/a/hr/27?${sel('blake', R.Departments, '10')}`)).body, 'KING'));
+    // a user without access to the page gets nothing, signed or not
+    const allen = await as('allen');
+    assert.notEqual((await allen.get(`/a/hr/27?${sel('allen', R.Departments, '10')}`)).statusCode, 200);
+    assert.equal((await allen.get(`/a/hr/27/region/${R.Staff}?${sel('allen', R.Departments, '10')}`)).statusCode, 403);
+  });
+
+  test('the region endpoint serves a detail region, not any region of the page', async () => {
+    const blake = await as('blake');
+    // the master grid is neither lazy nor a detail
+    assert.equal((await blake.get(`/a/hr/27/region/${R.Departments}?${sel('blake', R.Departments, '10')}`)).statusCode, 403);
+    // a region of another page under this page's URL
+    const other = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 limit 1`, [appId])).id;
+    assert.equal((await blake.get(`/a/hr/27/region/${other}`)).statusCode, 403);
+  });
+
+  test('layout endpoints: CSRF, the grid must be on the page and visible, the input is cleaned', async () => {
+    const blake = await as('blake');
+    await blake.get('/a/hr/27');
+    const url = `/a/hr/27/grid/${R.Staff}/layout`;
+    assert.equal((await blake.post(url, { layout: '{"order":["sal"]}' })).statusCode, 403, 'no CSRF token');
+    assert.equal((await blake.post(url, { __csrf: 'x', layout: '{"order":["sal"]}' })).statusCode, 403, 'wrong CSRF token');
+    // a report region, a region of another page, an unknown one
+    const report = R['Jobs in the department'];
+    const other = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 limit 1`, [appId])).id;
+    for (const id of [report, other, 999999]) {
+      assert.equal((await blake.post(`/a/hr/27/grid/${id}/layout`, { __csrf: blake.lastCsrf, layout: '{}' })).statusCode, 403, `region ${id}`);
+      assert.equal((await blake.post(`/a/hr/27/grid/${id}/layout/reset`, { __csrf: blake.lastCsrf })).statusCode, 403);
+    }
+    // a user who can't open the page can't keep a layout on it
+    const allen = await as('allen');
+    await allen.get('/a/hr/1');
+    assert.notEqual((await allen.post(url, { __csrf: allen.lastCsrf, layout: '{"order":["sal"]}' })).statusCode, 303);
+    assert.equal((await owner.query(`select 1 from meta.saved_report where region_id = $1 and username = 'allen'`, [R.Staff])).rowCount, 0);
+    // hostile values: markup in names, CSS in widths, huge frozen counts, oversized JSON
+    const res = await blake.post(url, {
+      __csrf: blake.lastCsrf,
+      layout: JSON.stringify({ order: ['"><script>alert(1)</script>', 'sal'], hidden: ['ename'], widths: { sal: '100px;background:url(//x)', job: 1e9, comm: -5 }, frozen: 99 }),
+    });
+    assert.equal(res.statusCode, 303);
+    const stored = (await owner.one(`select params from meta.saved_report where region_id = $1 and username = 'blake' and kind = 'layout'`, [R.Staff])).params;
+    const lay = JSON.parse(new URLSearchParams(stored).get(`r${R.Staff}_lay`)!);
+    assert.deepEqual(lay.widths, { job: 1000 }, 'widths are numbers within bounds');
+    assert.equal(lay.frozen, 5);
+    const body = (await blake.get(`/a/hr/27?${sel('blake', R.Departments, '20')}`)).body;
+    assert.ok(!body.includes('<script>alert(1)'));
+    assert.ok(!/background:url\(\/\/x\)/.test(body));
+    assert.equal((await blake.post(url, { __csrf: blake.lastCsrf, layout: `{"order":["${'x'.repeat(7000)}"]}` })).statusCode, 403, 'oversized layout');
+    assert.equal((await blake.post(url, { __csrf: blake.lastCsrf, layout: 'not json' })).statusCode, 403);
+    await blake.post(`${url}/reset`, { __csrf: blake.lastCsrf });
+  });
+
+  test('saved grid reports: own and public ones only, publishing needs the authorization', async () => {
+    const king = await as('king');
+    const blake = await as('blake');
+    await king.get('/a/hr/27');
+    await blake.get('/a/hr/27');
+    // blake (not ADMIN) asks for a public report: saved private
+    assert.equal((await blake.post(`/a/hr/27/report/${R.Staff}/save`, { __csrf: blake.lastCsrf, name: 'Mine', public: 'true', params: '' })).statusCode, 303);
+    const mine = await owner.one(`select id, public from meta.saved_report where region_id = $1 and username = 'blake' and name = 'Mine'`, [R.Staff]);
+    assert.equal(mine.public, false);
+    // king may publish (ADMIN)
+    await king.post(`/a/hr/27/report/${R.Staff}/save`, { __csrf: king.lastCsrf, name: 'Shared', public: 'true', params: '' });
+    await king.post(`/a/hr/27/report/${R.Staff}/save`, { __csrf: king.lastCsrf, name: 'Private', params: '' });
+    const shared = await owner.one(`select id, public from meta.saved_report where region_id = $1 and username = 'king' and name = 'Shared'`, [R.Staff]);
+    const priv = (await owner.one(`select id from meta.saved_report where region_id = $1 and username = 'king' and name = 'Private'`, [R.Staff])).id;
+    assert.equal(shared.public, true);
+    // blake applies king's public report, not his private one, nor one under another grid's URL
+    assert.equal((await blake.post(`/a/hr/27/grid/${R.Staff}/saved/${shared.id}/apply`, { __csrf: blake.lastCsrf, params: '' })).statusCode, 303);
+    assert.equal((await blake.post(`/a/hr/27/grid/${R.Staff}/saved/${priv}/apply`, { __csrf: blake.lastCsrf, params: '' })).statusCode, 403);
+    assert.equal((await blake.post(`/a/hr/27/grid/${R.Departments}/saved/${shared.id}/apply`, { __csrf: blake.lastCsrf, params: '' })).statusCode, 403);
+    assert.equal((await blake.post(`/a/hr/27/grid/${R.Staff}/saved/${shared.id}/apply`, { params: '' })).statusCode, 403, 'no CSRF token');
+    // nor delete king's report
+    await blake.post(`/a/hr/27/report/${R.Staff}/saved/${shared.id}/delete`, { __csrf: blake.lastCsrf, params: '' });
+    assert.equal((await owner.query('select 1 from meta.saved_report where id = $1', [shared.id])).rowCount, 1);
+    // the public user can't save reports
+    const anon = new Browser();
+    await anon.get('/a/hr/login');
+    assert.notEqual((await anon.post(`/a/hr/27/report/${R.Staff}/save`, { __csrf: anon.lastCsrf, name: 'x', params: '' })).statusCode, 303);
+  });
+
+  test('in the database: layouts stay private, the functions check the region and the user', async () => {
+    const c = await runtime.pool.connect();
+    try {
+      const as = async (user: string, sql: string, params: unknown[] = []) => {
+        await c.query('begin');
+        try {
+          await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appId), user]);
+          return await c.query(sql, params);
+        } finally {
+          await c.query('rollback');
+        }
+      };
+      await owner.query(`delete from meta.saved_report where region_id = $1 and kind = 'layout'`, [R.Staff]);
+      await owner.query(`insert into meta.saved_report (app_id, region_id, username, name, public, params, kind) values ($1, $2, 'king', 'current', true, 'x', 'layout')`, [appId, R.Staff]);
+      // a layout row, even one marked public, is only its owner's
+      assert.deepEqual((await as('blake', `select username from meta.saved_reports where kind = 'layout'`)).rows, []);
+      assert.equal((await as('king', `select 1 from meta.saved_reports where kind = 'layout'`)).rowCount, 1);
+      // blake can't reset king's layout, nor delete it as a saved report
+      assert.equal((await as('blake', 'select meta.reset_grid_layout($1) as d', [R.Staff])).rows[0].d, false);
+      const kingRow = (await owner.one(`select id from meta.saved_report where username = 'king' and kind = 'layout' and region_id = $1`, [R.Staff])).id;
+      assert.equal((await as('king', 'select meta.delete_saved_report($1) as d', [kingRow])).rows[0].d, false, 'the layout is not a saved report');
+      // not signed in, a report region, a region of another app
+      await assert.rejects(as('nobody', 'select meta.save_grid_layout($1, $2)', [R.Staff, '']), /sign in/);
+      await assert.rejects(as('blake', 'select meta.save_grid_layout($1, $2)', [R['Jobs in the department'], '']), /unknown grid region/);
+      const foreign = await owner.query(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id <> $1 and r.type = 'grid' limit 1`, [appId]);
+      if (foreign.rowCount) await assert.rejects(as('blake', 'select meta.save_grid_layout($1, $2)', [foreign.rows[0].id, '']), /unknown grid region/);
+      // the runtime role can't write the table directly
+      await assert.rejects(as('blake', `insert into meta.saved_report (app_id, region_id, username, name, params, kind) values ($1, $2, 'king', 'x', '', 'layout')`, [appId, R.Staff]), /permission denied/);
+    } finally {
+      c.release();
+      await owner.query(`delete from meta.saved_report where region_id = $1 and kind = 'layout'`, [R.Staff]);
+    }
+  });
+});
