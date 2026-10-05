@@ -4077,3 +4077,75 @@ describe('sprint 33 item 1: Gantt, pyramid and polar charts', () => {
     }
   });
 });
+
+describe('sprint 33 item 2: map layers, clustering and spatial filtering', () => {
+  const regions = async () =>
+    (await owner.query(`select r.id, r.type, r.source, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 33 order by r.seq`, [appId])).rows as { id: number; type: string; source: string; config: any }[];
+  const mapData = (page: string) => JSON.parse(/<script type="application\/json" class="map-data">([^<]*)<\/script>/.exec(page)![1]);
+
+  test("every layer's query runs as the app role: no owner rights, the other layers still draw", async () => {
+    const [map] = await regions();
+    try {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify({ ...map.config, layers: [
+        { name: 'Who', source: `select current_user as title, 1 as lat, 1 as lng` },
+        { name: 'Meta', source: `select name as title, 1 as lat, 1 as lng from meta.app` },
+      ] })]);
+      const page = (await (await as('allen')).get('/a/hr/33')).body;
+      const d = mapData(page);
+      assert.deepEqual(d.layers.map((l: any) => l.name), ['Visits', 'Who']);
+      assert.equal(d.layers[1].points[0].title, 'hr_app');
+      assert.match(page, /<div class="alert alert-error" role="alert">/, 'the meta schema is not readable by the app role');
+      assert.doesNotMatch(page, /Directory test|"title":"HR/, 'no application names leak');
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify(map.config)]);
+    }
+  });
+
+  test("a layer's link only to a page the user may open; names, titles and texts are escaped", async () => {
+    const [map] = await regions();
+    try {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify({ ...map.config, layers: [
+        { name: '</script><img src=x onerror=alert(1)>', source: `select '<img src=y onerror=alert(2)>' as title, '</script><script>alert(3)</script>' as body, empno, 1 as lat, 1 as lng from hr.emp where empno = 7499`, link: { page: 3, items: { P3_EMPNO: '#empno#' } } },
+      ] })]);
+      const allen = (await (await as('allen')).get('/a/hr/33')).body;
+      assert.ok(!allen.includes('<img src=x') && !allen.includes('<img src=y') && !allen.includes('<script>alert(3)'));
+      assert.match(allen, /&lt;\/script&gt;&lt;img src=x onerror=alert\(1\)&gt;: 1 place\(s\) as a list/);
+      const layer = mapData(allen).layers[1];
+      assert.equal(layer.name, '</script><img src=x onerror=alert(1)>', 'the JSON keeps the text; the page escapes "<" in it');
+      assert.equal(layer.points[0].href, null, 'page 3 needs MANAGER: no link for allen');
+      const king = mapData((await (await as('king')).get('/a/hr/33')).body).layers[1];
+      assert.match(king.points[0].href, /^\/a\/hr\/3\?.*P3_EMPNO=7499/);
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify(map.config)]);
+    }
+  });
+
+  test('the distance and area from the URL: numbers only, otherwise ignored; they only narrow the rows the user may see', async () => {
+    const [, report] = await regions();
+    const allen = await as('allen');
+    for (const bad of ["41,-87,10'; drop table hr.emp; --", '41,-87,10,1', '41,-87,1e9', '41,-87,Infinity', '41,-87,NaN', '0x10,0,1', '41,-87,-1'])
+      assert.doesNotMatch((await allen.get(`/a/hr/33?r${report.id}_near=${encodeURIComponent(bad)}`)).body, /Within|alert-error/, bad);
+    const { parseNear, nearCondition, postgisNearCondition } = await import('../src/runtime/spatial.ts');
+    const near = parseNear('41.5,-87.25,12.5')!;
+    // the only things in the SQL besides fixed text are the parsed numbers and quoted column names
+    assert.doesNotMatch(nearCondition(near, { lat: 'lat', lng: 'lng' }).replace(/"__q"\."(lat|lng)"/g, ''), /["';]/);
+    assert.doesNotMatch(postgisNearCondition({ schema: 'public', version: '3', geometry: 1, geography: 2 }, { name: 'g', kind: 'geometry' }, near).replace(/"(__q|g|public)"/g, ''), /["';]/);
+    // a report with RLS stays filtered by it: the area only takes rows away
+    const all = (await allen.get(`/a/hr/33?r${report.id}_n=100`)).body;
+    const near100 = (await allen.get(`/a/hr/33?r${report.id}_n=100&r${report.id}_near=${encodeURIComponent('41.8781,-87.6298,2000')}`)).body;
+    const count = (p: string) => (p.match(/<td[^>]*>(Chicago|Boston|New York|Dallas)<\/td>/g) ?? []).length;
+    assert.ok(count(near100) <= count(all) && count(near100) > 0);
+  });
+
+  test('only developers save map layers (CSRF-checked), and a layer link only to a page of the application', async () => {
+    const [map] = await regions();
+    const pageId = (await owner.one('select page_id from meta.region where id = $1', [map.id])).page_id;
+    const url = `/builder/pages/${pageId}/region/${map.id}/settings`;
+    const res = await new FileBrowser(app).post(url, { layers: '1', layer0_source: 'select 1' });
+    assert.equal(res.statusCode, 302, 'not signed in to the builder');
+    assert.deepEqual((await owner.one('select config from meta.region where id = $1', [map.id])).config, map.config);
+    const { mergeMapSettings } = await import('../src/builder/region-settings.ts');
+    const merged = mergeMapSettings({}, { layers: '1', layer0_source: 'select 1', layer0_link_page: '424242' }, { pages: new Set([1]), lovs: new Set(), reports: new Map() });
+    assert.deepEqual(merged.layers, [{ name: 'Layer 2', source: 'select 1' }]);
+  });
+});
