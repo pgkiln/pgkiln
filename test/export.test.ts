@@ -26,6 +26,7 @@ const NOT_EXPORTED = new Set([
   'account_style', // the style variant each user chose (installation data, like accounts)
   'working_copy', // working copies: builder state of this installation
   'subscription', // subscribed components: links between this installation's applications
+  'data_report', // users' Data Reporter reports: user data, like saved reports (the sources travel in the region's config)
 ]);
 
 /** Where each exported table appears in the document. */

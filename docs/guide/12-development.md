@@ -109,6 +109,8 @@ src/
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
+    data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
+                           reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report)
     workflows.ts           workflow console region and its actions
     pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
   builder/
@@ -153,6 +155,7 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
     subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
+    reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing)
     workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)

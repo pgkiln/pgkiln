@@ -4956,3 +4956,154 @@ describe('sprint 35 appwizard', () => {
     assert.equal((await owner.one(`select count(*)::int as n from sec35_aw.img`)).n, 2);
   });
 });
+
+describe('sprint 35 reporter', () => {
+  let rid: number; // the Data Reporter region on HR page 36
+  let pageId: number;
+  let reportRegion: number; // the interactive report on HR page 2
+  const P = () => `dr${rid}_`;
+  const user = async (name: string) => {
+    const b = new FileBrowser(app);
+    await b.login(name);
+    await b.get('/a/hr/36');
+    return b;
+  };
+  const params = (extra: [string, string][] = []) => new URLSearchParams([[`${P()}src`, 'employees'], ...extra.map(([k, v]): [string, string] => [`${P()}${k}`, v])]).toString();
+  const count = async (name: string) => (await owner.one(`select count(*)::int as n from meta.data_report where region_id = $1 and name = $2`, [rid, name])).n as number;
+  let config: unknown;
+  before(async () => {
+    const r = await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 36 and r.type = 'data_reporter'`, [appId]);
+    rid = r.id;
+    pageId = r.page_id;
+    config = r.config;
+    reportRegion = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.data_report where region_id = $1 and name like 'sec-%'`, [rid]);
+    await owner.query(`update meta.region set config = $2, authz = null where id = $1`, [rid, JSON.stringify(config)]);
+  });
+
+  test('saving and deleting need the CSRF token, a signed-in user and the visible Data Reporter region of that page', async () => {
+    const king = await user('king');
+    assert.equal((await king.post(`/a/hr/36/reporter/${rid}/save`, { __csrf: 'forged', params: params(), name: 'sec-a' })).statusCode, 403);
+    const anon = new FileBrowser(app);
+    assert.ok([302, 303, 403].includes((await anon.post(`/a/hr/36/reporter/${rid}/save`, { __csrf: '', params: params(), name: 'sec-a' })).statusCode));
+    assert.equal((await king.submit(`/a/hr/36/reporter/999999/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'unknown region');
+    assert.equal((await king.submit(`/a/hr/36/reporter/${reportRegion}/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'not a Data Reporter region');
+    assert.equal((await king.submit(`/a/hr/2/reporter/${rid}/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'a region of another page');
+    await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [rid]);
+    try {
+      const blake = await user('blake');
+      assert.equal((await blake.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-a' })).statusCode, 403, 'a region the user may not see');
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [rid]);
+    }
+    assert.equal(await count('sec-a'), 0);
+    // and unknown sources are refused
+    assert.equal((await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: `${P()}src=secret`, name: 'sec-a' })).statusCode, 403);
+    assert.equal(await count('sec-a'), 0);
+  });
+
+  test('a forged definition keeps only offered columns, whitelisted operators and functions', async () => {
+    const king = await user('king');
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, {
+      name: 'sec-forged',
+      params: params([['col', 'ename'], ['col', 'username'], ['col', 'photo'], ['col', 'ename") from pg_authid --'], ['fc', 'username'], ['fo', 'eq'], ['fv', 'x'],
+        ['fc', 'job'], ['fo', 'eq; drop table hr.emp'], ['fv', 'x'], ['g', 'username'], ['af', 'pg_sleep'], ['ac', 'sal'], ['af', 'sum'], ['ac', 'ename'], ['sc', 'username'], ['sd', 'desc'], ['ch', 'gantt']]),
+    });
+    const d = (await owner.one(`select definition from meta.data_report where region_id = $1 and name = 'sec-forged'`, [rid])).definition;
+    assert.deepEqual(d, { source: 'employees', columns: ['ename'], filters: [], group: [], aggregates: [], sort: [], chart: null });
+    // the same in the URL: not-offered columns never show
+    const page = (await king.get(`/a/hr/36?${params([['col', 'username'], ['col', 'ename'], ['g', 'username'], ['af', 'count'], ['ac', 'username']])}`)).body;
+    assert.doesNotMatch(page, /king<\/td>|data-label="Username"/);
+  });
+
+  test('filter values are literals and user text is escaped', async () => {
+    const king = await user('king');
+    const page = (await king.get(`/a/hr/36?${params([['fc', 'ename'], ['fo', 'eq'], ['fv', `x' or '1'='1`], ['col', 'ename']])}`)).body;
+    assert.match(page, /No data found/);
+    const xss = (await king.get(`/a/hr/36?${params([['fc', 'ename'], ['fo', 'contains'], ['fv', '"><script>alert(1)</script>']])}`)).body;
+    assert.doesNotMatch(xss, /<script>alert\(1\)/);
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-<img src=x onerror=alert(1)>', description: '<b>x</b>' });
+    const home = (await king.get('/a/hr/36')).body;
+    assert.doesNotMatch(home, /<img src=x|<b>x<\/b>/);
+    assert.match(home, /sec-&lt;img/);
+  });
+
+  test('other users\' reports: private ones stay hidden, no one else may change or delete them', async () => {
+    const king = await user('king');
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-private' });
+    const id = (await owner.one(`select id from meta.data_report where region_id = $1 and name = 'sec-private'`, [rid])).id;
+    const blake = await user('blake');
+    assert.match((await blake.get(`/a/hr/36?${P()}open=${id}`)).body, /That report is not available\./);
+    await blake.submit(`/a/hr/36/reporter/${rid}/save`, { params: params([['col', 'sal']]), name: 'sec-stolen', rep: String(id), shared: 'true' });
+    await blake.submit(`/a/hr/36/reporter/${rid}/delete`, { rep: String(id) });
+    const row = await owner.one('select name, shared, definition from meta.data_report where id = $1', [id]);
+    assert.deepEqual([row.name, row.shared, row.definition.columns], ['sec-private', false, []]);
+    assert.equal(await count('sec-stolen'), 0);
+    await owner.query(`update meta.data_report set shared = true where id = $1`, [id]);
+    assert.match((await blake.get(`/a/hr/36?${P()}open=${id}`)).body, /sec-private/, 'shared: visible');
+  });
+
+  test('sharing follows the region\'s settings', async () => {
+    await owner.query(`update meta.region set config = config || '{"share_authz": "ADMIN"}' where id = $1`, [rid]);
+    const blake = await user('blake');
+    assert.doesNotMatch((await blake.get(`/a/hr/36?${params()}`)).body, /name="shared"/);
+    await blake.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-share-b', shared: 'true' });
+    const king = await user('king');
+    assert.match((await king.get(`/a/hr/36?${params()}`)).body, /name="shared"/);
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-share-k', shared: 'true' });
+    await owner.query(`update meta.region set config = (config - 'share_authz') || '{"sharing": false}' where id = $1`, [rid]);
+    await king.get('/a/hr/36');
+    await king.submit(`/a/hr/36/reporter/${rid}/save`, { params: params(), name: 'sec-share-off', shared: 'true' });
+    const shared = Object.fromEntries((await owner.query(`select name, shared from meta.data_report where region_id = $1 and name like 'sec-share-%'`, [rid])).rows.map((r) => [r.name, r.shared]));
+    assert.deepEqual(shared, { 'sec-share-b': false, 'sec-share-k': true, 'sec-share-off': false });
+    await owner.query(`update meta.region set config = config - 'sharing' where id = $1`, [rid]);
+  });
+
+  test('reports run as the application\'s role with row level security; pgapex\'s own tables are never a source', async () => {
+    const scott = await user('scott');
+    const body = (await scott.get(`/a/hr/36?${new URLSearchParams([[`${P()}src`, 'leave'], [`${P()}col`, 'empno']])}`)).body;
+    const empno = (await owner.one(`select empno from hr.emp where username = 'scott'`)).empno;
+    const total = (await owner.one('select count(*)::int as n from hr.leave_request')).n;
+    const shown = [...body.matchAll(/data-label="Employee no\.">(\d+)</g)].map((m) => Number(m[1]));
+    assert.ok(shown.includes(empno), 'scott sees his own leave requests');
+    assert.ok(shown.length < total, 'but not everyone\'s');
+    const allen = await user('allen');
+    await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify({ sources: [{ id: 'acc', schema: 'meta', table: 'account', columns: [{ name: 'username' }, { name: 'password_hash' }] }] })]);
+    try {
+      const page = (await allen.get(`/a/hr/36?${P()}src=acc`)).body;
+      assert.match(page, /No data sources are set up/);
+      assert.doesNotMatch(page, /\$2[aby]\$/);
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify(config)]);
+    }
+  });
+
+  test('applications reach the reports only through the view and functions', async () => {
+    await assert.rejects(runtime.query('select * from meta.data_report'), /permission denied/);
+    await assert.rejects(runtime.query(`insert into meta.data_report (app_id, region_id, username, name, definition) values (${appId}, ${rid}, 'x', 'x', '{}')`), /permission denied/);
+    assert.equal((await runtime.query('select * from meta.data_reports')).rowCount, 0, 'no application context: nothing');
+    await assert.rejects(runtime.query(`select meta.save_data_report(${rid}, null, 'x', null, '{}'::jsonb, true)`), /sign in|unknown/);
+    assert.equal((await runtime.query(`select meta.delete_data_report(1) as d`)).rows[0].d, false);
+  });
+
+  test('the builder settings need a developer and the CSRF token, and refuse pgapex\'s own tables', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.post(`/builder/pages/${pageId}/region/${rid}/reporter`, { __csrf: 'x', new_object: '1' })).statusCode, 302);
+    const dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.get(`/builder/pages/${pageId}?c=region-${rid}`);
+    assert.equal((await dev.post(`/builder/pages/${pageId}/region/${rid}/reporter`, { __csrf: 'forged', new_object: '1' })).statusCode, 403);
+    assert.equal((await dev.submit(`/builder/pages/${pageId}/region/${reportRegion}/reporter`, {})).statusCode, 404, 'not a Data Reporter region');
+    const account = (await owner.one(`select 'meta.account'::regclass::oid::int as oid`)).oid;
+    try {
+      await dev.submit(`/builder/pages/${pageId}/region/${rid}/reporter`, { new_object: String(account), new_id: 'accounts' });
+      const cfg = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+      assert.ok(!(cfg.sources ?? []).some((s: any) => s.schema === 'meta'));
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify(config)]);
+    }
+  });
+});
