@@ -631,3 +631,8 @@ details.support-script pre.source { margin-top: 0.4rem; white-space: pre-wrap; o
 .unload-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .unload-pick select { flex: 1 1 14rem; min-width: 0; max-width: 32rem; }
 .unload-formats { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; }
+
+/* Create → From a file: the proposed columns (src/builder/appfromfile.ts) */
+.ff-cols select { min-width: 7.5rem; }
+.ff-cols input { min-width: 10rem; }
+.ff-cols .ff-sample { max-width: 20rem; overflow-wrap: anywhere; }

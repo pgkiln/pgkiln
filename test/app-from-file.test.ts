@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
-import { appNameFor, tableNameFor } from '../src/builder/appfromfile.ts';
+import { appNameFor, groupColumn, tableNameFor } from '../src/builder/appfromfile.ts';
 import { Browser, formFields } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -76,6 +76,14 @@ describe('names proposed from the file name', () => {
     assert.equal(tableNameFor('Employee List 2026.xlsx'), 'employee_list_2026');
     assert.equal(tableNameFor('2026 sales.csv'), 'c_2026_sales');
   });
+  test('the dashboard counts the rows by a text, yes/no or date column whose values repeat', () => {
+    const col = (column_name: string, kind: string, distinct_values: number | null, is_pk = false) => ({ column_name, kind, distinct_values, is_pk });
+    const cat = [col('id', 'number', 10, true), col('name', 'text', 10), col('done', 'boolean', 2), col('city', 'text', 3), col('day', 'date', 4)];
+    assert.equal(groupColumn(cat, 10), 'city');
+    assert.equal(groupColumn(cat.filter((c) => c.column_name !== 'city'), 10), 'done');
+    assert.equal(groupColumn([col('name', 'text', 10), col('n', 'number', 2)], 10), null);
+    assert.equal(groupColumn([col('city', 'text', null)], 10), null, 'no statistics');
+  });
 });
 
 describe('create an application from a CSV file', () => {
@@ -121,6 +129,9 @@ describe('create an application from a CSV file', () => {
     assert.equal(nav[2].label, 'Dashboard');
     const chart = await owner.one(`select r.type, r.source from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 4`, [a.id]);
     assert.equal(chart.type, 'chart');
+    assert.match(chart.source, /"category"|\bcategory\b/, 'the rows are counted per category (repeated values), not per name');
+    const facets = await owner.one(`select r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 5 and r.type = 'facets'`, [a.id]);
+    assert.doesNotMatch(JSON.stringify(facets.config), /"name"/, 'a name per row is no facet');
     // the app runs: the report, the chart and the faceted search show the rows
     const v = new Browser(app);
     for (const page of [2, 4, 5]) {

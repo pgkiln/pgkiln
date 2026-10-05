@@ -83,6 +83,21 @@ export function chosenColumns(sheet: Sheet, b: Body): NewColumn[] {
     .filter((x) => x.name);
 }
 
+interface CatalogColumn {
+  column_name: string;
+  kind: string;
+  is_pk: boolean;
+  distinct_values: number | null;
+}
+
+/** The column a dashboard counts the rows by: text, then yes/no, then a date, with a few values that repeat (from the statistics). */
+export function groupColumn(catalog: CatalogColumn[], rows: number) {
+  const rank = { text: 1, boolean: 2, date: 3 } as Record<string, number>;
+  return catalog
+    .filter((x) => !x.is_pk && rank[x.kind] && x.distinct_values !== null && x.distinct_values >= 2 && x.distinct_values <= 50 && x.distinct_values < rows)
+    .sort((a, b) => rank[a.kind] - rank[b.kind])[0]?.column_name ?? null;
+}
+
 interface Built {
   app: { id: number; alias: string; existingAccount: boolean };
   table: string;
@@ -132,20 +147,29 @@ export async function buildAppFromFile(checked: CheckedApp, sheet: Sheet, b: Bod
     await generate('report_form', 2, { form_page: 3, label });
     pages.push({ page: 2, label }, { page: 3, label: `${label} form` });
     let next = 4;
+    // the statistics tell which columns group the rows: a few values, repeated (not a name per row)
+    const rows = result.inserted;
+    const catalog = (await c.query<CatalogColumn>('select column_name, kind, is_pk, distinct_values from meta.wizard_catalog($1::regclass)', [T])).rows;
+    const repeated = (col: CatalogColumn) => col.distinct_values !== null && col.distinct_values >= 2 && col.distinct_values <= 50 && col.distinct_values < rows;
     if (b.chart === 'true') {
-      const d = (await c.query('select meta.wizard_defaults($1, $2::regclass) as d', ['chart', T])).rows[0].d;
-      if (!d.label_column || d.label_column === 'id') notes.push('No dashboard: the table has no column to group the rows by (text, yes/no or date).');
+      const group = groupColumn(catalog, rows);
+      if (!group) notes.push('No dashboard: no text, yes/no or date column has a few values that repeat, to count the rows by.');
       else {
-        await generate('chart', next, { label: 'Dashboard', icon: 'chart', nav: true });
-        pages.push({ page: next++, label: `Dashboard (rows per ${d.label_column})` });
+        await generate('chart', next, { label: 'Dashboard', icon: 'chart', nav: true, label_column: group, function: 'count', value_column: null });
+        pages.push({ page: next++, label: `Dashboard (rows per ${group})` });
       }
     }
     if (b.facets === 'true') {
       const d = (await c.query('select meta.wizard_defaults($1, $2::regclass) as d', ['facets', T])).rows[0].d;
-      if (!d.facets?.length) notes.push('No faceted search: no column suits a filter.');
+      // ranges for numbers and dates; text only when its values repeat
+      const facets = ((d.facets ?? []) as string[]).filter((f) => {
+        const col = catalog.find((x) => x.column_name === f);
+        return col && (col.kind !== 'text' || repeated(col));
+      });
+      if (!facets.length) notes.push('No faceted search: no column suits a filter.');
       else {
-        await generate('facets', next, { label: `Search ${label.toLowerCase()}`, icon: 'filter', nav: true });
-        pages.push({ page: next++, label: `Faceted search (${d.facets.join(', ')})` });
+        await generate('facets', next, { label: `Search ${label.toLowerCase()}`, icon: 'filter', nav: true, facets });
+        pages.push({ page: next++, label: `Faceted search (${facets.join(', ')})` });
       }
     }
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, table: T, result, pages, notes };
@@ -251,10 +275,10 @@ export async function appFromFileRoutes(app: FastifyInstance) {
       ${region('Table', html`<div class="form-grid">
           ${input('table', 'Table name', v('table', tableNameFor(f.filename)), { required: true, help: 'In the application\'s schema; the table gets an identity primary key id.' })}
         </div>
-        <div class="table-wrap"><table class="report"><thead><tr><th scope="col">File column</th><th scope="col">Values</th><th scope="col">Column name (empty = skip)</th><th scope="col">Type</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="report ff-cols"><thead><tr><th scope="col">File column</th><th scope="col">Values</th><th scope="col">Column name (empty = skip)</th><th scope="col">Type</th></tr></thead><tbody>
           ${suggested.map((c) => {
             const type = v(`type_${c.index}`, c.type);
-            return html`<tr><td>${sheet.headers[c.index]}</td><td class="muted small">${sample(c.index)}</td>
+            return html`<tr><td>${sheet.headers[c.index]}</td><td class="muted small ff-sample">${sample(c.index)}</td>
               <td><input name="name_${c.index}" value="${v(`name_${c.index}`, c.name)}" aria-label="Column name for ${sheet.headers[c.index]}"></td>
               <td><select name="type_${c.index}" aria-label="Type of ${sheet.headers[c.index]}">${COLUMN_TYPES.map((t) => html`<option value="${t}"${t === type ? raw(' selected') : ''}>${t}</option>`)}</select></td></tr>`;
           })}
