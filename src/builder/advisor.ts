@@ -183,6 +183,16 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
         if (problem) findings.push({ ...problem, entry, field: label });
       }
     }
+    // a map region's further layers (config.layers[].source)
+    for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'map')) {
+      const entry = byKey.get(`${kind}-${row.id}`) ?? null;
+      for (const l of Array.isArray(row.config?.layers) ? row.config.layers : []) {
+        if (typeof l?.source !== 'string' || !l.source.trim()) continue;
+        checked++;
+        const problem = await checkSql(c, l.source, 'select');
+        if (problem) findings.push({ ...problem, entry, field: `Layer "${typeof l.name === 'string' ? l.name : ''}" query` });
+      }
+    }
     // REST handlers
     for (const { kind, row } of all.filter((x) => x.kind === 'rest_module')) {
       const entry = byKey.get(`${kind}-${row.id}`) ?? null;

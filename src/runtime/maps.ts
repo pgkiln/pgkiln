@@ -140,7 +140,7 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
   for (const [i, def] of defs.entries()) {
     try {
       const { points, shapes } = await loadLayer(ctx, def, g);
-      layers.push({ name: def.name, kind: def.kind, cluster: def.cluster && def.kind === 'markers', hidden: def.hidden, color: i + 1, points, shapes });
+      layers.push({ name: ctx.locale.tr(def.name), kind: def.kind, cluster: def.cluster && def.kind === 'markers', hidden: def.hidden, color: i + 1, points, shapes });
     } catch (e) {
       const where = i ? `map "${r.title ?? r.id}", layer "${def.name}"` : `map "${r.title ?? r.id}"`;
       const alert = html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, where)}</div>`;

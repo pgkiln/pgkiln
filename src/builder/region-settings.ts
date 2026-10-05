@@ -12,6 +12,8 @@ import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 import { columnTemplatesForm, templateRegionForm } from './templates.ts';
 import { LIST_TEMPLATES } from '../runtime/lists.ts';
+import { MAX_EXTRA_LAYERS } from '../runtime/maps.ts';
+import { postgis } from '../runtime/spatial.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
 // for grid, chart, cards, calendar and faceted search regions (report
@@ -380,8 +382,27 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
   set('empty', b.empty?.trim() || undefined);
   set('link', mergeLink(b, a.pages));
   set('layer', b.layer === 'heat' ? 'heat' : undefined);
+  set('cluster', b.cluster === 'true' && b.layer !== 'heat' ? true : undefined);
+  set('name', b.name?.trim().slice(0, 60) || undefined);
   const report = Number(b.report);
   set('report', b.report && a.reports.has(report) ? report : undefined);
+  set('filter', b.filter === 'distance' && out.report !== undefined ? 'distance' : undefined);
+  // more layers: layer<i>_source (empty: the layer is removed), _name, _layer, _cluster, _hidden, _link_page/_items
+  if (b.layers === '1') {
+    const layers: Config[] = [];
+    for (let i = 0; i < MAX_EXTRA_LAYERS; i++) {
+      const source = b[`layer${i}_source`]?.trim();
+      if (!source) continue;
+      const layer: Config = { name: b[`layer${i}_name`]?.trim().slice(0, 60) || `Layer ${layers.length + 2}`, source };
+      if (b[`layer${i}_layer`] === 'heat') layer.layer = 'heat';
+      else if (b[`layer${i}_cluster`] === 'true') layer.cluster = true;
+      if (b[`layer${i}_hidden`] === 'true') layer.hidden = true;
+      const link = mergeLink(b, a.pages, `layer${i}_link`);
+      if (link) layer.link = link;
+      layers.push(layer);
+    }
+    set('layers', layers.length ? layers : undefined);
+  }
   return out;
 }
 
@@ -494,17 +515,50 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
     </fieldset>`;
 }
 
+/** A map's further layers, each with its own query: the filled ones and one empty to add (up to MAX_EXTRA_LAYERS). */
+async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_no: number; name: string }[], id: (n: string) => string) {
+  const layers: Config[] = (Array.isArray(cfg.layers) ? cfg.layers : []).slice(0, MAX_EXTRA_LAYERS);
+  const shown = layers.length < MAX_EXTRA_LAYERS ? [...layers, {}] : layers;
+  const parts = [];
+  for (const [i, l] of shown.entries()) {
+    const p = `layer${i}`;
+    const hint = l.source ? columnsHint(await reportColumns(appId, l.source)) : '';
+    parts.push(html`<fieldset class="prop-group"><legend>${l.source ? `Layer ${i + 2}: ${l.name ?? ''}` : 'Add a layer'}</legend>
+      ${hint}
+      <div class="form-grid">
+        <div class="field"><label class="label" for="${id(`${p}_name`)}">Name (legend)</label>
+          <input id="${id(`${p}_name`)}" name="${p}_name" value="${l.name ?? ''}" maxlength="60"></div>
+        <div class="field"><label class="label" for="${id(`${p}_layer`)}">Show places as</label>
+          <select id="${id(`${p}_layer`)}" name="${p}_layer">${opt('', 'Markers', l.layer)}${opt('heat', 'Heat map', l.layer)}</select></div>
+        ${check(`${p}_cluster`, 'Group close markers', l.cluster === true)}
+        ${check(`${p}_hidden`, 'Off at first', l.hidden === true)}
+        <div class="field" data-wide><label class="label" for="${id(`${p}_source`)}">Query</label>
+          <textarea id="${id(`${p}_source`)}" name="${p}_source" class="code" rows="5" spellcheck="false" data-code="sql" placeholder="select lat, lng, title from …">${l.source ?? ''}</textarea>
+          <small class="help">The same columns as the map's own query. Empty the query to remove the layer.</small></div>
+        <div class="field"><label class="label" for="${id(`${p}_link_page`)}">Each place links to page</label>
+          <select id="${id(`${p}_link_page`)}" name="${p}_link_page">${opt('', '- no link -', l.link?.page)}${allPages.map((x) => opt(String(x.page_no), `${x.page_no}. ${x.name}`, l.link?.page))}</select></div>
+        <div class="field"><label class="label" for="${id(`${p}_link_items`)}">Set items</label>
+          <input id="${id(`${p}_link_items`)}" name="${p}_link_items" value="${linkItemsText(l.link?.items)}" placeholder="P3_ID=#id#"></div>
+      </div></fieldset>`);
+  }
+  return html`<input type="hidden" name="layers" value="1">${parts}`;
+}
+
 /** A map can filter a report on its page to the visible area; the report needs position columns. */
 async function mapReportFieldset(r: RegionRow, pageId: number, appId: number, id: (n: string) => string) {
   const cfg = r.config ?? {};
   const reports = (await owner.query(`select id, title, source, rest_source from meta.region where page_id = $1 and type = 'report' order by seq, id`, [pageId])).rows;
   const target = reports.find((x) => x.id === Number(cfg.report));
   const cols = target ? await reportColumns(appId, await designSql(appId, target)) : null;
-  const noPosition = cols && 'columns' in cols && !positionColumns(cols.columns);
+  // with PostGIS a geometry/geography column filters too (only the column names are known here)
+  const noPosition = cols && 'columns' in cols && !positionColumns(cols.columns) && !(await postgis());
   return html`<fieldset class="prop-group"><legend>Filter a report</legend><div class="form-grid">
       <div class="field"><label class="label" for="${id('report')}">Report region</label>
         <select id="${id('report')}" name="report">${opt('', '- none -', target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? '(untitled)'} (#${x.id})`, cfg.report))}</select>
-        <small class="help">${reports.length ? 'Users can show only the rows in the map\'s visible area ("Show this area in the list"). The report needs lat and lng (or location) columns.' : 'Add a report region to this page to filter it by the map area.'}</small></div>
+        <small class="help">${reports.length ? 'Users can show only the rows in the map\'s visible area ("Show this area in the list"), or near its centre. The report needs lat and lng (or location) columns, or a PostGIS geometry/geography column.' : 'Add a report region to this page to filter it by the map area.'}</small></div>
+      <div class="field"><label class="label" for="${id('filter')}">Filter by</label>
+        <select id="${id('filter')}" name="filter">${opt('', 'The visible area', cfg.filter)}${opt('distance', 'Distance from the centre', cfg.filter)}</select>
+        <small class="help">The condition runs on the server: with PostGIS installed on a geometry/geography column, else on latitude and longitude.</small></div>
     </div>
     ${noPosition ? html`<div class="alert alert-error" role="alert">The report has no <code>lat</code>/<code>lng</code> or <code>location</code> columns, so the map area can't filter it.</div>` : ''}
     </fieldset>`;
@@ -697,22 +751,28 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
         </div></fieldset>`;
       break;
     }
-    case 'map':
+    case 'map': {
       title = 'Map settings';
+      const allPages = await pages();
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
-        <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas. A heat map weighs each place by a <code>weight</code> column.</p>
+        <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas (with PostGIS installed, a <code>geometry</code> or <code>geography</code> column in WGS 84 works too). A heat map weighs each place by a <code>weight</code> column.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('layer')}">Show places as</label>
             <select id="${id('layer')}" name="layer">${opt('', 'Markers', cfg.layer)}${opt('heat', 'Heat map', cfg.layer)}</select></div>
+          <div class="field"><label class="label" for="${id('name')}">Layer name (legend)</label>
+            <input id="${id('name')}" name="name" value="${cfg.name ?? ''}" maxlength="60" placeholder="the region title"></div>
           <div class="field"><label class="label" for="${id('height')}">Height</label>
             <select id="${id('height')}" name="height">${opt('small', 'Small', cfg.height)}${opt('', 'Medium', cfg.height)}${opt('large', 'Large', cfg.height)}</select></div>
           <div class="field"><label class="label" for="${id('zoom')}">Zoom for a single place (1–19)</label>
             <input id="${id('zoom')}" name="zoom" type="number" min="1" max="19" value="${cfg.zoom ?? ''}" placeholder="14"></div>
+          ${check('cluster', 'Group markers that are close together (clustering)', cfg.cluster === true)}
           ${emptyField(id, cfg)}
         </div></fieldset>
-        ${linkFieldset(id, cfg.link, await pages(), 'Each place')}
+        ${linkFieldset(id, cfg.link, allPages, 'Each place')}
+        ${await mapLayersFieldsets(cfg, appId, allPages, id)}
         ${await mapReportFieldset(r, pageId, appId, id)}`;
       break;
+    }
     case 'tree':
       title = 'Tree settings';
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)), ['id', 'parent_id', 'label'])}

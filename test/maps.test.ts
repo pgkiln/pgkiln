@@ -9,6 +9,10 @@ import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { tileOrigin } from '../src/maptiles.ts';
 import { areaCondition, parseArea, positionColumns } from '../src/runtime/report.ts';
+import { layerDefs, layerSql } from '../src/runtime/maps.ts';
+import {
+  geoJsonSelect, nearArea, nearCondition, parseNear, postgis, postgisAreaCondition, postgisNearCondition, setPostgis, spatialColumn, spatialConditions, type PostGis,
+} from '../src/runtime/spatial.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -135,6 +139,170 @@ describe('heat maps and filtering a report by the map area (page 16)', () => {
     } finally {
       await owner.query('update meta.region set source = $2 where id = $1', [id, before]);
     }
+  });
+});
+
+describe('several layers, clustering and the distance filter (page 33)', () => {
+  const ids = async () =>
+    (await owner.query(`select r.id, r.type from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 33 order by r.seq`)).rows as { id: number; type: string }[];
+
+  test('one map, a layer per query: names, kinds, clustering, colours, lines and areas, the heat map off at first', async () => {
+    const page = (await king.get('/a/hr/33')).body;
+    const d = mapData(page);
+    assert.deepEqual(d.layers.map((l: any) => [l.name, l.kind, l.cluster, l.hidden, l.color]), [
+      ['Visits', 'markers', true, false, 1],
+      ['Offices', 'markers', false, false, 2],
+      ['Sales areas', 'markers', false, false, 3],
+      ['Visit density', 'heat', false, true, 4],
+    ]);
+    assert.equal(d.layers[0].points.length, 80);
+    assert.equal(d.layers[1].points.length, 4);
+    assert.match(d.layers[1].points.find((p: any) => p.title === 'SALES').href, /\/a\/hr\/5\?.*P5_DEPTNO=30/, "a layer's own link");
+    assert.equal(d.layers[0].points[0].href, null, 'the first layer has no link');
+    assert.deepEqual(d.layers[2].shapes.map((s: any) => s.geometry.type).sort(), ['LineString', 'LineString', 'LineString', 'Polygon', 'Polygon', 'Polygon', 'Polygon']);
+    assert.equal(d.layers[3].points.length, 80);
+    assert.equal(d.layersLabel, 'Layers');
+    assert.equal(d.clusterLabel, '{n} places: zoom in');
+    // without script: a list per layer with places
+    assert.match(page, /<summary>Visits: 80 place\(s\) as a list<\/summary>/);
+    assert.match(page, /<summary>Offices: 4 place\(s\) as a list<\/summary>/);
+    assert.doesNotMatch(page, /<summary>Sales areas:/, 'a layer of lines and areas only has no list');
+  });
+
+  test('the layer names are translated', async () => {
+    const nl = new Browser(app);
+    await nl.login('king');
+    const d = mapData((await nl.get('/a/hr/33?lang=nl')).body);
+    assert.deepEqual(d.layers.map((l: any) => l.name), ['Bezoeken', 'Kantoren', 'Verkoopgebieden', 'Bezoekdichtheid']);
+    assert.equal(d.layersLabel, 'Lagen');
+  });
+
+  test('the distance filter: near the centre, on the server, with a chip; nonsense is ignored', async () => {
+    const [map, report] = await ids();
+    assert.equal(map.type, 'map');
+    const all = (await king.get('/a/hr/33')).body;
+    const f = mapData(all).filter;
+    assert.equal(f.mode, 'distance');
+    assert.match(f.url, new RegExp(`^/a/hr/33\\?r${report.id}_near=__NEAR__$`));
+    assert.equal(f.label, 'Show places within {km} km of the centre');
+    assert.equal(f.near, null);
+    // within 150 km of Chicago: only the Chicago office's visits
+    const near = (await king.get(`/a/hr/33?r${report.id}_near=${encodeURIComponent('41.8781,-87.6298,150')}&r${report.id}_n=100`)).body;
+    assert.match(near, /<span class="chip">Within 150 km/);
+    const offices = [...near.matchAll(/<td[^>]*>(Chicago|Boston|New York|Dallas)<\/td>/g)].map((m) => m[1]);
+    assert.ok(offices.length > 0 && offices.every((o) => o === 'Chicago'), offices.join());
+    const expected = (await owner.one(`select count(*)::int as n from hr.field_visit where 2 * 6371.0088 * asin(sqrt(power(sin(radians(lat - 41.8781) / 2), 2) + cos(radians(41.8781)) * cos(radians(lat)) * power(sin(radians(lng + 87.6298) / 2), 2))) <= 150`)).n;
+    assert.equal(offices.length, expected, 'the rows are the haversine count');
+    assert.ok(expected > 0 && expected < 20);
+    assert.deepEqual(mapData(near).filter.near, { lat: 41.8781, lng: -87.6298, km: 150 });
+    assert.doesNotMatch(mapData(near).filter.clear, /_near=/);
+    for (const bad of ['1,2', '91,0,10', '0,0,0', '0,0,-5', '0,0,99999', "0,0,10); delete from hr.emp; --", '0,0,1e3'])
+      assert.doesNotMatch((await king.get(`/a/hr/33?r${report.id}_near=${encodeURIComponent(bad)}`)).body, /Within|alert-error/, bad);
+  });
+
+  test('a failing layer shows its error, the other layers still draw', async () => {
+    const [map] = await ids();
+    const before = (await owner.one('select config from meta.region where id = $1', [map.id])).config;
+    const config = { ...before, layers: [...before.layers, { name: 'Broken', source: 'select nope from nowhere' }] };
+    await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify(config)]);
+    try {
+      const page = (await king.get('/a/hr/33')).body;
+      assert.match(page, /<div class="alert alert-error" role="alert">/);
+      assert.equal(mapData(page).layers.length, 4);
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify(before)]);
+    }
+  });
+
+  test('layer definitions: the region query first, at most seven more, empty queries skipped', () => {
+    const r: any = { id: 1, title: 'Places', source: 'select 1', config: { cluster: true, layers: [{ source: ' ' }, ...Array.from({ length: 9 }, (_, i) => ({ name: `L${i}`, source: 'select 2', layer: i ? 'markers' : 'heat', link: { page: 'x' } }))] } };
+    const defs = layerDefs(r);
+    assert.equal(defs.length, 8);
+    assert.deepEqual([defs[0].name, defs[0].cluster, defs[1].name, defs[1].kind, defs[1].link], ['Places', true, 'L0', 'heat', undefined]);
+  });
+
+  test('distance on latitude/longitude: haversine, a bounding box first, poles and the antimeridian', async () => {
+    assert.deepEqual(parseNear('52.1,4.3,25'), { lat: 52.1, lng: 4.3, km: 25 });
+    assert.deepEqual(parseNear(' -33.9 , 151.2 , 0.5 '), { lat: -33.9, lng: 151.2, km: 0.5 });
+    for (const bad of [null, '', '1,2', '1,2,3,4', '91,0,1', '0,181,1', '0,0,0', '0,0,20039', 'a,b,c', '0,0,1e3']) assert.equal(parseNear(bad), null, String(bad));
+    const box = nearArea({ lat: 0, lng: 179.5, km: 100 })!;
+    assert.ok(box.w > 0 && box.e < 0, 'across the antimeridian: west > east');
+    assert.equal(nearArea({ lat: 89.5, lng: 0, km: 100 }), null, 'a circle over the pole: no box');
+    const pick = async (values: string, near: string, pos: any = { lat: 'lat', lng: 'lng' }, cols = 'id, lat, lng') =>
+      (await owner.query(`select "__q".id from (select * from (values ${values}) v (${cols})) "__q" where ${nearCondition(parseNear(near)!, pos)} order by 1`)).rows.map((r) => r.id);
+    // Amsterdam–Rotterdam is about 57 km, Amsterdam–Paris about 430 km
+    const cities = `(1, 52.3676, 4.9041), (2, 51.9244, 4.4777), (3, 48.8566, 2.3522), (4, null, null)`;
+    assert.deepEqual(await pick(cities, '52.3676,4.9041,50'), [1]);
+    assert.deepEqual(await pick(cities, '52.3676,4.9041,60'), [1, 2]);
+    assert.deepEqual(await pick(cities, '52.3676,4.9041,500'), [1, 2, 3]);
+    assert.deepEqual(await pick('(1, 0, 179.9), (2, 0, -179.9), (3, 0, 170)', '0,180,50'), [1, 2]);
+    assert.deepEqual(await pick('(1, 89.9, 0), (2, 89.9, 180), (3, 80, 0)', '90,0,100'), [1, 2]);
+    assert.deepEqual(await pick(`(1, '52.3676, 4.9041'), (2, 'nowhere'), (3, '51.9244,4.4777')`, '52.3676,4.9041,100', { location: 'location' }, 'id, location'), [1, 3]);
+  });
+});
+
+describe('PostGIS (generated SQL; the dev and CI databases have no PostGIS)', () => {
+  const gis: PostGis = { schema: 'gis', version: '3.5.2', geometry: 9001, geography: 9002 };
+  after(() => setPostgis(undefined));
+
+  test('detected from pg_extension: none here', async () => {
+    setPostgis(undefined);
+    assert.equal(await postgis(), null);
+    setPostgis(gis);
+    assert.equal(await postgis(), gis);
+    setPostgis(undefined);
+  });
+
+  test('the geometry or geography column: geom, geography, … first, else the first of the types', () => {
+    assert.deepEqual(spatialColumn(new Map([['id', 23], ['shape_b', 9001], ['geog', 9002]]), gis), { name: 'geog', kind: 'geography' });
+    assert.deepEqual(spatialColumn(new Map([['id', 23], ['outline', 9001]]), gis), { name: 'outline', kind: 'geometry' });
+    assert.equal(spatialColumn(new Map([['id', 23], ['geom', 25]]), gis), null);
+    assert.equal(spatialColumn(new Map([['geom', 9001]]), null), null, 'no PostGIS: no spatial column');
+  });
+
+  test('area: ST_Intersects with a WGS 84 envelope (two across the antimeridian), geography cast', () => {
+    const geom = { name: 'geom', kind: 'geometry' as const };
+    assert.equal(postgisAreaCondition(gis, geom, parseArea('40,-89,43,-86')!), '"gis".st_intersects("__q"."geom", "gis".st_makeenvelope(-89, 40, -86, 43, 4326))');
+    assert.equal(
+      postgisAreaCondition(gis, { name: 'Geog', kind: 'geography' }, parseArea('-5,170,5,-170')!),
+      '("gis".st_intersects("__q"."Geog", "gis".st_makeenvelope(170, -5, 180, 5, 4326)::"gis".geography) or "gis".st_intersects("__q"."Geog", "gis".st_makeenvelope(-180, -5, -170, 5, 4326)::"gis".geography))',
+    );
+  });
+
+  test('distance: ST_DWithin on geography in metres', () => {
+    const near = parseNear('41.88,-87.63,25')!;
+    assert.equal(
+      postgisNearCondition(gis, { name: 'geom', kind: 'geometry' }, near),
+      '"gis".st_dwithin("__q"."geom"::"gis".geography, "gis".st_setsrid("gis".st_makepoint(-87.63, 41.88), 4326)::"gis".geography, 25000)',
+    );
+    assert.match(postgisNearCondition(gis, { name: 'g', kind: 'geography' }, near), /^"gis"\.st_dwithin\("__q"\."g", /);
+  });
+
+  test('identifiers are quoted: a schema or column name cannot break out', () => {
+    const odd: PostGis = { ...gis, schema: 'my"gis' };
+    const sql = postgisAreaCondition(odd, { name: 'a"b', kind: 'geometry' }, parseArea('0,0,1,1')!);
+    assert.equal(sql, '"my""gis".st_intersects("__q"."a""b", "my""gis".st_makeenvelope(0, 0, 1, 1, 4326))');
+  });
+
+  test('PostGIS when the report has a spatial column, else latitude/longitude, else not ok', () => {
+    const f = { area: parseArea('40,-89,43,-86'), near: parseNear('41.88,-87.63,25') };
+    const withGeom = spatialConditions(f, new Map([['lat', 701], ['lng', 701], ['geom', 9001]]), gis);
+    assert.equal(withGeom.postgis, true);
+    assert.match(withGeom.where[0], /st_intersects/);
+    assert.match(withGeom.where[1], /st_dwithin/);
+    const plain = spatialConditions(f, new Map([['lat', 701], ['lng', 701], ['geom', 9001]]), null);
+    assert.equal(plain.postgis, false, 'PostGIS not installed: lat/lng');
+    assert.match(plain.where[1], /asin\(sqrt/);
+    assert.deepEqual(spatialConditions(f, new Map([['id', 23]]), gis), { where: [], ok: false, postgis: false });
+    assert.deepEqual(spatialConditions({ area: null, near: null }, new Map(), gis), { where: [], ok: true, postgis: false });
+  });
+
+  test("a map layer's geometry becomes GeoJSON on the server", () => {
+    assert.equal(geoJsonSelect(gis, { name: 'geom', kind: 'geometry' }), '"__m".*, "gis".st_asgeojson("__m"."geom") as "__geojson"');
+    const fields = [{ name: 'title', dataTypeID: 25 }, { name: 'geom', dataTypeID: 9001 }];
+    assert.equal(layerSql('select x', gis, fields), 'select "__m".*, "gis".st_asgeojson("__m"."geom") as "__geojson" from (\nselect x\n) "__m" limit 5000');
+    assert.equal(layerSql('select x', null, fields), 'select * from (\nselect x\n) "__m" limit 5000', 'no PostGIS');
+    assert.equal(layerSql('select x', gis, [...fields, { name: 'GeoJSON', dataTypeID: 25 }]), 'select * from (\nselect x\n) "__m" limit 5000', 'its own geojson column wins');
   });
 });
 
