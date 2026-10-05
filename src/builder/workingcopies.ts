@@ -9,6 +9,7 @@ import {
 } from '../workingcopy.ts';
 import { lockText, type Lock } from './locks.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
+import { appAllowed } from './workspaces.ts';
 
 // Working copies (APEX 24.1+): App → Working copies lists an application's
 // copies and makes new ones; a copy's page compares it with its main
@@ -94,7 +95,7 @@ export async function workingCopyRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const a = await appRow(req.body?.main_app_id ?? '');
-    if (!a) return reply.code(404).send('Not found');
+    if (!a || !(await appAllowed(s, a.id))) return reply.code(404).send('Not found');
     const name = String(req.body?.name ?? '').trim();
     try {
       const id = await createCopy(a.id, name, s.username!);

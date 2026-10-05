@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { APP_COLORS, BASE, csrf, developer, input, region, select, send, shell, type Req } from './ui.ts';
 import type { Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
+import { currentWorkspace, inWorkspaceSql } from './workspaces.ts';
 
 // The workspace pages of the builder, laid out like APEX's App Builder: the
 // home page (tiles, a searchable list of applications as a report or as
@@ -78,11 +79,12 @@ const TASKS: [string, string][] = [
 
 async function recentApps(s: Session) {
   const ids = recentIds(s);
+  const ws = currentWorkspace(s);
   if (ids.length) {
-    const rows = (await owner.query('select id, name from meta.app where id = any($1::int[])', [ids])).rows;
+    const rows = (await owner.query(`select id, name from meta.app a where id = any($1::int[]) and ${inWorkspaceSql('a', 2)}`, [ids, ws])).rows;
     return ids.map((id) => rows.find((r) => r.id === id)).filter(Boolean) as { id: number; name: string }[];
   }
-  return (await owner.query('select id, name from meta.app order by updated_at desc nulls last, id desc limit $1', [RECENT_MAX])).rows;
+  return (await owner.query(`select id, name from meta.app a where ${inWorkspaceSql('a', 2)} order by updated_at desc nulls last, id desc limit $1`, [RECENT_MAX, ws])).rows;
 }
 
 export async function homeRoutes(app: FastifyInstance) {
@@ -102,11 +104,11 @@ export async function homeRoutes(app: FastifyInstance) {
                 (select count(*) from meta.page p where p.app_id = a.id)::int as pages,
                 (select count(*) from meta.activity_log l where l.app_id = a.id and l.event = 'page_view' and l.at > now() - interval '1 day')::int as views
            from meta.app a
-          where $1 = '' or a.name ilike '%' || $1 || '%' or a.alias ilike '%' || $1 || '%' or a.id::text = $1
+          where ($1 = '' or a.name ilike '%' || $1 || '%' or a.alias ilike '%' || $1 || '%' or a.id::text = $1) and ${inWorkspaceSql('a', 2)}
           order by ${SORTS[sort]}`,
-        [q.replace(/[\\%_]/g, (c) => `\\${c}`)],
+        [q.replace(/[\\%_]/g, (c) => `\\${c}`), currentWorkspace(s)],
       ),
-      owner.one('select count(*)::int as n from meta.app'),
+      owner.one(`select count(*)::int as n from meta.app a where ${inWorkspaceSql('a', 1)}`, [currentWorkspace(s)]),
       recentApps(s),
     ]);
     const link = (o: { view?: View; sort?: Sort }) => {
@@ -180,7 +182,7 @@ export async function homeRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const schemas = await owner.query(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`);
-    const boilerplates = (await owner.query(`select id, name from meta.app where app_type = 'boilerplate' order by lower(name), id`)).rows;
+    const boilerplates = (await owner.query(`select id, name from meta.app a where app_type = 'boilerplate' and ${inWorkspaceSql('a', 1)} order by lower(name), id`, [currentWorkspace(s)])).rows;
     const main = html`<div class="ab-narrow">
       <h1>Create an application</h1>
       <p class="muted">A blank application with a Home page, its own database role and a parsing schema. Add pages with the page wizards afterwards.</p>
@@ -229,14 +231,16 @@ export async function homeRoutes(app: FastifyInstance) {
     if (!s) return;
     const [totals, perApp] = await Promise.all([
       owner.one(
-        `select (select count(*) from meta.app)::int as apps,
-                (select count(*) from meta.page)::int as pages,
+        `select (select count(*) from meta.app a where ${inWorkspaceSql('a', 1)})::int as apps,
+                (select count(*) from meta.page p join meta.app a on a.id = p.app_id where ${inWorkspaceSql('a', 1)})::int as pages,
                 (select count(*) from meta.account where active)::int as accounts,
                 count(*) filter (where event = 'page_view')::int as views,
                 count(distinct username) filter (where event = 'page_view')::int as users,
                 count(*) filter (where event in ('login_failed', 'login_locked'))::int as failures,
                 count(*) filter (where event in ('forbidden', 'error'))::int as problems
-           from meta.activity_log where at > now() - interval '1 day'`,
+           from meta.activity_log l where at > now() - interval '1 day'
+            and (l.app_id is null or exists (select 1 from meta.app a where a.id = l.app_id and ${inWorkspaceSql('a', 1)}))`,
+        [currentWorkspace(s)],
       ),
       owner.query(
         `select a.id, a.name,
@@ -246,7 +250,9 @@ export async function homeRoutes(app: FastifyInstance) {
                 coalesce(round(avg(l.elapsed_ms) filter (where l.event = 'page_view')), 0)::int as avg_ms,
                 count(l.*) filter (where l.event in ('forbidden', 'error'))::int as problems
            from meta.app a left join meta.activity_log l on l.app_id = a.id and l.at > now() - interval '7 days'
+          where ${inWorkspaceSql('a', 1)}
           group by a.id, a.name order by views_week desc, lower(a.name)`,
+        [currentWorkspace(s)],
       ),
     ]);
     const stat = (n: number | string, label: string) => html`<div class="stat"><b>${n}</b><span>${label}</span></div>`;
@@ -276,6 +282,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
         ${card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/workspaces`, icon('layers'), 'Workspaces', 'Groups of applications and their developers (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
       </div>`;

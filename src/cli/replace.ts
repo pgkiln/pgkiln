@@ -42,7 +42,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (061) AI assistant conversations (per session, follow their region)
   'ai_conversation',
   // (063) blueprints: the application created from one (builder data)
-  'blueprint'];
+  'blueprint',
+  // (064) the workspace of the application
+  'workspace_app'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */

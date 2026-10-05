@@ -184,7 +184,9 @@ src/
                            write-back operations, synchronisation settings, Synchronise now and run history
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
-    locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
+    workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid
+                           request), the current workspace (session state __WS), placeApp, the switcher, Workspace utilities → Workspaces
+    locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST; appOfPath), developer comments, administrators
     blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a
                            question, shown not run; explain), describe tables (meta.ai_table_note, COMMENT ON, AI drafts),

@@ -22,8 +22,8 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Globalization | 5 | 1 | 0 | 0 | One translated app like 26.1; number format masks and automatic time zone; five built-in languages |
 | Data and integration | 8 | 1 | 0 | 2 | REST APIs via PostgREST, REST data sources that write back and synchronise, web credentials with OAuth2 grants, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 5 | 1 | 0 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; AI with Claude or OpenAI: *Generate text with AI*, an assistant region with tools, natural-language report filters and blueprints |
-| Administration | 3 | 1 | 1 | 0 | Single workspace; Top SQL per app; debug messages per request; an install/upgrade log |
-| **Total** | **95** | **18** | **2** | **3** | 118 APEX features compared: 81% available, 15% partial |
+| Administration | 3 | 2 | 0 | 0 | Workspaces that group applications and developers (not a tenant boundary); Top SQL per app; debug messages per request; an install/upgrade log |
+| **Total** | **95** | **19** | **1** | **3** | 118 APEX features compared: 81% available, 16% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -193,7 +193,7 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Instance administration, install/upgrade logs (26.1) | 🟡 | Versioned migrations (`npm run db:migrate`), every run logged; Workspace utilities → **Installation** (administrators): server version, install and upgrade runs with errors, applied migrations, and warnings for migrations the database misses or the server doesn't know ([chapter 3](guide/03-builder.md)). **Missing:** instance-wide settings in the builder (they are environment variables) |
 | Debug messages | ✅ | Debug levels 1–9 per app; `meta.debug(level, text)` and `meta.debug_enabled(level)` from application SQL (APEX_DEBUG); timed entries per request (page steps, regions, processes, branches, errors, SQL notices); Activity → **Debug messages** viewer per page view with filters and the slowest step highlighted; retention 1–90 days; password item values are never recorded ([chapter 6](guide/06-processing.md)). **Missing:** switching debug on per user or session (the APEX toolbar), debug entries for background jobs and REST requests |
 | Monitoring (top SQL) | ✅ | Activity per app; Top SQL per app's database role from `pg_stat_statements` (sortable, resettable) |
-| Workspaces (multi-tenant) | ❌ | One installation = one workspace |
+| Workspaces (multi-tenant) | 🟡 | Workspaces group applications and developers: the builder shows and opens only the applications of a developer's workspaces (administrators: all), a current workspace with a switcher, new and imported applications go into it, administrators add workspaces, choose their developers and move applications ([chapter 3](guide/03-builder.md#workspaces)). **Missing:** isolation between tenants (the SQL Workshop and application code run with installation-wide rights; use separate installations), per-workspace user accounts, schemas and workspace administrators |
 
 ## Different on purpose
 
@@ -242,7 +242,7 @@ credentials; rich text and the other new item types.
 Done in 0.28.0 (AI with Claude and OpenAI): *Generate text with AI*, the AI assistant with tools, natural-language
 report filters, App Builder AI and blueprints.
 
-1. **Workspaces**, a new default style like "Iris", then the 🟡 rows (sprint 37).
+1. A new default style like "Iris", then the 🟡 rows (sprint 37; workspaces are done).
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

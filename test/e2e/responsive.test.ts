@@ -505,6 +505,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           return v;
         })()}`,
         installation: '/builder/installation',
+        workspaces: '/builder/workspaces',
+        workspace: '/builder/workspaces/1',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,

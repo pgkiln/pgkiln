@@ -8,7 +8,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 
 | Oracle APEX | pgapex |
 |---|---|
-| Instance / workspace | One pgapex installation (one workspace) |
+| Instance / workspace | One pgapex installation; workspaces group applications and developers in the builder (Workspace utilities → Workspaces; not a security boundary: tenants who must not see each other get separate installations, [chapter 3](03-builder.md#workspaces)) |
 | Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
 | Application, page, region, item, button | The same, stored in `meta.*` |
 | Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |

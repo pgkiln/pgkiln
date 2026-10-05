@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Workspaces** (migration 064): workspaces group applications and the developers who build them. The App Builder
+  shows the current workspace's applications (home, Recent, dashboard, boilerplates, subscription sources) and answers
+  *Not found* for applications of other workspaces; developers with several workspaces switch in the account menu.
+  New, imported and copied applications go into the current workspace (the CLI imports into Default). Administrators
+  manage workspaces on Workspace utilities → Workspaces: add, rename, developers, move applications, delete when
+  empty. Existing applications and developers are in the Default workspace. Not a security boundary between
+  developers who write SQL: use separate installations for tenants that must not see each other.
+
 ## [0.28.0] - 2026-10-06
 
 ### Added

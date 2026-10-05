@@ -5657,3 +5657,73 @@ describe('sprint 36 blueprints', () => {
     await assert.rejects(runtime.query('select * from meta.blueprint'), /permission denied/);
   });
 });
+
+describe('sprint 37 workspaces', () => {
+  const DEV = 'sec37_ws_dev';
+  const DEV_PW = 'Sec37-ws-dev-password!';
+  const WS = 'Sec37 <b>ws</b>';
+  let dev: Browser;
+  let adm: Browser;
+  let wsId: number;
+  let hr: number;
+  const cleanup = async () => {
+    await owner.query('delete from meta.workspace_app where workspace_id in (select id from meta.workspace where name = $1)', [WS]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
+    wsId = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [WS])).id;
+    // the developer works in the new workspace only
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [wsId, DEV]);
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: DEV, password: DEV_PW });
+    adm = new Browser();
+    await adm.get('/builder/login');
+    await adm.post('/builder/login', { __csrf: adm.lastCsrf, username: 'admin', password: 'admin' });
+  });
+  after(cleanup);
+
+  test('applications of other workspaces are not found, for every builder route under /apps and /pages', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 order by page_no limit 1', [hr])).id;
+    const region = (await owner.one('select id from meta.region where page_id = $1 limit 1', [page]))?.id ?? 1;
+    for (const url of [`/builder/apps/${hr}`, `/builder/apps/${hr}/export`, `/builder/apps/${hr}/shared`, `/builder/apps/${hr}/search?q=emp`, `/builder/apps/${hr}/debug`, `/builder/pages/${page}`])
+      assert.equal((await dev.get(url)).statusCode, 404, url);
+    await dev.get('/builder');
+    for (const url of [`/builder/apps/${hr}/settings`, `/builder/apps/${hr}/delete`, `/builder/pages/${page}/c/region/${region}`, `/builder/pages/${page}/delete`, `/builder/apps/${hr}/lock`])
+      assert.equal((await dev.post(url, { __csrf: dev.lastCsrf, name: 'pwned', title: 'pwned', page_no: '0' })).statusCode, 404, url);
+    assert.notEqual((await owner.one('select name from meta.app where id = $1', [hr])).name, 'pwned');
+    assert.ok(!(await owner.one('select 1 as ok from meta.builder_lock where app_id = $1 and locked_by = $2', [hr, DEV])));
+    // working copies and boilerplates of another workspace by id
+    assert.equal((await dev.post('/builder/working-copies', { __csrf: dev.lastCsrf, main_app_id: String(hr), name: 'sec37' })).statusCode, 404);
+    assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias = 'hr-sec37'`)));
+    // the code editor's completions and checks for another workspace's application
+    assert.equal((await dev.get(`/builder/code/completions?app=${hr}`)).statusCode, 404);
+    assert.equal((await dev.get(`/builder/code/completions?page=${page}`)).statusCode, 404);
+    assert.equal((await dev.post('/builder/code/check', { __csrf: dev.lastCsrf, shape: 'select', sql: 'select 1', app: String(hr) })).statusCode, 404);
+  });
+
+  test('workspace pages: administrators only, CSRF, own workspaces only, names escaped', async () => {
+    for (const url of ['/builder/workspaces', `/builder/workspaces/${wsId}`]) assert.equal((await dev.get(url)).statusCode, 403, url);
+    for (const url of ['/builder/workspaces', `/builder/workspaces/${wsId}`, `/builder/workspaces/${wsId}/members`, `/builder/workspaces/${wsId}/move`, `/builder/workspaces/${wsId}/delete`])
+      assert.equal((await dev.post(url, { __csrf: dev.lastCsrf, name: 'x', member: DEV, app: String(hr), to: String(wsId) })).statusCode, 403, url);
+    assert.equal(await (await owner.one('select meta.app_workspace($1) as ws', [hr])).ws, 1);
+    // switching: CSRF, and only to one's own workspaces
+    assert.equal((await dev.post('/builder/workspace', { __csrf: 'forged', workspace: String(wsId) })).statusCode, 403);
+    assert.equal((await dev.post('/builder/workspace', { __csrf: dev.lastCsrf, workspace: '1' })).statusCode, 404);
+    // the name is escaped wherever it shows
+    for (const b of [adm, dev]) {
+      const body = (b === adm ? await adm.get('/builder/workspaces') : await dev.get('/builder')).body;
+      assert.ok(!body.includes('<b>ws</b>'), 'raw name');
+      assert.ok(body.includes('Sec37 &lt;b&gt;ws&lt;/b&gt;'));
+    }
+  });
+
+  test('workspace tables are closed to the runtime', async () => {
+    for (const t of ['workspace', 'workspace_member', 'workspace_app']) await assert.rejects(runtime.query(`select * from meta.${t}`), /permission denied/, t);
+  });
+});

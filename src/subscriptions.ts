@@ -69,7 +69,9 @@ async function columns(db: Db, table: string) {
 export async function offers(appId: number) {
   const masters = (
     await owner.query<{ id: number; name: string; app_type: AppType }>(
-      `select id, name, app_type from meta.app where app_type in ('theme', 'library') and id <> $1 order by lower(name), id`,
+      `select id, name, app_type from meta.app
+        where app_type in ('theme', 'library') and id <> $1 and meta.app_workspace(id) = meta.app_workspace($1)
+        order by lower(name), id`,
       [appId],
     )
   ).rows;
@@ -163,6 +165,9 @@ export async function subscribe(appId: number, masterId: number, kind: string, n
   return owner.tx(async (c) => {
     const master = (await c.query<{ app_type: string; name: string }>('select app_type, name from meta.app where id = $1', [masterId])).rows[0];
     if (!master || masterId === appId) throw new SubscriptionError('Choose another application to subscribe to.');
+    // (064) only applications of the same workspace
+    if (!(await c.query('select 1 from meta.app where id = $1 and meta.app_workspace($1) = meta.app_workspace($2)', [masterId, appId])).rowCount)
+      throw new SubscriptionError('Choose another application to subscribe to.');
     if (!(KINDS[kind].from as readonly string[]).includes(master.app_type))
       throw new SubscriptionError(`${master.name} is not a ${KINDS[kind].from.join(' or ')} application: it offers no ${KINDS[kind].label.toLowerCase()}.`);
     if (!(await c.query('select 1 from meta.app where id = $1', [appId])).rowCount) throw new SubscriptionError('Application not found.');

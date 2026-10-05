@@ -11,6 +11,9 @@ export interface Session {
   /** Roles resolved at sign-in (lower case); see meta.has_role(). */
   roles: string[];
   isNew?: boolean;
+  /** Builder only: the developer's workspaces and the current one (src/builder/workspaces.ts). */
+  workspaces?: { id: number; name: string }[];
+  workspace?: { id: number; name: string } | null;
 }
 
 const IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES ?? 60);

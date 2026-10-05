@@ -10,6 +10,7 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { builderService } from './ai-builder.ts';
 import { addDashboard } from './appsheets.ts';
 import { checkNewApp, createApp, createAppError } from './newapp.ts';
+import { currentWorkspace } from './workspaces.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { WIZARD_KINDS } from './wizards.ts';
 
@@ -233,7 +234,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
     const { blueprint, problems } = error ? { blueprint: null, problems: [error] } : checkBlueprint(json);
     if (!blueprint) return editor(s, reply, { ...o, message: html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` });
     try {
-      const checked = await checkNewApp({ name: blueprint.name, alias: blueprint.alias, schema: blueprint.schema, authentication: blueprint.authentication, admin_user: String(b.admin_user ?? ''), admin_password: String(b.admin_password ?? '') });
+      const checked = await checkNewApp({ name: blueprint.name, alias: blueprint.alias, schema: blueprint.schema, authentication: blueprint.authentication, admin_user: String(b.admin_user ?? ''), admin_password: String(b.admin_password ?? '') }, currentWorkspace(s));
       const built = await owner.tx(async (c) => {
         const a = await createApp(c, checked).catch((e) => {
           throw new Error(createAppError(e, checked.alias));

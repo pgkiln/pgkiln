@@ -1462,8 +1462,8 @@ Branch `sprint-37` from `main` (v0.28.0). One agent (mode A), tests on `pgapex-c
 
 | # | Item | Reserved | Status |
 |---|---|---|---|
-| 1 | **Workspaces** (row "Workspaces (multi-tenant)"): `meta.workspace`, `meta.workspace_member`, `meta.app.workspace_id` (existing apps and developers → workspace 1 "Default"); current workspace in the builder session (switcher in the header); app lists, dashboard, search, create/import, working copies scoped to it; every `/builder/apps/:id` and `/builder/pages/:pid` request (GET and POST) refused with 404 for an app outside the developer's workspaces (administrators: all); Workspace utilities → Workspaces (administrators): create, rename, delete when empty, members, move applications | 064 | in progress |
-| 2 | **New default style like "Iris"** (row ❌) | 065 if needed | todo |
+| 1 | **Workspaces** (row "Workspaces (multi-tenant)"): `meta.workspace`, `meta.workspace_member`, `meta.app.workspace_id` (existing apps and developers → workspace 1 "Default"); current workspace in the builder session (switcher in the header); app lists, dashboard, search, create/import, working copies scoped to it; every `/builder/apps/:id` and `/builder/pages/:pid` request (GET and POST) refused with 404 for an app outside the developer's workspaces (administrators: all); Workspace utilities → Workspaces (administrators): create, rename, delete when empty, members, move applications | 064 | **done** (tests: `test/workspaces.test.ts`, security block "sprint 37 workspaces"; e2e builder pages `workspaces`, `workspace`) |
+| 2 | **New default style like "Iris"** (row ❌): `theme.base = 'iris'` → `<html data-style="iris">`, a full light/dark variable set in app.css, default for new applications, a Base style choice in the Theme Roller | none (theme jsonb) | in progress |
 | 3 | 🟡 rows, one by one (Theme Roller, Instance administration, PL/SQL APIs, …) | 066+ | todo |
 
 **Workspaces design decision:** not a security boundary between developers who write SQL. Application code runs on the

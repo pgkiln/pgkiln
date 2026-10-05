@@ -15,6 +15,7 @@ import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash,
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
+import { appAllowed, currentWorkspace, placeApp, workspaceRoutes } from './workspaces.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
@@ -120,6 +121,7 @@ export async function builderRoutes(app: FastifyInstance) {
 
   // the workspace pages (App Builder home, Create, Import, Dashboard, Utilities) are in home.ts
   await homeRoutes(app);
+  await workspaceRoutes(app);
   await wizardRoutes(app);
   await appFromFileRoutes(app);
 
@@ -128,8 +130,9 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     try {
-      const checked = await checkNewApp(b);
+      const checked = await checkNewApp(b, currentWorkspace(s));
       const boilerplate = /^\d{1,9}$/.test(b.boilerplate ?? '') ? Number(b.boilerplate) : null;
+      if (boilerplate && !(await appAllowed(s, boilerplate))) throw new Error('Choose a boilerplate application (an application of type Boilerplate).');
       const { id, existingAccount } = await owner.tx(async (c) => {
         const made = await createApp(c, checked);
         if (boilerplate) await startFromBoilerplate(c, made.id, checked, boilerplate);
@@ -151,8 +154,14 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     try {
+      const ws = currentWorkspace(s);
+      if (ws < 1) throw new Error('you are not a developer of any workspace yet: ask an administrator to add you to one.');
       const doc = JSON.parse(req.body?.doc ?? '');
-      const r = await owner.one('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null]);
+      const r = await owner.tx(async (c) => {
+        const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null])).rows[0];
+        await placeApp(c, made.id, ws);
+        return made;
+      });
       // supporting objects are never run on import: the developer reviews them and chooses
       const scripts = (await owner.one('select count(*)::int as n from meta.supporting_script where app_id = $1', [r.id])).n;
       flash(s, `Application imported. Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}`);
@@ -519,8 +528,17 @@ export async function builderRoutes(app: FastifyInstance) {
     try {
       const problem = await passwordProblem(req.body?.password);
       if (problem) throw new Error(problem);
-      await owner.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), $3)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true']);
-      flash(s, 'Developer added.');
+      const ws = currentWorkspace(s);
+      await owner.tx(async (c) => {
+        await c.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), $3)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true']);
+        // (064) a new developer works in the current workspace; more on Workspace utilities → Workspaces
+        // (the insert trigger put them in Default)
+        if (ws > 0 && ws !== 1) {
+          await c.query('delete from meta.workspace_member where workspace_id = 1 and username = $1', [req.body?.username?.trim()]);
+          await c.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, req.body?.username?.trim()]);
+        }
+      });
+      flash(s, ws > 0 ? `Developer added to workspace ${s.workspace!.name}.` : 'Developer added.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }

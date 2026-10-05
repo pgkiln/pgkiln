@@ -32,6 +32,7 @@ const NOT_EXPORTED = new Set([
   'ai_request', // AI requests queued from SQL and their answers (kept 24 hours)
   'blueprint', // saved blueprints: builder data of this installation (app_id: the application created from one)
   'ai_conversation', // AI assistant conversations: per session, user data (the assistant's settings travel in the region's config)
+  'workspace_app', // the workspace of an application: installation data (an import goes into the importer's workspace)
 ]);
 
 /** Where each exported table appears in the document. */
