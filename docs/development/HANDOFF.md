@@ -1256,3 +1256,27 @@ CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check
 82/23/10/6), CHANGELOG 0.24.0, SECURITY.md (five 0.24.0 rows), version, CI matrix + v0.24.0, chapter 12 line.
 CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446): 789 pass / 8 skip. Next: pick the
 next sprint from the parity matrix (AI features still wait for the owner's decision on provider and API keys).
+
+## Sprint 33 (IN PROGRESS): parity items one after another (owner: "please keep going, read the handoff and parity", 2026-10-05)
+
+Branch `sprint-33` from `main` (v0.24.0). As in sprint 32: **one agent at a time** in the main checkout (no worktree),
+dev DB `pgapex-db` on 5434, app 3100. Rules: `docs/development/sprint-33-agent-rules.md`. Each item is finished,
+tested, committed and pushed on `sprint-33` before the next agent starts, so the branch can be merged after any item.
+
+| # | Item (parity row) | Reserved | Status |
+|---|---|---|---|
+| 1 | Charts: Gantt (tasks with start/end, progress, dependencies optional), pyramid and polar charts, server-side SVG like the others, with drill-down and the data-table alternative | 048 (only if needed), `hr_35` | to do |
+| 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (only if needed), `hr_36` | to do |
+| 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | to do |
+| 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | to do |
+| 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | to do |
+| 6 | Theme Roller: style variants (several saved styles per app, switch per user) and template options on regions/buttons (a fixed list of CSS classes per component) | 053, (no HR) | to do |
+
+**If a session ends:** `git log --oneline main..sprint-33` and `git status`; make sure no agent is still editing;
+commit any uncommitted work as `wip:`; launch the next agent with "Read `docs/development/sprint-33-agent-rules.md`
+and follow it. Item <n> of the Sprint 33 table in HANDOFF.md." The coordinator records each report below and updates
+the parity row(s) + summary counts and CHANGELOG `[Unreleased]` after each item. At the end (or when usage runs low):
+SECURITY.md, `.env.example`, version 0.25.0, CI upgrade matrix + v0.25.0, chapter 12 version line, this file;
+CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446), merge into `main`, tag, push, check CI.
+
+**Item reports:** (filled in as agents finish)
