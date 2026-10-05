@@ -73,7 +73,7 @@ export async function workingCopyRoutes(app: FastifyInstance) {
             (APEX: working copies). Compare it with this application and merge it back component by component;
             components changed on both sides are shown as conflicts to resolve.</p>
           ${copies.length
-            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Application</th><th>Made by</th><th>Made</th><th>Last merged</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Application</th><th>Made by</th><th>Made</th><th>Last merged</th><th>Actions</th></tr></thead><tbody>
                 ${copies.map((c) => html`<tr><td>${c.name}</td><td><a href="${BASE}/apps/${c.app_id}">${c.app_id}</a> <code>/a/${c.alias}</code></td>
                   <td>${c.created_by}</td><td>${c.created_at.slice(0, 16)}</td><td>${c.merged_at ? c.merged_at.slice(0, 16) : html`<span class="muted">never</span>`}</td>
                   <td><a class="btn btn-sm" href="${BASE}/apps/${c.app_id}/compare">${icon('layers')} Compare and merge</a></td></tr>`)}
@@ -127,8 +127,8 @@ export async function workingCopyRoutes(app: FastifyInstance) {
     const body = l.changes.length
       ? html`<p class="u-mt0">${count('copy')} changed in the copy, ${count('main')} changed in the main application, ${conflicts} conflict${conflicts === 1 ? '' : 's'}.</p>
         <form method="post" action="${BASE}/apps/${a.id}/merge">${csrf(s)}<input type="hidden" name="state" value="${fingerprint(l.changes)}">
-          <div class="table-wrap"><table class="report"><caption class="sr-only">Changed components</caption>
-            <thead><tr><th>Component</th><th>Main application</th><th>Working copy</th><th>Result</th><th><span class="sr-only">Differences</span></th></tr></thead><tbody>
+          <div class="table-wrap"><table class="report" aria-label="Changed components">
+            <thead><tr><th>Component</th><th>Main application</th><th>Working copy</th><th>Result</th><th>Differences</th></tr></thead><tbody>
             ${l.changes.map((ch, i) => html`<tr${ch.status === 'conflict' ? raw(' class="row-conflict"') : ''}><td>${ch.label}<br><small class="muted">${STATUS[ch.status]}</small></td>
               <td>${side(ch.inMain)}</td><td>${side(ch.inCopy)}</td>
               <td>${ch.status === 'conflict'
@@ -136,7 +136,7 @@ export async function workingCopyRoutes(app: FastifyInstance) {
                     <label class="check"><input type="radio" name="r_${i}" value="main" required> Main</label>
                     <label class="check"><input type="radio" name="r_${i}" value="copy" required> Copy</label></fieldset>`
                 : ch.status === 'copy' ? 'Copy' : 'Main'}</td>
-              <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/compare?c=${encodeURIComponent(ch.id)}#diff">Differences</a></td></tr>`)}
+              <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/compare?c=${encodeURIComponent(ch.id)}#diff">Show</a></td></tr>`)}
           </tbody></table></div>
           <p class="muted">Merging writes the result into the main application and the working copy. Refreshing writes it into
             the working copy only (bringing the main application's changes in). Users, sessions, saved reports, secrets and

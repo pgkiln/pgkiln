@@ -11,6 +11,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import '../../src/env.ts';
 import { buildApp } from '../../src/app.ts';
 import { closePools, owner } from '../../src/db.ts';
+import { createCopy } from '../../src/workingcopy.ts';
 
 export const VIEWPORTS = {
   phone: { width: 390, height: 844 },
@@ -555,6 +556,15 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           [['form', 'hr.emp'], ['cards', 'hr.emp'], ['calendar', 'hr.leave_request'], ['chart', 'hr.emp'], ['map', 'hr.dept'], ['facets', 'hr.emp'], ['master_detail', 'hr.dept'], ['report_form', 'hr.dept']]
             .map(([kind, table]) => [`wizard_${kind}`, `/builder/apps/${appId}/wizard?kind=${kind}&table=${table}`]),
         ),
+        // (sprint 34) working copies: the list, and a copy compared with a long difference shown
+        working_copies: `/builder/apps/${appId}/working-copies`,
+        working_copy_compare: await (async () => {
+          await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
+          const id = await createCopy(appId, 'e2e', 'admin');
+          await owner.query(`update meta.lov set query = $2 where app_id = $1 and name = 'JOBS'`, [id, 'select job_title as d, job_id as r from hr.job where job_title is not null and job_id is not null order by job_title, job_id -- a long changed line']);
+          await owner.query(`update meta.page set name = 'Staff' where app_id = $1 and page_no = 2`, [id]);
+          return `/builder/apps/${id}/compare?c=shared%2Flovs%2Fjobs`;
+        })(),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -566,6 +576,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         }
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
       }
