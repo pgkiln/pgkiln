@@ -41,6 +41,8 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | `APEX_MAIL`, Send E-Mail process, e-mail templates | Not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` ([chapter 15](15-extensions.md)) |
 | Translated applications (XLIFF), `APEX_LANG.MESSAGE`, `&APP_TEXT$NAME.` | Translations in the app (XLIFF/CSV import and export), `meta.message()`, `&APP_TEXT$NAME.` ([chapter 14](14-globalization.md)) |
 | Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
+| Number format masks (`FML999G999G990D00`) on columns and items | `{"formats": {...}}` on report, grid and cards columns, `{"format_mask": "..."}` on charts and number/display items ([chapter 14](14-globalization.md#number-formats)) |
+| Automatic Time Zone, `APEX_UTIL.SET_SESSION_TIME_ZONE` | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
 | Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark* |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
@@ -142,7 +144,8 @@ Tips:
   together.
 - **Errors are hidden by default**: unexpected errors show a reference number unless the app is in
   debug mode.
-- **Dates**: date items use ISO format (`2026-10-01`) and the browser's date picker. Format masks
-  are not supported yet.
+- **Dates**: date items use ISO format (`2026-10-01`) and the browser's date picker; format masks
+  apply to report, grid and cards columns and to number and display items
+  ([number formats](14-globalization.md#number-formats)).
 - **Modal pages** open over the calling page, and close and refresh it after a successful submit,
   like an APEX "Close Dialog" process plus "Dialog Closed" refresh.

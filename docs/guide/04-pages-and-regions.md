@@ -162,6 +162,7 @@ Attributes (most of them are also in the page designer's **Report settings** for
 | `mobile` | `"reflow"` | `"scroll"` keeps a horizontally scrolling table on phones |
 | `hidden` | `[]` | Column names to leave out of the display (they can still be used in links) |
 | `headings` | `{}` | Column headings, e.g. `{"sal": "Salary"}`; by default `hire_date` becomes "Hire Date" |
+| `formats` | `{}` | Format masks per column, e.g. `{"sal": "FML999G990D00", "hiredate": "DD-MON-YYYY"}` (see [number formats](14-globalization.md#number-formats)) |
 | `link` | none | Makes one column a link: `{"column": "empno", "page": 3, "items": {"P3_EMPNO": "#empno#"}}`. `#col#` is replaced by the row's value; the link carries a checksum and is hidden when the user may not open that page |
 | `empty` | "No data found" | Text when there are no rows |
 | `preformatted` | `[]` | Columns shown with preserved spaces (e.g. indented trees) |
@@ -218,7 +219,7 @@ Attributes:
 | `allow` | all `true` | `{"insert": false, "update": true, "delete": false}` |
 | `readonly` | `[]` | Columns that may not be edited |
 | `columns` | `{}` | Per column: `{"deptno": {"lov": "LOV:DEPARTMENTS", "required": true}}`. `lov` makes it a select list (any [list of values](05-items.md#lists-of-values)) |
-| `headings`, `hidden` | | As for reports |
+| `headings`, `hidden`, `formats` | | As for reports |
 
 Cell editors follow the column type: number, date, date-time, checkbox (boolean), select list
 (with `lov`) or text.
@@ -269,6 +270,7 @@ Attributes:
 | `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel` or `radar` |
 | `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
 | `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
+| `format_mask` | A number format mask for the values in labels, tips and the data table, e.g. `"FML999G990"` (see [number formats](14-globalization.md#number-formats)) |
 | `empty` | Text when there are no rows |
 
 | Kind | Best for | Notes |
@@ -373,6 +375,7 @@ Attributes:
 | `link` | `{"page": 5, "items": {"P5_DEPTNO": "#deptno#"}}` makes each card a link |
 | `empty` | Text when there are no rows |
 | `max_rows` | Most cards shown (default 500); when there are more, "Showing the first 500 rows." follows |
+| `formats` | Format masks for `title`, `subtitle`, `body` and `badge`, e.g. `{"badge": "FML999G999G990"}` |
 
 ---
 

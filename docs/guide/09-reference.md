@@ -245,6 +245,7 @@ Usable in navigation entries and cards (`icon` column):
 | `POST /a/:alias/account/devices` | Sign out on all devices ("Keep me signed in") |
 | `POST /a/:alias/password` | Change an expired password while signing in |
 | `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme` | My account, own password, the light/dark switch |
+| `POST /a/:alias/tz` | The browser's time zone for the session (automatic time zone; sent by `app.js`, CSRF token required) |
 | any page `?lang=xx` | Switch the language for the session |
 | `/builder/...` | Builder |
 | PostgREST (separate service, `API_URL`) | REST API of each app's `api` schema, see [chapter 13](13-rest-api.md) |
