@@ -9,6 +9,7 @@ import { isAuthorized, pageAllowed } from './authz.ts';
 import { publicError, toState, type PageContext } from './context.ts';
 import { arrange, cleanLayout, currentLayout, defaultLayout, layoutJson, layoutParam, MAX_FROZEN, MAX_WIDTH, MIN_WIDTH, parseLayout, type GridLayout, type Placed } from './grid-layout.ts';
 import { lovOptions, type LovOption } from './items.ts';
+import { resolveRestRegion, restAllows, restGridCall, restWritable } from './rest-sources.ts';
 import { fillItems, linkAttrs } from './links.ts';
 import { detailsOf, masterColumnOf, masterItemOf, selectHref, selectRowOf } from './master-detail.ts';
 import { aggregateRows, AGGREGATES, buildSql, cell, columnFormats, headingOf, key, pageInfo, pagerNav, regionUrl, reportParams, reportState, visibleColumns, type ReportState } from './report.ts';
@@ -34,6 +35,12 @@ import { aggregateRows, AGGREGATES, buildSql, cell, columnFormats, headingOf, ke
 // user (grid-layout.ts) and in saved grid reports. Input names keep the
 // query's column positions (c<n>), whatever order the columns are shown in.
 //
+// On a REST data source (region rest_source), the grid reads the source's
+// rows and saves through its write-back operations (insert, update,
+// delete; rest-sources.ts); Add, Save and Delete follow the operations the
+// source defines. The key column is the region's primary key column or the
+// source's first key column.
+//
 // Saved by a process of type 'grid_dml' for the region, which runs when the
 // grid's own Save button (request GRID_SAVE_<region id>) is pressed.
 //
@@ -54,7 +61,8 @@ export const saveButton = (r: Region): Button => ({
   target_page: null, target_items: {}, condition: null, authz: null, hot: true, confirm: null,
 });
 
-const allow = (r: Region, op: 'insert' | 'update' | 'delete') => r.config.allow?.[op] !== false;
+// a grid on a REST data source also needs the source's operation (rest-sources.ts)
+const allow = (r: Region, op: 'insert' | 'update' | 'delete') => r.config.allow?.[op] !== false && (!r.rest_source || restAllows(r, op));
 
 interface GridColumn {
   name: string;
@@ -65,6 +73,9 @@ interface GridColumn {
 }
 
 async function writableColumns(c: Client, r: Region) {
+  const readonly = new Set<string>((r.config.readonly ?? []).map((x: string) => x.toLowerCase()));
+  const master = masterColumnOf(r)?.toLowerCase();
+  if (r.rest_source) return restWritable(r, new Set([...readonly, ...(master ? [master] : [])]));
   const res = await savepoint(c, () =>
     c.query(
       `select attname from pg_attribute
@@ -73,9 +84,7 @@ async function writableColumns(c: Client, r: Region) {
       [r.table_name],
     ),
   );
-  const readonly = new Set<string>((r.config.readonly ?? []).map((x: string) => x.toLowerCase()));
   // a detail grid's master column gets the master's value on new rows, and is never edited
-  const master = masterColumnOf(r)?.toLowerCase();
   return new Set(res.rows.map((x) => x.attname as string).filter((n) => n !== r.pk_column && !readonly.has(n.toLowerCase()) && n.toLowerCase() !== master));
 }
 
@@ -140,7 +149,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const c = ctx.client!;
   const t = ctx.locale.t;
   const tr = ctx.locale.tr;
-  if (!r.table_name || !r.pk_column) return html`<div class="alert alert-error">Grid regions need a table and a primary key column.</div>`;
+  if (!(r.table_name || r.rest_source) || !r.pk_column) return html`<div class="alert alert-error">Grid regions need a table (or a REST data source with key columns) and a primary key column.</div>`;
   const base = reportState(ctx, r);
   const st = { ...base, size: Math.max(1, Math.min(200, Number(r.config.page_size) || 25)), breakCol: null, view: 'report' as const };
   const aggs = gridAggregates(r, st);
@@ -522,8 +531,12 @@ function newRowIndexes(body: Record<string, unknown>, g: string) {
 export async function gridDml(ctx: PageContext, p: Process): Promise<string | null> {
   const c = ctx.client!;
   const r = ctx.page.regions.find((x) => x.id === p.region_id && x.type === 'grid');
-  if (!r?.table_name || !r.pk_column) throw new Error(`Process "${p.name}" needs a grid region with a table and primary key.`);
+  if (!r) throw new Error(`Process "${p.name}" needs a grid region with a table and primary key.`);
   if (!ctx.vis!.regions.has(r.id)) return null;
+  // a REST grid: the source's rows of this request, its key column and operations (rest-sources.ts)
+  if (r.rest_source) await resolveRestRegion(ctx, r);
+  if (!(r.table_name || r.rest_source) || !r.pk_column) throw new Error(`Process "${p.name}" needs a grid region with a table (or a REST data source with key columns) and primary key.`);
+  const rest = !!r.rest_source;
   const body = ctx.body ?? {};
   const g = `g${r.id}`;
   const one = (k: string) => {
@@ -535,7 +548,7 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
   const src = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, { ...reportState(ctx, r), page: 1, size: 1 }, 'page')), rowMode: 'array' }));
   const cols = visibleColumns(r, src.fields.slice(0, -1)).map(({ f }) => f);
   const writable = await writableColumns(c, r);
-  const table = (await c.query('select $1::regclass::text as t', [r.table_name])).rows[0].t as string;
+  const table = rest ? '' : ((await c.query('select $1::regclass::text as t', [r.table_name])).rows[0].t as string);
   const pkCol = ident(r.pk_column);
   const required = (name: string) => !!r.config.columns?.[name]?.required;
   const norm = (ci: number, v: string | undefined) => (cols[ci].dataTypeID === 16 ? (v === 'true' ? 'true' : 'false') : v ?? '');
@@ -563,8 +576,11 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
     if (one(`${g}_${i}_del`) === 'true') {
       if (!allow(r, 'delete')) continue;
       await attempt(ctx.locale.t('grid.row', { row: Number(i) + 1 }), async () => {
-        const res = await c.query(`delete from ${table} where ${pkCol} = ${literal(pk)}`);
-        if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
+        if (rest) await restGridCall(r, 'delete', pk, {});
+        else {
+          const res = await c.query(`delete from ${table} where ${pkCol} = ${literal(pk)}`);
+          if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
+        }
         deleted++;
       });
       continue;
@@ -577,6 +593,7 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
       /* treat every column as changed */
     }
     const sets: string[] = [];
+    const changes: Record<string, string | null> = {};
     cols.forEach((col, ci) => {
       if (!writable.has(col.name)) return;
       // a field that was not posted is left alone (an unchecked checkbox posts nothing: false)
@@ -585,11 +602,15 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
       if (v === (orig[ci] ?? null)) return;
       if (required(col.name) && v === '') errors.push(ctx.locale.t('grid.required', { row: Number(i) + 1, label: headingOf(r, col.name, ctx.locale.tr) }));
       sets.push(`${ident(col.name)} = ${literal(v === '' ? null : v)}`);
+      changes[col.name] = v === '' ? null : v;
     });
     if (!sets.length) continue;
     await attempt(ctx.locale.t('grid.row', { row: Number(i) + 1 }), async () => {
-      const res = await c.query(`update ${table} set ${sets.join(', ')} where ${pkCol} = ${literal(pk)}`);
-      if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
+      if (rest) await restGridCall(r, 'update', pk, changes);
+      else {
+        const res = await c.query(`update ${table} set ${sets.join(', ')} where ${pkCol} = ${literal(pk)}`);
+        if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
+      }
       updated++;
     });
   }
@@ -620,7 +641,8 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
         continue;
       }
       await attempt(ctx.locale.t('grid.new_row'), async () => {
-        await c.query(`insert into ${table} (${values.map(([n]) => ident(n)).join(', ')}) values (${values.map(([, v]) => literal(v)).join(', ')})`);
+        if (rest) await restGridCall(r, 'insert', null, Object.fromEntries(values));
+        else await c.query(`insert into ${table} (${values.map(([n]) => ident(n)).join(', ')}) values (${values.map(([, v]) => literal(v)).join(', ')})`);
         inserted++;
       });
     }
