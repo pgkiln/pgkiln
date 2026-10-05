@@ -1072,6 +1072,17 @@ do **not** start sprint 32 in that session.
   `meta.process_jobs` security_barrier own-jobs view; workflow terminate/retry checked in DB; `dialog_closed` same-origin.
   Parity: Download process, execution chains (+ background), workflow process start/terminate/retry, branch function
   returning URL, branch to another app, DA event Dialog Closed: all Yes. Tests 548 pass / 8 skip, e2e 81/81.
+- **grid: DONE** (pushed, not merged). Migration `038_grid_reports.sql` (saved_report.kind report/layout, new unique
+  key, redefines view `meta.saved_reports`, `meta.save_report`, `meta.delete_saved_report`; adds `save_grid_layout`,
+  `reset_grid_layout`), HR `hr_28_grid.sql` page 27, nav seq 28. export/import not redefined. No env vars.
+  **19 new i18n keys in en/nl: i18n's de/fr/es tables need them after merging.** Hotspots: public/app.js (large grid
+  section), runtime/routes.ts (region endpoint, grid routes), grid.ts, regions.ts, report.ts, builder region-settings/
+  components, i18n.ts, app.css, end of security.test.ts, responsive e2e, guide 03/04/08/09/11/12/18.
+  Security: master row selection HMAC-bound to app/page/user/region/value; `GET …/region/:id` only lazy regions or
+  details of a visible master; layout/apply routes check CSRF, page access, grid visible, Actions on; layout input
+  sanitised (identifiers, widths 40–1000, ≤5 frozen, ≤6000 chars); detail master column never editable, inserts
+  without a selection refused. Parity: IG aggregates, frozen columns, reorder/resize/hide, per-user layouts and saved
+  reports, master-detail, row actions menu, copy/paste of cell ranges: done. Tests 545 pass / 8 skip, e2e 83/83.
 
 ## Sprint 32 (PLANNED, owner 2026-10-05)
 
