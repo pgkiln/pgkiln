@@ -4149,3 +4149,192 @@ describe('sprint 33 item 2: map layers, clustering and spatial filtering', () =>
     assert.deepEqual(merged.layers, [{ name: 'Layer 2', source: 'select 1' }]);
   });
 });
+
+describe('sprint 33 item 3: REST write-back, synchronisation, OAuth2 password and refresh tokens', () => {
+  const env = { ...process.env };
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { method: string; url: string; body: string }[] = [];
+  const dev = new Browser();
+  const cleanup: string[] = [];
+  let crmUrl = '';
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        hits.push({ method: req.method!, url: req.url!, body });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ items: [{ id: 1, name: 'one' }, { id: 2, name: 'two' }] }));
+      });
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    crmUrl = (await owner.one(`select url from meta.rest_source where app_id = $1 and name = 'CRM_CONTACTS'`, [appId])).url;
+  });
+
+  after(async () => {
+    await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'CRM_CONTACTS'`, [appId, crmUrl]);
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name like 'SEC3\\_%'`, [appId]);
+    await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC3\\_%'`, [appId]);
+    for (const sql of cleanup) await owner.query(sql);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  test('row values in an operation can not change the host or the path above the source', async () => {
+    const ws = await import('../src/websources.ts');
+    const s = {
+      id: 0, app_id: appId, name: 'SEC3', url: `${mockBase}/api/items?x=1`, method: 'GET', credential: null, headers: {}, body: null, row_selector: null,
+      params: [], columns: [{ name: 'id' }, { name: 'name' }], cache_seconds: 0, timeout_s: 5, max_rows: 10, key_columns: ['id'],
+      operations: { update: { path: '/{id}', body: '{"name": {name}}' }, delete: { path: '?id={id}' } },
+    };
+    for (const id of ['@evil.example/', '//evil.example/x', '../../admin', 'x?y=1#z', 'http://evil.example/', '%2e%2e']) {
+      const u = new URL(ws.buildOperation(s, 'update', { id, name: 'n' }).url);
+      assert.equal(u.host, new URL(mockBase).host, id);
+      assert.ok(u.pathname.startsWith('/api/items/') && u.pathname.split('/').length === 4, `${id}: one segment under the source's path`);
+      assert.equal(new URL(ws.buildOperation(s, 'delete', { id }).url).searchParams.get('id'), id, 'a query value stays one value');
+    }
+    for (const id of ['.', '..']) assert.throws(() => ws.buildOperation(s, 'update', { id, name: 'n' }), /not a valid value/);
+    // a body template takes JSON values: a value can't add keys
+    const body = JSON.parse(ws.buildOperation(s, 'update', { id: 1, name: '", "admin": true, "x": "' }).body!);
+    assert.deepEqual(Object.keys(body), ['name']);
+    // a definition written straight into the table is checked again before a call
+    assert.throws(() => ws.buildOperation({ ...s, operations: { update: { path: '/../../{id}' } } }, 'update', { id: 1 }), /"path" follows/);
+    assert.equal(new URL(ws.buildOperation({ ...s, operations: { update: { path: '@evil.example/{id}' } } }, 'update', { id: 1 }).url).host, new URL(mockBase).host);
+    assert.throws(() => ws.buildOperation({ ...s, operations: { update: { path: '//evil.example/{id}' } } }, 'update', { id: 1 }), /"path" follows/);
+  });
+
+  test('a REST grid: row keys are signed, and only the operations the source defines are used', async () => {
+    await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'CRM_CONTACTS'`, [appId, `${mockBase}/crm`]);
+    const { clearResponseCache } = await import('../src/websources.ts');
+    clearResponseCache();
+    const grid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 34 and r.type = 'grid'`, [appId])).id;
+    const king = await as('king');
+    const page = (await king.get('/a/hr/34')).body;
+    const g = `g${grid}`;
+    const pk = (n: string) => new RegExp(`name="${g}_(\\d+)_pk" value="${n}"`).exec(page)?.[1];
+    const cs = /name="g\d+_\d+_cs" value="([^"]+)"/.exec(page)![1];
+    assert.ok(pk('1') && pk('2'), 'the rows of the service');
+    // a key that was not signed for this row: refused, nothing is sent
+    let n = hits.length;
+    const res = await king.post('/a/hr/34', { __csrf: king.lastCsrf, __request: `GRID_SAVE_${grid}`, [`${g}_0_pk`]: '999', [`${g}_0_cs`]: cs, [`${g}_0_del`]: 'true' });
+    assert.notEqual(res.statusCode, 303);
+    assert.ok(!hits.slice(n).some((h) => h.method === 'DELETE'), 'no DELETE for an unsigned key');
+    // without a delete operation, Delete is not offered and a posted delete does nothing
+    const ops = (await owner.one(`select operations from meta.rest_source where app_id = $1 and name = 'CRM_CONTACTS'`, [appId])).operations;
+    try {
+      await owner.query(`update meta.rest_source set operations = operations - 'delete' where app_id = $1 and name = 'CRM_CONTACTS'`, [appId]);
+      const p2 = (await king.get('/a/hr/34')).body;
+      assert.doesNotMatch(p2, new RegExp(`name="${g}_\\d+_del"`));
+      const i = new RegExp(`name="${g}_(\\d+)_pk" value="1"`).exec(p2)![1];
+      const sig = new RegExp(`name="${g}_${i}_cs" value="([^"]+)"`).exec(p2)![1];
+      n = hits.length;
+      await king.post('/a/hr/34', { __csrf: king.lastCsrf, __request: `GRID_SAVE_${grid}`, [`${g}_${i}_pk`]: '1', [`${g}_${i}_cs`]: sig, [`${g}_${i}_del`]: 'true' });
+      assert.ok(!hits.slice(n).some((h) => h.method === 'DELETE'));
+    } finally {
+      await owner.query(`update meta.rest_source set operations = $2 where app_id = $1 and name = 'CRM_CONTACTS'`, [appId, JSON.stringify(ops)]);
+    }
+    // the form's key item is signed like a table form's: a forged P34_ID is refused
+    n = hits.length;
+    const forged = await king.post('/a/hr/34', { __csrf: king.lastCsrf, __request: 'DELETE', P34_ID: '2', P34_NAME: 'x' });
+    assert.ok(!hits.slice(n).some((h) => h.method === 'DELETE'), `status ${forged.statusCode}: no DELETE with a forged key`);
+  });
+
+  test('a synchronisation writes as the application role: grants and RLS apply, the meta schema is out of reach', async () => {
+    const { runSync } = await import('../src/restsync.ts');
+    const src = await owner.one(
+      `insert into meta.rest_source (app_id, name, url, row_selector, columns, key_columns, sync_table, sync_mode)
+       values ($1, 'SEC3_SYNC', $2, 'items', '[{"name": "id", "type": "integer"}, {"name": "name", "type": "text"}]', '{id}', 'meta.app', 'merge') returning id`,
+      [appId, `${mockBase}/sync`],
+    );
+    const before = (await owner.one('select count(*)::int as n from meta.app')).n;
+    let r = await runSync(src.id, 'manual');
+    assert.equal(r.status, 'error');
+    assert.match(r.message!, /permission denied/);
+    assert.equal((await owner.one('select count(*)::int as n from meta.app')).n, before);
+    // a table the app role may only read
+    await owner.query(`update meta.rest_source set sync_table = 'hr.dept' where id = $1`, [src.id]);
+    r = await runSync(src.id, 'manual');
+    assert.equal(r.status, 'error');
+    // the log and the request function: the current application's sources only
+    await assert.rejects(runtime.query('select * from meta.rest_sync_log'), /permission denied/);
+    await assert.rejects(runtime.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', '0', true)`);
+      await c.query(`select meta.request_rest_sync('SEC3_SYNC')`);
+    }), /does not exist in this application/);
+    await assert.rejects(runtime.query(`select meta.request_rest_sync('SEC3_SYNC')`), /no current application/);
+    // the table name is checked in the builder
+    const { syncProblems } = await import('../src/restsync.ts');
+    assert.ok(syncProblems({ sync_table: 'hr.dept; drop table hr.emp', key_columns: ['id'] }).length);
+  });
+
+  test('builder: synchronise now and removing secrets need a developer, the CSRF token and the right application', async () => {
+    const src = await owner.one(`insert into meta.rest_source (app_id, name, url, sync_table, sync_mode) values ($1, 'SEC3_NOW', $2, 'hr.t_none', 'append') returning id`, [appId, `${mockBase}/now`]);
+    const url = `/builder/apps/${appId}/rest-sources/${src.id}/sync`;
+    const n = hits.length;
+    assert.equal((await new Browser().post(url, { __csrf: 'x' })).statusCode, 302);
+    assert.equal((await dev.post(url, { __csrf: 'wrong' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/apps/${appId + 100000}/rest-sources/${src.id}/sync`, { __csrf: dev.lastCsrf })).statusCode, 404);
+    assert.equal(hits.length, n, 'no request was made');
+    assert.equal((await dev.post(url, { __csrf: dev.lastCsrf })).statusCode, 303);
+    assert.equal(hits.length, n + 1);
+    // "what" only picks from a fixed list of secret columns
+    const { encryptSecret } = await import('../src/secrets.ts');
+    const c = await owner.one(
+      `insert into meta.web_credential (app_id, name, type, username, token_url, grant_type, oauth_username, secret_enc, password_enc, refresh_token_enc)
+       values ($1, 'SEC3_PW', 'oauth2', 'cid', $2, 'password', 'robot', $3, $4, $5) returning id`,
+      [appId, `${mockBase}/token`, encryptSecret('cs'), encryptSecret('pw-Secret-42'), encryptSecret('rt-Secret-43')],
+    );
+    await dev.get(`/builder/apps/${appId}/shared?c=web_credential-${c.id}`);
+    await dev.post(`/builder/apps/${appId}/web-credentials/${c.id}/clear`, { __csrf: dev.lastCsrf, what: 'name' });
+    const row = await owner.one('select name, secret_enc, password_enc, refresh_token_enc from meta.web_credential where id = $1', [c.id]);
+    assert.equal(row.name, 'SEC3_PW');
+    assert.equal(row.secret_enc, null, 'an unknown "what" means the secret');
+    assert.ok(row.password_enc && row.refresh_token_enc);
+    await dev.post(`/builder/apps/${appId}/web-credentials/${c.id}/clear`, { __csrf: dev.lastCsrf, what: 'refresh' });
+    assert.equal((await owner.one('select refresh_token_enc from meta.web_credential where id = $1', [c.id])).refresh_token_enc, null);
+  });
+
+  test('OAuth2 passwords and refresh tokens are write-only: encrypted, never shown, exported, imported or readable by the runtime role', async () => {
+    const { decryptSecret, encryptSecret } = await import('../src/secrets.ts');
+    const res = await dev.post(`/builder/apps/${appId}/shared/web_credential`, {
+      __csrf: dev.lastCsrf, name: 'SEC3_OAUTH', type: 'oauth2', username: 'cid', token_url: `${mockBase}/token`, grant_type: 'password', oauth_username: 'robot',
+      password: 'pw-Plain-777', refresh_token: 'rt-Plain-888', password_enc: 'v1:forged', refresh_token_enc: 'v1:forged',
+    });
+    assert.equal(res.statusCode, 303);
+    const row = await owner.one(`select id, password_enc, refresh_token_enc from meta.web_credential where app_id = $1 and name = 'SEC3_OAUTH'`, [appId]);
+    assert.equal(decryptSecret(row.password_enc), 'pw-Plain-777');
+    assert.equal(decryptSecret(row.refresh_token_enc), 'rt-Plain-888');
+    const page = (await dev.get(`/builder/apps/${appId}/shared?c=web_credential-${row.id}`)).body;
+    assert.match(page, /A password is stored/);
+    assert.match(page, /A refresh token is stored/);
+    for (const v of ['pw-Plain-777', 'rt-Plain-888', row.password_enc, row.refresh_token_enc]) assert.ok(!page.includes(v));
+    // empty keeps them
+    await dev.post(`/builder/apps/${appId}/shared/web_credential/${row.id}`, { __csrf: dev.lastCsrf, name: 'SEC3_OAUTH', type: 'oauth2', username: 'cid', token_url: `${mockBase}/token`, grant_type: 'password', oauth_username: 'robot', password: '', refresh_token: '' });
+    assert.equal((await owner.one('select password_enc from meta.web_credential where id = $1', [row.id])).password_enc, row.password_enc);
+    for (const col of ['password_enc', 'refresh_token_enc']) await assert.rejects(runtime.query(`select ${col} from meta.web_credential`), /permission denied/, col);
+    assert.equal((await runtime.query(`select grant_type, oauth_username from meta.web_credential where name = 'SEC3_OAUTH'`)).rows[0].grant_type, 'password');
+    const doc = JSON.stringify((await owner.one(`select meta.export_app('hr') as d`)).d);
+    assert.ok(doc.includes('SEC3_OAUTH') && !doc.includes('password_enc') && !doc.includes('refresh_token_enc') && !doc.includes(row.password_enc) && !doc.includes('sync_last_at'));
+    // an import can't bring them along, and synchronisations arrive switched off
+    const imported = await owner.one(`select meta.import_app(meta.export_app('hr') || jsonb_build_object(
+        'web_credentials', jsonb_build_array(jsonb_build_object('name', 'SEC3_IMP', 'type', 'oauth2', 'password_enc', $1::text, 'refresh_token_enc', $1::text)),
+        'rest_sources', jsonb_build_array(jsonb_build_object('name', 'SEC3_IMPSRC', 'url', 'https://api.example.com/x', 'sync_table', 'hr.dept', 'sync_enabled', true, 'sync_schedule', '@hourly'))),
+      'sec_import_33_3') as id`, [encryptSecret('x')]);
+    cleanup.push(`delete from meta.app where id = ${Number(imported.id)}`);
+    const cred = await owner.one(`select password_enc, refresh_token_enc, grant_type from meta.web_credential where app_id = $1 and name = 'SEC3_IMP'`, [imported.id]);
+    assert.deepEqual(cred, { password_enc: null, refresh_token_enc: null, grant_type: 'client_credentials' });
+    assert.equal((await owner.one(`select sync_enabled from meta.rest_source where app_id = $1 and name = 'SEC3_IMPSRC'`, [imported.id])).sync_enabled, false);
+  });
+});
