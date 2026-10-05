@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 34 released as v0.26.0; sprint 35 not started, candidates under Sprint 34). Sprints 3–34 are merged into `main` and released as **v0.26.0** (migrations 001–056 are released: add 057+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
+Last updated: 2026-10-05 (sprint 34 released as v0.26.0; sprint 35 running: three agents in worktrees, see Sprint 35). Sprints 3–34 are merged into `main` and released as **v0.26.0** (migrations 001–056 are released: add 057+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
 
 ## Project in one paragraph
 
@@ -1424,6 +1424,27 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   inline styles. Not done: live preview, style colours in dark mode, conditional/dynamic properties, template options
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
+
+## Sprint 35 (IN PROGRESS): three parity workstreams in parallel (owner, 2026-10-05: "run 3 agents and move on with the next tasks to do")
+
+Branch `sprint-35` from `main` (v0.26.0). Three agents in git worktrees under `../pgapex-wt/<name>`, branch
+`sprint-35-<name>`, each with its own `postgres:17` container and app port in the worktree's `.env` (`node_modules` is a
+symlink: remove it with `rm`, never `rm -r`, before `git worktree remove`). Rules: `docs/development/sprint-35-agent-rules.md`.
+AI rows stay out. The coordinator merges the three branches into `sprint-35` (conflicts expected only in appended
+blocks: app.ts, security.test.ts, responsive.test.ts, replace.ts, export.test.ts, CSS, docs), then records reports,
+parity rows, CHANGELOG, SECURITY.md and releases 0.27.0.
+
+| Worktree / branch | Gap (parity row) | Container, ports | Reserved |
+|---|---|---|---|
+| `reporter` / `sprint-35-reporter` | **Data Reporter** (26.1, ❌): business users build their own reports in the running app from data sources the developer exposes (curated tables/views per app): pick columns, filters, sort, group with aggregates, optional chart; save privately or share with the app's users; run as the app's role (RLS); a region type or page the developer places, plus the builder side to define the sources | `pgapex-reporter`, 5451, app 3121 | migration 057, `hr_39`, HR page 36 |
+| `sampledata` / `sprint-35-sampledata` | **Sample data for development** (26.1, ❌; APEX Data Generator): SQL/Data Workshop page to generate realistic rows for one or more tables: per-column generators inferred from names and types (names, e-mail-like strings, dates in a range, numbers, values from a list, foreign keys picking existing parent rows, nulls %), row counts, preview, insert in one transaction (parents first) or download as SQL/CSV; saved generator definitions to rerun | `pgapex-sampledata`, 5452, app 3122 | migration 058, `hr_40` (only if useful) |
+| `appwizard` / `sprint-35-appwizard` | **Create application wizard** (🟡 → ✅): from a file with several sheets/tables (XLSX sheets → several tables, foreign keys proposed from matching columns), from pasted data (CSV/TSV text), and from existing tables (pick tables of a schema → report + form pages per table, navigation, dashboard); keep the current single-file flow working | `pgapex-appwizard`, 5453, app 3123 | migration 059 (only if needed), no HR |
+
+**If a session ends:** for each worktree `git -C ../pgapex-wt/<name> status` / `log --oneline sprint-35..`; commit leftovers
+as `wip:`; relaunch an agent with "Read `docs/development/sprint-35-agent-rules.md` and follow it. Your workstream: <name>
+in the Sprint 35 table of HANDOFF.md; your worktree is /home/nickquispel/projects/pgapex-wt/<name>."
+
+**Workstream reports:** (filled in as agents finish)
 
 ## Sprint 34 (DONE, v0.26.0, owner 2026-10-05: "add to the next sprint"; "read the handoff, apex feature parity and keep going")
 
