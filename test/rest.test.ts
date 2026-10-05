@@ -156,3 +156,38 @@ describe('REST module v1', () => {
     }
   });
 });
+
+// Sprint 30: collections stream from a cursor as a chunked JSON array
+describe('streamed collections', () => {
+  before(async () => {
+    await owner.query(
+      `insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'stream-test', 'Stream test', $2)
+       on conflict (app_id, name) do update set handlers = excluded.handlers`,
+      [appId, JSON.stringify([{ method: 'GET', path: 'numbers', type: 'collection', auth: 'public', page_size: 50, source: 'select g as n, g::text as label from generate_series(1, 1000) g order by g' }])],
+    );
+  });
+  after(async () => {
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'stream-test'`, [appId]);
+  });
+  const get = (q: string) => app.inject({ method: 'GET', url: `/a/hr/rest/stream-test/numbers${q}` });
+
+  test('pages over several batches give the same JSON as before', async () => {
+    const res = await get('?limit=250&offset=10');
+    assert.equal(res.statusCode, 200);
+    assert.match(String(res.headers['content-type']), /^application\/json/);
+    assert.equal(res.headers['content-length'], undefined, 'streamed, no length up front');
+    const body = res.json();
+    assert.deepEqual(Object.keys(body), ['items', 'offset', 'limit', 'has_more']);
+    assert.equal(body.items.length, 250);
+    assert.deepEqual(body.items[0], { n: 11, label: '11' });
+    assert.deepEqual(body.items.at(-1), { n: 260, label: '260' });
+    assert.equal(body.has_more, true);
+    const last = (await get('?limit=500&offset=900')).json();
+    assert.deepEqual([last.items.length, last.items.at(-1).n, last.has_more], [100, 1000, false]);
+    const exact = (await get('?limit=100&offset=900')).json();
+    assert.deepEqual([exact.items.length, exact.has_more], [100, false]);
+    const def = (await get('')).json();
+    assert.deepEqual([def.items.length, def.limit, def.has_more], [50, 50, true]);
+    assert.deepEqual((await get('?offset=5000')).json(), { items: [], offset: 5000, limit: 50, has_more: false });
+  });
+});

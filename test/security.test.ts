@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner, runtime } from '../src/db.ts';
-import { urlChecksum } from '../src/security.ts';
+import { signText, urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
 import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
 import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/runtime/region-cache.ts';
@@ -2334,5 +2334,178 @@ describe('sprint 29 header authentication', () => {
     assert.deepEqual(
       await owner.one('select authentication, header_name, header_auto_create, logout_url from meta.app where id = $1', [hdrApp]),
       { authentication: 'header', header_name: 'X-Forwarded-User', header_auto_create: true, logout_url: '/a/other' });
+  });
+});
+
+describe('sprint 30', () => {
+  // keyset paging: the r<id>_k position is signed; whatever it holds only becomes query parameters
+  let region: number;
+  const firstId = (body: string) => Number(/<tr[^>]*>\s*<td[^>]*>(\d+)<\/td>/.exec(body.slice(body.indexOf(`id="R${region}"`)))?.[1]);
+  const token = (v: unknown, extra: Record<string, unknown> = {}, scope = `keyset:${appId}:25:${region}`) => {
+    const payload = Buffer.from(JSON.stringify({ d: 'n', s: 0, o: 0, p: 2, v, ...extra })).toString('base64url');
+    return `${payload}.${signText(scope, payload)}`;
+  };
+  before(async () => {
+    region = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 25 and r.title = 'All readings'`, [appId])).id;
+    await owner.query(`update meta.region set config = config || '{"keyset": ["id"]}' where id = $1`, [region]);
+  });
+  after(async () => {
+    await owner.query(`update meta.region set config = config - 'keyset' where id = $1`, [region]);
+  });
+
+  test('keyset paging: a signed position seeks; a tampered, foreign or oversized one is ignored (offset paging)', async () => {
+    const king = await as('king');
+    const page = (k: string, extra = '') => king.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(k)}${extra}`);
+    assert.equal(firstId((await page(token(['1000']))).body), 1001, 'a valid position');
+    // the payload changed, the signature kept
+    const good = token(['1000']);
+    const forged = `${Buffer.from(JSON.stringify({ d: 'n', s: 0, o: 0, p: 2, v: ['5000'] })).toString('base64url')}.${good.split('.')[1]}`;
+    assert.equal(firstId((await page(forged)).body), 26);
+    assert.equal(firstId((await page(`${good.split('.')[0]}.`)).body), 26, 'no signature');
+    assert.equal(firstId((await page(token(['1000'], {}, `keyset:${appId}:25:${region + 1}`))).body), 26, 'signed for another region');
+    assert.equal(firstId((await page(token(['1000'], { p: 3 }))).body), 26, 'for another page');
+    assert.equal(firstId((await page(token(['1000'], { s: 2 }))).body), 26, 'for another sort');
+    assert.equal(firstId((await page(token(Array(6).fill('1')))).body), 26, 'too many values');
+    assert.equal(firstId((await page(token(['x'.repeat(1001)]))).body), 26, 'a value too long');
+    assert.equal(firstId((await page(token([{ a: 1 }]))).body), 26, 'not a string');
+    assert.equal(firstId((await page('a'.repeat(9000))).body), 26, 'oversized');
+  });
+
+  test('keyset paging: values are query parameters, never SQL; a value of the wrong type falls back', async () => {
+    const king = await as('king');
+    for (const v of ["1) or true --", "1'; drop table hr.reading; --", 'abc', '']) {
+      const res = await king.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(token([v]))}`);
+      assert.equal(res.statusCode, 200);
+      assert.equal(firstId(res.body), 26, v);
+      assert.doesNotMatch(res.body.slice(res.body.indexOf(`id="R${region}"`)), /class="alert[^"]*error|syntax error|invalid input/);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from hr.reading')).n, 200000);
+    // a null key value is refused (keys are not null)
+    assert.equal(firstId((await king.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(token([null]))}`)).body), 26);
+    // a sort column number past the columns: offset paging, no error
+    const res = await king.get(`/a/hr/25?r${region}_s=99&r${region}_p=2`);
+    assert.equal(res.statusCode, 200);
+  });
+
+  test('streamed REST collections: authentication, roles and limits as before; a failure mid-stream cuts the response', async () => {
+    const handlers = [
+      { method: 'GET', path: 'open', type: 'collection', auth: 'public', source: 'select g as n from generate_series(1, 2000) g order by g' },
+      { method: 'GET', path: 'closed', type: 'collection', source: 'select g as n from generate_series(1, 10) g' },
+      { method: 'GET', path: 'admins', type: 'collection', roles: ['nobody_has_this_role_30'], source: 'select g as n from generate_series(1, 10) g' },
+      { method: 'GET', path: 'fails', type: 'collection', auth: 'public', source: 'select 1 / (150 - g) as x from generate_series(1, 300) g' },
+      { method: 'GET', path: 'broken', type: 'collection', auth: 'public', source: 'select * from no_such_table_30' },
+    ];
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec30', 'Sprint 30', $2)
+      on conflict (app_id, name) do update set handlers = excluded.handlers`, [appId, JSON.stringify(handlers)]);
+    try {
+      const get = (path: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url: `/a/hr/rest/sec30/${path}`, headers });
+      assert.equal((await get('closed')).statusCode, 401);
+      assert.equal((await get('closed', { authorization: 'Bearer forged' })).statusCode, 401);
+      const { issueApiToken } = await import('../src/api.ts');
+      const tok = (await issueApiToken(appId, 'king', 1)).token;
+      assert.equal((await get('closed', { authorization: `Bearer ${tok}` })).statusCode, 200);
+      assert.equal((await get('admins', { authorization: `Bearer ${tok}` })).statusCode, 403);
+      const big = (await get('open?limit=100000&offset=-5')).json();
+      assert.deepEqual([big.items.length, big.limit, big.offset, big.has_more], [500, 500, 0, true]);
+      const inj = await get(`open?limit=${encodeURIComponent('1; drop table meta.app')}&offset=${encodeURIComponent('0) x; --')}`);
+      assert.equal(inj.statusCode, 200);
+      assert.equal(inj.json().items.length, 25);
+      // an error before the first rows is still a status
+      const broken = await get('broken');
+      assert.equal(broken.statusCode, 500);
+      assert.doesNotMatch(broken.body, /no_such_table_30/);
+      // past the first batch the response has started: it ends short, never as complete JSON
+      const fails = await get('fails?limit=300').then((r) => r.body, () => null);
+      if (fails !== null) {
+        assert.throws(() => JSON.parse(fails));
+        assert.doesNotMatch(fails, /has_more/);
+      }
+    } finally {
+      await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec30'`, [appId]);
+    }
+  });
+
+  describe('database accounts', () => {
+    const dbAlias = 'dbauth-sec30';
+    let dbApp: number;
+    const R = { ann: 'pgapex_s30_ann', eve: 'pgapex_s30_eve', off: 'pgapex_s30_off', boss: 'pgapex_s30_boss' };
+    before(async () => {
+      for (const r of Object.values(R)) await owner.query(`drop role if exists ${r}`);
+      await owner.query(`create role ${R.ann} login password 'Ann-pw-30!'`);
+      await owner.query(`create role ${R.eve} login password 'Eve-pw-30!'`);
+      await owner.query(`create role ${R.off} nologin password 'Off-pw-30!'`);
+      await owner.query(`create role ${R.boss} superuser login password 'Boss-pw-30!'`);
+      dbApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_auth_roles) values ($1, 'DB sec', 'database', $2) returning id`,
+        [dbAlias, [R.ann, R.off, R.boss, 'pgapex', 'pgapex_runtime']])).id;
+      await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [dbApp]);
+    });
+    after(async () => {
+      await owner.query('delete from meta.app where id = $1', [dbApp]);
+      for (const r of Object.values(R)) await owner.query(`drop role if exists ${r}`);
+    });
+    const attempt = async (user: string, password: string) => {
+      const b = new Browser();
+      await b.get(`/a/${dbAlias}/login`);
+      const res = await b.post(`/a/${dbAlias}/login`, { __csrf: b.lastCsrf, username: user, password });
+      return { b, res };
+    };
+    const failures = async () => (await owner.query(`select username, detail from meta.activity_log where app_id = $1 and event = 'login_failed' order by id`, [dbApp])).rows;
+
+    test('wrong passwords, unlisted, NOLOGIN, superuser and pgapex\'s own roles are refused alike; no password is logged', async () => {
+      for (const [user, pw] of [[R.ann, 'wrong'], [R.eve, 'Eve-pw-30!'], [R.off, 'Off-pw-30!'], [R.boss, 'Boss-pw-30!'], ['pgapex', 'pgapex'], ['no_such_role_s30', 'x'],
+        [`${R.ann}\u0000x`, 'Ann-pw-30!'], ['x'.repeat(64), 'x'], [`${R.ann}' or '1'='1`, "' or '1'='1"], [R.ann, '']] as const) {
+        const { b, res } = await attempt(user, pw);
+        assert.ok([401, 400].includes(res.statusCode), `${user}: ${res.statusCode}`);
+        assert.match(res.body, /Invalid|invalid/);
+        assert.equal((await b.get(`/a/${dbAlias}/1`)).statusCode, 302, 'no session');
+      }
+      const log = await failures();
+      assert.ok(log.some((l) => l.username === R.eve && /role not allowed/.test(l.detail)), 'unlisted: refused before connecting');
+      assert.ok(log.some((l) => l.username === R.boss && /superuser refused/.test(l.detail)));
+      assert.ok(log.some((l) => l.username === 'pgapex' && /role not allowed/.test(l.detail)));
+      assert.ok(log.some((l) => l.username === R.off && /connection refused/.test(l.detail)));
+      const all = JSON.stringify((await owner.query(`select * from meta.activity_log where app_id = $1`, [dbApp])).rows);
+      for (const pw of ['Ann-pw-30!', 'Eve-pw-30!', 'Off-pw-30!', 'Boss-pw-30!', 'wrong']) assert.ok(!all.includes(pw), 'no password in the log');
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [dbApp]);
+    });
+
+    test('throttling: after too many failures even the right password is refused', async () => {
+      for (let i = 0; i < 5; i++) assert.equal((await attempt(R.ann, `wrong-${i}`)).res.statusCode, 401);
+      const locked = await attempt(R.ann, 'Ann-pw-30!');
+      assert.equal(locked.res.statusCode, 429);
+      assert.equal((await locked.b.get(`/a/${dbAlias}/1`)).statusCode, 302);
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [dbApp]);
+      assert.equal((await attempt(R.ann, 'Ann-pw-30!')).res.statusCode, 303);
+    });
+
+    test('no other way in: no CSRF token, the password-change form, remember me, SSO, an app_users account of the same name', async () => {
+      const b = new Browser();
+      await b.get(`/a/${dbAlias}/login`);
+      assert.equal((await b.post(`/a/${dbAlias}/login`, { username: R.ann, password: 'Ann-pw-30!' })).statusCode, 403);
+      assert.equal((await b.post(`/a/${dbAlias}/password`, { __csrf: b.lastCsrf, username: R.ann, password: 'Ann-pw-30!', new_password: 'Xx-new-pw-30!', confirm_password: 'Xx-new-pw-30!' })).statusCode, 403);
+      assert.equal((await b.get(`/a/${dbAlias}/sso/any`)).statusCode >= 400 || (await b.get(`/a/${dbAlias}/1`)).statusCode === 302, true);
+      // an app user's password does not open a database-account app
+      assert.equal((await b.post(`/a/${dbAlias}/login`, { __csrf: b.lastCsrf, username: 'king', password: 'king' })).statusCode, 401);
+      assert.equal((await b.get(`/a/${dbAlias}/1`)).statusCode, 302);
+      // a session of a database-account app does not reach another app
+      const ok = await attempt(R.ann, 'Ann-pw-30!');
+      assert.equal(ok.res.statusCode, 303);
+      assert.equal((await ok.b.get('/a/hr/1')).statusCode, 302);
+      // with nothing allowed, nobody signs in
+      await owner.query('update meta.app set db_auth_roles = null where id = $1', [dbApp]);
+      try {
+        assert.equal((await attempt(R.ann, 'Ann-pw-30!')).res.statusCode, 401);
+      } finally {
+        await owner.query('update meta.app set db_auth_roles = $2 where id = $1', [dbApp, [R.ann, R.off, R.boss, 'pgapex', 'pgapex_runtime']]);
+      }
+    });
+  });
+
+  test('keyset paging: another user\'s token for this region only seeks in the viewer\'s own query', async () => {
+    // the position is not a permission: the rows still come from the region's query as the app's role
+    const blake = await as('blake');
+    const res = await blake.get(`/a/hr/25?r${region}_p=2&r${region}_k=${encodeURIComponent(token(['199990']))}`);
+    if (res.statusCode === 200) assert.equal(firstId(res.body), 199991);
+    else assert.ok([302, 303, 403].includes(res.statusCode));
   });
 });

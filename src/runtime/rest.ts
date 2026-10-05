@@ -7,7 +7,8 @@ import { owner, runtime } from '../db.ts';
 import { english } from '../i18n.ts';
 import { loadApp, type App } from '../metadata.ts';
 import { clientIp } from '../session.ts';
-import { publicError } from './context.ts';
+import { PassThrough } from 'node:stream';
+import { publicError, writeOut } from './context.ts';
 
 // REST modules (APEX: RESTful Services): handlers defined in the builder,
 // served under /a/<alias>/rest/<module>/<path>.
@@ -44,6 +45,8 @@ const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 const TYPES = ['collection', 'item', 'sql'];
 const SEGMENT = /^(:[a-z][a-z0-9_]*|[a-z0-9][a-z0-9._-]*)$/i;
 const MAX_PAGE = 500;
+/** Rows fetched from a collection's cursor at a time. */
+const REST_BATCH = 100;
 
 /** Problems in a module's handlers (for the builder), or []. */
 export function handlerProblems(handlers: unknown): string[] {
@@ -165,8 +168,33 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
       if (h.type === 'collection') {
         const size = Math.max(1, Math.min(MAX_PAGE, Number(binds.LIMIT) || h.page_size || 25));
         const offset = Math.max(0, Math.floor(Number(binds.OFFSET) || 0));
-        const rows = (await c.query(`select * from (\n${sql}\n) "__r" limit ${size + 1} offset ${offset}`)).rows;
-        return { status: 200, body: { items: rows.slice(0, size), offset, limit: size, has_more: rows.length > size } };
+        // streamed: a cursor in the transaction, each batch written as part of the JSON array;
+        // the query and the first batch run first, so a failing query is still an error status
+        const cursor = 'pgapex_rest';
+        await c.query(`declare ${cursor} no scroll cursor for select * from (\n${sql}\n) "__r" limit ${size + 1} offset ${offset}`);
+        const next = async () => (await c.query(`fetch ${REST_BATCH} from ${cursor}`)).rows;
+        let batch = await next();
+        const out = new PassThrough();
+        reply.code(200).header('cache-control', 'no-store').type('application/json; charset=utf-8').send(out);
+        try {
+          let fetched = 0;
+          await writeOut(out, '{"items":[');
+          for (;;) {
+            const take = batch.slice(0, Math.max(0, size - fetched));
+            if (take.length) await writeOut(out, take.map((row, i) => (fetched + i ? ',' : '') + JSON.stringify(row)).join(''));
+            fetched += batch.length;
+            if (batch.length < REST_BATCH || fetched > size) break;
+            batch = await next();
+          }
+          await c.query(`close ${cursor}`);
+          await writeOut(out, `],"offset":${offset},"limit":${size},"has_more":${fetched > size}}`);
+          out.end();
+        } catch (e) {
+          // the client went away, or the query failed after the first rows: the response ends short
+          req.log.warn({ err: e }, 'REST collection stopped');
+          out.destroy();
+        }
+        return { status: 200, body: undefined, streamed: true };
       }
       if (h.type === 'item') {
         const rows = (await c.query(`select * from (\n${sql}\n) "__r" limit 2`)).rows;
@@ -178,6 +206,7 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
       const row = last?.rows?.[0];
       return row ? { status: h.status ?? (req.method === 'POST' ? 201 : 200), body: row } : { status: 204, body: undefined };
     });
+    if ('streamed' in result) return reply;
     return result.body === undefined ? reply.code(204).send() : reply.code(result.status).send(result.body);
   } catch (e) {
     if (e instanceof RestError) return reply.code(e.status).send({ error: e.message });

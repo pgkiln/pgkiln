@@ -1,3 +1,4 @@
+import { parseRoleList, validRoleName } from '../dbauth.ts';
 import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
@@ -327,7 +328,7 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <h3>Security</h3>
             <div class="form-grid">
-              ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['header', 'HTTP header (reverse proxy)'], ['none', 'None (public)']])}
+              ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['header', 'HTTP header (reverse proxy)'], ['database', 'Database accounts (PostgreSQL roles)'], ['none', 'None (public)']])}
               ${input('db_role', 'Database role (parsing schema)', a.db_role, { help: 'All application SQL runs as this role (SET LOCAL ROLE), so grants and row level security apply. Leave empty only for trusted internal apps.' })}
               <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
                 <small class="help">Shows database error details to end users. Development only.</small></div>
@@ -340,6 +341,12 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="header_auto_create" value="true"${a.header_auto_create ? raw(' checked') : ''}> Create accounts automatically</label>
               <small class="help">An unknown user name gets a new account with access to this app. Otherwise the account must exist and have access.</small></div>
+            <h3>Database accounts</h3>
+            <p class="muted">Only used when Authentication is "Database accounts". Users sign in with a PostgreSQL login role and its password, checked by a short connection to this database as that role. Superusers and pgapex's own roles are always refused; with neither field set nobody can sign in.</p>
+            <div class="form-grid">
+              ${input('db_auth_roles', 'Allowed roles', (a.db_auth_roles ?? []).join(', '), { placeholder: 'e.g. alice, bob', help: 'Login roles that may sign in, comma separated (exact names).' })}
+              ${input('db_auth_member_of', 'Or members of role', a.db_auth_member_of ?? '', { placeholder: 'e.g. app_users_group', help: 'Every member of this role may sign in too.' })}
+            </div>
             <h3>Sign-in methods</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
             ${directories.length
@@ -377,6 +384,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
           ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGAPEX_AUTH_HEADER_PROXIES' : html`<b>refused: PGAPEX_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
+          ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>no roles allowed</b>`})</li>` : ''}
           ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
@@ -395,7 +403,7 @@ export async function builderRoutes(app: FastifyInstance) {
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7, theme = $8,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
-                header_name = $18, header_auto_create = $19, logout_url = $20, updated_at = now() where id = $1`,
+                header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
@@ -415,7 +423,9 @@ export async function builderRoutes(app: FastifyInstance) {
          ([] as string[]).concat((b.ldap_directories as unknown as string | string[] | undefined) ?? []).filter(Boolean),
          b.header_name?.trim() || null,
          b.header_auto_create === 'true',
-         b.logout_url?.trim() || null],
+         b.logout_url?.trim() || null,
+         ((roles) => (roles.length ? roles : null))(parseRoleList(b.db_auth_roles)),
+         validRoleName(b.db_auth_member_of)],
       );
       flash(s, 'Settings saved.');
     } catch (e) {

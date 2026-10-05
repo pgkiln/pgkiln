@@ -26,6 +26,11 @@ export function urlChecksum(appId: number, pageNo: number, user: string, items: 
   return createHmac('sha256', urlSecret).update(`${appId}:${pageNo}:${user.toLowerCase()}:${canonical}`).digest('hex').slice(0, 32);
 }
 
+/** A signature for a value the server hands out in a URL and reads back (e.g. a report's keyset position). */
+export function signText(scope: string, text: string) {
+  return createHmac('sha256', urlSecret).update(`${scope}\n${text}`).digest('base64url').slice(0, 22);
+}
+
 export function checksumValid(expected: string, given: string | undefined) {
   if (!given || given.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(expected), Buffer.from(given));

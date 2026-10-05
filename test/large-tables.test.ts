@@ -201,3 +201,67 @@ describe('builder: report settings for large tables', () => {
     assert.match(page, /name="cache_scope"/);
   });
 });
+
+// Keyset ("seek") paging (sprint 30): row ranges with "keyset": ["id"]
+describe('keyset paging', () => {
+  const ids = (section: string) => [...section.matchAll(/<tr[^>]*>\s*<td[^>]*>(\d+)<\/td>/g)].map((m) => Number(m[1]));
+  const link = (section: string, label: string) => {
+    const m = new RegExp(`href="([^"]+)"[^>]*>(?:‹ )?${label}`).exec(section);
+    return m ? m[1].replace(/&amp;/g, '&') : null;
+  };
+  const withKeyset = async (id: number, fn: () => Promise<void>) => {
+    await owner.query(`update meta.region set config = config || '{"keyset": ["id"]}' where id = $1`, [id]);
+    try {
+      await fn();
+    } finally {
+      await owner.query(`update meta.region set config = config - 'keyset' where id = $1`, [id]);
+    }
+  };
+
+  test('Next and Previous carry the row position; the first page needs none', async () => {
+    const id = regions['All readings'];
+    await withKeyset(id, async () => {
+      const p1 = sectionOf((await king.get('/a/hr/25')).body, id);
+      assert.deepEqual(ids(p1).slice(0, 2), [1, 2]);
+      const next = link(p1, 'Next')!;
+      assert.match(next, new RegExp(`r${id}_k=`));
+      const p2 = sectionOf((await king.get(next)).body, id);
+      assert.match(p2, /Rows 26–50/);
+      assert.deepEqual([ids(p2)[0], ids(p2).at(-1)], [26, 50]);
+      const p3 = sectionOf((await king.get(link(p2, 'Next')!)).body, id);
+      assert.match(p3, /Rows 51–75/);
+      assert.equal(ids(p3)[0], 51);
+      const back = link(p3, 'Previous')!;
+      assert.match(back, new RegExp(`r${id}_k=`));
+      const p2b = sectionOf((await king.get(back)).body, id);
+      assert.match(p2b, /Rows 26–50/);
+      assert.deepEqual([ids(p2b)[0], ids(p2b).at(-1)], [26, 50]);
+      assert.match(p2b, />Next/);
+      const first = link(p2b, 'Previous')!;
+      assert.doesNotMatch(first, /_k=/, 'Previous to page 1 is a plain link');
+      assert.equal(ids(sectionOf((await king.get(first)).body, id))[0], 1);
+    });
+  });
+
+  test('sorted on another column, the key breaks ties; the position follows the sort', async () => {
+    const id = regions['All readings'];
+    await withKeyset(id, async () => {
+      // column 3 (taken_at), newest first
+      const p1 = sectionOf((await king.get(`/a/hr/25?r${id}_s=3&r${id}_d=desc`)).body, id);
+      assert.equal(ids(p1)[0], 200000);
+      const p2 = sectionOf((await king.get(link(p1, 'Next')!)).body, id);
+      assert.deepEqual([ids(p2)[0], ids(p2).at(-1)], [199975, 199951]);
+      const p1b = sectionOf((await king.get(link(sectionOf((await king.get(link(p2, 'Next')!)).body, id), 'Previous')!)).body, id);
+      assert.equal(ids(p1b)[0], 199975);
+    });
+  });
+
+  test('a token for another sort or page is ignored (offset paging)', async () => {
+    const id = regions['All readings'];
+    await withKeyset(id, async () => {
+      const next = link(sectionOf((await king.get('/a/hr/25')).body, id), 'Next')!;
+      const resorted = sectionOf((await king.get(`${next}&r${id}_s=1&r${id}_d=desc`)).body, id);
+      assert.equal(ids(resorted)[0], 199975, 'page 2 of the new sort');
+    });
+  });
+});

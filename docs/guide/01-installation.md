@@ -96,7 +96,7 @@ which is read at startup; real environment variables take precedence.
 | `MAX_UPLOAD_MB` | `10` | Largest file a file item accepts (an item's `max_mb` can only lower it) |
 | `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data |
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
-| `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF |
+| `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (1 to 100,000; read with a cursor in batches) |
 | `DOWNLOAD_MAX_ROWS` | `1000000` | Most rows in a report's CSV or Excel download (streamed; at most 1,048,575) |
 | `REGION_CACHE_MAX_ENTRIES` | `1000` | Most regions in the [region cache](04-pages-and-regions.md#large-tables) of one server process (`0` turns caching off) |
 | `REGION_CACHE_MAX_MB` | `64` | Memory for the region cache of one server process |

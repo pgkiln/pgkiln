@@ -5,7 +5,7 @@ import type { Region } from '../metadata.ts';
 import { runtime, savepoint } from '../db.ts';
 import { substitute, type PageContext } from './context.ts';
 import { describeFacetFilter, facetFilters, reportFacetDefs } from './facet-state.ts';
-import { buildSql, cell, headingOf, isNumeric, OPERATORS, reportState, visibleColumns } from './report.ts';
+import { buildSql, cell, headingOf, isNumeric, maxRows, OPERATORS, PDF_MAX_ROWS, reportState, visibleColumns } from './report.ts';
 
 // Report printing: Actions → Download PDF. The same query, filters, sort
 // and visibility as the report on screen (and as the CSV download), drawn
@@ -16,7 +16,8 @@ import { buildSql, cell, headingOf, isNumeric, OPERATORS, reportState, visibleCo
 // other scripts set PDF_FONT (and PDF_FONT_BOLD) to TrueType fonts, e.g.
 // DejaVuSans.ttf / DejaVuSans-Bold.ttf.
 
-const PDF_MAX_ROWS = Number(process.env.PDF_MAX_ROWS ?? 5000);
+/** Rows fetched from the PDF cursor at a time. */
+const PDF_BATCH = 500;
 const FONT = process.env.PDF_FONT && existsSync(process.env.PDF_FONT) ? process.env.PDF_FONT : null;
 const FONT_BOLD = process.env.PDF_FONT_BOLD && existsSync(process.env.PDF_FONT_BOLD) ? process.env.PDF_FONT_BOLD : FONT;
 
@@ -86,8 +87,11 @@ export interface PdfTable {
   footer: string;
   filters: string[];
   note: string | null;
+  /** a note after the table, known once all rows are drawn (e.g. that rows were left out) */
+  endNote?: () => string | null;
   headings: string[];
-  rows: string[][];
+  /** the rows, or batches of rows as they are fetched */
+  rows: string[][] | AsyncIterable<string[][]>;
   align: Align[];
   /** fixed widths in points (null = from the content) */
   widths: (number | null)[];
@@ -147,8 +151,33 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
   const cfg = (r.config.pdf ?? {}) as RegionPdf;
   const layout = await layoutFor(ctx.app.id, typeof cfg.layout === 'string' ? cfg.layout : undefined);
   const c = ctx.client!;
-  const res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'pdf')), rowMode: 'array' }));
-  const cols = printColumns(r, res.fields);
+  // the rows come from a cursor in batches and are drawn as they arrive
+  const query = await buildSql(ctx, r, st, 'pdf');
+  const cursor = 'pgapex_pdf';
+  await savepoint(c, () => c.query({ text: `declare ${cursor} no scroll cursor for ${query.text}`, values: query.values }));
+  const fetch = () => savepoint(c, () => c.query({ text: `fetch ${PDF_BATCH} from ${cursor}`, rowMode: 'array' }));
+  const first = await fetch();
+  const cols = printColumns(r, first.fields);
+  const limit = Math.min(PDF_MAX_ROWS, maxRows(r, null) ?? PDF_MAX_ROWS);
+  let truncated = false;
+  const toCells = (row: unknown[]) =>
+    cols.map(({ f, i }) => {
+      const v = row[i];
+      return printable(typeof v === 'boolean' ? (v ? t('item.yes') : t('item.no')) : cell(v, f.dataTypeID, ctx.locale.format));
+    });
+  async function* batches() {
+    let batch = first.rows;
+    let printed = 0;
+    for (;;) {
+      const take = batch.slice(0, limit - printed);
+      if (take.length < batch.length) truncated = true;
+      printed += take.length;
+      if (take.length) yield take.map(toCells);
+      if (truncated || batch.length < PDF_BATCH) break;
+      batch = (await fetch()).rows;
+    }
+    await c.query(`close ${cursor}`);
+  }
   const lower = (m: Record<string, unknown> | undefined) => new Map(Object.entries(m ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
   const widths = lower(cfg.widths);
   const aligns = lower(cfg.align);
@@ -173,14 +202,10 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
       header: layout.header === null ? printable(`${ctx.app.name} · ${extra.TIMESTAMP} · ${ctx.user}`) : text(layout.header),
       footer: layout.footer === null ? title : text(layout.footer),
       filters: filters.length ? [`${t('facets.title')}: ${filters.join('; ')}`] : [],
-      note: res.rows.length > PDF_MAX_ROWS ? t('pdf.truncated', { rows: String(PDF_MAX_ROWS) }) : null,
+      note: null,
+      endNote: () => (truncated ? printable(t('pdf.truncated', { rows: String(limit) })) : null),
       headings: cols.map(({ f }) => printable(oneLine(headingOf(r, f.name, ctx.locale.tr)))),
-      rows: res.rows.slice(0, PDF_MAX_ROWS).map((row) =>
-        cols.map(({ f, i }) => {
-          const v = row[i];
-          return printable(typeof v === 'boolean' ? (v ? t('item.yes') : t('item.no')) : cell(v, f.dataTypeID, ctx.locale.format));
-        }),
-      ),
+      rows: batches(),
       align: cols.map(({ f }) => {
         const a = aligns.get(f.name.toLowerCase());
         return a === 'left' || a === 'center' || a === 'right' ? a : isNumeric(f.dataTypeID) ? 'right' : 'left';
@@ -212,6 +237,10 @@ export async function tablePdf(tb: PdfTable, layout: PdfLayout): Promise<Buffer>
   const regular = () => (FONT ? doc.font(FONT) : doc.font('Helvetica'));
   const bold = () => (FONT_BOLD ? doc.font(FONT_BOLD) : doc.font('Helvetica-Bold'));
 
+  // the rows: one batch, or batches as a cursor delivers them
+  const iter = Array.isArray(tb.rows) ? [tb.rows][Symbol.iterator]() : tb.rows[Symbol.asyncIterator]();
+  const firstBatch: string[][] = (await iter.next()).value ?? [];
+
   // column widths: fixed ones as given; the others from the heading and the
   // first 200 rows (capped), scaled down to the page; text wraps in the cell
   doc.fontSize(size);
@@ -221,7 +250,7 @@ export async function tablePdf(tb: PdfTable, layout: PdfLayout): Promise<Buffer>
     bold();
     let w = doc.widthOfString(h);
     regular();
-    for (const row of tb.rows.slice(0, 200)) w = Math.max(w, ...row[ci].split('\n').map((line) => doc.widthOfString(line)));
+    for (const row of firstBatch.slice(0, 200)) w = Math.max(w, ...row[ci].split('\n').map((line) => doc.widthOfString(line)));
     return Math.min(Math.max(w + 2 * PAD + 1, 28), 220 * (size / 8.5));
   });
   const total = natural.reduce((a, b) => a + b, 0) || 1;
@@ -296,19 +325,34 @@ export async function tablePdf(tb: PdfTable, layout: PdfLayout): Promise<Buffer>
     let y = doc.y;
     drawRow(tb.headings, y, headHeight, true, false);
     y += headHeight;
-    if (!tb.rows.length) regular().fontSize(size).fillColor('#555555').text(tb.noData, margin, y + PAD);
-    tb.rows.forEach((cells, ri) => {
-      const h = rowHeight(cells, regular);
-      if (y + h > bottom()) {
-        newPage();
-        y = margin;
-        drawRow(tb.headings, y, headHeight, true, false);
-        y += headHeight;
+    if (!firstBatch.length) regular().fontSize(size).fillColor('#555555').text(tb.noData, margin, y + PAD);
+    let ri = 0;
+    for (let batch: string[][] | undefined = firstBatch; batch; ) {
+      for (const cells of batch) {
+        const h = rowHeight(cells, regular);
+        if (y + h > bottom()) {
+          newPage();
+          y = margin;
+          drawRow(tb.headings, y, headHeight, true, false);
+          y += headHeight;
+        }
+        drawRow(cells, y, h, false, ri++ % 2 === 1);
+        y += h;
       }
-      drawRow(cells, y, h, false, ri % 2 === 1);
-      y += h;
-    });
-  } else regular().fontSize(size).fillColor('#555555').text(tb.noData, margin, doc.y);
+      const n = await iter.next();
+      batch = n.done ? undefined : n.value;
+    }
+    const end = tb.endNote?.();
+    if (end) {
+      regular().fontSize(size).fillColor('#555555');
+      if (y + doc.heightOfString(end, { width: usable }) + PAD > bottom()) (newPage(), (y = margin));
+      doc.text(end, margin, y + PAD, { width: usable });
+    }
+  } else {
+    regular().fontSize(size).fillColor('#555555').text(tb.noData, margin, doc.y);
+    // drain the rows (closes a cursor)
+    for (let n = await iter.next(); !n.done; n = await iter.next());
+  }
 
   // footer on every page: the footer text and "page n of m"
   const range = doc.bufferedPageRange();

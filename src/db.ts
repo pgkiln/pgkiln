@@ -36,7 +36,7 @@ function makePool(connectionString: string | undefined, name: string) {
   };
 }
 
-const ownerUrl = process.env.DATABASE_URL ?? 'postgres://pgapex:pgapex@localhost:5434/pgapex';
+export const ownerUrl = process.env.DATABASE_URL ?? 'postgres://pgapex:pgapex@localhost:5434/pgapex';
 if (!process.env.RUNTIME_DATABASE_URL)
   console.warn('RUNTIME_DATABASE_URL is not set: applications run on the owner connection (not least privilege).');
 

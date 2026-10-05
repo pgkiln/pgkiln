@@ -26,6 +26,7 @@ src/
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   headerauth.ts            HTTP-header authentication: trusted proxies (PGAPEX_AUTH_HEADER_PROXIES), header checks, accounts
+  dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
   api.ts                   REST API tokens for PostgREST, API role checks
@@ -47,14 +48,14 @@ src/
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
-    context.ts             PageContext, bind values, substitutions, public error messages
+    context.ts             PageContext, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
     engine.ts              form fetch, validations, processes, application processes
     logic.ts               computations, branches and their conditions (before header / after submit)
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts, facets.ts, items.ts
-                           (report.ts: paging with row ranges and max_rows, pagerNav, streamed CSV/Excel downloads with a cursor;
+                           (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
     charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, drill-down marks, data table
@@ -72,14 +73,14 @@ src/
     documents.ts           ?doc=NAME: a template filled with the page's values
     maps.ts                map region (data for Leaflet: markers or heat, report filter; list fallback, head assets)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
-    rest.ts                REST modules: handler checks, matching, bearer tokens, execution, OpenAPI
+    rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
     rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process
     tree.ts                tree region
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
     workflows.ts           workflow console region and its actions
-    pdf.ts                 report PDFs with report layouts (pdfkit)
+    pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
@@ -181,7 +182,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.21.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.22.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

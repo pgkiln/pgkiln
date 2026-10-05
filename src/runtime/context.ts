@@ -1,3 +1,4 @@
+import type { PassThrough } from 'node:stream';
 import type { PageCss } from '../css.ts';
 import type pg from 'pg';
 import type { BindValues } from '../binds.ts';
@@ -138,4 +139,20 @@ export async function publicError(ctx: Pick<PageContext, 'app' | 'page' | 'user'
     detail: `${where}: [${err.code}] ${err.message}`,
   });
   return ref ? t('error.reference', { ref }) : t('error.unexpected');
+}
+
+/** Write to a streamed response, waiting while the client is slow; fails once the client is gone. */
+export async function writeOut(out: PassThrough, chunk: string | Uint8Array) {
+  if (out.destroyed) throw new Error('download aborted');
+  if (out.write(chunk)) return;
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      out.off('drain', done);
+      out.off('close', done);
+      resolve();
+    };
+    out.on('drain', done);
+    out.on('close', done);
+  });
+  if (out.destroyed) throw new Error('download aborted');
 }

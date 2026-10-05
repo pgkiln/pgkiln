@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-04. Sprints 3–29 are merged into `main` and released as **v0.21.0** (migrations 001–036 are released: add 037+; 033 and 035 were never used). HR example files up to `hr_27` are released.
+Last updated: 2026-10-05. Sprints 3–30 are merged into `main` and released as **v0.22.0** (migrations 001–037 are released: add 038+; 033 and 035 were never used). HR example files up to `hr_27` are released.
 
 ## Project in one paragraph
 
@@ -48,7 +48,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 29, released as **v0.21.0** (tags: v0.2.0, v0.6.0–v0.21.0; 0.3.0–0.5.0 were never tagged). Migrations 001–034 are released |
+| `main` | Everything up to sprint 30, released as **v0.22.0** (tags: v0.2.0, v0.6.0–v0.22.0; 0.3.0–0.5.0 were never tagged). Migrations 001–037 are released |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
@@ -968,3 +968,23 @@ session bound to the header value (a changed header ends the session). Database 
 SECURITY.md, `.env.example`, version, CI matrix + v0.21.0, chapter 12 version line, merge, tag, push, check CI.
 
 **Result:** app authentication `header` (`src/headerauth.ts`, `headerSession` in routes.ts; migration 036: `header_name`, `header_auto_create`, `logout_url`); env `PGAPEX_AUTH_HEADER_PROXIES`. Tests 511 + 8 skipped, e2e 78/78. Next: AI features (owner's decision), keyset paging, streaming PDFs/REST collections, database-account authentication.
+
+## Sprint 30 (DONE, v0.22.0): the smaller open items (owner: "do the other smaller items as long as you got usage", 2026-10-04)
+
+Branch `sprint-30` from `main` (v0.21.0); one agent in the main checkout, dev DB 5434; reserved migration 037, HR
+`hr_28` page 27. Items in order, each finished, tested and committed before the next (stop anywhere, still mergeable):
+1. **Keyset ("seek") paging** for row-range reports with a sort on indexed/unique columns (parity row "Pagination of
+   large tables" → drop "Missing: keyset").
+2. **Streaming PDFs** of reports and **streaming REST collections** (REST modules' collection handlers) with a cursor
+   (parity row "Large downloads without buffering" → ✅ when both are done).
+3. **Database-account authentication** (APEX "Database Accounts": sign in with a PostgreSQL role's password, checked
+   by a connection attempt or `pg_authid`-free method; roles allowed per app) (parity row "Database accounts,
+   HTTP-header authentication" → ✅).
+**If a session ends:** `git log --oneline main..sprint-30` shows which items are committed; run tsc, `npm run
+db:reset && npm test`, `npm run test:e2e`; update the parity rows of the finished items + summary counts, CHANGELOG
+0.22.0, SECURITY.md, `.env.example`, version, CI matrix + v0.22.0, chapter 12 version line, this file; merge, tag,
+push, check CI with `gh run list -R NickVrgr/Postgresql_APEX`.
+
+**Result (2026-10-05, v0.22.0):** keyset paging (`"keyset": [...]`, signed `r<id>_k`), report PDFs from a cursor in
+batches (`PDF_MAX_ROWS`), streamed REST collections, authentication type `database` (`src/dbauth.ts`, migration 037).
+Tests 527 + 8 skipped, e2e 78/78. HR `hr_28` was not used.

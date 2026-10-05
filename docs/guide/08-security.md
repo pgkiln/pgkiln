@@ -254,6 +254,35 @@ the session ends (and, with another name, a new one starts for that user). The v
 The password form, LDAP, single sign-on buttons and *Keep me signed in* are not used by these apps,
 and form submissions still need the session's CSRF token.
 
+### Database accounts (PostgreSQL roles)
+
+APEX's *Database Accounts* scheme: users sign in with the name and password of a PostgreSQL
+**login role**. In **Settings → Security** choose Authentication **Database accounts** and set
+who may sign in:
+
+- **Allowed roles**: login role names, comma separated (exact, case-sensitive names); and/or
+- **Or members of role**: every member (direct or inherited) of this role may sign in too.
+
+With neither set nobody can sign in. pgapex never reads `pg_authid`: it checks the password by
+opening a short-lived connection **as that role** to its own database (host, port, database and
+SSL settings of `DATABASE_URL`), asks PostgreSQL whether the role is a superuser and a member of
+the membership role, and closes the connection. So PostgreSQL applies its own rules: the
+password, `NOLOGIN`, `VALID UNTIL`, `CONNECTION LIMIT` and `pg_hba.conf` (which must allow
+password logins for these roles from the pgapex server). Superusers and pgapex's own connection
+roles (the users of `DATABASE_URL` and `RUNTIME_DATABASE_URL`) are always refused, even when
+listed. An unlisted name is refused before any connection is made (unless a membership role is
+set).
+
+The session's user (`:APP_USER`) is the role name; app roles come from **Access control** like for
+other users (an account of the same name, if there is one). The application's SQL still runs as
+the app's database role (*parsing schema*), not as the signed-in role. Wrong passwords, unknown,
+unlisted or refused roles all get the same "invalid" answer and count towards the sign-in
+throttling (`LOGIN_MAX_FAILURES_PER_USER`, `LOGIN_MAX_FAILURES_PER_IP`); the activity log has
+`login` (detail `database`) and `login_failed` with the reason (`database: role not allowed`,
+`superuser refused`, `connection refused (28P01)`, …), never the password. When the database
+can't be reached the page says so (503). *Keep me signed in*, LDAP, single sign-on and the
+password-change form are not used by these apps.
+
 ### Keep me signed in
 
 Under **Settings → Sign-in methods**, *"Keep me signed in" for (days)* (1–365) adds a checkbox to the
