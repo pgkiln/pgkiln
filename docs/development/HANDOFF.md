@@ -1052,6 +1052,10 @@ the coordinator pushed their `wip:` commits to `origin/sprint-31-<n>`. Uncommitt
 5. Keep this file updated and pushed after every milestone (merge of a workstream, release): usage can end without
    warning.
 
+**Takeover (2026-10-05, ~08:15):** a new coordinator session found no agent still running (worktrees unchanged for
+20+ minutes; two orphaned dev servers stopped), committed every worktree's uncommitted work as `wip:` and pushed all
+five `sprint-31-<n>` branches. Five new agents were launched (one per workstream) to finish them.
+
 **Workstream reports:** (fill in as agents finish)
 
 ## Sprint 32 (PLANNED, owner 2026-10-05)
