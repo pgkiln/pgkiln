@@ -5,7 +5,7 @@ import { owner } from '../db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
-import { stepProblems, stepWarnings } from '../workflow.ts';
+import { invokeStepReferences, stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 import { processProblems } from '../runtime/processes.ts';
 import { COMPONENTS } from './components.ts';
@@ -284,10 +284,21 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
       const tasks = new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase()));
       for (const problem of stepProblems(row.steps, tasks)) missing(e, 'Steps (JSON)', problem);
       for (const warning of stepWarnings(row.steps)) missing(e, 'Steps (JSON)', warning, 'warning');
+      // invoke_api steps: REST data sources, parameters, web credentials, variables (sprint 32)
+      const refs = {
+        sources: new Map(all.filter((x) => x.kind === 'rest_source').map((x) => [String(x.row.name).toUpperCase(), x.row])),
+        credentials: new Set(all.filter((x) => x.kind === 'web_credential').map((x) => String(x.row.name).toUpperCase())),
+        startVars: [...String(row.title ?? '').matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1]),
+      };
+      const invokeRefs = invokeStepReferences(row.steps, refs);
+      for (const problem of invokeRefs.errors) missing(e, 'Steps (JSON)', problem);
+      for (const warning of invokeRefs.warnings) missing(e, 'Steps (JSON)', warning, 'warning');
       if (row.dev_version) {
         const field = `Steps of version ${row.dev_version} (development)`;
         for (const problem of stepProblems(row.dev_steps, tasks)) missing(e, field, problem, 'warning');
         for (const warning of stepWarnings(row.dev_steps)) missing(e, field, warning, 'warning');
+        const devRefs = invokeStepReferences(row.dev_steps, refs);
+        for (const problem of [...devRefs.errors, ...devRefs.warnings]) missing(e, field, problem, 'warning');
       }
     }
     if (kind === 'document_template') {

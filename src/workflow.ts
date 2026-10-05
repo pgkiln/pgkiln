@@ -2,6 +2,8 @@ import pg from 'pg';
 import { applyBinds, splitStatements, type BindValues } from './binds.ts';
 import { owner } from './db.ts';
 import { html, type Raw } from './html.ts';
+import type { WebResponse } from './webclient.ts';
+import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, type InvokeConfig, type RestSource } from './websources.ts';
 
 // Workflows (APEX 23.2: Workflow). A definition is a list of named steps;
 // an instance runs them one after the other. Each step runs in its own
@@ -12,6 +14,7 @@ import { html, type Raw } from './html.ts';
 //   {"name": "MANAGER", "type": "task", "task": "LEAVE_APPROVAL", "owners": "select … usernames", "next": {"approved": "BOOK", "rejected": "END"}}
 //   {"name": "BOOK", "type": "sql", "code": "select hr.book(:DETAIL_PK::int) as booking_id"}
 //   {"name": "PAUSE", "type": "wait", "for": "2 days"}
+//   {"name": "RATE", "type": "invoke_api", "source": "EXCHANGE", "params": {"currency": "&CURRENCY."}, "variables": {"RATE": "rates.EUR"}, "status_variable": "HTTP_STATUS"}
 //   {"name": "SPLIT", "type": "parallel", "branches": ["IT", "DESK"], "join": "MEET"}
 //   {"name": "MEET", "type": "join", "wait_for": "all"}
 //   {"name": "END", "type": "end"}
@@ -32,6 +35,21 @@ import { html, type Raw } from './html.ts';
 // workflow. A failing step faults its branch (and shows the workflow as
 // faulted); the other branches go on, and a retry resumes the failed one.
 //
+// Invoke API steps (sprint 32) call a REST data source of the app or a URL
+// through the same code as the invoke_api page process (src/websources.ts:
+// invoke(), with the host allow-list, the address checks at connect time and
+// the web credential), with &VAR. substitutions from the variables. Values of
+// the response go into variables ("variables": {"VAR": "json.path"}; without
+// it, the first row's columns of a source), "status_variable" gets the HTTP
+// status (and then an error status doesn't fault the step), and
+// "response_variable" the whole JSON. No transaction is open during the call:
+// the step first commits its path as "waiting" with a lease (wait_until: well
+// past the time limit), the call runs, then a new transaction checks that the
+// path still waits at that step with that lease (not terminated, retried or
+// expired meanwhile) and goes on. A lease that expires (the server stopped
+// during the call) faults the step instead of calling again: a POST may not
+// be safe to repeat; the console's retry calls again.
+//
 // The server runs workflows when they start or a task of theirs ends
 // (NOTIFY pgapex_workflow) and checks for due waits every few seconds.
 
@@ -40,11 +58,27 @@ export type Step =
   | { name: string; type: 'sql'; code: string; next?: string }
   | { name: string; type: 'switch'; cases: { when: string; next: string }[]; otherwise?: string }
   | { name: string; type: 'wait'; for: string; next?: string }
+  | InvokeStep
   | { name: string; type: 'parallel'; branches: string[]; join: string }
   | { name: string; type: 'join'; wait_for?: 'all' | 'any'; next?: string }
   | { name: string; type: 'end' };
 
-const TYPES = ['task', 'sql', 'switch', 'wait', 'parallel', 'join', 'end'];
+export interface InvokeStep extends InvokeConfig {
+  name: string;
+  type: 'invoke_api';
+  /** variable → JSON path in the response */
+  variables?: Record<string, string>;
+  status_variable?: string;
+  response_variable?: string;
+  /** seconds (1–60); default: the source's time limit, 10 for a URL */
+  timeout?: number;
+  next?: string;
+}
+
+const TYPES = ['task', 'sql', 'switch', 'wait', 'invoke_api', 'parallel', 'join', 'end'];
+const VAR_NAME = /^[A-Z][A-Z0-9_]*$/;
+/** Binds the workflow sets itself (variables of these names would be hidden). */
+const BUILT_IN = ['DETAIL_PK', 'WORKFLOW_ID', 'INITIATOR'];
 const OUTCOMES = ['approved', 'rejected', 'completed', 'cancelled'];
 const INTERVAL = /^\s*\d+\s*(second|minute|hour|day|week|month)s?\s*$/i;
 const MAX_STEPS_PER_RUN = 100;
@@ -81,6 +115,16 @@ export function stepProblems(steps: unknown, taskNames?: Set<string>): string[] 
         problems.push(`${label}: "branches" lists the first step of each branch (at least two).`);
       else if (new Set(st.branches).size !== st.branches.length) problems.push(`${label}: a branch is listed twice.`);
       if (typeof st.join !== 'string' || !st.join) problems.push(`${label}: "join" names the join step where the branches meet.`);
+    }
+    if (st.type === 'invoke_api') {
+      for (const p of invokeCallProblems(st, 'It')) problems.push(`${label}: ${p}`);
+      if (st.variables !== undefined && !isStringMap(st.variables)) problems.push(`${label}: "variables" is an object of variable → JSON path, e.g. {"RATE": "rates.EUR"}.`);
+      const targets = [...(isStringMap(st.variables) ? Object.keys(st.variables) : []), ...(['status_variable', 'response_variable'] as const).map((k) => st[k]).filter((v) => v !== undefined)];
+      for (const t of targets) {
+        if (typeof t !== 'string' || !VAR_NAME.test(t)) problems.push(`${label}: variable names are upper case, like RATE (not ${JSON.stringify(t)}).`);
+        else if (BUILT_IN.includes(t)) problems.push(`${label}: ${t} is set by the workflow itself; choose another variable name.`);
+      }
+      if (st.timeout !== undefined && !(Number.isInteger(st.timeout) && st.timeout >= 1 && st.timeout <= 60)) problems.push(`${label}: "timeout" is a number of seconds from 1 to 60.`);
     }
     if (st.type === 'join' && st.wait_for !== undefined && !['all', 'any'].includes(st.wait_for)) problems.push(`${label}: "wait_for" is all (the default) or any.`);
   }
@@ -216,6 +260,61 @@ export function stepWarnings(steps: unknown): string[] {
   return list.filter((s) => !reached.has(s.name)).map((s) => `Step ${s.name} is never reached.`);
 }
 
+/** What an Advisor knows about the app's REST data sources and web credentials. */
+export interface InvokeRefs {
+  sources: Map<string, { params?: { name: string; required?: boolean; default?: string | null }[]; columns?: { name: string }[] }>;
+  credentials: Set<string>;
+  /** names the definition's title uses (&VAR.): given at the start */
+  startVars?: Iterable<string>;
+}
+
+/**
+ * Invoke API steps against the app (Advisor): unknown REST data sources,
+ * parameters and web credentials are errors; required parameters without a
+ * value and &VAR. references to variables that no step sets (and the title
+ * doesn't mention) are warnings.
+ */
+export function invokeStepReferences(steps: unknown, refs: InvokeRefs): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!Array.isArray(steps)) return { errors, warnings };
+  const list = steps.filter((st): st is Record<string, any> => !!st && typeof st === 'object');
+  const invokes = list.filter((st) => st.type === 'invoke_api');
+  if (!invokes.length) return { errors, warnings };
+  // variables something sets: built-ins, task outcomes, invoke_api targets (and a source's columns), words in sql steps
+  const known = new Set<string>([...BUILT_IN, 'TASK_OUTCOME', 'TASK_APPROVER', ...[...(refs.startVars ?? [])].map((v) => v.toUpperCase())]);
+  for (const st of list) {
+    if (st.type === 'sql' && typeof st.code === 'string') for (const m of st.code.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) known.add(m[0].toUpperCase());
+    if (st.type !== 'invoke_api') continue;
+    if (isStringMap(st.variables)) for (const k of Object.keys(st.variables)) known.add(k);
+    for (const k of ['status_variable', 'response_variable']) if (typeof st[k] === 'string') known.add(st[k]);
+    const src = typeof st.source === 'string' ? refs.sources.get(st.source.toUpperCase()) : undefined;
+    if (src && !st.variables) for (const col of src.columns ?? []) known.add(String(col.name).toUpperCase());
+  }
+  for (const st of invokes) {
+    const label = `Step ${st.name}`;
+    const texts: string[] = [];
+    if (typeof st.source === 'string' && st.source) {
+      const src = refs.sources.get(st.source.toUpperCase());
+      if (!src) errors.push(`${label}: REST data source ${st.source.toUpperCase()} doesn't exist.`);
+      else {
+        const params = src.params ?? [];
+        const given = isStringMap(st.params) ? (st.params as Record<string, string>) : {};
+        for (const k of Object.keys(given)) if (!params.some((p) => p.name === k)) errors.push(`${label}: REST data source ${st.source.toUpperCase()} has no parameter ${k}.`);
+        for (const p of params) if (p.required && given[p.name] === undefined && (p.default ?? '') === '') warnings.push(`${label}: parameter ${p.name} of ${st.source.toUpperCase()} is required but gets no value.`);
+      }
+      if (isStringMap(st.params)) texts.push(...Object.values(st.params as Record<string, string>));
+    }
+    if (typeof st.credential === 'string' && st.credential && !refs.credentials.has(st.credential.toUpperCase()))
+      errors.push(`${label}: web credential ${st.credential.toUpperCase()} doesn't exist.`);
+    for (const k of ['url', 'body']) if (typeof st[k] === 'string') texts.push(st[k]);
+    const unknown = new Set<string>();
+    for (const t of texts) for (const m of t.matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)) if (!known.has(m[1].toUpperCase())) unknown.add(m[1].toUpperCase());
+    for (const v of unknown) warnings.push(`${label}: no step sets the variable ${v}; give it when the workflow starts, or &${v}. is sent as written.`);
+  }
+  return { errors, warnings };
+}
+
 interface Instance {
   id: string;
   app_id: number;
@@ -246,6 +345,35 @@ const asBind = (v: unknown) => (v === null || v === undefined ? null : typeof v 
 
 class StepError extends Error {}
 
+/** An invoke_api step that waits (with a lease) for its call, made outside a transaction. */
+interface PendingCall {
+  branch: string | null;
+  step: string;
+  lease: string;
+  appId: number;
+  conf: InvokeStep;
+  binds: BindValues;
+}
+interface DoneCall extends PendingCall {
+  res?: WebResponse;
+  source?: RestSource | null;
+  error?: string;
+}
+
+/** The time a path may wait for its call before the step counts as lost: well past every time limit of the call (a token request, a retry after a 401). */
+const leaseSeconds = (s: InvokeStep) => 3 * (s.timeout ?? 60) + 30;
+
+async function makeCall(p: PendingCall): Promise<DoneCall> {
+  // &VAR. substitutions: the variables and built-in binds; other names stay as written
+  const lookup = (name: string) => (name in p.binds ? (p.binds[name] ?? '') : undefined);
+  try {
+    const { res, source } = await invoke(p.appId, p.conf, lookup, `Step ${p.step}`, p.conf.timeout);
+    return { ...p, res, source };
+  } catch (e) {
+    return { ...p, error: (e as Error).message };
+  }
+}
+
 /**
  * Advance one workflow as far as it can go now (until its main path and every
  * branch waits, ends or faults). Returns the number of steps taken.
@@ -254,10 +382,16 @@ export async function runWorkflow(id: string | number): Promise<number> {
   let taken = 0;
   const at: { branch: string | null } = { branch: null };
   for (; taken < MAX_STEPS_PER_RUN; taken++) {
-    let more: boolean;
+    let more: boolean | PendingCall;
     at.branch = null;
     try {
       more = await owner.tx((c) => step(c, String(id), at));
+      if (typeof more === 'object') {
+        // an invoke_api step: the call runs between two transactions
+        const done = await makeCall(more);
+        at.branch = done.branch;
+        more = await owner.tx((c) => step(c, String(id), at, done));
+      }
     } catch (e) {
       await fault(String(id), at.branch, (e as Error).message.slice(0, 2000));
       // the other branches may go on
@@ -287,21 +421,35 @@ async function fault(id: string, branch: string | null, msg: string) {
 }
 
 /** One step of the main path or of a branch, in the caller's transaction. Returns whether the workflow may go on right away. */
-async function step(c: pg.PoolClient, id: string, at: { branch: string | null }): Promise<boolean> {
+async function step(c: pg.PoolClient, id: string, at: { branch: string | null }, done?: DoneCall): Promise<boolean | PendingCall> {
   const w = (
-    await c.query<Instance>(
+    await c.query<Instance & { leased: boolean }>(
       `select w.id::text, w.app_id, w.name, w.detail_pk, w.vars, w.steps, w.state, w.current_step, w.waiting_task::text,
-              coalesce(w.wait_until <= now(), false) as due, w.initiator, a.db_role
+              coalesce(w.wait_until <= now(), false) as due, w.initiator, a.db_role,
+              coalesce(w.wait_until = $2::timestamptz, false) as leased
          from meta.workflow w join meta.app a on a.id = w.app_id
         where w.id = $1 and w.state in ('active', 'waiting', 'faulted')
-        for update of w skip locked`,
-      [id],
+        for update of w${done ? '' : ' skip locked'}`,
+      [id, done?.branch === null ? done.lease : null],
     )
   ).rows[0];
   if (!w) return false;
-  // the main path first, then a branch that can go on
-  const k: Cursor | undefined =
-    w.state === 'active' || (w.state === 'waiting' && w.due)
+  // back from a call: the path that waits for it, if it still does (not terminated, retried or expired)
+  const k: Cursor | undefined = done
+    ? done.branch === null
+      ? w.state === 'waiting' && w.current_step === done.step && w.leased
+        ? { branch: null, parent: null, name: null, state: w.state, current_step: w.current_step, waiting_task: null, join_step: null }
+        : undefined
+      : (
+          await c.query<Cursor>(
+            `select id::text as branch, parent_id::text as parent, name, state, current_step, waiting_task::text, join_step
+               from meta.workflow_branch
+              where id = $2 and workflow_id = $1 and state = 'waiting' and current_step = $3 and wait_until = $4::timestamptz for update`,
+            [id, done.branch, done.step, done.lease],
+          )
+        ).rows[0]
+    // the main path first, then a branch that can go on
+    : w.state === 'active' || (w.state === 'waiting' && w.due)
       ? { branch: null, parent: null, name: null, state: w.state, current_step: w.current_step, waiting_task: w.waiting_task, join_step: null }
       : (
           await c.query<Cursor>(
@@ -312,7 +460,8 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null })
             [id],
           )
         ).rows[0];
-  if (!k) return false;
+  // a call whose path moved on meanwhile: its result is dropped
+  if (!k) return !!done;
   at.branch = k.branch;
   await c.query(
     `select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true),
@@ -403,6 +552,23 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null })
     return true;
   };
 
+  // back from a call (or a call that never came back)
+  if (k.state === 'waiting' && s.type === 'invoke_api') {
+    if (!done) throw new StepError(`The call of step ${s.name} didn't finish (the server may have stopped during it); retry the step to call again.`);
+    if (done.error) throw new StepError(done.error);
+    const res = done.res!;
+    const what = `Step ${s.name}`;
+    if (s.status_variable) vars[s.status_variable] = res.status;
+    const json = invokeJson(res, what, !!s.status_variable);
+    if (s.response_variable) vars[s.response_variable] = json;
+    if (s.variables) for (const [name, path] of Object.entries(s.variables)) vars[name] = valueAt(json, path) ?? null;
+    else if (done.source && json !== null && !s.response_variable) {
+      // without a mapping: the first row's columns of the source become variables
+      const { rows } = toRows(json, done.source);
+      for (const [key, v] of Object.entries(rows[0] ?? {})) if (!BUILT_IN.includes(key.toUpperCase())) vars[key.toUpperCase()] = v;
+    }
+    return goTo(s.next, `HTTP ${res.status}`);
+  }
   // back from a wait or a task
   if (k.state === 'waiting') {
     await log('resumed');
@@ -454,6 +620,25 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null })
       await save('waiting', s.name, { task: String(taskId) });
       await log('task', `task ${taskId}${owners.length ? ` for ${owners.join(', ')}` : ''}`);
       return true;
+    }
+    case 'invoke_api': {
+      // commit "waiting for the call" with a lease; runWorkflow makes the call outside the transaction
+      const problems = invokeCallProblems(s, 'The step');
+      if (problems.length) throw new StepError(problems.join(' '));
+      await save('waiting', s.name, { interval: `${leaseSeconds(s)} seconds` });
+      const lease = (
+        await c.query(k.branch === null ? 'select wait_until::text as t from meta.workflow where id = $1' : 'select wait_until::text as t from meta.workflow_branch where id = $1', [k.branch ?? w.id])
+      ).rows[0].t as string;
+      let target = `REST data source ${s.source}`;
+      if (!s.source) {
+        try {
+          target = `${(s.method ?? 'GET').toUpperCase()} ${new URL(s.url!.replace(/&[A-Za-z][A-Za-z0-9_]*\./g, 'x')).origin}`;
+        } catch {
+          target = 'a URL';
+        }
+      }
+      await log('waiting', `calling ${target}`);
+      return { branch: k.branch, step: s.name, lease, appId: w.app_id, conf: s, binds: binds() };
     }
     case 'wait': {
       await save('waiting', s.name, { interval: s.for });
@@ -611,6 +796,7 @@ export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: s
     s.type === 'task' ? `task ${s.task}`
     : s.type === 'join' ? `join (${s.wait_for === 'any' ? 'any' : 'all'})`
     : s.type === 'parallel' ? `parallel ×${Array.isArray(s.branches) ? s.branches.length : 0}`
+    : s.type === 'invoke_api' ? `invoke API ${typeof s.source === 'string' && s.source ? s.source : `${String(s.method ?? 'GET').toUpperCase()} URL`}`
     : s.type;
   return html`<svg class="wf-diagram" viewBox="0 0 ${width} ${height}" role="img" aria-label="Workflow diagram${active.size ? `; at ${[...active].join(', ')}` : ''}" preserveAspectRatio="xMidYMin meet">
     <defs><marker id="${marker}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="wf-arrowhead"/></marker></defs>
