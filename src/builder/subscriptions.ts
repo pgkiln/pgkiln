@@ -102,7 +102,7 @@ export async function subscriptionRoutes(app: FastifyInstance) {
               </tbody></table></div>
               <h3>Publish</h3>
               <p class="muted u-mt0">Publishing refreshes every subscriber of a component with this application's version. Applications locked by another developer are skipped.</p>
-              <div class="buttons">${published.map((x) => html`<form method="post" action="${BASE}/apps/${a.id}/subscriptions/publish" class="u-inline">${csrf(s)}${hidden(x.kind, x.name)}
+              <div class="buttons publish-buttons">${published.map((x) => html`<form method="post" action="${BASE}/apps/${a.id}/subscriptions/publish" class="u-inline">${csrf(s)}${hidden(x.kind, x.name)}
                 <button class="btn btn-sm">${icon('upload')} ${what(x.kind, x.name)}</button></form>`)}</div>`
             : html`<p class="muted">No application subscribes to this application's components yet.</p>`)
         : ''}

@@ -4753,3 +4753,77 @@ describe('sprint 34 working copies', () => {
     assert.ok(await owner.one('select 1 from meta.app where id = $1', [mainId]));
   });
 });
+
+describe('sprint 34 application types and subscriptions', () => {
+  const P = 'sub-sec';
+  let lib: number, sub: number;
+  let dev: FileBrowser;
+  const blank = async (alias: string, type = 'standard') =>
+    (await owner.one(`insert into meta.app (alias, name, app_type) values ($1, $2, $3) returning id`, [alias, `App ${alias}`, type])).id as number;
+  const lov = async (id: number) => (await owner.one(`select query from meta.lov where app_id = $1 and name = 'SECRET_LOV'`, [id]))?.query;
+  before(async () => {
+    await owner.query('delete from meta.app where alias like $1', [`${P}%`]);
+    lib = await blank(`${P}-lib`, 'library');
+    sub = await blank(`${P}-sub`);
+    await owner.query(`insert into meta.lov (app_id, name, query) values ($1, 'SECRET_LOV', 'select 1 as d, 1 as r')`, [lib]);
+    dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where alias like $1', [`${P}%`]);
+  });
+
+  test('the pages need a developer and the CSRF token; only offered components can be subscribed to', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.get(`/builder/apps/${sub}/subscriptions`)).statusCode, 302);
+    assert.equal((await anon.post(`/builder/apps/${sub}/subscriptions`, { __csrf: 'x', component: `${lib}|lov|SECRET_LOV` })).statusCode, 302);
+    await dev.get(`/builder/apps/${sub}/subscriptions`);
+    assert.equal((await dev.post(`/builder/apps/${sub}/subscriptions`, { __csrf: 'forged', component: `${lib}|lov|SECRET_LOV` })).statusCode, 403);
+    assert.equal(await lov(sub), undefined);
+    // a standard application, an unknown kind or a table name in the kind are refused
+    const std = await blank(`${P}-std`);
+    await owner.query(`insert into meta.lov (app_id, name, query) values ($1, 'SECRET_LOV', 'select 2 as d, 2 as r')`, [std]);
+    for (const component of [`${std}|lov|SECRET_LOV`, `${lib}|page|1`, `${lib}|__proto__|x`, `${lib}|lov;drop table meta.app|x`, `${lib}|account|admin`, 'garbage'])
+      await dev.submit(`/builder/apps/${sub}/subscriptions`, { component });
+    assert.equal(await lov(sub), undefined, 'nothing copied');
+    assert.equal((await owner.one('select count(*)::int as n from meta.subscription where app_id = $1', [sub])).n, 0);
+    // the subscriber's application lock (another developer) refuses subscribing
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'someone-else')`, [sub]);
+    try {
+      await dev.submit(`/builder/apps/${sub}/subscriptions`, { component: `${lib}|lov|SECRET_LOV` });
+      assert.equal(await lov(sub), undefined, 'locked');
+    } finally {
+      await owner.query('delete from meta.builder_lock where app_id = $1', [sub]);
+    }
+  });
+
+  test('publishing skips applications locked by another developer; the subscription table is closed to the runtime', async () => {
+    await dev.get(`/builder/apps/${sub}/subscriptions`);
+    await dev.submit(`/builder/apps/${sub}/subscriptions`, { component: `${lib}|lov|SECRET_LOV` });
+    assert.equal(await lov(sub), 'select 1 as d, 1 as r');
+    await owner.query(`update meta.lov set query = 'select 3 as d, 3 as r' where app_id = $1 and name = 'SECRET_LOV'`, [lib]);
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'someone-else')`, [sub]);
+    try {
+      await dev.get(`/builder/apps/${lib}/subscriptions`);
+      await dev.submit(`/builder/apps/${lib}/subscriptions/publish`, { kind: 'lov', name: 'SECRET_LOV' });
+      assert.equal(await lov(sub), 'select 1 as d, 1 as r', 'the locked subscriber is not changed');
+    } finally {
+      await owner.query('delete from meta.builder_lock where app_id = $1', [sub]);
+    }
+    await dev.submit(`/builder/apps/${lib}/subscriptions/publish`, { kind: 'lov', name: 'SECRET_LOV' });
+    assert.equal(await lov(sub), 'select 3 as d, 3 as r');
+    await assert.rejects(runtime.query('select * from meta.subscription'), /permission denied/);
+    await assert.rejects(owner.query(`update meta.app set app_type = 'evil' where id = $1`, [sub]), /check constraint/);
+    // a bad referrer never becomes the redirect
+    dev.headers.referer = `https://evil.example/builder/apps/${lib}/shared?c=lov-1`;
+    try {
+      const res = await dev.request('POST', `/builder/apps/${sub}/subscriptions/refresh`, { __csrf: dev.lastCsrf });
+      assert.equal(res.headers.location, `/builder/apps/${sub}/subscriptions`);
+      dev.headers.referer = `http://localhost/builder/apps/${sub}/shared?c=lov-12`;
+      assert.equal((await dev.request('POST', `/builder/apps/${sub}/subscriptions/refresh`, { __csrf: dev.lastCsrf })).headers.location, `/builder/apps/${sub}/shared?c=lov-12`);
+    } finally {
+      delete dev.headers.referer;
+    }
+  });
+});
