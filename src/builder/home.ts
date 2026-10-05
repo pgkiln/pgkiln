@@ -67,6 +67,7 @@ function aside(recent: { id: number; name: string }[], about: string, tasks: [st
 
 const TASKS: [string, string][] = [
   ['Create application', `${BASE}/create`],
+  ['Create application from a file', `${BASE}/create/file`],
   ['Import application', `${BASE}/import`],
   ['Manage users', `${BASE}/users`],
   ['Identity providers', `${BASE}/users/providers`],
@@ -181,6 +182,7 @@ export async function homeRoutes(app: FastifyInstance) {
     const main = html`<div class="ab-narrow">
       <h1>Create an application</h1>
       <p class="muted">A blank application with a Home page, its own database role and a parsing schema. Add pages with the page wizards afterwards.</p>
+      <p><a class="btn" href="${BASE}/create/file">${icon('upload')} From a file</a> <span class="muted small">Or start from a spreadsheet (CSV, Excel, JSON or XML): a table with its rows, a report and form, a dashboard and a faceted search.</span></p>
       ${region('Application', html`<form method="post" action="${BASE}/apps">${csrf(s)}
         <div class="form-grid">
           ${input('name', 'Name', '', { required: true })}

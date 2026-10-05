@@ -86,7 +86,7 @@ async function definition(id: unknown) {
   return owner.one<DataLoadDefinition & { id: number; app_id: number }>('select * from meta.data_load_def where id = $1', [id]);
 }
 
-const MAX_MB = Number(process.env.DATA_LOAD_MAX_MB ?? 50);
+export const MAX_MB = Number(process.env.DATA_LOAD_MAX_MB ?? 50);
 const PREVIEW_ROWS = 10;
 
 async function uploaded(s: Session, id: string) {
@@ -113,12 +113,12 @@ const tableName = (filename: string) =>
       .slice(0, 50) || 'imported_data'
   }`;
 
-function preview(sheet: Sheet) {
+export function preview(sheet: Sheet) {
   return html`<div class="table-wrap"><table class="report"><thead><tr>${sheet.headers.map((h) => html`<th>${h}</th>`)}</tr></thead>
     <tbody>${sheet.rows.slice(0, PREVIEW_ROWS).map((r) => html`<tr>${r.map((v) => html`<td>${v === null ? html`<span class="null">null</span>` : v}</td>`)}</tr>`)}</tbody></table></div>`;
 }
 
-function resultHtml(r: LoadResult, failed: boolean) {
+export function resultHtml(r: LoadResult, failed: boolean) {
   const errors = r.errors.length
     ? html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Row</th><th>Error</th></tr></thead>
         <tbody>${r.errors.map((e) => html`<tr><td class="num">${e.row}</td><td>${e.message}</td></tr>`)}</tbody></table></div>
