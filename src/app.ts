@@ -38,6 +38,7 @@ import { restRoutes } from './runtime/rest.ts';
 import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
+import { debugOf, finishDebug } from './debug.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -48,6 +49,13 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     trustProxy: process.env.TRUST_PROXY === 'true',
   });
   securityHeaders(app);
+  // debug messages: stored after the response, for requests that have a debug log (src/debug.ts)
+  app.addHook('onError', async (req, _reply, err) => {
+    debugOf(req)?.add(1, 'error', `unhandled: ${err.message}`);
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    if (debugOf(req)) await finishDebug(req, reply.statusCode);
+  });
   // An id in the URL that isn't a number (or is too big) fails in PostgreSQL:
   // that's a page that doesn't exist, not a server error.
   app.setErrorHandler((err: Error & { code?: string }, _req, reply) => {

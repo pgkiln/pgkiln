@@ -18,7 +18,7 @@ import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, star
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
-import { debugOf, finishDebug, startDebug } from '../debug.ts';
+import { startDebug } from '../debug.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
 import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
@@ -341,13 +341,6 @@ async function renderResponse(ctx: PageContext, reply: FastifyReply, code = 200)
 }
 
 export async function runtimeRoutes(app: FastifyInstance) {
-  // debug messages: stored after the response (only requests with a debug log; src/debug.ts)
-  app.addHook('onError', async (req, _reply, err) => {
-    debugOf(req)?.add(1, 'error', `unhandled: ${err.message}`);
-  });
-  app.addHook('onResponse', async (req, reply) => {
-    if (debugOf(req)) await finishDebug(req, reply.statusCode);
-  });
   app.get<{ Params: Params }>('/a/:alias', async (req, reply) => {
     const a = await loadApp(req.params.alias);
     if (!a) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
