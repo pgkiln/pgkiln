@@ -4873,7 +4873,7 @@ describe('sprint 35 appwizard', () => {
     }
     const dev = await builder();
     for (const token of [undefined, 'wrong']) {
-      const form = token ? { __csrf: token } : {};
+      const form: Record<string, string> = token ? { __csrf: token } : {};
       assert.equal((await dev.post('/builder/create/paste', { ...form, ...PASTE })).statusCode, 403);
       assert.equal((await dev.post('/builder/create/tables', { ...form, schema: SRC, t_0: 'thing', alias: 'sec35-aw-t', name: 'x', authentication: 'none' })).statusCode, 403);
     }

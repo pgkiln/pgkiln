@@ -650,3 +650,8 @@ pre.diff { max-height: 32rem; overflow: auto; background: var(--code-bg); paddin
 tr.row-conflict > td:first-child { border-left: 3px solid var(--warn); }
 .badge.badge-warn { background: var(--warning-soft); color: var(--text); }
 .publish-buttons .btn { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: left; }
+/* (sprint 35) create application from existing tables: the list of tables and views */
+.aw-tables { list-style: none; padding: 0; margin: 0; display: grid; gap: .35rem; }
+.aw-tables li { overflow-wrap: anywhere; }
+.aw-tables small { display: block; margin-left: 1.6rem; }
+.ff-fks { list-style: none; padding: 0; display: grid; gap: .35rem; overflow-wrap: anywhere; }

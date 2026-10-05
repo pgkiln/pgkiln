@@ -35,7 +35,8 @@ interface Relation {
   relname: string;
   kind: 'table' | 'view';
   pk: string | null;
-  rows: number;
+  /** the planner's estimate (null: never analyzed) */
+  rows: string | null;
 }
 
 /** The tables, partitioned tables, views and materialized views of a schema (not partitions). */
@@ -43,7 +44,7 @@ export async function schemaRelations(schema: string): Promise<Relation[]> {
   return (
     await owner.query<Relation>(
       `select c.relname, case when c.relkind in ('v', 'm') then 'view' else 'table' end as kind,
-              meta.wizard_pk(c.oid) as pk, greatest(c.reltuples, 0)::bigint::int as rows
+              meta.wizard_pk(c.oid) as pk, case when c.reltuples >= 0 then c.reltuples::bigint end as rows
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
         where n.nspname = $1 and c.relkind in ('r', 'p', 'v', 'm') and not c.relispartition
         order by c.relkind in ('v', 'm'), c.relname`,
@@ -175,7 +176,7 @@ export async function appWizardRoutes(app: FastifyInstance) {
           ${region(`Tables and views of ${schema}`, relations.length
             ? html`<ul class="aw-tables">${relations.map(
                 (r, i) => html`<li><label class="check"><input type="checkbox" name="t_${i}" value="${r.relname}"${chosen(r, i) ? raw(' checked') : ''}> ${r.relname}</label>
-                  <small class="muted">${r.kind === 'view' ? 'view: a report' : r.pk ? `about ${r.rows} row(s): a report and form` : `about ${r.rows} row(s), no single-column primary key: a report`}</small></li>`,
+                  <small class="muted">${r.kind === 'view' ? 'view: a report' : `${r.rows === null ? '' : `about ${r.rows} row(s), `}${r.pk ? 'a report and form' : 'no single-column primary key: a report'}`}</small></li>`,
               )}</ul>`
             : html`<p class="muted">This schema has no tables or views.</p>`)}
           <div class="u-spacer"></div>
