@@ -1,0 +1,94 @@
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import { owner } from '../db.ts';
+import { html } from '../html.ts';
+import { icon } from '../icons.ts';
+import { quickSql } from '../quicksql.ts';
+import { clientIp, type Session } from '../session.ts';
+import { runAndRecord, runOptions, SCRIPT_MAX_MB } from './scripts.ts';
+import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
+
+// SQL Workshop → Quick SQL: shorthand → DDL preview, then save it as a SQL
+// script or run it (as a script, so the results per statement are kept).
+
+const EXAMPLE = `# pk: identity
+departments /auditcols
+  name /nn /unique
+  location
+  employees
+    name /nn vc100
+    email /lower /unique
+    job
+    hired_on
+    salary num(10,2)
+    status /check active, on_leave, left /default active
+view department_employees departments employees
+`;
+
+export async function quickSqlRoutes(app: FastifyInstance) {
+  const render = (s: Session, reply: FastifyReply, src: string, body: Record<string, string | undefined>, error?: string) => {
+    const { ddl, warnings } = quickSql(src);
+    const syntax = html`<details class="u-mt1"><summary>Syntax</summary><ul class="small">
+        <li>A table name on a line of its own, its columns indented below it. A table indented under another table is a child table: it gets <code>&lt;parent&gt;_id</code> referencing the parent.</li>
+        <li>Column types from the name (<code>*_id</code> bigint, <code>*_at</code> timestamptz, <code>*_date</code>/<code>*_on</code> date, <code>is_*</code> boolean, <code>price</code>/<code>amount</code> numeric, otherwise text) or written after it: <code>vc200</code>, <code>num</code>, <code>num(10,2)</code>, <code>int</code>, <code>date</code>, <code>ts</code>, <code>tstz</code>, <code>clob</code>, <code>blob</code>, <code>json</code>, <code>bool</code>, <code>uuid</code>.</li>
+        <li>Column directives: <code>/nn</code>, <code>/pk</code>, <code>/unique</code>, <code>/idx</code>, <code>/fk table</code>, <code>/check a, b</code>, <code>/between 1 and 10</code>, <code>/default value</code>, <code>/lower</code>, <code>/upper</code>; <code>[a comment]</code>. Table directive: <code>/auditcols</code>.</li>
+        <li>Settings: <code># pk: identity | seq | guid | none</code>, <code># schema: name</code>, <code># prefix: xx</code>, <code># drop: true</code>, <code># auditcols: true</code>, or <code># settings = { pk: "guid", schema: "app" }</code>.</li>
+        <li><code>view name table1 table2</code>: a view joining the tables by their foreign keys. <code>--</code> starts a comment.</li></ul></details>`;
+    const main = html`<form method="post" action="${BASE}/sql/quick">${csrf(s)}
+      ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
+      <div class="qs-columns">
+        ${region('Quick SQL', html`<label class="sr-only" for="f_source">Quick SQL</label>
+          <textarea id="f_source" name="source" class="code" rows="22" spellcheck="false">${src}</textarea>
+          <div class="buttons"><button class="btn" name="action" value="preview">${icon('play')} Generate SQL</button></div>${syntax}`)}
+        ${region('PostgreSQL', html`${warnings.length
+            ? html`<div class="alert alert-error" role="alert"><ul class="u-m0">${warnings.map((w) => html`<li>Line ${w.line}: ${w.message}</li>`)}</ul></div>`
+            : ''}
+          <pre class="source ddl" tabindex="0" aria-label="Generated SQL">${ddl}</pre>`)}
+      </div>
+      <div class="u-spacer"></div>
+      ${region('Save or run', html`<div class="form-grid"><div class="field"><label class="label" for="f_name">Script name</label>
+          <input id="f_name" name="name" value="${body.name ?? 'Quick SQL'}" maxlength="200"></div></div>
+        ${runOptions(body)}
+        <div class="buttons"><button class="btn" name="action" value="save">${icon('file')} Save as script</button>
+          <button class="btn btn-hot" name="action" value="run">${icon('play')} Run</button></div>`)}
+    </form>`;
+    return send(reply, s, shell(s, 'Quick SQL', [['SQL Workshop', `${BASE}/sql`], ['Quick SQL']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('quicksql')}${main}`, 'sql'));
+  };
+
+  app.get(`${BASE}/sql/quick`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    return render(s, reply, EXAMPLE, {});
+  });
+
+  app.post(`${BASE}/sql/quick`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = req.body ?? {};
+    const src = (b.source ?? '').replace(/\r\n/g, '\n');
+    if (Buffer.byteLength(src) > 1024 * 1024) {
+      reply.code(422);
+      return render(s, reply, '', b, 'The Quick SQL is larger than 1 MB.');
+    }
+    if (b.action !== 'save' && b.action !== 'run') return render(s, reply, src, b);
+    const { ddl } = quickSql(src);
+    const content = `-- Generated by Quick SQL\n${src
+      .split('\n')
+      .map((l) => `-- ${l}`.trimEnd())
+      .join('\n')}\n\n${ddl}`;
+    if (Buffer.byteLength(content) > SCRIPT_MAX_MB * 1024 * 1024) {
+      reply.code(422);
+      return render(s, reply, src, b, 'The generated script is too large.');
+    }
+    const name = (b.name ?? '').trim().slice(0, 200) || 'Quick SQL';
+    if (b.action === 'run') {
+      const { id } = await runAndRecord(s, clientIp(req), { scriptId: null, name, content: ddl, stopOnError: b.on_error !== 'continue', transaction: b.transaction === 'true' });
+      return back(reply, s, `${BASE}/sql/scripts/runs/${id}`);
+    }
+    let unique = name;
+    for (let n = 2; await owner.one('select 1 from meta.sql_script where name = $1', [unique]); n++) unique = `${name} (${n})`;
+    const r = await owner.one(`insert into meta.sql_script (name, content, created_by, updated_by) values ($1, $2, $3, $3) returning id`, [unique, content, s.username]);
+    flash(s, `Saved as script “${unique}”.`);
+    return back(reply, s, `${BASE}/sql/scripts/${r!.id}`);
+  });
+}
+
