@@ -988,3 +988,33 @@ push, check CI with `gh run list -R NickVrgr/Postgresql_APEX`.
 **Result (2026-10-05, v0.22.0):** keyset paging (`"keyset": [...]`, signed `r<id>_k`), report PDFs from a cursor in
 batches (`PDF_MAX_ROWS`), streamed REST collections, authentication type `database` (`src/dbauth.ts`, migration 037).
 Tests 527 + 8 skipped, e2e 78/78. HR `hr_28` was not used.
+
+## Sprint 31 (IN PROGRESS): five parity workstreams in parallel (owner: "read the handoff and the parity and keep building, multiple agents if necessary", 2026-10-05)
+
+Branch `sprint-31` from `main` (v0.22.0). Same set-up as sprint 26: five agents in git worktrees under
+`../pgapex-wt/<name>`, branch `sprint-31-<name>`, each with its own `postgres:17` container (`docker run`, not compose)
+and app port in the worktree's `.env`; `node_modules` is a symlink (remove it with `rm`, never `rm -r`, before
+`git worktree remove`). Rules for the agents: `docs/development/sprint-31-agent-rules.md`. AI features stay out
+(owner's decision on provider and API keys is pending).
+
+| Worktree / branch | Gaps (parity matrix) | Container, ports | Reserved |
+|---|---|---|---|
+| `grid` / `sprint-31-grid` | Interactive grid: aggregates, frozen columns, column reorder/resize/hide, saved grid reports per user, master-detail (a detail grid/report following the selected master row), row actions menu, copy/paste of cells | `pgapex-grid`, 5441, app 3111 | migration 038, `hr_28`, HR page 27 |
+| `logic` / `sprint-31-logic` | Page processes: download (file from a query/bytea), execution chains (child processes, optionally in the background), workflow processes (start, terminate); branches: function returning a URL, to another app; dynamic action event "dialog closed" | `pgapex-logic`, 5442, 3112 | 039, `hr_29`, page 28 |
+| `i18n` / `sprint-31-i18n` | Number format masks (report columns, items, charts), automatic time zone (browser time zone into the session, timestamptz shown in it), built-in runtime messages in German, French and Spanish | `pgapex-i18n`, 5443, 3113 | 040, `hr_30`, page 29 |
+| `workshop` / `sprint-31-workshop` | SQL Workshop: SQL scripts (saved, run, results per statement), Quick SQL (shorthand → DDL), a simple query builder; Data Workshop: XML loading, saved data load definitions | `pgapex-workshop`, 5444, 3114 | 041, `hr_31` (only if useful) |
+| `builder` / `sprint-31-builder` | Custom authentication (a PL/pgSQL function), generic Lists (shared component + list region), page locks and developer comments, supporting objects (install/upgrade/deinstall scripts in the export) | `pgapex-builder`, 5445, 3115 | 042, `hr_32`, page 31 |
+
+Several workstreams may redefine `meta.export_app`/`meta.import_app` (latest definitions: 034): the coordinator writes
+migration **043** combining all changes after merging.
+
+**How to resume after a session ends:** `docker start pgapex-grid pgapex-logic pgapex-i18n pgapex-workshop
+pgapex-builder pgapex-db`; per worktree `git -C ../pgapex-wt/<n> log --oneline sprint-31..` and `git status`. For an
+unfinished one, launch an agent: "Read `docs/development/sprint-31-agent-rules.md` and follow it. Worktree
+`../pgapex-wt/<n>`, branch `sprint-31-<n>`, DB `pgapex-<n>` port <db>, app port <app>, reserved migration <m>, HR
+`hr_<x>` page <p>. Continue the uncommitted/wip work for the gaps in the table above." Then finish like sprint 26
+(merge order: i18n, workshop, grid, logic, builder; migration 043; tsc, db:reset + test, e2e, upgrade test from v0.22.0;
+parity rows + counts, CHANGELOG 0.23.0, SECURITY.md, `.env.example`, version, CI matrix + v0.23.0, chapter 12 version
+line; merge, tag, push; remove worktrees, branches and containers).
+
+**Workstream reports:** (filled in as agents finish)
