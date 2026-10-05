@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 35 released as v0.27.0; sprint 36 (AI): item 1 done, items 2–4 running in worktree `sprint-36-ai2`). Sprints 3–35 are merged into `main` and released as **v0.27.0** (migrations 001–058 are released: add 060+ (059 was reserved and not used); 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_40` are released.
+Last updated: 2026-10-05 (sprint 35 released as v0.27.0; sprint 36 (AI): all four items done and merged into `sprint-36`). Sprints 3–35 are merged into `main` and released as **v0.27.0** (migrations 001–058 are released: add 060+ (059 was reserved and not used); 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_40` are released.
 
 ## Project in one paragraph
 
@@ -1209,6 +1209,15 @@ and follow it in mode B. Sprint 36, items <n>… Worktree `../pgapex-wt/ai2`, br
   Tests: npm test 992 (982 pass, 10 skipped), e2e 114/114, all against `test/ai-mock.ts`.
   **Open security item:** `meta.app_id()` is settable by app SQL, so `meta.ai_generate` / `meta.web_request` can be
   queued under another app's id (pre-existing for web requests; noted in SECURITY.md). Fix both together in a later item.
+- **Items 2–4 (done, worktree `ai2`, fast-forwarded into `sprint-36`, worktree and `pgapex-ai2` removed):**
+  item 2 (061, `hr_42`, page 38 "HR assistant"): region `ai_assistant` (conversation per session in
+  `meta.ai_conversation`, context queries, SQL and REST tools with checked arguments, per-tool authz) and NL2IR
+  (`"ai_filter"` on report regions → normal `r<id>_f/q/s/d` parameters); `src/ai/chat.ts` (tool loop for both
+  providers). Item 3 (062): `meta.builder_ai`, SQL Workshop → AI (SQL from a question, explain, describe tables in
+  `meta.ai_table_note`), "Create pages with AI" on the app dashboard. Item 4 (063): `src/blueprint.ts`, Create → From a
+  blueprint, `meta.blueprint`. All new tables KEPT/NOT_EXPORTED; export_app/import_app not redefined; no env vars.
+  Coordinator: `logUsage` shared from `src/ai/service.ts` (was copied in `chat.ts`), usage sources widened.
+  Tests after merge (pgapex-ci): npm test 1038 (1028 pass, 10 skipped), e2e 128/128.
 
 - **1 automations: DONE** (4 `wip:` commits bcfec61..14943e4, pushed). Migration `044_automation_actions.sql`:
   `meta.automation_action` (automation name, seq, name, code, condition with row binds; FK on `(app_id,
@@ -1459,9 +1468,9 @@ sprint 37 (Workspaces, a new default style like "Iris", 🟡 rows) without askin
 | # | Item (parity rows) | Reserved | Status |
 |---|---|---|---|
 | 1 | **AI foundation + *Generate Text with AI* + structured outputs** (row "Generate Text with AI process, structured outputs"): `src/ai/` provider interface (Claude, OpenAI), AI services in the builder's administration (provider, model, encrypted key, base URL for admins, enabled per app, token/request limits), usage log; page process *Generate text with AI* (system prompt, user prompt with `&ITEM.` substitutions, output into an item; structured output with a JSON schema mapping fields to items); a dynamic action to run it without a full page submit; usage per app in the builder | 060, `hr_41`, HR page 37 | **done** (e957689) |
-| 2 | **AI assistant, NL2IR, agents and tools** (row "AI assistant, natural-language reports (NL2IR), AI agents and tools"): a chat region (conversation per session, system prompt, optional RAG over developer-chosen queries run as the app role), agents with tools the developer defines (SQL queries/functions run as the app role with bound arguments, REST data sources), natural language → interactive report filters/sorts on a report region | 061, `hr_42`, page 38 | |
-| 3 | **App Builder AI** (row "AI assistant, pages from natural language, describe tables for LLMs"): describe tables/columns for LLMs (annotations kept as comments/meta), create page(s) from a description (proposes `meta.generate_page` calls the developer confirms), SQL Workshop: SQL from a question (shown, never run automatically), explain a query/error | 062 | |
-| 4 | **Blueprints / spec-driven development** (row "Blueprints, spec-driven development"): a JSON blueprint (tables, pages, navigation, sample data) → a new app; optionally drafted by AI from a description, always reviewed before creation | 063 | |
+| 2 | **AI assistant, NL2IR, agents and tools** (row "AI assistant, natural-language reports (NL2IR), AI agents and tools"): a chat region (conversation per session, system prompt, optional RAG over developer-chosen queries run as the app role), agents with tools the developer defines (SQL queries/functions run as the app role with bound arguments, REST data sources), natural language → interactive report filters/sorts on a report region | 061, `hr_42`, page 38 | **done** (sprint-36-ai2) |
+| 3 | **App Builder AI** (row "AI assistant, pages from natural language, describe tables for LLMs"): describe tables/columns for LLMs (annotations kept as comments/meta), create page(s) from a description (proposes `meta.generate_page` calls the developer confirms), SQL Workshop: SQL from a question (shown, never run automatically), explain a query/error | 062 | **done** (sprint-36-ai2) |
+| 4 | **Blueprints / spec-driven development** (row "Blueprints, spec-driven development"): a JSON blueprint (tables, pages, navigation, sample data) → a new app; optionally drafted by AI from a description, always reviewed before creation | 063 | **done** (sprint-36-ai2) |
 
 **Item reports:** (filled in as agents finish)
 

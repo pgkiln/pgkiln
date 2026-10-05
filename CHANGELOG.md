@@ -15,6 +15,19 @@ All notable changes to this project are documented here. The format follows
   items (a schema built from the items, or your own). A dynamic action runs it without a page submit.
   From SQL: `meta.ai_generate`, `meta.ai_result`, `meta.ai_available`. Builder: AI usage per application.
   HR example page 37 "Leave assistant". Prompts, including item values, are sent to the chosen provider.
+- **AI assistant region, agents and tools, natural-language report filters** (migration 061): region type
+  `ai_assistant` with a conversation per session, context queries (RAG over developer queries, run as the
+  app's role, read-only) and tools the model may call: SQL with bound, checked arguments (read-only unless
+  marked as writing, row limit and timeout) and REST data sources, each optionally behind an authorization
+  scheme. Report regions get an "Ask in your own words" box (NL2IR) that turns a question into the report's
+  normal filters, search and sort. HR example page 38 "HR assistant".
+- **App Builder AI** (migration 062): SQL Workshop → AI (SQL from a question, shown and never run
+  automatically; explain a query or an error; describe tables and columns for LLMs, optionally as
+  `COMMENT ON`, with AI drafts), and **Create pages with AI** on the application dashboard (proposed pages
+  the developer reviews before they are generated). The builder's AI service is chosen by administrators.
+- **Blueprints** (migration 063): Create → From a blueprint: a JSON spec of tables, pages, navigation and
+  sample data, optionally drafted by AI, always reviewed, then created as a new application in one
+  transaction. Blueprints can be saved.
 
 ## [0.27.0] - 2026-10-05
 
