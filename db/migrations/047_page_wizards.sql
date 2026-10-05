@@ -226,7 +226,9 @@ begin
            where not is_pk and not is_unique and column_name is distinct from v_display
              and (fk_table is not null
                   or kind = 'boolean'
-                  or (kind = 'text' and (distinct_values is null or distinct_values between 1 and 50))
+                  -- text with few values (statistics), or, without statistics, not a free text by its name
+                  or (kind = 'text' and (distinct_values between 1 and 50
+                                         or (distinct_values is null and column_name !~ '(note|descr|comment|remark|body|text|address|mail|url|phone|summary|password|hash|token)')))
                   or kind in ('date', 'timestamp')
                   or (kind = 'number' and column_name !~ '(^|_)(id|no|lat|lng|lon|latitude|longitude)$'))
            order by rank, ordinal limit 6) f), '[]'));
