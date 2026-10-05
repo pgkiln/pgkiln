@@ -3896,3 +3896,125 @@ describe('sprint 32 item 4: create page wizards', () => {
     assert.equal(on.key, 'id');
   });
 });
+
+describe('sprint 32 item 5: create application from a file', () => {
+  const ALIASES = ['sec32-ff', 'sec32-ff-meta', 'sec32-ff-blank'];
+  const DEV = 'sec32_ff_dev';
+  const DEV_PW = 'Sec32-ff-developer!';
+  const CSV = 'Name,"<script>alert(1)</script>",Amount\nAnn,<b>x</b>,5\nBob,y,7\n';
+  const cleanup = async () => {
+    for (const alias of ALIASES) {
+      const schema = alias.replace(/-/g, '_');
+      await owner.query('delete from meta.app where alias = $1', [alias]);
+      await owner.query(`drop schema if exists ${schema} cascade`);
+      if ((await owner.query('select 1 from pg_roles where rolname = $1', [`app_${schema}`])).rowCount) {
+        await owner.query(`drop owned by app_${schema}`);
+        await owner.query(`drop role app_${schema}`);
+      }
+    }
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  };
+  const builder = async (user = 'admin', password = 'admin') => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password })).statusCode, 303);
+    await b.get('/builder/create/file');
+    return b;
+  };
+  const file = { file: { name: 'sec.csv', type: 'text/csv', data: Buffer.from(CSV) } };
+  const step2 = async (b: FileBrowser) => {
+    const res = await b.upload('/builder/create/file', { headers: 'true' }, file);
+    assert.equal(res.statusCode, 303);
+    const url = res.headers.location as string;
+    const page = await b.get(url);
+    return { url, body: page.body };
+  };
+  const base = { h: '1', name: 'Sec ff', alias: 'sec32-ff', schema: '', authentication: 'none', table: 'sec', name_0: 'name', type_0: 'text', name_1: 'note', type_1: 'text', name_2: 'amount', type_2: 'integer' };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
+  });
+  after(cleanup);
+
+  test('needs a builder login (an application session is not enough) and the CSRF token on both steps', async () => {
+    const king = new FileBrowser(app);
+    await king.login('king');
+    for (const b of [new FileBrowser(app), king]) {
+      assert.equal((await b.get('/builder/create/file')).statusCode, 302);
+      assert.equal((await b.upload('/builder/create/file', { headers: 'true' }, file)).statusCode, 302);
+    }
+    const dev = await builder();
+    const good = dev.lastCsrf;
+    dev.lastCsrf = 'wrong';
+    assert.equal((await dev.upload('/builder/create/file', { headers: 'true' }, file)).statusCode, 403);
+    dev.lastCsrf = good;
+    const { url } = await step2(dev);
+    for (const token of [undefined, 'wrong']) assert.equal((await dev.post(url, token ? { __csrf: token, ...base } : base)).statusCode, 403);
+    assert.equal((await new FileBrowser(app).post(url, base)).statusCode, 302);
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec32-ff'`)).rowCount, 0);
+  });
+
+  test("another developer's session can't use the uploaded file", async () => {
+    const admin = await builder();
+    const { url } = await step2(admin);
+    const other = await builder(DEV, DEV_PW);
+    const get = await other.get(url);
+    assert.equal(get.statusCode, 302);
+    assert.equal(get.headers.location, '/builder/create/file');
+    const post = await other.submit(url, base);
+    assert.equal(post.statusCode, 303);
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec32-ff'`)).rowCount, 0);
+    for (const bad of ['/builder/create/file/not-a-uuid', "/builder/create/file/00000000-0000-0000-0000-000000000000'"])
+      assert.equal((await admin.get(bad)).statusCode, 302);
+  });
+
+  test("file headings and values are escaped; table and column names never become SQL", async () => {
+    const dev = await builder();
+    const { url, body } = await step2(dev);
+    assert.doesNotMatch(body, /<script>alert\(1\)<\/script>/);
+    assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(body, /name="name_1" value="script_alert_1_script"/, 'a heading becomes a plain identifier');
+    for (const [form, error] of [
+      [{ table: 'sec; drop table meta.app; --' }, /lower-case name/],
+      [{ table: 'meta.app' }, /without a schema/],
+      [{ name_0: 'name text); drop table meta.app; --' }, /is not a valid column name/],
+      [{ type_2: 'int); drop table meta.app; --' }, /Unknown column type/],
+      [{ alias: "x'; drop table meta.app; --" }, /The alias must start with a letter/],
+    ] as [Record<string, string>, RegExp][]) {
+      const res = await dev.submit(url, { ...base, ...form });
+      assert.equal(res.statusCode, 422, JSON.stringify(form));
+      assert.match(res.body, error);
+    }
+    assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
+    const ok = await dev.submit(url, base);
+    assert.equal(ok.statusCode, 200);
+    // the values are data: shown escaped by the generated report
+    const page = (await new FileBrowser(app).get('/a/sec32-ff/2')).body;
+    assert.match(page, /&lt;b&gt;x&lt;\/b&gt;/);
+    assert.doesNotMatch(page, /<b>x<\/b>/);
+  });
+
+  test("the new app's role can use only its own schema; pgapex's and the system's schemas are refused", async () => {
+    const priv = await owner.one(
+      `select has_table_privilege('app_sec32_ff', 'sec32_ff.sec', 'select,insert,update,delete') as own,
+              has_table_privilege('app_sec32_ff', 'meta.account', 'select') as meta,
+              has_schema_privilege('app_sec32_ff', 'hr', 'usage') as other,
+              pg_has_role('pgapex_runtime', 'app_sec32_ff', 'member') as runtime`,
+    );
+    assert.deepEqual(priv, { own: true, meta: false, other: false, runtime: true });
+    const dev = await builder();
+    const { url } = await step2(dev);
+    for (const schema of ['meta', 'pg_catalog', 'information_schema', 'PG_TOAST']) {
+      const res = await dev.submit(url, { ...base, alias: 'sec32-ff-meta', schema });
+      assert.equal(res.statusCode, 422, schema);
+      assert.match(res.body, /can&#39;t be the parsing schema/);
+    }
+    // the blank application wizard refuses them too
+    await dev.get('/builder/create');
+    const blank = await dev.submit('/builder/apps', { name: 'Blank', alias: 'sec32-ff-blank', schema: 'meta', authentication: 'none' });
+    assert.equal(blank.statusCode, 303);
+    assert.equal(blank.headers.location, '/builder/create');
+    assert.equal((await owner.query(`select 1 from meta.app where alias in ('sec32-ff-meta', 'sec32-ff-blank')`)).rowCount, 0);
+    assert.equal((await owner.one(`select has_schema_privilege('app_sec32_ff_meta', 'meta', 'usage') as x where exists (select 1 from pg_roles where rolname = 'app_sec32_ff_meta')`))?.x ?? false, false);
+  });
+});
