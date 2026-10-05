@@ -495,7 +495,35 @@
     if (count) count.textContent = shown === rows.length ? `${rows.length} application${rows.length === 1 ? '' : 's'}` : `${shown} of ${rows.length}`;
   });
 
+  // Theme Roller: the style form's values on the preview (CSS variables through the CSSOM, which the CSP allows)
+  function setupThemePreview() {
+    const preview = document.querySelector('[data-tr-preview]');
+    const form = document.querySelector('form[data-tr-form]');
+    if (!preview || !form) return;
+    let lists = {};
+    try {
+      lists = JSON.parse(preview.dataset.trPreview);
+    } catch {}
+    const own = (name) => form.elements[`${name}_own`]?.checked;
+    const hex = (v) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : '');
+    const from = (list, key) => (key && Object.prototype.hasOwnProperty.call(list || {}, key) ? list[key] : '');
+    const set = (name, value) => (value ? preview.style.setProperty(name, value) : preview.style.removeProperty(name));
+    const update = () => {
+      const accent = own('accent') ? hex(form.elements.accent?.value) : '';
+      set('--accent', accent);
+      set('--accent-soft', accent ? `color-mix(in srgb, ${accent} 14%, #ffffff)` : '');
+      set('--header', own('header') ? hex(form.elements.header?.value) : '');
+      set('--font', from(lists.fonts, form.elements.font?.value));
+      set('--font-size', from(lists.sizes, form.elements.font_size?.value));
+      set('--radius', from(lists.radii, form.elements.radius?.value));
+    };
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    update();
+  }
+
   function init() {
+    setupThemePreview();
     setupTabs();
     for (const tree of document.querySelectorAll('.pd-tree')) setupTree(tree);
     setupProperties();

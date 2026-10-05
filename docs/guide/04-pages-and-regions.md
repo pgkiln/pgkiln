@@ -49,7 +49,7 @@ only when true) and `authz` (an authorization scheme).
 
 ### Template options
 
-Like APEX's *Template Options*, regions and buttons have **Template options** (Page Designer, group
+Like APEX's *Template Options*, regions, buttons and items have **Template options** (Page Designer, group
 *Appearance*): checkboxes for CSS classes from a fixed list per component type, kept in the
 component's `template_options` column (text[]) and added to its `class`. Only classes from the list
 are written into the page; anything else (an older export, a hand edit) is ignored. The styles are
@@ -76,6 +76,18 @@ in `public/app.css`, and follow the app's [style variant](14-globalization.md#st
 | Outline | `to-outline` | Transparent with an accent-coloured border and text |
 | Looks like a link | `to-link` | No frame, underlined accent text |
 | Success / Danger | `to-success`, `to-danger` | Green or red button |
+
+| Item option | Class | Effect |
+|---|---|---|
+| Stretch | `to-stretch` | The item takes the whole row of the form grid |
+| Large field | `to-large` | A larger field and text |
+| Quiet | `to-quiet` | No border or background until the field has the focus |
+| Bold value | `to-bold` | The value in bold (also for display items) |
+| Hide the label | `to-hide-label` | The label is hidden visually but kept for screen readers |
+
+**Report columns** get a **Display** choice in the region's *Report settings* (one per column): *Bold*
+(`to-col-bold`), *Muted*, *No wrapping*, *Monospace*, *Right-aligned* or *Centred*, kept in the region's config as
+`"column_options": {"name": ["to-col-mono"]}` and only taken from that list.
 
 In SQL: `update meta.region set template_options = '{to-accent,to-compact}' where id = 12;` The
 database only checks the shape (at most 12 names of lower case letters, digits and `-`).

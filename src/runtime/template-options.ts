@@ -33,7 +33,26 @@ export const BUTTON_OPTIONS: readonly TemplateOption[] = [
   { cls: 'to-danger', label: 'Danger (red)' },
 ];
 
-export const TEMPLATE_OPTIONS = { region: REGION_OPTIONS, button: BUTTON_OPTIONS } as const;
+/** (066) items: on the item's field wrapper */
+export const ITEM_OPTIONS: readonly TemplateOption[] = [
+  { cls: 'to-stretch', label: 'Stretch (the whole row)' },
+  { cls: 'to-large', label: 'Large field' },
+  { cls: 'to-quiet', label: 'Quiet (no border until focused)' },
+  { cls: 'to-bold', label: 'Bold value' },
+  { cls: 'to-hide-label', label: 'Hide the label (kept for screen readers)' },
+];
+
+/** (0.29) report columns: on the column's cells (region config "column_options") */
+export const COLUMN_OPTIONS: readonly TemplateOption[] = [
+  { cls: 'to-col-bold', label: 'Bold' },
+  { cls: 'to-col-muted', label: 'Muted' },
+  { cls: 'to-col-nowrap', label: 'No wrapping' },
+  { cls: 'to-col-mono', label: 'Monospace' },
+  { cls: 'to-col-right', label: 'Right-aligned' },
+  { cls: 'to-col-center', label: 'Centred' },
+];
+
+export const TEMPLATE_OPTIONS = { region: REGION_OPTIONS, button: BUTTON_OPTIONS, item: ITEM_OPTIONS, column: COLUMN_OPTIONS } as const;
 
 /** The known classes among `chosen`, in the list's order, as " a b" (or ''). */
 export function templateClasses(kind: keyof typeof TEMPLATE_OPTIONS, chosen: unknown): string {

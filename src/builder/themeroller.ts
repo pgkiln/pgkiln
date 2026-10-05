@@ -30,20 +30,37 @@ async function updateTheme(id: string, change: (theme: Theme) => Theme | string)
 const label = (list: Record<string, { label: string }>, k: string | undefined) => (k && list[k] ? list[k].label : '- as the base -');
 
 function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVariant | null, base: Theme) {
-  const colour = (name: 'accent' | 'header', title: string, fallback: string) => {
+  const colour = (name: 'accent' | 'header' | 'accent_dark' | 'header_dark', title: string, fallback: string) => {
     const own = !!st?.[name];
     const value = st?.[name] ?? (typeof base[name] === 'string' && HEX.test(base[name] as string) ? (base[name] as string) : fallback);
     return html`<div class="field"><label class="label" for="f_${name}">${title}</label>
       <input id="f_${name}" name="${name}" type="color" value="${value}">
       <label class="check"><input type="checkbox" name="${name}_own" value="true"${own ? raw(' checked') : ''}> Use this colour (else the base colour)</label></div>`;
   };
+  const baseOf = BASE_STYLES[baseStyleOf(base)];
   const choices = (list: Record<string, { label: string }>) => [['', '- as the base -'] as [string, string], ...Object.entries(list).map(([k, v]): [string, string] => [k, v.label])];
-  return html`<form method="post" action="${BASE}/apps/${appId}/theme/styles">${csrf(s)}
+  // the live preview (builder.js): the style form's values as CSS variables on a sample of the application's look
+  const lists = JSON.stringify({
+    fonts: Object.fromEntries(Object.entries(FONTS).map(([k, v]) => [k, v.css])),
+    sizes: Object.fromEntries(Object.entries(FONT_SIZES).map(([k, v]) => [k, v.css])),
+    radii: Object.fromEntries(Object.entries(RADII).map(([k, v]) => [k, v.css])),
+  });
+  const preview = html`<div class="tr-preview tr-preview-${baseStyleOf(base)}" data-tr-preview="${lists}" aria-label="Preview of the style">
+    <div class="tr-preview-header">${icon('menu')}<span>Preview</span></div>
+    <div class="tr-preview-body">
+      <section class="region region-standard"><header class="region-header"><h2>A region</h2></header>
+        <div class="region-body"><p class="u-mt0">Text with a <a href="#tr-preview-link" id="tr-preview-link">link</a> and a <span class="tc-badge tc-badge-info">badge</span>.</p>
+          <div class="field"><label class="label" for="tr-preview-input">A field</label><input id="tr-preview-input" value="Value" readonly></div>
+          <div class="buttons"><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-hot">Save</button></div></div></section>
+    </div></div>`;
+  return html`${preview}<form method="post" action="${BASE}/apps/${appId}/theme/styles" data-tr-form>${csrf(s)}
     ${st ? html`<input type="hidden" name="original" value="${st.name}">` : ''}
     <div class="form-grid">
       ${input('name', 'Name', st?.name ?? '', { required: true, placeholder: 'e.g. Ocean', help: 'Shown to users who may choose a style. 1–30 letters, digits, spaces, - or _.' })}
-      ${colour('accent', 'Accent colour', '#0b63c5')}
-      ${colour('header', 'Header colour', '#13294b')}
+      ${colour('accent', 'Accent colour', baseOf.accent)}
+      ${colour('header', 'Header colour', baseOf.header)}
+      ${colour('accent_dark', 'Accent colour in dark mode', '#a59cff')}
+      ${colour('header_dark', 'Header colour in dark mode', '#0d0c1a')}
       ${select('font', 'Font', st?.font ?? '', choices(FONTS))}
       ${select('font_size', 'Font size', st?.font_size ?? '', choices(FONT_SIZES))}
       ${select('radius', 'Corners', st?.radius ?? '', choices(RADII))}
@@ -69,11 +86,11 @@ export async function themeRollerRoutes(app: FastifyInstance) {
           <p class="muted u-mt0">Several saved styles for this application (APEX: theme styles). The base style
             (${BASE_STYLES[baseStyleOf(a.theme)].label}) and colours under <a href="${BASE}/apps/${a.id}/settings">Settings → Theme</a>
             are what users see without a style; each style below changes the colours and may set a font, font size and corners.
-            Colours apply to the light theme; fonts, sizes and corners to both.</p>
+            The colours apply to the light theme, the dark-mode colours to the dark theme (pick light colours there); fonts, sizes and corners to both.</p>
           ${styles.length
-            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Accent</th><th>Header</th><th>Font</th><th>Font size</th><th>Corners</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Accent</th><th>Header</th><th>Dark accent</th><th>Dark header</th><th>Font</th><th>Font size</th><th>Corners</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
                 ${styles.map((x) => html`<tr><td>${x.name}${theme.style === x.name ? html` <span class="badge">default</span>` : ''}</td>
-                  <td>${swatch(x.accent)}</td><td>${swatch(x.header)}</td><td>${label(FONTS, x.font)}</td><td>${label(FONT_SIZES, x.font_size)}</td><td>${label(RADII, x.radius)}</td>
+                  <td>${swatch(x.accent)}</td><td>${swatch(x.header)}</td><td>${swatch(x.accent_dark)}</td><td>${swatch(x.header_dark)}</td><td>${label(FONTS, x.font)}</td><td>${label(FONT_SIZES, x.font_size)}</td><td>${label(RADII, x.radius)}</td>
                   <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/theme?edit=${encodeURIComponent(x.name)}">${icon('edit')} Edit</a>
                     <form method="post" action="${BASE}/apps/${a.id}/theme/styles/delete" class="u-inline">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
                       <button class="btn btn-sm btn-danger" data-confirm="Delete style ${x.name}?">Delete</button></form></td></tr>`)}
@@ -110,6 +127,8 @@ export async function themeRollerRoutes(app: FastifyInstance) {
       name: b.name, font: b.font, font_size: b.font_size, radius: b.radius,
       accent: b.accent_own === 'true' ? b.accent : undefined,
       header: b.header_own === 'true' ? b.header : undefined,
+      accent_dark: b.accent_dark_own === 'true' ? b.accent_dark : undefined,
+      header_dark: b.header_dark_own === 'true' ? b.header_dark : undefined,
     });
     if (typeof parsed === 'string') {
       flash(s, parsed, 'error');

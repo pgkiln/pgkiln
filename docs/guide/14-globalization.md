@@ -215,10 +215,15 @@ application. The base style and colours under Settings → Theme are the *Standa
 
 | Property | Values |
 |---|---|
-| Accent colour, header colour | `#rrggbb` (or "as the base"); like the base colours they apply to the light theme, dark mode keeps its own palette |
+| Accent colour, header colour | `#rrggbb` (or "as the base"), for the light theme |
+| Accent and header colour in dark mode | `#rrggbb` (or the base style's dark palette), for the dark theme; choose light colours (text on the accent is dark there) |
 | Font | *System* (default), *Humanist sans*, *Geometric sans*, *Serif*, *Rounded*, *Monospace* (font stacks of fonts on the device; nothing is downloaded) |
 | Font size | 14, 15 (default), 16 or 17 px |
 | Corners | Square, 4, 8 (default) or 14 px, for regions, buttons and fields |
+
+The page shows a **live preview** of the style you are adding or editing (colours, font, size and corners on a
+sample region, field and buttons, as you change them; without JavaScript the preview shows the base style).
+Settings → Theme has the same dark-mode colours for the base theme.
 
 *Default style* is what everyone sees; with **Users may choose a style** (APEX: *Enable End Users
 to Choose Theme Style*) the user menu and My account list the styles (*Standard* plus each style).

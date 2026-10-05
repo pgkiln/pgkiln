@@ -340,6 +340,9 @@ export async function builderRoutes(app: FastifyInstance) {
               ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['standard', 'Standard (pgapex until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
               ${input('accent', 'Accent colour', a.theme?.accent ?? BASE_STYLES[baseStyleOf(a.theme)].accent, { type: 'color' })}
               ${input('header', 'Header colour', a.theme?.header ?? BASE_STYLES[baseStyleOf(a.theme)].header, { type: 'color' })}
+              ${(['accent_dark', 'header_dark'] as const).map((k) => html`<div class="field"><label class="label" for="f_${k}">${k === 'accent_dark' ? 'Accent colour in dark mode' : 'Header colour in dark mode'}</label>
+                <input id="f_${k}" name="${k}" type="color" value="${a.theme?.[k] ?? (k === 'accent_dark' ? '#a59cff' : '#0d0c1a')}">
+                <label class="check"><input type="checkbox" name="${k}_own" value="true"${a.theme?.[k] ? raw(' checked') : ''}> Use this colour (else the base style's dark palette)</label></div>`)}
               ${select('nav', 'Navigation menu', a.theme?.nav ?? 'side', [['side', 'Side (collapsible)'], ['top', 'Top bar']], 'On tablets and phones the menu is always a drawer.')}
               ${select('nav_list', 'Navigation menu list', a.nav_list ?? '', listChoices(a.nav_list, '- the navigation entries -'), 'A list (Shared Components → Lists) shown as the navigation menu instead of the navigation entries.')}
               ${select('navbar_list', 'Navigation bar list', a.navbar_list ?? '', listChoices(a.navbar_list, '- none -'), 'A list shown as links in the header, next to the user menu.')}
@@ -388,7 +391,7 @@ export async function builderRoutes(app: FastifyInstance) {
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7,
                 -- (053) the Theme Roller's styles stay: only the keys of this form are replaced
-                theme = (theme - 'accent' - 'header' - 'nav' - 'mode' - 'user_choice' - 'base') || $8::jsonb,
+                theme = (theme - 'accent' - 'header' - 'nav' - 'mode' - 'user_choice' - 'base' - 'accent_dark' - 'header_dark') || $8::jsonb,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
                 header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
@@ -397,6 +400,8 @@ export async function builderRoutes(app: FastifyInstance) {
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            base: baseStyleOf({ base: b.base }) === 'iris' ? 'iris' : undefined,
+           accent_dark: b.accent_dark_own === 'true' && /^#[0-9a-f]{6}$/i.test(b.accent_dark ?? '') ? b.accent_dark!.toLowerCase() : undefined,
+           header_dark: b.header_dark_own === 'true' && /^#[0-9a-f]{6}$/i.test(b.header_dark ?? '') ? b.header_dark!.toLowerCase() : undefined,
            // a colour equal to a base style's own is not stored, so changing the base style changes it too
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') && !Object.values(BASE_STYLES).some((x) => x.accent === b.accent!.toLowerCase()) ? b.accent : undefined,
            header: /^#[0-9a-f]{6}$/i.test(b.header ?? '') && !Object.values(BASE_STYLES).some((x) => x.header === b.header!.toLowerCase()) ? b.header : undefined,

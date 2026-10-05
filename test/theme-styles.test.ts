@@ -340,3 +340,95 @@ describe('base style Iris', () => {
     }
   });
 });
+
+describe('Theme Roller: dark-mode colours, live preview, items and report columns', () => {
+  const login = async () => {
+    const dev = new Browser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    return dev;
+  };
+
+  test('dark-mode colours are checked and written for the dark theme only', () => {
+    assert.deepEqual(parseStyle({ name: 'Night', accent_dark: '#AABBCC', header_dark: '#000000' }), { name: 'Night', accent_dark: '#aabbcc', header_dark: '#000000' });
+    assert.match(String(parseStyle({ name: 'Bad', accent_dark: 'red;}' })), /Accent colour \(dark mode\)/);
+    const css = themeCss({ accent_dark: '#ffcc00' }, { name: 'S', header_dark: '#111111', accent: '#222222' });
+    assert.match(css, /@media \(prefers-color-scheme: dark\)\{html:root:not\(\[data-theme="light"\]\)\{--accent:#ffcc00;[^}]*--header:#111111;\}\}html:root\[data-theme="dark"\]\{--accent:#ffcc00;/);
+    assert.match(css, /html:root\{--accent:#222222/, 'the light colour stays for the light theme');
+    assert.doesNotMatch(themeCss({ accent: '#123456' }, null), /prefers-color-scheme/, 'no dark rule without dark colours');
+  });
+
+  test('the Theme Roller saves dark colours only when chosen, shows them, and has a live preview', async () => {
+    const dev = await login();
+    const page = (await dev.get(`/builder/apps/${appId}/theme`)).body;
+    assert.match(page, /data-tr-preview="\{&quot;fonts&quot;:/);
+    assert.match(page, /form method="post" action="\/builder\/apps\/\d+\/theme\/styles" data-tr-form/);
+    try {
+      await dev.submit(`/builder/apps/${appId}/theme/styles`, { name: 'Night', accent_dark: '#ffcc00', accent_dark_own: 'true', header_dark: '#123123' });
+      const night = (await owner.one('select theme from meta.app where id = $1', [appId])).theme.styles.find((x: { name: string }) => x.name === 'Night');
+      assert.deepEqual(night, { name: 'Night', accent_dark: '#ffcc00' }, 'the header without "use" is left out');
+      assert.match((await dev.get(`/builder/apps/${appId}/theme`)).body, /<th>Dark accent<\/th>/);
+    } finally {
+      await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify({ accent: '#123456', styles: STYLES, style: 'Ocean', style_choice: true })]);
+    }
+  });
+
+  test('Settings → Theme keeps dark colours of the base theme when "use" is checked', async () => {
+    const dev = await login();
+    await dev.get(`/builder/apps/${appId}/settings`);
+    const form = { name: 'Theme test', alias, home_page: '1', authentication: 'none', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser', accent: '#123456' };
+    try {
+      await dev.submit(`/builder/apps/${appId}/settings`, { ...form, accent_dark: '#ddeeff', accent_dark_own: 'true', header_dark: '#010203' });
+      const t = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+      assert.equal(t.accent_dark, '#ddeeff');
+      assert.equal(t.header_dark, undefined);
+      assert.match((await new Browser(app).get(`/a/${alias}/1`)).body, /html:root\[data-theme="dark"\]\{--accent:#ddeeff/);
+    } finally {
+      await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify({ accent: '#123456', styles: STYLES, style: 'Ocean', style_choice: true })]);
+    }
+  });
+
+  test('items: known template options on the field, "stretch" takes the whole row; old exports import', async () => {
+    assert.equal(templateClasses('item', ['to-hide-label', 'to-large', 'to-pill']), ' to-large to-hide-label');
+    const item = await owner.one(
+      `insert into meta.item (page_id, name, label, type, template_options) values ($1, 'P1_TO', 'Opt', 'text', '{to-stretch,to-quiet,evil}') returning id`,
+      [pageId],
+    );
+    try {
+      const body = (await new Browser(app).get(`/a/${alias}/1`)).body;
+      assert.match(body, /class="field field-text to-stretch to-quiet" data-item="P1_TO"[^>]*data-wide/);
+      assert.deepEqual(parseFields(COMPONENTS.item, { name: 'P1_TO', type: 'text', template_options: ['to-bold', 'x'] as unknown as string }).template_options, ['to-bold']);
+      const doc = (await owner.one('select meta.export_app($1) as d', [alias])).d;
+      assert.deepEqual(doc.pages[0].items.find((i: { name: string }) => i.name === 'P1_TO').template_options, ['to-stretch', 'to-quiet', 'evil']);
+      for (const i of doc.pages[0].items) delete i.template_options;
+      const id = (await owner.one(`select meta.import_app($1::jsonb, 'ts-s33-items') as id`, [JSON.stringify(doc)])).id;
+      try {
+        assert.deepEqual((await owner.one(`select i.template_options from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1`, [id])).template_options, []);
+      } finally {
+        await owner.query('delete from meta.app where id = $1', [id]);
+      }
+    } finally {
+      await owner.query('delete from meta.item where id = $1', [item.id]);
+    }
+  });
+
+  test('report columns: the Display choice is saved from the fixed list and drawn on the cells', async () => {
+    const r = await owner.one(
+      `insert into meta.region (page_id, seq, title, type, source, config) values ($1, 20, 'Cols', 'report', $$select 1 as id, 'x' as name$$, '{"column_options": {"NAME": ["to-col-mono", "evil"]}}') returning id`,
+      [pageId],
+    );
+    try {
+      const body = (await new Browser(app).get(`/a/${alias}/1`)).body;
+      assert.match(body, /<td class="to-col-mono" data-label="Name">x<\/td>/);
+      assert.doesNotMatch(body, /evil/);
+      const dev = await login();
+      const designer = (await dev.get(`/builder/pages/${pageId}?c=region-${r.id}`)).body;
+      assert.match(designer, /<select name="opt_1" aria-label="Display of name">/);
+      const n = /name="n" value="(\d+)"/.exec(designer)![1];
+      await dev.submit(`/builder/pages/${pageId}/region/${r.id}/report-settings`, { n, col_0: 'id', col_1: 'name', shown_0: 'true', shown_1: 'true', opt_0: 'to-col-right', opt_1: 'javascript', page_size: '15' });
+      assert.deepEqual((await owner.one('select config from meta.region where id = $1', [r.id])).config.column_options, { id: ['to-col-right'] });
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [r.id]);
+    }
+  });
+});

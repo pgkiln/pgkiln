@@ -1442,6 +1442,19 @@ td.tc-cell { overflow-wrap: anywhere; }
 .region.to-hide-header > .region-header {
   position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+/* items (066) */
+.field.to-large input:not([type="checkbox"]):not([type="radio"]), .field.to-large select, .field.to-large textarea { font-size: 1.1rem; padding: 0.6rem 0.75rem; }
+.field.to-quiet input:not([type="checkbox"]):not([type="radio"]), .field.to-quiet select, .field.to-quiet textarea { border-color: transparent; background: transparent; }
+.field.to-quiet input:not([type="checkbox"]):not([type="radio"]):focus, .field.to-quiet select:focus, .field.to-quiet textarea:focus { border-color: var(--accent); background: var(--surface); }
+.field.to-bold input, .field.to-bold .display-value, .field.to-bold output { font-weight: 700; }
+.field.to-hide-label > .label, .field.to-hide-label > legend { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* report columns (region config column_options) */
+td.to-col-bold { font-weight: 700; }
+td.to-col-muted { color: var(--muted); }
+td.to-col-nowrap, th.to-col-nowrap { white-space: nowrap; }
+td.to-col-mono { font-family: var(--mono); font-size: 0.9em; }
+td.to-col-right, th.to-col-right { text-align: right; }
+td.to-col-center, th.to-col-center { text-align: center; }
 .btn.to-small { padding: 0.25rem 0.6rem; font-size: 0.8rem; }
 .btn.to-large { padding: 0.6rem 1.2rem; font-size: 1rem; }
 .btn.to-block { display: flex; width: 100%; }

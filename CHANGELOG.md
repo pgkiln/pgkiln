@@ -23,6 +23,9 @@ All notable changes to this project are documented here. The format follows
 - **Built-in template components**: avatar (and avatar groups), badge, comments, media list, metric card (APEX
   26.1) and timeline, available in every application as regions and report column templates; *Copy into this
   application* makes an editable copy that replaces the built-in one. HR example page 39 *Team overview*.
+- **Theme Roller**: accent and header colours for dark mode (style variants and Settings → Theme), a live preview
+  while you edit a style, and template options on items (migration 066: stretch, large, quiet, bold, hidden label)
+  and report columns (bold, muted, no wrapping, monospace, right-aligned, centred).
 
 ## [0.28.0] - 2026-10-06
 

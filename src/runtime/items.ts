@@ -1,5 +1,6 @@
 import { applyBinds } from '../binds.ts';
 import { icon } from '../icons.ts';
+import { templateClasses } from './template-options.ts';
 import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
@@ -389,14 +390,14 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       item.config?.submit_on_change ? 'data-submit-on-change' : '',
       item.config?.cascade_parents ? `data-cascade="${String(item.config.cascade_parents).replace(/[^A-Z0-9_,]/gi, '')}"` : '',
       hiddenByDa ? 'hidden' : '',
-      item.config?.wide || item.type === 'textarea' || item.type === 'richtext' || item.type === 'markdown' ? 'data-wide' : '',
+      item.config?.wide || item.type === 'textarea' || item.type === 'richtext' || item.type === 'markdown' || templateClasses('item', item.template_options).includes(' to-stretch') ? 'data-wide' : '',
     ]
       .filter(Boolean)
       .map((a) => ` ${a}`)
       .join(''),
   );
   const tag = useLegend ? 'fieldset' : 'div';
-  return html`${raw(`<${tag}`)} class="field field-${item.type}${error ? ' has-error' : ''}${editable ? '' : ' readonly'}" data-item="${item.name}"${attrs}>
+  return html`${raw(`<${tag}`)} class="field field-${item.type}${error ? ' has-error' : ''}${editable ? '' : ' readonly'}${templateClasses('item', item.template_options)}" data-item="${item.name}"${attrs}>
     ${labelHtml}${control}${lovError}
     ${item.help ? html`<small class="help" id="${id}_help">${item.help}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}

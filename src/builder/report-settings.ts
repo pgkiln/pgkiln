@@ -6,6 +6,7 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { formatMaskError } from '../runtime/format.ts';
 import { heading } from '../runtime/items.ts';
+import { COLUMN_OPTIONS } from '../runtime/template-options.ts';
 import type { Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 
@@ -72,6 +73,12 @@ interface ReportConfig {
   [k: string]: unknown;
 }
 
+/** The template option chosen for a column ('' = none). */
+const columnOption = (cfg: ReportConfig, name: string) => {
+  const list = (cfg.column_options as Record<string, unknown> | undefined)?.[name];
+  return Array.isArray(list) && typeof list[0] === 'string' ? list[0] : '';
+};
+
 /** The Report settings form of a report region. */
 export async function reportSettingsForm(pageId: number, appId: number, r: { id: number; source: string | null; config: ReportConfig }, s: Session) {
   const cfg = r.config ?? {};
@@ -90,7 +97,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
   const names = 'columns' in cols ? cols.columns : [];
   // columns in the settings that the query no longer returns stay visible, so they can be cleared
   const known = new Set(names);
-  const stale = [...new Set([...(cfg.hidden ?? []), ...Object.keys(cfg.headings ?? {}), ...Object.keys(cfg.formats ?? {}), ...(cfg.pdf?.columns ?? [])])].filter((n) => !known.has(n));
+  const stale = [...new Set([...(cfg.hidden ?? []), ...Object.keys(cfg.headings ?? {}), ...Object.keys(cfg.formats ?? {}), ...Object.keys((cfg.column_options as object | undefined) ?? {}), ...(cfg.pdf?.columns ?? [])])].filter((n) => !known.has(n));
   const all = [...names, ...stale];
   const hidden = new Set((cfg.hidden ?? []).map((h) => h.toLowerCase()));
   const printed = cfg.pdf?.columns?.length ? new Set(cfg.pdf.columns.map((c) => c.toLowerCase())) : null;
@@ -99,6 +106,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
       <td data-label="Column"><code>${n}</code>${known.has(n) ? '' : html` <span class="tag tag-error">not in the query</span>`}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="Heading"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="Heading of ${n}"></td>
       <td data-label="Format mask"><input name="fmt_${i}" value="${cfg.formats?.[n] ?? ''}" placeholder="e.g. 999G990D00" aria-label="Format mask of ${n}" class="u-mw10"></td>
+      <td data-label="Display"><select name="opt_${i}" aria-label="Display of ${n}">${opt('', 'Normal', columnOption(cfg, n))}${COLUMN_OPTIONS.map((o) => opt(o.cls, o.label, columnOption(cfg, n)))}</select></td>
       <td data-label="Shown"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="Show ${n}"></td>
       <td data-label="In PDF"><input type="checkbox" name="print_${i}" value="true"${(printed ? printed.has(n.toLowerCase()) : !hidden.has(n.toLowerCase())) ? raw(' checked') : ''} aria-label="Print ${n}"></td>
       <td data-label="PDF width (mm)"><input name="width_${i}" type="number" min="0" max="500" value="${cfg.pdf?.widths?.[n] ?? ''}" aria-label="PDF width of ${n}" class="u-mw6"></td>
@@ -143,7 +151,7 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
       </div></fieldset>
       <fieldset class="prop-group"><legend>Columns</legend>
         ${all.length
-          ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Format mask</th><th>Shown</th><th>In PDF</th><th>PDF width (mm)</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
+          ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Format mask</th><th>Display</th><th>Shown</th><th>In PDF</th><th>PDF width (mm)</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
           : html`<p class="muted">No columns yet.</p>`}
         <small class="help">Format masks: numbers like 999G999G990D00, FML999G990D00 (currency), 990D0% or 0000 (G and D are the language's separators); dates like DD-MON-YYYY. Empty: the application's formats. Excel and CSV downloads keep the raw values.</small>
       </fieldset>
@@ -206,7 +214,11 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
     print: b[`print_${i}`] === 'true',
     width: Number(b[`width_${i}`]),
     format: (b[`fmt_${i}`] ?? '').trim().slice(0, 64),
+    option: COLUMN_OPTIONS.find((o) => o.cls === b[`opt_${i}`])?.cls,
   })).filter((c) => c.name);
+  // (0.29) a column's template option (APEX: column template options), from the fixed list only
+  const options = Object.fromEntries(cols.filter((c) => c.option).map((c) => [c.name, [c.option!]]));
+  set('column_options', Object.keys(options).length ? options : undefined);
   const headings = Object.fromEntries(cols.filter((c) => c.heading).map((c) => [c.name, c.heading]));
   set('headings', Object.keys(headings).length ? headings : undefined);
   // masks that aren't valid are left out (reportSettingsProblems names them)

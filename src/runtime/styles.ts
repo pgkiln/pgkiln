@@ -60,6 +60,9 @@ export interface StyleVariant {
   name: string;
   accent?: string;
   header?: string;
+  /** (0.29) the colours in dark mode (else dark mode keeps the base style's dark palette) */
+  accent_dark?: string;
+  header_dark?: string;
   font?: string;
   font_size?: string;
   radius?: string;
@@ -75,10 +78,11 @@ export function parseStyle(v: Record<string, unknown>): StyleVariant | string {
   const name = typeof v.name === 'string' ? v.name.trim() : '';
   if (!STYLE_NAME.test(name)) return 'Name: 1 to 30 letters, digits, spaces, - or _, starting with a letter or digit.';
   const out: StyleVariant = { name };
-  for (const k of ['accent', 'header'] as const) {
+  const colourLabels = { accent: 'Accent colour', header: 'Header colour', accent_dark: 'Accent colour (dark mode)', header_dark: 'Header colour (dark mode)' };
+  for (const k of ['accent', 'header', 'accent_dark', 'header_dark'] as const) {
     const x = v[k];
     if (x === undefined || x === null || x === '') continue;
-    if (typeof x !== 'string' || !HEX.test(x)) return `${k === 'accent' ? 'Accent' : 'Header'} colour: #rrggbb.`;
+    if (typeof x !== 'string' || !HEX.test(x)) return `${colourLabels[k]}: #rrggbb.`;
     out[k] = x.toLowerCase();
   }
   for (const [k, list, label] of [['font', FONTS, 'Font'], ['font_size', FONT_SIZES, 'Font size'], ['radius', RADII, 'Corners']] as const) {
@@ -144,6 +148,10 @@ export function themeCss(theme: App['theme'] | undefined, style: StyleVariant | 
   const base = colourVars(theme?.accent, theme?.header);
   // html:root ties with app.css's html[data-style] rules and comes later, so own colours win over a base style's
   if (base.length) out.push(`html:root{${base.join('')}}`);
+  // dark mode: the same specificity as app.css's dark palettes (html[data-style]…), later in the page
+  const dark = [...colourVars(theme?.accent_dark, theme?.header_dark), ...(style ? colourVars(style.accent_dark, style.header_dark) : [])];
+  if (dark.length)
+    out.push(`@media (prefers-color-scheme: dark){html:root:not([data-theme="light"]){${dark.join('')}}}html:root[data-theme="dark"]{${dark.join('')}}`);
   if (style) {
     const colours = colourVars(style.accent, style.header);
     if (colours.length) out.push(`html:root{${colours.join('')}}`);

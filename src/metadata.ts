@@ -89,6 +89,8 @@ export interface App {
     styles?: unknown[]; style?: string; style_choice?: boolean;
     /** (0.29) the base style: 'iris' or Standard (src/runtime/styles.ts) */
     base?: string;
+    /** (0.29) the accent and header colours in dark mode */
+    accent_dark?: string; header_dark?: string;
   };
   /** primary language, translated languages, and how the language is chosen */
   language: string;
@@ -130,6 +132,8 @@ export type ItemType =
 
 export interface Item {
   id: number;
+  /** (066) CSS classes from ITEM_OPTIONS */
+  template_options?: string[];
   region_id: number | null;
   seq: number;
   name: string;

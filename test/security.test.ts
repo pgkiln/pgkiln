@@ -5763,3 +5763,15 @@ describe('sprint 37 built-in template components', () => {
     assert.equal((await owner.one(`select count(*)::int as n from meta.template_component where app_id = $1 and static_id = 'ut_badge'`, [hr])).n, 0);
   });
 });
+
+describe('sprint 37 theme roller', () => {
+  test('dark-mode colours and column options never carry anything but checked values into the page', async () => {
+    const { themeCss, appStyles } = await import('../src/runtime/styles.ts');
+    const { templateClasses } = await import('../src/runtime/template-options.ts');
+    // a hand-edited theme: the bad base colour is dropped, the bad style is skipped
+    const css = themeCss({ accent_dark: '#fff;}body{display:none' } as never, appStyles({ styles: [{ name: 'X', accent_dark: 'red}</style><script>' }] } as never)[0] ?? null);
+    assert.equal(css, '');
+    assert.equal(templateClasses('column', ['to-col-bold"><script>', 'to-col-mono']), ' to-col-mono');
+    assert.equal(templateClasses('item', 'to-stretch'), '', 'only lists');
+  });
+});
