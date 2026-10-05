@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 35 released as v0.27.0; next sprint not planned, candidates under Sprint 35). Sprints 3–35 are merged into `main` and released as **v0.27.0** (migrations 001–058 are released: add 060+ (059 was reserved and not used); 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_40` are released.
+Last updated: 2026-10-05 (sprint 35 released as v0.27.0; sprint 36 (AI) running, one agent at a time). Sprints 3–35 are merged into `main` and released as **v0.27.0** (migrations 001–058 are released: add 060+ (059 was reserved and not used); 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_40` are released.
 
 ## Project in one paragraph
 
@@ -1424,6 +1424,23 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   inline styles. Not done: live preview, style colours in dark mode, conditional/dynamic properties, template options
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
+
+## Sprint 36 (IN PROGRESS): AI with Claude and OpenAI (owner, 2026-10-05: "keep going, I want Claude and OpenAI as options for the AI, work with 1 agent and keep going, don't stop")
+
+Branch `sprint-36` from `main` (v0.27.0). **One agent at a time** in the main checkout; tests on the throwaway DB
+`pgapex-ci` (5446). Rules: `docs/development/sprint-36-agent-rules.md` (AI rules at the end: official SDKs
+`@anthropic-ai/sdk` and `openai` allowed, keys encrypted, mock server in tests, default Claude model `claude-opus-5-5`).
+Each item finished, tested, committed and pushed before the next agent starts. After sprint 36: release 0.28.0, then
+sprint 37 (Workspaces, a new default style like "Iris", 🟡 rows) without asking.
+
+| # | Item (parity rows) | Reserved | Status |
+|---|---|---|---|
+| 1 | **AI foundation + *Generate Text with AI* + structured outputs** (row "Generate Text with AI process, structured outputs"): `src/ai/` provider interface (Claude, OpenAI), AI services in the builder's administration (provider, model, encrypted key, base URL for admins, enabled per app, token/request limits), usage log; page process *Generate text with AI* (system prompt, user prompt with `&ITEM.` substitutions, output into an item; structured output with a JSON schema mapping fields to items); a dynamic action to run it without a full page submit; usage per app in the builder | 060, `hr_41`, HR page 37 | next |
+| 2 | **AI assistant, NL2IR, agents and tools** (row "AI assistant, natural-language reports (NL2IR), AI agents and tools"): a chat region (conversation per session, system prompt, optional RAG over developer-chosen queries run as the app role), agents with tools the developer defines (SQL queries/functions run as the app role with bound arguments, REST data sources), natural language → interactive report filters/sorts on a report region | 061, `hr_42`, page 38 | |
+| 3 | **App Builder AI** (row "AI assistant, pages from natural language, describe tables for LLMs"): describe tables/columns for LLMs (annotations kept as comments/meta), create page(s) from a description (proposes `meta.generate_page` calls the developer confirms), SQL Workshop: SQL from a question (shown, never run automatically), explain a query/error | 062 | |
+| 4 | **Blueprints / spec-driven development** (row "Blueprints, spec-driven development"): a JSON blueprint (tables, pages, navigation, sample data) → a new app; optionally drafted by AI from a description, always reviewed before creation | 063 | |
+
+**Item reports:** (filled in as agents finish)
 
 ## Sprint 35 (DONE, v0.27.0): three parity workstreams in parallel (owner, 2026-10-05: "run 3 agents and move on with the next tasks to do")
 
