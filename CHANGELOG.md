@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-05
+
 ### Added
 - **Automations** (migration 044): several ordered **actions** per automation, each with its own
   condition (row values as binds); **error handling** per automation: stop (as before), skip the row
@@ -24,12 +26,21 @@ All notable changes to this project are documented here. The format follows
   master-detail pages, next to report and form and interactive grid: pick a table or view, review the
   options proposed from the catalog (columns, key, dates, positions, foreign keys), optionally add a
   modal form page and a navigation entry. Also from SQL with `meta.generate_page(...)`.
+- **Create application from a file**: Create → From a file uploads a CSV, TSV or XLSX file (JSON and
+  XML work too), shows a preview with editable table and column names and types, and creates the app
+  with its own schema and role, the table (identity key) with the rows, a report and form, and an
+  optional dashboard chart and faceted search page, all with navigation.
 
 ### Changed
 - CI: `actions/checkout`, `actions/setup-node` and `actions/upload-artifact` v7 (Node.js 24).
 
 ### Fixed
 - A flaky custom-authentication test (page views are logged without awaiting).
+
+### Security
+- The create-application wizard refuses `meta`, `information_schema` and `pg_*` as the parsing
+  schema (before, a developer could make an app role with DML on `meta`); a blank app needs a name and
+  its alias is at most 50 characters.
 
 ## [0.23.0] - 2026-10-05
 

@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05. Sprint 32 is in progress on `sprint-32` (items 0–3 done, 4–5 to do, not merged; see its section). Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
+Last updated: 2026-10-05. Sprints 3–32 are merged into `main` and released as **v0.24.0** (migrations 001–047 are released: add 048+; 033, 035, 045 and 046 were never used). HR example files up to `hr_32` are released.
 
 ## Project in one paragraph
 
@@ -1142,7 +1142,7 @@ AFTER trigger (the BEFORE trigger broke `pgapex import --replace` depending on r
 8 skip, e2e 90/90; clean worktree with CI env only: fresh 713/8 and upgrade from v0.22.0 713/8. Released as
 **v0.23.0** (parity 79/26/10/6). Sprint 32 not started (owner).
 
-## Sprint 32 (IN PROGRESS): parity items one after another (owner: "keep going with the handoff.md, sprint and apex-feature-parity, with only 1 agent at the time", 2026-10-05)
+## Sprint 32 (DONE, v0.24.0): parity items one after another (owner: "keep going with the handoff.md, sprint and apex-feature-parity, with only 1 agent at the time", 2026-10-05)
 
 Branch `sprint-32` from `main` (v0.23.0 + 3bb983a, the custom-auth test flake fix (same race as 68d8b65, which made
 every CI upgrade job red after the sprint 31 merge) + 192f0af, CI actions checkout/setup-node/upload-artifact moved
@@ -1158,7 +1158,7 @@ can be merged after any item:
 | 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045 (unused), `hr_34` | **done** (ca079be..c6066d2) |
 | 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | **done** (40da186, 00d6d40, a972bb6) |
 | 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 | **done** (497fd88..6561f5f) |
-| 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | **in progress** |
+| 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (unused) | **done** (379e32c..b18e83d) |
 
 Later CI note: `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres
 service, Playwright deps).
@@ -1240,3 +1240,19 @@ CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check
   `pgapex_runtime` and an app role); developer session + CSRF + app lock; generated calendar move SQL runs as the app
   role (RLS) and the wizard warns to set `move_authz`. Limitation: the PostGIS map branch was checked only for its SQL
   (no PostGIS in dev/CI). Tests 776 pass / 8 skip, e2e 90/90.
+- **5 create application from a file: DONE** (379e32c..b18e83d, pushed). `/builder/create/file` (upload, reuses
+  `parseFile`, type inference and limits of `src/dataload.ts`, stored as a builder-session temporary file) →
+  `/builder/create/file/:id` preview (app name, alias, schema, authentication, first user; table name; per column
+  name/type, empty name skips) → one owner transaction: schema + role, table with identity `id`, rows via `loadRows`
+  (all or nothing unless "skip rows with errors"), `analyze`, pages via `meta.generate_page` (2 report + 3 modal form,
+  4 dashboard chart, 5 faceted search) with navigation. App creation moved to `src/builder/newapp.ts` (shared with the
+  blank wizard); new `src/builder/appfromfile.ts`. No migration, no HR part, no env vars, export/import not
+  redefined. Security: developer session + CSRF (also multipart), temp file only for the uploading session and
+  deleted after, quoted lower-case identifiers in the app schema, fixed types; **behaviour change**: `meta`,
+  `information_schema`, `pg_*` refused as parsing schema (also blank apps), blank app needs a name, alias ≤ 50 chars.
+  Tests 789 pass / 8 skip, e2e 90/90.
+
+**Released 2026-10-05 as v0.24.0:** parity rows (Create page wizards ✅, Create application wizard text; counts
+82/23/10/6), CHANGELOG 0.24.0, SECURITY.md (five 0.24.0 rows), version, CI matrix + v0.24.0, chapter 12 line.
+CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446): 789 pass / 8 skip. Next: pick the
+next sprint from the parity matrix (AI features still wait for the owner's decision on provider and API keys).
