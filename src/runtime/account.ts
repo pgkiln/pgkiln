@@ -6,7 +6,7 @@ import { baseLanguage, LANGUAGE_NAMES } from '../i18n.ts';
 import { forgetAllRemembered, rememberCookie, rememberedCount } from '../remember.ts';
 import { getSession, logActivity, saveState, takeFlash } from '../session.ts';
 import type { PageContext } from './context.ts';
-import { isTheme, matchLanguage, THEME_COOKIE, timeZoneNames, validTimeZone } from './locale.ts';
+import { databaseTimeZone, isTheme, matchLanguage, sameOffset, THEME_COOKIE, timeZoneFor, timeZoneNames, validTimeZone } from './locale.ts';
 import { chrome } from './render.ts';
 import { loadApp } from '../metadata.ts';
 import { appWithLocale, loadContext, safeNext, txContext, type Req } from './routes.ts';
@@ -197,10 +197,12 @@ export async function accountRoutes(app: FastifyInstance) {
     if (!a.time_zone_auto) return reply.send({ reload: false });
     const zone = await validTimeZone(b.tz);
     if (!zone) return reply.code(422).send({ error: 'unknown time zone' });
-    const before = session.state.__TZ;
+    const effective = async () => (await timeZoneFor(a, session)).tz ?? (await databaseTimeZone());
+    const before = await effective();
     session.state.__TZ = zone;
     await saveState(session);
-    return reply.send({ reload: before !== zone && !session.state.__TZ_PREF });
+    // show the page again only when its times change (UTC and Etc/UTC don't)
+    return reply.send({ reload: !sameOffset(before, await effective()) });
   });
 
   // Quick light/dark switch from the user menu; works signed out too (cookie only).

@@ -110,12 +110,36 @@ export async function validTimeZone(name: unknown): Promise<string | undefined> 
   return (await timeZoneNames()).names.has(name) ? name : undefined;
 }
 
+let databaseZone: string | null = null;
+
+/** The database's own time zone setting (what queries use without an app time zone). */
+export async function databaseTimeZone() {
+  databaseZone ??= (await runtime.one<{ tz: string }>(`select current_setting('TimeZone') as tz`))?.tz ?? 'UTC';
+  return databaseZone;
+}
+
+/** The UTC offset of a time zone now, e.g. "GMT+02:00" (null: Intl doesn't know the name). */
+export function zoneOffset(zone: string, at = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' }).formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether two time zones show the same clock time now (UTC and Etc/UTC do). */
+export function sameOffset(a: string, b: string) {
+  if (a === b) return true;
+  const [x, y] = [zoneOffset(a), zoneOffset(b)];
+  return x !== null && x === y;
+}
+
 /**
  * The request's time zone. With an automatic time zone (APEX: Automatic Time
  * Zone) the user's own choice (My account), else the browser's (sent once per
  * session by app.js), else the application's; without it, the application's.
  */
-async function timeZoneFor(app: App, session: Session | undefined): Promise<{ tz: string | null; from: Locale['timeZoneFrom'] }> {
+export async function timeZoneFor(app: App, session: Session | undefined): Promise<{ tz: string | null; from: Locale['timeZoneFrom'] }> {
   if (app.time_zone_auto) {
     const own = await validTimeZone(session?.state.__TZ_PREF);
     if (own) return { tz: own, from: 'user' };

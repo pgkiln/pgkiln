@@ -31,7 +31,7 @@ import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
 import { pwaHead } from './pwa.ts';
-import { resolveLocale, THEME_COOKIE, translateApp, translatePage, type Locale } from './locale.ts';
+import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -749,6 +749,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
             ? html`<form method="post" class="login-form">
                 <input type="hidden" name="__csrf" value="${session.csrf_token}">
                 <input type="hidden" name="next" value="${next}">
+                ${app.time_zone_auto ? html`<input type="hidden" name="__tz" value="">` : ''}
                 <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
                 <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
                 ${app.remember_me_days ? html`<label class="check"><input type="checkbox" name="remember" value="true"> ${t('login.remember', { days: app.remember_me_days })}</label>` : ''}
@@ -802,6 +803,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const ip = clientIp(req);
     const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
     if (req.body?.__csrf !== session.csrf_token) return fail(locale.t('login.expired_session'), 403), null;
+    // automatic time zone: app.js filled in the browser's (signIn() keeps it for the new session)
+    if (a.time_zone_auto) {
+      const zone = await validTimeZone(req.body?.__tz);
+      if (zone) session.state.__TZ = zone;
+    }
     if (a.authentication === 'header') return fail(locale.t('login.method_unavailable'), 403), null;
     if (!a.local_login && a.authentication !== 'database') return fail(locale.t('login.password_disabled'), 403), null;
     // a NUL byte can't be a user name (and PostgreSQL text refuses it)

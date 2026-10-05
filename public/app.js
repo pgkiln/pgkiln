@@ -15,13 +15,16 @@ document.documentElement.classList.add('js');
   // ------------------------------------------------------------ automatic time zone
   // The app shows times in the browser's time zone: send it once per session; when it
   // changes what the page shows, load the page again (as a GET, unless the user typed).
+  let browserTz = '';
+  try {
+    browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    browserTz = '';
+  }
+  // the sign-in form sends it along, so the first page already shows the right times
+  document.querySelectorAll('input[type="hidden"][name="__tz"]').forEach((el) => (el.value = browserTz));
   if (meta.tz) {
-    let tz = '';
-    try {
-      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    } catch {
-      tz = '';
-    }
+    const tz = browserTz;
     if (tz) {
       let typed = false;
       document.addEventListener('input', () => (typed = true), { capture: true, once: true });
