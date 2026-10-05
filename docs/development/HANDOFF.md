@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05. Sprints 3–30 are merged into `main` and released as **v0.22.0** (migrations 001–037 are released: add 038+; 033 and 035 were never used). HR example files up to `hr_27` are released.
+Last updated: 2026-10-05. Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
 
 ## Project in one paragraph
 
@@ -48,7 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 30, released as **v0.22.0** (tags: v0.2.0, v0.6.0–v0.22.0; 0.3.0–0.5.0 were never tagged). Migrations 001–037 are released |
+| `main` | Everything up to sprint 31, released as **v0.23.0** (tags: v0.2.0, v0.6.0–v0.23.0; 0.3.0–0.5.0 were never tagged). Migrations 001–043 are released |
+| (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
 | (older sprint branches) | `sprint-14` … `sprint-16` were merged (v0.10.0) and deleted |
@@ -989,7 +990,7 @@ push, check CI with `gh run list -R NickVrgr/Postgresql_APEX`.
 batches (`PDF_MAX_ROWS`), streamed REST collections, authentication type `database` (`src/dbauth.ts`, migration 037).
 Tests 527 + 8 skipped, e2e 78/78. HR `hr_28` was not used.
 
-## Sprint 31 (IN PROGRESS): five parity workstreams in parallel (owner: "read the handoff and the parity and keep building, multiple agents if necessary", 2026-10-05)
+## Sprint 31 (DONE, v0.23.0): five parity workstreams in parallel (owner: "read the handoff and the parity and keep building, multiple agents if necessary", 2026-10-05)
 
 Branch `sprint-31` from `main` (v0.22.0). Same set-up as sprint 26: five agents in git worktrees under
 `../pgapex-wt/<name>`, branch `sprint-31-<name>`, each with its own `postgres:17` container (`docker run`, not compose)
@@ -1133,7 +1134,13 @@ do **not** start sprint 32 in that session.
   Parity: number format masks (report/grid/cards columns, charts, number/display items, locale separators, currency),
   Automatic Time Zone, runtime messages en/nl/de/fr/es: Done. Tests 587 pass / 8 skip, e2e 82/82.
 
-**Merging (coordinator):** order i18n, workshop-final, grid, logic, builder-final into `sprint-31`.
+**Merged and released (2026-10-05):** i18n, workshop-final, grid, logic, builder-final merged into `sprint-31`
+(conflicts: appended test blocks, help texts, imports; workshop's and builder's `.script-results` CSS clash solved by
+renaming builder's to `.support-results`; every new key of grid, logic and builder added to de/fr/es). Migration
+**043**: export/import with 041's and 042's sections (042 had dropped 041's), and the list-entry parent check as an
+AFTER trigger (the BEFORE trigger broke `pgapex import --replace` depending on row order). Tests: dev DB 713 pass /
+8 skip, e2e 90/90; clean worktree with CI env only: fresh 713/8 and upgrade from v0.22.0 713/8. Released as
+**v0.23.0** (parity 79/26/10/6). Sprint 32 not started (owner).
 
 ## Sprint 32 (PLANNED, owner 2026-10-05)
 
