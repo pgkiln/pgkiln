@@ -3711,3 +3711,91 @@ describe('sprint 32 item 2: workflow invoke_api steps', () => {
     assert.equal((await owner.one(`select count(*)::int as n from meta.workflow_definition where name = 'SEC32_BUILDER'`)).n, 1);
   });
 });
+
+describe('sprint 32 item 3: SQL Workshop unload data', () => {
+  const builder = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder/sql/unload?source=query');
+    return b;
+  };
+  before(async () => {
+    await owner.query(`drop table if exists public.sec32_unload; create table public.sec32_unload (id int, note text);
+      insert into public.sec32_unload values (1, '=1+2'), (2, '@SUM(A1)'), (3, '<x>&</x>'), (4, '-cmd');
+      create or replace function public.sec32_unload_write() returns int language sql as $$ insert into public.sec32_unload values (99, 'written') returning id $$;`);
+  });
+  after(async () => {
+    delete process.env.UNLOAD_STATEMENT_TIMEOUT;
+    await owner.query('drop function if exists public.sec32_unload_write(); drop table if exists public.sec32_unload');
+  });
+
+  test('needs a builder login; an application session is not enough; POST needs the CSRF token', async () => {
+    const king = new Browser();
+    await king.login('king');
+    for (const b of [new Browser(), king]) {
+      const res = await b.get('/builder/sql/unload');
+      assert.equal(res.statusCode, 302);
+      assert.match(String(res.headers.location), /^\/builder\/login/);
+      const post = await b.post('/builder/sql/unload', { source: 'query', query: 'select * from public.sec32_unload', format: 'csv' });
+      assert.equal(post.statusCode, 302);
+      assert.doesNotMatch(post.body, /cmd/);
+    }
+    const dev = await builder();
+    for (const token of [undefined, 'wrong']) {
+      const form = { source: 'query', query: 'select * from public.sec32_unload', format: 'csv' };
+      const res = await dev.post('/builder/sql/unload', token ? { __csrf: token, ...form } : form);
+      assert.equal(res.statusCode, 403);
+      assert.doesNotMatch(res.body, /cmd/);
+    }
+  });
+
+  test('read only: no writes through a data-modifying CTE or a function; one statement only', async () => {
+    const dev = await builder();
+    for (const query of [
+      'select public.sec32_unload_write()',
+      'with w as (insert into public.sec32_unload values (98, \'x\') returning id) select * from w',
+      'select 1; insert into public.sec32_unload values (97, \'x\')',
+      'insert into public.sec32_unload values (96, \'x\') returning id',
+      'select 1 \\g /tmp/x',
+    ]) {
+      const res = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query, format: 'csv' });
+      assert.equal(res.statusCode, 422, query);
+    }
+    // WHERE / ORDER BY text of the table form can't smuggle in a second statement either
+    for (const [where, order] of [['true); insert into public.sec32_unload values (95, \'x\'); select (1', ''], ['', '1; insert into public.sec32_unload values (94, \'x\')']]) {
+      const res = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'table', table: 'sec32_unload', columns: 'id', where, order, format: 'csv' });
+      assert.equal(res.statusCode, 422, where + order);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from public.sec32_unload')).n, 4);
+  });
+
+  test('settings made by the query do not leak into the pool; the statement timeout applies', async () => {
+    const dev = await builder();
+    const res = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: `select set_config('application_name', 'sec32_leak', false) as x`, format: 'csv' });
+    assert.equal(res.statusCode, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal((await owner.one(`select count(*)::int as n from pg_stat_activity where application_name = 'sec32_leak'`)).n, 0, 'the connection was closed');
+    process.env.UNLOAD_STATEMENT_TIMEOUT = '200ms';
+    const slow = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select pg_sleep(3)', format: 'csv' });
+    delete process.env.UNLOAD_STATEMENT_TIMEOUT;
+    assert.equal(slow.statusCode, 422);
+    assert.match(slow.body, /statement timeout/);
+  });
+
+  test('CSV neutralises formulas, XML escapes markup; the unload is in the activity log; the table must exist', async () => {
+    const dev = await builder();
+    const csv = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select note from public.sec32_unload order by id', format: 'csv', header: '1' });
+    assert.equal(csv.body, `note\r\n'=1+2\r\n'@SUM(A1)\r\n<x>&</x>\r\n'-cmd\r\n`);
+    const xml = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select note as "a<b" from public.sec32_unload where id = 3', format: 'xml' });
+    assert.match(xml.body, /<a_b>&lt;x&gt;&amp;&lt;\/x&gt;<\/a_b>/);
+    const bad = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'query', query: 'select 1', format: 'xml', row_tag: 'r><evil', root_tag: 'x' });
+    assert.equal(bad.statusCode, 422);
+    assert.doesNotMatch(bad.body, /<evil/);
+    const log = await owner.one(`select username, detail from meta.activity_log where event = 'sql_unload' order by id desc limit 1`);
+    assert.equal(log.username, 'admin');
+    assert.match(log.detail, /^xml: select note as "a<b"/);
+    const missing = await dev.post('/builder/sql/unload', { __csrf: dev.lastCsrf, source: 'table', table: 'pg_catalog.pg_authid', columns: 'rolpassword', format: 'csv' });
+    assert.equal(missing.statusCode, 422, 'only listed tables and views');
+  });
+});

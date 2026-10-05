@@ -30,7 +30,8 @@ import { BASE, csrf, developer, region, send, shell, workshopTabs, type Body, ty
 // so nothing the query sets can leak into the pool. The table step is a GET
 // form and the download a POST form (CSRF), so it works without JavaScript.
 
-const TIMEOUT = process.env.UNLOAD_STATEMENT_TIMEOUT || '5min';
+/** The statement timeout of each statement (the DECLARE and every FETCH). */
+const timeout = () => process.env.UNLOAD_STATEMENT_TIMEOUT || '5min';
 
 interface Relation {
   qname: string;
@@ -215,7 +216,7 @@ export async function unloadRoutes(app: FastifyInstance) {
     let opened;
     try {
       await c.query('begin transaction read only');
-      await c.query(`select set_config('statement_timeout', $1, true)`, [TIMEOUT]);
+      await c.query(`select set_config('statement_timeout', $1, true)`, [timeout()]);
       opened = await openUnload(c, sql, opts);
     } catch (e) {
       await c.query('rollback').catch(() => {});

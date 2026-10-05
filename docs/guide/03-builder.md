@@ -429,6 +429,9 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
   types) or an existing one (append, merge by primary key, or replace), with a per-row error
   report, or with a saved **data load definition**; a mapping can be saved as one
   ([chapter 16](16-files.md#sql-workshop--load-data)).
+- **Unload Data**: download a table or view (chosen columns, an optional WHERE and ORDER BY) or a
+  query as CSV, JSON, Excel or XML, streamed from a cursor in a read-only transaction
+  ([chapter 16](16-files.md#sql-workshop--unload-data)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

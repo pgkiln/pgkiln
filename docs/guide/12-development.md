@@ -39,10 +39,11 @@ src/
   numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
+  unload.ts                Unload Data: unloadStatement() (one SELECT), openUnload() (cursor, batches, CSV/JSON/XLSX/XML encoders on Postgres text values)
   xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested)
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers, psql commands), runScript() (stop/continue, transaction, savepoints)
   quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
-  xlsx.ts                  Excel writer for report downloads (typed cells, streamed through fflate's Zip)
+  xlsx.ts                  Excel writer for report downloads and Unload Data (typed cells, streamed through fflate's Zip)
   automations.ts           cron parser, next run in a time zone, scheduler, running automations (the actions run
                            in PL/pgSQL: meta.automation_execute, shared with meta.run_automation; migration 044)
   html.ts                  auto-escaping html`` templates
@@ -110,6 +111,7 @@ src/
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
+    unload.ts              SQL Workshop → Unload Data: table/view (columns, where, order) or query form, streamed download (read-only transaction, own connection)
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: actions (add, reorder), next run, Run now, run history with errors per row
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
@@ -148,6 +150,7 @@ test/
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
+  unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
