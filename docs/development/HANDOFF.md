@@ -1118,6 +1118,22 @@ do **not** start sprint 32 in that session.
   passwords in statements end up in the activity log**; known limit: big SELECT results fully buffered.
   Parity: SQL Scripts yes; Quick SQL yes (subset); Query Builder yes (simple, no canvas); XML loading yes; data load
   definitions yes. Tests 585 pass / 8 skip, e2e all pass.
+- **i18n: DONE** (pushed `sprint-31-i18n`). Migration `040_globalization.sql`, HR `hr_30_formats.sql` page 29.
+  export/import not redefined (whole `meta.app` row copied). No env vars. **`src/i18n/de.ts`, `fr.ts`, `es.ts` are
+  `Record<MessageKey,string>`: every other branch's new keys must be added there (tsc flags them).** Behaviour change:
+  number items now refuse non-numbers (422), as APEX. Hotspots: builder components/routes/report-settings; runtime
+  routes (signIn, login form, posted items), engine (validate), report, regions, items, locale, account, charts, grid,
+  pdf, report-views, render; db.ts (appTx), metadata.ts, app.js, app.css, security.test.ts (end + P22 test), guide
+  04/05/09/11/12/14. Possible existing flake: files.test.ts "more files are added…" (order of contract/diploma.pdf).
+  Security: time zone names only if exact in `pg_timezone_names` (≤64), bound `set_config(..., true)`; check
+  constraints on app/account time_zone and app.currency `^[A-Z]{3}$`; `POST /a/:alias/tz` CSRF, own session only,
+  no-op without automatic time zone; runtime role column grant on `meta.account.time_zone`, always `ctx.user`; mask
+  literals/currency escaped, bad/over-long masks fall back, parser caps 200 chars, exponent 4 digits, NaN/Infinity
+  refused; `FORMAT.CURRENCY` only if `^[A-Z]{3}$`.
+  Parity: number format masks (report/grid/cards columns, charts, number/display items, locale separators, currency),
+  Automatic Time Zone, runtime messages en/nl/de/fr/es: Done. Tests 587 pass / 8 skip, e2e 82/82.
+
+**Merging (coordinator):** order i18n, workshop-final, grid, logic, builder-final into `sprint-31`.
 
 ## Sprint 32 (PLANNED, owner 2026-10-05)
 
