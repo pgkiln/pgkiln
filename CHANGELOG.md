@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
   code as the invoke-API process (allow-list, SSRF checks, web credentials); response values and the
   HTTP status go into workflow variables; no transaction stays open during the call; a failed call
   faults the step (retry in the console). HR example part 34.
+- **Data Workshop → Unload Data**: a table or view (chosen columns, where, order) or a query to CSV
+  (separator, enclosure, heading, BOM; formulas neutralised), JSON, XLSX or XML; streamed with a cursor
+  (capped by `DOWNLOAD_MAX_ROWS`) in a read-only transaction with a statement timeout
+  (`UNLOAD_STATEMENT_TIMEOUT`, default 5min); logged as `sql_unload`.
 
 ### Changed
 - CI: `actions/checkout`, `actions/setup-node` and `actions/upload-artifact` v7 (Node.js 24).

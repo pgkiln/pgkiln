@@ -1156,7 +1156,7 @@ can be merged after any item:
 | 0 | CI: actions off Node.js 20; custom-auth flake | (none) | done on `main` (3bb983a, 192f0af); CI run 37286030252 green, no Node 20 warning |
 | 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | **done** (bcfec61..14943e4) |
 | 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045 (unused), `hr_34` | **done** (ca079be..c6066d2) |
-| 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | **in progress** (an agent was working on it; uncommitted `src/builder/unload.ts` etc. may exist) |
+| 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | **done** (40da186, 00d6d40, a972bb6) |
 | 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | to do |
 | 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | to do |
 
@@ -1164,8 +1164,8 @@ Later CI note: `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; check the fir
 service, Playwright deps).
 
 **Coordinator already did (so a successor doesn't redo it):** parity rows Automations (✅) and Workflow (invoke API)
-plus the summary counts (80/25/10/6) and the "Last reviewed" line; CHANGELOG `[Unreleased]` for items 0–2. Still to do
-at release: rows for items 3–5, CHANGELOG entries for them, SECURITY.md (notes in the item reports below), version,
+plus the summary counts (80/25/10/6) and the "Last reviewed" line; CHANGELOG `[Unreleased]` for items 0–3; Data Workshop row ✅ (counts 81/24/10/6); `.env.example` `UNLOAD_STATEMENT_TIMEOUT`. Still to do
+at release: rows for items 4–5, CHANGELOG entries for them, SECURITY.md (notes in the item reports below), version,
 CI matrix + v0.24.0.
 
 **If a session ends:** `git log --oneline main..sprint-32` and `git status`; make sure no agent is still editing (the
@@ -1209,3 +1209,13 @@ CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check
   after it); fields re-checked before each call; response can't overwrite `DETAIL_PK`/`WORKFLOW_ID`/`INITIATOR`;
   secrets never in variables/events/errors. Parity: add invoke API to the Workflow row, missing stays e-mail activity
   (not planned) and multi-tenancy. Tests 748 pass / 8 skip, e2e 90/90 (coordinator re-ran the full suite).
+- **3 unload data: DONE** (40da186, 00d6d40, a972bb6, pushed). `/builder/sql/unload` (tab in `workshopTabs`, linked
+  from Load Data): a table/view (columns, where, order by) or a query → CSV (separator, enclosure, heading, BOM;
+  `csvField` from report.ts generalised), JSON (exact numbers, json embedded), XLSX (streaming `XlsxWriter`), XML
+  (validated element names). DECLARE/FETCH batches of 1000 with back pressure, cap `DOWNLOAD_MAX_ROWS` (XLSX
+  1,048,575). `unloadStatement()` reuses `splitScript`: exactly one SELECT/WITH/VALUES/TABLE; where/order text checked
+  the same way. Own owner connection, `begin transaction read only` + `statement_timeout`, connection closed after
+  (`release(true)`); logged `sql_unload`. Files `src/unload.ts`, `src/builder/unload.ts`. No migration (046 unused), no
+  HR part, export/import not redefined. Env `UNLOAD_STATEMENT_TIMEOUT` (default 5min). Security: owner + developer
+  session + CSRF like SQL Commands; read-only/one statement guard against mistakes, not a boundary (a developer can
+  already run any SQL); nothing leaks into the pool. Tests 760 pass / 8 skip, e2e 90/90.
