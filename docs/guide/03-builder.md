@@ -88,13 +88,36 @@ authorization and protection. The tabs under its name lead to **Shared Component
 
 ### Create pages from a table (wizards)
 
-| Page type | What is generated |
-|---|---|
-| **Report and form** | An interactive report page listing the table (with an edit link per row and a Create button) and a **modal dialog** form page with Create, Apply Changes and Delete, a form DML process, fields per column (foreign keys become select lists, booleans become switches, NOT NULL columns without default become required) and a navigation entry |
-| **Interactive grid** | One page with an editable grid (foreign keys become select lists, NOT NULL columns become required), a grid DML process and a navigation entry |
+The wizards are two plain forms (they work without JavaScript). On the app's Pages tab, choose a
+**page type** and a **table or view** (tables the app's database role can't read are marked) and
+press **Next**. The second step proposes everything from the database catalog: the columns, the
+primary key, date and number columns, positions and foreign keys. Change what you like, choose the
+page number, name and menu icon, and press **Create page**: the builder opens the new page in the
+page designer. An error (a page number in use, a column that doesn't fit) shows on the second
+step, which keeps the table and type.
 
-The table needs a single-column primary key. Make sure the app's database role has privileges
-on it (automatic for its own schema).
+| Page type | What is generated | Proposed from the catalog |
+|---|---|---|
+| **Report and form** | An interactive report page listing the table (with an edit link per row and a Create button) and a **modal dialog** form page with Create, Apply Changes and Delete, a form DML process, fields per column (foreign keys become select lists, booleans become switches, NOT NULL columns without default become required) and a navigation entry | |
+| **Interactive grid** | One page with an editable grid (foreign keys become select lists, NOT NULL columns become required), a grid DML process and a navigation entry | |
+| **Form** | One form page (normal or modal) with the chosen columns, Cancel / Delete / Apply Changes / Create and a form DML process; the buttons return to a page you choose (default: the home page). No navigation entry unless you tick it | All columns except binary ones; NOT NULL columns without a default are always included |
+| **Cards** | A [cards](04-pages-and-regions.md#cards) region with a title, subtitle, body and badge column | Title: a name, title or label column; subtitle: the first foreign key (showing the parent's name) or the next text column |
+| **Calendar** | A [calendar](04-pages-and-regions.md#calendar) region (month, week, day and list views) | Start: a date or timestamp column named like *start*, *begin* or *…_date* (not *created*/*updated*); end: one named like *end* or *until*; title: a name column, else the first foreign key's name |
+| **Chart** | A [chart](04-pages-and-regions.md#chart) region: bar, column, line, area, donut, pie or funnel of the row count, or the sum, average, minimum or maximum of a number column, per label | Label: the first foreign key (its parent's name), else a text column that isn't unique |
+| **Map** | A [map](04-pages-and-regions.md#map) region with popups and, if ticked, an interactive report of the same rows that the map filters (*Show this area in the list*) | Position: a PostGIS geometry or geography (markers, and lines and areas as shapes), a `point`, `lat`/`lng`-like number columns, or a *location* text column with `latitude,longitude` |
+| **Faceted search** | An interactive report (9 columns wide) and a [facets](04-pages-and-regions.md#facets-faceted-search) panel (3 columns, collapsible) with a search field | Up to six facets: foreign keys (values of the parent's name, which the report shows next to the key), booleans, text columns with few values, dates and numbers as ranges with *from*/*to* |
+| **Master detail** | One page with a grid of the table and an editable grid of the selected row's details below it (the grids' [master-detail](04-pages-and-regions.md#grid-interactive-grid)): a hidden item for the selection, both grids with a grid DML process; new detail rows get the master's key | The detail table: a table with a foreign key to this table's primary key |
+
+Cards, Calendar, Map and Faceted search take an optional **Form page** number: it adds a modal
+form page for a row, a link from each card, event, popup or report row, and a **Create** button
+(on a calendar also a **+** on every day and hour, with the start date filled in). A calendar can
+also get **drag and drop**: an `UPDATE` of the start (and end) column as the app's role, so row
+level security applies; set the region's `move_authz` to limit who may move events.
+
+Report and form, Interactive grid, Form, a Form page and Master detail need a single-column
+primary key; the other types also work on views. Make sure the app's database role has privileges
+on the table (automatic for its own schema): the second step warns when it hasn't. The same
+generators can be called from SQL with [`meta.generate_page`](09-reference.md#functions-for-developers-and-scripts).
 
 ### Create a blank page
 

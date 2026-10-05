@@ -98,6 +98,8 @@ src/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
     routes.ts              sign-in, app home, settings, activity, developers, create/import (POST)
+    wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
+                           (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
@@ -169,6 +171,7 @@ test/
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
+  page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
