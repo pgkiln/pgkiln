@@ -7,6 +7,9 @@
 import { de } from './i18n/de.ts';
 import { es } from './i18n/es.ts';
 import { fr } from './i18n/fr.ts';
+import { it } from './i18n/it.ts';
+import { pt } from './i18n/pt.ts';
+import { pl } from './i18n/pl.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -1166,13 +1169,13 @@ const nl: Record<MessageKey, string> = {
   'ai_filter.sort': "gesorteerd op {column}",
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl };
 
 /** pgapex's own texts in a built-in language (undefined: not built in). */
 export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {
