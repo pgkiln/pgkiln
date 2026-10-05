@@ -226,7 +226,7 @@ describe('at run time', () => {
     const res = await b.get('/a/hr/19');
     assert.equal(res.statusCode, 200);
     assert.match(res.body, /<article class="tc-card">/);
-    assert.doesNotMatch(res.body, /href="\/a\/hr\/3/);
+    assert.doesNotMatch(res.body, /href="\/a\/hr\/3(?![0-9])/);
   });
 
   test('data from the database is text, never markup', async () => {

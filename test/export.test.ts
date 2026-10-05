@@ -18,6 +18,8 @@ const NOT_EXPORTED = new Set([
   'persistent_login', // "Remember me" tokens of this installation's accounts
   'task', // task instances are data, not application definition
   'workflow', // workflow instances likewise
+  'builder_lock', // page and application locks of this installation's developers
+  'dev_comment', // developer comments: builder notes of this installation
 ]);
 
 /** Where each exported table appears in the document. */
@@ -39,6 +41,9 @@ const SECTIONS: Record<string, string> = {
   build_option: 'build_options',
   web_credential: 'web_credentials',
   rest_source: 'rest_sources',
+  list: 'lists',
+  list_entry: 'list_entries',
+  supporting_script: 'supporting_scripts',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',
@@ -64,6 +69,7 @@ function normalise(doc: any) {
     // imported automations are switched off on purpose
     automations: doc.automations.map((a: any) => ({ ...a, enabled: '(any)' })),
     nav: doc.nav.map(strip),
+    list_entries: (doc.list_entries ?? []).map(strip),
     pages: doc.pages.map((p: any) => ({
       ...p,
       regions: p.regions.map(strip),
