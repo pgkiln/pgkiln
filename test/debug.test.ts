@@ -179,11 +179,12 @@ describe('meta.debug and per-request debug entries', () => {
   });
 
   test('meta.debug_save only stores for an application in debug, and purges by retention', async () => {
+    // saved as recent (a purge running meanwhile would take an old one), aged below
     await level(0);
     const none = await runtime.one(`select meta.debug_save($1, 1, 'u', null, 'GET', '/x', 200, 9, now(), 1, '[]') as id`, [appId]);
     assert.equal(none.id, null);
     await level(9);
-    const id = (await runtime.one(`select meta.debug_save($1, 1, 'u', null, 'GET', '/x', 200, 9, now() - interval '30 days', 1, $2::jsonb) as id`, [appId, JSON.stringify([{ ms: 1, level: 99, component: 'c', text: 'x'.repeat(5000) }])])).id;
+    const id = (await runtime.one(`select meta.debug_save($1, 1, 'u', null, 'GET', '/x', 200, 9, now(), 1, $2::jsonb) as id`, [appId, JSON.stringify([{ ms: 1, level: 99, component: 'c', text: 'x'.repeat(5000) }])])).id;
     const m = await messages(id);
     assert.equal(m[0].level, 9, 'levels are clamped to 1–9');
     assert.equal(m[0].message.length, 4000, 'texts are cut at 4000 characters');
