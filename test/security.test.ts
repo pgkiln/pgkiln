@@ -5393,3 +5393,127 @@ describe('sprint 36 ai foundation', () => {
     }
   });
 });
+
+describe('sprint 36 ai assistant', () => {
+  const env = { ...process.env };
+  const SVC = 'HR_ASSISTANT';
+  let mock: Awaited<ReturnType<typeof import('./ai-script-mock.ts').startScriptMock>>;
+  let svcId = 0;
+  let chat = 0;
+  let report = 0;
+  let pageId = 0;
+  const calls = () => mock.seen.length;
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    const { encryptSecret } = await import('../src/secrets.ts');
+    mock = await (await import('./ai-script-mock.ts')).startScriptMock();
+    await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
+    svcId = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3) returning id`,
+      [SVC, `${mock.base}/claude`, encryptSecret('sk-ant-sec-assistant')])).id;
+    await owner.query(`insert into meta.app_ai_service (app_id, service_id) values ($1, $2)`, [appId, svcId]);
+    const regions = (await owner.query(`select r.id, r.type, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 38`, [appId])).rows;
+    chat = regions.find((r) => r.type === 'ai_assistant').id;
+    report = regions.find((r) => r.type === 'report').id;
+    pageId = regions[0].page_id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
+    await owner.query(`update meta.page set requires_auth = true where id = $1`, [pageId]);
+    await mock.close();
+    if (env.PGAPEX_SECRET_KEY === undefined) delete process.env.PGAPEX_SECRET_KEY;
+    else process.env.PGAPEX_SECRET_KEY = env.PGAPEX_SECRET_KEY;
+  });
+
+  test('forged CSRF tokens are refused before any AI call', async () => {
+    const b = await as('scott');
+    await b.get('/a/hr/38');
+    const before = calls();
+    for (const url of [`/a/hr/38/assistant/${chat}/send`, `/a/hr/38/assistant/${chat}/clear`, `/a/hr/38/report/${report}/ask`])
+      assert.equal((await b.post(url, { __csrf: 'forged', message: 'hi', question: 'hi' })).statusCode, 403, url);
+    assert.equal(calls(), before);
+  });
+
+  test('a region the user can\'t see, of another page or of another type is refused', async () => {
+    const b = await as('scott');
+    await b.get('/a/hr/38');
+    const before = calls();
+    // the assistant's condition: meta.ai_available(...) is false while the service is off
+    await owner.query('update meta.ai_service set enabled = false where id = $1', [svcId]);
+    try {
+      assert.equal((await b.post(`/a/hr/38/assistant/${chat}/send`, { __csrf: b.lastCsrf, message: 'hi' })).statusCode, 403);
+    } finally {
+      await owner.query('update meta.ai_service set enabled = true where id = $1', [svcId]);
+    }
+    assert.equal((await b.post(`/a/hr/37/assistant/${chat}/send`, { __csrf: b.lastCsrf, message: 'hi' })).statusCode, 403, 'not on that page');
+    assert.equal((await b.post(`/a/hr/38/assistant/${report}/send`, { __csrf: b.lastCsrf, message: 'hi' })).statusCode, 403, 'not an assistant');
+    assert.equal((await b.post(`/a/hr/38/report/${chat}/ask`, { __csrf: b.lastCsrf, question: 'hi' })).statusCode, 403, 'not a report');
+    assert.equal(calls(), before);
+  });
+
+  test('signed-out users on a public page: no chat and no question box, posts refused', async () => {
+    await owner.query(`update meta.page set requires_auth = false where id = $1`, [pageId]);
+    try {
+      const b = new Browser();
+      const page = (await b.get('/a/hr/38')).body;
+      assert.match(page, /Sign in to use the assistant/);
+      assert.doesNotMatch(page, /name="message"/);
+      assert.doesNotMatch(page, /class="ai-filter"/);
+      const before = calls();
+      assert.equal((await b.post(`/a/hr/38/assistant/${chat}/send`, { __csrf: b.lastCsrf, message: 'hi' })).statusCode, 403);
+      assert.equal((await b.post(`/a/hr/38/report/${report}/ask`, { __csrf: b.lastCsrf, question: 'hi' })).statusCode, 403);
+      assert.equal(calls(), before);
+    } finally {
+      await owner.query(`update meta.page set requires_auth = true where id = $1`, [pageId]);
+    }
+  });
+
+  test('conversations: per session, not readable by applications, the model can\'t set APP_USER', async () => {
+    const scott = await as('scott');
+    await scott.get('/a/hr/38');
+    mock.script = [{ tools: [{ name: 'my_leave', input: { STATUS: null, APP_USER: 'king' } }] }, { text: 'Secret answer for scott.' }];
+    await scott.post(`/a/hr/38/assistant/${chat}/send`, { __csrf: scott.lastCsrf, message: 'my leave' });
+    const result = mock.seen.at(-1)!.body.messages.at(-1).content[0];
+    assert.equal(result.is_error, true);
+    assert.match(result.content, /Unknown argument "APP_USER"/);
+    const blake = await as('blake');
+    assert.doesNotMatch((await blake.get('/a/hr/38')).body, /Secret answer for scott/);
+    await assert.rejects(runtime.query('select * from meta.ai_conversation'), /permission denied/);
+    await assert.rejects(runtime.tx(async (c) => {
+      await c.query(`set local role hr_app`);
+      await c.query('select * from meta.ai_conversation');
+    }), /permission denied/);
+  });
+
+  test('report questions: hidden columns are not offered; values stay literals', async () => {
+    const r = await owner.one('select config from meta.region where id = $1', [report]);
+    await owner.query(`update meta.region set config = config || '{"hidden": ["sal"]}' where id = $1`, [report]);
+    try {
+      const b = await as('scott');
+      await b.get('/a/hr/38');
+      mock.script = [{ text: JSON.stringify({ filters: [{ column: 'sal', operator: 'gt', value: '0' }, { column: 'ename', operator: 'eq', value: "x' or '1'='1" }], search: '', sort_column: '', sort_descending: false }) }];
+      const res = await b.post(`/a/hr/38/report/${report}/ask`, { __csrf: b.lastCsrf, question: 'everyone' });
+      const schema = mock.seen.at(-1)!.body.output_config.format.schema;
+      assert.ok(!schema.properties.filters.items.properties.column.enum.includes('sal'), 'a hidden column is not offered');
+      const loc = new URL(res.headers.location as string, 'http://x');
+      assert.deepEqual(loc.searchParams.getAll(`r${report}_f`), ["ename|eq|x' or '1'='1"]);
+      const page = (await b.get(`${loc.pathname}${loc.search}`)).body;
+      assert.doesNotMatch(page, /alert-error/);
+      assert.doesNotMatch(page, />SCOTT</, 'the quote is part of the value: no rows match');
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [report, JSON.stringify(r.config)]);
+    }
+  });
+
+  test('builder settings: developers only, with CSRF; only an assistant region', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.post(`/builder/pages/${pageId}/region/${chat}/assistant`, { __csrf: 'x', service: 'X' })).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder');
+    assert.equal((await dev.post(`/builder/pages/${pageId}/region/${chat}/assistant`, { __csrf: 'forged', service: 'X' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/pages/${pageId}/region/${report}/assistant`, { __csrf: dev.lastCsrf, service: 'X' })).statusCode, 404);
+    assert.equal((await dev.post(`/builder/pages/${pageId}/region/${chat}/ai-filter`, { __csrf: dev.lastCsrf, service: 'X' })).statusCode, 404);
+    assert.equal((await owner.one('select config->>\'service\' as s from meta.region where id = $1', [chat])).s, SVC);
+  });
+});

@@ -396,3 +396,39 @@ describe('export', () => {
     assert.doesNotMatch(JSON.stringify(doc), /ai_conversation|Only for this session/);
   });
 });
+
+describe('builder: AI assistant and report question settings', () => {
+  test('the page designer shows the forms; saving merges, checks JSON, tools and sources', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    const pageId = (await owner.one('select page_id from meta.region where id = $1', [appRegion])).page_id;
+    const designer = (await b.get(`/builder/pages/${pageId}?c=region-${appRegion}`)).body;
+    assert.match(designer, /AI assistant settings/);
+    assert.match(designer, new RegExp(`<option value="${OPENAI}" selected>`));
+    const before = (await owner.one('select config from meta.region where id = $1', [appRegion])).config;
+    const tools = [{ name: 'notes', description: 'All notes', sql: 'select 1' }, { name: 'w', type: 'rest', source: 'NOPE', description: 'x' }];
+    let res = await b.submit(`/builder/pages/${pageId}/region/${appRegion}/assistant`, { service: OPENAI, system: 'New system', context: '', tools: JSON.stringify(tools), max_rounds: '3' });
+    assert.equal(res.statusCode, 303);
+    let cfg = (await owner.one('select config from meta.region where id = $1', [appRegion])).config;
+    assert.equal(cfg.system, 'New system');
+    assert.equal(cfg.max_rounds, 3);
+    assert.deepEqual(cfg.tools, tools);
+    assert.match((await b.get(`/builder/pages/${pageId}?c=region-${appRegion}`)).body, /no REST data source NOPE/);
+    res = await b.submit(`/builder/pages/${pageId}/region/${appRegion}/assistant`, { service: OPENAI, tools: '{not json' });
+    cfg = (await owner.one('select config from meta.region where id = $1', [appRegion])).config;
+    assert.deepEqual(cfg.tools, tools, 'invalid JSON keeps the old value');
+    await owner.query('update meta.region set config = $2 where id = $1', [appRegion, JSON.stringify(before)]);
+    const hrPage = (await owner.one('select page_id from meta.region where id = $1', [reportRegion])).page_id;
+    assert.match((await b.get(`/builder/pages/${hrPage}?c=region-${reportRegion}`)).body, /Ask in your own words \(AI\)/);
+    const old = (await owner.one('select config from meta.region where id = $1', [reportRegion])).config;
+    try {
+      await b.submit(`/builder/pages/${hrPage}/region/${reportRegion}/ai-filter`, { service: '' });
+      assert.equal((await owner.one('select config from meta.region where id = $1', [reportRegion])).config.ai_filter, undefined);
+      await b.submit(`/builder/pages/${hrPage}/region/${reportRegion}/ai-filter`, { service: HR_SERVICE.toLowerCase(), placeholder: 'Ask' });
+      assert.deepEqual((await owner.one('select config from meta.region where id = $1', [reportRegion])).config.ai_filter, { service: HR_SERVICE, placeholder: 'Ask' });
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [reportRegion, JSON.stringify(old)]);
+    }
+  });
+});

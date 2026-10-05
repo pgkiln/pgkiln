@@ -79,6 +79,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
 | [`list`](#list-lists) | A list (Shared Components → Lists) as nested links, a badge list, cards or tabs |
 | [`data_reporter`](#data_reporter-data-reporter) | Business users build, save and share their own reports from tables and views the developer offers |
+| [`ai_assistant`](#ai_assistant-ai-assistant) | A chat with an AI service (Claude or OpenAI), with context from queries and tools the model may call (an AI agent) |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
@@ -144,6 +145,29 @@ so it can be bookmarked and shared. Everything the user enters is applied safely
 and highlight values become literals, columns must exist in the result, operators, aggregate
 functions, chart types and colors come from fixed lists, sort positions are integers, and computed
 column expressions are parsed (below), never pasted into SQL.
+
+### Natural-language filters (*Ask in your own words*)
+
+With an [AI service](06-processing.md#generate-text-with-ai), an interactive report can take a
+question in the user's own words (APEX: natural language to interactive report): *"analysts and
+managers hired before 1982, highest salary first"*. Set `"ai_filter": {"service": "NAME"}` in the
+report's attributes (or *Ask in your own words (AI)* under the report's settings in the page
+designer); a question box appears above the report when the application may use the service.
+
+The question goes to the service with the report's shown columns (names, headings and kinds:
+text, number, date) and its filter operators; the answer is a structured output (filters, a search
+text, a sort column) that pgapex checks again (only those columns and operators, at most five
+filters, short values) and turns into the report's ordinary URL parameters. So the model can only
+set what the user could set by hand in the Actions menu; the report builds the SQL (values as
+escaped literals) and runs it as the application's role, and the user sees which filters were
+applied and can change or remove them. Hidden columns (`hidden`) are not offered. Signed-in users
+only, unless `"public": true`; logged in the AI usage log with the source `nl2ir`.
+
+| Key | Meaning |
+|---|---|
+| `ai_filter.service` | The AI service's name |
+| `ai_filter.placeholder` | The question box's placeholder |
+| `ai_filter.public` | Also for users who are not signed in |
 
 ### Computed columns
 
@@ -917,6 +941,71 @@ reports are user data, like [saved reports](#report-interactive-report), and sta
 region when an application is replaced. The HR example's page 36 (*My reports*) offers employees
 (a view without the user name and photo columns) and leave requests (row level security: an
 employee sees only their own), with King's shared report *Salary by department*.
+
+### `ai_assistant` (AI assistant)
+
+An **AI assistant** region (APEX: AI Assistant, AI agents and tools) is a chat with an
+[AI service](06-processing.md#generate-text-with-ai) (Claude or OpenAI) that an administrator
+configured and allowed for the application. The developer gives it a system prompt and, optionally,
+**context queries** and **tools**; the model then answers questions about the application's data,
+calling the tools when it needs to, like an agent. It works without JavaScript (the message is
+posted and the page comes back with the answer); with JavaScript the Send button shows that the
+assistant is thinking and Ctrl+Enter sends.
+
+- **Conversations** are kept per session and region (`meta.ai_conversation`): a follow-up question
+  sends the earlier messages along. *New conversation* starts over; signing out (or the session's
+  end) deletes it. Another user, or another session of the same user, never sees it. A conversation
+  holds at most `max_turns` questions (20).
+- **Context queries** run before each question, as the application's database role (grants and row
+  level security apply), read only, with `:AI_PROMPT` bound to the question (and `:APP_USER`, items
+  as usual). Their rows (at most `max_rows`, 50) go to the model as delimited data (`<data
+  name="context:policy">…</data>`) in the user's turn: a simple retrieval (RAG) over tables you choose,
+  e.g. full-text search on policy texts.
+- **Tools** are SQL queries or REST data sources the model may call with arguments you declare
+  (`parameters`: `string` (optionally an `enum`), `integer`, `number`, `boolean` or `date`;
+  `"optional": true` allows none). pgapex sends them as strict tools (JSON schemas with every
+  property required, no others), checks the model's arguments against them again and runs the tool:
+  - a **SQL tool** runs as the application's role; the arguments are bind variables (`:NAME`,
+    escaped literals, never SQL text) next to the usual `:APP_USER` and items (parameter names can't
+    start with `APP_`). The SQL is one query (wrapped as a subquery, at most `max_rows` rows, a 15 s
+    time limit) and is **rolled back** afterwards, unless the tool has `"writes": true` (for a
+    function that changes data, e.g. one that files a request). Errors go back to the model as the
+    message a user would see;
+  - a **REST tool** (`"type": "rest"`, `"source": "NAME"`) calls a [REST data
+    source](19-rest-data-sources.md) of the application; the arguments are its parameters (as given:
+    `&ITEM.` in them is not substituted), other parameters keep their defaults;
+  - `"authz": "SCHEME"` offers a tool only to users who pass the authorization scheme.
+
+  The model gets at most `max_rounds` (5) rounds of tool calls per question, then must answer.
+- The answer is shown escaped, with paragraphs, bullet and numbered lists, `**bold**` and `` `code` ``
+  as the only formatting. It is never run as SQL or HTML.
+- Signed-in users only, unless the application has no sign-in or the region says `"public": true`
+  (every question costs tokens). The service's daily limits apply to every call to the provider (a
+  question with tool calls makes several); each call is logged in the [AI usage](03-builder.md) log
+  with the source `assistant`.
+
+What goes to the provider: the system prompt (with `&ITEM.` values as delimited data, never the
+session id or passwords), what the user types, the context rows and the tools' results. Choose
+context queries and tools that return only what the user may see anyway (row level security helps).
+
+Attributes (written by the region's **Settings**; they travel with the application export):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `service` | | The AI service's name |
+| `system` | | The system prompt (`&ITEM.` substitutions as delimited data) |
+| `welcome` | | The first message shown (translatable) |
+| `placeholder` | | Placeholder of the message box |
+| `context` | | `[{"name": "policy", "sql": "select title, body from hr.policy where … :AI_PROMPT …", "max_rows": 5}]` |
+| `tools` | | `[{"name": "my_leave", "description": "…", "sql": "select … where status = :STATUS", "parameters": {"STATUS": {"type": "string", "enum": ["PENDING", "APPROVED"], "optional": true}}, "max_rows": 50, "writes": false, "authz": "SCHEME"}, {"name": "weather", "type": "rest", "source": "WEATHER", "description": "…", "parameters": {"city": {"type": "string"}}}]` |
+| `max_rounds` | `5` | Rounds of tool calls per question (1 to 10) |
+| `max_turns` | `20` | Questions per conversation (1 to 100) |
+| `public` | `false` | Also for users who are not signed in |
+| `error_message` | | Shown instead of the service's error (not for daily limits) |
+
+The HR example's page 38 (*HR assistant*) has an assistant with a context query over `hr.policy`
+and four tools (the user's own leave, colleagues, departments, and *request_leave*, which files a
+leave request), next to a staff list with [*Ask in your own words*](#natural-language-filters-ask-in-your-own-words).
 
 ### Template components
 

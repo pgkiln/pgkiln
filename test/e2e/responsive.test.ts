@@ -620,6 +620,12 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
                    ($1, 37, 'king', $2, 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME', 'anthropic', 'claude-opus-5-5', 'dynamic_action', 0, 0, 120, 'error', 'rate_limit 429')`, [appId, svc]);
           return { ai_services: '/builder/ai', ai_service: `/builder/ai/${svc}`, ai_usage: `/builder/apps/${appId}/ai` };
         })()),
+        // (sprint 36) the AI assistant region's settings and a report's "Ask in your own words" (HR page 38)
+        ...(await (async () => {
+          const rs = (await owner.query(`select r.id, r.page_id, r.type from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 38 and r.type in ('ai_assistant', 'report')`, [appId])).rows;
+          const at = (type: string) => { const r = rs.find((x) => x.type === type); return `/builder/pages/${r.page_id}?c=region-${r.id}`; };
+          return { ai_assistant_region: at('ai_assistant'), ai_filter_region: at('report') };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);

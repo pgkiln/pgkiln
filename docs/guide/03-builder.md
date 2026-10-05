@@ -335,6 +335,8 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `facets` | The report region it filters and a search field on/off; per column of that report: facet on/off, label, type (checkboxes, ranges, star rating), values shown, exclude, ranges (`..1000; 1000..3000 = Middle; 3000..`), from/to and order |
 | `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
+| `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
+| `report` (also) | *Ask in your own words (AI)*: the AI service and placeholder of the [natural-language filters](04-pages-and-regions.md#natural-language-filters-ask-in-your-own-words) |
 | `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks), who may share reports, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to

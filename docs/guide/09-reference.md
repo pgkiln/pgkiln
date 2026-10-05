@@ -305,7 +305,7 @@ navigation entries and application processes have the same `build_option` column
 | Column | Description |
 |---|---|
 | `page_id`, `seq`, `title` | |
-| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `list`, `data_reporter`, `tasks`, `workflows`, `static`, `dynamic` |
+| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `list`, `data_reporter`, `ai_assistant`, `tasks`, `workflows`, `static`, `dynamic` |
 | `source` | SELECT (or HTML for `static`) |
 | `table_name`, `pk_column` | For `form` and `grid` |
 | `pk_item` | For `form`: the item holding the key |
@@ -356,6 +356,7 @@ navigation entries and application processes have the same `build_option` column
 | `ai_service` | [AI services](06-processing.md#generate-text-with-ai) of the installation: `name`, `provider` (`anthropic`, `openai`), `model`, `effort`, `refusal_fallback`, `max_tokens`, `timeout_s`, `base_url`, `api_key_enc` (encrypted with `PGAPEX_SECRET_KEY`, write-only), `enabled`. Not exported | no |
 | `app_ai_service` | Which applications may use which AI service, with daily limits `max_requests` and `max_tokens` (null: no limit). Not exported | no (through `meta.ai_available`) |
 | `ai_usage` | One row per AI request: `at`, `app_id`, `page_no`, `username`, `service`, `provider`, `model`, `source`, `input_tokens`, `output_tokens`, `duration_ms`, `status`, `message` (an error class, never prompt or answer text). Not exported | no |
+| `ai_conversation` | [AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant) conversations: one per session and region (`messages`: the provider's history, `turns`: what the page shows); deleted with the session. Not exported | no |
 | `ai_request` | [AI requests from SQL](#ai-requests-from-sql) and their answers, kept 24 hours. Not exported | no (through `meta.ai_result`) |
 | `developer` | Builder accounts (`is_admin`: manages developers, breaks locks) | no |
 | `builder_lock` | Page (`page_no`) and application (`page_no` 0) locks: `locked_by`, `locked_at`, `note` | no |
