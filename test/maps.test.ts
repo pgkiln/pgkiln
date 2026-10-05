@@ -10,6 +10,7 @@ import { closePools, owner } from '../src/db.ts';
 import { tileOrigin } from '../src/maptiles.ts';
 import { areaCondition, parseArea, positionColumns } from '../src/runtime/report.ts';
 import { layerDefs, layerSql } from '../src/runtime/maps.ts';
+import { advise } from '../src/builder/advisor.ts';
 import {
   geoJsonSelect, nearArea, nearCondition, parseNear, postgis, postgisAreaCondition, postgisNearCondition, setPostgis, spatialColumn, spatialConditions, type PostGis,
 } from '../src/runtime/spatial.ts';
@@ -214,6 +215,22 @@ describe('several layers, clustering and the distance filter (page 33)', () => {
     }
   });
 
+  test("the Advisor checks each layer's query", async () => {
+    const [map] = await ids();
+    const r = await owner.one('select r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1', [map.id]);
+    const layerFindings = async () => (await advise(r.app_id)).findings.filter((f) => f.field.startsWith('Layer '));
+    assert.deepEqual(await layerFindings(), [], 'the example layers are fine');
+    await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify({ ...r.config, layers: [...r.config.layers, { name: 'Broken', source: 'select nope from nowhere' }] })]);
+    try {
+      const [f] = await layerFindings();
+      assert.equal(f.field, 'Layer "Broken" query');
+      assert.equal(f.severity, 'error');
+      assert.match(f.message, /nowhere/);
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [map.id, JSON.stringify(r.config)]);
+    }
+  });
+
   test('layer definitions: the region query first, at most seven more, empty queries skipped', () => {
     const r: any = { id: 1, title: 'Places', source: 'select 1', config: { cluster: true, layers: [{ source: ' ' }, ...Array.from({ length: 9 }, (_, i) => ({ name: `L${i}`, source: 'select 2', layer: i ? 'markers' : 'heat', link: { page: 'x' } }))] } };
     const defs = layerDefs(r);
@@ -245,9 +262,12 @@ describe('PostGIS (generated SQL; the dev and CI databases have no PostGIS)', ()
   const gis: PostGis = { schema: 'gis', version: '3.5.2', geometry: 9001, geography: 9002 };
   after(() => setPostgis(undefined));
 
-  test('detected from pg_extension: none here', async () => {
+  test('detected from pg_extension', async () => {
     setPostgis(undefined);
-    assert.equal(await postgis(), null);
+    const installed = (await owner.query(`select 1 from pg_extension where extname = 'postgis'`)).rowCount === 1;
+    const found = await postgis();
+    assert.equal(found !== null, installed);
+    if (found) assert.ok(found.geometry && found.geography && found.schema);
     setPostgis(gis);
     assert.equal(await postgis(), gis);
     setPostgis(undefined);
@@ -295,6 +315,32 @@ describe('PostGIS (generated SQL; the dev and CI databases have no PostGIS)', ()
     assert.match(plain.where[1], /asin\(sqrt/);
     assert.deepEqual(spatialConditions(f, new Map([['id', 23]]), gis), { where: [], ok: false, postgis: false });
     assert.deepEqual(spatialConditions({ area: null, near: null }, new Map(), gis), { where: [], ok: true, postgis: false });
+  });
+
+  // only where PostGIS is installed (e.g. a postgis/postgis container); skipped on the dev and CI databases
+  test('with a real PostGIS: the report filtered on a geometry column, a layer from a geometry column', async (t) => {
+    setPostgis(undefined);
+    if (!(await postgis())) return t.skip('PostGIS is not installed');
+    const rows = (await owner.query(`select r.id, r.type, r.source, r.config from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 33 order by r.seq`)).rows;
+    const [map, report] = rows;
+    try {
+      // no lat/lng columns: only PostGIS can filter
+      await owner.query('update meta.region set source = $2 where id = $1', [report.id, `select v.customer, initcap(d.loc) as office, st_setsrid(st_makepoint(v.lng, v.lat), 4326) as geom from hr.field_visit v join hr.dept d using (deptno)`]);
+      await owner.query('update meta.region set source = $2 where id = $1', [map.id, `select customer as title, st_setsrid(st_makepoint(lng, lat), 4326)::geography as geog from hr.field_visit`]);
+      const expected = (await owner.one(`select count(*)::int as n from hr.field_visit where st_dwithin(st_makepoint(lng, lat)::geography, st_makepoint(-87.6298, 41.8781)::geography, 150000)`)).n;
+      const page = (await king.get(`/a/hr/33?r${report.id}_near=${encodeURIComponent('41.8781,-87.6298,150')}&r${report.id}_n=100`)).body;
+      assert.doesNotMatch(page, /chip-error|alert-error/);
+      assert.equal([...page.matchAll(/<td[^>]*>Chicago<\/td>/g)].length, expected);
+      assert.doesNotMatch(page, /<td[^>]*>(Boston|Dallas|New York)<\/td>/);
+      const area = (await king.get(`/a/hr/33?r${report.id}_bb=${encodeURIComponent('40,-89,43,-86')}&r${report.id}_n=100`)).body;
+      assert.doesNotMatch(area, /<td[^>]*>(Boston|Dallas|New York)<\/td>/);
+      assert.ok(/<td[^>]*>Chicago<\/td>/.test(area));
+      const d = mapData(page);
+      assert.equal(d.layers[0].points.length, 80, 'points from a geography column');
+      assert.equal(d.layers[0].shapes.length, 0);
+    } finally {
+      for (const r of [map, report]) await owner.query('update meta.region set source = $2 where id = $1', [r.id, r.source]);
+    }
   });
 
   test("a map layer's geometry becomes GeoJSON on the server", () => {

@@ -179,4 +179,51 @@ describe('map settings', () => {
     assert.deepEqual(mergeMapSettings({ layer: 'heat', report: 19 }, { layer: 'markers', report: '' }, allowed), {});
     assert.deepEqual(mergeMapSettings({}, { layer: 'nuclear', report: '20' }, allowed), {}, 'only a report of this page');
   });
+
+  test('clustering, a layer name, the distance filter and more layers', () => {
+    assert.deepEqual(mergeMapSettings({}, { cluster: 'true', name: ' Shops ', report: '19', filter: 'distance' }, allowed), { cluster: true, name: 'Shops', report: 19, filter: 'distance' });
+    assert.deepEqual(mergeMapSettings({}, { cluster: 'true', layer: 'heat', filter: 'distance' }, allowed), { layer: 'heat' }, 'a heat map has no clusters; no report, no filter');
+    const merged = mergeMapSettings(
+      { layers: [{ name: 'old', source: 'select 0' }] },
+      {
+        layers: '1',
+        layer0_source: '', layer0_name: 'old',
+        layer1_source: ' select lat, lng from t ', layer1_name: 'Shops', layer1_cluster: 'true', layer1_link_page: '5', layer1_link_items: 'P5_ID=#id#',
+        layer2_source: 'select 1', layer2_layer: 'heat', layer2_cluster: 'true', layer2_hidden: 'true', layer2_link_page: '99',
+        layer9_source: 'select 9',
+      },
+      allowed,
+    );
+    assert.deepEqual(merged.layers, [
+      { name: 'Shops', source: 'select lat, lng from t', cluster: true, link: { page: 5, items: { P5_ID: '#id#' } } },
+      { name: 'Layer 3', source: 'select 1', layer: 'heat', hidden: true },
+    ], 'an empty query removes a layer, a link only to a page of the app, at most seven layers');
+    assert.equal(mergeMapSettings({ layers: [{ source: 'select 1' }] }, { layers: '1' }, allowed).layers, undefined);
+    assert.deepEqual(mergeMapSettings({ layers: [{ source: 'select 1' }] }, {}, allowed).layers, [{ source: 'select 1' }], 'kept without the layers fields');
+  });
+
+  test('the form shows the layers, one empty to add, and saves them', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const r = await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 33 and r.type = 'map'`);
+    try {
+      const page = (await b.get(`/builder/pages/${r.page_id}?c=region-${r.id}`)).body;
+      assert.match(page, /Map settings/);
+      assert.match(page, /<legend>Layer 2: Offices<\/legend>/);
+      assert.match(page, /<legend>Add a layer<\/legend>/);
+      assert.match(page, /name="layer3_source"[^>]*data-code="sql"/);
+      assert.match(page, /<option value="distance" selected>/);
+      const res = await b.submit(`/builder/pages/${r.page_id}/region/${r.id}/settings`, {
+        layers: '1', cluster: 'true', report: String(r.config.report), filter: 'distance',
+        layer0_source: 'select lat, lng from hr.dept', layer0_name: 'Offices only',
+      });
+      assert.equal(res.statusCode, 303);
+      const saved = (await owner.one('select config from meta.region where id = $1', [r.id])).config;
+      assert.deepEqual(saved.layers, [{ name: 'Offices only', source: 'select lat, lng from hr.dept' }]);
+      assert.equal(saved.filter, 'distance');
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
+    }
+  });
 });

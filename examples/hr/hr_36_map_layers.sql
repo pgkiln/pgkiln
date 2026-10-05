@@ -8,7 +8,7 @@
 --   - "Visits": customer visits by the sales staff (hr.field_visit),
 --     clustered markers (a round marker with the count; click to zoom in);
 --   - "Offices": the department offices, linked to the department;
---   - "Sales areas": an area around each office and the delivery routes
+--   - "Sales areas": an area of about 2 by 3 degrees around each office and the delivery routes
 --     between them (GeoJSON built in SQL; with PostGIS a geometry column
 --     would do);
 --   - "Visit density": the same visits as a heat map, off at first.
@@ -62,8 +62,7 @@ jsonb_build_object(
       'link', jsonb_build_object('page', 5, 'items', jsonb_build_object('P5_DEPTNO', '#deptno#'))),
     jsonb_build_object(
       'name', 'Sales areas',
-      'source', $q$-- an area of about 2 by 3 degrees around each office
-select d.dname || ' area' as title,
+      'source', $q$select d.dname || ' area' as title,
        json_build_object('type', 'Polygon', 'coordinates', json_build_array(json_build_array(
          json_build_array(d.lng - 1.5, d.lat - 1), json_build_array(d.lng + 1.5, d.lat - 1),
          json_build_array(d.lng + 1.5, d.lat + 1), json_build_array(d.lng - 1.5, d.lat + 1),
