@@ -257,6 +257,38 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('contacts (page 34): a grid and a form on a REST data source read and write the service', async () => {
+      const env = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS };
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+      const url = (await owner.one(`select s.url from meta.rest_source s join meta.app a on a.id = s.app_id where a.alias = 'hr' and s.name = 'CRM_CONTACTS'`)).url;
+      await owner.query(`update meta.rest_source s set url = $1 from meta.app a where a.id = s.app_id and a.alias = 'hr' and s.name = 'CRM_CONTACTS'`, [`${base}/a/hr/rest/crm/contacts`]);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        const res = await page.goto(`${base}/a/hr/34`);
+        assert.equal(res?.status(), 200);
+        assert.equal(await page.locator('.region-grid .alert-error').count(), 0);
+        assert.ok((await page.locator('.region-grid tr[data-row]').count()) >= 4, 'the contacts of the service');
+        await check(page, 'app-34-rest-grid', vp);
+        // the form: a new contact through the service's POST, then its row is fetched
+        const name = `E2E ${vp}`;
+        await page.fill('#P34_NAME', name);
+        await page.fill('#P34_COMPANY', 'Playwright');
+        await Promise.all([page.waitForNavigation(), page.click('button[data-button="CREATE"]')]);
+        assert.equal(await page.inputValue('#P34_NAME'), name);
+        assert.ok(await owner.one(`select 1 from hr.crm_contact where name = $1`, [name]));
+        await check(page, 'app-34-rest-form', vp);
+      } finally {
+        await owner.query(`delete from hr.crm_contact where name like 'E2E %'`);
+        await owner.query(`update meta.rest_source s set url = $1 from meta.app a where a.id = s.app_id and a.alias = 'hr' and s.name = 'CRM_CONTACTS'`, [url]);
+        for (const [k, v] of [['PGAPEX_REST_ALLOWED_HOSTS', env.allowed], ['PGAPEX_REST_PRIVATE_HOSTS', env.priv]] as const)
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        await page.context().close();
+      }
+    });
+
     test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
