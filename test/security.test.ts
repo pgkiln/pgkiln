@@ -5775,3 +5775,33 @@ describe('sprint 37 theme roller', () => {
     assert.equal(templateClasses('item', 'to-stretch'), '', 'only lists');
   });
 });
+
+describe('sprint 37 report selection across pages', () => {
+  test('only the selection item of a visible report, with CSRF, signed in to that app', async () => {
+    const r = await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report'`);
+    await owner.query(`insert into meta.item (page_id, name, type) values ($1, 'P2_SEC37', 'hidden') on conflict do nothing`, [r.page_id]);
+    await owner.query('update meta.region set config = config || $2 where id = $1', [r.id, JSON.stringify({ selection: { column: 'empno', item: 'P2_SEC37' } })]);
+    try {
+      const anon = new Browser();
+      await anon.get('/a/hr/login');
+      const res = await anon.post(`/a/hr/2/report/${r.id}/select`, { __csrf: anon.lastCsrf, value: '7839', checked: 'true' });
+      assert.notEqual(res.statusCode, 200, 'not signed in');
+      const allen = new Browser();
+      await allen.get('/a/hr/login');
+      await allen.post('/a/hr/login', { __csrf: allen.lastCsrf, username: 'allen', password: 'allen' });
+      await allen.get('/a/hr/2');
+      assert.equal((await allen.post(`/a/hr/2/report/${r.id}/select`, { __csrf: 'x', value: '7839', checked: 'true' })).statusCode, 403);
+      // a region of another page, or one without a selection
+      const other = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 6 and r.type = 'report' limit 1`);
+      if (other) assert.equal((await allen.post(`/a/hr/2/report/${other.id}/select`, { __csrf: allen.lastCsrf, value: '1', checked: 'true' })).statusCode, 403);
+      const ok = await allen.post(`/a/hr/2/report/${r.id}/select`, { __csrf: allen.lastCsrf, value: ['7839', '<script>'], checked: 'true' });
+      assert.equal(ok.statusCode, 200);
+      const page = (await allen.get('/a/hr/2')).body;
+      assert.ok(!page.includes('value="<script>"'));
+      assert.ok(page.includes('value="&lt;script&gt;" data-sel-other'), 'the value is escaped');
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
+      await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_SEC37'`, [r.page_id]);
+    }
+  });
+});

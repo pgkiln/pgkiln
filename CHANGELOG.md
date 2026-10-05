@@ -26,6 +26,8 @@ All notable changes to this project are documented here. The format follows
 - **Theme Roller**: accent and header colours for dark mode (style variants and Settings → Theme), a live preview
   while you edit a style, and template options on items (migration 066: stretch, large, quiet, bold, hidden label)
   and report columns (bold, muted, no wrapping, monospace, right-aligned, centred).
+- **Report row selection across pages**: rows chosen on one page of a report stay chosen while paging (each change
+  is recorded in the selection item's session state), with a count of the selected rows.
 
 ## [0.28.0] - 2026-10-06
 

@@ -415,6 +415,32 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('report rows chosen on one page stay chosen on the next', async () => {
+      if (vp !== 'desktop') return;
+      const r = await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report'`);
+      await owner.query(`insert into meta.item (page_id, name, type) values ($1, 'P2_E2E_SEL', 'hidden')`, [r.page_id]);
+      await owner.query('update meta.region set config = config || $2 where id = $1', [r.id, JSON.stringify({ selection: { column: 'empno', item: 'P2_E2E_SEL' } })]);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        await page.goto(`${base}/a/hr/2?r${r.id}_n=5`);
+        const first = page.locator('input[type=checkbox][name="P2_E2E_SEL"]').first();
+        const value = await first.getAttribute('value');
+        const done = page.waitForResponse((res) => res.url().includes(`/report/${r.id}/select`));
+        await first.check();
+        await done;
+        await page.locator(`[data-sel-count="${r.id}"]`).filter({ hasText: '1 selected' }).waitFor();
+        await page.goto(`${base}/a/hr/2?r${r.id}_n=5&r${r.id}_p=2`);
+        assert.equal(await page.locator(`input[type=hidden][name="P2_E2E_SEL"][value="${value}"]`).count(), 1, 'carried as a hidden value');
+        await page.goto(`${base}/a/hr/2?r${r.id}_n=5`);
+        assert.equal(await page.locator(`input[type=checkbox][name="P2_E2E_SEL"][value="${value}"]`).isChecked(), true);
+      } finally {
+        await page.context().close();
+        await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
+        await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_E2E_SEL'`, [r.page_id]);
+      }
+    });
+
     test('a drawer page slides in from the right (full screen on phones)', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'allen', 'allen');

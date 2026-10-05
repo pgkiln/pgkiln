@@ -292,6 +292,7 @@ export const fr: Record<MessageKey, string> = {
   'report.chart_truncated': 'Seuls les {labels} premiers libellés sont affichés.',
   'report.select_all': 'Sélectionner toutes les lignes',
   'report.select_row': 'Sélectionner la ligne',
+  'report.selected_count': '{n} sélectionné(s) (aussi sur d\'autres pages)',
   'chart.bar': 'Barres',
   'chart.column': 'Colonnes',
   'chart.line': 'Courbe',

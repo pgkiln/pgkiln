@@ -1365,11 +1365,35 @@ document.addEventListener('click', (e) => {
 });
 
 // Report row selection: the header checkbox checks or clears every row on the page.
+// Each change is recorded on the server (the selection item's session state), so
+// rows chosen on other pages stay chosen while paging; without script only the
+// current page's rows can be chosen.
+function recordSelection(table, boxes, checked) {
+  const region = table.dataset.selRegion;
+  const base = document.body.dataset.base;
+  const page = document.body.dataset.page;
+  if (!region || !base || !page) return;
+  let csrf = '';
+  try {
+    csrf = JSON.parse(document.getElementById('pgapex-meta')?.textContent || '{}').csrf || '';
+  } catch {}
+  const form = new URLSearchParams({ __csrf: csrf, checked: String(checked) });
+  for (const b of boxes) form.append('value', b.value);
+  fetch(`${base}/${page}/report/${region}/select`, { method: 'POST', body: form, credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((out) => {
+      const note = out && document.querySelector(`[data-sel-count="${CSS.escape(region)}"]`);
+      if (note) note.textContent = out.text;
+    })
+    .catch(() => {});
+}
 document.addEventListener('change', (e) => {
   const all = e.target.closest?.('[data-select-all]');
   if (all) {
     const table = all.closest('table');
-    for (const box of table.querySelectorAll(`input[type=checkbox][name="${CSS.escape(all.dataset.selectAll)}"]`)) box.checked = all.checked;
+    const boxes = [...table.querySelectorAll(`input[type=checkbox][name="${CSS.escape(all.dataset.selectAll)}"]`)];
+    for (const box of boxes) box.checked = all.checked;
+    recordSelection(table, boxes, all.checked);
     return;
   }
   const box = e.target;
@@ -1379,6 +1403,7 @@ document.addEventListener('change', (e) => {
   const boxes = [...box.closest('table').querySelectorAll(`input[type=checkbox][name="${CSS.escape(box.name)}"]`)];
   head.checked = boxes.every((b) => b.checked);
   head.indeterminate = !head.checked && boxes.some((b) => b.checked);
+  recordSelection(box.closest('table'), [box], box.checked);
 });
 
 // SAML: post the identity provider's response on to pgapex itself (same-site, so the

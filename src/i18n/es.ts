@@ -292,6 +292,7 @@ export const es: Record<MessageKey, string> = {
   'report.chart_truncated': 'Solo se muestran las primeras {labels} etiquetas.',
   'report.select_all': 'Seleccionar todas las filas',
   'report.select_row': 'Seleccionar fila',
+  'report.selected_count': '{n} seleccionado(s) (también en otras páginas)',
   'chart.bar': 'Barras',
   'chart.column': 'Columnas',
   'chart.line': 'Líneas',

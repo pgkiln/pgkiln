@@ -1069,8 +1069,16 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   if (st.view !== 'report') return html`${toolbar}${switcher}${errors}${await renderView(ctx, r, st)}`;
 
   const empty = r.config.empty ?? t('report.no_data');
-  return html`${toolbar}${switcher}${errors}
-    <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
+  // (0.29) selection across pages: the rows chosen on other pages travel with a submit as hidden values;
+  // app.js records each change (POST …/report/<id>/select), so paging keeps them
+  const onPage = new Set(selIdx >= 0 ? info.rows.map((row) => cell(row[selIdx])) : []);
+  const elsewhere = [...selected].filter((v) => !onPage.has(v));
+  const selectionNote = lead
+    ? html`<p class="sel-count muted" data-sel-count="${r.id}" aria-live="polite">${selected.size ? t('report.selected_count', { n: selected.size }) : ''}</p>
+      ${elsewhere.map((v) => html`<input type="hidden" name="${selection!.item}" value="${v}" data-sel-other>`)}`
+    : '';
+  return html`${toolbar}${switcher}${errors}${selectionNote}
+    <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}"${lead ? raw(` data-sel-region="${r.id}"`) : ''}>
       <thead><tr>${header}</tr></thead>
       <tbody>${body.length ? body : html`<tr><td colspan="${cols.length + lead || 1}" class="empty">${empty}</td></tr>`}</tbody>
       ${info.rows.length ? foot : ''}

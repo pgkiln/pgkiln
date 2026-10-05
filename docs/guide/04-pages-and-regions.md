@@ -227,7 +227,12 @@ update hr.emp set active = false
 
 The item must be on the same page and is usually `hidden`; it accepts posted values only because
 the selection names it. The values come from the browser, so treat them as user input (RLS and
-your process's own checks apply). Only the rows on the current page can be selected.
+your process's own checks apply).
+
+Rows chosen on one page of the report **stay chosen on the others**: every checked or cleared row is recorded in the
+item's session state right away (a small request in the background), so paging doesn't lose them, the report shows
+how many rows are selected, and a submit sends them all (the other pages' rows as hidden values). Without JavaScript
+only the rows of the page you submit from can be chosen. At most 5000 values; values may not contain `:`.
 
 **Saved reports** (like APEX's saved interactive reports) belong to the signed-in user. A
 region with `"public_reports": "ADMIN"` lets users who pass that authorization scheme save

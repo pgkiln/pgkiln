@@ -159,6 +159,40 @@ describe('row selection', () => {
     assert.doesNotMatch(again, /value="7369" checked/);
   });
 
+  test('across pages: changes are recorded, other pages\' rows travel as hidden values, a count shows', async () => {
+    const b = await as('king');
+    const first = (await b.get(`${url([['n', '5']])}`)).body;
+    const csrf = b.lastCsrf;
+    const select = (values: string[], checked: boolean, token = csrf) => b.post(`/a/hr/2/report/${rid}/select`, { __csrf: token, value: values, checked: String(checked) });
+    // start clean, then choose two rows of the first page
+    await b.submit('/a/hr/2', { P2_SELECTED: [] });
+    const firstRows = [...first.matchAll(/name="P2_SELECTED" value="(\d+)"/g)].map((m) => m[1]);
+    assert.equal(firstRows.length, 5);
+    let res = await select(firstRows.slice(0, 2), true);
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(JSON.parse(res.body).count, 2);
+    assert.match(JSON.parse(res.body).text, /2 selected/);
+    // page 2 of the report: the first page's rows are hidden values, the count shows
+    const second = (await b.get(url([['n', '5'], ['p', '2']]))).body;
+    for (const v of firstRows.slice(0, 2)) assert.match(second, new RegExp(`<input type="hidden" name="P2_SELECTED" value="${v}" data-sel-other>`));
+    assert.match(second, /data-sel-count="\d+"[^>]*>2 selected/);
+    // a row of page 2 too, and one of page 1 cleared again
+    const secondRows = [...second.matchAll(/type="checkbox" name="P2_SELECTED" value="(\d+)"/g)].map((m) => m[1]);
+    await select([secondRows[0]], true);
+    res = await select([firstRows[0]], false);
+    assert.equal(JSON.parse(res.body).count, 2);
+    const back = (await b.get(url([['n', '5']]))).body;
+    assert.match(back, new RegExp(`value="${firstRows[1]}" checked`));
+    assert.doesNotMatch(back, new RegExp(`value="${firstRows[0]}" checked`));
+    assert.match(back, new RegExp(`<input type="hidden" name="P2_SELECTED" value="${secondRows[0]}" data-sel-other>`));
+    // CSRF, values with the separator, another region
+    assert.equal((await select(['1'], true, 'forged')).statusCode, 403);
+    res = await select(['a:b', 'x'.repeat(401)], true);
+    assert.equal(JSON.parse(res.body).count, 2, 'not accepted');
+    assert.equal((await b.post(`/a/hr/2/report/999999/select`, { __csrf: csrf, value: '1', checked: 'true' })).statusCode, 403);
+    await b.submit('/a/hr/2', { P2_SELECTED: [] });
+  });
+
   test('no selection column without a valid item; hidden items stay closed otherwise', async () => {
     await owner.query('update meta.region set config = config || $2 where id = $1', [rid, JSON.stringify({ selection: { column: 'empno', item: 'P2_NOPE' } })]);
     const page = (await (await as('king')).get('/a/hr/2')).body;
