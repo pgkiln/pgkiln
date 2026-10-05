@@ -406,8 +406,9 @@ async function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: n
 
 /** A background chain: queued in this transaction (it runs only if the submit commits). */
 async function enqueueChain(ctx: PageContext, p: Process, conf: ChainConfig, names: Set<string>) {
-  const res = await ctx.client!.query('select meta.enqueue_process_job($1, $2::jsonb, $3, $4, $5)::text as id', [
-    p.id, JSON.stringify(backgroundBinds(ctx)), ctx.roles, ctx.locale.lang, ctx.request,
+  // the job gets the session's roles from the database (meta.session), not from here
+  const res = await ctx.client!.query('select meta.enqueue_process_job($1, $2::jsonb, $3, $4)::text as id', [
+    p.id, JSON.stringify(backgroundBinds(ctx)), ctx.locale.lang, ctx.request,
   ]);
   const id = res.rows[0].id as string;
   if (conf.status_item) {

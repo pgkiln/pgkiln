@@ -80,13 +80,17 @@ create index on meta.process_job (state, id);
 create index on meta.process_job (app_id, queued_at desc);
 revoke all on meta.process_job from public;
 
--- Queue a background chain (called by the runtime in the submit's transaction, as the app's role).
-create function meta.enqueue_process_job(p_process_id int, p_binds jsonb, p_roles text[], p_lang text, p_request text) returns bigint
+-- Queue a background chain. Called by the runtime in the submit's transaction,
+-- as the app's role (application SQL may call it too: only a background chain
+-- of the current application, run as the current user with the roles of the
+-- current session, never roles the caller names).
+create function meta.enqueue_process_job(p_process_id int, p_binds jsonb, p_lang text default null, p_request text default null) returns bigint
 language plpgsql security definer set search_path = meta, pg_catalog as $$
 declare
-  p      record;
-  v_id   bigint;
-  v_kids int;
+  p       record;
+  v_id    bigint;
+  v_kids  int;
+  v_roles text[];
 begin
   select x.id, x.name, x.type, x.config, g.page_no, g.app_id into p
     from process x join page g on g.id = x.page_id
@@ -94,21 +98,22 @@ begin
   if not found or p.type <> 'chain' or coalesce((p.config->>'background')::boolean, false) is not true then
     raise exception 'Process % is not a background chain of this application.', p_process_id;
   end if;
-  if jsonb_typeof(coalesce(p_binds, '{}')) <> 'object' then
-    raise exception 'The binds of a background process must be a JSON object.';
+  if jsonb_typeof(coalesce(p_binds, '{}')) <> 'object' or length(coalesce(p_binds, '{}')::text) > 1000000 then
+    raise exception 'The binds of a background process must be a JSON object (at most 1 MB).';
   end if;
+  select s.roles into v_roles from session s
+   where s.id = nullif(current_setting('pgapex.session_id', true), '')::uuid and s.app_id = meta.app_id();
   select count(*) into v_kids from process c join page g on g.id = c.page_id
    where g.app_id = meta.app_id() and g.page_no = p.page_no and c.parent_process = p.name;
   insert into process_job (app_id, page_no, process_id, name, app_user, session_id, roles, lang, request, binds, steps_total)
   values (p.app_id, p.page_no, p.id, p.name, meta.app_user(), nullif(current_setting('pgapex.session_id', true), ''),
-          coalesce(p_roles, '{}'), p_lang, p_request, coalesce(p_binds, '{}'), v_kids)
+          coalesce(v_roles, '{}'), left(p_lang, 20), left(p_request, 200), coalesce(p_binds, '{}'), v_kids)
   returning id into v_id;
   perform pg_notify('pgapex_process_job', v_id::text);
   return v_id;
 end
 $$;
-revoke all on function meta.enqueue_process_job(int, jsonb, text[], text, text) from public;
-grant execute on function meta.enqueue_process_job(int, jsonb, text[], text, text) to pgapex_runtime;
+grant execute on function meta.enqueue_process_job(int, jsonb, text, text) to public;
 
 -- The jobs a user may see: their own (signed in), or their session's (public pages).
 create view meta.process_jobs with (security_barrier) as
