@@ -401,6 +401,20 @@ matures. Privileges show up in **SQL Workshop → Object Browser**.
 - **Submitted values**: only editable, visible items are taken from a submit. Hidden, display-only,
   read-only and unauthorized items keep their server-side values.
 - **Grid rows**: every row's primary key is signed the same way.
+- **Master-detail selection**: a master grid's select links carry a signature bound to the
+  application, page, user, region and value; only then does the value go into the item (hidden
+  items are never taken from a submit, and URL items need the page checksum). The detail
+  endpoint `GET …/region/:id` serves only lazy regions and details of a visible master, after
+  the page's and region's authorization and conditions. A detail grid's master column is filled
+  from the session item on insert and can't be edited.
+- **Grid layouts and saved grid reports**: the layout endpoints (`POST …/grid/:id/layout`,
+  `…/layout/reset`, `…/saved/:sid/apply`) check the CSRF token, page access and that the grid is
+  on the page and visible to the user. The layout is cleaned on the server (known shapes only,
+  widths numbers between 40 and 1000, at most 5 frozen columns, at most 6000 characters) and
+  only ever reorders columns the query returns anyway. In the database, `meta.save_grid_layout` /
+  `meta.reset_grid_layout` (security definer) only touch the signed-in user's own row of a grid
+  of the current application; layout rows are never visible to other users, even if marked
+  public. Applying a saved report works for the user's own and public reports of that grid only.
 - **Calendar drag and drop**: the browser only names an event (its key) and a slot. The server
   checks the token, the page's and region's authorization and condition and the region's
   `move_authz`, and that the event is in the region's query for this user (as the application's

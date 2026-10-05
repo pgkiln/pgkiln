@@ -205,6 +205,9 @@ from it, for example with a scheduled
 | `r<id>_s`, `r<id>_d=desc` | report, grid | Sort by column position, descending |
 | `r<id>_p` | report, grid | Page number |
 | `r<id>_n` | report | Rows per page |
+| `r<id>_a=fn\|column` | report, grid | An aggregate (repeatable); `fn` is `sum`, `avg`, `count`, `min`, `max` |
+| `r<id>_sel=value`, `r<id>_selcs` | master grid | Select a master row: the value goes into the grid's `select_row` item; `selcs` is its signature (made by the runtime) |
+| `r<id>_dup=key` | grid | Show the row with this key again as a new, unsaved row (Duplicate without JavaScript) |
 | `r<id>_f=column\|op\|value` | report | Column filter (repeatable); `op` is `eq`, `ne`, `contains`, `not_contains`, `gt`, `ge`, `lt`, `le`, `null`, `not_null` |
 | `r<id>_x_<column>=value` | report + facets, smart filters | Facet selection (repeatable) |
 | `r<id>_xn_<column>=1` | report + facets | Exclude the selected values (facet with `exclude`) |

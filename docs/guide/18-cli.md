@@ -127,7 +127,7 @@ the files any more are removed. What belongs to this installation stays:
 - the application's **id and alias** (links, API URLs and bookmarks keep working),
 - **who may sign in** and with which roles (accounts are never exported; identity-provider group
   mappings do come from the file), OAuth clients, sessions and "keep me signed in" tokens,
-- **saved reports** of users, which move to the new version of their region (same page number and
+- **saved reports** of users (and their grid column layouts), which move to the new version of their region (same page number and
   static id),
 - **running tasks and workflows**, which keep their definition (by name),
 - for **automations**: whether each one is switched on, its next and last run, and its log. New
