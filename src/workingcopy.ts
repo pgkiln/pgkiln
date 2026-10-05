@@ -251,6 +251,8 @@ export async function createCopy(mainId: number, name: string, username: string)
       throw new WorkingCopyError(`The alias ${alias} is taken: choose another name.`);
     const doc = await exportApp(c, main.alias);
     const id = (await c.query<{ id: number }>('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), alias])).rows[0].id;
+    // the copy lives in the main application's workspace
+    await c.query('insert into meta.workspace_app (app_id, workspace_id) select $1, meta.app_workspace($2::int) where meta.app_workspace($2::int) <> 1', [id, mainId]);
     // the same people may run the copy, with the same roles
     await c.query('insert into meta.app_access (app_id, account_id, roles) select $1, account_id, roles from meta.app_access where app_id = $2', [id, mainId]);
     // web credentials work in the copy too (an export carries no secrets)

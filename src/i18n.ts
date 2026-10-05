@@ -7,6 +7,15 @@
 import { de } from './i18n/de.ts';
 import { es } from './i18n/es.ts';
 import { fr } from './i18n/fr.ts';
+import { it } from './i18n/it.ts';
+import { pt } from './i18n/pt.ts';
+import { pl } from './i18n/pl.ts';
+import { sv } from './i18n/sv.ts';
+import { da } from './i18n/da.ts';
+import { nb } from './i18n/nb.ts';
+import { cs } from './i18n/cs.ts';
+import { ja } from './i18n/ja.ts';
+import { zh } from './i18n/zh.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -302,6 +311,7 @@ const en = {
   'report.chart_truncated': 'Only the first {labels} labels are shown.',
   'report.select_all': 'Select all rows',
   'report.select_row': 'Select row',
+  'report.selected_count': '{n} selected (also on other pages)',
   'chart.bar': 'Bar',
   'chart.column': 'Column',
   'chart.line': 'Line',
@@ -877,6 +887,7 @@ const nl: Record<MessageKey, string> = {
   'report.chart_truncated': 'Alleen de eerste {labels} labels worden getoond.',
   'report.select_all': 'Alle rijen selecteren',
   'report.select_row': 'Rij selecteren',
+  'report.selected_count': '{n} geselecteerd (ook op andere pagina\'s)',
   'chart.bar': 'Staaf',
   'chart.column': 'Kolom',
   'chart.line': 'Lijn',
@@ -1164,13 +1175,15 @@ const nl: Record<MessageKey, string> = {
   'ai_filter.sort': "gesorteerd op {column}",
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh };
+// browsers send 'no' as well as 'nb' for Norwegian Bokmål
+BUILTIN.no = nb;
 
 /** pgapex's own texts in a built-in language (undefined: not built in). */
 export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk'], ['cs', 'Čeština'], ['ja', '日本語'], ['zh', '中文']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {

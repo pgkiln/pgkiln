@@ -2,6 +2,8 @@ import pg from 'pg';
 import { owner, type Client } from '../db.ts';
 import { passwordProblem } from '../accounts.ts';
 import { replaceApp } from '../cli/replace.ts';
+import { placeApp } from './workspaces.ts';
+import { NEW_APP_BASE } from '../runtime/styles.ts';
 
 // Creating an application (Create → blank application, and Create → from a
 // file): the parsing schema, a database role app_<alias> that can use only
@@ -27,13 +29,16 @@ export interface CheckedApp {
   authentication: string;
   adminUser: string | null;
   adminPassword: string | null;
+  /** the workspace that gets the application (the developer's current one) */
+  workspaceId: number;
 }
 
 /** pgapex's and the system's schemas never become an application's parsing schema. */
 export const reservedSchema = (schema: string) => /^pg_/i.test(schema) || ['meta', 'information_schema'].includes(schema.toLowerCase());
 
 /** Validate the form (outside the transaction: the password check may look up the account). Throws an Error with a message for the developer. */
-export async function checkNewApp(b: NewAppInput): Promise<CheckedApp> {
+export async function checkNewApp(b: NewAppInput, workspaceId: number): Promise<CheckedApp> {
+  if (!(workspaceId > 0)) throw new Error('You are not a developer of any workspace yet: ask an administrator to add you to one.');
   const alias = (b.alias ?? '').trim().toLowerCase();
   if (!/^[a-z][a-z0-9_-]*$/.test(alias) || alias.length > 50) throw new Error('The alias must start with a letter and contain only a-z, 0-9, _ and - (at most 50 characters).');
   const name = (b.name ?? '').trim();
@@ -51,7 +56,7 @@ export async function checkNewApp(b: NewAppInput): Promise<CheckedApp> {
     if (problem) throw new Error(problem);
     adminPassword = known ? null : (b.admin_password ?? '');
   }
-  return { name, alias, schema, role: `app_${alias.replace(/-/g, '_')}`, authentication, adminUser, adminPassword };
+  return { name, alias, schema, role: `app_${alias.replace(/-/g, '_')}`, authentication, adminUser, adminPassword, workspaceId };
 }
 
 /** Create the schema, the role and the application (inside the caller's owner transaction). */
@@ -70,8 +75,10 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   await c.query(`alter default privileges in schema ${S} grant usage, select on sequences to ${R}`);
   await c.query(`alter default privileges in schema ${S} grant execute on functions to ${R}`);
 
-  const r = await c.query('insert into meta.app (alias, name, authentication, db_role) values ($1, $2, $3, $4) returning id', [a.alias, a.name, a.authentication, a.role]);
+  // new applications start with the newest base style (Iris); existing ones keep theirs
+  const r = await c.query('insert into meta.app (alias, name, authentication, db_role, theme) values ($1, $2, $3, $4, $5) returning id', [a.alias, a.name, a.authentication, a.role, { base: NEW_APP_BASE }]);
   const appId = r.rows[0].id as number;
+  await placeApp(c, appId, a.workspaceId);
   const p = await c.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appId]);
   await c.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Welcome', 'static', '<p>Hello, &APP_USER.! Edit this page in the builder.</p>')`, [p.rows[0].id]);
   await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page) values ($1, 1, 'Home', 'home', 1)`, [appId]);

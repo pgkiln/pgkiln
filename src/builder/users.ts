@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { accountSettings, clearAccountSettings, passwordProblem } from '../accounts.ts';
-import { LOGIN_MAX_FAILURES_PER_USER, LOGIN_WINDOW_MINUTES } from '../security.ts';
+import { loginMaxFailuresPerUser, loginWindowMinutes } from '../security.ts';
 import { acsUrl, metadataUrl, spEntityId } from '../saml.ts';
 import { discover, publicUrl, redirectUri } from '../sso.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
@@ -148,7 +148,7 @@ export async function usersRoutes(app: FastifyInstance) {
               ${input('password_lifetime_days', 'Password lifetime (days)', cfg.lifetimeDays, { type: 'number', help: 'After this many days users must choose a new password at sign-in. 0 = never.' })}
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="password_require_mixed" value="true"${cfg.requireMixed ? raw(' checked') : ''}> Passwords need letters and digits</label></div>
-            <p class="muted">Passwords may never contain the username. Sign-in is locked for ${LOGIN_WINDOW_MINUTES} minutes after ${LOGIN_MAX_FAILURES_PER_USER} failed attempts (LOGIN_* settings); Unlock on an account lifts it.</p>
+            <p class="muted">Passwords may never contain the username. Sign-in is locked for ${loginWindowMinutes()} minutes after ${loginMaxFailuresPerUser()} failed attempts (Workspace utilities → Instance settings); Unlock on an account lifts it.</p>
             <div class="buttons"><button class="btn">Save settings</button></div>
           </form>`, '', 'account-settings')}
       </div>`;

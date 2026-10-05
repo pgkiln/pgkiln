@@ -25,6 +25,9 @@ export interface PageSummary {
   mode: 'normal' | 'modal';
   authz: string | null;
   requires_auth: boolean;
+  /** (065) modal pages: a centred dialog or a drawer from an edge, and its size */
+  dialog_position?: 'center' | 'left' | 'right' | 'top' | 'bottom';
+  dialog_size?: 'small' | 'medium' | 'large';
 }
 
 export interface AppProcess {
@@ -84,6 +87,10 @@ export interface App {
     accent?: string; header?: string; nav?: 'side' | 'top'; mode?: 'auto' | 'light' | 'dark'; user_choice?: boolean;
     /** (053) Theme Roller style variants, the default one, and whether users may choose (src/runtime/styles.ts) */
     styles?: unknown[]; style?: string; style_choice?: boolean;
+    /** (0.29) the base style: 'iris' or Standard (src/runtime/styles.ts) */
+    base?: string;
+    /** (0.29) the accent and header colours in dark mode */
+    accent_dark?: string; header_dark?: string;
   };
   /** primary language, translated languages, and how the language is chosen */
   language: string;
@@ -125,6 +132,8 @@ export type ItemType =
 
 export interface Item {
   id: number;
+  /** (066) CSS classes from ITEM_OPTIONS */
+  template_options?: string[];
   region_id: number | null;
   seq: number;
   name: string;
@@ -282,7 +291,8 @@ export async function loadApp(alias: string) {
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format, a.time_zone, a.time_zone_auto, a.currency,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
-                       'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth))
+                       'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth,
+                       'dialog_position', p.dialog_position, 'dialog_size', p.dialog_size))
                         from meta.page p where p.app_id = a.id and meta.build_option_on(a.id, p.build_option)), '[]') as pages,
             ${agg('meta.nav_entry', 'app_id', 'a', 'a.id')} as nav,
             coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message))

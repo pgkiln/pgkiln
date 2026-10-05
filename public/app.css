@@ -76,6 +76,74 @@
   color-scheme: dark;
 }
 
+/* ---------- base style "Iris" (theme.base = 'iris'; the default for new
+   applications, like APEX 26.1's Iris theme style). Selectors are
+   html[data-style="iris"]: they beat the Standard values above, and the
+   application's own colours (src/runtime/styles.ts, html:root, later in the
+   page) beat them in turn. Contrast: text ≥ 15:1, muted ≥ 5.8:1, accent ≥ 6.5:1. */
+html[data-style="iris"] {
+  --bg: #f6f6fb;
+  --surface: #ffffff;
+  --surface-2: #f8f8fc;
+  --surface-3: #eeeef6;
+  --text: #1d1b2e;
+  --muted: #5f5d75;
+  --border: #e3e2ef;
+  --accent: #5146d8;
+  --accent-text: #ffffff;
+  --accent-soft: #eeedfd;
+  --header: #1e1a4d;
+  --header-text: #f1f0ff;
+  --nav-bg: #ffffff;
+  --nav-active: #eeedfd;
+  --radius: 12px;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --shadow: 0 1px 2px rgb(30 27 75 / 5%), 0 2px 8px rgb(30 27 75 / 6%);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-style="iris"]:not([data-theme="light"]) {
+    --bg: #121120;
+    --surface: #1a1930;
+    --surface-2: #201f38;
+    --surface-3: #292846;
+    --text: #e8e7f5;
+    --muted: #a3a1bd;
+    --border: #302f4d;
+    --accent: #a59cff;
+    --accent-text: #14122b;
+    --accent-soft: #2a2752;
+    --header: #0d0c1a;
+    --header-text: #e8e7f5;
+    --nav-bg: #161528;
+    --nav-active: #2a2752;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 8px rgb(0 0 0 / 25%);
+  }
+}
+html[data-style="iris"][data-theme="dark"] {
+  --bg: #121120;
+  --surface: #1a1930;
+  --surface-2: #201f38;
+  --surface-3: #292846;
+  --text: #e8e7f5;
+  --muted: #a3a1bd;
+  --border: #302f4d;
+  --accent: #a59cff;
+  --accent-text: #14122b;
+  --accent-soft: #2a2752;
+  --header: #0d0c1a;
+  --header-text: #e8e7f5;
+  --nav-bg: #161528;
+  --nav-active: #2a2752;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 8px rgb(0 0 0 / 25%);
+}
+/* Iris: rounded navigation pills instead of an edge bar, quieter region headers, pill-shaped primary buttons */
+html[data-style="iris"] .t-nav a[aria-current="page"] { box-shadow: none; border-radius: calc(var(--radius) * 0.75); }
+html[data-style="iris"] .t-nav a, html[data-style="iris"] .t-nav summary { border-radius: calc(var(--radius) * 0.75); }
+html[data-style="iris"] .region-header { border-bottom-color: transparent; }
+html[data-style="iris"] .region-header h2 { letter-spacing: -0.01em; }
+html[data-style="iris"] .btn-hot { border-radius: 999px; }
+html[data-style="iris"] :focus-visible { outline-color: var(--accent); }
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; font: var(--font-size)/1.5 var(--font); background: var(--bg); color: var(--text); }
@@ -518,6 +586,28 @@ dialog.t-dialog {
 }
 dialog.t-dialog[open] { display: flex; }
 dialog.t-dialog::backdrop { background: rgb(15 20 30 / 45%); }
+/* (065) dialog sizes and drawers (Page Designer: Dialog position / size) */
+dialog.t-dialog-small { width: min(480px, calc(100vw - 2rem)); height: min(560px, calc(100vh - 2rem)); }
+dialog.t-dialog-large { width: min(1100px, calc(100vw - 2rem)); height: min(860px, calc(100vh - 2rem)); }
+dialog.t-drawer { margin: 0; max-width: 100vw; max-height: 100dvh; border-radius: 0; }
+dialog.t-dialog-left, dialog.t-dialog-right { top: 0; bottom: 0; height: 100dvh; width: min(560px, 100vw); }
+dialog.t-dialog-left.t-dialog-small, dialog.t-dialog-right.t-dialog-small { width: min(400px, 100vw); }
+dialog.t-dialog-left.t-dialog-large, dialog.t-dialog-right.t-dialog-large { width: min(860px, 100vw); }
+dialog.t-dialog-right { left: auto; right: 0; border-radius: var(--radius) 0 0 var(--radius); }
+dialog.t-dialog-left { right: auto; left: 0; border-radius: 0 var(--radius) var(--radius) 0; }
+dialog.t-dialog-top, dialog.t-dialog-bottom { left: 0; right: 0; width: 100vw; height: min(50dvh, 520px); }
+dialog.t-dialog-top.t-dialog-small, dialog.t-dialog-bottom.t-dialog-small { height: min(34dvh, 360px); }
+dialog.t-dialog-top.t-dialog-large, dialog.t-dialog-bottom.t-dialog-large { height: min(80dvh, 820px); }
+dialog.t-dialog-top { bottom: auto; top: 0; border-radius: 0 0 var(--radius) var(--radius); }
+dialog.t-dialog-bottom { top: auto; bottom: 0; border-radius: var(--radius) var(--radius) 0 0; }
+@media (prefers-reduced-motion: no-preference) {
+  dialog.t-drawer[open] { animation: t-drawer-in 0.18s ease-out; }
+  dialog.t-dialog-left[open] { --from: translateX(-100%); }
+  dialog.t-dialog-right[open] { --from: translateX(100%); }
+  dialog.t-dialog-top[open] { --from: translateY(-100%); }
+  dialog.t-dialog-bottom[open] { --from: translateY(100%); }
+}
+@keyframes t-drawer-in { from { transform: var(--from); } to { transform: none; } }
 .t-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.6rem 0.6rem 1.25rem; border-bottom: 1px solid var(--border); }
 .t-dialog-head .icon-button:hover { background: var(--surface-3); }
 dialog.t-dialog iframe { flex: 1; width: 100%; border: 0; background: var(--surface); }
@@ -651,7 +741,7 @@ pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--sur
   .report-reflow td.pre { white-space: pre-wrap; }
 
   /* Dialogs use the whole screen. */
-  dialog.t-dialog { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; }
+  dialog.t-dialog:not(.t-dialog-top):not(.t-dialog-bottom) { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; inset: 0; }
   .t-dialog-main { padding: 1rem 1rem 0; }
   .t-dialog-page .region-footer { margin: 1rem -1rem 0; padding: 0.75rem 1rem; }
 }
@@ -1199,6 +1289,35 @@ img.tc-avatar { object-fit: cover; }
 .tc-stack { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
 .tc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
 
+/* built-in components (src/runtime/builtin-components.ts): avatar sizes and groups, comments, media list, metric cards */
+.tc-avatar-sm { width: 2rem; height: 2rem; font-size: 0.8rem; }
+.tc-avatar-md { width: 2.5rem; height: 2.5rem; }
+.tc-avatar-lg { width: 3.5rem; height: 3.5rem; font-size: 1.2rem; }
+.tc-avatar-square { border-radius: calc(var(--radius) * 0.75); }
+.tc-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tc-avatar-group { display: flex; flex-wrap: wrap; align-items: center; row-gap: 0.3rem; padding-left: 0.3rem; }
+.tc-avatar-group > .tc-avatar { margin-left: -0.3rem; box-shadow: 0 0 0 2px var(--surface); }
+.tc-comments, .tc-media-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tc-comment { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.6rem 0; min-width: 0; }
+.tc-comment + .tc-comment, .tc-media + .tc-media { border-top: 1px solid var(--border); }
+.tc-comment-text { overflow-wrap: anywhere; white-space: pre-line; }
+.tc-media { display: flex; gap: 0.8rem; align-items: center; padding: 0.6rem 0; min-width: 0; overflow-wrap: anywhere; }
+.tc-media > .tc-stack { flex: 1; }
+.tc-media-badge { flex: none; }
+.tc-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); gap: 0.75rem; }
+.tc-metric { gap: 0.25rem; }
+.tc-metric-label { margin: 0; color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+a.tc-metric-label { text-decoration: none; }
+a.tc-metric-label:hover { color: var(--accent); }
+.tc-metric-value { margin: 0; font-size: 1.75rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tc-metric-unit { font-size: 0.95rem; font-weight: 600; color: var(--muted); }
+.tc-metric-change { margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.tc-trend-up { color: var(--success); }
+.tc-trend-down { color: var(--danger); }
+.tc-trend-up.tc-good-down { color: var(--danger); }
+.tc-trend-down.tc-good-down { color: var(--success); }
+.tc-trend-mark { font-size: 0.7rem; }
+
 .tc-timeline { list-style: none; margin: 0; padding: 0; }
 .tc-timeline-item { position: relative; margin: 0; padding: 0 0 1rem 1.6rem; border-left: 2px solid var(--border); margin-left: 0.45rem; overflow-wrap: anywhere; }
 .tc-timeline-item:last-child { border-left-color: transparent; padding-bottom: 0; }
@@ -1323,6 +1442,19 @@ td.tc-cell { overflow-wrap: anywhere; }
 .region.to-hide-header > .region-header {
   position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+/* items (066) */
+.field.to-large input:not([type="checkbox"]):not([type="radio"]), .field.to-large select, .field.to-large textarea { font-size: 1.1rem; padding: 0.6rem 0.75rem; }
+.field.to-quiet input:not([type="checkbox"]):not([type="radio"]), .field.to-quiet select, .field.to-quiet textarea { border-color: transparent; background: transparent; }
+.field.to-quiet input:not([type="checkbox"]):not([type="radio"]):focus, .field.to-quiet select:focus, .field.to-quiet textarea:focus { border-color: var(--accent); background: var(--surface); }
+.field.to-bold input, .field.to-bold .display-value, .field.to-bold output { font-weight: 700; }
+.field.to-hide-label > .label, .field.to-hide-label > legend { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* report columns (region config column_options) */
+td.to-col-bold { font-weight: 700; }
+td.to-col-muted { color: var(--muted); }
+td.to-col-nowrap, th.to-col-nowrap { white-space: nowrap; }
+td.to-col-mono { font-family: var(--mono); font-size: 0.9em; }
+td.to-col-right, th.to-col-right { text-align: right; }
+td.to-col-center, th.to-col-center { text-align: center; }
 .btn.to-small { padding: 0.25rem 0.6rem; font-size: 0.8rem; }
 .btn.to-large { padding: 0.6rem 1.2rem; font-size: 1rem; }
 .btn.to-block { display: flex; width: 100%; }

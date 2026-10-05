@@ -4,6 +4,7 @@ import { owner, runtime } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { checkSql, type SqlShape } from './advisor.ts';
 import { BASE, developer, type Req } from './ui.ts';
+import { appAllowed } from './workspaces.ts';
 
 // The builder's code editor (public/code-editor.js) and its SQL completions.
 //
@@ -197,7 +198,7 @@ export async function codeEditorRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const target = await appOf(req.query);
-    if (target === undefined) return reply.code(404).send({ error: 'Not found' });
+    if (target === undefined || (target && !(await appAllowed(s, target.id)))) return reply.code(404).send({ error: 'Not found' });
     const value = await completions(target?.id ?? null);
     return reply.header('Cache-Control', 'private, no-store').send({ ...value, page: target?.page ?? null, app: target?.id ?? null });
   });
@@ -210,7 +211,7 @@ export async function codeEditorRoutes(app: FastifyInstance) {
     const sql = String(req.body?.sql ?? '');
     if (!['select', 'boolean', 'statements'].includes(shape)) return reply.code(400).send({ error: 'Unknown check' });
     const target = await appOf({ app: req.body?.app, page: req.body?.page });
-    if (target === undefined) return reply.code(404).send({ error: 'Not found' });
+    if (target === undefined || (target && !(await appAllowed(s, target.id)))) return reply.code(404).send({ error: 'Not found' });
     if (!sql.trim()) return reply.send({ ok: true, message: 'Nothing to check.' });
     if (/^\s*(STATIC|LOV):/i.test(sql)) return reply.send({ ok: true, message: 'Not SQL: a static or shared list of values.' });
     const role = target ? (await owner.one('select db_role from meta.app where id = $1', [target.id]))?.db_role : null;

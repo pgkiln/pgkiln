@@ -292,6 +292,7 @@ export const de: Record<MessageKey, string> = {
   'report.chart_truncated': 'Nur die ersten {labels} Beschriftungen werden angezeigt.',
   'report.select_all': 'Alle Zeilen auswählen',
   'report.select_row': 'Zeile auswählen',
+  'report.selected_count': '{n} ausgewählt (auch auf anderen Seiten)',
   'chart.bar': 'Balken',
   'chart.column': 'Säulen',
   'chart.line': 'Linie',

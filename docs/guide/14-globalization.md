@@ -30,16 +30,19 @@ SQL sees the language as `meta.app_language()` and the bind variable `:APP_LANGU
 ### pgapex's own texts
 
 The texts pgapex itself shows (sign-in, My account, report toolbars, paging, grid buttons,
-calendar, validation and error messages) come in **English**, **Dutch**, **German**, **French**
-and **Spanish** (like APEX's translated runtime messages). For another language they fall back
-to English until you add them. To change any of them, or to add a language, create a **text
-message** with the same name. For example, `login.title` in `it` → `Accedi`, or
+calendar, validation and error messages) come in fourteen languages (like APEX's translated runtime messages):
+**English**, **Dutch**, **German**, **French**, **Spanish**, **Italian**, **Portuguese**, **Polish**, **Swedish**,
+**Danish**, **Norwegian** (`nb`, also chosen for `no`), **Czech**, **Japanese** and **Chinese** (simplified). For another
+language they fall back to English until you add them. To change any of them, or to add a language, create a **text
+message** with the same name. For example, `login.title` in `fi` → `Kirjaudu sisään`, or
 `report.no_data` in `en` → `Nothing here yet.` The names are in `src/i18n.ts` (English and
-Dutch) and `src/i18n/de.ts`, `fr.ts`, `es.ts`.
+Dutch) and `src/i18n/<language>.ts`.
 
-Each built-in language also brings its default date formats (`format.date`, `format.timestamp`:
-`DD-MM-YYYY` in Dutch, `DD.MM.YYYY` in German, `DD/MM/YYYY` in French and Spanish) and currency
-(`format.currency`: `EUR`; `USD` in English).
+Each built-in language also brings its default date formats (`format.date`, `format.timestamp`: e.g. `DD-MM-YYYY` in
+Dutch and Danish, `DD.MM.YYYY` in German, Polish, Norwegian and Czech, `DD/MM/YYYY` in French, Spanish, Italian and
+Portuguese, `YYYY-MM-DD` in Swedish and Chinese, `YYYY/MM/DD` in Japanese) and currency (`format.currency`: `EUR` in the
+euro countries, `USD` in English, `PLN`, `SEK`, `DKK`, `NOK`, `CZK`, `JPY`, `CNY`); a text message with the same name
+changes them.
 
 ## Translating an application
 
@@ -192,18 +195,38 @@ Under **Settings → Theme**, *Theme style* is **Automatic** (follow the device,
 has the same choice. The choice is saved on the account, so it applies in every application that
 allows it. For public applications it's kept in a cookie.
 
+## Base styles: Iris and Standard
+
+Every application has a **base style** (Settings → Theme → *Base style*; APEX: the Universal Theme's theme style,
+whose default in 26.1 is *Iris*). It sets the colours of the light and the dark theme, the corners, the font and the
+shadows of the whole application:
+
+| Base style | Look |
+|---|---|
+| **Iris** (the default for new applications) | Indigo accent (`#5146d8`, `#a59cff` in dark mode), a deep indigo header, cool light greys, larger corners (12 px), softer shadows, rounded navigation items and pill-shaped primary buttons |
+| **Standard** | pgapex's look until 0.28: blue accent, navy header, 8 px corners. Applications created before 0.29 keep it until you change it |
+
+The accent and header colours under Settings → Theme, and the style variants below, change the base style's
+colours (in the light theme). Choosing a colour equal to a base style's own stores nothing, so switching the base
+style later changes it too. All text colours of both base styles meet WCAG AA contrast in light and dark mode.
+
 ## Style variants (Theme Roller)
 
 APEX lets an application keep several *theme styles* and lets users pick one. In pgapex:
 **Settings → Theme → Theme Roller** (`/builder/apps/:id/theme`) keeps up to 10 named **styles** per
-application. The base colours under Settings → Theme are the *Standard* style; each style can change:
+application. The base style and colours under Settings → Theme are the *Standard* choice; each style can change:
 
 | Property | Values |
 |---|---|
-| Accent colour, header colour | `#rrggbb` (or "as the base"); like the base colours they apply to the light theme, dark mode keeps its own palette |
+| Accent colour, header colour | `#rrggbb` (or "as the base"), for the light theme |
+| Accent and header colour in dark mode | `#rrggbb` (or the base style's dark palette), for the dark theme; choose light colours (text on the accent is dark there) |
 | Font | *System* (default), *Humanist sans*, *Geometric sans*, *Serif*, *Rounded*, *Monospace* (font stacks of fonts on the device; nothing is downloaded) |
 | Font size | 14, 15 (default), 16 or 17 px |
 | Corners | Square, 4, 8 (default) or 14 px, for regions, buttons and fields |
+
+The page shows a **live preview** of the style you are adding or editing (colours, font, size and corners on a
+sample region, field and buttons, as you change them; without JavaScript the preview shows the base style).
+Settings → Theme has the same dark-mode colours for the base theme.
 
 *Default style* is what everyone sees; with **Users may choose a style** (APEX: *Enable End Users
 to Choose Theme Style*) the user menu and My account list the styles (*Standard* plus each style).

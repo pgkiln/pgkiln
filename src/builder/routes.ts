@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { appStyles } from '../runtime/styles.ts';
+import { appStyles, BASE_STYLES, baseStyleOf } from '../runtime/styles.ts';
 import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
 import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
@@ -15,6 +15,8 @@ import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash,
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
+import { appAllowed, currentWorkspace, placeApp, workspaceRoutes } from './workspaces.ts';
+import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
@@ -120,6 +122,8 @@ export async function builderRoutes(app: FastifyInstance) {
 
   // the workspace pages (App Builder home, Create, Import, Dashboard, Utilities) are in home.ts
   await homeRoutes(app);
+  await workspaceRoutes(app);
+  await instanceRoutes(app);
   await wizardRoutes(app);
   await appFromFileRoutes(app);
 
@@ -128,8 +132,9 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     try {
-      const checked = await checkNewApp(b);
+      const checked = await checkNewApp(b, currentWorkspace(s));
       const boilerplate = /^\d{1,9}$/.test(b.boilerplate ?? '') ? Number(b.boilerplate) : null;
+      if (boilerplate && !(await appAllowed(s, boilerplate))) throw new Error('Choose a boilerplate application (an application of type Boilerplate).');
       const { id, existingAccount } = await owner.tx(async (c) => {
         const made = await createApp(c, checked);
         if (boilerplate) await startFromBoilerplate(c, made.id, checked, boilerplate);
@@ -151,8 +156,14 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     try {
+      const ws = currentWorkspace(s);
+      if (ws < 1) throw new Error('you are not a developer of any workspace yet: ask an administrator to add you to one.');
       const doc = JSON.parse(req.body?.doc ?? '');
-      const r = await owner.one('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null]);
+      const r = await owner.tx(async (c) => {
+        const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null])).rows[0];
+        await placeApp(c, made.id, ws);
+        return made;
+      });
       // supporting objects are never run on import: the developer reviews them and chooses
       const scripts = (await owner.one('select count(*)::int as n from meta.supporting_script where app_id = $1', [r.id])).n;
       flash(s, `Application imported. Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}`);
@@ -328,8 +339,12 @@ export async function builderRoutes(app: FastifyInstance) {
               : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
             <h3>Theme</h3>
             <div class="form-grid">
-              ${input('accent', 'Accent colour', a.theme?.accent ?? '#0b63c5', { type: 'color' })}
-              ${input('header', 'Header colour', a.theme?.header ?? '#13294b', { type: 'color' })}
+              ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['standard', 'Standard (pgapex until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
+              ${input('accent', 'Accent colour', a.theme?.accent ?? BASE_STYLES[baseStyleOf(a.theme)].accent, { type: 'color' })}
+              ${input('header', 'Header colour', a.theme?.header ?? BASE_STYLES[baseStyleOf(a.theme)].header, { type: 'color' })}
+              ${(['accent_dark', 'header_dark'] as const).map((k) => html`<div class="field"><label class="label" for="f_${k}">${k === 'accent_dark' ? 'Accent colour in dark mode' : 'Header colour in dark mode'}</label>
+                <input id="f_${k}" name="${k}" type="color" value="${a.theme?.[k] ?? (k === 'accent_dark' ? '#a59cff' : '#0d0c1a')}">
+                <label class="check"><input type="checkbox" name="${k}_own" value="true"${a.theme?.[k] ? raw(' checked') : ''}> Use this colour (else the base style's dark palette)</label></div>`)}
               ${select('nav', 'Navigation menu', a.theme?.nav ?? 'side', [['side', 'Side (collapsible)'], ['top', 'Top bar']], 'On tablets and phones the menu is always a drawer.')}
               ${select('nav_list', 'Navigation menu list', a.nav_list ?? '', listChoices(a.nav_list, '- the navigation entries -'), 'A list (Shared Components → Lists) shown as the navigation menu instead of the navigation entries.')}
               ${select('navbar_list', 'Navigation bar list', a.navbar_list ?? '', listChoices(a.navbar_list, '- none -'), 'A list shown as links in the header, next to the user menu.')}
@@ -378,7 +393,7 @@ export async function builderRoutes(app: FastifyInstance) {
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7,
                 -- (053) the Theme Roller's styles stay: only the keys of this form are replaced
-                theme = (theme - 'accent' - 'header' - 'nav' - 'mode' - 'user_choice') || $8::jsonb,
+                theme = (theme - 'accent' - 'header' - 'nav' - 'mode' - 'user_choice' - 'base' - 'accent_dark' - 'header_dark') || $8::jsonb,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
                 header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
@@ -386,8 +401,12 @@ export async function builderRoutes(app: FastifyInstance) {
                 app_type = $28, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
-           accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
-           header: /^#[0-9a-f]{6}$/i.test(b.header ?? '') ? b.header : undefined,
+           base: baseStyleOf({ base: b.base }) === 'iris' ? 'iris' : undefined,
+           accent_dark: b.accent_dark_own === 'true' && /^#[0-9a-f]{6}$/i.test(b.accent_dark ?? '') ? b.accent_dark!.toLowerCase() : undefined,
+           header_dark: b.header_dark_own === 'true' && /^#[0-9a-f]{6}$/i.test(b.header_dark ?? '') ? b.header_dark!.toLowerCase() : undefined,
+           // a colour equal to a base style's own is not stored, so changing the base style changes it too
+           accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') && !Object.values(BASE_STYLES).some((x) => x.accent === b.accent!.toLowerCase()) ? b.accent : undefined,
+           header: /^#[0-9a-f]{6}$/i.test(b.header ?? '') && !Object.values(BASE_STYLES).some((x) => x.header === b.header!.toLowerCase()) ? b.header : undefined,
            nav: b.nav === 'top' ? 'top' : 'side',
            mode: ['light', 'dark'].includes(b.mode ?? '') ? b.mode : 'auto',
            user_choice: b.user_choice === 'true',
@@ -519,8 +538,17 @@ export async function builderRoutes(app: FastifyInstance) {
     try {
       const problem = await passwordProblem(req.body?.password);
       if (problem) throw new Error(problem);
-      await owner.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), $3)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true']);
-      flash(s, 'Developer added.');
+      const ws = currentWorkspace(s);
+      await owner.tx(async (c) => {
+        await c.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), $3)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true']);
+        // (064) a new developer works in the current workspace; more on Workspace utilities → Workspaces
+        // (the insert trigger put them in Default)
+        if (ws > 0 && ws !== 1) {
+          await c.query('delete from meta.workspace_member where workspace_id = 1 and username = $1', [req.body?.username?.trim()]);
+          await c.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, req.body?.username?.trim()]);
+        }
+      });
+      flash(s, ws > 0 ? `Developer added to workspace ${s.workspace!.name}.` : 'Developer added.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }

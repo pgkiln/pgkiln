@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { runtime } from './db.ts';
-import { hashToken, LOGIN_MAX_FAILURES_PER_IP, LOGIN_MAX_FAILURES_PER_USER, LOGIN_WINDOW_MINUTES, newToken } from './security.ts';
+import { hashToken, loginMaxFailuresPerIp, loginMaxFailuresPerUser, loginWindowMinutes, newToken } from './security.ts';
+import { instanceSetting } from './instance.ts';
 
 export interface Session {
   id: string; // internal id, exposed to SQL as pgapex.session_id
@@ -11,10 +12,14 @@ export interface Session {
   /** Roles resolved at sign-in (lower case); see meta.has_role(). */
   roles: string[];
   isNew?: boolean;
+  /** Builder only: the developer's workspaces and the current one (src/builder/workspaces.ts). */
+  workspaces?: { id: number; name: string }[];
+  workspace?: { id: number; name: string } | null;
 }
 
-const IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES ?? 60);
-const MAX_HOURS = Number(process.env.SESSION_MAX_HOURS ?? 8);
+// instance settings (src/instance.ts): the builder's value, else SESSION_* environment variables, else 60 minutes / 8 hours
+const IDLE_MINUTES = () => instanceSetting('session_idle_minutes');
+const MAX_HOURS = () => instanceSetting('session_max_hours');
 const secure = () => process.env.COOKIE_SECURE === 'true';
 
 export const cookieName = (appId: number | null) => (appId === null ? 'pgapex_dev' : `pgapex_app_${appId}`);
@@ -27,7 +32,7 @@ async function find(token: string | undefined, appId: number | null) {
         and last_seen > now() - make_interval(mins => $3)
         and created_at > now() - make_interval(hours => $4)
      returning id, app_id, username, csrf_token, state, roles`,
-    [hashToken(token), appId, IDLE_MINUTES, MAX_HOURS],
+    [hashToken(token), appId, IDLE_MINUTES(), MAX_HOURS()],
   );
 }
 
@@ -44,7 +49,7 @@ export async function createSession(reply: FastifyReply, appId: number | null, p
   ))!;
   if (Math.random() < 0.05)
     runtime
-      .query(`delete from meta.session where last_seen < now() - make_interval(mins => $1) or created_at < now() - make_interval(hours => $2)`, [IDLE_MINUTES, MAX_HOURS])
+      .query(`delete from meta.session where last_seen < now() - make_interval(mins => $1) or created_at < now() - make_interval(hours => $2)`, [IDLE_MINUTES(), MAX_HOURS()])
       .catch(() => {});
   reply.setCookie(cookieName(appId), token, { path, httpOnly: true, sameSite: 'lax', secure: secure() });
   return { ...s, isNew: true };
@@ -109,7 +114,7 @@ export async function loginThrottled(appId: number | null, username: string, ip:
             count(*) filter (where l.ip = $3)::int as ip_fails
        from meta.activity_log l
       where l.app_id is not distinct from $1 and l.event = 'login_failed' and l.at > now() - make_interval(mins => $4)`,
-    [appId, username, ip, LOGIN_WINDOW_MINUTES],
+    [appId, username, ip, loginWindowMinutes()],
   );
-  return !!counts && (counts.user_fails >= LOGIN_MAX_FAILURES_PER_USER || counts.ip_fails >= LOGIN_MAX_FAILURES_PER_IP);
+  return !!counts && (counts.user_fails >= loginMaxFailuresPerUser() || counts.ip_fails >= loginMaxFailuresPerIp());
 }

@@ -209,7 +209,7 @@ export async function fileList(ctx: PageContext, item: Item): Promise<FileInfo[]
   const ids = tempIds(ctx.session.state[item.name]);
   const c = ctx.client!;
   const pending = ids.length
-    ? (await savepoint(c, () => c.query('select id, filename, mime_type, size from meta.temp_files where id = any($1::uuid[]) order by created_at', [ids]))).rows.map(
+    ? (await savepoint(c, () => c.query('select id, filename, mime_type, size from meta.temp_files where id = any($1::uuid[]) order by created_at, array_position($1::uuid[], id)', [ids]))).rows.map(
         (f) => ({ filename: f.filename, mime: f.mime_type, size: f.size, key: `temp:${f.id}`, pending: true }),
       )
     : [];
@@ -241,7 +241,7 @@ export async function saveFileLists(ctx: PageContext, region: Region, op: 'inser
     const conf = cfg(item);
     const cols = [ident(child.parent), ident(item.source_column!), ...(conf.filename_column ? [ident(conf.filename_column)] : []), ...(conf.mime_column ? [ident(conf.mime_column)] : [])];
     const vals = [literal(pk), 'content', ...(conf.filename_column ? ['filename'] : []), ...(conf.mime_column ? ['mime_type'] : [])];
-    await c.query(`insert into ${table} (${cols.join(', ')}) select ${vals.join(', ')} from meta.temp_files where id = any($1::uuid[]) order by created_at`, [ids]);
+    await c.query(`insert into ${table} (${cols.join(', ')}) select ${vals.join(', ')} from meta.temp_files where id = any($1::uuid[]) order by created_at, array_position($1::uuid[], id)`, [ids]);
     for (const id of ids) await c.query('select meta.delete_temp_file($1)', [id]);
     ctx.session.state[item.name] = null;
   }

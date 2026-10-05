@@ -171,8 +171,24 @@ export function styleSwitch(ctx: PageContext, back: string) {
   </form>`;
 }
 
+/**
+ * (065) How the modal pages that are not a medium centred dialog open:
+ * page number → [position, size] (app.js gives the dialog element classes
+ * from these fixed values).
+ */
+export function dialogShapes(ctx: Pick<PageContext, 'app'>): Record<string, [string, string]> {
+  const out: Record<string, [string, string]> = {};
+  for (const p of ctx.app.pages) {
+    if (p.mode !== 'modal') continue;
+    const pos = ['left', 'right', 'top', 'bottom'].includes(p.dialog_position ?? '') ? p.dialog_position! : 'center';
+    const size = p.dialog_size === 'small' || p.dialog_size === 'large' ? p.dialog_size : 'medium';
+    if (pos !== 'center' || size !== 'medium') out[String(p.page_no)] = [pos, size];
+  }
+  return out;
+}
+
 export async function chrome(ctx: PageContext, main: Raw, title: string) {
-  const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme };
+  const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style };
   const t = ctx.locale.t;
   if (ctx.dialog)
     return documentShell(`${title} · ${ctx.app.name}`, html`<main class="t-dialog-main" id="main">${main}</main>`, 't-dialog-page', {
@@ -294,7 +310,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}
     </div>
     <script type="application/json" id="pgapex-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), ...timeZoneMeta(ctx) }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }
@@ -307,6 +323,6 @@ export function dialogClosePage(ctx: PageContext) {
     't-dialog-page',
     { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no) },
     '',
-    { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme },
+    { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style },
   );
 }

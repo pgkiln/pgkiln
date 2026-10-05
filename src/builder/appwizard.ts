@@ -8,6 +8,7 @@ import type { Session } from '../session.ts';
 import { aliasFor, check, createdHtml, ITEM, type Created } from './appfromfile.ts';
 import { addDashboard, parseBook } from './appsheets.ts';
 import { checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
+import { currentWorkspace } from './workspaces.ts';
 import { BASE, csrf, developer, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 
 // Two more ways into the create application wizard:
@@ -216,7 +217,7 @@ export async function appWizardRoutes(app: FastifyInstance) {
     let built: Created;
     try {
       if (!schema || reservedSchema(schema) || !(await appSchemas()).includes(schema)) throw new LoadError('Choose one of the schemas in the list.');
-      const checked = await checkNewApp({ ...b, schema }).catch((e) => {
+      const checked = await checkNewApp({ ...b, schema }, currentWorkspace(s)).catch((e) => {
         throw new LoadError((e as Error).message);
       });
       // only names of this schema's tables and views count (looked up again, never used as SQL)

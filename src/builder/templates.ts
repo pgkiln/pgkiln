@@ -6,6 +6,7 @@ import {
   attributeValues, compiled, LAYOUT_CLASSES, parsePlugin, pluginDocument, renderInstances, rowLookup, TemplateError,
   type TcAttribute, type TemplateComponent, type TcUse,
 } from '../runtime/template-components.ts';
+import { BUILTIN_COMPONENTS, builtinComponents } from '../runtime/builtin-components.ts';
 import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
@@ -101,9 +102,16 @@ export function templateExtras(appId: number, row: any, query: Record<string, st
     </fieldset>`;
 }
 
-/** Under "New template component": import a plug-in file instead. */
+/** Under "New template component": copy a built-in one, or import a plug-in file. */
 export function templateImport(appId: number, s: Session) {
-  return html`<section class="region region-standard u-mt125"><header class="region-header"><h2>Import a plug-in</h2></header><div class="region-body">
+  return html`<section class="region region-standard u-mt125"><header class="region-header"><h2>Built-in components</h2></header><div class="region-body">
+    <p class="muted u-mt0">Every application can use these in a Template component region or as a report column template. To change one, copy it into this application: the copy (same static id) takes its place.</p>
+    <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Component</th><th>Static id</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+    ${BUILTIN_COMPONENTS.map((c) => html`<tr><td data-label="Component"><b>${c.name}</b> <span class="muted">${c.description ?? ''}</span></td><td data-label="Static id"><code>${c.static_id}</code></td>
+      <td data-label="Actions"><form method="post" action="${BASE}/apps/${appId}/template-components/copy" class="u-inline">${csrf(s)}<input type="hidden" name="static_id" value="${c.static_id}">
+        <button class="btn btn-sm">Copy into this application</button></form></td></tr>`)}
+    </tbody></table></div></div></section>
+  <section class="region region-standard u-mt125"><header class="region-header"><h2>Import a plug-in</h2></header><div class="region-body">
     <form method="post" action="${BASE}/apps/${appId}/template-components/import">${csrf(s)}
       <div class="field" data-wide><label class="label" for="f_tc_plugin">Plug-in file (JSON)</label>
         <textarea id="f_tc_plugin" name="plugin" class="code" rows="7" spellcheck="false" required placeholder='{"format": "pgapex-plugin/1", "type": "template_component", …}'></textarea>
@@ -172,9 +180,10 @@ export function mergeTemplateRegionSettings(config: Config, b: Body, a: Template
   return out;
 }
 
+/** The application's components over the built-in ones, by static id. */
 async function appComponents(appId: number) {
   const rows = (await owner.query('select * from meta.template_component where app_id = $1 order by name', [appId])).rows;
-  return new Map(rows.map((r) => [r.static_id as string, asComponent(r)]));
+  return new Map<string, TemplateComponent>([...builtinComponents(), ...rows.map((r): [string, TemplateComponent] => [r.static_id as string, asComponent(r)])]);
 }
 
 /** The settings form of a template_component region in the page designer. */
@@ -195,8 +204,8 @@ export async function templateRegionForm(pageId: number, appId: number, r: { id:
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/template-settings" class="component-form">${csrf(s)}
       <fieldset class="prop-group"><legend>Component</legend><div class="form-grid">
         <div class="field"><label class="label" for="${id('component')}">Template component</label>
-          <select id="${id('component')}" name="component">${opt('', '- choose -', cfg.component)}${[...comps.values()].map((x) => opt(x.static_id, `${x.name} (${x.static_id})`, cfg.component))}</select>
-          <small class="help">${comps.size ? html`Under Shared Components → Template components.` : html`Create or import one under <a href="${BASE}/apps/${appId}/shared?new=template_component">Shared Components → Template components</a>.`}</small></div>
+          <select id="${id('component')}" name="component">${opt('', '- choose -', cfg.component)}${[...comps.values()].map((x) => opt(x.static_id, `${x.name} (${x.builtin ? 'built in' : x.static_id})`, cfg.component))}</select>
+          <small class="help">The built-in ones (avatar, badge, comments, media list, metric card, timeline), and the application's own under <a href="${BASE}/apps/${appId}/shared?new=template_component">Shared Components → Template components</a>.</small></div>
         <div class="field"><label class="label" for="${id('display')}">Display</label>
           <select id="${id('display')}" name="display">${opt('', 'Each row as an instance', cfg.display)}${opt('multiple', 'Multiple: all rows in the wrapper', cfg.display)}</select>
           ${c && !c.wrapper && cfg.display === 'multiple' ? html`<small class="help">${c.name} has no wrapper, so the rows show one after another.</small>` : ''}</div>
@@ -323,6 +332,24 @@ export async function templateRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/apps/${id}/shared?c=template_component-${r.id}`);
     } catch (e) {
       flash(s, `Import failed: ${(e as Error).message}`, 'error');
+      return back(reply, s, `${BASE}/apps/${id}/shared?new=template_component`);
+    }
+  });
+
+  // a built-in component into this application, to change it
+  app.post(`${BASE}/apps/:id/template-components/copy`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const { id } = req.params;
+    if (!isId(id) || !(await owner.one('select 1 from meta.app where id = $1', [id]))) return reply.code(404).send('Not found');
+    const c = BUILTIN_COMPONENTS.find((x) => x.static_id === req.body?.static_id);
+    if (!c) return reply.code(404).send('Not found');
+    try {
+      const r = await owner.one('select meta.import_template_component($1, $2::jsonb, false) as id', [id, JSON.stringify(pluginDocument(c))]);
+      flash(s, `${c.name} copied: this application's ${c.static_id} now replaces the built-in one.`);
+      return back(reply, s, `${BASE}/apps/${id}/shared?c=template_component-${r.id}`);
+    } catch (e) {
+      flash(s, `Copy failed: ${(e as Error).message}`, 'error');
       return back(reply, s, `${BASE}/apps/${id}/shared?new=template_component`);
     }
   });

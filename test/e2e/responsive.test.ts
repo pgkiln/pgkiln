@@ -91,6 +91,18 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(res?.status(), 200, `page ${p}`);
         await check(page, `app-${p}`, vp);
       }
+      // the Iris base style (the default for new applications): same layout, its own colours
+      await owner.query(`update meta.app set theme = theme || '{"base": "iris"}' where alias = 'hr'`);
+      try {
+        for (const p of [1, 2, 3]) {
+          await page.goto(`${base}/a/hr/${p}`);
+          assert.equal(await page.getAttribute('html', 'data-style'), 'iris');
+          assert.equal((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius'))).trim(), '12px');
+          await check(page, `app-${p}-iris`, vp);
+        }
+      } finally {
+        await owner.query(`update meta.app set theme = theme - 'base' where alias = 'hr'`);
+      }
       // a review on page 20: the rich text and Markdown editors, tags, stars, date range and QR code
       await page.goto(`${base}/a/hr/20`);
       await Promise.all([page.waitForNavigation(), page.locator('table a', { hasText: /^\d+$/ }).first().click()]);
@@ -403,6 +415,50 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('report rows chosen on one page stay chosen on the next', async () => {
+      if (vp !== 'desktop') return;
+      const r = await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report'`);
+      await owner.query(`insert into meta.item (page_id, name, type) values ($1, 'P2_E2E_SEL', 'hidden')`, [r.page_id]);
+      await owner.query('update meta.region set config = config || $2 where id = $1', [r.id, JSON.stringify({ selection: { column: 'empno', item: 'P2_E2E_SEL' } })]);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        await page.goto(`${base}/a/hr/2?r${r.id}_n=5`);
+        const first = page.locator('input[type=checkbox][name="P2_E2E_SEL"]').first();
+        const value = await first.getAttribute('value');
+        const done = page.waitForResponse((res) => res.url().includes(`/report/${r.id}/select`));
+        await first.check();
+        await done;
+        await page.locator(`[data-sel-count="${r.id}"]`).filter({ hasText: '1 selected' }).waitFor();
+        await page.goto(`${base}/a/hr/2?r${r.id}_n=5&r${r.id}_p=2`);
+        assert.equal(await page.locator(`input[type=hidden][name="P2_E2E_SEL"][value="${value}"]`).count(), 1, 'carried as a hidden value');
+        await page.goto(`${base}/a/hr/2?r${r.id}_n=5`);
+        assert.equal(await page.locator(`input[type=checkbox][name="P2_E2E_SEL"][value="${value}"]`).isChecked(), true);
+      } finally {
+        await page.context().close();
+        await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(r.config)]);
+        await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_E2E_SEL'`, [r.page_id]);
+      }
+    });
+
+    test('a drawer page slides in from the right (full screen on phones)', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'allen', 'allen');
+      await page.goto(`${base}/a/hr/6`);
+      await page.locator('a, button').filter({ hasText: 'Request leave' }).first().click();
+      await page.frameLocator('#t-dialog iframe').locator('form').first().waitFor();
+      const dlg = page.locator('#t-dialog');
+      assert.match(String(await dlg.getAttribute('class')), /\bt-drawer\b.*|.*\bt-dialog-right\b/);
+      await page.waitForTimeout(300); // the slide-in animation
+      const box = (await dlg.boundingBox())!;
+      assert.ok(Math.abs(box.x + box.width - size.width) <= 1, `docked to the right edge: ${JSON.stringify(box)}`);
+      assert.ok(Math.abs(box.height - size.height) <= 1, `full height: ${JSON.stringify(box)}`);
+      if (size.width <= 640) assert.ok(box.width >= size.width - 1, 'full width on phones');
+      else assert.ok(box.width < size.width, 'narrower than the screen');
+      if (shots) await page.screenshot({ path: `test-results/${vp}-app-drawer.png` });
+      await page.context().close();
+    });
+
     test('several files can be chosen in the dialog form and are listed after saving', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
@@ -505,6 +561,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           return v;
         })()}`,
         installation: '/builder/installation',
+        workspaces: '/builder/workspaces',
+        workspace: '/builder/workspaces/1',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,

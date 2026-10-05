@@ -98,6 +98,13 @@ body.ide { margin: 0; min-height: 100vh; min-height: 100dvh; padding-left: var(-
 .ide-theme button { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 12.5px; padding: 0.3rem 0.6rem; min-height: 30px; }
 .ide-theme .icon { width: 14px; height: 14px; }
 .rail-user .menu-links form { margin: 0; }
+/* workspace switcher in the account menu (064) */
+.ws-switch { display: flex; flex-direction: column; gap: 2px; margin: 0.35rem 0 0; }
+.ws-switch button { display: flex; align-items: center; gap: 0.45rem; width: 100%; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 13px; padding: 0.35rem 0.5rem; min-height: 32px; cursor: pointer; text-align: left; }
+.ws-switch button:hover { color: var(--accent); }
+.ws-switch button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.ws-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ws-switch .icon { width: 14px; height: 14px; flex: none; }
 
 /* ------------------------------------------------------------ top toolbar */
 .ide-main { min-width: 0; }
@@ -692,3 +699,22 @@ button.is-busy { opacity: 0.7; cursor: progress; }
 .bp-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0; }
 .bp-facts dd { margin: 0; overflow-wrap: anywhere; }
 .bp-sql { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85rem; max-height: 30rem; overflow-y: auto; }
+
+/* Theme Roller live preview (themeroller.ts, builder.js): the application's light look, whatever the builder theme */
+.tr-preview { --bg: #f3f4f6; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eceef2; --text: #1b2330; --muted: #5e6a7a; --border: #dfe3e8;
+  --accent: #0b63c5; --accent-text: #ffffff; --accent-soft: #e7f0fb; --header: #13294b; --header-text: #eef2f8; --radius: 8px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --font-size: 15px; --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 6%);
+  color-scheme: light; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  background: var(--bg); color: var(--text); font: var(--font-size)/1.5 var(--font); }
+.tr-preview-iris { --bg: #f6f6fb; --surface-2: #f8f8fc; --surface-3: #eeeef6; --text: #1d1b2e; --muted: #5f5d75; --border: #e3e2ef;
+  --accent: #5146d8; --accent-soft: #eeedfd; --header: #1e1a4d; --header-text: #f1f0ff; --radius: 12px;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; --shadow: 0 1px 2px rgb(30 27 75 / 5%), 0 2px 8px rgb(30 27 75 / 6%); }
+.tr-preview-header { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1rem; background: var(--header); color: var(--header-text); font-weight: 700; }
+.tr-preview-header .icon { width: 1.1em; height: 1.1em; }
+.tr-preview-body { padding: 1rem; }
+.tr-preview .region { margin: 0; }
+.tr-preview a { color: var(--accent); }
+.tr-preview input { background: var(--surface); color: var(--text); border-color: var(--border); }
+.tr-preview .btn { background: var(--surface); color: var(--text); border-color: var(--border); border-radius: calc(var(--radius) * 0.75); font: inherit; }
+.tr-preview .btn-hot { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.tr-preview-iris .btn-hot { border-radius: 999px; }

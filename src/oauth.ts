@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { SignJWT } from 'jose';
 import { apiRoleProblem, jwtSecret } from './api.ts';
 import { owner } from './db.ts';
-import { LOGIN_MAX_FAILURES_PER_IP, LOGIN_WINDOW_MINUTES } from './security.ts';
+import { loginMaxFailuresPerIp, loginWindowMinutes } from './security.ts';
 import { clientIp, logActivity } from './session.ts';
 
 // OAuth 2.0 client credentials for the REST API (RFC 6749 section 4.4),
@@ -70,9 +70,9 @@ function credentials(req: FastifyRequest) {
 async function throttled(ip: string) {
   const r = await owner.one<{ n: number }>(
     `select count(*)::int as n from meta.activity_log where event = 'oauth_failed' and ip = $1 and at > now() - make_interval(mins => $2)`,
-    [ip, LOGIN_WINDOW_MINUTES],
+    [ip, loginWindowMinutes()],
   );
-  return (r?.n ?? 0) >= LOGIN_MAX_FAILURES_PER_IP;
+  return (r?.n ?? 0) >= loginMaxFailuresPerIp();
 }
 
 const fail = (reply: FastifyReply, e: OAuthError) => {

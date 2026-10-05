@@ -8,7 +8,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 
 | Oracle APEX | pgapex |
 |---|---|
-| Instance / workspace | One pgapex installation (one workspace) |
+| Instance / workspace | One pgapex installation; workspaces group applications and developers in the builder (Workspace utilities → Workspaces; not a security boundary: tenants who must not see each other get separate installations, [chapter 3](03-builder.md#workspaces)) |
 | Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
 | Application, page, region, item, button | The same, stored in `meta.*` |
 | Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |
@@ -55,6 +55,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
 | Number format masks (`FML999G999G990D00`) on columns and items | `{"formats": {...}}` on report, grid and cards columns, `{"format_mask": "..."}` on charts and number/display items ([chapter 14](14-globalization.md#number-formats)) |
 | Automatic Time Zone | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
+| Universal Theme's default style (26.1: *Iris*) | Base style *Iris* (the default for new applications) or *Standard* ([chapter 14](14-globalization.md#base-styles-iris-and-standard)) |
 | Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark*; Theme Roller style variants with *Users may choose a style* ([chapter 14](14-globalization.md#style-variants-theme-roller)) |
 | Template Options (regions, buttons) | *Template options* in the Page Designer: CSS classes from a fixed list ([chapter 4](04-pages-and-regions.md#template-options)) |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |

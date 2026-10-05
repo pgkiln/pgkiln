@@ -7,10 +7,28 @@ A page has a number (unique in the app), a name, a title, and these behaviours:
 | Property | Values | Effect |
 |---|---|---|
 | `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
+| `dialog_position` | `center`, `left`, `right`, `top`, `bottom` | Modal pages: a centred dialog (the default) or a **drawer** that slides in from that edge (APEX: the Drawer page template; 26.1: top and bottom drawers). See [Dialogs and drawers](#dialogs-and-drawers) |
+| `dialog_size` | `small`, `medium`, `large` | Modal pages: the dialog's or side drawer's width, the height of a top or bottom drawer |
 | `parent_page` | page number | Breadcrumb trail, and which menu entry is highlighted |
 | `requires_auth` | boolean | `false` makes the page public in an app with a login |
 | `authz` | scheme name | Who may open it (403 otherwise) |
 | `protection` | `checksum`, `unrestricted` | Whether URL item values need a checksum |
+
+### Dialogs and drawers
+
+A modal page (Page Designer → Page → Appearance: *Page mode* Modal dialog) opens over the page that linked to it.
+*Dialog position* chooses how:
+
+| Position | Opens as | Sizes (small / medium / large) |
+|---|---|---|
+| Centred dialog | A dialog in the middle of the screen | 480 / 760 / 1100 px wide |
+| Drawer from the right or left | A full-height panel docked to that edge, sliding in | 400 / 560 / 860 px wide |
+| Drawer from the top or bottom | A full-width panel docked to that edge | about a third, half or most of the screen high |
+
+On phones centred dialogs and side drawers fill the screen; top and bottom drawers keep their height. Users who
+prefer reduced motion get no slide-in animation. Everything else (closing after a submit, the *Dialog Closed* dynamic
+action, opening the page directly as a normal page) works the same for every position. In the HR example,
+*Leave request* (page 7) is a drawer from the right.
 
 ### Layout
 
@@ -31,7 +49,7 @@ only when true) and `authz` (an authorization scheme).
 
 ### Template options
 
-Like APEX's *Template Options*, regions and buttons have **Template options** (Page Designer, group
+Like APEX's *Template Options*, regions, buttons and items have **Template options** (Page Designer, group
 *Appearance*): checkboxes for CSS classes from a fixed list per component type, kept in the
 component's `template_options` column (text[]) and added to its `class`. Only classes from the list
 are written into the page; anything else (an older export, a hand edit) is ignored. The styles are
@@ -58,6 +76,18 @@ in `public/app.css`, and follow the app's [style variant](14-globalization.md#st
 | Outline | `to-outline` | Transparent with an accent-coloured border and text |
 | Looks like a link | `to-link` | No frame, underlined accent text |
 | Success / Danger | `to-success`, `to-danger` | Green or red button |
+
+| Item option | Class | Effect |
+|---|---|---|
+| Stretch | `to-stretch` | The item takes the whole row of the form grid |
+| Large field | `to-large` | A larger field and text |
+| Quiet | `to-quiet` | No border or background until the field has the focus |
+| Bold value | `to-bold` | The value in bold (also for display items) |
+| Hide the label | `to-hide-label` | The label is hidden visually but kept for screen readers |
+
+**Report columns** get a **Display** choice in the region's *Report settings* (one per column): *Bold*
+(`to-col-bold`), *Muted*, *No wrapping*, *Monospace*, *Right-aligned* or *Centred*, kept in the region's config as
+`"column_options": {"name": ["to-col-mono"]}` and only taken from that list.
 
 In SQL: `update meta.region set template_options = '{to-accent,to-compact}' where id = 12;` The
 database only checks the shape (at most 12 names of lower case letters, digits and `-`).
@@ -197,7 +227,12 @@ update hr.emp set active = false
 
 The item must be on the same page and is usually `hidden`; it accepts posted values only because
 the selection names it. The values come from the browser, so treat them as user input (RLS and
-your process's own checks apply). Only the rows on the current page can be selected.
+your process's own checks apply).
+
+Rows chosen on one page of the report **stay chosen on the others**: every checked or cleared row is recorded in the
+item's session state right away (a small request in the background), so paging doesn't lose them, the report shows
+how many rows are selected, and a submit sends them all (the other pages' rows as hidden values). Without JavaScript
+only the rows of the page you submit from can be chosen. At most 5000 values; values may not contain `:`.
 
 **Saved reports** (like APEX's saved interactive reports) belong to the signed-in user. A
 region with `"public_reports": "ADMIN"` lets users who pass that authorization scheme save
@@ -1019,6 +1054,25 @@ Components → Template components** and used in two places:
 A component has a **static id** (e.g. `status_badge`; regions and columns refer to it by this id),
 a name, a version, the **template** of one instance, an optional **wrapper**, **layout classes**
 and **custom attributes**.
+
+#### Built-in template components
+
+Every application can use these without importing anything (APEX: the Universal Theme's template components,
+with 26.1's *Metric Card* and group support). Show a region as `multiple` to get the group:
+
+| Static id | Component | Attributes (default: the column of that name) | As `multiple` |
+|---|---|---|---|
+| `ut_avatar` | Avatar: a picture or initials | `NAME`, `INITIALS`, `IMAGE` (a relative or https URL), `SIZE` (small, medium, large), `SHAPE` (circle, square) | An avatar group (overlapping) |
+| `ut_badge` | Badge coloured by a state | `LABEL`, `STATE` (success, warning, danger, info, neutral; approved, pending, … are understood) | A row of badges |
+| `ut_comments` | Comments | `USER`, `INITIALS`, `DATE`, `COMMENT`, `ACTIONS` (extra text) | One conversation |
+| `ut_media_list` | Media list: picture or initials, title (linked when the region has a link), description, badge | `TITLE`, `DESCRIPTION`, `INITIALS`, `IMAGE`, `BADGE`, `STATE` | One list |
+| `ut_metric_card` | Metric card: a key figure with its unit, change and trend | `LABEL`, `VALUE`, `UNIT`, `CHANGE`, `TREND` (up, down, flat), `GOOD` (up or down: which direction shows green), `DESCRIPTION` | A row of cards |
+| `ut_timeline` | Timeline: when, who, title, text, a coloured marker | `TITLE`, `WHEN`, `WHO`, `BODY`, `STATE` | One timeline |
+
+They also work as report column templates (e.g. `ut_badge` on a status column). To change one, open Shared
+Components → Template components → **Add** and choose **Copy into this application**: the application's component
+with the same static id then replaces the built-in one everywhere in the application. HR page 39 *Team overview*
+uses all of them except the badge.
 
 #### The template language
 

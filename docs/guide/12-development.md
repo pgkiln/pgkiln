@@ -15,6 +15,7 @@ bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with 
 src/
   env.ts                   .env loader (imported first)
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
+  instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
                            or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
@@ -41,7 +42,7 @@ src/
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
-  i18n/                    de.ts, fr.ts, es.ts: the built-in texts in German, French and Spanish
+  i18n/                    de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh: the built-in texts of the other languages (English and Dutch are in i18n.ts)
   numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
@@ -89,7 +90,7 @@ src/
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations, branches (page, URL, function returning a URL, another application) and their conditions
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
-    styles.ts              Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
+    styles.ts              base styles (BASE_STYLES: Iris, Standard; baseStyleOf → html data-style), Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
                            style (user choice, default), themeCss() (only hex values and constants reach the CSS)
     template-options.ts    template options: the fixed CSS class list per region and button, templateClasses() (unknown values ignored)
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
@@ -119,6 +120,7 @@ src/
     tree.ts                tree region
     lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
+    builtin-components.ts  built-in template components (ut_avatar, ut_badge, ut_comments, ut_media_list, ut_metric_card, ut_timeline)
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
     data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
@@ -184,7 +186,10 @@ src/
                            write-back operations, synchronisation settings, Synchronise now and run history
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
-    locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
+    instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview)
+    workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid
+                           request), the current workspace (session state __WS), placeApp, the switcher, Workspace utilities → Workspaces
+    locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST; appOfPath), developer comments, administrators
     blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a
                            question, shown not run; explain), describe tables (meta.ai_table_note, COMMENT ON, AI drafts),
@@ -232,12 +237,15 @@ test/
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets
+  drawers.test.ts          drawers and dialog sizes (065): Page Designer, what pages tell the browser, export/import
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
   web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and
                            meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
-  theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page) and template options
+  theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page), template options, base style Iris
+  workspaces.test.ts       workspaces (064): Default, administrators' pages, current workspace, refused apps, imports and copies
   ai.test.ts               AI services: Generate text with AI (text, structured outputs, errors, limits, keys), its dynamic action,
                            meta.ai_generate, the providers, HR page 37; against ai-mock.ts (no real API calls)
   ai-assistant.test.ts     AI assistant region (context, tools as the app role, writes, REST, histories, limits, sessions), OpenAI,
@@ -297,7 +305,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.28.0`) with their sample data, upgrades to the
+- **upgrade**: installs older releases (`v0.6.0` … `v0.29.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

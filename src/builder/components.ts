@@ -16,7 +16,7 @@ import { invokeProblems } from '../runtime/rest-sources.ts';
 import { aiProblems } from '../runtime/ai.ts';
 import { DATA_LOAD_DEF_SPEC } from './dataload.ts';
 import { processProblems } from '../runtime/processes.ts';
-import { BUTTON_OPTIONS, REGION_OPTIONS } from '../runtime/template-options.ts';
+import { BUTTON_OPTIONS, ITEM_OPTIONS, REGION_OPTIONS } from '../runtime/template-options.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -135,6 +135,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'source_column', label: 'Source column (form)', kind: 'text', group: 'Source' },
       { name: 'default_value', label: 'Default value', kind: 'text', group: 'Source' },
       { name: 'lov', label: 'List of values', kind: 'code', wide: true, group: 'List of values', help: 'select display, return from … · STATIC:Yes;Y,No;N · LOV:NAME (shared) · checkbox_group/multiselect store values colon-separated: string_to_array(:P1_X, \':\')' },
+      { name: 'template_options', label: 'Template options', kind: 'options', choices: ITEM_OPTIONS, group: 'Appearance',
+        help: 'CSS classes from a fixed list, added to the item (APEX: Template Options).' },
       { name: 'required', label: 'Value required', kind: 'bool', group: 'Validation' },
       { name: 'help', label: 'Help text', kind: 'text', group: 'Validation' },
       { name: 'readonly_condition', label: 'Read-only condition (SQL)', kind: 'code', group: 'Security', help: 'When true the item is shown read-only and ignored on submit.' },

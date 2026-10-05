@@ -1,5 +1,6 @@
 import { icon } from '../icons.ts';
 import pg from 'pg';
+import { templateClasses } from './template-options.ts';
 import { applyBinds, literal, queryValues, SqlParams } from '../binds.ts';
 import { savepoint } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
@@ -775,9 +776,16 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     return items;
   };
 
+  // (0.29) template options of a column (config.column_options), from the fixed list only
+  const colOpts = (name: string) => {
+    const conf = r.config.column_options as Record<string, unknown> | undefined;
+    if (!conf || typeof conf !== 'object') return '';
+    const key = Object.keys(conf).find((k) => k.toLowerCase() === name.toLowerCase());
+    return key ? templateClasses('column', conf[key]).trim() : '';
+  };
   const header = cols.map(({ f, i }) => {
     const pos = i + 1;
-    const cls = NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null;
+    const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', colOpts(f.name)].filter(Boolean).join(' ') || null;
     const label = headingOf(r, f.name, ctx.locale.tr);
     if (r.config.sortable === false) return html`<th scope="col" class="${cls}">${label}</th>`;
     const active = st.sort === pos;
@@ -822,7 +830,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     rowNum++;
     body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${cols.map(({ f, i }) => {
       const text = cell(row[i], f.dataTypeID, fmtOf(f.name));
-      const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : ''].filter(Boolean).join(' ') || null;
+      const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name)].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
       const tpl = templated.get(i);
       if (tpl) return html`<td class="${cls ? `${cls} tc-cell` : 'tc-cell'}" data-label="${label}">${tpl(row, rowNum)}</td>`;
@@ -1061,8 +1069,16 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   if (st.view !== 'report') return html`${toolbar}${switcher}${errors}${await renderView(ctx, r, st)}`;
 
   const empty = r.config.empty ?? t('report.no_data');
-  return html`${toolbar}${switcher}${errors}
-    <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
+  // (0.29) selection across pages: the rows chosen on other pages travel with a submit as hidden values;
+  // app.js records each change (POST …/report/<id>/select), so paging keeps them
+  const onPage = new Set(selIdx >= 0 ? info.rows.map((row) => cell(row[selIdx])) : []);
+  const elsewhere = [...selected].filter((v) => !onPage.has(v));
+  const selectionNote = lead
+    ? html`<p class="sel-count muted" data-sel-count="${r.id}" aria-live="polite">${selected.size ? t('report.selected_count', { n: selected.size }) : ''}</p>
+      ${elsewhere.map((v) => html`<input type="hidden" name="${selection!.item}" value="${v}" data-sel-other>`)}`
+    : '';
+  return html`${toolbar}${switcher}${errors}${selectionNote}
+    <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}"${lead ? raw(` data-sel-region="${r.id}"`) : ''}>
       <thead><tr>${header}</tr></thead>
       <tbody>${body.length ? body : html`<tr><td colspan="${cols.length + lead || 1}" class="empty">${empty}</td></tr>`}</tbody>
       ${info.rows.length ? foot : ''}

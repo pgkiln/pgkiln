@@ -1,4 +1,5 @@
-import { blockingLock, refuseLocked } from './locks.ts';
+import { appOfPath, blockingLock, refuseLocked } from './locks.ts';
+import { appAllowed, loadWorkspaces, workspaceMenu } from './workspaces.ts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { readFileSync } from 'node:fs';
 import { html, raw, type Raw } from '../html.ts';
@@ -117,6 +118,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
           <summary class="rail-avatar" title="${s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">Account: ${s.username}</span></summary>
           <div class="menu-panel">
             <div class="menu-section"><strong>${s.username}</strong><span class="muted small">Developer</span></div>
+            ${workspaceMenu(s)}
             <div class="menu-section"><span class="small muted" id="theme-label">Builder theme</span>
               <form method="post" action="${BASE}/theme" class="segmented ide-theme" role="group" aria-labelledby="theme-label">${csrf(s)}
                 ${themeButton('dark', 'moon', 'Dark')}${themeButton('light', 'sun', 'Light')}${themeButton('auto', 'monitor', 'System')}
@@ -145,6 +147,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       </main>
       <footer class="ide-status">
         <span title="Signed in as">${icon('user')}${s.username}</span>
+        ${s.workspace ? html`<span title="Workspace">${icon('layers')}${s.workspace.name}</span>` : ''}
         <span title="Database">${icon('database')}${DATABASE}</span>
         <span title="Builder language">en</span>
         <span class="ide-status-version">pgapex ${VERSION}</span>
@@ -224,6 +227,13 @@ export async function developer(req: Req, reply: FastifyReply) {
   }
   if (req.method === 'POST' && req.body?.__csrf !== s.csrf_token) {
     reply.code(403).send('Invalid CSRF token; reload the page and try again.');
+    return null;
+  }
+  // workspaces: an application outside the developer's workspaces doesn't exist for them
+  await loadWorkspaces(s);
+  const target = await appOfPath(req.url);
+  if (target && !(await appAllowed(s, target.appId))) {
+    reply.code(404).send('Not found');
     return null;
   }
   // a page or application locked by another developer can't be changed (locks.ts)

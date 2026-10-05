@@ -53,6 +53,7 @@ import { runtimeRoutes } from './runtime/routes.ts';
 import { debugOf, finishDebug } from './debug.ts';
 import { migrate, pendingMigrations } from './migrate.ts';
 import { ownerUrl } from './db.ts';
+import { refreshInstanceSettings } from './instance.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -67,6 +68,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     console.error(`pgapex: the database is missing ${pending.length} migration(s) (${pending[0]} …). Run "npm run db:migrate" (or "pgapex migrate"), or start with MIGRATE_ON_START=true.`);
   }
   await loadSecrets();
+  if (!pending.length) await refreshInstanceSettings(true);
   const app = Fastify({
     logger: opts.logger === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
     // behind a reverse proxy, set TRUST_PROXY=true so req.ip is the client (login throttling)
@@ -74,11 +76,21 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   });
   securityHeaders(app);
   if (pending.length) {
+    // checked again (at most every 5 s) until someone migrates; then requests go through
+    let checkedAt = Date.now();
     app.addHook('onRequest', async (req, reply) => {
-      if (req.url.startsWith('/static/')) return;
+      if (!pending.length || req.url.startsWith('/static/')) return;
+      if (Date.now() - checkedAt > 5000) {
+        checkedAt = Date.now();
+        pending = await pendingMigrations(root, ownerUrl).catch(() => pending);
+        if (!pending.length) {
+          await loadSecrets();
+          return;
+        }
+      }
       return reply.code(503).type('text/plain').send(
         `pgapex: the database is older than this version of pgapex: ${pending.length} migration(s) are not applied (${pending.join(', ')}).\n` +
-          'Run "npm run db:migrate" (or "pgapex migrate") and restart the server, or start it with MIGRATE_ON_START=true.\n',
+          'Run "npm run db:migrate" (or "pgapex migrate"), or start the server with MIGRATE_ON_START=true.\n',
       );
     });
   }

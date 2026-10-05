@@ -5,6 +5,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-06
+
+### Added
+- **Workspaces** (migration 064): workspaces group applications and the developers who build them. The App Builder
+  shows the current workspace's applications (home, Recent, dashboard, boilerplates, subscription sources) and answers
+  *Not found* for applications of other workspaces; developers with several workspaces switch in the account menu.
+  New, imported and copied applications go into the current workspace (the CLI imports into Default). Administrators
+  manage workspaces on Workspace utilities → Workspaces: add, rename, developers, move applications, delete when
+  empty. Existing applications and developers are in the Default workspace. Not a security boundary between
+  developers who write SQL: use separate installations for tenants that must not see each other.
+- **Base style Iris** (like APEX 26.1's new default theme style): indigo accent, a deep indigo header, larger corners,
+  softer shadows and its own dark palette, all with WCAG AA contrast. New applications start with it; existing ones
+  keep *Standard* until switched in Settings → Theme → Base style. Own accent and header colours and Theme Roller
+  styles still apply on top.
+- **Drawers** (migration 065): a modal page opens as a centred dialog or as a drawer from the left, right, top or
+  bottom edge (APEX: the Drawer page template, 26.1's top and bottom drawers), small, medium or large (Page Designer
+  → Page → Dialog position and size). HR example: *Leave request* (page 7) is a drawer from the right.
+- **Built-in template components**: avatar (and avatar groups), badge, comments, media list, metric card (APEX
+  26.1) and timeline, available in every application as regions and report column templates; *Copy into this
+  application* makes an editable copy that replaces the built-in one. HR example page 39 *Team overview*.
+- **Theme Roller**: accent and header colours for dark mode (style variants and Settings → Theme), a live preview
+  while you edit a style, and template options on items (migration 066: stretch, large, quiet, bold, hidden label)
+  and report columns (bold, muted, no wrapping, monospace, right-aligned, centred).
+- **Report row selection across pages**: rows chosen on one page of a report stay chosen while paging (each change
+  is recorded in the selection item's session state), with a count of the selected rows.
+- **Instance settings** (Workspace utilities, administrators): session idle time and length and sign-in throttling
+  set in the builder (over the environment variables, picked up by every server within 30 seconds), and an overview
+  of the server's configuration with secrets hidden.
+- **Nine more built-in languages** for pgapex's own texts: Italian, Portuguese, Polish, Swedish, Danish, Norwegian,
+  Czech, Japanese and Chinese (simplified), with their date formats and currency (fourteen in all).
+
 ## [0.28.0] - 2026-10-06
 
 ### Added

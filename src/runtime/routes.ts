@@ -13,7 +13,7 @@ import { documentShell } from '../layout.ts';
 import { accountRoles, loadApp, loadPage, type App, type Page, type Region } from '../metadata.ts';
 import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
-import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts';
+import { checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
 import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type SsoResult } from '../sso.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
@@ -22,7 +22,7 @@ import { startDebug } from '../debug.ts';
 import { assignable, clearPageItems, fetchForms, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
-import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
+import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitValues } from './items.ts';
 import { parseNumber } from '../numformat.ts';
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
@@ -66,7 +66,7 @@ export function simplePage(reply: FastifyReply, code: number, title: string, mes
     );
 }
 
-export const rootAttrs = (locale?: Locale) => (locale ? { lang: locale.lang, dir: locale.dir, theme: locale.theme } : {});
+export const rootAttrs = (locale?: Locale) => (locale ? { lang: locale.lang, dir: locale.dir, theme: locale.theme, style: locale.style } : {});
 
 /** Load an app with its texts in the request's language. */
 export async function appWithLocale(req: FastifyRequest, alias: string, session?: Session) {
@@ -620,6 +620,45 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
   });
 
+  // ---------------------------------------------------------------- report row selection
+  // (0.29) Selection across pages: app.js records each checked or cleared row
+  // (or the rows of a page, for "select all") in the selection item's session
+  // state, so the choice survives paging. Only the item the region's
+  // "selection" names, on a visible report the user may see; CSRF; the values
+  // are the user's input, as on a submit (bounded in number and length).
+  const MAX_SELECTED = 5000;
+  app.post('/a/:alias/:page/report/:id/select', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    const body = req.body ?? {};
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
+    const raw = body.value as string | string[] | undefined;
+    const values = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]).map(String).filter((v) => v !== '' && v.length <= 400 && !v.includes(':'));
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'report');
+        const sel = r ? selectionOf(ctx.page, r) : null;
+        if (!r || !sel || !vis.regions.has(r.id) || !vis.items.has(sel.item)) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        const now = new Set(splitValues(ctx.session.state[sel.item] ?? ''));
+        for (const v of values) {
+          if (body.checked === 'true') now.add(v);
+          else now.delete(v);
+        }
+        const list = [...now].slice(0, MAX_SELECTED);
+        ctx.session.state[sel.item] = list.length ? list.join(':') : null;
+        return { count: list.length, text: list.length ? ctx.locale.t('report.selected_count', { n: list.length }) : '' };
+      });
+      await saveState(ctx.session);
+      return reply.send(out);
+    } catch (e) {
+      if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'row selection') });
+    }
+  });
+
   // ---------------------------------------------------------------- lazy regions
   // A region with config.lazy, fetched by app.js once the page shows: the
   // page's query string (report paging, filters) comes along. Page access,
@@ -966,7 +1005,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (username.includes('\0')) return fail(locale.t('login.invalid'), 400), null;
     if (await loginThrottled(a.id, username, ip)) {
       logActivity({ appId: a.id, username, event: 'login_locked', ip });
-      return fail(locale.t('login.throttled', { minutes: LOGIN_WINDOW_MINUTES }), 429), null;
+      return fail(locale.t('login.throttled', { minutes: loginWindowMinutes() }), 429), null;
     }
     return { a, locale, session, username: username.slice(0, 100), next, ip, fail };
   };

@@ -33,6 +33,17 @@ export const appLocks = async (appId: number) =>
 /** Builder POSTs that are allowed on a locked page or application (locking, unlocking, comments). */
 const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?)$/;
 
+/** The application (and page) a builder URL under /apps/:id or /pages/:pid is about, or null. */
+export async function appOfPath(path: string): Promise<{ appId: number; pageNo: number | null; pageId: number | null } | null> {
+  const rel = path.split('?')[0].slice(BASE.length);
+  const app = /^\/apps\/(\d{1,9})(\/|$)/.exec(rel);
+  if (app) return { appId: Number(app[1]), pageNo: null, pageId: null };
+  const page = /^\/pages\/(\d{1,9})(\/|$)/.exec(rel);
+  if (!page) return null;
+  const p = await owner.one<{ app_id: number; page_no: number }>('select app_id, page_no from meta.page where id = $1', [Number(page[1])]);
+  return p ? { appId: p.app_id, pageNo: p.page_no, pageId: Number(page[1]) } : null;
+}
+
 /**
  * The lock of another developer that stops this request from changing an
  * application or page, or null. pageNo null: an application-level change.
@@ -40,19 +51,9 @@ const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?)$/;
 export async function blockingLock(username: string, path: string): Promise<{ lock: Lock; appId: number; pageId: number | null } | null> {
   const rel = path.split('?')[0].slice(BASE.length);
   if (EXEMPT.test(rel)) return null;
-  let appId: number | null = null;
-  let pageNo: number | null = null;
-  let pageId: number | null = null;
-  const app = /^\/apps\/(\d{1,9})(\/|$)/.exec(rel);
-  const page = /^\/pages\/(\d{1,9})(\/|$)/.exec(rel);
-  if (app) appId = Number(app[1]);
-  else if (page) {
-    const p = await owner.one<{ app_id: number; page_no: number }>('select app_id, page_no from meta.page where id = $1', [Number(page[1])]);
-    if (!p) return null;
-    appId = p.app_id;
-    pageNo = p.page_no;
-    pageId = Number(page[1]);
-  } else return null;
+  const target = await appOfPath(path);
+  if (!target) return null;
+  const { appId, pageNo, pageId } = target;
   const lock = await owner.one<Lock>(
     `select app_id, page_no, locked_by, locked_at::text, note from meta.builder_lock
       where app_id = $1 and (page_no = 0 or page_no = $2) and locked_by <> $3 order by page_no limit 1`,

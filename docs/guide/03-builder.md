@@ -14,8 +14,33 @@ to change it. On the **Developers** page you can:
   immediately).
 
 All developers have full rights in the builder and the SQL Workshop; administrators also manage
-developer accounts and can break other developers' [locks](#page-locks-and-comments). Accounts
-that existed before 0.23 and those made with the command line are administrators.
+developer accounts and [workspaces](#workspaces) and can break other developers' [locks](#page-locks-and-comments). Accounts
+that existed before 0.23 and those made with the command line are administrators. A developer added on this page
+joins the workspace you are working in; one made with the command line or SQL joins the Default workspace.
+
+## Workspaces
+
+A workspace (APEX: a workspace) groups applications and the developers who build them, for example per team or
+department. Every installation has the **Default** workspace, which holds the applications and developers from before
+0.29 (and can't be deleted).
+
+- **Developers see the applications of their own workspaces**: the App Builder home, Recent, the workspace dashboard,
+  boilerplates on Create and the theme and library applications offered for subscription all show the **current
+  workspace** only. Opening an application of another workspace (any builder page under it, also by typing its URL)
+  answers *Not found*. Administrators see every workspace.
+- **The current workspace** is shown in the status bar. Developers with more than one workspace switch in the
+  account menu (the circle with your initials); opening one of their applications from another workspace switches too.
+- **New applications** (Create, from a file, pasted data, existing tables, a blueprint) and **imports** go into the
+  current workspace; a working copy stays in its main application's workspace. Imports made with the command line
+  (`pgapex import`) go into Default. Exports don't carry the workspace.
+- Workspace utilities → **Workspaces** (administrators): add a workspace (you become its first developer), rename it,
+  choose its developers, move applications to another workspace and delete an empty workspace.
+
+**Workspaces are not a security boundary between developers who write SQL.** The SQL Workshop runs as pgapex's owner,
+and application code (processes, regions, validations) runs on the runtime connection, from which a developer's SQL
+can reach other applications' data and metadata. User accounts, identity providers, LDAP directories and AI services
+also stay installation-wide. Use workspaces to keep teams' applications apart in the builder; give tenants who must
+not see each other's applications or data **separate installations** (databases).
 
 ## The builder window
 
@@ -31,8 +56,8 @@ Every builder page has the same frame, modelled on an IDE:
 - The pages of an application have tabs under its name: Pages, Shared Components, Activity, REST
   API, Settings, Search and Advisor, with Export and Run on the right.
 
-- **The status bar** at the bottom: who is signed in, the database, the builder's language and
-  the pgapex version.
+- **The status bar** at the bottom: who is signed in, the current [workspace](#workspaces), the database, the
+  builder's language and the pgapex version.
 
 On phones the rail gets narrower and the breadcrumb shows only the current page.
 
@@ -44,7 +69,8 @@ The home page is laid out like APEX's App Builder:
   (applications, pages, active accounts; page views, users, failed sign-ins and errors of the last
   24 hours, and per application the last 7 days with a link to its Activity page) and
   **Workspace Utilities** (users, identity providers, LDAP directories, password policy,
-  developers, the SQL Workshop, and for administrators the [installation log](#installation)).
+  developers, the SQL Workshop, and for administrators [workspaces](#workspaces), AI services and the
+  [installation log](#installation)). The list, the dashboard and Recent show the current workspace.
 - **The applications**, as a report (application id, name, alias, pages, page views of the last 24
   hours, sign-in, last updated, and Edit / Run) or as cards. **Search** filters the list as you type
   (by name, alias or id; without JavaScript, press Enter). Click a column heading, or use
@@ -537,7 +563,8 @@ register at the provider, and has a *Test discovery* button. See
   with a link to set their level. **Custom authentication**: the function name, or the function body, and the
   post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)).
 - **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
-- **Theme**: accent colour, header colour, *side* or *top* navigation (on tablets and phones the
+- **Theme**: the **base style** (*Iris*, the default for applications created from 0.29 on, or *Standard*, pgapex's
+  look until 0.28; see [chapter 14](14-globalization.md#base-styles-iris-and-standard)), accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu
   (instead of the navigation entries) and as the navigation bar (links in the header), the theme style (automatic, light or dark) and whether users may choose light or dark.
   **Theme Roller** opens the [style variants](14-globalization.md#style-variants-theme-roller): several
@@ -675,12 +702,25 @@ The model sees table and column names, types, keys and descriptions, and what yo
 rows. Its answers are escaped when shown. Requests are logged in the AI usage log with the source
 `builder` and no application (no application limits apply).
 
+## Instance settings
+
+Workspace utilities → **Instance settings** (administrators; APEX: instance administration → instance settings):
+
+- **Sessions and sign-in**: session idle time, maximum session length, the sign-in throttling window and the number
+  of failed sign-ins per user and per IP address. A value set here wins over its environment variable
+  (`SESSION_IDLE_MINUTES`, `SESSION_MAX_HOURS`, `LOGIN_*`); empty uses the variable or the default. The page shows the
+  value in effect and where it comes from. Other servers of the installation pick up a change within 30 seconds.
+- **Configuration**: the server's environment variables (port, public URL, allow-lists, background runners, AI keys,
+  …) as they are in effect; secrets (connection strings, keys) only show whether they are set.
+
 ## Installation
 
 Workspace utilities → **Installation** (administrators only; APEX: the install/upgrade logs of
 instance administration) shows the pgapex version of the running server, the number of applied
 migrations and the database, and warns when the database misses migrations of this server (run
-`npm run db:migrate`) or has migrations the server does not know (an older server). Below it:
+`npm run db:migrate`) or has migrations the server does not know (an older server). A server started on a
+database that misses migrations answers every request with *503* and names them, unless it was started with
+`MIGRATE_ON_START=true` ([chapter 1](01-installation.md)), which applies them first. Below it:
 
 - **Install and upgrade runs**: every run of `npm run db:migrate` / `pgapex migrate` that applied a
   file or failed: when, *install* (an empty database) or *upgrade*, the version, the files and, for a

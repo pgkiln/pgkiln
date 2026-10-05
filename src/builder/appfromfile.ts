@@ -22,6 +22,7 @@ import { MAX_MB, preview, resultHtml } from './dataload.ts';
 import { buildAppFromSheets, MAX_SHEETS, parseBook, sheetsForm, type BuiltBook, type NamedSheet } from './appsheets.ts';
 import { appWizardRoutes, PASTED } from './appwizard.ts';
 import { checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
+import { currentWorkspace } from './workspaces.ts';
 import { BASE, csrf, developer, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 
 // Create → From a file (APEX: Create App from a File). Step 1 uploads a
@@ -369,7 +370,7 @@ export async function appFromFileRoutes(app: FastifyInstance) {
     let built: Built | BuiltBook;
     try {
       if (reservedSchema(String(b.schema ?? ''))) throw new LoadError(`The schema ${b.schema} can't be the parsing schema of an application.`);
-      const checked = await checkNewApp(b).catch((e) => {
+      const checked = await checkNewApp(b, currentWorkspace(s)).catch((e) => {
         throw new LoadError((e as Error).message);
       });
       const sheets = await parseBook(f.filename, f.content, { headers: b.h !== '0' });

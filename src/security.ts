@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { instanceSetting } from './instance.ts';
 import { owner } from './db.ts';
 import { tileOrigin } from './maptiles.ts';
 
@@ -40,10 +41,11 @@ export const newToken = () => randomBytes(32).toString('base64url');
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 
-// Login throttling: failures per user and per IP address in a sliding window.
-export const LOGIN_WINDOW_MINUTES = Number(process.env.LOGIN_WINDOW_MINUTES ?? 15);
-export const LOGIN_MAX_FAILURES_PER_USER = Number(process.env.LOGIN_MAX_FAILURES_PER_USER ?? 5);
-export const LOGIN_MAX_FAILURES_PER_IP = Number(process.env.LOGIN_MAX_FAILURES_PER_IP ?? 50);
+// Login throttling: failures per user and per IP address in a sliding window
+// (instance settings: the builder's value, else LOGIN_* environment variables, else defaults).
+export const loginWindowMinutes = () => instanceSetting('login_window_minutes');
+export const loginMaxFailuresPerUser = () => instanceSetting('login_max_failures_user');
+export const loginMaxFailuresPerIp = () => instanceSetting('login_max_failures_ip');
 
 declare module 'fastify' {
   interface FastifyRequest {
