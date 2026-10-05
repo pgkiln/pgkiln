@@ -13,6 +13,9 @@ import { pl } from './i18n/pl.ts';
 import { sv } from './i18n/sv.ts';
 import { da } from './i18n/da.ts';
 import { nb } from './i18n/nb.ts';
+import { cs } from './i18n/cs.ts';
+import { ja } from './i18n/ja.ts';
+import { zh } from './i18n/zh.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -1172,7 +1175,7 @@ const nl: Record<MessageKey, string> = {
   'ai_filter.sort': "gesorteerd op {column}",
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh };
 // browsers send 'no' as well as 'nb' for Norwegian Bokmål
 BUILTIN.no = nb;
 
@@ -1180,7 +1183,7 @@ BUILTIN.no = nb;
 export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk'], ['cs', 'Čeština'], ['ja', '日本語'], ['zh', '中文']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {

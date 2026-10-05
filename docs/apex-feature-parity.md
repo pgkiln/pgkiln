@@ -19,7 +19,7 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Logic and processing | 9 | 3 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons, download, chain and workflow processes; no custom JavaScript in dynamic actions |
 | Security | 19 | 1 | 0 | 0 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
 | User interface | 7 | 3 | 0 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
-| Globalization | 5 | 1 | 0 | 0 | One translated app like 26.1; number format masks and automatic time zone; five built-in languages |
+| Globalization | 5 | 1 | 0 | 0 | One translated app like 26.1; number format masks and automatic time zone; fourteen built-in languages |
 | Data and integration | 8 | 1 | 0 | 2 | REST APIs via PostgREST, REST data sources that write back and synchronise, web credentials with OAuth2 grants, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 5 | 1 | 0 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; AI with Claude or OpenAI: *Generate text with AI*, an assistant region with tools, natural-language report filters and blueprints |
 | Administration | 4 | 1 | 0 | 0 | Workspaces that group applications and developers (not a tenant boundary); Top SQL per app; debug messages per request; an install/upgrade log |
@@ -155,7 +155,7 @@ Last reviewed: 2026-10-05 (pgapex 0.27.0: Data Reporter; sample data generator; 
 | Text messages (`APEX_LANG.MESSAGE`, `&APP_TEXT$…`) | ✅ | `meta.message()`, `&APP_TEXT$NAME.`, fallback to the base and primary language |
 | Language from browser, preference or session | ✅ | Browser, user preference or primary; `?lang=`; right-to-left languages |
 | Date and timestamp format masks | ✅ | Per app or per language |
-| Built-in runtime messages in ~34 languages | 🟡 | English, Dutch, German, French and Spanish; other languages via text messages with the same names |
+| Built-in runtime messages in ~34 languages | 🟡 | Fourteen: English, Dutch, German, French, Spanish, Italian, Portuguese, Polish, Swedish, Danish, Norwegian, Czech, Japanese and Chinese (simplified), each with its date formats and currency; other languages via text messages with the same names |
 | Number format masks, automatic time zone | ✅ | Oracle-style number masks (`999G999G990D00`, `FML…`, `0000`, `%`, `S`/`MI`/`PR`, `EEEE`, `X`, `RN`) on report, grid and cards columns, charts and number/display items, in the language's separators with the app's currency; Automatic Time Zone (browser, My account, app or database), `timestamptz` shown in it ([chapter 14](guide/14-globalization.md)) |
 
 ## Data and integration

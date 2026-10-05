@@ -31,6 +31,8 @@ All notable changes to this project are documented here. The format follows
 - **Instance settings** (Workspace utilities, administrators): session idle time and length and sign-in throttling
   set in the builder (over the environment variables, picked up by every server within 30 seconds), and an overview
   of the server's configuration with secrets hidden.
+- **Nine more built-in languages** for pgapex's own texts: Italian, Portuguese, Polish, Swedish, Danish, Norwegian,
+  Czech, Japanese and Chinese (simplified), with their date formats and currency (fourteen in all).
 
 ## [0.28.0] - 2026-10-06
 

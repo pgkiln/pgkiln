@@ -30,16 +30,19 @@ SQL sees the language as `meta.app_language()` and the bind variable `:APP_LANGU
 ### pgapex's own texts
 
 The texts pgapex itself shows (sign-in, My account, report toolbars, paging, grid buttons,
-calendar, validation and error messages) come in **English**, **Dutch**, **German**, **French**
-and **Spanish** (like APEX's translated runtime messages). For another language they fall back
-to English until you add them. To change any of them, or to add a language, create a **text
-message** with the same name. For example, `login.title` in `it` → `Accedi`, or
+calendar, validation and error messages) come in fourteen languages (like APEX's translated runtime messages):
+**English**, **Dutch**, **German**, **French**, **Spanish**, **Italian**, **Portuguese**, **Polish**, **Swedish**,
+**Danish**, **Norwegian** (`nb`, also chosen for `no`), **Czech**, **Japanese** and **Chinese** (simplified). For another
+language they fall back to English until you add them. To change any of them, or to add a language, create a **text
+message** with the same name. For example, `login.title` in `fi` → `Kirjaudu sisään`, or
 `report.no_data` in `en` → `Nothing here yet.` The names are in `src/i18n.ts` (English and
-Dutch) and `src/i18n/de.ts`, `fr.ts`, `es.ts`.
+Dutch) and `src/i18n/<language>.ts`.
 
-Each built-in language also brings its default date formats (`format.date`, `format.timestamp`:
-`DD-MM-YYYY` in Dutch, `DD.MM.YYYY` in German, `DD/MM/YYYY` in French and Spanish) and currency
-(`format.currency`: `EUR`; `USD` in English).
+Each built-in language also brings its default date formats (`format.date`, `format.timestamp`: e.g. `DD-MM-YYYY` in
+Dutch and Danish, `DD.MM.YYYY` in German, Polish, Norwegian and Czech, `DD/MM/YYYY` in French, Spanish, Italian and
+Portuguese, `YYYY-MM-DD` in Swedish and Chinese, `YYYY/MM/DD` in Japanese) and currency (`format.currency`: `EUR` in the
+euro countries, `USD` in English, `PLN`, `SEK`, `DKK`, `NOK`, `CZK`, `JPY`, `CNY`); a text message with the same name
+changes them.
 
 ## Translating an application
 

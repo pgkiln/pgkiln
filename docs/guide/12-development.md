@@ -42,7 +42,7 @@ src/
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
-  i18n/                    de.ts, fr.ts, es.ts: the built-in texts in German, French and Spanish
+  i18n/                    de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh: the built-in texts of the other languages (English and Dutch are in i18n.ts)
   numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
