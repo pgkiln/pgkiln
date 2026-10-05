@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-05
+
 ### Added
 - **Gantt, pyramid and polar charts**: Gantt with start/end, progress, milestones, dependencies, a
   today line and a time axis from hours to years; pyramid (area-proportional, or two series back to
@@ -52,6 +54,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 - The Gantt "today" line uses the session's time zone.
+
+### Security
+- See SECURITY.md for the notes on charts, map layers, REST write-back and synchronisation, debug
+  messages, `meta.web_request()`/`meta.parse_data()` and the Theme Roller.
 
 ## [0.24.0] - 2026-10-05
 

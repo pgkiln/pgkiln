@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 33 items 1–6 done, not released; see "State at the handoff" under Sprint 33). Sprints 3–32 are merged into `main` and released as **v0.24.0** (migrations 001–047 are released: add 048+; 033, 035, 045 and 046 were never used). HR example files up to `hr_32` are released.
+Last updated: 2026-10-05 (sprint 33 released as v0.25.0; sprint 34 next). Sprints 3–33 are merged into `main` and released as **v0.25.0** (migrations 001–054 are released: add 055+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
 
 ## Project in one paragraph
 
@@ -48,7 +48,8 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 31, released as **v0.23.0** (tags: v0.2.0, v0.6.0–v0.23.0; 0.3.0–0.5.0 were never tagged). Migrations 001–043 are released |
+| `main` | Everything up to sprint 33, released as **v0.25.0** (tags: v0.2.0, v0.6.0–v0.25.0; 0.3.0–0.5.0 were never tagged). Migrations 001–054 are released |
+| (sprint branches) | `sprint-32` and `sprint-33` were merged (v0.24.0, v0.25.0) |
 | (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
 | (sprint branches) | `sprint-17` … `sprint-24` (and sprint 23's five `sprint-23-*` work branches) were merged (v0.11.0–v0.17.0) and deleted |
@@ -1257,7 +1258,7 @@ CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check
 CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446): 789 pass / 8 skip. Next: pick the
 next sprint from the parity matrix (AI features still wait for the owner's decision on provider and API keys).
 
-## Sprint 33 (ITEMS DONE, RELEASE PENDING): parity items one after another (owner: "please keep going, read the handoff and parity", 2026-10-05)
+## Sprint 33 (DONE, v0.25.0): parity items one after another (owner: "please keep going, read the handoff and parity", 2026-10-05)
 
 Branch `sprint-33` from `main` (v0.24.0). As in sprint 32: **one agent at a time** in the main checkout (no worktree),
 dev DB `pgapex-db` on 5434, app 3100. Rules: `docs/development/sprint-33-agent-rules.md`. Each item is finished,
@@ -1279,7 +1280,13 @@ Last full runs on the throwaway DB: after item 5 on a **fresh** database in a cl
 10 skip, e2e 103/103. Item 6's agent: e2e 107/107, unit 891 pass / 1 fail (export.test.ts, then fixed in 86f0088 and
 re-run for export/cli only) → **a full `npm test` after item 6 is still owed** (expected 892 pass / 10 skip).
 
-**Next, in order:**
+**Release (2026-10-05, next session):** item 1 below fixed by migration `054_import_app_debug_defaults.sql` (a
+`before insert or update` trigger on `meta.app` coalescing `debug_level`/`debug_retention_days`, like 053) and a test
+in `test/export.test.ts` that strips the 050–053 keys from an export. 050's keys were already defaulted by
+import_app. CI-style run in a clean worktree without `.env` on a fresh postgres:17 (5446): **893 pass / 10 skip,
+e2e 107/107**. Released as 0.25.0 (SECURITY.md rows for items 1–6, CI matrix v0.25.0, CHANGELOG, chapter 12).
+
+**Next, in order (as it was at the handoff; all done):**
 1. **Fix (bug found at the handoff, blocks the release):** importing an export made before migration 051 (e.g. any
    v0.24.0 export) fails: `null value in column "debug_level" of relation "app" violates not-null constraint` (also
    `debug_retention_days`). `meta.import_app` builds the app row with `jsonb_populate_record`, so a missing key becomes
@@ -1420,7 +1427,7 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
 
 ## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
 
-Start after sprint 33 is released (one agent at a time unless the owner says otherwise); migration numbers from 054 (from 055 if 054 is used for the import fix above).
+Start after sprint 33 is released (one agent at a time unless the owner says otherwise); migration numbers from **055** (054 was used for the import fix).
 
 | # | Item (parity row) | Notes |
 |---|---|---|
