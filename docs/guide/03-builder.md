@@ -202,6 +202,16 @@ primary key; the other types also work on views. Make sure the app's database ro
 on the table (automatic for its own schema): the second step warns when it hasn't. The same
 generators can be called from SQL with [`meta.generate_page`](09-reference.md#functions-for-developers-and-scripts).
 
+**Create pages with AI** (below the wizard; needs the [App Builder's AI service](#app-builder-ai)):
+describe the pages you want in your own words (*"a page to manage employees, a calendar of leave
+and a chart of salaries per department"*). The AI service proposes pages of the wizards above: a
+page type, a table or view the application's database role can read, a page number (and a form
+page for *Report and form*) and a menu label, each with a one-sentence reason. Nothing is created
+yet: check the proposals, change the type, table, numbers or labels, untick what you don't want,
+and **Create the ticked pages**. They are made with `meta.generate_page` and the wizards' defaults,
+in one transaction (all or none); only page types of the list and tables the application can read
+are accepted, whatever the form says.
+
 ### Create a blank page
 
 Give a page number, name, mode (normal or modal dialog) and breadcrumb parent, then add
@@ -599,6 +609,29 @@ into it, is sent to the chosen provider (or the gateway of the base URL). Choose
 models that your organisation allows for that data. See
 [Generate text with AI](06-processing.md#generate-text-with-ai).
 
+## App Builder AI
+
+The App Builder uses one AI service (APEX: AI Assistant in App Builder and SQL Workshop). An
+administrator chooses it under **SQL Workshop → AI** (any enabled [AI service](#ai-services); *none*
+switches the builder's AI off). What it is used for:
+
+- **SQL from a question** (SQL Workshop → AI): pick a schema and ask; the answer is a statement and
+  a short explanation. It is **shown, never run**: check it, change it and run it in SQL Commands
+  yourself (*Run in SQL Commands*).
+- **Explain a query or an error** (SQL Workshop → AI): paste a query, an error message or both
+  (optionally with a schema for context); the explanation is shown with simple formatting.
+- **Describe tables for AI** (SQL Workshop → AI → *Describe tables*): per table or view, a
+  description of the table and each column (`meta.ai_table_note`). The builder sends them with the
+  table list whenever it asks a model for SQL or pages, so answers use the right columns. Without a
+  description the database comment is used. **Draft with AI** proposes descriptions from the names,
+  types and keys (and the descriptions of referenced tables); they fill the form and are saved only
+  when you save. *Also save them as database comments* writes them with `COMMENT ON` too.
+- **Create pages with AI** on an application's dashboard ([see above](#create-pages-from-a-table-wizards)).
+
+The model sees table and column names, types, keys and descriptions, and what you type; never
+rows. Its answers are escaped when shown. Requests are logged in the AI usage log with the source
+`builder` and no application (no application limits apply).
+
 ## Installation
 
 Workspace utilities → **Installation** (administrators only; APEX: the install/upgrade logs of
@@ -673,6 +706,8 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
   rows, a percentage of nulls), proposed per column from the catalog; preview them, insert them in one
   transaction (parents first) or download them as SQL or CSV, with a seed for the same rows again;
   save the definition to rerun it ([chapter 16](16-files.md#sql-workshop--sample-data)).
+- **AI**: SQL from a question (shown, never run), explanations of queries and errors, and
+  descriptions of tables for models ([App Builder AI](#app-builder-ai)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

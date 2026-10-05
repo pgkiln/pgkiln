@@ -5517,3 +5517,77 @@ describe('sprint 36 ai assistant', () => {
     assert.equal((await owner.one('select config->>\'service\' as s from meta.region where id = $1', [chat])).s, SVC);
   });
 });
+
+describe('sprint 36 app builder ai', () => {
+  const env = { ...process.env };
+  const SVC = 'SEC_AI3';
+  const DEV = 'sec36b_dev';
+  const DEV_PW = 'Sec36b-dev-password!';
+  let mock: Awaited<ReturnType<typeof import('./ai-script-mock.ts').startScriptMock>>;
+  let admin: Browser;
+  let dev: Browser;
+  const signIn = async (user: string, pw: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: user, password: pw });
+    await b.get('/builder');
+    return b;
+  };
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    const { encryptSecret } = await import('../src/secrets.ts');
+    mock = await (await import('./ai-script-mock.ts')).startScriptMock();
+    await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
+    const id = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3) returning id`,
+      [SVC, `${mock.base}/claude`, encryptSecret('sk-ant-sec-builder')])).id;
+    await owner.query('update meta.builder_ai set service_id = $1', [id]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+    admin = await signIn('admin', 'admin');
+    dev = await signIn(DEV, DEV_PW);
+  });
+  after(async () => {
+    await owner.query('update meta.builder_ai set service_id = null');
+    await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await mock.close();
+    if (env.PGAPEX_SECRET_KEY === undefined) delete process.env.PGAPEX_SECRET_KEY;
+    else process.env.PGAPEX_SECRET_KEY = env.PGAPEX_SECRET_KEY;
+  });
+
+  test('builder AI pages need a developer session and CSRF; the service is chosen by administrators only', async () => {
+    const anon = new Browser();
+    for (const url of ['/builder/sql/ai', '/builder/sql/ai/describe', `/builder/apps/${appId}/ai-pages`]) assert.equal((await anon.get(url)).statusCode, 302, url);
+    const before = mock.seen.length;
+    for (const url of ['/builder/sql/ai/sql', '/builder/sql/ai/explain', '/builder/sql/ai/describe/draft', `/builder/apps/${appId}/ai-pages`])
+      assert.equal((await dev.post(url, { __csrf: 'forged', schema: 'hr', table: 'dept', question: 'x', sql: 'x', description: 'x' })).statusCode, 403, url);
+    assert.equal(mock.seen.length, before, 'no AI call');
+    assert.equal((await dev.post('/builder/sql/ai/service', { __csrf: dev.lastCsrf, service: '' })).statusCode, 403);
+    assert.ok((await owner.one('select service_id from meta.builder_ai')).service_id, 'unchanged');
+    assert.doesNotMatch((await dev.get('/builder/sql/ai')).body, /name="service"/);
+    assert.match((await admin.get('/builder/sql/ai')).body, /name="service"/);
+  });
+
+  test('model output is escaped and never run; the model sees no rows', async () => {
+    mock.script = [{ text: JSON.stringify({ sql: "drop table hr.emp cascade; select '</textarea><script>alert(1)</script>'", explanation: '<script>alert(2)</script>' }) }];
+    const res = await dev.post('/builder/sql/ai/sql', { __csrf: dev.lastCsrf, schema: 'hr', question: 'x' });
+    assert.doesNotMatch(res.body, /<script>alert/);
+    assert.match(res.body, /&lt;\/textarea&gt;&lt;script&gt;alert\(1\)/);
+    assert.equal((await owner.one(`select to_regclass('hr.emp') is not null as ok`)).ok, true, 'nothing ran');
+    assert.doesNotMatch(JSON.stringify(mock.seen.at(-1)!.body), /KING|BLAKE|ACCOUNTING/);
+    mock.script = [{ text: JSON.stringify({ pages: [{ kind: 'grid', table: 'hr.emp', page: 1, form_page: null, label: '<b>x</b>', reason: '<script>alert(3)</script>' }] }) }];
+    const pages = await dev.post(`/builder/apps/${appId}/ai-pages`, { __csrf: dev.lastCsrf, description: 'x' });
+    assert.doesNotMatch(pages.body, /<script>alert|<b>x<\/b>/);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.page where app_id = $1 and name = '<b>x</b>'`, [appId])).n, 0, 'proposals create nothing by themselves');
+  });
+
+  test('describe tables: only existing tables outside pgapex and the system schemas; notes are plain text in comments', async () => {
+    assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'meta', table: 'developer', 'note:': 'x' })).statusCode, 404);
+    assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'no_such_table', 'note:': 'x' })).statusCode, 404);
+    assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': "x'; drop table hr.dept; --", comments: 'true' })).statusCode, 303);
+    assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, "x'; drop table hr.dept; --");
+    await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': '', comments: 'true' });
+    assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, null);
+    await assert.rejects(runtime.query('select * from meta.ai_table_note'), /permission denied/);
+    await assert.rejects(runtime.query('select * from meta.builder_ai'), /permission denied/);
+  });
+});

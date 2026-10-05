@@ -626,6 +626,10 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const at = (type: string) => { const r = rs.find((x) => x.type === type); return `/builder/pages/${r.page_id}?c=region-${r.id}`; };
           return { ai_assistant_region: at('ai_assistant'), ai_filter_region: at('report') };
         })()),
+        // (sprint 36) App Builder AI: SQL Workshop → AI, describe a table, create pages with AI
+        sql_ai: '/builder/sql/ai',
+        sql_ai_describe: '/builder/sql/ai/describe?schema=hr&table=leave_request',
+        ai_pages: `/builder/apps/${appId}/ai-pages`,
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
