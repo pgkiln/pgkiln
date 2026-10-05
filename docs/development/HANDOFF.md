@@ -1058,6 +1058,21 @@ five `sprint-31-<n>` branches. Five new agents were launched (one per workstream
 
 **Workstream reports:** (fill in as agents finish)
 
+**Owner (2026-10-05):** the coordinator merges `sprint-31` into `main` itself when finished (and releases 0.23.0);
+do **not** start sprint 32 in that session.
+
+- **logic: DONE** (pushed, not merged). Migration `039_page_logic.sql`, HR `hr_29_toolkit.sql` page 28. export/import
+  not redefined (`process_job` in `NOT_EXPORTED`). **039 redefines `meta.has_role`** (background-job branch): combine
+  in 043 if builder also redefines it. Env vars `BACKGROUND_PROCESSES`, `PROCESS_JOB_INTERVAL_S` (default 10) → `.env.example`.
+  Hotspots: engine.ts, routes.ts, logic.ts, render.ts, public/app.js, builder components/advisor/designer, metadata.ts,
+  i18n.ts, cli/replace.ts, server.ts, runtime/files.ts, end of security.test.ts, guide 01/06/12.
+  Security: download queries run as app role (logged `download`); function branches checked, off-app refused and logged
+  `forbidden`; app branches signed per target app/page/user; `meta.enqueue_process_job` only queues current-app chains
+  with session roles; passwords dropped from job binds; request-bound processes refused in background;
+  `meta.process_jobs` security_barrier own-jobs view; workflow terminate/retry checked in DB; `dialog_closed` same-origin.
+  Parity: Download process, execution chains (+ background), workflow process start/terminate/retry, branch function
+  returning URL, branch to another app, DA event Dialog Closed: all Yes. Tests 548 pass / 8 skip, e2e 81/81.
+
 ## Sprint 32 (PLANNED, owner 2026-10-05)
 
 - **CI: move GitHub Actions off Node.js 20** (deprecated; the runs show a warning): `actions/checkout`,
