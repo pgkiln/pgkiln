@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { aiFilterSettingsForm, assistantSettingsForm } from './assistant.ts';
 import { designSql } from './websources.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -681,7 +682,8 @@ async function displaySelectorFields(r: RegionRow, pageId: number, id: (n: strin
 
 /** The settings form under a region in the page designer, or '' for types without one. */
 export async function regionSettingsForm(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
-  if (r.type === 'report') return html`${await reportSettingsForm(pageId, appId, r, s)}${await columnTemplatesForm(pageId, appId, r, s)}`;
+  if (r.type === 'report') return html`${await reportSettingsForm(pageId, appId, r, s)}${await columnTemplatesForm(pageId, appId, r, s)}${await aiFilterSettingsForm(pageId, appId, r, s)}`;
+  if (r.type === 'ai_assistant') return assistantSettingsForm(pageId, appId, r, s);
   if (r.type === 'template_component') return templateRegionForm(pageId, appId, r, s);
   if (r.type === 'data_reporter') return reporterSettingsForm(pageId, appId, r, s);
   if (!(SETTINGS_TYPES as readonly string[]).includes(r.type)) return '';

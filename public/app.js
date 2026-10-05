@@ -2257,3 +2257,31 @@ function areaFilter(map, f) {
     for (const btn of e.target.querySelectorAll('[data-reveal][aria-pressed="true"]')) btn.click();
   }, true);
 })();
+
+// ------------------------------------------------------------ AI assistant and report questions (assistant.ts, ai-filter.ts)
+// The newest message in view; while an AI request runs, its button says so and can't be pressed twice.
+(() => {
+  document.querySelectorAll('.assistant-log').forEach((log) => {
+    if (log.lastElementChild && log.children.length > 1) log.lastElementChild.scrollIntoView({ block: 'nearest' });
+  });
+  document.addEventListener('submit', (e) => {
+    const f = e.target;
+    if (!f.id || e.defaultPrevented) return;
+    for (const btn of document.querySelectorAll(`button[form="${CSS.escape(f.id)}"][data-busy]`)) {
+      btn.textContent = btn.dataset.busy;
+      btn.setAttribute('aria-disabled', 'true');
+      btn.classList.add('is-busy');
+      btn.addEventListener('click', (x) => x.preventDefault());
+    }
+  });
+  // Ctrl+Enter (or ⌘+Enter) sends the message
+  document.addEventListener('keydown', (e) => {
+    const box = e.target;
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || !box.matches || !box.matches('.assistant-input textarea')) return;
+    const f = box.form;
+    if (f) {
+      e.preventDefault();
+      f.requestSubmit();
+    }
+  });
+})();

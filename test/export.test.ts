@@ -30,6 +30,7 @@ const NOT_EXPORTED = new Set([
   'app_ai_service', // which AI services an application may use: installation data (services and keys are never exported)
   'ai_usage', // the AI usage log of this installation
   'ai_request', // AI requests queued from SQL and their answers (kept 24 hours)
+  'ai_conversation', // AI assistant conversations: per session, user data (the assistant's settings travel in the region's config)
 ]);
 
 /** Where each exported table appears in the document. */

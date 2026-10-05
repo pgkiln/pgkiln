@@ -35,6 +35,9 @@ import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
 import { codeEditorRoutes } from './builder/code-editor.ts';
 import { sampleDataRoutes } from './builder/sampledata.ts';
+import { assistantRoutes } from './runtime/assistant.ts';
+import { aiFilterRoutes } from './runtime/ai-filter.ts';
+import { assistantBuilderRoutes } from './builder/assistant.ts';
 import { accountRoutes } from './runtime/account.ts';
 import { taskRoutes } from './runtime/tasks.ts';
 import { dataReporterRoutes } from './runtime/data-reporter.ts';
@@ -118,6 +121,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(dataReporterRoutes);
   await app.register(reporterBuilderRoutes);
   await app.register(sampleDataRoutes);
+  await app.register(assistantRoutes);
+  await app.register(aiFilterRoutes);
+  await app.register(assistantBuilderRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));
   return app;
 }
