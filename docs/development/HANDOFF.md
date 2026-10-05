@@ -1017,7 +1017,42 @@ unfinished one, launch an agent: "Read `docs/development/sprint-31-agent-rules.m
 parity rows + counts, CHANGELOG 0.23.0, SECURITY.md, `.env.example`, version, CI matrix + v0.23.0, chapter 12 version
 line; merge, tag, push; remove worktrees, branches and containers).
 
-**Workstream reports:** (filled in as agents finish)
+**State at the handoff (2026-10-05, ~08:15):** v0.22.0 is released and CI on `main` is green (a flaky
+database-auth test was fixed on `main` in 68d8b65: page views are logged without
+awaiting, so the "last log entry" raced). The five agents were still running; each had pushed nothing itself, but
+the coordinator pushed their `wip:` commits to `origin/sprint-31-<n>`. Uncommitted work may exist in the worktrees
+(only on the owner's machine, under `../pgapex-wt/<n>`). Progress at that moment:
+
+| Workstream | Committed (wip) | Uncommitted at handoff | Probably still to do |
+|---|---|---|---|
+| grid | aggregates, layout per user, master-detail, row actions; client side (move, resize, paste, master-detail refresh) | nothing | tests (security + functional), HR `hr_28` page 27, docs, e2e |
+| logic | migration 039; download, chain, workflow processes; branches; background jobs; dialog_closed event; builder fields, Advisor, jobs panel, replace; HR page 28 | `test/page-logic.test.ts` (new) | finish tests, security tests, docs, e2e |
+| i18n | `numformat.ts` + migration 040; time zone per request, locale number symbols, settings; masks on report/grid/cards/chart/PDF columns and number items | edits in format.ts, report-settings.ts, components.ts, app.css | German/French/Spanish messages, HR `hr_30` page 29, tests, docs, e2e |
+| workshop | migration 041; SQL script splitter/runner + pages; Quick SQL parser/DDL/page; query builder; workshop tests | `src/xml.ts`, `test/xml.test.ts`, dataload.ts edits | XML loading, saved data load definitions, security tests, docs, e2e |
+| builder | migration 042; custom authentication; lists (shared component, region, menu/bar) | `src/builder/locks.ts`, `supporting.ts`, edits in routes/designer/shared/ui/cli/export test | page locks + comments, supporting objects, export/import (migration 042 may redefine them), HR `hr_32` page 31, tests, docs, e2e |
+
+**How to take over (another Claude account / session):**
+1. If you are on the owner's machine (`/home/nickquispel/projects/postgres_apex`): the worktrees and containers exist.
+   Start the containers (`docker start pgapex-db pgapex-grid pgapex-logic pgapex-i18n pgapex-workshop pgapex-builder`).
+   Make sure no earlier agent is still editing a worktree (its `git status` stops changing). Commit any uncommitted
+   work as `wip: …` on the worktree's branch first, so nothing is lost.
+2. If you are on another machine: clone, `git fetch`, and recreate a worktree per workstream from `origin/sprint-31-<n>`
+   (`git worktree add ../pgapex-wt/<n> sprint-31-<n>`), symlink `node_modules`, write `.env` from the main `.env` with
+   the workstream's DB port and app port (table above), create the container (`docker run` command in sprint 26's
+   section), `npx tsx scripts/migrate.ts && npm run example:hr`. Uncommitted work from the owner's machine is then
+   missing: the table above says what to redo.
+3. Per unfinished workstream, launch an agent (several in parallel is fine) with: "Read
+   `docs/development/sprint-31-agent-rules.md` and follow it. Worktree `../pgapex-wt/<n>`, branch `sprint-31-<n>`, DB
+   `pgapex-<n>` port <db>, app port <app>, reserved migration <m>, HR `hr_<x>` page <p>. Continue the wip work (commits
+   and uncommitted changes) for the gaps of your row in the Sprint 31 table of HANDOFF.md; finish, test, and report."
+   Push each branch after the agent finishes (`git push origin sprint-31-<n>`), so another account can pick it up.
+4. Coordinator: collect each final report below, then finish as written above (merge order i18n, workshop, grid,
+   logic, builder; migration 043 combining every redefinition of `meta.export_app`/`meta.import_app`; full tests,
+   upgrade test from v0.22.0, docs, release 0.23.0, cleanup). Then sprint 32 (below).
+5. Keep this file updated and pushed after every milestone (merge of a workstream, release): usage can end without
+   warning.
+
+**Workstream reports:** (fill in as agents finish)
 
 ## Sprint 32 (PLANNED, owner 2026-10-05)
 
