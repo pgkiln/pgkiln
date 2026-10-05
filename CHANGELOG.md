@@ -24,6 +24,14 @@ All notable changes to this project are documented here. The format follows
 - **OAuth2 password and refresh-token grants** for web credentials; refresh tokens returned by the
   token endpoint are stored encrypted (and replaced when rotated), so they survive restarts.
 
+- **Debug messages** (APEX_DEBUG): a debug level per application (1–9) and a retention (1–90 days);
+  `meta.debug(level, text)` and `meta.debug_enabled(level)` from application SQL; timed entries per
+  request (page steps, regions, processes, branches, errors, SQL notices), viewed per page view under
+  Activity → Debug messages. With debug off nothing is written. Migration 051.
+- **Installation log**: every migration run is logged in `public.pgapex_install_log`; Workspace
+  utilities → Installation (administrators) shows the version, install and upgrade runs, applied
+  migrations and mismatches.
+
 ### Changed
 - The export leaves out OAuth2 passwords, refresh tokens and a synchronisation's run state; an
   imported synchronisation starts switched off. `pgapex import --replace` keeps the new secrets.

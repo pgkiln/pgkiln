@@ -1268,7 +1268,7 @@ tested, committed and pushed on `sprint-33` before the next agent starts, so the
 | 1 | Charts: Gantt (tasks with start/end, progress, dependencies optional), pyramid and polar charts, server-side SVG like the others, with drill-down and the data-table alternative | 048 (unused), `hr_35` | **done** (5d857e8..acf68b0) |
 | 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (unused), `hr_36` | **done** (1d885c6..9b67ee1) |
 | 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | **done** (3875dd2..87ad118) |
-| 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | to do |
+| 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | **done** (02afbf9..2b10cc4) |
 | 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | to do |
 | 6 | Theme Roller: style variants (several saved styles per app, switch per user) and template options on regions/buttons (a fixed list of CSS classes per component) | 053, (no HR) | to do |
 
@@ -1326,6 +1326,24 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   failing halfway leaves earlier rows sent); no OAuth2 authorization code flow; no XML/SOAP. Coordinator: parity row
   ✅, Data and integration 7/1/1/2, totals 84/21/10/3, CHANGELOG `[Unreleased]`. Tests (clean worktree, no `.env`,
   throwaway postgres:17 on 5446): 844 pass / 10 skip, e2e 99/99.
+- **4 debug messages: DONE** (02afbf9..2b10cc4, pushed). Migration `051_debug_messages.sql`: `meta.app.debug_level`
+  (0, 1/2/4/6/9) and `debug_retention_days` (1–90, default 7); `meta.debug_view` (one row per recorded request) and
+  `meta.debug_message`; `meta.debug(level, text)`, `meta.debug(text)`, `meta.debug_enabled(level)`,
+  `meta.debug_level()` (public); `meta.debug_save`/`debug_purge` security definer, runtime only (≤5000 requests per
+  app). `meta.debug()` raises a NOTICE tagged `pgapex.debug`, collected per connection by `appTx` while debug is on
+  (kept on rollback); other warnings level 2, notices level 9. `src/debug.ts` (DebugLog only when level > 0; steps,
+  regions, processes, branches, errors; saved in a root `onResponse` hook; purge from the scheduler hourly). Debug
+  off: no writes, only one more `set_config` in the existing statement. Builder Activity → Debug messages
+  (`/builder/apps/:id/debug`), Workspace utilities → Installation (`/builder/installation`, admins);
+  `src/migrate.ts` logs runs in `public.pgapex_install_log`. **Export/import not redefined** (the two app columns
+  travel; an imported app keeps the exporter's debug level, like the old `debug` flag). No env vars, no HR part.
+  Security (for SECURITY.md): app roles/runtime have no rights on the debug tables; viewer needs a developer session +
+  CSRF, request shown only under its own app; password item values and URL query values never recorded, item values
+  only at level 9 (cut at 200 chars); DB error messages may quote values (level 1, like the activity log); any
+  developer can see any app's debug (no per-app developer access); Installation page admins only. Not done:
+  background jobs/automations/REST API not recorded; no per-user/session debug switch. Coordinator: Debug messages
+  ✅, Instance administration stays 🟡 (text extended), Administration 3/1/1/0, totals 85/20/10/3, CHANGELOG.
+  Tests (throwaway DB on 5446): 859 pass / 10 skip, e2e 99/99.
 
 ## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
 
