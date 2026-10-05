@@ -345,12 +345,9 @@ export async function mergeCopy(copyId: number, o: MergeOptions) {
     await c.query('update meta.automation set enabled = false where app_id = $1', [copyId]);
     await c.query('update meta.rest_source set sync_enabled = false where app_id = $1', [copyId]);
     const base = await exportApp(c, l.mainAlias);
-    await c.query(
-      o.direction === 'merge'
-        ? 'update meta.working_copy set base = $2, merged_at = now(), merged_by = $3 where app_id = $1'
-        : 'update meta.working_copy set base = $2, refreshed_at = now() where app_id = $1',
-      [copyId, JSON.stringify(base), o.username],
-    );
+    if (o.direction === 'merge')
+      await c.query('update meta.working_copy set base = $2, merged_at = now(), merged_by = $3 where app_id = $1', [copyId, JSON.stringify(base), o.username]);
+    else await c.query('update meta.working_copy set base = $2, refreshed_at = now() where app_id = $1', [copyId, JSON.stringify(base)]);
     return { changes: l.changes.length, mainId: l.copy.main_app_id };
   });
 }
