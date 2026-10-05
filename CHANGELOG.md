@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-06
+
 ### Added
 - **Workspaces** (migration 064): workspaces group applications and the developers who build them. The App Builder
   shows the current workspace's applications (home, Recent, dashboard, boilerplates, subscription sources) and answers

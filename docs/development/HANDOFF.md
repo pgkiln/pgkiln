@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 36 released as v0.28.0; sprint 37 in progress on `sprint-37`). Sprints 3–36 are merged into `main` and released as **v0.28.0** (migrations 001–063 are released: add 064+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_42` are released.
+Last updated: 2026-10-06 (sprint 37 released as v0.29.0). Sprints 3–37 are merged into `main` and released as **v0.29.0** (migrations 001–066 are released: add 067+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_44` are released.
 
 ## Project in one paragraph
 
@@ -52,7 +52,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 | Branch | Status |
 |---|---|
-| `main` | Everything up to sprint 36, released as **v0.28.0** (tags: v0.2.0, v0.6.0–v0.28.0; 0.3.0–0.5.0 were never tagged). Migrations 001–063 are released |
+| `main` | Everything up to sprint 37, released as **v0.29.0** (tags: v0.2.0, v0.6.0–v0.29.0; 0.3.0–0.5.0 were never tagged). Migrations 001–066 are released |
 | (sprint branches) | `sprint-32` … `sprint-35` (and `sprint-35-reporter`, `-sampledata`, `-appwizard`) were merged (v0.24.0–v0.27.0) |
 | (sprint branches) | `sprint-31` and its five `sprint-31-*` work branches were merged (v0.23.0) |
 | (sprint branches) | `sprint-25`, `sprint-26` (+ five `sprint-26-*`) and `sprint-27` were merged (v0.17.1, v0.18.0, v0.19.0) and deleted |
@@ -1456,7 +1456,7 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
 
-## Sprint 37 (IN PROGRESS): Workspaces, an "Iris"-like default style, then the 🟡 rows (owner, 2026-10-06: "move on with the next tasks from the handoff and apex-feature-parity, work autonomously")
+## Sprint 37 (DONE, v0.29.0): Workspaces, an "Iris"-like default style, then the 🟡 rows (owner, 2026-10-06: "move on with the next tasks from the handoff and apex-feature-parity, work autonomously")
 
 Branch `sprint-37` from `main` (v0.28.0). One agent (mode A), tests on `pgapex-ci` (5446).
 
@@ -1464,7 +1464,7 @@ Branch `sprint-37` from `main` (v0.28.0). One agent (mode A), tests on `pgapex-c
 |---|---|---|---|
 | 1 | **Workspaces** (row "Workspaces (multi-tenant)"): `meta.workspace`, `meta.workspace_member`, `meta.app.workspace_id` (existing apps and developers → workspace 1 "Default"); current workspace in the builder session (switcher in the header); app lists, dashboard, search, create/import, working copies scoped to it; every `/builder/apps/:id` and `/builder/pages/:pid` request (GET and POST) refused with 404 for an app outside the developer's workspaces (administrators: all); Workspace utilities → Workspaces (administrators): create, rename, delete when empty, members, move applications | 064 | **done** (tests: `test/workspaces.test.ts`, security block "sprint 37 workspaces"; e2e builder pages `workspaces`, `workspace`) |
 | 2 | **New default style like "Iris"** (row ❌): `theme.base = 'iris'` → `<html data-style="iris">`, a full light/dark variable set in app.css, default for new applications, a Base style choice in Settings → Theme | none (theme jsonb) | **done** (tests in `theme-styles.test.ts` "base style Iris", e2e Iris pages in responsive) |
-| 3 | 🟡 rows, one by one: (a) drawer pages and top/bottom dialogs (065: `meta.page.dialog_position`, `dialog_size`), (b) built-in template components timeline, comments, media list, avatar, metric card, (c) Theme Roller: dark colours of styles, template options on items and report columns, (d) interactive report: maximum rows, selection across pages, (e) instance settings, (f) more runtime languages | 065+ | (a) **done** (065, `hr_43`, `test/drawers.test.ts`, e2e drawer test); (b) **done** (`src/runtime/builtin-components.ts`, `hr_44` page 39, tests in `template-components.test.ts`); (c) **done** (066 item template options, column_options, dark colours, live preview); (d) **done** (selection across pages: POST …/report/<id>/select; IR row ✅); (e) **done** (`src/instance.ts`, `/builder/instance`, row ✅); (f) in progress (more runtime languages: it, pt, pl, sv, da, nb, cs, ja, zh) |
+| 3 | 🟡 rows, one by one: (a) drawer pages and top/bottom dialogs (065: `meta.page.dialog_position`, `dialog_size`), (b) built-in template components timeline, comments, media list, avatar, metric card, (c) Theme Roller: dark colours of styles, template options on items and report columns, (d) interactive report: maximum rows, selection across pages, (e) instance settings, (f) more runtime languages | 065+ | (a) **done** (065, `hr_43`, `test/drawers.test.ts`, e2e drawer test); (b) **done** (`src/runtime/builtin-components.ts`, `hr_44` page 39, tests in `template-components.test.ts`); (c) **done** (066 item template options, column_options, dark colours, live preview); (d) **done** (selection across pages: POST …/report/<id>/select; IR row ✅); (e) **done** (`src/instance.ts`, `/builder/instance`, row ✅); (f) **done** (it, pt, pl, sv, da, nb (+ `no`), cs, ja, zh: fourteen languages) |
 
 **Workspaces design decision:** not a security boundary between developers who write SQL. Application code runs on the
 runtime connection with `SET LOCAL ROLE` (a `RESET ROLE` in a process gets pgapex_runtime's rights), the SQL Workshop
@@ -1472,6 +1472,17 @@ runs as the owner, and security definer functions trust `pgapex.*` settings. Rea
 separate runtime login per workspace and an audit of the 73 definer functions. Workspaces therefore organise
 applications and developers and limit what the builder shows and changes; the docs say so and recommend separate
 installations (databases) for tenants that must not see each other. Parity row → 🟡.
+
+**Release 0.29.0 (2026-10-06):** CI-style run on 5446: 1069 pass / 10 skip, e2e 136/136. Parity totals 100/15/0/3
+(85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
+files test); a server waiting for migrations recovers by itself once they are applied.
+
+## Sprint 38 (NEXT): the remaining 🟡 rows (owner's standing instruction: keep going without asking)
+
+Candidates in order: (1) icons (Font APEX-like set: grow the 31 line icons, an icon picker), (2) an accessibility
+audit (axe-core in the e2e run, fix what it finds), (3) image cropping for file items, (4) session sharing between
+applications (a shared sign-in for apps that opt in), (5) `meta.zip`/JSON builder APIs, (6) more built-in languages
+(fi, tr, el, ru, uk, ko, ar, he). Branch `sprint-38` from `main`; one agent; tests on 5446.
 
 ## Sprint 36 (DONE, v0.28.0): AI with Claude and OpenAI (owner, 2026-10-05: "keep going, I want Claude and OpenAI as options for the AI, work with 1 agent and keep going, don't stop")
 
