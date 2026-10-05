@@ -70,7 +70,7 @@ describe('custom authentication', () => {
     const home = await b.get(`/a/${alias}/1`);
     assert.equal(home.statusCode, 200);
     assert.match(home.body, /Signed in as carol/);
-    assert.deepEqual(await owner.one(`select event, detail from meta.activity_log where app_id = $1 and username = 'carol' order by id desc limit 1`, [appId]), { event: 'login', detail: 'custom' });
+    assert.deepEqual(await owner.one(`select event, detail from meta.activity_log where app_id = $1 and username = 'carol' and event <> 'page_view' order by id desc limit 1`, [appId]), { event: 'login', detail: 'custom' });
     const wrong = await signIn('carol', 'nope');
     assert.equal(wrong.res.statusCode, 401);
     assert.equal((await wrong.b.get(`/a/${alias}/1`)).statusCode, 302);
