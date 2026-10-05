@@ -17,13 +17,13 @@ Last reviewed: 2026-10-05 (pgapex 0.24.0: automations with several actions, erro
 | Regions | 16 | 4 | 0 | 0 | All everyday regions; thirteen chart types with drill-down; calendars with week/day/list views and drag and drop; faceted search, smart filters and a region display selector; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; row ranges, lazy loading and region caching for large tables |
 | Items | 10 | 2 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
 | Logic and processing | 8 | 4 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons, download, chain and workflow processes; no custom JavaScript in dynamic actions |
-| Security | 19 | 1 | 0 | 2 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
+| Security | 19 | 1 | 0 | 0 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
 | User interface | 5 | 4 | 1 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 5 | 1 | 0 | 0 | One translated app like 26.1; number format masks and automatic time zone; five built-in languages |
-| Data and integration | 6 | 2 | 1 | 3 | REST APIs via PostgREST, REST data sources and web credentials, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
+| Data and integration | 6 | 2 | 1 | 2 | REST APIs via PostgREST, REST data sources and web credentials, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 2 | 1 | 3 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **82** | **23** | **10** | **6** | 121 APEX features compared: 68% available, 19% partial |
+| **Total** | **82** | **23** | **10** | **3** | 118 APEX features compared: 69% available, 19% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -127,12 +127,10 @@ Last reviewed: 2026-10-05 (pgapex 0.24.0: automations with several actions, erro
 | Error handling that hides internals | ✅ | Reference numbers; debug mode per app |
 | Content Security Policy without `unsafe-inline` (26.1) | ✅ | Scripts and styles: `script-src 'self'`, `style-src 'self' 'nonce-…'`. No inline scripts or `style` attributes; theme colours and chart geometry are in one `<style>` with a fresh nonce per response |
 | Session sharing between applications | 🟡 | Each app has its own session; with OpenID Connect the second sign-in is silent. APEX: workspace sharing or a custom cookie |
-| Forgot password for end users | ➖ | pgapex sends no mail. As in APEX apps, users ask an administrator for a temporary password (change on first use) |
 | LDAP and SAML authentication | ✅ | LDAP / Active Directory (search + bind, StartTLS/LDAPS, groups → roles) and SAML 2.0 (signed assertions, SP metadata), next to local passwords and OpenID Connect |
 | Database accounts, HTTP-header authentication | ✅ | HTTP header variable (`header`): the user from a header set by a reverse proxy or SSO gateway, trusted only from proxy addresses in `PGAPEX_AUTH_HEADER_PROXIES`, session bound to the header value, optional automatic accounts, sign-out URL; database accounts (`database`): a PostgreSQL login role and its password, checked by PostgreSQL through a short-lived connection, only listed roles or members of a role ([chapter 8](guide/08-security.md)) |
 | Custom authentication | ✅ | A PL/pgSQL function or body checks the user name and password as the app's database role, plus post-authentication code; throttling and the activity log as for other types ([chapter 8](guide/08-security.md)) |
 | Persistent authentication ("remember me") | ✅ | Per app, 1–365 days; rotating one-time tokens, revoked on sign-out, new password, deactivation or removed access; "Sign out on all devices" |
-| App launcher / portal | ➖ | Not in APEX either; each app has its own URL |
 
 ## User interface
 
@@ -173,7 +171,6 @@ Last reviewed: 2026-10-05 (pgapex 0.24.0: automations with several actions, erro
 | REST data sources, web credentials (26.1: OAuth refresh tokens, password flow) | 🟡 | Shared Components → REST data sources: JSON endpoints with path, query, header and body parameters, a row selector, typed columns and a response cache feed reports, cards, charts, calendars, maps, trees, template components and shared lists of values as SQL over `rest`. Web credentials: basic, API-key header, bearer and OAuth2 client credentials, secrets encrypted and write-only. Outgoing calls only to an allow-list of hosts, with SSRF checks ([chapter 19](guide/19-rest-data-sources.md)). **Missing:** XML/SOAP, writing back from forms and grids, synchronisation into tables, OAuth2 authorization code and password flows |
 | Printing, document generator (PDF) | ✅ | **Document templates**: a query (with JSON columns for lines) fills an HTML template with Mustache-style tags, drawn as PDF with a report layout; buttons and links download them. Report PDF with **report layouts** and a print stylesheet on every page. No Word/Excel templates or DOCX/XLSX output |
 | Data Reporter: self-service reports for business users (26.1) | ❌ | |
-| Sending e-mail (`APEX_MAIL`), e-mail templates, *Send E-Mail* process | ➖ | Deliberately not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` |
 | JSON sources, duality views (24.2) | ➖ | PostgreSQL `jsonb` works in any SQL region, form or grid source |
 | Remote servers / database links | ➖ | `postgres_fdw` or `dblink` |
 

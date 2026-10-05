@@ -1280,3 +1280,15 @@ SECURITY.md, `.env.example`, version 0.25.0, CI upgrade matrix + v0.25.0, chapte
 CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446), merge into `main`, tag, push, check CI.
 
 **Item reports:** (filled in as agents finish)
+
+## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
+
+Start after sprint 33 is released (one agent at a time unless the owner says otherwise); migration numbers from 054.
+
+| # | Item (parity row) | Notes |
+|---|---|---|
+| 1 | **Working copies, merge, team development** (App Builder ❌) | APEX 24.1+: a working copy of an app to change in isolation, compare it with the main app, merge back (with conflicts shown per component). Build on the per-component export (`pgapex export --format dir`, static ids) and `pgapex diff`; a copy is a second app linked to its main app; merge per component; locks from sprint 31 respected |
+| 2 | **Theme, library and boilerplate application types** (App Builder ❌, APEX 26.1) | App types: a *theme* app (styles/templates shared by subscribing apps), a *library* app (shared components such as lists of values, authorization schemes, template components, plug-ins that other apps subscribe to and refresh from), a *boilerplate* app (a starting point copied by the create-application wizard). Subscriptions refresh on demand and are shown in "Used in" |
+
+Owner's decision the same day: the parity matrix no longer lists *Forgot password for end users*, *App launcher /
+portal* and *Sending e-mail* (all were ➖; the summary is now 82/23/10/3 of 118). No e-mail features stays the rule.
