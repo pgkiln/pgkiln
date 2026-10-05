@@ -84,6 +84,19 @@ const INTERVAL = /^\s*\d+\s*(second|minute|hour|day|week|month)s?\s*$/i;
 const MAX_STEPS_PER_RUN = 100;
 const OPEN = ['active', 'waiting', 'faulted'];
 
+/** Problems with an invoke_api step's fields (also checked before each call: a definition may come from SQL). */
+function invokeStepProblems(st: Record<string, any>): string[] {
+  const problems = invokeCallProblems(st, 'It');
+  if (st.variables !== undefined && !isStringMap(st.variables)) problems.push('"variables" is an object of variable → JSON path, e.g. {"RATE": "rates.EUR"}.');
+  const targets = [...(isStringMap(st.variables) ? Object.keys(st.variables) : []), ...(['status_variable', 'response_variable'] as const).map((k) => st[k]).filter((v) => v !== undefined)];
+  for (const t of targets) {
+    if (typeof t !== 'string' || !VAR_NAME.test(t)) problems.push(`variable names are upper case, like RATE (not ${JSON.stringify(t)}).`);
+    else if (BUILT_IN.includes(t)) problems.push(`${t} is set by the workflow itself; choose another variable name.`);
+  }
+  if (st.timeout !== undefined && !(Number.isInteger(st.timeout) && st.timeout >= 1 && st.timeout <= 60)) problems.push('"timeout" is a number of seconds from 1 to 60.');
+  return problems;
+}
+
 /** Problems in a definition's steps (for the builder), or [] when it can run. */
 export function stepProblems(steps: unknown, taskNames?: Set<string>): string[] {
   if (!Array.isArray(steps)) return ['The steps must be a JSON array.'];
@@ -116,16 +129,7 @@ export function stepProblems(steps: unknown, taskNames?: Set<string>): string[] 
       else if (new Set(st.branches).size !== st.branches.length) problems.push(`${label}: a branch is listed twice.`);
       if (typeof st.join !== 'string' || !st.join) problems.push(`${label}: "join" names the join step where the branches meet.`);
     }
-    if (st.type === 'invoke_api') {
-      for (const p of invokeCallProblems(st, 'It')) problems.push(`${label}: ${p}`);
-      if (st.variables !== undefined && !isStringMap(st.variables)) problems.push(`${label}: "variables" is an object of variable → JSON path, e.g. {"RATE": "rates.EUR"}.`);
-      const targets = [...(isStringMap(st.variables) ? Object.keys(st.variables) : []), ...(['status_variable', 'response_variable'] as const).map((k) => st[k]).filter((v) => v !== undefined)];
-      for (const t of targets) {
-        if (typeof t !== 'string' || !VAR_NAME.test(t)) problems.push(`${label}: variable names are upper case, like RATE (not ${JSON.stringify(t)}).`);
-        else if (BUILT_IN.includes(t)) problems.push(`${label}: ${t} is set by the workflow itself; choose another variable name.`);
-      }
-      if (st.timeout !== undefined && !(Number.isInteger(st.timeout) && st.timeout >= 1 && st.timeout <= 60)) problems.push(`${label}: "timeout" is a number of seconds from 1 to 60.`);
-    }
+    if (st.type === 'invoke_api') for (const p of invokeStepProblems(st)) problems.push(`${label}: ${p}`);
     if (st.type === 'join' && st.wait_for !== undefined && !['all', 'any'].includes(st.wait_for)) problems.push(`${label}: "wait_for" is all (the default) or any.`);
   }
   // every "next" points to a step
@@ -623,7 +627,7 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
     }
     case 'invoke_api': {
       // commit "waiting for the call" with a lease; runWorkflow makes the call outside the transaction
-      const problems = invokeCallProblems(s, 'The step');
+      const problems = invokeStepProblems(s);
       if (problems.length) throw new StepError(problems.join(' '));
       await save('waiting', s.name, { interval: `${leaseSeconds(s)} seconds` });
       const lease = (
