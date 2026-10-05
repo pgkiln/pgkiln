@@ -630,6 +630,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_ai: '/builder/sql/ai',
         sql_ai_describe: '/builder/sql/ai/describe?schema=hr&table=leave_request',
         ai_pages: `/builder/apps/${appId}/ai-pages`,
+        // (sprint 36) blueprints: the list and the editor with the example
+        blueprints: '/builder/blueprints',
+        blueprint_new: '/builder/blueprints/new',
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);

@@ -5591,3 +5591,69 @@ describe('sprint 36 app builder ai', () => {
     await assert.rejects(runtime.query('select * from meta.builder_ai'), /permission denied/);
   });
 });
+
+describe('sprint 36 blueprints', () => {
+  const ALIAS = 'sec36-bp';
+  const DEV = 'sec36c_dev';
+  const DEV_PW = 'Sec36c-dev-password!';
+  let dev: Browser;
+  const spec = (over: Record<string, unknown> = {}) => JSON.stringify({
+    name: 'Sec blueprint', alias: ALIAS, schema: 'sec36_bp', authentication: 'none',
+    tables: [{ name: 'item', columns: [{ name: 'title', type: 'text', values: ["a'); drop table hr.emp; --"] }] }],
+    sample_data: [{ table: 'item', columns: ['title'], rows: [["a'); drop table hr.emp; --"]] }],
+    ...over,
+  });
+  const cleanup = async () => {
+    await owner.query(`delete from meta.app where alias like 'sec36-bp%'`);
+    await owner.query(`delete from meta.blueprint where spec->>'alias' like 'sec36-bp%'`);
+    await owner.query('drop schema if exists sec36_bp cascade');
+    if ((await owner.query(`select 1 from pg_roles where rolname = 'app_sec36_bp'`)).rowCount) {
+      await owner.query('drop owned by app_sec36_bp');
+      await owner.query('drop role app_sec36_bp');
+    }
+  };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+    dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: DEV, password: DEV_PW });
+    await dev.get('/builder');
+  });
+  after(async () => {
+    await cleanup();
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+
+  test('blueprint pages need a developer session and CSRF', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get('/builder/blueprints')).statusCode, 302);
+    for (const url of ['/builder/blueprints/save', '/builder/blueprints/review', '/builder/blueprints/create', '/builder/blueprints/draft'])
+      assert.equal((await dev.post(url, { __csrf: 'forged', name: 'x', spec: spec() })).statusCode, 403, url);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.blueprint where spec->>'alias' = $1`, [ALIAS])).n, 0);
+  });
+
+  test('only a reviewed blueprint is created, by the developer who reviewed it; values stay literals; names are checked', async () => {
+    const review = await dev.post('/builder/blueprints/review', { __csrf: dev.lastCsrf, name: 'x', spec: spec() });
+    const sig = /name="sig" value="([^"]+)"/.exec(review.body)![1];
+    // another developer's session can't reuse the signature
+    const other = new Browser();
+    await other.get('/builder/login');
+    await other.post('/builder/login', { __csrf: other.lastCsrf, username: 'admin', password: 'admin' });
+    await other.get('/builder');
+    assert.equal((await other.post('/builder/blueprints/create', { __csrf: other.lastCsrf, name: 'x', spec: spec(), sig })).statusCode, 403);
+    assert.equal((await dev.post('/builder/blueprints/create', { __csrf: dev.lastCsrf, name: 'x', spec: spec({ schema: 'hr' }), sig })).statusCode, 403, 'a changed blueprint');
+    assert.equal((await dev.post('/builder/blueprints/create', { __csrf: dev.lastCsrf, name: 'x', spec: spec(), sig })).statusCode, 303);
+    assert.deepEqual((await owner.query('select title from sec36_bp.item')).rows, [{ title: "a'); drop table hr.emp; --" }]);
+    assert.equal((await owner.one(`select to_regclass('hr.emp') is not null as ok`)).ok, true);
+    for (const bad of [{ schema: 'meta' }, { schema: 'pg_temp' }, { schema: 'public' }, { tables: [{ name: 'x"; drop table hr.emp; --', columns: [{ name: 'a' }] }] }, { tables: [{ name: 'x', columns: [{ name: 'a', type: 'text; drop table hr.emp' }] }] }]) {
+      const res = await dev.post('/builder/blueprints/review', { __csrf: dev.lastCsrf, name: 'x', spec: spec({ alias: 'sec36-bp-bad', ...bad }) });
+      assert.match(res.body, /can't be created yet/, JSON.stringify(bad));
+      assert.doesNotMatch(res.body, /name="sig"/);
+    }
+  });
+
+  test('blueprints are not readable by applications', async () => {
+    await assert.rejects(runtime.query('select * from meta.blueprint'), /permission denied/);
+  });
+});

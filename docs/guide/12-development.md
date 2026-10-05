@@ -17,6 +17,8 @@ src/
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
                            or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
+  blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
+                           blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
   workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
                            merge into the main application or refresh the copy, both through cli/replace.ts
@@ -183,6 +185,7 @@ src/
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
+    blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a
                            question, shown not run; explain), describe tables (meta.ai_table_note, COMMENT ON, AI drafts),
                            create pages with AI (proposals checked by checkProposals, created with meta.generate_page)
@@ -239,6 +242,7 @@ test/
                            meta.ai_generate, the providers, HR page 37; against ai-mock.ts (no real API calls)
   ai-assistant.test.ts     AI assistant region (context, tools as the app role, writes, REST, histories, limits, sessions), OpenAI,
                            natural-language report filters, builder settings; against ai-script-mock.ts
+  blueprints.test.ts       blueprints: checks and SQL, review then create (rows, pages, grants), one transaction, AI draft, save
   ai-builder.test.ts       App Builder AI: the builder's service, SQL from a question, explain, describe tables, pages with AI
   ai-script-mock.ts        a scripted mock of Claude (SSE, tool_use with a thinking block) and OpenAI (tool calls), reply by reply
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
@@ -251,7 +255,8 @@ test/
   e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
   e2e/grid.test.ts         interactive grid in a browser: master-detail refresh, move/resize columns, row menu, copy/paste; without JavaScript
   e2e/page-logic.test.ts   dialog_closed refreshes a region without a reload, download process in a browser, dialog link without JavaScript
-  e2e/ai-builder.test.ts   App Builder AI in a browser (mock Claude): SQL from a question, a drafted description, proposed pages
+  e2e/ai-builder.test.ts   App Builder AI in a browser (mock Claude): SQL from a question, a drafted description, proposed pages,
+                           a blueprint drafted and reviewed
   e2e/ai-assistant.test.ts the AI assistant and report questions on HR page 38 in a browser (mock Claude), with and without JavaScript
   e2e/ai.test.ts           Generate text with AI on HR page 37 in a browser (mock Claude): dynamic actions without a submit, errors, no JavaScript
 ```

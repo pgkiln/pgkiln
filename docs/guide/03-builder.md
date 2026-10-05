@@ -154,6 +154,49 @@ was never analyzed). Everything is created in one transaction. Foreign keys to t
 schema show in forms as select lists that the app's role may not be allowed to read: grant it, or
 pick a schema that holds them all.
 
+### Creating an application from a blueprint
+
+**Create → From a blueprint** (`/builder/blueprints`; APEX 26.1: *Blueprints*, spec-driven
+development) describes a new application as a JSON document, a **blueprint**, and creates it only
+after you have reviewed what it does. A blueprint names the application (name, alias, schema,
+sign-in) and lists:
+
+- **tables** with their columns: a type (`text`, `integer`, `number`, `date`, `timestamp`,
+  `boolean`), `"required"`, `"unique"`, `"values"` (the allowed texts, a check constraint) and
+  `"references": "table"` (a foreign key, with an index). Every table gets an `id` identity primary
+  key, so don't list one;
+- **pages**: the [create page wizards'](#create-pages-from-a-table-wizards) types on a table of the
+  blueprint (`report_form` with a `form_page`, `grid`, `form`, `cards`, `calendar`, `chart`, `map`,
+  `facets`, `master_detail`) or `blank` pages with a text; without pages, a report and form per
+  table. `"dashboard": true` adds a page with a chart per table;
+- optionally the **navigation** (`[{"label", "page", "icon"}]`, replacing the pages' own entries) and
+  **sample data** (`[{"table", "columns", "rows"}]`; give parent rows an `id` so child rows can refer
+  to it).
+
+```json
+{"blueprint": 1, "name": "Projects", "alias": "projects", "schema": "projects",
+ "tables": [{"name": "project", "label": "Projects", "columns": [
+              {"name": "name", "type": "text", "required": true, "unique": true},
+              {"name": "status", "type": "text", "values": ["Planned", "Active", "Done"]}]},
+            {"name": "task", "columns": [{"name": "project_id", "references": "project", "required": true},
+                                         {"name": "title", "type": "text", "required": true},
+                                         {"name": "due", "type": "date"}]}],
+ "pages": [{"type": "report_form", "table": "project", "page": 2, "form_page": 3, "label": "Projects"},
+           {"type": "calendar", "table": "task", "page": 4, "label": "Due dates"}],
+ "sample_data": [{"table": "project", "columns": ["id", "name", "status"], "rows": [[1, "Website", "Active"]]}]}
+```
+
+The editor starts with an example. With the [App Builder's AI service](#app-builder-ai), **Draft a
+blueprint** turns a description into one (only the description is sent); the draft replaces the
+editor's text and is not saved or created. **Review** checks the blueprint (names, types,
+references and their order, page numbers, sample rows; problems are listed) and shows what it will
+create: the application, the tables with their columns and sample row counts, the SQL, the pages
+and the menu. **Create the application** (with the first user for an application with a login page)
+then creates the schema and role (as for a blank application), the tables, the rows and the pages
+in **one transaction**: if anything fails, nothing is created. Creation only accepts the blueprint
+text the review showed you (it is signed with your session); change it and review again. **Save**
+keeps a blueprint in the list (`meta.blueprint`, with the application last created from it).
+
 ### Importing
 
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new

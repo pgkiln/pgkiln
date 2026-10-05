@@ -100,4 +100,26 @@ for (const width of [390, 1440])
       await fits(page, 'proposed pages');
       await page.context().close();
     });
+
+    test('a blueprint drafted by AI, reviewed (not created)', async () => {
+      const page = await open(width);
+      await page.goto(`${base}/builder/blueprints/new`);
+      await fits(page, 'blueprint editor');
+      mock.script = [{ text: JSON.stringify({
+        name: 'Field service with a rather long application name', alias: 'e2e-blueprint-not-created', schema: 'e2e_blueprint_not_created',
+        tables: [{ name: 'customer_with_a_long_table_name', label: 'Customers', columns: [{ name: 'name', type: 'text', required: true, unique: true, values: [], references: '' },
+          { name: 'segment', type: 'text', required: false, unique: false, values: ['Small', 'Medium', 'Large', 'Enterprise', 'Government', 'Non-profit'], references: '' }] },
+          { name: 'visit', label: 'Visits', columns: [{ name: 'customer_id', type: 'integer', required: true, unique: false, values: [], references: 'customer_with_a_long_table_name' }, { name: 'visited_on', type: 'date', required: true, unique: false, values: [], references: '' }] }],
+        pages: [{ type: 'report_form', table: 'customer_with_a_long_table_name', page: 2, form_page: 3, label: 'Customers', text: '' }, { type: 'calendar', table: 'visit', page: 4, form_page: null, label: 'Visits', text: '' }],
+        dashboard: true, sample_data: [],
+      }) }];
+      await page.fill('#f_description', 'field service visits');
+      await Promise.all([page.waitForNavigation(), page.click('form[action$="/blueprints/draft"] button')]);
+      assert.match(await page.locator('#f_spec').inputValue(), /customer_with_a_long_table_name/);
+      await Promise.all([page.waitForNavigation(), page.click('form[action$="/blueprints/review"] button.btn-hot')]);
+      await page.locator('text=Create the application').first().waitFor();
+      await page.locator('summary', { hasText: 'The SQL' }).click();
+      await fits(page, 'blueprint review');
+      await page.context().close();
+    });
   });
