@@ -1364,3 +1364,21 @@ td.tc-cell { overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .reporter-row > .label { flex-basis: 100%; }
 }
+
+/* AI assistant region and report questions (src/runtime/assistant.ts, ai-filter.ts) */
+.assistant { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; overflow-wrap: anywhere; }
+.assistant-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; max-height: 32rem; overflow-y: auto; }
+.assistant-msg { padding: 0.5rem 0.75rem; border-radius: 0.6rem; max-width: 90%; border: 1px solid var(--border, #d0d5dd); }
+.assistant-msg-user { align-self: flex-end; background: var(--accent-soft, #eef4ff); }
+.assistant-msg-assistant { align-self: flex-start; background: var(--surface, #fff); }
+.assistant-who { display: block; font-size: 0.75rem; font-weight: 600; opacity: 0.75; margin-bottom: 0.15rem; }
+.assistant-text p, .assistant-text ul, .assistant-text ol { margin: 0 0 0.4rem; }
+.assistant-text > :last-child { margin-bottom: 0; }
+.assistant-text ul, .assistant-text ol { padding-left: 1.25rem; }
+.assistant-tools { display: block; margin-top: 0.25rem; }
+.assistant-input textarea { width: 100%; box-sizing: border-box; }
+.assistant-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.4rem 0; }
+.ai-filter { margin-bottom: 0.75rem; }
+.ai-filter-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.ai-filter-row input { flex: 1 1 14rem; min-width: 0; }
+button.is-busy { opacity: 0.7; cursor: progress; }

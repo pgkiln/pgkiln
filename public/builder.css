@@ -677,3 +677,18 @@ tr.row-conflict > td:first-child { border-left: 3px solid var(--warn); }
 @media (max-width: 420px) {
   .sd-col { grid-template-columns: 1fr; }
 }
+
+/* (sprint 36) AI services: long service and application names wrap */
+.ai-name { overflow-wrap: anywhere; min-width: 0; }
+
+/* App Builder AI (src/builder/ai-builder.ts) */
+.ai-tables { columns: 14rem; padding-left: 1.1rem; overflow-wrap: anywhere; }
+.ai-tables a[aria-current] { font-weight: 600; }
+.ai-answer { overflow-wrap: anywhere; }
+.ai-answer pre, .ai-answer code { white-space: pre-wrap; }
+button.is-busy { opacity: 0.7; cursor: progress; }
+
+/* Blueprints (src/builder/blueprints.ts) */
+.bp-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0; }
+.bp-facts dd { margin: 0; overflow-wrap: anywhere; }
+.bp-sql { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85rem; max-height: 30rem; overflow-y: auto; }

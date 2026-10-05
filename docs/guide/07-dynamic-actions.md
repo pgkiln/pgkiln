@@ -37,6 +37,7 @@ that needs JavaScript; without it, pages still work, just without these convenie
 | `show_success` | browser | Shows `message` as a success message at the top of the page |
 | `show_error` | browser | Shows `message` as an inline error on each affected item, or at the top of the page without affected items |
 | `clear_errors` | browser | Removes the error messages of the affected items, or all of them |
+| `ai_generate` | server | Runs the [Generate text with AI](06-processing.md#generate-text-with-ai) process named in `code` (a process of type `ai_generate` on the same page, with that process's authorization and condition) and updates its output items, without submitting the page. Items to submit default to the page items its prompts use (never password items); the affected items default to its output items. On a submit button the button waits for the answer; without JavaScript the button submits the page and the process runs as usual |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's
 database role like everything else, and check the page's and the dynamic action's authorization.

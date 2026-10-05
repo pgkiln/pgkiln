@@ -19,7 +19,8 @@ import { clientIp, createSession, destroySession, getSession, loginThrottled, lo
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
 import { startDebug } from '../debug.ts';
-import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
+import { assignable, clearPageItems, fetchForms, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
+import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
 import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
 import { parseNumber } from '../numformat.ts';
@@ -563,7 +564,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
         let vis = await computeVisibility(ctx);
         const da = ctx.page.dynamic_actions.find((d) => d.id === Number(req.params.id));
         if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden(ctx.locale.t('error.unknown_da'));
-        applyPostedItems(ctx, body, list(da.items_to_submit));
+        // ai_generate without items to submit: the page items its process's prompts use
+        const submitted = da.action === 'ai_generate' && !da.items_to_submit ? aiInputs(aiProcessOf(ctx.page, da.code)?.config, ctx.page) : list(da.items_to_submit);
+        applyPostedItems(ctx, body, submitted);
         const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string; flash?: string } = { items: {}, itemsHtml: {}, regions: {} };
         const affected = list(da.affected_items).filter((n) => vis.items.has(n));
         switch (da.action) {
@@ -576,6 +579,17 @@ export async function runtimeRoutes(app: FastifyInstance) {
           case 'execute_sql':
             await savepoint(c, () => runSql(ctx, da.code ?? ''));
             break;
+          case 'ai_generate': {
+            // the page process it names, with that process's authorization and condition (not its button)
+            const p = aiProcessOf(ctx.page, da.code);
+            if (!p) throw new Error(`Dynamic action "${da.name}": there is no "Generate text with AI" process named "${(da.code ?? '').trim()}" on this page.`);
+            if (!(await isAuthorized(ctx, p.authz))) throw new Forbidden(ctx.locale.t('error.unknown_da'));
+            if (!(await processConditionHolds(ctx, p))) break;
+            const r = await runAiProcess(ctx, p, assignable(ctx), 'dynamic_action');
+            for (const n of r.items) if (vis.items.has(n) && !affected.includes(n)) affected.push(n);
+            if (r.message) out.flash = r.message;
+            break;
+          }
           case 'refresh_region': {
             vis = await computeVisibility(ctx);
             // a refresh shows current data: a cached region is rendered anew (and cached again)

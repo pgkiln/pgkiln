@@ -154,6 +154,49 @@ was never analyzed). Everything is created in one transaction. Foreign keys to t
 schema show in forms as select lists that the app's role may not be allowed to read: grant it, or
 pick a schema that holds them all.
 
+### Creating an application from a blueprint
+
+**Create → From a blueprint** (`/builder/blueprints`; APEX 26.1: *Blueprints*, spec-driven
+development) describes a new application as a JSON document, a **blueprint**, and creates it only
+after you have reviewed what it does. A blueprint names the application (name, alias, schema,
+sign-in) and lists:
+
+- **tables** with their columns: a type (`text`, `integer`, `number`, `date`, `timestamp`,
+  `boolean`), `"required"`, `"unique"`, `"values"` (the allowed texts, a check constraint) and
+  `"references": "table"` (a foreign key, with an index). Every table gets an `id` identity primary
+  key, so don't list one;
+- **pages**: the [create page wizards'](#create-pages-from-a-table-wizards) types on a table of the
+  blueprint (`report_form` with a `form_page`, `grid`, `form`, `cards`, `calendar`, `chart`, `map`,
+  `facets`, `master_detail`) or `blank` pages with a text; without pages, a report and form per
+  table. `"dashboard": true` adds a page with a chart per table;
+- optionally the **navigation** (`[{"label", "page", "icon"}]`, replacing the pages' own entries) and
+  **sample data** (`[{"table", "columns", "rows"}]`; give parent rows an `id` so child rows can refer
+  to it).
+
+```json
+{"blueprint": 1, "name": "Projects", "alias": "projects", "schema": "projects",
+ "tables": [{"name": "project", "label": "Projects", "columns": [
+              {"name": "name", "type": "text", "required": true, "unique": true},
+              {"name": "status", "type": "text", "values": ["Planned", "Active", "Done"]}]},
+            {"name": "task", "columns": [{"name": "project_id", "references": "project", "required": true},
+                                         {"name": "title", "type": "text", "required": true},
+                                         {"name": "due", "type": "date"}]}],
+ "pages": [{"type": "report_form", "table": "project", "page": 2, "form_page": 3, "label": "Projects"},
+           {"type": "calendar", "table": "task", "page": 4, "label": "Due dates"}],
+ "sample_data": [{"table": "project", "columns": ["id", "name", "status"], "rows": [[1, "Website", "Active"]]}]}
+```
+
+The editor starts with an example. With the [App Builder's AI service](#app-builder-ai), **Draft a
+blueprint** turns a description into one (only the description is sent); the draft replaces the
+editor's text and is not saved or created. **Review** checks the blueprint (names, types,
+references and their order, page numbers, sample rows; problems are listed) and shows what it will
+create: the application, the tables with their columns and sample row counts, the SQL, the pages
+and the menu. **Create the application** (with the first user for an application with a login page)
+then creates the schema and role (as for a blank application), the tables, the rows and the pages
+in **one transaction**: if anything fails, nothing is created. Creation only accepts the blueprint
+text the review showed you (it is signed with your session); change it and review again. **Save**
+keeps a blueprint in the list (`meta.blueprint`, with the application last created from it).
+
 ### Importing
 
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new
@@ -201,6 +244,16 @@ Report and form, Interactive grid, Form, a Form page and Master detail need a si
 primary key; the other types also work on views. Make sure the app's database role has privileges
 on the table (automatic for its own schema): the second step warns when it hasn't. The same
 generators can be called from SQL with [`meta.generate_page`](09-reference.md#functions-for-developers-and-scripts).
+
+**Create pages with AI** (below the wizard; needs the [App Builder's AI service](#app-builder-ai)):
+describe the pages you want in your own words (*"a page to manage employees, a calendar of leave
+and a chart of salaries per department"*). The AI service proposes pages of the wizards above: a
+page type, a table or view the application's database role can read, a page number (and a form
+page for *Report and form*) and a menu label, each with a one-sentence reason. Nothing is created
+yet: check the proposals, change the type, table, numbers or labels, untick what you don't want,
+and **Create the ticked pages**. They are made with `meta.generate_page` and the wizards' defaults,
+in one transaction (all or none); only page types of the list and tables the application can read
+are accepted, whatever the form says.
 
 ### Create a blank page
 
@@ -335,6 +388,8 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `facets` | The report region it filters and a search field on/off; per column of that report: facet on/off, label, type (checkboxes, ranges, star rating), values shown, exclude, ranges (`..1000; 1000..3000 = Middle; 3000..`), from/to and order |
 | `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
+| `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
+| `report` (also) | *Ask in your own words (AI)*: the AI service and placeholder of the [natural-language filters](04-pages-and-regions.md#natural-language-filters-ask-in-your-own-words) |
 | `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks), who may share reports, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to
@@ -561,6 +616,65 @@ texts needs `pg_read_all_stats` for the owner role, and resetting needs execute 
 `pg_stat_statements_reset`.
 
 
+**AI usage** shows the [AI services](#ai-services) the application may use, today's requests and
+tokens against their daily limits, and the last 100 AI requests (time, page, user, service, model,
+source, tokens, duration, status). Prompts and answers are not logged.
+
+## AI services
+
+Workspace utilities → **AI services** (administrators only; APEX: *Generative AI services*) lists the
+large language model services of this installation. A service has:
+
+- a **name** (upper case, e.g. `CLAUDE`) by which processes, dynamic actions and SQL refer to it;
+- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs;
+- a **model**, exactly as the provider names it (new Claude services start with `claude-opus-5-5`);
+  pgapex never changes or downgrades it;
+- for Claude, the **effort** (how deeply the model thinks; current Claude models always think, lower
+  effort is faster and cheaper, new services start at `medium`) and **refusal fallbacks** (when Claude
+  declines a request for safety reasons, Anthropic re-runs it on its recommended fallback model; on by
+  default, switch it off for models or gateways that don't support it);
+- the **maximum output tokens** per request (1–128,000) and a **time limit** (5–600 seconds; pages
+  wait for the answer);
+- an optional **base URL** for a gateway or proxy that speaks the provider's API (calls to the AI
+  service don't go through `PGAPEX_REST_ALLOWED_HOSTS`: only administrators set this URL);
+- the **API key**: stored encrypted with `PGAPEX_SECRET_KEY`, write-only (never shown again, never
+  exported or logged, not readable by applications). Without one the server's `ANTHROPIC_API_KEY` /
+  `OPENAI_API_KEY` is used.
+
+On a service's page, **Applications** sets which applications may use it, each with optional daily
+limits (requests and input + output tokens per UTC day; a request over a limit fails with a message
+and is logged as *limited*), and **Test** sends a prompt (logged as a builder test). Below that, and
+on the list page for all services, the usage log: the last requests and the totals per application
+and service of the last 30 days.
+
+**Prompts go to the provider.** Whatever a prompt contains, including the item values substituted
+into it, is sent to the chosen provider (or the gateway of the base URL). Choose providers and
+models that your organisation allows for that data. See
+[Generate text with AI](06-processing.md#generate-text-with-ai).
+
+## App Builder AI
+
+The App Builder uses one AI service (APEX: AI Assistant in App Builder and SQL Workshop). An
+administrator chooses it under **SQL Workshop → AI** (any enabled [AI service](#ai-services); *none*
+switches the builder's AI off). What it is used for:
+
+- **SQL from a question** (SQL Workshop → AI): pick a schema and ask; the answer is a statement and
+  a short explanation. It is **shown, never run**: check it, change it and run it in SQL Commands
+  yourself (*Run in SQL Commands*).
+- **Explain a query or an error** (SQL Workshop → AI): paste a query, an error message or both
+  (optionally with a schema for context); the explanation is shown with simple formatting.
+- **Describe tables for AI** (SQL Workshop → AI → *Describe tables*): per table or view, a
+  description of the table and each column (`meta.ai_table_note`). The builder sends them with the
+  table list whenever it asks a model for SQL or pages, so answers use the right columns. Without a
+  description the database comment is used. **Draft with AI** proposes descriptions from the names,
+  types and keys (and the descriptions of referenced tables); they fill the form and are saved only
+  when you save. *Also save them as database comments* writes them with `COMMENT ON` too.
+- **Create pages with AI** on an application's dashboard ([see above](#create-pages-from-a-table-wizards)).
+
+The model sees table and column names, types, keys and descriptions, and what you type; never
+rows. Its answers are escaped when shown. Requests are logged in the AI usage log with the source
+`builder` and no application (no application limits apply).
+
 ## Installation
 
 Workspace utilities → **Installation** (administrators only; APEX: the install/upgrade logs of
@@ -635,6 +749,8 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
   rows, a percentage of nulls), proposed per column from the catalog; preview them, insert them in one
   transaction (parents first) or download them as SQL or CSV, with a seed for the same rows again;
   save the definition to rerun it ([chapter 16](16-files.md#sql-workshop--sample-data)).
+- **AI**: SQL from a question (shown, never run), explanations of queries and errors, and
+  descriptions of tables for models ([App Builder AI](#app-builder-ai)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

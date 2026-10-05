@@ -5,6 +5,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-06
+
+### Added
+- **AI services and *Generate text with AI*** (migration 060): Workspace utilities → AI services
+  (administrators) configures Claude (official `@anthropic-ai/sdk`, default model `claude-opus-5-5`, effort
+  and server-side refusal fallback) or OpenAI (official `openai` SDK) with an encrypted, write-only API key
+  (or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`), base URL, limits, per-app access with daily request and
+  token limits, a Test button and a usage log (tokens, model, duration; never prompt or answer text
+  below debug level 9). Page process `ai_generate`: text into an item, or structured output into several
+  items (a schema built from the items, or your own). A dynamic action runs it without a page submit.
+  From SQL: `meta.ai_generate`, `meta.ai_result`, `meta.ai_available`. Builder: AI usage per application.
+  HR example page 37 "Leave assistant". Prompts, including item values, are sent to the chosen provider.
+- **AI assistant region, agents and tools, natural-language report filters** (migration 061): region type
+  `ai_assistant` with a conversation per session, context queries (RAG over developer queries, run as the
+  app's role, read-only) and tools the model may call: SQL with bound, checked arguments (read-only unless
+  marked as writing, row limit and timeout) and REST data sources, each optionally behind an authorization
+  scheme. Report regions get an "Ask in your own words" box (NL2IR) that turns a question into the report's
+  normal filters, search and sort. HR example page 38 "HR assistant".
+- **App Builder AI** (migration 062): SQL Workshop → AI (SQL from a question, shown and never run
+  automatically; explain a query or an error; describe tables and columns for LLMs, optionally as
+  `COMMENT ON`, with AI drafts), and **Create pages with AI** on the application dashboard (proposed pages
+  the developer reviews before they are generated). The builder's AI service is chosen by administrators.
+- **Blueprints** (migration 063): Create → From a blueprint: a JSON spec of tables, pages, navigation and
+  sample data, optionally drafted by AI, always reviewed, then created as a new application in one
+  transaction. Blueprints can be saved.
+
+### Fixed
+- A server whose database lacks migrations no longer fails page by page with "column … does not exist":
+  it answers every request with 503 and names the missing migrations, or applies them when started with
+  `MIGRATE_ON_START=true`.
+
 ## [0.27.0] - 2026-10-05
 
 ### Added

@@ -22,6 +22,7 @@ import { advisorRoutes } from './builder/advisor.ts';
 import { topSqlRoutes } from './builder/top-sql.ts';
 import { diagnosticsRoutes } from './builder/diagnostics.ts';
 import { ldapRoutes } from './builder/ldap.ts';
+import { aiRoutes } from './builder/ai.ts';
 import { documentRoutes } from './builder/documents.ts';
 import { pwaBuilderRoutes } from './builder/pwa.ts';
 import { themeRollerRoutes } from './builder/themeroller.ts';
@@ -34,6 +35,11 @@ import { builderRoutes } from './builder/routes.ts';
 import { usersRoutes } from './builder/users.ts';
 import { codeEditorRoutes } from './builder/code-editor.ts';
 import { sampleDataRoutes } from './builder/sampledata.ts';
+import { assistantRoutes } from './runtime/assistant.ts';
+import { aiFilterRoutes } from './runtime/ai-filter.ts';
+import { assistantBuilderRoutes } from './builder/assistant.ts';
+import { aiBuilderRoutes } from './builder/ai-builder.ts';
+import { blueprintRoutes } from './builder/blueprints.ts';
 import { accountRoutes } from './runtime/account.ts';
 import { taskRoutes } from './runtime/tasks.ts';
 import { dataReporterRoutes } from './runtime/data-reporter.ts';
@@ -45,9 +51,21 @@ import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
 import { debugOf, finishDebug } from './debug.ts';
+import { migrate, pendingMigrations } from './migrate.ts';
+import { ownerUrl } from './db.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
+  // a database older than the code: apply the migrations (MIGRATE_ON_START=true)
+  // or answer every request with a clear 503 instead of "column … does not exist"
+  let pending = await pendingMigrations(root, ownerUrl);
+  if (pending.length && process.env.MIGRATE_ON_START === 'true') {
+    await migrate({ root, databaseUrl: ownerUrl });
+    pending = [];
+  }
+  if (pending.length) {
+    console.error(`pgapex: the database is missing ${pending.length} migration(s) (${pending[0]} …). Run "npm run db:migrate" (or "pgapex migrate"), or start with MIGRATE_ON_START=true.`);
+  }
   await loadSecrets();
   const app = Fastify({
     logger: opts.logger === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
@@ -55,6 +73,15 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     trustProxy: process.env.TRUST_PROXY === 'true',
   });
   securityHeaders(app);
+  if (pending.length) {
+    app.addHook('onRequest', async (req, reply) => {
+      if (req.url.startsWith('/static/')) return;
+      return reply.code(503).type('text/plain').send(
+        `pgapex: the database is older than this version of pgapex: ${pending.length} migration(s) are not applied (${pending.join(', ')}).\n` +
+          'Run "npm run db:migrate" (or "pgapex migrate") and restart the server, or start it with MIGRATE_ON_START=true.\n',
+      );
+    });
+  }
   // debug messages: stored after the response, for requests that have a debug log (src/debug.ts)
   app.addHook('onError', async (req, _reply, err) => {
     debugOf(req)?.add(1, 'error', `unhandled: ${err.message}`);
@@ -104,6 +131,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(topSqlRoutes);
   await app.register(diagnosticsRoutes);
   await app.register(ldapRoutes);
+  await app.register(aiRoutes);
   await app.register(documentRoutes);
   await app.register(pwaBuilderRoutes);
   await app.register(themeRollerRoutes);
@@ -116,6 +144,11 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(dataReporterRoutes);
   await app.register(reporterBuilderRoutes);
   await app.register(sampleDataRoutes);
+  await app.register(assistantRoutes);
+  await app.register(aiFilterRoutes);
+  await app.register(assistantBuilderRoutes);
+  await app.register(aiBuilderRoutes);
+  await app.register(blueprintRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder'));
   return app;
 }

@@ -21,6 +21,23 @@ export interface MigrateOptions {
   log?: (s: string) => void;
 }
 
+/**
+ * The files in db/migrations/ that the database has not applied yet. The
+ * server checks this when it starts: code newer than the database fails
+ * with "column … does not exist" on many pages otherwise.
+ */
+export async function pendingMigrations(root: string, databaseUrl?: string): Promise<string[]> {
+  const client = new pg.Client({ connectionString: databaseUrl ?? process.env.DATABASE_URL, application_name: 'pgapex-migrate' });
+  await client.connect();
+  try {
+    const table = (await client.query(`select to_regclass('public.pgapex_migration') is not null as ok`)).rows[0].ok;
+    const done = new Set(table ? (await client.query('select name from public.pgapex_migration')).rows.map((r) => r.name) : []);
+    return readdirSync(join(root, 'db/migrations')).filter((f) => f.endsWith('.sql') && !done.has(f)).sort();
+  } finally {
+    await client.end();
+  }
+}
+
 /** Returns the names of the files applied. */
 export async function migrate(o: MigrateOptions): Promise<string[]> {
   const log = o.log ?? ((s: string) => process.stdout.write(s));

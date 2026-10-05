@@ -19,6 +19,8 @@ import { renderGrid } from './grid.ts';
 import { masterItemOf, mastersOf } from './master-detail.ts';
 import { renderTasks } from './tasks.ts';
 import { renderDataReporter } from './data-reporter.ts';
+import { renderAssistant } from './assistant.ts';
+import { renderAiFilter } from './ai-filter.ts';
 import { renderWorkflows } from './workflows.ts';
 import { renderMap } from './maps.ts';
 import { renderTree } from './tree.ts';
@@ -295,7 +297,7 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
   if (restFailed) body = restFailed;
   else switch (r.type) {
     case 'report':
-      body = await renderReport(ctx, r, await renderItems(ctx, items, hidden));
+      body = html`${await renderAiFilter(ctx, r)}${await renderReport(ctx, r, await renderItems(ctx, items, hidden))}`;
       break;
     case 'form':
       body = html`<div class="form-grid">${await renderItems(ctx, items, hidden)}</div>`;
@@ -341,6 +343,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'data_reporter':
       body = await renderDataReporter(ctx, r);
+      break;
+    case 'ai_assistant':
+      body = await renderAssistant(ctx, r);
       break;
     case 'dynamic':
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The

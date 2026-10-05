@@ -13,6 +13,7 @@ import { substitute, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
+import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -28,9 +29,10 @@ function dynamicActionsJson(ctx: PageContext) {
       trigger: list(d.trigger_element),
       cond: d.condition_type ? { type: d.condition_type, value: d.condition_value ?? '' } : null,
       action: d.action,
-      items: list(d.affected_items),
+      // ai_generate: the items its process fills (busy while it runs), unless named
+      items: d.action === 'ai_generate' && !d.affected_items ? aiOutputs(aiProcessOf(ctx.page, d.code)?.config) : list(d.affected_items),
       region: d.affected_region_id,
-      submit: list(d.items_to_submit),
+      submit: d.action === 'ai_generate' && !d.items_to_submit ? aiInputs(aiProcessOf(ctx.page, d.code)?.config, ctx.page) : list(d.items_to_submit),
       message: d.message,
       // add_class / remove_class: names checked by the database (and again in app.js)
       classes: d.css_classes ? d.css_classes.split(' ').filter((c) => /^[a-z][a-z0-9_-]{0,39}$/.test(c)) : [],

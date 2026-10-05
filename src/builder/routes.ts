@@ -210,7 +210,8 @@ export async function builderRoutes(app: FastifyInstance) {
               ${select('table', 'Table or view (master table for master detail)', '', tables.map((t): [string, string] => [t.t, t.access ? t.t : `${t.t} (no access for ${a.db_role})`]))}
             </div>
             <div class="buttons"><button class="btn btn-hot">Next</button></div>
-          </form>`)}
+          </form>
+          <p><a href="${BASE}/apps/${a.id}/ai-pages">Create pages with AI ▸</a> <span class="muted">(describe them in your own words)</span></p>`)}
         ${region('Create blank page', html`
           <form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
             <div class="form-grid">
@@ -467,6 +468,7 @@ export async function builderRoutes(app: FastifyInstance) {
       </div>
       <div class="columns">
         <p><a class="btn" href="${BASE}/apps/${a.id}/top-sql">${icon('database')} Top SQL</a> <span class="muted">the slowest statements of this application's database role</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/ai">${icon('bolt')} AI usage</a> <span class="muted">the AI services this application may use, and its requests</span></p>
         <p><a class="btn" href="${BASE}/apps/${a.id}/debug">${icon('list')} Debug messages</a> <span class="muted">${a.debug_level ? `on (level ${a.debug_level}): ` : 'off: '}timed steps of each request and messages from <code>meta.debug()</code></span></p>
         ${region('Page views by page (7 days)', html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Page</th><th>Name</th><th class="num">Views</th><th class="num">Avg ms</th><th class="num">Max ms</th></tr></thead>
           <tbody>${byPage.rows.map((r) => html`<tr><td class="num">${r.page_no}</td><td>${r.name}</td><td class="num">${r.views}</td><td class="num">${r.avg_ms}</td><td class="num">${r.max_ms}</td></tr>`)}</tbody></table></div>`)}

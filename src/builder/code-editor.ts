@@ -37,7 +37,7 @@ const CHECKS: Record<string, SqlShape> = {
 const CHECK_SWITCH: Record<string, string> = {
   'dynamic_action.code': 'action:set_value=select,*=statements',
   'process.code': 'type:sql=statements,*=none',
-  'region.source': 'type:static=none,form=none,facets=none,smart_filters=none,display_selector=none,tasks=none,workflows=none,list=none,data_reporter=none,*=select',
+  'region.source': 'type:static=none,form=none,facets=none,smart_filters=none,display_selector=none,tasks=none,workflows=none,list=none,data_reporter=none,ai_assistant=none,*=select',
   'computation.expression': 'type:sql_query=select,*=none',
   'computation.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
   'branch.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',

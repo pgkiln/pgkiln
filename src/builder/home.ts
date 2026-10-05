@@ -186,6 +186,7 @@ export async function homeRoutes(app: FastifyInstance) {
       <p class="muted">A blank application with a Home page, its own database role and a parsing schema. Add pages with the page wizards afterwards.</p>
       <p><a class="btn" href="${BASE}/create/file">${icon('upload')} From a file</a> <span class="muted small">Or start from a spreadsheet (CSV, Excel, JSON or XML): a table per sheet with its rows, a report and form per table, foreign keys, a dashboard and a faceted search.</span></p>
       <p><a class="btn" href="${BASE}/create/paste">${icon('file')} From pasted data</a> <span class="muted small">Paste rows copied from a spreadsheet, or CSV or TSV text.</span></p>
+      <p><a class="btn" href="${BASE}/blueprints">${icon('layers')} From a blueprint</a> <span class="muted small">Describe tables, pages, menu and sample rows as a blueprint (or let AI draft one), review it, create it.</span></p>
       <p><a class="btn" href="${BASE}/create/tables">${icon('table')} From existing tables</a> <span class="muted small">Pick the tables and views of a schema: a report and form per table, navigation and a dashboard.</span></p>
       ${region('Application', html`<form method="post" action="${BASE}/apps">${csrf(s)}
         <div class="form-grid">
@@ -275,6 +276,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
         ${card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
       </div>`;
     return send(reply, s, shell(s, 'Workspace utilities', [['App Builder', BASE], ['Workspace utilities']], main));

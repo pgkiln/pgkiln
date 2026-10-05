@@ -609,6 +609,30 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 36 and r.type = 'data_reporter'`, [appId]);
           return `/builder/pages/${r.page_id}?c=region-${r.id}`;
         })(),
+        // (sprint 36) AI services (a service with usage rows), one service, and an application's AI usage
+        ...(await (async () => {
+          await owner.query(`delete from meta.ai_service where name = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
+          const svc = (await owner.one(`insert into meta.ai_service (name, description, provider, model, effort, base_url)
+            values ('E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME', 'A service for the responsive tests', 'anthropic', 'claude-opus-5-5', 'medium', 'https://gateway.example.com/a/very/long/path/without/breaks') returning id`)).id;
+          await owner.query(`insert into meta.app_ai_service (app_id, service_id, max_requests, max_tokens) values ($1, $2, 100, 200000)`, [appId, svc]);
+          await owner.query(`insert into meta.ai_usage (app_id, page_no, username, service_id, service, provider, model, source, input_tokens, output_tokens, duration_ms, status, message)
+            values ($1, 37, 'king', $2, 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME', 'anthropic', 'claude-opus-5-5', 'process', 1234, 567, 2345, 'ok', null),
+                   ($1, 37, 'king', $2, 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME', 'anthropic', 'claude-opus-5-5', 'dynamic_action', 0, 0, 120, 'error', 'rate_limit 429')`, [appId, svc]);
+          return { ai_services: '/builder/ai', ai_service: `/builder/ai/${svc}`, ai_usage: `/builder/apps/${appId}/ai` };
+        })()),
+        // (sprint 36) the AI assistant region's settings and a report's "Ask in your own words" (HR page 38)
+        ...(await (async () => {
+          const rs = (await owner.query(`select r.id, r.page_id, r.type from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 38 and r.type in ('ai_assistant', 'report')`, [appId])).rows;
+          const at = (type: string) => { const r = rs.find((x) => x.type === type); return `/builder/pages/${r.page_id}?c=region-${r.id}`; };
+          return { ai_assistant_region: at('ai_assistant'), ai_filter_region: at('report') };
+        })()),
+        // (sprint 36) App Builder AI: SQL Workshop → AI, describe a table, create pages with AI
+        sql_ai: '/builder/sql/ai',
+        sql_ai_describe: '/builder/sql/ai/describe?schema=hr&table=leave_request',
+        ai_pages: `/builder/apps/${appId}/ai-pages`,
+        // (sprint 36) blueprints: the list and the editor with the example
+        blueprints: '/builder/blueprints',
+        blueprint_new: '/builder/blueprints/new',
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -623,6 +647,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
+        await owner.query(`delete from meta.ai_usage where service = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
+        await owner.query(`delete from meta.ai_service where name = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
       }
       // (sprint 35) Sample Data: a preview (inserted and rolled back) of the HR example's saved generator
       {

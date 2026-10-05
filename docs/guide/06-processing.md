@@ -293,6 +293,90 @@ looks up the employee (a `sql` child) and then starts the ONBOARDING workflow (a
 *Stop onboarding* terminates it; *Year-end check* is a background chain whose jobs the region
 "My background jobs" lists from `meta.process_jobs`.
 
+### Generate text with AI
+
+An `ai_generate` process (APEX: *Generate Text with AI*) sends a prompt to a large language model
+and puts the answer into page items. The model is reached through an **AI service** that an
+administrator configures under Workspace utilities → **AI services** ([chapter 3](03-builder.md#ai-services)):
+Claude (Anthropic) or OpenAI, the model, the API key and optional daily limits per application. An
+application can only use the services an administrator allowed for it.
+
+> **The prompt goes to the provider.** Everything in the prompt, including the item values it
+> contains, is sent to the AI service's provider (Anthropic or OpenAI, or the gateway in its base URL)
+> and is handled under that provider's terms. Don't put data in a prompt that may not leave your
+> organisation, and tell your users when what they type is sent to an AI service.
+
+The process is configured in its JSON (`config`), in one of three forms:
+
+```json
+{"service": "CLAUDE", "system": "You write short, friendly summaries.",
+ "prompt": "Summarise: &P5_NOTES.", "output_item": "P5_SUMMARY"}
+
+{"service": "CLAUDE", "prompt": "Extract the contact from: &P5_TEXT.",
+ "output_items": ["P5_NAME", "P5_EMAIL", "P5_BIRTH_DATE"]}
+
+{"service": "OPENAI", "prompt": "Extract: &P5_TEXT.",
+ "schema": {"type": "object", "properties": {"name": {"type": "string"},
+            "address": {"type": "object", "properties": {"city": {"type": "string"}},
+                        "required": ["city"], "additionalProperties": false}},
+            "required": ["name", "address"], "additionalProperties": false},
+ "items": {"P5_NAME": "name", "P5_CITY": "address.city"}}
+```
+
+- **`output_item`**: the answer as text goes into one item.
+- **`output_items`** (structured output): pgapex builds a strict JSON schema from the items (the
+  property names come from the item names without `P5_`, the descriptions from their labels; number
+  items are numbers, checkboxes and switches booleans, date items dates as `YYYY-MM-DD`) and asks the
+  model for exactly that JSON; each property goes into its item.
+- **`schema` + `items`** (structured output with your own schema): a JSON schema of an object, and
+  which property (or path, `address.city`) goes into which item. OpenAI's strict mode needs every
+  property in `required` and `"additionalProperties": false`.
+- Optional: `system` (the system prompt), `max_tokens` (at most the service's maximum) and
+  `error_message` (shown instead of the error, which then goes to the debug messages).
+
+Structured outputs use the providers' own JSON schema support (Claude: `output_config.format`,
+OpenAI: `response_format` with `strict: true`), so the answer is valid JSON of that shape; pgapex
+checks it once more and fails the process when it isn't (for example when it was cut off at the
+output limit).
+
+**Substitutions are data, never instructions.** `&ITEM.` in the prompt and the system prompt is
+replaced by the item's value wrapped as `<data name="ITEM">…</data>`, with `<`, `>` and `&` escaped,
+and the system prompt then tells the model that such text is content to work on and that
+instructions inside it are not to be followed. This makes prompt injection by users harder, not
+impossible: treat the answer as untrusted text. The session id and password items are never
+substituted.
+
+**The answer is untrusted.** It only ever becomes item values: shown escaped like any value, never
+run as SQL or HTML. If you use it in SQL, use it as a bind value (`:P5_SUMMARY`), never as SQL text.
+
+**Errors** (no key, a service the application may not use, the daily limit, the provider's rate
+limit, a refusal, a time-out, an answer that isn't the JSON asked for) fail the process with a
+message the user may see (no keys or provider details); like other processes, the page shows it and
+keeps the values. Claude may decline a request for safety reasons; with *refusal fallbacks* on (the
+default for Claude services) Anthropic then re-runs it on its recommended fallback model, and the
+usage log shows which model answered.
+
+**Without a page submit**: the dynamic action `ai_generate` ([chapter 7](07-dynamic-actions.md))
+runs the process through AJAX and updates its output items.
+
+**Usage log.** Every request is logged in `meta.ai_usage`: when, application, page, user, service,
+provider, the model that answered, source (process, dynamic action, SQL, builder test), input and
+output tokens, duration and status (`ok`, `refused`, `error`, `limited`). Prompts and answers are
+**never** logged; at [debug level](#debug-messages) 9 the application's debug messages show them
+(the system prompt, the prompt and the answer), at level 6 the service, model and tokens. See the
+log under the application's Activity → **AI usage**, and for all applications on the AI services page.
+
+From SQL, `meta.ai_generate()` queues a request and `meta.ai_result()` reads the answer
+([chapter 9](09-reference.md#ai-requests-from-sql)); `meta.ai_available('SERVICE')` tells whether the
+application may use a service (e.g. as a region or button condition).
+
+**HR example, page 37 (Leave assistant).** Paste an employee's message about leave: *Summarise*
+writes a summary for the manager (`output_item`), *Fill in the request* reads the first and last day
+and the reason into date and text items (`output_items`), and *Request leave* files it. With
+JavaScript both AI buttons run through dynamic actions. The example creates no AI service: until an
+administrator adds one named `HR_ASSISTANT` and allows the HR application, the page says so
+(a region with the condition `not meta.ai_available('HR_ASSISTANT')`) and hides the AI buttons.
+
 ## Computations
 
 A computation sets a page item or an application item without a process: a default, a value
