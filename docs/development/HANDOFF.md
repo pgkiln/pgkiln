@@ -1104,6 +1104,20 @@ do **not** start sprint 32 in that session.
   Parity: Custom authentication, Lists (shared component, list region, nav menu/bar), page/app locks + developer
   comments, supporting objects: all Yes. Left out: "Used in" doesn't count `nav_list`/`navbar_list`.
   Tests 556 pass / 8 skip, e2e 78/78.
+- **workshop: DONE**. Squashed into 4 commits; pushed as **`origin/sprint-31-workshop-final`** (merge this one;
+  `origin/sprint-31-workshop` holds the older wip tip). Migration 041, HR `hr_31_data_load_xml.sql` (page 13 accepts
+  .xml, definition EMP_XML, sample `public/samples/employees.xml`; no new page). **041 redefines
+  `export_app`/`import_app`** from 034 (adds `data_load_definitions`; id/app_id replaced on import): combine in 043.
+  No env vars (`DATA_LOAD_MAX_MB/ROWS` apply to XML). Hotspots: builder components.ts, shared.ts (SHARED list),
+  runtime engine.ts (`dataLoad`), appfiles.ts (`NAMED`), builder ui.ts (`workshopTabs`), sql.ts, builder.css, top
+  and end of security.test.ts, responsive e2e, guide 03/08/11/12/16.
+  Security: workshop routes need builder login + CSRF and run as owner (like SQL Commands); XML refuses DOCTYPE/
+  entities, depth ≤100, element counts limited; definition table names regex + CHECK + regclass + quoted, masks as
+  literals, values as params, processes see only own-app definitions and load as app role; Load Data temp file bound
+  to the uploading session; script download names sanitised; **SQL Commands/Scripts text now logged (≤2000 chars),
+  passwords in statements end up in the activity log**; known limit: big SELECT results fully buffered.
+  Parity: SQL Scripts yes; Quick SQL yes (subset); Query Builder yes (simple, no canvas); XML loading yes; data load
+  definitions yes. Tests 585 pass / 8 skip, e2e all pass.
 
 ## Sprint 32 (PLANNED, owner 2026-10-05)
 
