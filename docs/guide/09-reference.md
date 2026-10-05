@@ -271,7 +271,7 @@ navigation entries and application processes have the same `build_option` column
 | Column | Description |
 |---|---|
 | `page_id`, `seq`, `title` | |
-| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `list`, `tasks`, `workflows`, `static`, `dynamic` |
+| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `list`, `data_reporter`, `tasks`, `workflows`, `static`, `dynamic` |
 | `source` | SELECT (or HTML for `static`) |
 | `table_name`, `pk_column` | For `form` and `grid` |
 | `pk_item` | For `form`: the item holding the key |

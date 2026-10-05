@@ -78,6 +78,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`map`](#map) | Places (markers) and shapes on an interactive map |
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
 | [`list`](#list-lists) | A list (Shared Components → Lists) as nested links, a badge list, cards or tabs |
+| [`data_reporter`](#data_reporter-data-reporter) | Business users build, save and share their own reports from tables and views the developer offers |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
@@ -856,6 +857,66 @@ Attributes (the region's **Settings** in the page designer):
 The HR example's page 31 (Shortcuts) shows a static list with each template (with a badge from an
 item, child entries, a manager-only entry and one of an excluded build option) and a department
 list from a query; its navigation bar is the list `HR_NAVBAR`.
+
+### `data_reporter` (Data Reporter)
+
+A **Data Reporter** region (APEX 26.1: Data Reporter) lets business users build their own reports
+in the running application, without the developer writing a page per question. The developer
+decides *what* may be reported on; users decide *how*.
+
+**The developer** places the region (page designer gallery: *Data Reporter*) and, in its
+**Settings**, adds **data sources**: a table or view each (pgapex's own `meta` schema and the
+system schemas are never offered), with a static id, a label and a description users see. Every
+column of the source is listed: tick the ones users may use and give them labels and, for numbers
+and dates, a [format mask](14-globalization.md). New sources offer all columns except binary
+ones at first. A view that shows exactly what business users may see is often the best source;
+the builder warns when the application's database role may not read it.
+
+**Users** choose a source and *Start*, then, in the report's editor (a plain form: it works
+without JavaScript, and the URL of a result can be bookmarked or sent):
+
+- **Columns** to show (all offered columns when none are ticked);
+- up to five **filters** (column, operator, value; the operators of interactive report filters);
+- up to three **Group by** columns and five **totals** (count, sum, average, minimum, maximum of
+  a column, or the number of rows). With a group column the result has one row per group (at
+  most 1000); totals without one give a single row over all rows;
+- up to three **sort** columns (in a grouped report: the group columns and the totals);
+- a **chart** (bar, column, line, area, donut, pie) of the totals by the first group column,
+  drawn on the server like other [charts](#chart).
+
+Signed-in users **save** a report under a name (with a description), privately or **shared with
+everyone** who can see the region, open their own and shared reports from the region's list,
+change their own (*Save*, *Save as new*, *Delete*) and copy someone else's shared report by saving
+it under their own name. Detail rows are paged (`page_size`, 25 by default).
+
+How it stays safe:
+
+- reports run as the **application's database role**: grants and [row level
+  security](08-security.md) apply, so two users running one shared report may see different rows;
+- a definition (from the URL or a saved report) is checked before it runs: only offered columns
+  that exist and can be read, whitelisted operators and functions (sum and average on numbers
+  only), bounded counts and lengths; anything else is dropped. Identifiers are only the
+  developer's schema, table and column names, always quoted; filter values are escaped literals;
+- reports are stored in `meta.data_report`, reached by applications only through the view
+  `meta.data_reports` (the user's own and shared reports of the application) and the functions
+  `meta.save_data_report` / `meta.delete_data_report`, which only change the signed-in user's
+  own reports. Saving and deleting need the CSRF token and a region the user can see.
+
+Attributes (written by the region's **Settings**):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `sources` | | `[{"id": "orders", "label": "Orders", "description": "…", "schema": "sales", "table": "order_v", "columns": [{"name": "total", "label": "Total", "format": "FML999G990D00"}]}]` |
+| `sharing` | `true` | `false`: reports stay private |
+| `share_authz` | | An authorization scheme: only users that pass it may share reports |
+| `page_size` | `25` | Rows per page of a detail report (5 to 200) |
+| `empty` | `No data found.` | Text when there are no rows |
+
+The sources travel with the application export (they are the region's attributes); users'
+reports are user data, like [saved reports](#report-interactive-report), and stay with their
+region when an application is replaced. The HR example's page 36 (*My reports*) offers employees
+(a view without the user name and photo columns) and leave requests (row level security: an
+employee sees only their own), with King's shared report *Salary by department*.
 
 ### Template components
 
