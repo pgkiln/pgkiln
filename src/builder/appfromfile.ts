@@ -19,6 +19,8 @@ import {
 import { readMultipart } from '../runtime/files.ts';
 import type { Session } from '../session.ts';
 import { MAX_MB, preview, resultHtml } from './dataload.ts';
+import { buildAppFromSheets, MAX_SHEETS, parseBook, sheetsForm, type BuiltBook, type NamedSheet } from './appsheets.ts';
+import { appWizardRoutes, PASTED } from './appwizard.ts';
 import { checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
 import { BASE, csrf, developer, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 
@@ -34,8 +36,11 @@ import { BASE, csrf, developer, input, region, select, send, shell, type Body, t
 // optionally a dashboard chart and a faceted search page, each with a
 // navigation entry. Plain forms: no JavaScript needed. The file is kept as a
 // temporary file of the builder session between the steps.
+// A workbook with several sheets (or a JSON object with several arrays)
+// becomes several tables: appsheets.ts. Pasted data (appwizard.ts) is kept as
+// a temporary file too and takes the same steps.
 
-const ITEM = 'APP_FROM_FILE';
+export const ITEM = 'APP_FROM_FILE';
 const SAMPLE = 3;
 
 /** "employee-list_2026.xlsx" → "Employee list 2026" */
@@ -70,10 +75,10 @@ export const tableNameFor = (filename: string) => columnName(filename.replace(/^
 
 async function uploaded(s: Session, id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  return owner.one<{ filename: string; content: Buffer }>('select filename, content from meta.temp_file where id = $1 and session_id = $2 and item_name = $3', [id, s.id, ITEM]);
+  return owner.one<{ filename: string; content: Buffer; mime_type: string | null }>('select filename, content, mime_type from meta.temp_file where id = $1 and session_id = $2 and item_name = $3', [id, s.id, ITEM]);
 }
 
-const check = (name: string, label: string, on: boolean, help = '') =>
+export const check = (name: string, label: string, on: boolean, help = '') =>
   html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label>${help ? html`<small class="help">${help}</small>` : ''}</div>`;
 
 /** The columns of the new table from the step 2 form (an empty name skips the file column). */
@@ -176,14 +181,46 @@ export async function buildAppFromFile(checked: CheckedApp, sheet: Sheet, b: Bod
   });
 }
 
+export interface Created {
+  app: { id: number; alias: string; existingAccount: boolean };
+  tables?: { table: string; result: LoadResult }[];
+  foreignKeys?: string[];
+  pages: { page: number; label: string }[];
+  notes: string[];
+}
+
+/** The result page of the create application wizards: the tables and rows, skipped rows, foreign keys and pages. */
+export function createdHtml(built: Created | Built, adminUser: string, another: string) {
+  const tables = 'table' in built ? [{ table: built.table, result: built.result }] : (built.tables ?? []);
+  const errors = tables.flatMap((t) => t.result.errors.map((e) => ({ ...e, table: t.table })));
+  const loaded = tables.map((t) => `${t.table}: ${t.result.inserted} row(s) loaded${t.result.failed ? `, ${t.result.failed} skipped` : ''}.`).join(' ');
+  return html`<h1>Application created</h1>
+      <div class="alert alert-success" role="status">Application ${built.app.alias} created. ${loaded}${
+        built.app.existingAccount ? ` The existing account ${adminUser} got the admin role (its password was not changed).` : ''}</div>
+      ${errors.length
+        ? region('Skipped rows', html`<div class="table-wrap"><table class="report"><thead><tr>${tables.length > 1 ? html`<th>Table</th>` : ''}<th class="num">Row</th><th>Error</th></tr></thead>
+            <tbody>${errors.map((e) => html`<tr>${tables.length > 1 ? html`<td>${e.table}</td>` : ''}<td class="num">${e.row}</td><td>${e.message}</td></tr>`)}</tbody></table></div>
+            ${tables.some((t) => t.result.failed > t.result.errors.length) ? html`<p class="muted">The first errors are shown.</p>` : ''}`)
+        : ''}
+      ${'foreignKeys' in built && built.foreignKeys?.length ? region('Foreign keys', html`<ul>${built.foreignKeys.map((x) => html`<li>${x}</li>`)}</ul>`) : ''}
+      ${region('Pages', html`<ul>${built.pages.map((p) => html`<li>Page ${p.page}: ${p.label}</li>`)}</ul>
+        ${built.notes.map((n) => html`<p class="muted">${n}</p>`)}`)}
+      <div class="buttons u-mt1">
+        <a class="btn btn-hot" href="${BASE}/apps/${built.app.id}">${icon('edit')} Edit the application</a>
+        <a class="btn btn-run" href="/a/${built.app.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
+        <a class="btn" href="${another}">${icon('plus')} Create another</a>
+      </div>`;
+}
+
 export async function appFromFileRoutes(app: FastifyInstance) {
   const page = (s: Session, reply: FastifyReply, main: Raw) =>
     send(reply, s, shell(s, 'Create application from a file', [['App Builder', BASE], ['Create', `${BASE}/create`], ['From a file']], html`<div class="ab-narrow">${main}</div>`));
 
   const uploadForm = (s: Session, error?: string) =>
     html`<h1>Create an application from a file</h1>
-      <p class="muted">Upload a spreadsheet: CSV or TSV (UTF-8 or Windows-1252; the delimiter is detected), Excel .xlsx (the first sheet), JSON (an array of objects) or XML, up to ${MAX_MB} MB.
-        Next you check the proposed table and its columns. The application gets its own schema and database role, a table with the rows, a report and form, and optionally a dashboard and a faceted search.</p>
+      <p class="muted">Upload a spreadsheet: CSV or TSV (UTF-8 or Windows-1252; the delimiter is detected), Excel .xlsx (each sheet becomes a table, up to ${MAX_SHEETS}), JSON (an array of objects; an object with several arrays becomes several tables) or XML, up to ${MAX_MB} MB.
+        Next you check the proposed tables and their columns. The application gets its own schema and database role, a table with the rows, a report and form, and optionally a dashboard and a faceted search.
+        <a href="${BASE}/create/paste">Paste data</a> instead, or <a href="${BASE}/create/tables">start from existing tables</a>.</p>
       ${region('File', html`${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
         <form method="post" action="${BASE}/create/file" enctype="multipart/form-data">${csrf(s)}
           <div class="form-grid">
@@ -219,8 +256,8 @@ export async function appFromFileRoutes(app: FastifyInstance) {
     if (file.truncated) return fail(`The file is larger than ${MAX_MB} MB.`);
     const headers = req.body?.headers === 'true';
     try {
-      const sheet = await parseFile(file.filename, file.data, { headers });
-      if (!sheet.rows.length) throw new LoadError('The file has column names but no rows.');
+      const sheets = await parseBook(file.filename, file.data, { headers });
+      if (!sheets.some((x) => x.rows.length)) throw new LoadError('The file has column names but no rows.');
     } catch (e) {
       if (e instanceof LoadError) return fail(e.message);
       throw e;
@@ -237,16 +274,42 @@ export async function appFromFileRoutes(app: FastifyInstance) {
     const f = await uploaded(s, req.params.id);
     if (!f) return reply.redirect(`${BASE}/create/file`);
     const headers = (b?.h ?? req.query.h) !== '0';
-    let sheet: Sheet;
+    let sheets: NamedSheet[];
     try {
-      sheet = await parseFile(f.filename, f.content, { headers });
+      sheets = await parseBook(f.filename, f.content, { headers });
     } catch (e) {
       if (e instanceof LoadError) return page(s, reply, uploadForm(s, e.message));
       throw e;
     }
+    const sheet = sheets[0];
+    const again = f.mime_type === PASTED ? html`<a href="${BASE}/create/paste">Paste other data</a>` : html`<a href="${BASE}/create/file">Choose another file</a>`;
     const schemas = (await owner.query(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`)).rows;
-    const suggested = suggestColumns(sheet);
     const v = (k: string, d: string) => (b ? (b[k] ?? '') : d);
+    const appRegion = region('Application', html`<div class="form-grid">
+          ${input('name', 'Name', v('name', appNameFor(f.filename)), { required: true })}
+          ${input('alias', 'Alias (URL)', v('alias', await aliasFor(f.filename)), { required: true, help: 'lowercase, e.g. inventory → /a/inventory' })}
+          ${select('schema', 'Parsing schema', v('schema', ''), [['', '- new schema named after the alias -'], ...schemas.map((r): [string, string] => [r.nspname, r.nspname])],
+            `A database role app_<alias> is created with access to this schema only; the app runs as that role. The ${sheets.length > 1 ? 'tables are' : 'table is'} created in this schema.`)}
+          ${select('authentication', 'Authentication', v('authentication', 'app_users'), [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
+          ${input('admin_user', 'First user', v('admin_user', ''), { placeholder: 'e.g. your name', help: 'Gets the admin role. An existing account in Users is reused.' })}
+          ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password', help: 'For a new account; at least 8 characters.' })}
+        </div>`);
+    if (sheets.length > 1) {
+      return page(s, reply, html`<h1>Create an application from a file</h1>
+        ${message}
+        <p class="muted">${f.filename}: ${sheets.length} ${sheet.format === 'json' ? 'arrays' : 'sheets'} (${sheets.map((x) => `${x.name}: ${x.rows.length} row(s)`).join(', ')}). ${again}</p>
+        <form method="post" action="${BASE}/create/file/${req.params.id}">${csrf(s)}<input type="hidden" name="h" value="${headers ? '1' : '0'}">
+        ${appRegion}
+        <div class="u-spacer"></div>
+        ${sheetsForm(sheets, b)}
+        <div class="u-spacer"></div>
+        ${region('Pages', html`<p class="muted u-mt0">Page 1 is the Home page; each table gets an interactive report with a modal form to create, change and delete rows, and a navigation entry. More pages can be added later with the page wizards.</p>
+          ${check('chart', 'Dashboard: a chart per table with the number of rows per parent row (a foreign key) or per value of a text, yes/no or date column', b ? b.chart === 'true' : true)}
+          ${check('skip_errors', 'Skip rows with errors (otherwise nothing is created when a row fails)', v('skip_errors', '') === 'true')}`)}
+        <div class="buttons"><a class="btn" href="${BASE}/create">Cancel</a><button class="btn btn-hot" name="action" value="create">Create application</button></div>
+        </form>`);
+    }
+    const suggested = suggestColumns(sheet);
     const info = `${f.filename}: ${sheet.rows.length} row(s), ${sheet.headers.length} column(s)${
       sheet.format === 'xlsx' ? ', Excel' : sheet.format === 'json' ? ', JSON' : sheet.format === 'xml' ? `, XML rows <${sheet.rowPath}>` : `, delimiter ${sheet.delimiter === '\t' ? 'tab' : `“${sheet.delimiter}”`}`
     }`;
@@ -259,18 +322,10 @@ export async function appFromFileRoutes(app: FastifyInstance) {
         .join(' · ');
     const main = html`<h1>Create an application from a file</h1>
       ${message}
-      ${region('Preview', html`<p class="muted">${info}${sheet.rows.length > 10 ? ' (first 10 shown)' : ''}. <a href="${BASE}/create/file">Choose another file</a></p>${preview(sheet)}`)}
+      ${region('Preview', html`<p class="muted">${info}${sheet.rows.length > 10 ? ' (first 10 shown)' : ''}. ${again}</p>${preview(sheet)}`)}
       <div class="u-spacer"></div>
       <form method="post" action="${BASE}/create/file/${req.params.id}">${csrf(s)}<input type="hidden" name="h" value="${headers ? '1' : '0'}">
-      ${region('Application', html`<div class="form-grid">
-          ${input('name', 'Name', v('name', appNameFor(f.filename)), { required: true })}
-          ${input('alias', 'Alias (URL)', v('alias', await aliasFor(f.filename)), { required: true, help: 'lowercase, e.g. inventory → /a/inventory' })}
-          ${select('schema', 'Parsing schema', v('schema', ''), [['', '- new schema named after the alias -'], ...schemas.map((r): [string, string] => [r.nspname, r.nspname])],
-            'A database role app_<alias> is created with access to this schema only; the app runs as that role. The table is created in this schema.')}
-          ${select('authentication', 'Authentication', v('authentication', 'app_users'), [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
-          ${input('admin_user', 'First user', v('admin_user', ''), { placeholder: 'e.g. your name', help: 'Gets the admin role. An existing account in Users is reused.' })}
-          ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password', help: 'For a new account; at least 8 characters.' })}
-        </div>`)}
+      ${appRegion}
       <div class="u-spacer"></div>
       ${region('Table', html`<div class="form-grid">
           ${input('table', 'Table name', v('table', tableNameFor(f.filename)), { required: true, help: 'In the application\'s schema; the table gets an identity primary key id.' })}
@@ -310,36 +365,24 @@ export async function appFromFileRoutes(app: FastifyInstance) {
       reply.code(422);
       return settings(req, reply, s, b, message);
     };
-    let built: Built;
+    if (b.action === 'preview') return settings(req, reply, s, b);
+    let built: Built | BuiltBook;
     try {
       if (reservedSchema(String(b.schema ?? ''))) throw new LoadError(`The schema ${b.schema} can't be the parsing schema of an application.`);
       const checked = await checkNewApp(b).catch((e) => {
         throw new LoadError((e as Error).message);
       });
-      const sheet = await parseFile(f.filename, f.content, { headers: b.h !== '0' });
-      built = await buildAppFromFile(checked, sheet, b);
+      const sheets = await parseBook(f.filename, f.content, { headers: b.h !== '0' });
+      built = sheets.length > 1 ? await buildAppFromSheets(checked, sheets, b) : await buildAppFromFile(checked, sheets[0], b);
     } catch (e) {
       if (e instanceof LoadFailed) return failed(resultHtml(e.result, true));
       if (e instanceof LoadError || (e as { code?: string }).code) return failed(html`<div class="alert alert-error" role="alert">${(e as Error).message}</div>`);
       throw e;
     }
     await owner.query('delete from meta.temp_file where id = $1', [req.params.id]);
-    const r = built.result;
-    const main = html`<h1>Application created</h1>
-      <div class="alert alert-success" role="status">Application ${built.app.alias} created. ${built.table}: ${r.inserted} row(s) loaded${r.failed ? `, ${r.failed} skipped` : ''}.${
-        built.app.existingAccount ? ` The existing account ${String(b.admin_user ?? '').trim()} got the admin role (its password was not changed).` : ''}</div>
-      ${r.errors.length
-        ? region('Skipped rows', html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Row</th><th>Error</th></tr></thead>
-            <tbody>${r.errors.map((e) => html`<tr><td class="num">${e.row}</td><td>${e.message}</td></tr>`)}</tbody></table></div>
-            ${r.failed > r.errors.length ? html`<p class="muted">The first ${r.errors.length} errors are shown.</p>` : ''}`)
-        : ''}
-      ${region('Pages', html`<ul>${built.pages.map((p) => html`<li>Page ${p.page}: ${p.label}</li>`)}</ul>
-        ${built.notes.map((n) => html`<p class="muted">${n}</p>`)}`)}
-      <div class="buttons u-mt1">
-        <a class="btn btn-hot" href="${BASE}/apps/${built.app.id}">${icon('edit')} Edit the application</a>
-        <a class="btn btn-run" href="/a/${built.app.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
-        <a class="btn" href="${BASE}/create/file">${icon('upload')} Create another</a>
-      </div>`;
+    const main = createdHtml(built, String(b.admin_user ?? '').trim(), f.mime_type === PASTED ? `${BASE}/create/paste` : `${BASE}/create/file`);
     return page(s, reply, main);
   });
+
+  await appWizardRoutes(app);
 }

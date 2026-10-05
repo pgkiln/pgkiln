@@ -95,7 +95,7 @@ function decode(data: Buffer) {
 
 const isZip = (data: Buffer) => data.length > 3 && data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04;
 
-function cellText(v: unknown): string | null {
+export function cellText(v: unknown): string | null {
   if (v === null || v === undefined || v === '') return null;
   if (v instanceof Date) {
     const iso = v.toISOString();
@@ -190,13 +190,18 @@ export async function parseFile(filename: string, data: Buffer, { headers = true
     delimiter = /\.tsv$/i.test(filename) ? '\t' : detectDelimiter(text);
     table = parseCsv(text, delimiter).map((r) => r.map((v) => (v.trim() === '' ? null : v)));
   }
+  return tableSheet(fmt, table, headers, delimiter);
+}
+
+/** Rows of cells (CSV or one Excel sheet) as a Sheet: empty rows dropped, the first row as headings when `headers`. */
+export function tableSheet(format: Sheet['format'], table: (string | null)[][], headers: boolean, delimiter?: string): Sheet {
   table = table.filter((r) => r.some((v) => v !== null));
   if (!table.length) throw new LoadError('The file contains no data.');
   const width = Math.max(...table.map((r) => r.length));
   const first = headers ? table.shift()! : [];
   const names = Array.from({ length: width }, (_, i) => (first[i] ?? '').trim() || `column_${i + 1}`);
   if (table.length > MAX_ROWS) throw new LoadError(`The file has ${table.length} rows; at most ${MAX_ROWS} can be loaded at once.`);
-  return { format: fmt, delimiter, headers: names, rows: table.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? null)) };
+  return { format, delimiter, headers: names, rows: table.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? null)) };
 }
 
 // ---------------------------------------------------------------- new tables
