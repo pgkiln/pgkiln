@@ -3482,3 +3482,97 @@ describe('sprint 31 builder: custom authentication, lists, locks, comments, supp
     });
   });
 });
+
+describe('sprint 32 automations: actions, error handling per row, meta.run_automation', () => {
+  const OTHER = 'sec32-automations';
+  let other: number;
+  let hrAuto: number;
+
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [OTHER]);
+    other = (await owner.one(`insert into meta.app (alias, name) values ($1, 'S32 automations') returning id`, [OTHER])).id;
+    await owner.query(`insert into meta.automation (app_id, name, enabled, code) values ($1, 'sec32 other', false, 'select 1')`, [other]);
+    hrAuto = (await owner.one(`insert into meta.automation (app_id, name, enabled, code, roles) values ($1, 'sec32 hr', false, 'select 1', '{admin}') returning id`, [appId])).id;
+  });
+
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [other]);
+    await owner.query(`delete from meta.automation where app_id = $1 and name like 'sec32%'`, [appId]);
+  });
+
+  const dev = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder');
+    return b;
+  };
+  /** In a transaction as the HR application's role (as application code runs). */
+  const asHr = <T>(fn: (c: import('pg').PoolClient) => Promise<T>) =>
+    runtime.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'allen', true)`, [String(appId)]);
+      await c.query('set local role hr_app');
+      return fn(c);
+    });
+
+  test('applications cannot read or change actions, definitions or logs directly', async () => {
+    for (const sql of [
+      'select * from meta.automation_action',
+      `insert into meta.automation_action (app_id, automation_name, name, code) values (${appId}, 'sec32 hr', 'x', 'select 1')`,
+      `update meta.automation_action set code = 'drop table hr.emp'`,
+      `select meta.automation_definition(${hrAuto})`,
+    ])
+      await assert.rejects(asHr((c) => c.query(sql)), /permission denied/, sql);
+  });
+
+  test('meta.run_automation runs only automations of the current application, as the caller\'s role', async () => {
+    await assert.rejects(asHr((c) => c.query(`select meta.run_automation('sec32 other')`)), /does not exist in this application/);
+    // the definition helper is limited to the current application too
+    await assert.rejects(asHr((c) => c.query(`select meta.automation_begin('sec32 other')`)), /does not exist in this application/);
+    // the code runs with the caller's grants: pgapex's own tables stay closed
+    await owner.query(`update meta.automation_action set code = 'select password_hash from meta.account' where app_id = $1 and automation_name = 'sec32 hr'`, [appId]);
+    await assert.rejects(asHr((c) => c.query(`select meta.run_automation('sec32 hr')`)), /permission denied/);
+    // binds are literals: a row value can't inject SQL
+    await owner.query(`create table if not exists public.sec32_auto (v text)`);
+    await owner.query(`grant insert, select on public.sec32_auto to hr_app`);
+    try {
+      await owner.query(`update meta.automation set query = $2 where id = $1`, [hrAuto, `select $x$'); drop table public.sec32_auto; --$x$ as v`]);
+      await owner.query(`update meta.automation_action set code = 'insert into public.sec32_auto values (:V)' where app_id = $1 and automation_name = 'sec32 hr'`, [appId]);
+      const r = (await asHr((c) => c.query(`select meta.run_automation('sec32 hr') as r`))).rows[0].r;
+      assert.equal(r.status, 'ok');
+      assert.equal((await owner.one(`select v from public.sec32_auto`)).v, `'); drop table public.sec32_auto; --`);
+    } finally {
+      await owner.query(`drop table if exists public.sec32_auto`);
+      await owner.query(`update meta.automation set query = null where id = $1`, [hrAuto]);
+    }
+    // finishing a run of another application is refused
+    const log = (await owner.one(`insert into meta.automation_log (automation_id, trigger) values ((select id from meta.automation where app_id = $1), 'sql') returning id`, [other])).id;
+    await assert.rejects(asHr((c) => c.query(`select meta.automation_end($1, 'ok', '{}', null)`, [log])), /is not running/);
+    assert.equal((await owner.one('select status from meta.automation_log where id = $1', [log])).status, 'running');
+  });
+
+  test('builder: actions need a developer and a CSRF token, and belong to an automation of the same application', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.post(`/builder/apps/${appId}/shared/automation_action`, { automation_name: 'sec32 hr', name: 'x', code: 'select 1' })).statusCode, 302);
+    const b = await dev();
+    await b.get(`/builder/apps/${appId}/shared?c=automation-${hrAuto}`);
+    assert.equal((await b.post(`/builder/apps/${appId}/shared/automation_action`, { automation_name: 'sec32 hr', name: 'x', code: 'select 1' })).statusCode, 403);
+    // an automation of another application, posted under this one: refused by the foreign key
+    await b.post(`/builder/apps/${appId}/shared/automation_action`, { __csrf: b.lastCsrf, automation_name: 'sec32 other', name: 'sneaky', seq: '10', code: 'select 1' });
+    assert.equal((await owner.one(`select count(*)::int as n from meta.automation_action where name = 'sneaky'`)).n, 0);
+    // moving: CSRF, and only actions of this application
+    const act = (await owner.one(`select id from meta.automation_action where app_id = $1 and automation_name = 'sec32 other'`, [other])).id;
+    await b.get(`/builder/apps/${appId}/shared?c=automation-${hrAuto}`);
+    assert.equal((await b.post(`/builder/apps/${appId}/shared/automation_action/${act}/move`, { __csrf: b.lastCsrf, dir: 'up' })).statusCode, 404);
+    assert.equal((await b.post(`/builder/apps/${other}/shared/automation_action/${act}/move`, { dir: 'up' })).statusCode, 403);
+    // the run history escapes row errors
+    await owner.query(
+      `insert into meta.automation_log (automation_id, trigger, status, finished_at, rows, rows_failed, errors, message)
+       values ($1, 'manual', 'warning', now(), 2, 1, $2, '1 of 2 row(s) failed')`,
+      [hrAuto, JSON.stringify([{ row: 1, action: '<b>x</b>', message: '<script>alert(1)</script>', values: '{"v": "<img src=x onerror=alert(1)>"}' }])],
+    );
+    const page = (await b.get(`/builder/apps/${appId}/shared?c=automation-${hrAuto}`)).body;
+    assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(page, /<script>alert|<img src=x/);
+  });
+});

@@ -212,7 +212,10 @@ begin
       v_out := v_out || p_parts[i];
     else
       v_val := p_binds ->> p_parts[i];
-      v_out := v_out || case when v_val is null or v_val = '' then 'NULL' else quote_literal(v_val) end;
+      -- like pg.escapeLiteral: a value with a backslash becomes " E'…'"
+      v_out := v_out || case when v_val is null or v_val = '' then 'NULL'
+                             when strpos(v_val, '\') > 0 then ' ' || quote_literal(v_val)
+                             else quote_literal(v_val) end;
     end if;
   end loop;
   return v_out;
