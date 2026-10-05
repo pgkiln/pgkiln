@@ -97,10 +97,13 @@ src/
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
-    routes.ts              sign-in, app home, settings, activity, developers, create/import (POST)
+    routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
+    newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app and from a file
+    appfromfile.ts         Create → From a file: upload (src/dataload.ts parsing), proposed table/columns, one transaction:
+                           app + table + rows (loadRows) + pages (meta.generate_page: report and form, chart, facets)
     forms.ts               generic component property form (lookups, render, save)
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
@@ -153,6 +156,7 @@ test/
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   dataload.test.ts         parsing, Load Data, the data_load process
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
+  app-from-file.test.ts    Create → From a file: proposed names and types, app + table + rows + pages, row errors, login, validation
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits

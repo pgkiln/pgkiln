@@ -188,6 +188,10 @@ skip the others instead, tick *Skip rows with errors* (or use `skip_errors` in a
 
 ### SQL Workshop → Load Data
 
+(To start a new application from a spreadsheet, with the table, its rows and the pages, use
+**Create → From a file**: [chapter 3](03-builder.md#creating-an-application-from-a-file). It uses the same
+parsing, type inference and limits.)
+
 1. Choose a file (up to `DATA_LOAD_MAX_MB`, default 50 MB, and `DATA_LOAD_MAX_ROWS` rows). For
    XML you can name the row element. To load with a [data load
    definition](#data-load-definitions), choose it here: the next step previews the file after its

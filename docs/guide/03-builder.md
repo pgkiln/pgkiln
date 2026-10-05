@@ -71,6 +71,38 @@ Creating the app also:
   so tables you create later (as the owner, e.g. in the SQL Workshop) are usable by the app straight away;
 - creates page 1 *Home*, a navigation entry, and an authorization scheme `ADMIN` (role `admin`).
 
+The parsing schema can't be `meta`, `information_schema` or a `pg_*` schema.
+
+### Creating an application from a file
+
+**Create → From a file** (`/builder/create/file`, APEX: *Create App from a File*) starts an
+application from a spreadsheet:
+
+1. **Upload** a CSV or TSV file (UTF-8 or Windows-1252; the delimiter is detected), an Excel `.xlsx`
+   file (the first sheet), JSON (an array of objects) or XML, up to `DATA_LOAD_MAX_MB` (50 MB) and
+   `DATA_LOAD_MAX_ROWS` (100,000 rows). Untick *First row contains column names* when it doesn't.
+2. **Check the proposal**: a preview of the first rows; the application's name, alias, parsing schema,
+   authentication and first user (as for a blank application); the table name (`employee_list.xlsx`
+   → `employee_list`) and, per file column, a few sample values, the column name (`Hire Date` →
+   `hire_date`; empty skips the column) and the type inferred from the values (text, integer, bigint,
+   numeric, boolean, date, timestamp: dates and timestamps in ISO format). Choose the pages:
+   - always: page 2, an interactive report of the table, with a modal form (page 3) to create, change
+     and delete rows;
+   - *Dashboard* (page 4): a bar chart with the number of rows per value of the first text, yes/no or
+     date column whose values repeat (2 to 50 different values); left out when there is none;
+   - *Faceted search* (page 5): a report with a filter panel: values with counts for repeating text
+     and yes/no columns, ranges for numbers and dates, and a search field.
+3. **Create application**: in one transaction, the schema and the role `app_<alias>` (as above), the
+   table in the app's schema with an identity primary key `id`, the rows, and the pages (made with
+   `meta.generate_page`, the [page wizards](#create-page-wizards)) with a navigation entry each. When a
+   row doesn't fit its column's type, **nothing is created**: the form comes back with the failed
+   rows (the first 100) and your choices; fix the types, or tick *Skip rows with errors* to load the
+   others (the result page lists the skipped rows).
+
+Everything is a plain form (no JavaScript needed). The file is kept as a temporary file of your
+builder session between the steps; it is deleted when the application is created. To load more files
+into the table later, use the SQL Workshop's [Load Data](16-files.md#sql-workshop--load-data) or a data load definition.
+
 ### Importing
 
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new

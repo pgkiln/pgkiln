@@ -66,6 +66,9 @@ On the **App Builder** home, fill in *Create application*:
 This creates the role `app_tasks` with access to schema `tasks` (including the function), page 1,
 and the account `ann` with access to the app. Create `bob` under **Users** and give him access to *Tasks* (on his account page, or under **Shared Components → Access control**).
 
+> Have the data in a spreadsheet already? **Create → From a file** makes the application, a table with
+> the rows and its pages in one go ([chapter 3](03-builder.md#creating-an-application-from-a-file)).
+
 > The SQL script creates the role itself instead: `create role app_tasks nologin; grant app_tasks to pgapex_runtime; grant …`.
 
 ## Step 3: row level security

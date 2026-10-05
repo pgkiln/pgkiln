@@ -94,7 +94,7 @@ which is read at startup; real environment variables take precedence.
 | `STATEMENT_TIMEOUT` | `30s` | Maximum run time of any application SQL statement |
 | `DB_POOL_SIZE` | `10` | Connections per pool (there are two pools) |
 | `MAX_UPLOAD_MB` | `10` | Largest file a file item accepts (an item's `max_mb` can only lower it) |
-| `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data |
+| `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data and Create → From a file |
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
 | `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (1 to 100,000; read with a cursor in batches) |
 | `DOWNLOAD_MAX_ROWS` | `1000000` | Most rows in a report's CSV or Excel download and in a SQL Workshop → Unload Data file (streamed; at most 1,048,575) |

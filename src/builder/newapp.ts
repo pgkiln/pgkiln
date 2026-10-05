@@ -22,7 +22,8 @@ export interface CheckedApp {
   alias: string;
   schema: string;
   role: string;
-  authentication: 'app_users' | 'none';
+  /** app_users or none from the forms (the meta.app check constraint has the full list) */
+  authentication: string;
   adminUser: string | null;
   adminPassword: string | null;
 }
@@ -38,7 +39,7 @@ export async function checkNewApp(b: NewAppInput): Promise<CheckedApp> {
   if (!name) throw new Error('Enter a name for the application.');
   const schema = (b.schema ?? '').trim() || alias.replace(/-/g, '_');
   if (reservedSchema(schema) || schema.length > 63) throw new Error(`The schema ${schema} can't be the parsing schema of an application.`);
-  const authentication = b.authentication === 'none' ? 'none' : 'app_users';
+  const authentication = (b.authentication ?? '').trim() || 'app_users';
   let adminUser: string | null = null;
   let adminPassword: string | null = null;
   if (authentication !== 'none') {
