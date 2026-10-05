@@ -12,6 +12,7 @@ import { handlerProblems } from '../runtime/rest.ts';
 import { TEMPLATE_COMPONENT_SPEC } from './template-spec.ts';
 import { REST_SOURCE_SPEC, WEB_CREDENTIAL_SPEC } from './websources.ts';
 import { invokeProblems } from '../runtime/rest-sources.ts';
+import { processProblems } from '../runtime/processes.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -168,8 +169,9 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     validate: (v) => (v.css_classes && !CLASS_LIST.test(String(v.css_classes)) ? 'CSS classes: up to five names of lower case letters, digits, - and _, separated by spaces.' : null),
     fields: [
       { name: 'name', label: 'Name', kind: 'text', group: 'When' },
-      { name: 'event', label: 'Event', kind: 'select', options: ['change', 'click', 'load'], group: 'When' },
-      { name: 'trigger_element', label: 'Item(s) / button', kind: 'upper', group: 'When', help: 'Comma separated item names, or a button name for click.' },
+      { name: 'event', label: 'Event', kind: 'select', options: ['change', 'click', 'load', 'dialog_closed'], group: 'When',
+        help: 'dialog_closed: a modal dialog opened from this page was submitted and closed (instead of reloading the page), e.g. refresh a region.' },
+      { name: 'trigger_element', label: 'Item(s) / button / dialog page', kind: 'upper', group: 'When', help: 'Comma separated item names, or a button name for click, or for dialog_closed the dialog page numbers (empty: any dialog).' },
       { name: 'condition_type', label: 'Client-side condition', kind: 'select', options: ['', 'equals', 'not_equals', 'in_list', 'is_null', 'is_not_null'], group: 'When' },
       { name: 'condition_value', label: 'Condition value', kind: 'text', group: 'When' },
       { name: 'action', label: 'Action', kind: 'select', options: ['show', 'hide', 'enable', 'disable', 'set_value', 'execute_sql', 'refresh_region', 'refresh_item', 'alert', 'submit', 'set_focus', 'add_class', 'remove_class', 'show_success', 'show_error', 'clear_errors'], group: 'Action',
@@ -213,20 +215,24 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     summary: (p) => p.name,
     defaults: { type: 'sql', point: 'submit' },
     validate: (v) => {
-      if (v.type !== 'invoke_api') return null;
-      const problems = invokeProblems(typeof v.config === 'string' ? JSON.parse(v.config) : v.config);
+      const conf = typeof v.config === 'string' ? JSON.parse(v.config || '{}') : v.config;
+      const problems = v.type === 'invoke_api' ? invokeProblems(conf) : processProblems(String(v.type), conf);
+      if (v.type === 'download' && !String(v.code ?? '').trim()) problems.push('A download process needs a query in Code.');
       return problems.length ? problems.join(' ') : null;
     },
     fields: [
       { name: 'name', label: 'Name', kind: 'text' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['sql', 'form_dml', 'grid_dml', 'data_load', 'invoke_api'] },
-      { name: 'point', label: 'Point', kind: 'select', options: ['submit', 'load'] },
+      { name: 'type', label: 'Type', kind: 'select', options: ['sql', 'form_dml', 'grid_dml', 'data_load', 'invoke_api', 'download', 'chain', 'workflow'],
+        help: 'download: a file from the query in Code · chain: runs the processes that name it as their chain, in sequence (optionally in the background) · workflow: start, terminate or retry a workflow' },
+      { name: 'point', label: 'Point', kind: 'select', options: ['submit', 'load'], help: 'A chain\'s processes run when the chain does (their own point is not used).' },
+      { name: 'parent_process', label: 'Chain (parent process)', kind: 'text', help: 'The name of a chain process on this page: this process then runs only inside that chain, in its sequence.' },
       { name: 'code', label: 'Code (SQL / PL/pgSQL call)', kind: 'code', wide: true,
-        help: 'e.g. select sales.ship_order(:P3_ID::int) as p3_status — returned columns named like items set them. RAISE EXCEPTION messages are shown to the user; USING COLUMN = \'sal\' puts it on that field.' },
+        help: 'e.g. select sales.ship_order(:P3_ID::int) as p3_status — returned columns named like items set them. RAISE EXCEPTION messages are shown to the user; USING COLUMN = \'sal\' puts it on that field. · download: a query returning the file\'s content (bytea or text), file name and MIME type, e.g. select content, filename, mime_type from docs.file where id = :P5_ID::int — several rows are sent as one zip file.' },
       { name: 'region_id', label: 'Form / grid region (form_dml, grid_dml)', kind: 'region' },
-      { name: 'config', label: 'Configuration (data_load, invoke_api)', kind: 'json', wide: true,
-        help: 'data_load: {"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped. · invoke_api: {"source":"WEATHER","params":{"city":"&P5_CITY."},"items":{"P5_TEMP":"current.temp"},"status_item":"P5_STATUS"} or {"url":"https://api.example.com/orders/&P5_ID.","method":"POST","credential":"SHOP_API","body":"{\\"note\\": &P5_NOTE.}","items":{…}} — without "items", the first row\'s columns set the items named like them.' },
+      { name: 'config', label: 'Configuration (data_load, invoke_api, download, chain, workflow)', kind: 'json', wide: true,
+        help: 'data_load: {"file_item":"P5_FILE","table":"sales.orders","mode":"append | merge | replace","skip_errors":false,"headers":true,"columns":{"Heading in file":"column"}} — runs as the app\'s database role; columns match by name unless mapped. · invoke_api: {"source":"WEATHER","params":{"city":"&P5_CITY."},"items":{"P5_TEMP":"current.temp"},"status_item":"P5_STATUS"} or {"url":"https://api.example.com/orders/&P5_ID.","method":"POST","credential":"SHOP_API","body":"{\\"note\\": &P5_NOTE.}","items":{…}} — without "items", the first row\'s columns set the items named like them. · download: {"content_column":"content","filename_column":"filename","mime_column":"mime_type","zip_name":"files-&P5_ID..zip","disposition":"attachment | inline"} (all optional; default: the first three columns). · chain: {"background": true, "status_item": "P5_JOB_ID"} runs it after the submit, on the server (status in meta.process_jobs). · workflow: {"action":"start","definition":"APPROVAL","version":"2","detail_pk":"&P5_ID.","variables":{"AMOUNT":"&P5_AMOUNT."},"id_item":"P5_WORKFLOW_ID"} or {"action":"terminate | retry","instance":"&P5_WORKFLOW_ID.","comment":"…"}' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper' },
+      ...conditionFields('Condition'),
       { name: 'success_message', label: 'Success message', kind: 'text' },
       { name: 'seq', label: 'Sequence', kind: 'int' },
       { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
@@ -266,10 +272,14 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'point', label: 'Point', kind: 'select', options: ['after_processing', 'before_header'], group: 'Identification', help: 'after_processing: after a submit\'s processes · before_header: before the page is shown (a branch to the page itself is ignored)' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Identification', help: 'The first branch whose button and condition match is taken; without one, the button\'s target page.' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper', group: 'Identification', help: 'after_processing only; empty = any button' },
-      { name: 'target_type', label: 'Target', kind: 'select', options: ['page', 'url'], group: 'Target' },
-      { name: 'target_page', label: 'Page', kind: 'page', group: 'Target', help: 'Empty: this page.' },
+      { name: 'target_type', label: 'Target', kind: 'select', options: ['page', 'url', 'function', 'app'], group: 'Target',
+        help: 'page: a page of this application · url: a path inside it · function: a PL/pgSQL body returning such a path · app: a page of another application of this installation' },
+      { name: 'target_app', label: 'Application (app)', kind: 'text', group: 'Target', help: 'The alias of another application; its own sign-in and authorization apply. The page is the target page there.' },
+      { name: 'target_page', label: 'Page', kind: 'int', group: 'Target', help: 'Empty: this page. For app: the page number in that application.' },
       { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Target', help: '{"P3_ID": "&P2_ID."} — sent with a checksum.' },
       { name: 'target_url', label: 'URL (inside the application)', kind: 'text', group: 'Target', help: 'A path after /a/<alias>/, e.g. 10?tab=open or account; &ITEM. values are URL-encoded. No other sites.' },
+      { name: 'target_function', label: 'Function returning a URL (function)', kind: 'code', wide: true, group: 'Target',
+        help: 'PL/pgSQL, run as the application\'s role, e.g. begin if :P3_TOTAL::numeric > 1000 then return \'20?P20_ID=\' || :P3_ID; end if; return \'10\'; end — a path inside the application as for URL (checked the same way); null: the next branch.' },
       ...conditionFields('Condition'),
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),

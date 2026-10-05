@@ -86,9 +86,10 @@ document.documentElement.classList.add('js');
   }
 
   // ------------------------------------------------------------ dynamic actions
-  function conditionHolds(da) {
+  // `value`: what the condition compares (dialog_closed: the dialog's page number); else the first trigger item
+  function conditionHolds(da, value) {
     if (!da.cond) return true;
-    const v = da.trigger.length ? itemValue(da.trigger[0]) : '';
+    const v = value !== undefined ? value : da.trigger.length ? itemValue(da.trigger[0]) : '';
     switch (da.cond.type) {
       case 'equals': return v === da.cond.value;
       case 'not_equals': return v !== da.cond.value;
@@ -169,8 +170,8 @@ document.documentElement.classList.add('js');
     ...(da.region ? [document.getElementById(`R${da.region}`)].filter(Boolean) : []),
   ];
 
-  async function runDa(da, initial) {
-    const holds = conditionHolds(da);
+  async function runDa(da, initial, value, extra) {
+    const holds = conditionHolds(da, value);
     switch (da.action) {
       case 'show':
       case 'hide': {
@@ -213,7 +214,7 @@ document.documentElement.classList.add('js');
         form && form.requestSubmit();
         return;
     }
-    const data = {};
+    const data = { ...(extra || {}) };
     for (const n of da.submit) data[n] = itemValue(n);
     const busy = targets(da);
     busy.forEach((el) => el.setAttribute('aria-busy', 'true'));
@@ -233,6 +234,7 @@ document.documentElement.classList.add('js');
       }
       if (da.action === 'set_value' || da.action === 'execute_sql')
         for (const [name, value] of Object.entries(res.items || {})) setItemValue(name, value);
+      if (res.flash) showMessage(res.flash, 'success');
     } catch (e) {
       showError(e.message);
     } finally {
@@ -254,7 +256,7 @@ document.documentElement.classList.add('js');
     for (const da of das) if (da.event === 'click' && da.trigger.includes(btn.dataset.button)) runDa(da, false);
   });
   for (const da of das) {
-    if (['show', 'hide', 'enable', 'disable'].includes(da.action)) runDa(da, true);
+    if (da.event !== 'dialog_closed' && ['show', 'hide', 'enable', 'disable'].includes(da.action)) runDa(da, true);
     if (da.event === 'load') runDa(da, false);
   }
 
@@ -379,11 +381,26 @@ document.documentElement.classList.add('js');
     openDialog(a.href);
   });
 
+  // A dialog closed after a submit: the page's "dialog_closed" dynamic actions for
+  // that dialog page (trigger: its page numbers, or any) run instead of a reload.
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin || !e.data || e.data.type !== 'pgapex:close') return;
     const dlg = document.getElementById('t-dialog');
     if (dlg) dlg.close();
-    if (e.data.reload) location.reload();
+    if (!e.data.reload) return;
+    const page = /^\d{1,9}$/.test(String(e.data.page || '')) ? String(e.data.page) : '';
+    const handlers = das.filter((da) => da.event === 'dialog_closed' && (!da.trigger.length || da.trigger.includes(page)));
+    if (!handlers.length) return location.reload();
+    // the first action that goes to the server brings the dialog's success message along
+    let first = true;
+    const serverSide = ['set_value', 'execute_sql', 'refresh_region', 'refresh_item'];
+    (async () => {
+      for (const da of handlers) {
+        const extra = first && serverSide.includes(da.action) ? { __dialog_closed: '1' } : undefined;
+        if (extra) first = false;
+        await runDa(da, false, page, extra);
+      }
+    })();
   });
 
   // ------------------------------------------------------------ calendar
@@ -482,7 +499,7 @@ document.documentElement.classList.add('js');
 
   // Inside a dialog: close on success or cancel.
   if (window.parent !== window) {
-    const tell = (reload) => window.parent.postMessage({ type: 'pgapex:close', reload }, location.origin);
+    const tell = (reload) => window.parent.postMessage({ type: 'pgapex:close', reload, page: body.dataset.dialogPage || '' }, location.origin);
     if (body.dataset.dialogClose) tell(true);
     document.addEventListener('click', (e) => {
       if (!e.target.closest('[data-dialog-cancel]')) return;

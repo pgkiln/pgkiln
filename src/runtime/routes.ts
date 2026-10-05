@@ -522,7 +522,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const da = ctx.page.dynamic_actions.find((d) => d.id === Number(req.params.id));
         if (!da || !vis.dynamicActions.has(da.id)) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         applyPostedItems(ctx, body, list(da.items_to_submit));
-        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string } = { items: {}, itemsHtml: {}, regions: {} };
+        const out: { items: Record<string, string>; itemsHtml: Record<string, string>; regions: Record<string, string>; css?: string; flash?: string } = { items: {}, itemsHtml: {}, regions: {} };
         const affected = list(da.affected_items).filter((n) => vis.items.has(n));
         switch (da.action) {
           case 'set_value': {
@@ -549,6 +549,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
             break;
         }
         for (const n of affected) out.items[n] = ctx.session.state[n] ?? '';
+        // the first action after a dialog closed: the dialog's success message is shown here, not on the next page
+        if (da.event === 'dialog_closed' && body.__dialog_closed === '1') {
+          const flash = takeFlash(ctx.session);
+          if (flash) out.flash = flash;
+        }
         return out;
       });
       await saveState(ctx.session);
