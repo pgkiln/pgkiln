@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05 (sprint 33 released as v0.25.0; sprint 34 next). Sprints 3–33 are merged into `main` and released as **v0.25.0** (migrations 001–054 are released: add 055+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
+Last updated: 2026-10-05 (sprint 33 released as v0.25.0, CI green; sprint 34 item 1 done on `sprint-34`, item 2 next). Sprints 3–33 are merged into `main` and released as **v0.25.0** (migrations 001–054 are released: add 055+; 033, 035, 045, 046, 048 and 049 were never used). HR example files up to `hr_38` are released.
 
 ## Project in one paragraph
 
@@ -1425,9 +1425,42 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
 
-## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
+## Sprint 34 (IN PROGRESS, owner 2026-10-05: "add to the next sprint"; "read the handoff, apex feature parity and keep going")
 
-Start after sprint 33 is released (one agent at a time unless the owner says otherwise); migration numbers from **055** (054 was used for the import fix).
+Branch `sprint-34` from `main` (v0.25.0). Worked by one session directly (no sub-agents), same rules as
+`docs/development/sprint-33-agent-rules.md` with `sprint-34` for `sprint-33`. Migration numbers from **055**.
+
+| # | Item (parity row) | Status |
+|---|---|---|
+| 1 | Working copies | **done** (migration 055; see report below) |
+| 2 | Theme, library and boilerplate application types | next (migration 056) |
+
+**Item reports:**
+
+- **1 working copies: DONE** (pushed on `sprint-34`). Migration `055_working_copies.sql`: `meta.working_copy` (app_id =
+  the copy, main_app_id, name, `base` = main's pgapex/2 export when copied/refreshed/merged, created/refreshed/merged
+  stamps; trigger refuses copies of copies). `src/workingcopy.ts`: createCopy (import_app of main's export as
+  `<alias>-<name>`, copies app_access and web-credential secrets, switches automations/syncs off), three-way
+  compare per *component* on top of `docToFiles` (page dirs normalised to `pages/<seq>`, seq prefixes stripped for
+  identity; statuses copy/main/conflict), `mergedDoc` (main's files + copy's version per resolved component →
+  `filesToDoc`), `mergeCopy` (merge: replaceApp onto main and copy; refresh: onto copy; base := main's new export;
+  fingerprint of the comparison must match; lock check on the target's pages), deleteCopy. Builder
+  `src/builder/workingcopies.ts`: `/builder/apps/:id/working-copies`, `POST /builder/working-copies` (outside
+  /apps/:id so a locked main can still be copied), `/apps/:id/compare` (+ `?c=` line diff via `cli/diff.ts`
+  `unifiedDiff` with names), `/apps/:id/merge` (direction merge|refresh, `r_<i>` conflict choices), delete. Header
+  button "Working copies" in `appHeader`. `working_copy` in `KEPT` (replace.ts) and `NOT_EXPORTED` (export test).
+  Activity event `working_copy`. Tests: `test/workingcopy.test.ts`, security block "sprint 34 working copies", e2e
+  responsive pages `working_copies`, `working_copy_compare`. Docs ch. 3 "Working copies", ch. 12 code map; parity row
+  ✅ (App Builder 10/2/3/0, totals 86/20/9/3); CHANGELOG. Security (for SECURITY.md at release): developer session +
+  CSRF on every POST; names checked (`^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$`), all output escaped (diffs too); merge
+  refused on another developer's app/page lock of the target and on a stale fingerprint; `meta.working_copy` closed to
+  the runtime role; a copy runs against the main app's schema/role/data with the same app_access (by design), no
+  automations/syncs; any developer can merge any copy (no per-app developer rights, as elsewhere). Limits: conflicts
+  per component, not per property; renaming a region on one side while the other side changes its items gives a
+  "not consistent" refusal. No env vars, no HR part. Tests (clean worktree, fresh DB 5446): 901 pass / 10 skip, e2e
+  107/107.
+
+Original plan:
 
 | # | Item (parity row) | Notes |
 |---|---|---|
