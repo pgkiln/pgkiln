@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Gantt, pyramid and polar charts**: Gantt with start/end, progress, milestones, dependencies, a
+  today line and a time axis from hours to years; pyramid (area-proportional, or two series back to
+  back as a population pyramid); polar area. Server-side SVG with tooltips, a data table and
+  drill-down links like the other charts. HR example page 32 "Project plan".
+
 ## [0.24.0] - 2026-10-05
 
 ### Added

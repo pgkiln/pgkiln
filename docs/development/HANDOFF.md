@@ -1265,8 +1265,8 @@ tested, committed and pushed on `sprint-33` before the next agent starts, so the
 
 | # | Item (parity row) | Reserved | Status |
 |---|---|---|---|
-| 1 | Charts: Gantt (tasks with start/end, progress, dependencies optional), pyramid and polar charts, server-side SVG like the others, with drill-down and the data-table alternative | 048 (only if needed), `hr_35` | to do |
-| 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (only if needed), `hr_36` | to do |
+| 1 | Charts: Gantt (tasks with start/end, progress, dependencies optional), pyramid and polar charts, server-side SVG like the others, with drill-down and the data-table alternative | 048 (unused), `hr_35` | **done** (5d857e8..acf68b0) |
+| 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (only if needed), `hr_36` | **in progress** |
 | 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | to do |
 | 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | to do |
 | 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | to do |
@@ -1280,6 +1280,15 @@ SECURITY.md, `.env.example`, version 0.25.0, CI upgrade matrix + v0.25.0, chapte
 CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446), merge into `main`, tag, push, check CI.
 
 **Item reports:** (filled in as agents finish)
+
+- **1 charts: DONE** (5d857e8..acf68b0, pushed). `gantt`, `pyramid`, `polar` in `src/runtime/charts.ts` (SVG, nonce'd
+  classes, tooltips, data table, checksummed drill-down); Gantt columns label/start/end + optional `progress`,
+  `task_id`, `depends_on`. Page Designer chart settings; `chart.*` texts in 5 languages. HR `hr_35_project_charts.sql`
+  (`hr.project_task`, page 32 "Project plan"). No migration, export/import not redefined, no env vars. Not done: the
+  create-page wizard's chart types (fixed list inside 047's `meta.generate_page`; would need a migration). Known
+  issue: the Gantt "today" line uses the server's UTC time, not the session time zone. Security: region query as
+  the app role (RLS), values escaped, dependency ids only used as map keys, `kind` allow-listed. Tests 802 pass /
+  8 skip, e2e 94/94. Coordinator: Charts row ✅, Regions 17/3, totals 83/22/10/3, CHANGELOG `[Unreleased]`.
 
 ## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
 
