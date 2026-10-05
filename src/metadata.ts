@@ -176,10 +176,14 @@ export interface Branch extends Condition {
   name: string;
   point: 'before_header' | 'after_processing';
   when_button: string | null;
-  target_type: 'page' | 'url';
+  target_type: 'page' | 'url' | 'function' | 'app';
   target_page: number | null;
   target_items: Record<string, string> | null;
   target_url: string | null;
+  /** function: a PL/pgSQL body returning a path inside the application (migration 039) */
+  target_function?: string | null;
+  /** app: the alias of another application of this installation */
+  target_app?: string | null;
   authz: string | null;
 }
 
@@ -187,7 +191,7 @@ export interface DynamicAction {
   id: number;
   seq: number;
   name: string;
-  event: 'change' | 'click' | 'load';
+  event: 'change' | 'click' | 'load' | 'dialog_closed';
   trigger_element: string | null;
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
   condition_value: string | null;
@@ -216,7 +220,7 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow';
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;
@@ -224,6 +228,11 @@ export interface Process {
   when_button: string | null;
   authz: string | null;
   success_message: string | null;
+  /** a child of the chain process of this name: runs only inside that chain (migration 039) */
+  parent_process?: string | null;
+  condition_type?: Condition['condition_type'];
+  condition_expr?: string | null;
+  condition_value?: string | null;
 }
 
 export interface Page extends PageSummary {

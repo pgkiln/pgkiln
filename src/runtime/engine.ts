@@ -8,6 +8,8 @@ import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, stor
 import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { invokeApi } from './rest-sources.ts';
+import { conditionHolds } from './logic.ts';
+import { BACKGROUND_TYPES, downloadFile, workflowProcess, type ChainConfig } from './processes.ts';
 import { lovLookup, ratingMax } from './items.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
@@ -32,7 +34,7 @@ export function clearPageItems(ctx: PageContext) {
 }
 
 /** Names a SQL process may assign: application items and this page's items. */
-function assignable(ctx: PageContext) {
+export function assignable(ctx: PageContext) {
   return new Set([...ctx.app.app_items, ...ctx.page.items.map((i) => i.name)]);
 }
 
@@ -331,26 +333,100 @@ function errorItem(ctx: PageContext, e: unknown) {
   return item?.name ?? null;
 }
 
+/** Whether a process runs for this request: its button, authorization and server-side condition. */
+async function shouldRun(ctx: PageContext, p: Process) {
+  if (p.when_button && p.when_button !== ctx.request) return false;
+  // a grid's DML runs on that grid's Save button unless a button is named
+  if (p.type === 'grid_dml' && !p.when_button && ctx.request !== `GRID_SAVE_${p.region_id}`) return false;
+  if (!(await isAuthorized(ctx, p.authz))) return false;
+  const cond = { condition_type: p.condition_type ?? null, condition_expr: p.condition_expr ?? null, condition_value: p.condition_value ?? null };
+  return conditionHolds(ctx, cond, `condition of process "${p.name}"`);
+}
+
+const MAX_CHAIN_DEPTH = 5;
+
+/** The children of a chain, in sequence (a child names its chain in parent_process). */
+export const chainChildren = (ctx: PageContext, chain: Process) =>
+  ctx.page.processes.filter((x) => x.parent_process === chain.name && x.id !== chain.id);
+
+/**
+ * The page and application items a background chain gets as binds: the
+ * values when it was queued (passwords left out).
+ */
+function backgroundBinds(ctx: PageContext) {
+  const names = new Set([...ctx.app.app_items, ...ctx.page.items.filter((i) => i.type !== 'password').map((i) => i.name)]);
+  return Object.fromEntries(Object.entries(ctx.session.state).filter(([k, v]) => names.has(k) && v !== null && v !== undefined));
+}
+
+/**
+ * Run a chain's children in sequence, each with its own button, condition
+ * and authorization (a child chain runs its own children). `onStep` reports
+ * progress (background jobs).
+ */
+export async function runChain(ctx: PageContext, chain: Process, names: Set<string>, depth = 0, onStep?: (p: Process) => Promise<void>): Promise<string[]> {
+  if (depth >= MAX_CHAIN_DEPTH) throw new Error(`Process "${chain.name}": chains nest at most ${MAX_CHAIN_DEPTH} deep.`);
+  const messages: string[] = [];
+  for (const kid of chainChildren(ctx, chain)) {
+    if (!(await shouldRun(ctx, kid))) continue;
+    if (onStep && depth === 0) await onStep(kid);
+    const msg = await runOne(ctx, kid, names, depth + 1);
+    if (msg) messages.push(msg);
+  }
+  return messages;
+}
+
+async function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
+  try {
+    if (ctx.background && !BACKGROUND_TYPES.has(p.type)) throw new Error(ctx.locale.t('process.background_type', { name: p.name, type: p.type }));
+    switch (p.type) {
+      case 'form_dml': return await formDml(ctx, p);
+      case 'grid_dml': return await gridDml(ctx, p);
+      case 'data_load': return await dataLoad(ctx, p);
+      case 'invoke_api': return await invokeApi(ctx, p, names);
+      case 'workflow': return await workflowProcess(ctx, p, names);
+      case 'download':
+        // sent instead of the page (routes.ts); the first download of a request wins
+        ctx.download ??= await downloadFile(ctx, p);
+        return null;
+      case 'chain': {
+        const conf = (p.config ?? {}) as ChainConfig;
+        if (conf.background && !ctx.background) return await enqueueChain(ctx, p, conf, names);
+        const messages = await runChain(ctx, p, names, depth);
+        return [...messages, ...(p.success_message ? [p.success_message] : [])].join(' ') || null;
+      }
+      default:
+        await runSql(ctx, p.code ?? '', names);
+        return p.success_message;
+    }
+  } catch (e) {
+    if (e instanceof ProcessFailed) throw e;
+    throw new ProcessFailed(await publicError(ctx, e, `process "${p.name}"`), ctx.vis ? errorItem(ctx, e) : null);
+  }
+}
+
+/** A background chain: queued in this transaction (it runs only if the submit commits). */
+async function enqueueChain(ctx: PageContext, p: Process, conf: ChainConfig, names: Set<string>) {
+  const res = await ctx.client!.query('select meta.enqueue_process_job($1, $2::jsonb, $3, $4, $5)::text as id', [
+    p.id, JSON.stringify(backgroundBinds(ctx)), ctx.roles, ctx.locale.lang, ctx.request,
+  ]);
+  const id = res.rows[0].id as string;
+  if (conf.status_item) {
+    const name = conf.status_item.toUpperCase();
+    if (!names.has(name)) throw new Error(`Process "${p.name}": ${name} is not an item of this page or an application item.`);
+    ctx.session.state[name] = id;
+  }
+  return p.success_message ?? ctx.locale.t('process.queued', { id });
+}
+
 export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
   const messages: string[] = [];
   const names = assignable(ctx);
   for (const p of ctx.page.processes) {
-    if (p.point !== point) continue;
-    if (p.when_button && p.when_button !== ctx.request) continue;
-    // a grid's DML runs on that grid's Save button unless a button is named
-    if (p.type === 'grid_dml' && !p.when_button && ctx.request !== `GRID_SAVE_${p.region_id}`) continue;
-    if (!(await isAuthorized(ctx, p.authz))) continue;
-    try {
-      const msg =
-        p.type === 'form_dml' ? await formDml(ctx, p)
-        : p.type === 'grid_dml' ? await gridDml(ctx, p)
-        : p.type === 'data_load' ? await dataLoad(ctx, p)
-        : p.type === 'invoke_api' ? await invokeApi(ctx, p, names)
-        : (await runSql(ctx, p.code ?? '', names), p.success_message);
-      if (msg) messages.push(msg);
-    } catch (e) {
-      throw new ProcessFailed(await publicError(ctx, e, `process "${p.name}"`), errorItem(ctx, e));
-    }
+    // a chain's children run inside their chain only
+    if (p.point !== point || p.parent_process) continue;
+    if (!(await shouldRun(ctx, p))) continue;
+    const msg = await runOne(ctx, p, names, 0);
+    if (msg) messages.push(msg);
   }
   return messages;
 }

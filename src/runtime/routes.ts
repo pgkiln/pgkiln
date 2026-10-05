@@ -23,6 +23,7 @@ import { comboMultiple, MULTI_VALUE, popupPageSize, renderItem, searchLov } from
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
+import { downloadHeaders, type Download } from './processes.ts';
 import { moveCalendarEvent } from './calendar.ts';
 import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
 import { invalidatePage, lazyOf } from './region-cache.ts';
@@ -339,7 +340,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // a document template: ?doc=NAME (see documents.ts)
     const docName = ctx.params.get('doc');
 
-    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string };
+    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string; download?: Download };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -357,6 +358,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         } catch (e) {
           ctx.errors.page.push((e as Error).message);
         }
+        // a download process on load sends its file instead of the page
+        if (ctx.download && !docName && !downloadKey) return { download: ctx.download };
         await computeVisibility(ctx);
         if (docName) return renderDocument(ctx, docName);
         if (downloadKey) {
@@ -393,6 +396,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (result.redirect) return reply.redirect(result.redirect, 303);
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
     if (result.streamed) return reply;
+    if (result.download) return reply.headers(downloadHeaders(result.download)).send(result.download.content);
     if (result.file)
       return reply.header('content-disposition', `attachment; filename="${result.name}"`).header('cache-control', 'private, no-store').type(result.type!).send(result.file);
     return reply.type('text/html').send(result.html);
@@ -487,6 +491,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (!button) {
       await saveState(ctx.session);
       return reply.redirect(self, 303);
+    }
+    // a download process: the file is the answer (the page stays as it is in the browser)
+    if (ctx.download) {
+      await saveState(ctx.session);
+      logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'download', ip: ctx.ip, detail: ctx.download.name.slice(0, 200) });
+      return reply.headers(downloadHeaders(ctx.download)).send(ctx.download.content);
     }
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     await saveState(ctx.session);
