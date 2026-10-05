@@ -289,7 +289,7 @@ describe('built-in texts in German, French and Spanish', () => {
       for (const k of Object.keys(en)) assert.equal(holes(own[k]), holes(en[k]), `${lang} ${k}: the same placeholders`);
       if (lang !== 'en') assert.notEqual(translator(lang)('login.title'), translator('en')('login.title'), `${lang} login.title`);
     }
-    assert.deepEqual(BUILTIN_LANGUAGES.map(([l]) => l), ['en', 'nl', 'de', 'fr', 'es', 'it', 'pt', 'pl']);
+    assert.deepEqual(BUILTIN_LANGUAGES.map(([l]) => l), ['en', 'nl', 'de', 'fr', 'es', 'it', 'pt', 'pl', 'sv', 'da', 'nb']);
   });
 
   for (const [lang, title, required] of [['de', 'Anmelden', /ist erforderlich|muss/], ['fr', 'Se connecter', /obligatoire/], ['es', 'Iniciar sesión', /obligatorio/]] as const)
