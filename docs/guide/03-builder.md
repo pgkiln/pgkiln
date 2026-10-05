@@ -80,7 +80,8 @@ The parsing schema can't be `meta`, `information_schema` or a `pg_*` schema.
 application from a spreadsheet:
 
 1. **Upload** a CSV or TSV file (UTF-8 or Windows-1252; the delimiter is detected), an Excel `.xlsx`
-   file (the first sheet), JSON (an array of objects) or XML, up to `DATA_LOAD_MAX_MB` (50 MB) and
+   file (every sheet with rows becomes a table, see [several sheets](#several-sheets-or-tables-in-one-file)),
+   JSON (an array of objects; an object with several arrays becomes several tables) or XML, up to `DATA_LOAD_MAX_MB` (50 MB) and
    `DATA_LOAD_MAX_ROWS` (100,000 rows). Untick *First row contains column names* when it doesn't.
 2. **Check the proposal**: a preview of the first rows; the application's name, alias, parsing schema,
    authentication and first user (as for a blank application); the table name (`employee_list.xlsx`
@@ -103,6 +104,55 @@ application from a spreadsheet:
 Everything is a plain form (no JavaScript needed). The file is kept as a temporary file of your
 builder session between the steps; it is deleted when the application is created. To load more files
 into the table later, use the SQL Workshop's [Load Data](16-files.md#sql-workshop--load-data) or a data load definition.
+
+#### Several sheets or tables in one file
+
+An Excel workbook with several sheets (empty sheets are left out; at most 20), or a JSON object with
+several arrays of objects (`{"departments": [...], "employees": [...]}`), gives step 2 a section per
+sheet:
+
+- **Create a table from this sheet**: untick to leave the sheet out;
+- **Table name** (from the sheet name: `Order Lines` → `order_lines`), and the column names and types as above;
+- **Primary key**: a file column, or a new identity column `id`. Proposed: a column named `id`,
+  `code`, `<table>_id`, `<table>_code` or `<table>_no` (singular or plural) with a value in every row,
+  all different. A whole-number key becomes the table's identity key (new rows continue after the
+  highest loaded value); another key (a text code) becomes `not null unique` next to a new `id`.
+- **Foreign keys** (one list under the sheets): a column is proposed as a foreign key to another
+  table's key when it is named like the key column (`dept_id` → `departments.dept_id`), like the
+  other table and its key (`department_id` → `departments.id`, `project_code` → `projects.code`) or
+  like the other table alone (`department`), with a compatible type. A proposal is ticked when every
+  value is found in the other table, otherwise it shows how many rows don't match. Untick what you
+  don't want. After changing table or column names or keys, press **Update the proposals**: the
+  form is redrawn (nothing is created yet).
+
+**Create application** then creates, in one transaction: the app, the tables, the rows, the foreign
+keys (added after all rows are loaded, with an index on each foreign key column; a value that isn't
+found stops everything with the row's key in the message), an interactive report with a modal form
+per table (forms get a select list for each foreign key), a navigation entry per table, and with
+*Dashboard* one page with a chart per table (at most six): the rows per parent row for a table with a
+foreign key, otherwise per value of a column whose values repeat.
+
+### Creating an application from pasted data
+
+**Create → From pasted data** (`/builder/create/paste`, APEX: *Copy and Paste*): paste rows copied
+from a spreadsheet (tab-separated) or CSV text (comma, semicolon or `|`; detected) into the text
+area, give it a name (it proposes the application and table names) and press *Next*. The text is
+kept as a temporary file of your builder session and takes the same steps as an uploaded file. At
+most 4 MB of text; upload larger data as a file.
+
+### Creating an application from existing tables
+
+**Create → From existing tables** (`/builder/create/tables`): choose a schema (pgapex's `meta`,
+`information_schema` and the `pg_*` schemas aren't offered), then tick its tables and views (tables
+are ticked by default). The application gets that schema as its parsing schema and a role
+`app_<alias>` with the grants of a blank application on the schema (so **all** tables of the schema,
+not only the ticked ones). For each ticked table with a single-column primary key, an interactive
+report with a modal form (`meta.generate_page` *report_form*); for views and tables without such a
+key, a report page; a navigation entry each; and optionally a dashboard (a chart per table, as above;
+for existing tables the repeating values come from the planner statistics, so `ANALYZE` a table that
+was never analyzed). Everything is created in one transaction. Foreign keys to tables in another
+schema show in forms as select lists that the app's role may not be allowed to read: grant it, or
+pick a schema that holds them all.
 
 ### Importing
 

@@ -4827,3 +4827,132 @@ describe('sprint 34 application types and subscriptions', () => {
     }
   });
 });
+
+describe('sprint 35 appwizard', () => {
+  const ALIASES = ['sec35-aw', 'sec35-aw-t'];
+  const SRC = 'sec35_aw_src';
+  const DEV = 'sec35_aw_dev';
+  const DEV_PW = 'Sec35-aw-developer!';
+  const cleanup = async () => {
+    for (const alias of ALIASES) {
+      const schema = alias.replace(/-/g, '_');
+      await owner.query('delete from meta.app where alias = $1', [alias]);
+      await owner.query(`drop schema if exists ${schema} cascade`);
+      if ((await owner.query('select 1 from pg_roles where rolname = $1', [`app_${schema}`])).rowCount) {
+        await owner.query(`drop owned by app_${schema}`);
+        await owner.query(`drop role app_${schema}`);
+      }
+    }
+    await owner.query(`drop schema if exists ${SRC} cascade`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  };
+  const builder = async (user = 'admin', password = 'admin', start = '/builder/create/paste') => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password })).statusCode, 303);
+    await b.get(start);
+    return b;
+  };
+  const PASTE = { title: 'Sec paste', data: 'Name,"<script>alert(1)</script>"\nAnn,<b>x</b>\n', headers: 'true' };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
+    await owner.query(`create schema ${SRC}`);
+    await owner.query(`create table ${SRC}.thing (id int primary key, name text)`);
+  });
+  after(cleanup);
+
+  test('pasted data and existing tables need a builder login and the CSRF token', async () => {
+    const king = new FileBrowser(app);
+    await king.login('king');
+    for (const b of [new FileBrowser(app), king]) {
+      assert.equal((await b.get('/builder/create/paste')).statusCode, 302);
+      assert.equal((await b.get(`/builder/create/tables?schema=${SRC}`)).statusCode, 302);
+      assert.equal((await b.post('/builder/create/paste', PASTE)).statusCode, 302);
+      assert.equal((await b.post('/builder/create/tables', { schema: SRC, t_0: 'thing', alias: 'sec35-aw-t', name: 'x', authentication: 'none' })).statusCode, 302);
+    }
+    const dev = await builder();
+    for (const token of [undefined, 'wrong']) {
+      const form: Record<string, string> = token ? { __csrf: token } : {};
+      assert.equal((await dev.post('/builder/create/paste', { ...form, ...PASTE })).statusCode, 403);
+      assert.equal((await dev.post('/builder/create/tables', { ...form, schema: SRC, t_0: 'thing', alias: 'sec35-aw-t', name: 'x', authentication: 'none' })).statusCode, 403);
+    }
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec35-aw-t'`)).rowCount, 0);
+  });
+
+  test("pasted data is a temporary file of the builder session; its text is escaped", async () => {
+    const admin = await builder();
+    const res = await admin.submit('/builder/create/paste', PASTE);
+    assert.equal(res.statusCode, 303);
+    const url = res.headers.location as string;
+    const own = await admin.get(url);
+    assert.equal(own.statusCode, 200);
+    assert.doesNotMatch(own.body, /<script>alert\(1\)<\/script>|<b>x<\/b>/);
+    const other = await builder(DEV, DEV_PW);
+    const get = await other.get(url);
+    assert.equal(get.statusCode, 302);
+    assert.equal(get.headers.location, '/builder/create/file');
+    const big = await admin.submit('/builder/create/paste', { ...PASTE, data: 'x'.repeat(4.5 * 1024 * 1024) });
+    assert.equal(big.statusCode, 422);
+    assert.match(big.body, /At most 4 MB of text can be pasted/);
+  });
+
+  test('existing tables: pgapex, system and unknown schemas are refused; only the schema\'s own tables count', async () => {
+    const dev = await builder('admin', 'admin', '/builder/create/tables');
+    const base = { alias: 'sec35-aw-t', name: 'Sec tables', authentication: 'none' };
+    for (const schema of ['meta', 'pg_catalog', 'information_schema', 'pg_toast', 'no_such_schema', "x'; drop table meta.app; --"]) {
+      const res = await dev.submit('/builder/create/tables', { ...base, schema, t_0: 'app', t_1: 'pg_class' });
+      assert.equal(res.statusCode, 422, schema);
+      assert.match(res.body, /Choose one of the schemas in the list/);
+    }
+    for (const t of ['app', 'meta.app', '../thing', 'thing"; drop table meta.app; --', 'pg_class'])
+      assert.match((await dev.submit('/builder/create/tables', { ...base, schema: SRC, t_0: t })).body, /Choose at least one table or view/, t);
+    assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec35-aw-t'`)).rowCount, 0);
+    assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
+    // the app's role gets the schema it was built on, not pgapex's tables
+    const ok = await dev.submit('/builder/create/tables', { ...base, schema: SRC, t_0: 'thing' });
+    assert.equal(ok.statusCode, 200);
+    const priv = await owner.one(`select has_table_privilege('app_sec35_aw_t', '${SRC}.thing', 'select') as t, has_table_privilege('app_sec35_aw_t', 'meta.account', 'select') as m`);
+    assert.deepEqual(priv, { t: true, m: false });
+  });
+
+  test('several sheets: sheet names are escaped; table, column, key and foreign key fields never become SQL', async () => {
+    const { workbook } = await import('./xlsxbook.ts');
+    const book = workbook([
+      { name: '<img src=x onerror=alert(1)>', rows: [['ID', 'Name'], [1, 'A'], [2, 'B']] },
+      { name: 'Items', rows: [['ID', 'Name', 'Img src x onerror alert 1 ID'], [1, 'x', 1]] },
+    ]);
+    const dev = await builder('admin', 'admin', '/builder/create/file');
+    const up = await dev.upload('/builder/create/file', { headers: 'true' }, { file: { name: 'sec.xlsx', type: 'application/octet-stream', data: book } });
+    assert.equal(up.statusCode, 303);
+    const url = up.headers.location as string;
+    const page = await dev.get(url);
+    assert.doesNotMatch(page.body, /<img src=x/);
+    assert.match(page.body, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    const base: Record<string, string> = {
+      h: '1', name: 'Sec aw', alias: 'sec35-aw', schema: '', authentication: 'none',
+      s0_on: 'true', s0_table: 'img', s0_key: '0', s0_name_0: 'id', s0_type_0: 'integer', s0_name_1: 'name', s0_type_1: 'text',
+      s1_on: 'true', s1_table: 'items', s1_key: '0', s1_name_0: 'id', s1_type_0: 'integer', s1_name_1: 'name', s1_type_1: 'text', s1_name_2: 'other', s1_type_2: 'integer',
+    };
+    for (const [form, error] of [
+      [{ s0_table: 'img; drop table meta.app; --' }, /the table name must be lower-case/],
+      [{ s0_table: 'meta.app' }, /the table name must be lower-case/],
+      [{ s1_name_1: 'name text); drop table meta.app; --' }, /is not a valid column name/],
+      [{ s1_type_1: 'int); drop table meta.app; --' }, /unknown column type/],
+      [{ schema: 'meta' }, /can&#39;t be the parsing schema/],
+      [{ schema: 'pg_catalog' }, /can&#39;t be the parsing schema/],
+    ] as [Record<string, string>, RegExp][]) {
+      const res = await dev.submit(url, { ...base, ...form });
+      assert.equal(res.statusCode, 422, JSON.stringify(form));
+      assert.match(res.body, error);
+    }
+    assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
+    // a key or foreign key that wasn't proposed is ignored: no constraint to anything else
+    const res = await dev.submit(url, { ...base, s0_key: '0 or 1=1', s0_name_0: 'img_no', fk_1_2: '0', fk_1_1: "0); drop table meta.app; --", fk_0_1: '1', fkp_1_2: '0' });
+    assert.equal(res.statusCode, 200, res.body.slice(0, 1500));
+    const fks = (await owner.query(`select conrelid::regclass::text as t from pg_constraint where contype = 'f' and connamespace = 'sec35_aw'::regnamespace`)).rows;
+    assert.deepEqual(fks, [], 'img has no file key (s0_key was not a column index), so nothing can refer to it');
+    assert.equal((await owner.one(`select attidentity from pg_attribute where attrelid = 'sec35_aw.img'::regclass and attname = 'id'`)).attidentity, 'd');
+    assert.equal((await owner.one(`select count(*)::int as n from sec35_aw.img`)).n, 2);
+  });
+});

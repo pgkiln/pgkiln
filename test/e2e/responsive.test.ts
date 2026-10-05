@@ -13,6 +13,7 @@ import { buildApp } from '../../src/app.ts';
 import { closePools, owner } from '../../src/db.ts';
 import { createCopy } from '../../src/workingcopy.ts';
 import { subscribe } from '../../src/subscriptions.ts';
+import { workbook } from '../xlsxbook.ts';
 
 export const VIEWPORTS = {
   phone: { width: 390, height: 844 },
@@ -576,6 +577,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           await subscribe(sub, lib, 'lov', 'DEPARTMENTS_WITH_A_LONG_NAME', 'admin');
           return { subscriptions: `/builder/apps/${sub}/subscriptions`, subscribers: `/builder/apps/${lib}/subscriptions` };
         })()),
+        // (sprint 35) create application from pasted data and from existing tables
+        create_paste: '/builder/create/paste',
+        create_tables: '/builder/create/tables?schema=hr',
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -623,6 +627,42 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         }
       } finally {
         await dropApp();
+      }
+      // (sprint 35) a workbook with several sheets: step 2 with a section per sheet and foreign keys, the result, the dashboard
+      const wbAlias = `e2e-wb-${size.width}`;
+      const dropWb = async () => {
+        const sch = wbAlias.replace(/-/g, '_');
+        await owner.query('delete from meta.app where alias = $1', [wbAlias]);
+        await owner.query(`drop schema if exists ${sch} cascade`);
+        if ((await owner.query('select 1 from pg_roles where rolname = $1', [`app_${sch}`])).rowCount) {
+          await owner.query(`drop owned by app_${sch}`);
+          await owner.query(`drop role app_${sch}`);
+        }
+      };
+      await dropWb();
+      try {
+        const book = workbook([
+          { name: 'Departments with a rather long sheet name', rows: [['ID', 'Name', 'City'], ...Array.from({ length: 6 }, (_, i) => [i + 1, `Department ${i + 1}`, ['Utrecht', 'Delft'][i % 2]])] },
+          { name: 'Employees', rows: [['Employee ID', 'Name', 'Department ID', 'A rather long column heading without breaks_to_wrap'], ...Array.from({ length: 12 }, (_, i) => [i + 1, `Person ${i + 1}`, (i % 6) + 1, 'x'.repeat(40)])] },
+        ]);
+        await page.goto(`${base}/builder/create/file`);
+        await page.setInputFiles('#f_file', { name: 'e2e-company.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: book });
+        await Promise.all([page.waitForURL(/\/builder\/create\/file\/[0-9a-f-]{36}/), page.locator('main button.btn-hot').click()]);
+        await check(page, 'builder-create_file_sheets', vp);
+        await page.fill('#f_alias', wbAlias);
+        await page.fill('#f_s0_table', 'departments');
+        await page.selectOption('#f_authentication', 'none');
+        // without JavaScript: the form is posted to redraw the proposals for the new table name
+        await Promise.all([page.waitForNavigation(), page.getByRole('button', { name: 'Update the proposals' }).click()]);
+        assert.equal(await page.isChecked('input[name="fk_1_2"]'), true, 'employees.department_id → departments.id');
+        await Promise.all([page.waitForNavigation(), page.locator('main button.btn-hot').click()]);
+        assert.match(await page.locator('main').innerText(), /12 row\(s\) loaded/);
+        await check(page, 'builder-create_file_sheets_done', vp);
+        const res = await page.goto(`${base}/a/${wbAlias}/6`);
+        assert.equal(res?.status(), 200, `${wbAlias} dashboard`);
+        await check(page, 'app-from-sheets-dashboard', vp);
+      } finally {
+        await dropWb();
       }
       await page.context().close();
     });
