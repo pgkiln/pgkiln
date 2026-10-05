@@ -16,6 +16,10 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 
 ## Conventions (agreed with the project owner)
 
+- Agents follow `docs/development/agent-rules.md` (one file for every sprint: mode A one agent in the main
+  checkout, mode B parallel worktrees, plus a section per sprint). The per-sprint `sprint-NN-agent-rules.md`
+  files named in older sprint sections below were folded into it and removed.
+
 - Act as **product owner**: prioritise APEX parity, keep the parity matrix and CHANGELOG current.
 - **Branch per sprint** (`sprint-3`, `sprint-4`, …), logical commits, push the branch; the owner merges.
   Commit trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -1428,8 +1432,9 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
 ## Sprint 36 (IN PROGRESS): AI with Claude and OpenAI (owner, 2026-10-05: "keep going, I want Claude and OpenAI as options for the AI, work with 1 agent and keep going, don't stop")
 
 Branch `sprint-36` from `main` (v0.27.0). **One agent at a time** in the main checkout; tests on the throwaway DB
-`pgapex-ci` (5446). Rules: `docs/development/sprint-36-agent-rules.md` (AI rules at the end: official SDKs
+`pgapex-ci` (5446). Rules: `docs/development/agent-rules.md`, mode A, plus its "Sprint 36" section (official SDKs
 `@anthropic-ai/sdk` and `openai` allowed, keys encrypted, mock server in tests, default Claude model `claude-opus-5-5`).
+To continue: launch one agent with "Read `docs/development/agent-rules.md` and follow it (mode A). Sprint 36, item <n>."
 Each item finished, tested, committed and pushed before the next agent starts. After sprint 36: release 0.28.0, then
 sprint 37 (Workspaces, a new default style like "Iris", 🟡 rows) without asking.
 
