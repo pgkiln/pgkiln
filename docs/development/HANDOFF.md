@@ -1157,8 +1157,8 @@ can be merged after any item:
 | 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | **done** (bcfec61..14943e4) |
 | 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045 (unused), `hr_34` | **done** (ca079be..c6066d2) |
 | 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | **done** (40da186, 00d6d40, a972bb6) |
-| 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | **in progress** (agent launched 2026-10-05 after the owner said "keep going") |
-| 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | to do |
+| 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 | **done** (497fd88..6561f5f) |
+| 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | **in progress** |
 
 Later CI note: `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres
 service, Playwright deps).
@@ -1174,7 +1174,7 @@ report below, then item 5, then release 0.24.0 as described under "If a session 
 release 0.24.0 with items 1–3 only.
 
 **Coordinator already did (so a successor doesn't redo it):** parity rows Automations (✅) and Workflow (invoke API)
-plus the summary counts (80/25/10/6) and the "Last reviewed" line; CHANGELOG `[Unreleased]` for items 0–3; Data Workshop row ✅ (counts 81/24/10/6); `.env.example` `UNLOAD_STATEMENT_TIMEOUT`. Still to do
+plus the summary counts (80/25/10/6) and the "Last reviewed" line; CHANGELOG `[Unreleased]` for items 0–3; Data Workshop row ✅ (counts 81/24/10/6); `.env.example` `UNLOAD_STATEMENT_TIMEOUT`; item 4: Create page wizards row ✅ (counts 82/23/10/6) and its CHANGELOG entry. Still to do
 at release: rows for items 4–5, CHANGELOG entries for them, SECURITY.md (notes in the item reports below), version,
 CI matrix + v0.24.0.
 
@@ -1229,3 +1229,14 @@ CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check
   HR part, export/import not redefined. Env `UNLOAD_STATEMENT_TIMEOUT` (default 5min). Security: owner + developer
   session + CSRF like SQL Commands; read-only/one statement guard against mistakes, not a boundary (a developer can
   already run any SQL); nothing leaks into the pool. Tests 760 pass / 8 skip, e2e 90/90.
+- **4 create page wizards: DONE** (497fd88..6561f5f, pushed). Migration `047_page_wizards.sql`: `meta.wizard_catalog`,
+  `meta.wizard_defaults(kind, table)`, `meta.generate_page(app, kind, table, page, options jsonb)` for `form`, `cards`,
+  `calendar`, `chart`, `map`, `facets`, `master_detail` (`report_form`/`grid` hand over to generate_crud/generate_grid).
+  Builder `src/builder/wizards.ts`: step 1 type + table (GET), step 2 options with catalog defaults, POST creates the
+  pages and opens the designer; no JS needed. Optional modal form page, navigation entry, calendar drag and drop off by
+  default. Export/import not redefined; no HR part, no env vars. Security (for SECURITY.md): option column names must
+  exist in the table and go into SQL only as `%I`, table names schema-qualified, fixed lists for types/functions/icons;
+  `meta`, `pg_*`, `information_schema` refused; functions run as the caller, revoked from PUBLIC (tested for
+  `pgapex_runtime` and an app role); developer session + CSRF + app lock; generated calendar move SQL runs as the app
+  role (RLS) and the wizard warns to set `move_authz`. Limitation: the PostGIS map branch was checked only for its SQL
+  (no PostGIS in dev/CI). Tests 776 pass / 8 skip, e2e 90/90.

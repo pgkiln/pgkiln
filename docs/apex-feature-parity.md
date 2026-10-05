@@ -13,7 +13,7 @@ Last reviewed: 2026-10-05 (unreleased, sprint 32: automations with several actio
 
 | Area | ✅ | 🟡 | ❌ | ➖ | In short |
 |---|---:|---:|---:|---:|---|
-| App Builder and development | 8 | 3 | 4 | 0 | Page Designer with drag-and-drop and a code editor, wizards, search, where used, an Advisor, a CLI with one file per component, page locks and comments, supporting objects; no team/AI tooling |
+| App Builder and development | 9 | 2 | 4 | 0 | Page Designer with drag-and-drop and a code editor, wizards, search, where used, an Advisor, a CLI with one file per component, page locks and comments, supporting objects; no team/AI tooling |
 | Regions | 16 | 4 | 0 | 0 | All everyday regions; thirteen chart types with drill-down; calendars with week/day/list views and drag and drop; faceted search, smart filters and a region display selector; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; row ranges, lazy loading and region caching for large tables |
 | Items | 10 | 2 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
 | Logic and processing | 8 | 4 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons, download, chain and workflow processes; no custom JavaScript in dynamic actions |
@@ -23,7 +23,7 @@ Last reviewed: 2026-10-05 (unreleased, sprint 32: automations with several actio
 | Data and integration | 6 | 2 | 1 | 3 | REST APIs via PostgREST, REST data sources and web credentials, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 2 | 1 | 3 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; no AI |
 | Administration | 2 | 2 | 1 | 0 | Single workspace; Top SQL per app |
-| **Total** | **81** | **24** | **10** | **6** | 121 APEX features compared: 67% available, 20% partial |
+| **Total** | **82** | **23** | **10** | **6** | 121 APEX features compared: 68% available, 19% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -33,7 +33,7 @@ Last reviewed: 2026-10-05 (unreleased, sprint 32: automations with several actio
 |---|---|---|
 | App Builder: create, edit, delete, run apps | ✅ | Builder at `/builder` |
 | Create application wizard | 🟡 | Blank app with a dedicated database role and schema. No "from a spreadsheet", no blueprints (26.1) |
-| Create page wizards | 🟡 | *Report and form* and *Interactive grid* from any table; other page types start blank |
+| Create page wizards | ✅ | Report and form, interactive grid, form, cards, calendar, chart, map, faceted search and master-detail (stacked grids) from any table or view, with defaults from the catalog (columns, key, dates, positions, foreign keys), an optional modal form page and a navigation entry; also from SQL (`meta.generate_page`). No side-by-side or drill-down master-detail, no wizard for smart filters or trees |
 | Page Designer | ✅ | IDE-style window (dark or light): component tree, a layout canvas with drag and drop (with keyboard and button alternatives) and a gallery of regions, items and buttons, a filterable property editor; undo/redo; panes become tabs on phones. Settings forms for report, grid, chart, cards, calendar, faceted search, smart filters, display selector, map, tree and template component regions. A code editor for SQL, PL/pgSQL, JSON and HTML with highlighting and autocomplete of tables, columns and `:ITEM` binds (no extra libraries). Drag and drop needs a mouse; on touch screens the Arrange buttons move components |
 | Shared components | ✅ | Navigation menu, **lists** (static entries with nesting, badges, conditions, authorization and build options, or a query; for list regions, the navigation menu and the navigation bar), authorization schemes, build options, lists of values, application items and processes, access control, globalization, template components and plug-ins, web credentials, REST data sources, data load definitions, supporting objects |
 | Export / import | ✅ | `meta.export_app()` / `meta.import_app()`: portable JSON, also in the builder |

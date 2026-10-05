@@ -20,6 +20,10 @@ All notable changes to this project are documented here. The format follows
   (separator, enclosure, heading, BOM; formulas neutralised), JSON, XLSX or XML; streamed with a cursor
   (capped by `DOWNLOAD_MAX_ROWS`) in a read-only transaction with a statement timeout
   (`UNLOAD_STATEMENT_TIMEOUT`, default 5min); logged as `sql_unload`.
+- **Create page wizards** (migration 047) for form, cards, calendar, chart, map, faceted search and
+  master-detail pages, next to report and form and interactive grid: pick a table or view, review the
+  options proposed from the catalog (columns, key, dates, positions, foreign keys), optionally add a
+  modal form page and a navigation entry. Also from SQL with `meta.generate_page(...)`.
 
 ### Changed
 - CI: `actions/checkout`, `actions/setup-node` and `actions/upload-artifact` v7 (Node.js 24).
