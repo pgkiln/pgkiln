@@ -677,3 +677,6 @@ tr.row-conflict > td:first-child { border-left: 3px solid var(--warn); }
 @media (max-width: 420px) {
   .sd-col { grid-template-columns: 1fr; }
 }
+
+/* (sprint 36) AI services: long service and application names wrap */
+.ai-name { overflow-wrap: anywhere; min-width: 0; }
