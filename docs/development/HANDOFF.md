@@ -1450,7 +1450,8 @@ in the Sprint 35 table of HANDOFF.md; your worktree is /home/nickquispel/project
 responsive.test.ts, app.ts, builder.css); worktrees and containers removed. CI-style run (clean worktree, no `.env`,
 fresh postgres:17 on 5446): **959 pass / 10 skip, e2e 111/111**. Parity: Create application wizard ✅, Sample data ✅,
 Data Reporter ✅ (App Builder 13/1/1/0, Data and integration 8/1/0/2, totals 90/19/6/3). SECURITY.md rows, CHANGELOG,
-CI matrix v0.27.0. **Next candidates** (owner to choose): Workspaces (multi-tenant); a new default style like "Iris";
+CI matrix v0.27.0. CI on the merge: all green except `upgrade (v0.27.0)`, one flaky test (debug.test.ts saved a
+30-day-old debug request that a purge could delete first); fixed in the test after the tag (main, not re-tagged). **Next candidates** (owner to choose): Workspaces (multi-tenant); a new default style like "Iris";
 Blueprints / spec-driven development; the AI rows (provider decision pending); 🟡 rows (APEX PL/SQL APIs, Theme Roller
 conditional/dynamic properties, Instance administration, …). Data Reporter follow-ups: downloads, several sources.
 
