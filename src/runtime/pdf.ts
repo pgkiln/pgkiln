@@ -5,7 +5,7 @@ import type { Region } from '../metadata.ts';
 import { runtime, savepoint } from '../db.ts';
 import { substitute, type PageContext } from './context.ts';
 import { describeFacetFilter, facetFilters, reportFacetDefs } from './facet-state.ts';
-import { buildSql, cell, headingOf, isNumeric, maxRows, OPERATORS, PDF_MAX_ROWS, reportState, visibleColumns } from './report.ts';
+import { buildSql, cell, columnFormats, headingOf, isNumeric, maxRows, OPERATORS, PDF_MAX_ROWS, reportState, visibleColumns } from './report.ts';
 
 // Report printing: Actions → Download PDF. The same query, filters, sort
 // and visibility as the report on screen (and as the CSV download), drawn
@@ -160,10 +160,11 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
   const cols = printColumns(r, first.fields);
   const limit = Math.min(PDF_MAX_ROWS, maxRows(r, null) ?? PDF_MAX_ROWS);
   let truncated = false;
+  const fmtOf = columnFormats(ctx, r);
   const toCells = (row: unknown[]) =>
     cols.map(({ f, i }) => {
       const v = row[i];
-      return printable(typeof v === 'boolean' ? (v ? t('item.yes') : t('item.no')) : cell(v, f.dataTypeID, ctx.locale.format));
+      return printable(typeof v === 'boolean' ? (v ? t('item.yes') : t('item.no')) : cell(v, f.dataTypeID, fmtOf(f.name)));
     });
   async function* batches() {
     let batch = first.rows;

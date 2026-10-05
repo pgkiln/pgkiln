@@ -8,6 +8,7 @@ import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, maxFil
 import { restSql } from './rest-sources.ts';
 import { markdownHtml, sanitizeHtml } from '../richtext.ts';
 import { qrSvg, type Ecc } from '../qrcode.ts';
+import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -153,6 +154,20 @@ export const splitRange = (v: string | null | undefined): [string, string] => {
   return [from, to];
 };
 
+/** A number or display item's number format mask ({"format_mask": "999G990D00"}), when it is a valid one. */
+export function itemMask(item: Item): string | null {
+  if (item.type !== 'number' && item.type !== 'display') return null;
+  const m = typeof item.config?.format_mask === 'string' ? item.config.format_mask.trim() : '';
+  return m && !maskError(m) ? m : null;
+}
+
+/** The value as the item shows it: a number with the item's mask; anything else (e.g. text typed in error) as it is. */
+function maskedValue(ctx: PageContext, item: Item, value: string) {
+  const m = itemMask(item);
+  if (!m || !value || !isPlainNumber(value)) return value;
+  return formatNumber(value, m, ctx.locale.numbers) ?? value;
+}
+
 /** "lat,lng" with decimals */
 const LOCATION = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
 
@@ -205,7 +220,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     const [from, to] = splitRange(value);
     control = html`<div class="display-value" id="${id}">${value ? `${from} – ${to}` : ' '}</div>`;
   } else if (!editable) {
-    let shown = value;
+    let shown = maskedValue(ctx, item, value);
     if (hasLov(item))
       shown = MULTI_VALUE.has(item.type)
         ? splitValues(value).map((v) => options.find((o) => o.value === v)?.display ?? v).join(', ')
@@ -339,11 +354,14 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         break;
       default: {
         const typed: Record<string, string> = { number: 'number', date: 'date', password: 'password', email: 'email', tel: 'tel', url: 'url' };
-        const type = typed[item.type] ?? 'text';
-        const shown = item.type === 'password' ? '' : value;
+        // a number with a format mask is text in the language's notation (1.234,50), read back on submit
+        const masked = !!itemMask(item);
+        const type = masked ? 'text' : (typed[item.type] ?? 'text');
+        const shown = item.type === 'password' ? '' : masked ? maskedValue(ctx, item, value) : value;
         // inputmode/autocomplete give phones the right keyboard
         const extra =
-          type === 'number' ? ' step="any" inputmode="decimal"'
+          masked ? ' inputmode="decimal" autocomplete="off"'
+          : type === 'number' ? ' step="any" inputmode="decimal"'
           : type === 'password' ? ' autocomplete="new-password"'
           : type === 'email' ? ' autocomplete="email" inputmode="email"'
           : type === 'tel' ? ' autocomplete="tel" inputmode="tel"'

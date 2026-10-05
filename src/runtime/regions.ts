@@ -19,7 +19,8 @@ import { renderWorkflows } from './workflows.ts';
 import { renderMap } from './maps.ts';
 import { renderTree } from './tree.ts';
 import { renderTemplateRegion } from './template-region.ts';
-import { cell, maxRows, regionUrl, renderReport } from './report.ts';
+import { formatNumber, maskError } from '../numformat.ts';
+import { cell, columnFormats, maxRows, regionUrl, renderReport } from './report.ts';
 import { cacheKey, cacheOf, lazyOf, renderCaching, useCached } from './region-cache.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 
@@ -130,7 +131,15 @@ async function renderChart(ctx: PageContext, r: Region) {
   return html`${renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t, {
     ...(await chartLink(ctx, r, res.rows, res.fields)),
     gauge: gaugeConfig(r.config.gauge),
+    ...chartFormat(ctx, r),
   })}${firstRows(ctx, res)}`;
+}
+
+/** {"format_mask": "FML999G990"}: the chart's values (labels, tips, data table) with a number format mask. */
+function chartFormat(ctx: PageContext, r: Region): { format?: (v: number) => string } {
+  const mask = typeof r.config.format_mask === 'string' ? r.config.format_mask.trim() : '';
+  if (!mask || maskError(mask)) return {};
+  return { format: (v) => formatNumber(v, mask, ctx.locale.numbers) ?? ctx.locale.number.format(v) };
 }
 
 /** A gauge's numbers from the region settings (anything else is left out). */
@@ -194,18 +203,25 @@ async function renderCards(ctx: PageContext, r: Region) {
   const linkOk = link ? await pageAllowed(ctx, link.page) : false;
   const metric = r.config.style === 'metric';
   const s = (v: unknown) => (v === null || v === undefined ? '' : cell(v));
+  // title, subtitle, body and badge with their format masks ({"formats": {"badge": "FML999G990"}})
+  const fmtOf = columnFormats(ctx, r);
+  const types = new Map(res.fields.map((f) => [f.name, f.dataTypeID]));
+  const shown = (row: Record<string, unknown>, col: string) => {
+    const v = row[col];
+    return v === null || v === undefined ? '' : cell(v, types.get(col), fmtOf(col));
+  };
 
   const cards = rows.map((row) => {
     const inner = metric
       ? html`<span class="metric-icon">${icon(s(row.icon))}</span>
-          <span class="metric-value">${s(row.badge)}</span>
-          <span class="metric-label">${s(row.title)}</span>`
+          <span class="metric-value">${shown(row, 'badge')}</span>
+          <span class="metric-label">${shown(row, 'title')}</span>`
       : html`<div class="card-head">
             ${row.icon ? html`<span class="card-icon">${icon(s(row.icon))}</span>` : ''}
-            <div class="card-titles"><h3>${s(row.title)}</h3>${row.subtitle ? html`<p class="card-subtitle">${s(row.subtitle)}</p>` : ''}</div>
-            ${row.badge !== undefined && row.badge !== null ? html`<span class="badge-pill">${s(row.badge)}</span>` : ''}
+            <div class="card-titles"><h3>${shown(row, 'title')}</h3>${row.subtitle ? html`<p class="card-subtitle">${shown(row, 'subtitle')}</p>` : ''}</div>
+            ${row.badge !== undefined && row.badge !== null ? html`<span class="badge-pill">${shown(row, 'badge')}</span>` : ''}
           </div>
-          ${row.body ? html`<p class="card-body">${s(row.body)}</p>` : ''}`;
+          ${row.body ? html`<p class="card-body">${shown(row, 'body')}</p>` : ''}`;
     if (linkOk && link) {
       const items = fillItems(link.items, (col) => {
         const key = Object.keys(row).find((x) => x.toLowerCase() === col.toLowerCase());

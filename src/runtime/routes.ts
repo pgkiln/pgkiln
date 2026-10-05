@@ -19,7 +19,8 @@ import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './a
 import { bindValues, publicError, stripSemicolon, toState, writeOut, type PageContext } from './context.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
-import { comboMultiple, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
+import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
+import { parseNumber } from '../numformat.ts';
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
@@ -301,7 +302,11 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
     else if (item.type === 'markdown') ctx.session.state[item.name] = posted ? String(posted).replace(/\r\n?/g, '\n') : null;
     else if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
     else if (item.type === 'password' && !posted) continue;
-    else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
+    else if (itemMask(item) && posted !== undefined && posted !== '') {
+      // "1.234,50 €" → "1234.5"; text that isn't a number is kept as typed, and validate() reports it
+      const parsed = parseNumber(String(posted), itemMask(item), ctx.locale.numbers);
+      ctx.session.state[item.name] = parsed === null ? String(posted) : parsed || null;
+    } else ctx.session.state[item.name] = posted === undefined || posted === '' ? null : String(posted);
   }
 }
 

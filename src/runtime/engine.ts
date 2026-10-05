@@ -8,7 +8,8 @@ import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, stor
 import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { invokeApi } from './rest-sources.ts';
-import { lovLookup, ratingMax } from './items.ts';
+import { itemMask, lovLookup, ratingMax } from './items.ts';
+import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
 
 const ident = pg.escapeIdentifier;
@@ -137,6 +138,15 @@ export async function validate(ctx: PageContext) {
       else if (m[1] && m[2] && m[1] > m[2]) fail(i.name, ctx.locale.t('error.daterange_order', { label }));
       else if (i.required && (!m[1] || !m[2])) fail(i.name, ctx.locale.t('error.required', { label }));
     }
+  }
+  // a number item holds a number (one with a format mask was read in the language's notation on submit)
+  for (const i of ctx.page.items) {
+    const v = state[i.name];
+    if (i.type !== 'number' || !v || !vis.editable.has(i.name) || errors.items[i.name] || isPlainNumber(v)) continue;
+    const label = i.label ?? i.name;
+    const mask = itemMask(i);
+    const example = mask ? formatNumber('1234.5', mask, ctx.locale.numbers) : undefined;
+    fail(i.name, example && !example.startsWith('#') ? ctx.locale.t('error.number_format', { label, example }) : ctx.locale.t('error.not_number', { label }));
   }
   for (const i of ctx.page.items) {
     const v = state[i.name];
