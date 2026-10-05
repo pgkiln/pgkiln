@@ -196,6 +196,11 @@ select deptno, dname, loc from hr.dept
 It is saved by a **process of type `grid_dml`** whose region is the grid, which the wizard
 creates. **Without such a process the grid is read-only.**
 
+A grid can also edit the rows of a **REST data source** (region property *REST data source*
+instead of a table; the key column is `pk_column` or the source's first key column): Save, Add
+row and Delete then call the source's update, insert and delete operations, and are offered only
+for the operations the source defines ([chapter 19](19-rest-data-sources.md#writing-back-from-forms-and-grids)).
+
 End users can edit cells inline, add rows (**Add row**), tick rows for deletion, search, page, and
 **Save**. On save:
 
@@ -294,7 +299,9 @@ that column.
 
 - **Fetch**: when the page is shown and `pk_item` has a value, the row is read into the items. A
   row that doesn't exist (or is hidden by RLS) gives "record not found".
-- **Save**: a process of type **`form_dml`** does the DML according to the pressed button:
+- **Save**: a process of type **`form_dml`** does the DML according to the pressed button
+  (a form on a **REST data source** calls the source's insert, update and delete operations
+  instead, and fetches its row through the source: [chapter 19](19-rest-data-sources.md#writing-back-from-forms-and-grids)):
 
 | Button name | Operation |
 |---|---|

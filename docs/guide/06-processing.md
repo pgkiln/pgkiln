@@ -105,8 +105,8 @@ two combine well; see error handling below.
 
 | `type` | What it does |
 |---|---|
-| `form_dml` | Insert/update/delete the row of a **form region** (see [forms](04-pages-and-regions.md#form)) |
-| `grid_dml` | Save the changes of an **interactive grid** region; runs on the grid's Save button |
+| `form_dml` | Insert/update/delete the row of a **form region** (see [forms](04-pages-and-regions.md#form)); on a REST data source through its operations ([chapter 19](19-rest-data-sources.md#writing-back-from-forms-and-grids)) |
+| `grid_dml` | Save the changes of an **interactive grid** region; runs on the grid's Save button (a grid on a REST data source saves through the source's operations) |
 | `sql` | Run `code`: one or more SQL statements with bind variables |
 | `data_load` | Load the CSV/XLSX file of a file item into a table ([chapter 16](16-files.md#data-loading-in-an-application)) |
 | `invoke_api` | Call a web service (a REST data source or a URL, with a web credential) and put values of the response into items ([chapter 19](19-rest-data-sources.md#the-invoke_api-process)) |

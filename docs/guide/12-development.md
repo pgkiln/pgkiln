@@ -54,8 +54,11 @@ src/
   maptiles.ts              map tile server URL, attribution and CSP origin
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
-  websources.ts            web credentials (incl. OAuth2 token cache) and REST data sources: requests, JSON paths, typed rows, response cache;
-                           invoke(): the invoke API call shared by the invoke_api process and workflow step
+  websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
+                           tokens) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
+                           (callOperation); invoke(): the invoke API call shared by the invoke_api process and workflow step
+  restsync.ts              REST data source synchronisation into a local table (merge/replace/append as the app role), run log,
+                           syncTick() (scheduled and SQL-queued runs, called by the automations scheduler)
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
@@ -87,7 +90,8 @@ src/
     spatial.ts             spatial filtering on the server: map area and distance parsing, PostGIS detection and SQL (ST_Intersects, ST_DWithin), lat/lng fallback (bounding box, haversine)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
-    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke())
+    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke()),
+                           write-back of forms (fetch, form_dml) and grids (grid_dml) through the source's operations
     tree.ts                tree region
     lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
@@ -132,7 +136,8 @@ src/
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     process-jobs.ts        page designer: the Jobs tab of a background chain process
     template-spec.ts       template component property form (Shared Components)
-    websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns
+    websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns,
+                           write-back operations, synchronisation settings, Synchronise now and run history
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
