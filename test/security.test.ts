@@ -3576,3 +3576,138 @@ describe('sprint 32 automations: actions, error handling per row, meta.run_autom
     assert.doesNotMatch(page, /<script>alert|<img src=x/);
   });
 });
+
+describe('sprint 32 item 2: workflow invoke_api steps', () => {
+  const env = { ...process.env };
+  const OTHER = 'sec32-invoke';
+  let other: number;
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  const hits: { host: string; url: string; auth: string | null }[] = [];
+  let runWorkflow: (id: string) => Promise<number>;
+
+  before(async () => {
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    ({ runWorkflow } = await import('../src/workflow.ts'));
+    const http = await import('node:http');
+    mock = http.createServer((req, res) => {
+      hits.push({ host: req.headers.host ?? '', url: req.url!, auth: req.headers.authorization ?? null });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ items: [{ detail_pk: 'forged', workflow_id: '1', initiator: 'king', v: "x'); drop table hr.emp; --" }] }));
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+    await owner.query(`delete from meta.app where alias = $1`, [OTHER]);
+    other = (await owner.one(`insert into meta.app (alias, name) values ($1, 'S32 invoke') returning id`, [OTHER])).id;
+    await owner.query(`insert into meta.rest_source (app_id, name, url) values ($1, 'SEC32_FOREIGN', $2)`, [other, `${mockBase}/foreign`]);
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc, valid_for) values ($1, 'SEC32_CRED', 'bearer', $2, $3)`,
+      [appId, encryptSecret('sec32-secret'), ['https://api.example.com/']]);
+    await owner.query(`insert into meta.rest_source (app_id, name, url, row_selector, columns) values ($1, 'SEC32_ROWS', $2, 'items', $3)`,
+      [appId, `${mockBase}/rows`, JSON.stringify([{ name: 'detail_pk', type: 'text' }, { name: 'workflow_id', type: 'text' }, { name: 'initiator', type: 'text' }, { name: 'v', type: 'text' }])]);
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.workflow where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query(`delete from meta.workflow_definition where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
+    await owner.query('delete from meta.app where id = $1', [other]);
+    mock.close();
+    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+  });
+
+  /** Define (straight into the table, as SQL or an import could) and run a one-step workflow. */
+  const run = async (name: string, steps: unknown, vars: Record<string, unknown> = {}, detail: string | null = null) => {
+    await owner.query(`insert into meta.workflow_definition (app_id, name, title, steps) values ($1, $2, 'x', $3)`, [appId, name, JSON.stringify(steps)]);
+    const id = await owner.tx(async (c) => {
+      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'allen', true)`, [String(appId)]);
+      return (await c.query('select meta.start_workflow($1, $2, $3) as id', [name, detail, vars])).rows[0].id as string;
+    });
+    await runWorkflow(id);
+    return owner.one('select state, error, vars from meta.workflow where id = $1', [id]);
+  };
+
+  test('variable values are URL-encoded after a fixed host; a host from a variable is refused, even in a definition written by SQL', async () => {
+    let n = hits.length;
+    const w = await run('SEC32_PATH', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x/&V.?q=&V.` }], { v: '@evil.example/../a?b=1#c' });
+    assert.equal(w.state, 'completed', w.error);
+    assert.deepEqual(hits.slice(n).map((h) => [h.host, h.url]), [[new URL(mockBase).host, '/x/%40evil.example%2F..%2Fa%3Fb%3D1%23c?q=%40evil.example%2F..%2Fa%3Fb%3D1%23c']]);
+    n = hits.length;
+    for (const [i, url] of ['http://&HOST./x', `${mockBase}&P./x`, 'http://{h}.example.com/'].entries()) {
+      const bad = await run(`SEC32_HOST_${i}`, [{ name: 'CALL', type: 'invoke_api', url }], { host: '127.0.0.1' });
+      assert.equal(bad.state, 'faulted', url);
+      assert.match(bad.error, /fixed host/, url);
+    }
+    const dot = await run('SEC32_DOT', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x/&V./y` }], { v: '..' });
+    assert.match(dot.error, /not a valid value in a URL/);
+    assert.equal(hits.length, n, 'no request');
+  });
+
+  test('the outgoing allow-list and address checks apply; private addresses need PGAPEX_REST_PRIVATE_HOSTS', async () => {
+    const n = hits.length;
+    for (const [i, url] of ['http://169.254.169.254/latest/meta-data/', 'http://10.0.0.1/', 'https://example.com/', 'file:///etc/passwd'].entries()) {
+      const w = await run(`SEC32_SSRF_${i}`, [{ name: 'CALL', type: 'invoke_api', url }]);
+      assert.equal(w.state, 'faulted', url);
+      assert.match(w.error, /allow-list|private|http/, url);
+    }
+    process.env.PGAPEX_REST_PRIVATE_HOSTS = '';
+    try {
+      const w = await run('SEC32_LOOPBACK', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x` }]);
+      assert.equal(w.state, 'faulted');
+      assert.match(w.error, /private, loopback/);
+    } finally {
+      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    }
+    assert.equal(hits.length, n, 'no request');
+  });
+
+  test('REST data sources and credentials of another application are not found; "valid for" keeps a secret to its URLs', async () => {
+    const n = hits.length;
+    const w = await run('SEC32_FOREIGN', [{ name: 'CALL', type: 'invoke_api', source: 'SEC32_FOREIGN' }]);
+    assert.equal(w.state, 'faulted');
+    assert.match(w.error, /REST data source SEC32_FOREIGN does not exist/);
+    const c = await run('SEC32_VALIDFOR', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x`, credential: 'SEC32_CRED' }]);
+    assert.equal(c.state, 'faulted');
+    assert.match(c.error, /not valid for this URL/);
+    assert.doesNotMatch(JSON.stringify(c), /sec32-secret/);
+    assert.equal(hits.length, n, 'no request');
+  });
+
+  test('response values are data: they never replace DETAIL_PK, WORKFLOW_ID or INITIATOR, and bind as literals in later SQL', async () => {
+    const w = await run('SEC32_ROWS', [
+      { name: 'CALL', type: 'invoke_api', source: 'SEC32_ROWS' },
+      { name: 'USE', type: 'sql', code: 'select :V as v_back, :DETAIL_PK as pk_back, :INITIATOR as who_back' },
+    ], {}, '7369');
+    assert.equal(w.state, 'completed', w.error);
+    assert.equal(w.vars.DETAIL_PK, undefined);
+    assert.equal(w.vars.INITIATOR, undefined);
+    assert.equal(w.vars.V_BACK, "x'); drop table hr.emp; --");
+    assert.equal(w.vars.PK_BACK, '7369');
+    assert.equal(w.vars.WHO_BACK, 'allen');
+    assert.ok((await owner.one(`select count(*)::int as n from hr.emp`)).n > 0);
+  });
+
+  test('builder: saving steps checks them, needs a developer and a CSRF token', async () => {
+    const anon = new Browser();
+    const form = { name: 'SEC32_BUILDER', title: 'x', steps: JSON.stringify([{ name: 'CALL', type: 'invoke_api', url: 'http://&HOST./x' }]) };
+    assert.equal((await anon.post(`/builder/apps/${appId}/shared/workflow_definition`, form)).statusCode, 302);
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get(`/builder/apps/${appId}/shared`);
+    assert.equal((await b.post(`/builder/apps/${appId}/shared/workflow_definition`, form)).statusCode, 403);
+    await b.get(`/builder/apps/${appId}/shared`);
+    const res = await b.post(`/builder/apps/${appId}/shared/workflow_definition`, { __csrf: b.lastCsrf, ...form });
+    assert.notEqual(res.statusCode, 500);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.workflow_definition where name = 'SEC32_BUILDER'`)).n, 0);
+    // the same form with a valid step is saved
+    await b.get(`/builder/apps/${appId}/shared`);
+    await b.post(`/builder/apps/${appId}/shared/workflow_definition`, { __csrf: b.lastCsrf, ...form, steps: JSON.stringify([{ name: 'CALL', type: 'invoke_api', url: 'http://api.example.com/&HOST.' }]) });
+    assert.equal((await owner.one(`select count(*)::int as n from meta.workflow_definition where name = 'SEC32_BUILDER'`)).n, 1);
+  });
+});
