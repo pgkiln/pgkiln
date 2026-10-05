@@ -244,6 +244,7 @@ Components used by the whole application:
 | **Web credentials** | How the application signs in to web services (basic, API key header, bearer token, OAuth2 client credentials); the secret is write-only and encrypted ([chapter 19](19-rest-data-sources.md#web-credentials)) |
 | **REST data sources** | Web service endpoints whose JSON becomes rows for regions and lists of values, with a **Test** button and suggested columns ([chapter 19](19-rest-data-sources.md#rest-data-sources)) |
 | **Template components** | HTML templates with placeholders and directives, used as a region type and as report column templates, with a preview; shared as plug-in files ([chapter 4](04-pages-and-regions.md#template-components)) |
+| **Data load definitions** | A target table, file format (CSV, Excel, JSON, XML with its row element) and column mapping with transformations, for SQL Workshop → Load Data and the `data_load` process ([chapter 16](16-files.md#data-load-definitions)) |
 
 ## Users (the user directory)
 
@@ -349,8 +350,38 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
 - **Object Browser**: tables, views and functions per schema. For a table you see columns, types
   and defaults, **row level security policies**, **grants** and the first 25 rows; for a
   function, its source.
-- **Load Data**: load a CSV, TSV or Excel file into a new table (with inferred column types) or
-  an existing one (append, merge by primary key, or replace), with a per-row error report
+- **SQL Scripts**: saved scripts, shared by all developers. Create one in the editor, upload a
+  `.sql` file (UTF-8, up to 5 MB) or save one from Quick SQL; download it again as `.sql`. **Run**
+  splits the script into statements at semicolons (outside strings, comments, quoted identifiers,
+  `$$` bodies and `BEGIN ATOMIC … END`) and runs them one after another, with a **result per
+  statement**: OK or the error, the command and row count, the time, and the first 10 rows of a
+  query. Choose what happens when a statement fails: **stop** the script or **continue** with the
+  next one. With **Run in one transaction**, *stop* rolls the whole script back and *continue*
+  keeps the statements that worked (each runs in a savepoint). psql meta-commands (`\set`, `\i`,
+  `\connect`) are reported as skipped. Every run is kept in the **run history** (the last 500
+  runs), per script and overall, and in the activity log (`sql_script`). A script runs on a
+  connection of its own that is closed afterwards, so `SET ROLE` or `SET search_path` in a script
+  doesn't leak into other requests.
+- **Quick SQL**: write tables in a shorthand and get the PostgreSQL DDL; save it as a script or
+  run it. A table name on its own line with its columns indented below it; a table indented under
+  another becomes a child table with a foreign key `<parent>_id`. Types follow the column name
+  (`*_id` bigint, `*_at` timestamptz, `*_on`/`*_date` date, `is_*` boolean, `price`/`amount`
+  numeric, otherwise text) or are written after it (`vc200`, `num(10,2)`, `int`, `date`, `tstz`,
+  `json`, `bool`, `uuid` …). Column directives: `/nn`, `/pk`, `/unique`, `/idx`, `/fk table`,
+  `/check a, b`, `/between 1 and 10`, `/default value`, `/lower`, `/upper`, `[a comment]`; table
+  directive `/auditcols` (created/updated columns with a trigger). Settings: `# pk: identity | seq
+  | guid | none`, `# schema: name`, `# prefix: xx`, `# drop: true`, `# auditcols: true`. `view name
+  t1 t2` creates a view joining the tables by their foreign keys. Names become valid identifiers
+  and values literals, so the DDL is always well-formed; problems are listed with line numbers.
+- **Query Builder**: choose a schema and its tables and views; joins follow the **foreign keys**
+  (inner or left; tables without one are cross joined, with a note). Pick the columns, conditions
+  (`=`, `<>`, `<`, `like`, `in (a, b)`, `is null` …, combined with AND or OR), the sort, `distinct`
+  and a row limit. The SELECT is shown and opens in SQL Commands. The state is in the URL, so a
+  query can be bookmarked; it works without JavaScript. Only names from the catalog are used, and
+  condition values are string literals.
+- **Load Data**: load a CSV, TSV, Excel, JSON or XML file into a new table (with inferred column
+  types) or an existing one (append, merge by primary key, or replace), with a per-row error
+  report, or with a saved **data load definition**; a mapping can be saved as one
   ([chapter 16](16-files.md#sql-workshop--load-data)).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
@@ -381,6 +412,7 @@ imports as empty. Import refuses other formats.
 | `report_layouts` | report layouts; the logo as base64 |
 | `template_components` | template components (regions and report columns refer to them by static id) |
 | `web_credentials`, `rest_sources` | web credentials **without their secrets**, and REST data sources ([chapter 19](19-rest-data-sources.md)) |
+| `data_load_definitions` | data load definitions ([chapter 16](16-files.md#data-load-definitions)) |
 | `nav` | navigation menu (with ids, so parents can be linked again) |
 | `pages` | every page with its `regions`, `items`, `buttons`, `dynamic_actions`, `validations` and `processes` |
 
