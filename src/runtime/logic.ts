@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { applyBinds } from '../binds.ts';
-import { savepoint } from '../db.ts';
+import { runtime, savepoint } from '../db.ts';
 import type { Branch, Computation, Condition } from '../metadata.ts';
 import { isAuthorized, sqlTrue } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
@@ -211,14 +211,13 @@ async function branchFunction(ctx: PageContext, b: Branch): Promise<string | nul
 async function otherApp(ctx: PageContext, b: Branch): Promise<string | null> {
   const alias = b.target_app ?? '';
   const page = b.target_page;
+  // pgapex's runtime connection reads the metadata (the app's role may not)
   const row = page
-    ? (
-        await ctx.client!.query(
-          `select a.id, a.alias from meta.app a join meta.page p on p.app_id = a.id
-            where a.alias = $1 and p.page_no = $2 and meta.build_option_on(a.id, p.build_option)`,
-          [alias, page],
-        )
-      ).rows[0]
+    ? await runtime.one<{ id: number; alias: string }>(
+        `select a.id, a.alias from meta.app a join meta.page p on p.app_id = a.id
+          where a.alias = $1 and p.page_no = $2 and meta.build_option_on(a.id, p.build_option)`,
+        [alias, page],
+      )
     : undefined;
   if (!row || !page) {
     ctx.errors.page.push(ctx.locale.t('logic.branch_no_app', { name: b.name, app: alias, page: String(page ?? '') }));
