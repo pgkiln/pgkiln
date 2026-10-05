@@ -43,7 +43,7 @@ interface Col {
 export async function wizardTables(dbRole: string | null) {
   return (
     await owner.query<{ t: string; access: boolean }>(
-      `select c.oid::regclass::text as t,
+      `select format('%I.%I', n.nspname, c.relname) as t,
               $1::text is null or not exists (select 1 from pg_roles where rolname = $1)
                 or has_table_privilege($1, c.oid, 'select') as access
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -132,7 +132,7 @@ export async function wizardRoutes(app: FastifyInstance) {
     const table = String(req.query.table ?? '');
     const rel = KINDS.has(kind) && table
       ? await owner.one<{ t: string; relkind: string }>(
-          `select c.oid::regclass::text as t, c.relkind::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          `select meta.wizard_qname(c.oid) as t, c.relkind::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
             where c.oid = to_regclass($1) and c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')`,
           [table],
         )
@@ -231,7 +231,7 @@ export async function wizardRoutes(app: FastifyInstance) {
       case 'master_detail': {
         const details = (
           await owner.query<{ t: string; col: string }>(
-            `select con.conrelid::regclass::text as t, a.attname::text as col
+            `select meta.wizard_qname(con.conrelid) as t, a.attname::text as col
                from pg_constraint con join pg_attribute a on a.attrelid = con.conrelid and a.attnum = con.conkey[1]
               where con.confrelid = $1::regclass and con.contype = 'f' and con.conrelid <> con.confrelid and array_length(con.conkey, 1) = 1
               order by 1, 2`,

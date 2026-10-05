@@ -88,6 +88,12 @@ language sql stable as $$
    order by c.attnum
 $$;
 
+-- a table's name with its schema, for generated SQL (whatever the search path at run time)
+create function meta.wizard_qname(p_table regclass) returns text
+language sql stable as $$
+  select format('%I.%I', n.nspname, c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.oid = p_table
+$$;
+
 -- the single-column primary key of a table (null for views and composite keys)
 create function meta.wizard_pk(p_table regclass) returns text
 language sql stable as $$
@@ -113,7 +119,7 @@ create function meta.wizard_expr(p_table regclass, p_col text) returns text
 language sql stable as $$
   select case
            when c.fk_display is not null and c.fk_display <> c.fk_column
-             then format('(select p.%I from %s p where p.%I = t.%I)', c.fk_display, c.fk_table, c.fk_column, c.column_name)
+             then format('(select p.%I from %s p where p.%I = t.%I)', c.fk_display, meta.wizard_qname(c.fk_table), c.fk_column, c.column_name)
            else format('t.%I', c.column_name)
          end
     from meta.wizard_catalog(p_table) c where c.column_name = p_col
@@ -242,7 +248,7 @@ begin
        and con.confkey[1] = (select ordinal from meta.wizard_catalog(p_table) where is_pk)
      order by con.conrelid::regclass::text, con.conname
      limit 1;
-    v_out := v_out || jsonb_build_object('detail', v_detail.detail::text, 'detail_column', v_detail.col,
+    v_out := v_out || jsonb_build_object('detail', meta.wizard_qname(v_detail.detail), 'detail_column', v_detail.col,
       'label', meta.wizard_label(v_rel) || coalesce(' and ' || meta.wizard_label((select relname from pg_class where oid = v_detail.detail)), ''));
   else
     raise exception 'unknown page type "%"', p_kind;
@@ -285,7 +291,7 @@ language sql stable as $$
     from (
       select column_name,
              case when fk_table is not null and column_name is distinct from p_skip
-                  then jsonb_build_object('lov', format('select %I, %I from %s order by 1', coalesce(fk_display, fk_column), fk_column, fk_table))
+                  then jsonb_build_object('lov', format('select %I, %I from %s order by 1', coalesce(fk_display, fk_column), fk_column, meta.wizard_qname(fk_table)))
                   else '{}'::jsonb end
              || case when not_null and not has_default and not is_pk and column_name is distinct from p_skip
                      then '{"required": true}'::jsonb else '{}'::jsonb end as cfg
@@ -317,7 +323,7 @@ begin
   v_page := meta.wizard_new_page(p_app, p_page, case when p_modal then p_label || ' Form' else p_label end,
                                  coalesce(p_return, p_app.home_page), case when p_modal then 'modal' else 'normal' end);
   insert into meta.region (page_id, seq, title, type, table_name, pk_column, pk_item, template)
-  values (v_page, 10, p_label, 'form', p_table::text, v_pk, v_pk_item, case when p_modal then 'plain' else 'standard' end)
+  values (v_page, 10, p_label, 'form', meta.wizard_qname(p_table), v_pk, v_pk_item, case when p_modal then 'plain' else 'standard' end)
   returning id into v_region;
 
   for c in select * from meta.wizard_catalog(p_table) order by ordinal loop
@@ -338,7 +344,7 @@ begin
       else 'text'
     end;
     if v_type = 'select' then
-      v_lov := format('select %I as d, %I as r from %s order by 1', coalesce(c.fk_display, c.fk_column), c.fk_column, c.fk_table);
+      v_lov := format('select %I as d, %I as r from %s order by 1', coalesce(c.fk_display, c.fk_column), c.fk_column, meta.wizard_qname(c.fk_table));
     end if;
     insert into meta.item (page_id, region_id, seq, name, label, type, lov, source_column, required)
     values (v_page, v_region, v_seq, meta.wizard_item(p_page, c.column_name), meta.wizard_label(c.column_name),
@@ -404,6 +410,14 @@ begin
   if p_kind not in ('report_form', 'grid', 'form', 'cards', 'calendar', 'chart', 'map', 'facets', 'master_detail') then
     raise exception 'unknown page type "%"', p_kind;
   end if;
+  -- the application's own data: not pgapex's or the system's tables
+  if (select n.nspname ~ '^pg_' or n.nspname in ('information_schema', 'meta')
+        from pg_class rel join pg_namespace n on n.oid = rel.relnamespace where rel.oid = p_table) then
+    raise exception 'pages can''t be generated on %', p_table;
+  end if;
+  if (select relkind from pg_class where oid = p_table) not in ('r', 'p', 'v', 'm') then
+    raise exception '% is not a table or view', p_table;
+  end if;
   if p_options is null or jsonb_typeof(p_options) <> 'object' then
     p_options := '{}';
   end if;
@@ -449,8 +463,8 @@ begin
     insert into meta.region (page_id, seq, title, type, columns, source, table_name, pk_column, config)
     values (v_page, 10, meta.wizard_label((select relname from pg_class where oid = p_table)), 'grid', 12,
             format(E'select %s\n  from %s', (select string_agg(quote_ident(column_name), ', ' order by ordinal)
-                                              from meta.wizard_catalog(p_table) where kind <> 'binary'), p_table),
-            p_table::text, v_pk,
+                                              from meta.wizard_catalog(p_table) where kind <> 'binary'), meta.wizard_qname(p_table)),
+            meta.wizard_qname(p_table), v_pk,
             jsonb_build_object('page_size', 10, 'columns', meta.wizard_grid_columns(p_table),
                                'select_row', jsonb_build_object('column', v_pk, 'item', v_item)))
     returning id into v_region;
@@ -461,8 +475,8 @@ begin
             format(E'select %s\n  from %s\n where %I = :%s::%s',
                    (select string_agg(quote_ident(column_name), ', ' order by ordinal)
                       from meta.wizard_catalog(v_detail) where kind <> 'binary' and column_name <> v_a),
-                   v_detail, v_a, v_item, (select type_sql from meta.wizard_catalog(p_table) where column_name = v_pk)),
-            v_detail::text, v_dpk,
+                   meta.wizard_qname(v_detail), v_a, v_item, (select type_sql from meta.wizard_catalog(p_table) where column_name = v_pk)),
+            meta.wizard_qname(v_detail), v_dpk,
             jsonb_build_object('page_size', 10, 'columns', meta.wizard_grid_columns(v_detail, v_a),
                                'master', jsonb_build_object('item', v_item, 'column', v_a)))
     returning id into v_report;
@@ -495,7 +509,7 @@ begin
         meta.wizard_expr(p_table, v_d) || ' as badge',
         v_key);
       insert into meta.region (page_id, seq, title, type, source, config)
-      values (v_page, 10, v_label, 'cards', format(E'select %s\n  from %s t\n order by 1', v_src, p_table),
+      values (v_page, 10, v_label, 'cards', format(E'select %s\n  from %s t\n order by 1', v_src, meta.wizard_qname(p_table)),
               jsonb_strip_nulls(jsonb_build_object('link', v_link)))
       returning id into v_region;
 
@@ -511,7 +525,7 @@ begin
       end if;
       v_src := concat_ws(E',\n       ',
         format('t.%I as start_date', v_a),
-        format('t.%I as end_date', v_b),
+        case when v_b is not null then format('t.%I as end_date', v_b) end,
         coalesce(meta.wizard_expr(p_table, v_c), quote_literal(v_label)) || ' as title',
         v_key);
       v_cfg := jsonb_strip_nulls(jsonb_build_object('link', v_link, 'key', v_pk));
@@ -525,12 +539,12 @@ begin
           raise exception 'drag and drop needs a table with a single-column primary key (% has none)', p_table;
         end if;
         v_cfg := v_cfg || jsonb_build_object('move', format('update %s set %I = :NEW_START::%s%s where %I = :EVENT_ID::%s',
-          p_table, v_a, (select type_sql from meta.wizard_catalog(p_table) where column_name = v_a),
+          meta.wizard_qname(p_table), v_a, (select type_sql from meta.wizard_catalog(p_table) where column_name = v_a),
           case when v_b is not null then format(', %I = :NEW_END::%s', v_b, (select type_sql from meta.wizard_catalog(p_table) where column_name = v_b)) else '' end,
           v_pk, (select type_sql from meta.wizard_catalog(p_table) where column_name = v_pk)));
       end if;
       insert into meta.region (page_id, seq, title, type, source, config)
-      values (v_page, 10, v_label, 'calendar', format(E'select %s\n  from %s t', v_src, p_table), v_cfg)
+      values (v_page, 10, v_label, 'calendar', format(E'select %s\n  from %s t', v_src, meta.wizard_qname(p_table)), v_cfg)
       returning id into v_region;
 
     elsif p_kind = 'chart' then
@@ -561,7 +575,7 @@ begin
                      case when v_b is null then 'count(*)' else format('%s(t.%I)', v_c, v_b) end, v_d,
                      meta.wizard_expr(p_table, v_a), meta.wizard_label(v_a),
                      case when v_b is null then '' else format(', t.%I', v_b) end,
-                     p_table, case when v_kind in ('bar', 'donut', 'pie', 'funnel') then '2 desc' else '1' end),
+                     meta.wizard_qname(p_table), case when v_kind in ('bar', 'donut', 'pie', 'funnel') then '2 desc' else '1' end),
               jsonb_build_object('kind', v_kind))
       returning id into v_region;
 
@@ -598,7 +612,7 @@ begin
         meta.wizard_expr(p_table, meta.wizard_col(p_table, o ->> 'body', 'body column')) || ' as body',
         v_key);
       insert into meta.region (page_id, seq, title, type, source, config)
-      values (v_page, 10, v_label, 'map', format(E'select %s\n  from %s t\n where %s', v_cols, p_table, v_d),
+      values (v_page, 10, v_label, 'map', format(E'select %s\n  from %s t\n where %s', v_cols, meta.wizard_qname(p_table), v_d),
               jsonb_strip_nulls(jsonb_build_object('link', v_link)))
       returning id into v_region;
       if coalesce((o ->> 'report')::boolean, true) then
@@ -609,22 +623,22 @@ begin
                        (select string_agg(meta.wizard_expr(p_table, column_name) || ' as ' || quote_ident(column_name), ', ' order by ordinal)
                           from meta.wizard_catalog(p_table)
                          where kind not in ('binary', 'geometry', 'point') and column_name not in ('lat', 'lng', 'location')),
-                       v_src, p_table),
+                       v_src, meta.wizard_qname(p_table)),
                 jsonb_strip_nulls(jsonb_build_object('link', v_link || jsonb_build_object('column', v_pk))))
         returning id into v_report;
         update meta.region set config = config || jsonb_build_object('report', v_report) where id = v_region;
       end if;
 
     elsif p_kind = 'facets' then
+      perform meta.wizard_col(p_table, x, 'report column') from jsonb_array_elements_text(coalesce(o -> 'columns', '[]')) x;
+      perform meta.wizard_col(p_table, x, 'facet column') from jsonb_array_elements_text(coalesce(o -> 'facets', '[]')) x;
       -- the report: the chosen columns, and the parent's display column next to each foreign key
       v_cols := null;
       for c in
         select w.* from meta.wizard_catalog(p_table) w
-         where w.column_name in (select meta.wizard_col(p_table, x, 'report column')
-                                   from jsonb_array_elements_text(coalesce(o -> 'columns', '[]')) x)
+         where w.column_name in (select x from jsonb_array_elements_text(coalesce(o -> 'columns', '[]')) x)
             or w.is_pk
-            or w.column_name in (select meta.wizard_col(p_table, x, 'facet column')
-                                   from jsonb_array_elements_text(coalesce(o -> 'facets', '[]')) x)
+            or w.column_name in (select x from jsonb_array_elements_text(coalesce(o -> 'facets', '[]')) x)
          order by w.ordinal
       loop
         continue when c.kind in ('binary', 'geometry');
@@ -649,7 +663,7 @@ begin
           'custom', case when c.kind in ('number', 'date', 'timestamp') and c.fk_table is null then true end)));
       end loop;
       insert into meta.region (page_id, seq, title, type, columns, source, config)
-      values (v_page, 20, v_label, 'report', 9, format(E'select %s\n  from %s t', v_cols, p_table),
+      values (v_page, 20, v_label, 'report', 9, format(E'select %s\n  from %s t', v_cols, meta.wizard_qname(p_table)),
               jsonb_strip_nulls(jsonb_build_object('link', v_link || jsonb_build_object('column', v_pk))))
       returning id into v_region;
       insert into meta.region (page_id, seq, title, type, columns, template, config)
@@ -671,7 +685,7 @@ begin
 end
 $$;
 
-revoke all on function meta.wizard_catalog(regclass), meta.wizard_pk(regclass), meta.wizard_col(regclass, text, text),
+revoke all on function meta.wizard_catalog(regclass), meta.wizard_qname(regclass), meta.wizard_pk(regclass), meta.wizard_col(regclass, text, text),
   meta.wizard_expr(regclass, text), meta.wizard_display(regclass), meta.wizard_defaults(text, regclass),
   meta.wizard_new_page(meta.app, int, text, int, text), meta.wizard_nav(meta.app, text, text, int),
   meta.wizard_grid_columns(regclass, text), meta.wizard_form(meta.app, regclass, int, text, int, boolean, text[]),

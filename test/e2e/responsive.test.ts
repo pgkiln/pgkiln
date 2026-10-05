@@ -424,6 +424,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         })(),
         supporting_objects: `/builder/apps/${appId}/supporting-objects?imported=1`,
         locked_page: `/builder/pages/${(await owner.one('select id from meta.page where app_id = $1 and page_no = 31', [appId])).id}`,
+        // (sprint 32) step 2 of the create page wizards
+        ...Object.fromEntries(
+          [['form', 'hr.emp'], ['cards', 'hr.emp'], ['calendar', 'hr.leave_request'], ['chart', 'hr.emp'], ['map', 'hr.dept'], ['facets', 'hr.emp'], ['master_detail', 'hr.dept'], ['report_form', 'hr.dept']]
+            .map(([kind, table]) => [`wizard_${kind}`, `/builder/apps/${appId}/wizard?kind=${kind}&table=${table}`]),
+        ),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);

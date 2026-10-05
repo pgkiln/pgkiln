@@ -3799,3 +3799,100 @@ describe('sprint 32 item 3: SQL Workshop unload data', () => {
     assert.equal(missing.statusCode, 422, 'only listed tables and views');
   });
 });
+
+describe('sprint 32 item 4: create page wizards', () => {
+  const alias = 'sec32-wizards';
+  let wizApp: number;
+  const builder = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get(`/builder/apps/${wizApp}`);
+    return b;
+  };
+  const generate = (table: string, kind: string, page: number, options: Record<string, unknown>) =>
+    owner.one('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb) as id', [alias, kind, table, page, JSON.stringify(options)]);
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = '${alias}'`);
+    await owner.query(`drop table if exists public.sec32_wiz; create table public.sec32_wiz (id int primary key, "na""me; drop table x" text, d date, n int);
+      insert into public.sec32_wiz values (1, '<script>alert(1)</script>', current_date, 5); grant select on public.sec32_wiz to pgapex_runtime`);
+    wizApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Wizard security', 'none') returning id`, [alias])).id;
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [wizApp]);
+    await owner.query('delete from meta.builder_lock where app_id = $1', [wizApp]).catch(() => undefined);
+    await owner.query('drop table if exists public.sec32_wiz');
+  });
+
+  test('needs a builder login (an application session is not enough); POST needs the CSRF token', async () => {
+    const king = new Browser();
+    await king.login('king');
+    const form = { kind: 'cards', table: 'public.sec32_wiz', report_page: '10' };
+    for (const b of [new Browser(), king]) {
+      const res = await b.get(`/builder/apps/${wizApp}/wizard?kind=cards&table=public.sec32_wiz`);
+      assert.equal(res.statusCode, 302);
+      assert.equal((await b.post(`/builder/apps/${wizApp}/wizard`, form)).statusCode, 302);
+    }
+    const dev = await builder();
+    for (const token of [undefined, 'wrong']) assert.equal((await dev.post(`/builder/apps/${wizApp}/wizard`, token ? { __csrf: token, ...form } : form)).statusCode, 403);
+    assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [wizApp])).n, 0);
+  });
+
+  test('an application locked by another developer refuses the wizard', async () => {
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'sec32_other')`, [wizApp]);
+    try {
+      const dev = await builder();
+      const res = await dev.post(`/builder/apps/${wizApp}/wizard`, { __csrf: dev.lastCsrf, kind: 'cards', table: 'public.sec32_wiz', report_page: '10' });
+      assert.equal(res.statusCode, 303);
+      assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [wizApp])).n, 0);
+    } finally {
+      await owner.query(`delete from meta.builder_lock where app_id = $1`, [wizApp]);
+    }
+  });
+
+  test('option values never become SQL: columns must exist and are quoted, kinds and functions come from lists', async () => {
+    for (const [kind, options, error] of [
+      ['cards', { title: 'id as title from public.sec32_wiz; drop table public.sec32_wiz; --' }, /is not a column/],
+      ['chart', { label_column: 'd', function: 'pg_sleep' }, /unknown function/],
+      ['chart', { label_column: 'd', chart: "bar'; drop" }, /unknown chart type/],
+      ['calendar', { start: 'n' }, /date or timestamp start column/],
+      ['facets', { facets: ['n) or (true'] }, /is not a column/],
+      ['master_detail', { detail: 'public.sec32_wiz; drop table x', detail_column: 'id' }, /./],
+      ['cards', { form_page: '1 or 1=1' }, /./],
+    ] as [string, Record<string, unknown>, RegExp][])
+      await assert.rejects(generate('public.sec32_wiz', kind, 20, options), error, `${kind} ${JSON.stringify(options)}`);
+    // an odd column name is quoted: the generated query runs and shows the value escaped
+    await generate('public.sec32_wiz', 'cards', 21, { title: 'na"me; drop table x', label: '<img src=x onerror=alert(1)>' });
+    const src = (await owner.one(`select r.source from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 21`, [wizApp])).source;
+    assert.match(src, /t\."na""me; drop table x" as title/);
+    await owner.query('update meta.page set requires_auth = false where app_id = $1', [wizApp]);
+    const page = (await new Browser().get(`/a/${alias}/21`)).body;
+    assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.equal((await owner.one(`select to_regclass('public.sec32_wiz') is not null as ok`)).ok, true);
+  });
+
+  test("pgapex's and the system's tables are refused; the functions are not granted to application roles", async () => {
+    for (const t of ['meta.account', 'pg_catalog.pg_authid', 'information_schema.tables'])
+      await assert.rejects(generate(t, 'cards', 30, {}), /can't be generated/, t);
+    const dev = await builder();
+    const res = await dev.get(`/builder/apps/${wizApp}/wizard?kind=cards&table=meta.account`);
+    assert.equal(res.statusCode, 303, 'step 2 refuses it too');
+    const post = await dev.post(`/builder/apps/${wizApp}/wizard`, { __csrf: dev.lastCsrf, kind: 'facets', table: 'meta.account', report_page: '30' });
+    assert.equal(post.statusCode, 303);
+    assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1 and page_no = 30', [wizApp])).n, 0);
+    for (const fn of ['meta.generate_page(text, text, regclass, int, jsonb)', 'meta.wizard_defaults(text, regclass)', 'meta.wizard_catalog(regclass)', 'meta.wizard_form(meta.app, regclass, int, text, int, boolean, text[])'])
+      for (const role of ['pgapex_runtime', 'hr_app'])
+        assert.equal((await owner.one('select has_function_privilege($1, $2, \'execute\') as ok', [role, fn])).ok, false, `${role} ${fn}`);
+  });
+
+  test('drag and drop is off unless chosen; the generated move statement uses the binds as typed literals', async () => {
+    await generate('public.sec32_wiz', 'calendar', 40, {});
+    const off = (await owner.one(`select r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 40`, [wizApp])).config;
+    assert.equal(off.move, undefined);
+    await generate('public.sec32_wiz', 'calendar', 41, { drag: true });
+    const on = (await owner.one(`select r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 41`, [wizApp])).config;
+    assert.equal(on.move, 'update public.sec32_wiz set d = :NEW_START::date where id = :EVENT_ID::integer');
+    assert.equal(on.key, 'id');
+  });
+});
