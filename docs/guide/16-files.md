@@ -186,6 +186,10 @@ a batch fails, its rows are retried one by one to find the bad rows. **When a ro
 is loaded**, and you get a list of the failed rows with their errors. To load the good rows and
 skip the others instead, tick *Skip rows with errors* (or use `skip_errors` in a process).
 
+To read CSV or JSON in your own SQL instead (a preview, a staging step, a file from a web
+service), use [`meta.parse_data()`](09-reference.md#parsing-files-in-sql): the same rules, the
+rows as a table function (APEX_DATA_PARSER). It doesn't read Excel or XML.
+
 ### SQL Workshop → Load Data
 
 (To start a new application from a spreadsheet, with the table, its rows and the pages, use

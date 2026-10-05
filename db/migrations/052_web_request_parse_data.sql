@@ -494,12 +494,13 @@ language sql stable set search_path = meta, pg_catalog as $$
     select * from meta.parse_data_rows(p_content, p_file_name, p_format, p_headers, p_delimiter, p_row_selector, p_skip_rows, p_max_rows)
   ), w as (
     select coalesce(max(cardinality(cols)), 0) as n from raw
-  ), names as (
+  ), names as materialized (
     select meta.parse_data_names((select cols from raw where raw.line_number = 0), w.n) as names, w.n from w
   )
   select r.line_number, p.c, jsonb_object(names.names, p.c)
     from raw r cross join names
-    cross join lateral (select array(select r.cols[i] from generate_series(1, names.n) i) as c) p
+    cross join lateral (select case when cardinality(r.cols) = names.n then r.cols
+                                    else array(select r.cols[i] from generate_series(1, names.n) i) end as c) p
    where r.line_number > 0
    order by r.line_number
 $$;

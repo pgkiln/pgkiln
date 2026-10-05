@@ -60,6 +60,9 @@ src/
                            (callOperation); invoke(): the invoke API call shared by the invoke_api process and workflow step
   restsync.ts              REST data source synchronisation into a local table (merge/replace/append as the app role), run log,
                            syncTick() (scheduled and SQL-queued runs, called by the automations scheduler)
+  webrequests.ts           web requests from SQL (meta.web_request, migration 052): runPending() after each sql page process
+                           (same transaction), webRequestTick() for committed ones (automations scheduler), retention purge;
+                           calls go through websources.ts call()/invoke() (allow-list, SSRF checks, credentials)
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
                            loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -67,7 +70,7 @@ src/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
     context.ts             PageContext, dbg()/timed() debug helpers, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
-    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains), application processes
+    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations, branches (page, URL, function returning a URL, another application) and their conditions
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme
@@ -186,6 +189,8 @@ test/
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
+  web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and
+                           meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   helpers.ts               a cookie-keeping test browser

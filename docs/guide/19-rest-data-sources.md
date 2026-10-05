@@ -23,6 +23,9 @@ Try it with the HR example: page 23 "Web services" reads the HR example's own RE
 `PGAPEX_REST_ALLOWED_HOSTS=127.0.0.1` and `PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1` in `.env` and
 restart the server.
 
+From application SQL, `meta.web_request()` and `meta.web_request_source()` queue a request that
+the server makes (APEX_WEB_SERVICE; [chapter 9](09-reference.md#web-requests-from-sql)).
+
 ## Server configuration and the allow-list
 
 | Variable | Default | Meaning |
@@ -295,5 +298,9 @@ values, processes and workflow steps refer to sources and credentials by name, s
   and the service itself still decides what the credential may change.
 - A synchronisation writes as the application's role: grant it only the table it fills.
   `meta.request_rest_sync()` works only for the current application's sources.
+- [`meta.web_request()`](09-reference.md#web-requests-from-sql) (requests from application SQL)
+  goes through the same allow-list, address checks, size limit and credential URL limits; it names
+  a credential of the current application and never sees its secret. Requests and responses are
+  stored for 24 hours, readable through `meta.web_response()` by the application's code only.
 - Treat responses as untrusted data: they are escaped like any other value in reports, cards and
   items.
