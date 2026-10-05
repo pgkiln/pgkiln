@@ -102,7 +102,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       }
       case 'secret':
         // write-only: the stored value is never sent to the browser
-        control = html`<input id="${id}" name="${f.name}" type="password" value="" autocomplete="new-password" spellcheck="false" placeholder="${row?.secret_enc ? '•••••••• (stored; type to replace)' : ''}">`;
+        control = html`<input id="${id}" name="${f.name}" type="password" value="" autocomplete="new-password" spellcheck="false" placeholder="${row?.[`${f.name}_enc`] ? '•••••••• (stored; type to replace)' : ''}">`;
         break;
       case 'code':
         control = html`<textarea id="${id}" name="${f.name}" class="code" rows="${f.wide ? 7 : 2}" spellcheck="false"${codeAttrs(kind, f, row)}>${v ?? ''}</textarea>`;

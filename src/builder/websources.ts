@@ -3,14 +3,17 @@ import { owner } from '../db.ts';
 import { html } from '../html.ts';
 import { encryptSecret, secretKeyConfigured } from '../secrets.ts';
 import type { Session } from '../session.ts';
-import { buildRequest, call, clearTokens, credentialProblems, guessColumns, loadCredential, parseJson, rowsSql, select, sourceProblems, toRows, withRest, type RestColumn, type RestSource } from '../websources.ts';
+import { nextRun, parseCron } from '../automations.ts';
+import { icon } from '../icons.ts';
+import { runSync, syncLog, syncProblems } from '../restsync.ts';
+import { buildRequest, call, clearResponseCache, clearTokens, credentialProblems, guessColumns, loadCredential, parseJson, rowsSql, select, sourceProblems, toRows, withRest, type RestColumn, type RestSource } from '../websources.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 
 // Shared Components → Web credentials and REST data sources: their property
-// specs, the secret's status (never the secret), "Test" for a source (its
-// rows, a column suggestion, the start of the response) and "Use these
-// columns".
+// specs, the secrets' status (never a secret), "Test" for a source (its
+// rows, a column suggestion, the start of the response), "Use these
+// columns", and a source's synchronisation (Synchronise now, run history).
 
 const json = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v);
 
@@ -26,23 +29,33 @@ export const WEB_CREDENTIAL_SPEC: ComponentSpec = {
     const problems = credentialProblems(v);
     return problems.length ? problems.join(' ') : null;
   },
-  // the secret is encrypted here and never stored or shown in clear; empty keeps the stored one
-  beforeSave: async (values) => {
-    const secret = values.secret as string | null;
-    delete values.secret;
-    if (secret) values.secret_enc = encryptSecret(secret);
+  // secrets are encrypted here and never stored or shown in clear; empty keeps the stored one
+  beforeSave: async (values, cid) => {
+    for (const k of ['secret', 'password', 'refresh_token']) {
+      const secret = values[k] as string | null;
+      delete values[k];
+      if (secret) values[`${k}_enc`] = encryptSecret(secret);
+    }
+    if (values.refresh_token_enc) values.token_refreshed_at = null;
+    if (cid) clearTokens(Number(cid));
   },
   fields: [
     { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: 'e.g. WEATHER_API; REST data sources and invoke_api processes use it by this name.' },
     { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
     { name: 'type', label: 'Authentication', kind: 'select', options: ['basic', 'header', 'bearer', 'oauth2'], group: 'Authentication',
-      help: 'basic: HTTP basic (user name + password) · header: an HTTP header with the secret, e.g. an API key · bearer: Authorization: Bearer <secret> · oauth2: client credentials (pgapex gets, caches and renews the token).' },
+      help: 'basic: HTTP basic (user name + password) · header: an HTTP header with the secret, e.g. an API key · bearer: Authorization: Bearer <secret> · oauth2: OAuth2 (pgapex gets, caches and renews the token).' },
     { name: 'username', label: 'User name / client id', kind: 'text', group: 'Authentication' },
+    { name: 'grant_type', label: 'Grant type (oauth2)', kind: 'select', options: ['client_credentials', 'password', 'refresh_token'], group: 'Authentication',
+      help: 'client_credentials: the client id and secret · password: also a user name and password to sign in with · refresh_token: a refresh token you got elsewhere (e.g. once through the service\'s consent page), entered below; pgapex keeps the newest one.' },
+    { name: 'oauth_username', label: 'OAuth2 user name (password)', kind: 'text', group: 'Authentication', help: 'The password flow: the user pgapex signs in as.' },
     { name: 'header_name', label: 'Header name (header)', kind: 'text', group: 'Authentication', help: 'e.g. X-API-Key' },
     { name: 'token_url', label: 'Token URL (oauth2)', kind: 'text', wide: true, group: 'Authentication', help: 'e.g. https://login.example.com/oauth/token' },
     { name: 'scope', label: 'Scope (oauth2)', kind: 'text', group: 'Authentication' },
     { name: 'secret', label: 'Secret', kind: 'secret', wide: true, group: 'Secret',
-      help: 'The password, header value, token or client secret. Stored encrypted; it is never shown again or exported. Leave empty to keep the stored secret.' },
+      help: 'The password, header value, token or client secret (oauth2: optional for the password and refresh token grants of a public client). Stored encrypted; it is never shown again or exported. Leave empty to keep the stored secret.' },
+    { name: 'password', label: 'OAuth2 password (password)', kind: 'secret', wide: true, group: 'Secret', help: 'The password flow: the password of the OAuth2 user. Write-only, like the secret.' },
+    { name: 'refresh_token', label: 'Refresh token (refresh_token)', kind: 'secret', wide: true, group: 'Secret',
+      help: 'The refresh token grant: a refresh token to start with. Write-only; replaced by the newer one when the service sends it.' },
     { name: 'valid_for', label: 'Valid for URLs', kind: 'list', wide: true, group: 'Security',
       help: 'Comma separated URL prefixes, e.g. https://api.example.com/v2/ — the credential is only ever sent to these. Recommended.' },
   ],
@@ -55,12 +68,22 @@ export const REST_SOURCE_SPEC: ComponentSpec = {
   plural: 'REST data sources',
   icon: 'database',
   summary: (s) => s.name,
-  defaults: { method: 'GET', cache_seconds: 0, timeout_s: 10, max_rows: 1000, params: [], columns: [], headers: {} },
+  defaults: { method: 'GET', cache_seconds: 0, timeout_s: 10, max_rows: 1000, params: [], columns: [], headers: {}, operations: {}, key_columns: [], sync_mode: 'merge', sync_time_zone: 'UTC' },
   validate: (v) => {
     // an empty JSON field arrives as {}
     for (const k of ['params', 'columns']) if (v[k] === '{}') v[k] = '[]';
-    const problems = sourceProblems({ url: v.url, params: json(v.params), columns: json(v.columns), headers: json(v.headers), row_selector: v.row_selector });
+    if (v.sync_time_zone === null) v.sync_time_zone = 'UTC';
+    if (v.sync_mode === null) v.sync_mode = 'merge';
+    const problems = [
+      ...sourceProblems({ url: v.url, params: json(v.params), columns: json(v.columns), headers: json(v.headers), row_selector: v.row_selector, key_columns: v.key_columns, operations: json(v.operations) }),
+      ...syncProblems(v),
+    ];
     return problems.length ? problems.join(' ') : null;
+  },
+  // a changed schedule is computed again by the scheduler's next pass
+  beforeSave: async (values, cid) => {
+    values.sync_next_at = null;
+    if (cid) clearResponseCache(Number(cid));
   },
   fields: [
     { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: 'Regions and lists of values use it by this name, e.g. COUNTRIES.' },
@@ -79,6 +102,18 @@ export const REST_SOURCE_SPEC: ComponentSpec = {
     { name: 'cache_seconds', label: 'Cache (seconds)', kind: 'int', group: 'Response', help: '0: no cache. Cached responses are shared by all users of the application.' },
     { name: 'timeout_s', label: 'Timeout (seconds)', kind: 'int', group: 'Response' },
     { name: 'max_rows', label: 'Maximum rows', kind: 'int', group: 'Response' },
+    { name: 'key_columns', label: 'Key columns', kind: 'list', group: 'Write back',
+      help: 'Comma separated: the columns that identify a row, e.g. id. Forms, grids and a merge use them.' },
+    { name: 'operations', label: 'Operations (JSON)', kind: 'json', wide: true, group: 'Write back',
+      help: '{"insert": {"method": "POST"}, "update": {"method": "PUT", "path": "/{id}"}, "delete": {"method": "DELETE", "path": "/{id}"}, "fetch": {"method": "GET", "path": "/{id}"}} · the path follows the URL (without its query); {column} is the row\'s value. "body": a JSON template ({column} as a JSON value), empty: the row as JSON. Forms and interactive grids on this source save through these.' },
+    { name: 'sync_table', label: 'Local table', kind: 'text', group: 'Synchronisation',
+      help: 'Copy the rows into this table (columns matched by name), e.g. app.country_copy. Written as the application\'s database role.' },
+    { name: 'sync_mode', label: 'Mode', kind: 'select', options: ['merge', 'replace', 'append'], group: 'Synchronisation',
+      help: 'merge: update and insert by the key columns · replace: delete every row, then insert · append: insert.' },
+    { name: 'sync_delete', label: 'Delete rows the service no longer returns (merge)', kind: 'bool', group: 'Synchronisation' },
+    { name: 'sync_schedule', label: 'Schedule', kind: 'text', group: 'Synchronisation', help: 'Cron, e.g. @hourly or 0 6 * * 1-5 (minute hour day month weekday).' },
+    { name: 'sync_time_zone', label: 'Time zone', kind: 'text', group: 'Synchronisation', help: 'Of the schedule, e.g. Europe/Amsterdam.' },
+    { name: 'sync_enabled', label: 'Scheduled', kind: 'bool', group: 'Synchronisation', help: 'Run on the schedule (the automations scheduler).' },
   ],
 };
 
@@ -94,13 +129,36 @@ export async function designSql(appId: number, r: { source: string | null; rest_
 
 // ---------------------------------------------------------------- extras
 
-export function credentialExtras(appId: number, row: { id: number; secret_enc: string | null; type: string }, s: Session) {
-  return html`<fieldset class="prop-group u-mt125"><legend>Secret</legend>
-    <p>${row.secret_enc ? html`<b>A secret is stored</b> (encrypted). It is never shown; type a new one above to replace it.` : html`<b>No secret yet.</b> Requests with this credential fail until one is entered.`}</p>
-    ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGAPEX_SECRET_KEY</code>: secrets can't be saved or used until it is set (at least 32 characters).</div>`}
-    ${row.secret_enc
-      ? html`<form method="post" action="${BASE}/apps/${appId}/web-credentials/${row.id}/clear">${csrf(s)}<button class="btn" data-confirm="Remove the stored secret?">Remove the secret</button></form>`
+/** Whether a credential needs its secret (oauth2 password and refresh token grants may be public clients). */
+export const needsSecret = (row: { type: string; grant_type?: string | null }) => row.type !== 'oauth2' || (row.grant_type ?? 'client_credentials') === 'client_credentials';
+
+const CLEARABLE: Record<string, { column: string; label: string }> = {
+  secret: { column: 'secret_enc', label: 'the secret' },
+  password: { column: 'password_enc', label: 'the password' },
+  refresh: { column: 'refresh_token_enc', label: 'the refresh token' },
+};
+
+export function credentialExtras(
+  appId: number,
+  row: { id: number; secret_enc: string | null; type: string; grant_type?: string | null; password_enc?: string | null; refresh_token_enc?: string | null; token_refreshed_at?: Date | null },
+  s: Session,
+) {
+  const clear = (what: string) =>
+    html`<form method="post" action="${BASE}/apps/${appId}/web-credentials/${row.id}/clear" class="u-inline">${csrf(s)}<input type="hidden" name="what" value="${what}"><button class="btn" data-confirm="Remove ${CLEARABLE[what].label}?">Remove ${CLEARABLE[what].label}</button></form>`;
+  const oauth = row.type === 'oauth2';
+  const grant = row.grant_type ?? 'client_credentials';
+  return html`<fieldset class="prop-group u-mt125"><legend>Secrets</legend>
+    <p>${row.secret_enc
+      ? html`<b>A secret is stored</b> (encrypted). It is never shown; type a new one above to replace it.`
+      : needsSecret(row) ? html`<b>No secret yet.</b> Requests with this credential fail until one is entered.` : html`No client secret (a public client).`}</p>
+    ${oauth && grant === 'password' ? html`<p>${row.password_enc ? html`<b>A password is stored</b> (encrypted).` : html`<b>No password yet.</b> The password flow fails until one is entered.`}</p>` : ''}
+    ${oauth
+      ? html`<p>${row.refresh_token_enc
+          ? html`<b>A refresh token is stored</b> (encrypted)${row.token_refreshed_at ? html`, received ${new Date(row.token_refreshed_at).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ''}. pgapex uses it to renew the access token and keeps the newer one the service sends.`
+          : grant === 'refresh_token' ? html`<b>No refresh token yet.</b> Enter one above.` : html`No refresh token yet (kept when the token endpoint sends one).`}</p>`
       : ''}
+    ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGAPEX_SECRET_KEY</code>: secrets can't be saved or used until it is set (at least 32 characters).</div>`}
+    <div class="buttons">${row.secret_enc ? clear('secret') : ''}${row.password_enc ? clear('password') : ''}${row.refresh_token_enc ? clear('refresh') : ''}</div>
   </fieldset>`;
 }
 
@@ -116,7 +174,48 @@ interface TestResult {
 
 const RESULT = '__RESTTEST';
 
-export function restSourceExtras(appId: number, row: RestSource, s: Session) {
+const SYNC_TAG: Record<string, string> = { error: ' tag-error', ok: ' tag-ok' };
+const when = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 19).replace('T', ' ') + ' UTC' : '—');
+
+/** A source's synchronisation: next run, Synchronise now, the last runs. */
+async function syncExtras(appId: number, row: RestSource & Record<string, any>, s: Session) {
+  if (!row.sync_table) return html`<fieldset class="prop-group u-mt125"><legend>Synchronisation</legend>
+    <p class="muted">Set a local table above to copy this source's rows into a table (on demand, from SQL or on a schedule).</p></fieldset>`;
+  let next = 'not scheduled';
+  if (row.sync_enabled && row.sync_schedule)
+    try {
+      next = when(nextRun(parseCron(row.sync_schedule), row.sync_time_zone ?? 'UTC', new Date()));
+    } catch (e) {
+      next = `never: ${(e as Error).message}`;
+    }
+  const scheduler = process.env.AUTOMATIONS === 'off' ? html` <b>(the scheduler is off on this server: AUTOMATIONS=off)</b>` : '';
+  const log = await syncLog(row.id);
+  return html`<fieldset class="prop-group u-mt125"><legend>Synchronisation</legend>
+    <p>Into <code>${row.sync_table}</code> (${row.sync_mode}${row.sync_mode === 'merge' && row.sync_delete ? ', deleting missing rows' : ''}). Next run: <b>${next}</b>${scheduler}</p>
+    <p class="muted">From application code: <code>select meta.request_rest_sync('${row.name}')</code> queues a run for the server's next scheduler pass.</p>
+    <form method="post" action="${BASE}/apps/${appId}/rest-sources/${row.id}/sync">${csrf(s)}<button class="btn">${icon('play')} Synchronise now</button></form>
+    ${log.length
+      ? html`<div class="table-wrap u-mt075"><table class="report report-reflow"><thead><tr><th>Requested</th><th>Took</th><th>By</th><th>Status</th><th class="num">Rows</th><th class="num">Inserted</th><th class="num">Updated</th><th class="num">Deleted</th><th>Message</th></tr></thead><tbody>
+          ${log.map((l) => html`<tr>
+            <td data-label="Requested">${when(l.requested_at)}</td>
+            <td data-label="Took">${l.finished_at && l.started_at ? `${((new Date(l.finished_at).getTime() - new Date(l.started_at).getTime()) / 1000).toFixed(1)} s` : '…'}</td>
+            <td data-label="By">${l.trigger}${l.requested_by ? html` <span class="muted">(${l.requested_by})</span>` : ''}</td>
+            <td data-label="Status"><span class="tag${SYNC_TAG[l.status] ?? ''}">${l.status}</span></td>
+            <td class="num" data-label="Rows">${l.rows_fetched ?? ''}</td>
+            <td class="num" data-label="Inserted">${l.inserted ?? ''}</td>
+            <td class="num" data-label="Updated">${l.updated ?? ''}</td>
+            <td class="num" data-label="Deleted">${l.deleted ?? ''}</td>
+            <td data-label="Message">${l.message ?? ''}</td></tr>`)}
+        </tbody></table></div>`
+      : html`<p class="muted">No runs yet.</p>`}
+  </fieldset>`;
+}
+
+export async function restSourceExtras(appId: number, row: RestSource, s: Session) {
+  return html`${testExtras(appId, row, s)}${await syncExtras(appId, row, s)}`;
+}
+
+function testExtras(appId: number, row: RestSource, s: Session) {
   let result: TestResult | null = null;
   try {
     const r = JSON.parse(s.state[RESULT] ?? 'null') as TestResult | null;
@@ -157,9 +256,11 @@ export async function webSourceRoutes(app: FastifyInstance) {
   app.post(`${BASE}/apps/:id(^\\d+$)/web-credentials/:cid(^\\d+$)/clear`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const r = await owner.query('update meta.web_credential set secret_enc = null where id = $1 and app_id = $2', [req.params.cid, req.params.id]);
+    const what = CLEARABLE[String(req.body?.what ?? 'secret')] ?? CLEARABLE.secret;
+    // the column comes from the fixed list above, never from the request
+    const r = await owner.query(`update meta.web_credential set ${what.column} = null${what.column === 'refresh_token_enc' ? ', token_refreshed_at = null' : ''} where id = $1 and app_id = $2`, [req.params.cid, req.params.id]);
     clearTokens(Number(req.params.cid));
-    flash(s, r.rowCount ? 'The secret was removed.' : 'Not found.', r.rowCount ? 'ok' : 'error');
+    flash(s, r.rowCount ? `${what.label[0].toUpperCase()}${what.label.slice(1)} was removed.` : 'Not found.', r.rowCount ? 'ok' : 'error');
     return back(reply, s, `${BASE}/apps/${req.params.id}/shared?c=web_credential-${req.params.cid}`);
   });
 
@@ -197,6 +298,18 @@ export async function webSourceRoutes(app: FastifyInstance) {
       result.message = (e as Error).message;
     }
     s.state[RESULT] = JSON.stringify(result);
+    return back(reply, s, `${BASE}/apps/${req.params.id}/shared?c=rest_source-${src.id}`);
+  });
+
+  app.post(`${BASE}/apps/:id(^\\d+$)/rest-sources/:sid(^\\d+$)/sync`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const src = await owner.one<{ id: number }>('select id from meta.rest_source where id = $1 and app_id = $2', [req.params.sid, req.params.id]);
+    if (!src) return reply.code(404).send('Not found');
+    const r = await runSync(src.id, 'manual', { by: s.username ?? undefined });
+    if (r.status === 'ok')
+      flash(s, `Synchronised ${r.rows} row(s): ${r.inserted} inserted, ${r.updated} updated, ${r.deleted} deleted.${r.message ? ` ${r.message}` : ''}`);
+    else flash(s, r.message ?? 'The synchronisation failed.', 'error');
     return back(reply, s, `${BASE}/apps/${req.params.id}/shared?c=rest_source-${src.id}`);
   });
 
