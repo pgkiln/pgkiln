@@ -256,7 +256,7 @@ export async function appFromFileRoutes(app: FastifyInstance) {
             const type = v(`type_${c.index}`, c.type);
             return html`<tr><td>${sheet.headers[c.index]}</td><td class="muted small">${sample(c.index)}</td>
               <td><input name="name_${c.index}" value="${v(`name_${c.index}`, c.name)}" aria-label="Column name for ${sheet.headers[c.index]}"></td>
-              <td><select name="type_${c.index}" aria-label="Type of ${sheet.headers[c.index]}">${COLUMN_TYPES.map((t) => html`<option${t === type ? raw(' selected') : ''}>${t}</option>`)}</select></td></tr>`;
+              <td><select name="type_${c.index}" aria-label="Type of ${sheet.headers[c.index]}">${COLUMN_TYPES.map((t) => html`<option value="${t}"${t === type ? raw(' selected') : ''}>${t}</option>`)}</select></td></tr>`;
           })}
         </tbody></table></div>
         ${check('skip_errors', 'Skip rows with errors (otherwise nothing is created when a row fails)', v('skip_errors', '') === 'true')}`)}
