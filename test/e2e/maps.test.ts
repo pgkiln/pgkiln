@@ -118,6 +118,53 @@ describe('map and tree regions', () => {
     await context.close();
   });
 
+  test('several layers: clustered visits, coloured layers, a legend that switches layers; filtering by the distance from the centre', async () => {
+    const { context, page } = await signedIn();
+    await page.goto(`${base}/a/hr/33`);
+    await page.locator('.leaflet-container').waitFor();
+    const clusters = page.locator('.map-cluster');
+    await clusters.first().waitFor();
+    // every visit is in a cluster or a dot of its own
+    const counted = async () => {
+      const inClusters = (await clusters.allTextContents()).reduce((a, t) => a + Number(t), 0);
+      return inClusters + (await page.locator('path.map-dot.map-c1').count());
+    };
+    assert.equal(await counted(), 80);
+    const before = await clusters.count();
+    assert.ok(before > 0 && before < 80);
+    assert.match((await clusters.first().getAttribute('title')) ?? '', /^\d+ places: zoom in$/);
+    assert.equal(await page.locator('path.map-dot.map-c2').count(), 4, 'the offices');
+    assert.equal(await page.locator('path.leaflet-interactive.map-c3').count(), 7, 'four areas and three routes');
+    assert.equal(await page.locator('canvas.map-heat').count(), 0, 'the heat map is off at first');
+    // the legend switches layers
+    const legend = page.locator('.map-layers');
+    assert.deepEqual(await legend.locator('label').allTextContents(), ['Visits', 'Offices', 'Sales areas', 'Visit density']);
+    await legend.locator('label', { hasText: 'Offices' }).locator('input').uncheck();
+    assert.equal(await page.locator('path.map-dot.map-c2').count(), 0);
+    await legend.locator('label', { hasText: 'Visit density' }).locator('input').check();
+    await page.locator('canvas.map-heat').waitFor();
+    assert.equal(await page.locator('.map-legend').count(), 1);
+    // a click on a cluster zooms in to its places
+    const zoom = () => page.evaluate(() => document.querySelector('.leaflet-container .leaflet-tile-container img')?.getAttribute('src') ?? '');
+    const tileBefore = await zoom();
+    await clusters.first().click();
+    await page.waitForTimeout(600);
+    assert.notEqual(await zoom(), tileBefore, 'the map zoomed in');
+    assert.equal(await counted(), 80, 'still every visit, regrouped');
+    // the map was moved: "Show places within … km of the centre"
+    const go = page.locator('.map-filter-go');
+    await go.waitFor();
+    assert.match((await go.textContent()) ?? '', /^Show places within [\d.,]+ km of the centre$/);
+    await Promise.all([page.waitForNavigation(), go.click()]);
+    assert.match(decodeURIComponent(page.url()), /\?r\d+_near=-?\d+(\.\d+)?,-?\d+(\.\d+)?,\d+(\.\d+)?$/);
+    assert.equal(await page.locator('.chip', { hasText: /Within [\d.,]+ km/ }).count(), 1);
+    await page.locator('path.map-near').waitFor({ state: 'attached' });
+    await Promise.all([page.waitForNavigation(), page.locator('.map-filter-clear').click()]);
+    assert.equal(await page.locator('.chip', { hasText: 'Within' }).count(), 0);
+    assert.deepEqual(await violations(page), []);
+    await context.close();
+  });
+
   test('the tree opens and closes; nodes link to the record', async () => {
     const { context, page } = await signedIn();
     await page.goto(`${base}/a/hr/8`);

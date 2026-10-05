@@ -1687,8 +1687,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const allShapes = data.layers.flatMap((l) => l.shapes);
     if (f && f.area) map.fitBounds([[f.area.s, f.area.w], [f.area.n, f.area.e]]);
     else if (f && f.near) {
-      const circle = window.L.circle([f.near.lat, f.near.lng], { radius: f.near.km * 1000, className: 'map-near', interactive: false }).addTo(map);
-      map.fitBounds(circle.getBounds());
+      // the bounds from the centre (the circle can only measure itself once the map has a view)
+      map.fitBounds(window.L.latLng(f.near.lat, f.near.lng).toBounds(f.near.km * 2000));
+      window.L.circle([f.near.lat, f.near.lng], { radius: f.near.km * 1000, className: 'map-near', interactive: false }).addTo(map);
     } else if (allPoints.length === 1 && !allShapes.length) map.setView([allPoints[0].lat, allPoints[0].lng], data.zoom || 14);
     else if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: data.zoom || 16 });
     else map.setView([20, 0], 2);
