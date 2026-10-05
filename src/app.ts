@@ -74,11 +74,21 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   });
   securityHeaders(app);
   if (pending.length) {
+    // checked again (at most every 5 s) until someone migrates; then requests go through
+    let checkedAt = Date.now();
     app.addHook('onRequest', async (req, reply) => {
-      if (req.url.startsWith('/static/')) return;
+      if (!pending.length || req.url.startsWith('/static/')) return;
+      if (Date.now() - checkedAt > 5000) {
+        checkedAt = Date.now();
+        pending = await pendingMigrations(root, ownerUrl).catch(() => pending);
+        if (!pending.length) {
+          await loadSecrets();
+          return;
+        }
+      }
       return reply.code(503).type('text/plain').send(
         `pgapex: the database is older than this version of pgapex: ${pending.length} migration(s) are not applied (${pending.join(', ')}).\n` +
-          'Run "npm run db:migrate" (or "pgapex migrate") and restart the server, or start it with MIGRATE_ON_START=true.\n',
+          'Run "npm run db:migrate" (or "pgapex migrate"), or start the server with MIGRATE_ON_START=true.\n',
       );
     });
   }
