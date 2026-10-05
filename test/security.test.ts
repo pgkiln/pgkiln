@@ -4018,3 +4018,62 @@ describe('sprint 32 item 5: create application from a file', () => {
     assert.equal((await owner.one(`select has_schema_privilege('app_sec32_ff_meta', 'meta', 'usage') as x where exists (select 1 from pg_roles where rolname = 'app_sec32_ff_meta')`))?.x ?? false, false);
   });
 });
+
+describe('sprint 33 item 1: Gantt, pyramid and polar charts', () => {
+  const region = async (title: string) =>
+    (await owner.one(`select r.id, r.source, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 32 and r.title = $2`, [appId, title])) as { id: number; source: string; config: any };
+
+  test('the leave Gantt runs as the app role: each user sees only the leave RLS lets them see', async () => {
+    const blake = (await (await as('blake')).get('/a/hr/32')).body;
+    assert.match(blake, /WARD \(approved\)/, 'blake manages Ward');
+    assert.doesNotMatch(blake, /FORD \(approved\)|CLARK \(approved\)/);
+    const king = (await (await as('king')).get('/a/hr/32')).body;
+    assert.match(king, /FORD \(approved\)/, 'king is an admin');
+  });
+
+  test('drill-down from a task: checksummed links per user; forged or reused links are refused', async () => {
+    const blake = await as('blake');
+    const body = (await blake.get('/a/hr/32')).body;
+    const href = /<a class="gantt-bar s1 \w+ \w+ drill" href="(\/a\/hr\/7\?[^"]+)"/.exec(body)![1].replace(/&amp;/g, '&');
+    const q = new URLSearchParams(href.split('?')[1]);
+    assert.equal(q.get('cs'), urlChecksum(appId, 7, 'blake', { P7_ID: q.get('P7_ID')! }));
+    assert.equal((await blake.get(href)).statusCode, 200);
+    assert.equal((await blake.get(href.replace(/P7_ID=\d+/, 'P7_ID=1'))).statusCode, 403);
+    assert.equal((await (await as('allen')).get(href)).statusCode, 403);
+  });
+
+  test('labels, dates and dependency ids from the query are escaped and never become markup or styles; no links to pages the user may not open', async () => {
+    const r = await region('Office move');
+    try {
+      await owner.query(`update meta.region set source = $2, config = '{"kind": "gantt", "link": {"page": 3, "items": {"P3_EMPNO": "#task_id#"}}}' where id = $1`, [r.id,
+        `select '"><img src=x onerror=alert(1)>' as task, '2026-01-01' as s, '2026-01-09"><script>' as e, '50"><b>' as progress, 1 as task_id, '1"><svg onload=alert(1)>' as depends_on
+         union all select '<script>alert(2)</script>', '2026-01-03', null, null, 2, '1,"><x'`]);
+      const allen = await as('allen');
+      const page = (await allen.get('/a/hr/32')).body;
+      assert.ok(!page.includes('<img src=x') && !page.includes('<script>alert') && !page.includes('<svg onload') && !page.includes('"><b>'));
+      assert.match(page, /&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
+      assert.doesNotMatch(page, /\sstyle=/, 'geometry goes into the nonce stylesheet');
+      assert.doesNotMatch(page, /\/a\/hr\/3\?/, 'page 3 needs MANAGER: no drill-down for allen');
+      // path data is numbers only
+      for (const [, d] of page.matchAll(/class="gantt-dep" d="([^"]*)"/g)) assert.match(d, /^[MHV\d., ]+$/);
+      for (const kind of ['pyramid', 'polar']) {
+        await owner.query(`update meta.region set source = $2, config = $3 where id = $1`, [r.id, `select '<img src=y>' as l, 3 as a, 2 as b union all select 'b', 1, 4`, JSON.stringify({ kind })]);
+        const body = (await allen.get('/a/hr/32')).body;
+        assert.ok(!body.includes('<img src=y>'), kind);
+        assert.match(body, new RegExp(`chart-${kind}`), kind);
+      }
+    } finally {
+      await owner.query(`update meta.region set source = $2, config = $3 where id = $1`, [r.id, r.source, JSON.stringify(r.config)]);
+    }
+  });
+
+  test('a query that is no Gantt data shows a message, not an error', async () => {
+    const r = await region('Office move');
+    try {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [r.id, `select 'a' as t, 'tomorrow' as s, 'later' as e`]);
+      assert.match((await (await as('king')).get('/a/hr/32')).body, /A Gantt chart needs a label column, a start date and an end date/);
+    } finally {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [r.id, r.source]);
+    }
+  });
+});

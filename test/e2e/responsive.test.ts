@@ -233,6 +233,30 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('project plan (page 32): Gantt bars and dependencies line up with their rows; pyramid and polar draw', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      const res = await page.goto(`${base}/a/hr/32`);
+      assert.equal(res?.status(), 200);
+      const g = await page.evaluate(() => {
+        const chart = document.querySelector('.chart-gantt')!;
+        const labels = [...chart.querySelectorAll('.gantt-labels li')].map((li) => li.getBoundingClientRect());
+        const lanes = [...chart.querySelectorAll('.gantt-lane')].map((l) => l.getBoundingClientRect());
+        const bar = chart.querySelector('.gantt-bar')!.getBoundingClientRect();
+        const deps = chart.querySelector('.gantt-deps')!.getBoundingClientRect();
+        const plot = chart.querySelector('.gantt-plot')!.getBoundingClientRect();
+        return { offsets: labels.map((l, i) => Math.abs(l.top - lanes[i].top)), bar: bar.width, depsH: deps.height, plotH: plot.height };
+      });
+      assert.ok(g.offsets.every((d) => d < 1), `labels and lanes share their rows: ${g.offsets}`);
+      assert.ok(g.bar > 4, 'a bar has a width');
+      assert.ok(Math.abs(g.depsH - g.plotH) < 1, 'the dependency layer covers the rows');
+      assert.ok((await page.locator('.chart-pyramid .pyramid-seg').count()) >= 3);
+      assert.ok((await page.locator('.chart-polar .polar-sector').count()) >= 3);
+      await page.locator('.chart-gantt .gantt-bar').first().hover();
+      await check(page, 'app-32-charts', vp);
+      await page.context().close();
+    });
+
     test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');

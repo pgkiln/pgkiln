@@ -36,7 +36,7 @@ only when true) and `authz` (an authorization scheme).
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail and copy/paste of cells |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
-| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel or radar chart from a SELECT, with drill-down links |
+| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid or polar chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month, week, day and list views of dated rows, with create on click and drag and drop |
 | [`facets`](#facets-faceted-search) | Checkbox, range and star filters with counts and a search field for a report |
@@ -329,7 +329,7 @@ Attributes:
 
 | Key | Meaning |
 |---|---|
-| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel` or `radar` |
+| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel`, `radar`, `gantt`, `pyramid` or `polar` |
 | `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
 | `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
 | `format_mask` | A number format mask for the values in labels, tips and the data table, e.g. `"FML999G990"` (see [number formats](14-globalization.md#number-formats)) |
@@ -348,6 +348,9 @@ Attributes:
 | `gauge` | one value against a target, per row | a half dial per row (up to 12) from `min` (default 0) to `max` (default: rounded up from the values). With `warning` and/or `critical` thresholds each dial shows a status (*On target*, *Warning*, *Critical*) with an icon and a label, and the thresholds as a coloured ring. A `warning` above `critical` means low values are bad |
 | `funnel` | stages of a process | the first series, in the query's order (sort it); each stage shows its share of the first stage |
 | `radar` | several measures per series, side by side | **one axis per row** (3 to 12 rows), one polygon per series, all on one scale from zero |
+| `gantt` | tasks over time | **label, start, end** (dates or timestamps; an empty end, or one equal to the start, is a milestone ◆), then optional columns **by name**: `progress` (0 to 100, the filled part of the bar), `task_id` and `depends_on` (the ids a task waits for: `3`, `3,4` or an array). A time axis in hours, days, weeks, months or years, a dashed line for today, and elbow lines from the end of each predecessor to the start of the task. Rows without a start are left out |
+| `pyramid` | levels of a hierarchy, or two groups compared per band | **one series**: a triangle cut into segments from the top (the first row) down, each segment's **area** in proportion to its value (≤ 8; more fold into "Other"). **Two series**: back-to-back bars (a population pyramid), the first series to the left, both on one scale; negative values count as their size |
+| `polar` | values per period or direction (months, weekdays) | a polar area chart: **one equal sector per row** (up to 24) clockwise from 12 o'clock, the radius in proportion to the value on rings from zero; several series share a row's sector |
 
 A stacked chart, a combination of columns and a line, and a scatter plot:
 
@@ -393,6 +396,32 @@ select initcap(job) as job,
   from hr.emp group by job order by 1
 ```
 
+Gantt, pyramid and polar charts (HR page 32 "Project plan"):
+
+```sql
+-- gantt: progress, task_id and depends_on by name; deptno only for the link
+select t.name as "Task", t.starts as "Starts", t.ends as "Ends", t.progress,
+       t.id as task_id, array_to_string(t.depends_on, ',') as depends_on, t.deptno
+  from hr.project_task t order by t.starts, t.id
+
+-- pyramid with two series: back to back per salary band
+select b.band as "Salary",
+       count(e.empno) filter (where e.deptno = 20) as "Research",
+       count(e.empno) filter (where e.deptno = 30) as "Sales"
+  from (values (1, '3000+', 3000, null), (2, '2000–2999', 2000, 3000)) b(k, band, lo, hi)
+  left join hr.emp e on e.sal >= b.lo and (b.hi is null or e.sal < b.hi)
+ group by b.k, b.band order by b.k
+
+-- polar: a sector per month
+select to_char(make_date(2000, m, 1), 'Mon') as month, count(e.empno) as "Hires"
+  from generate_series(1, 12) m left join hr.emp e on extract(month from e.hiredate) = m
+ group by m order by m
+```
+
+A Gantt chart reads dates as their wall clock (a `timestamptz` in the session's time zone), shows a
+time only when it is not midnight, and has its own data table (label, start, end, progress,
+dependencies). Its rows count toward the chart's row limit (`max_rows`, default 1000).
+
 Up to 8 series; two or more get a legend. Every chart has hover/focus **tooltips** and a
 **Data table** toggle (the accessible alternative). Colours come from a palette checked for
 colour-vision deficiency, in light and dark mode; the gauge's status colours are reserved for
@@ -412,9 +441,10 @@ there are no links when the user may not open the target page.
 Columns that only the link refers to (here `deptno`) are **not drawn** as a series, so the query
 can return a key next to the label. What links: bars, columns and stacked segments (per series),
 line and area points, scatter dots and bubbles, gauge dials, funnel stages, radar axis labels, pie
-and donut slices and their legend entries (not "Other"). The marks are for the mouse; from the
+and donut slices and their legend entries (not "Other"), Gantt bars and milestones (the whole row:
+`#series#` is empty), pyramid segments and bars, and polar sectors and their labels. The marks are for the mouse; from the
 keyboard the **data table** has the same links (the labels, or each value when there are several
-series), and so do the radar labels and donut legend.
+series), and so do the radar and polar labels and the donut and pyramid legends.
 
 ---
 
