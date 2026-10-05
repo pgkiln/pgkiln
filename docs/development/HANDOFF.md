@@ -1155,7 +1155,7 @@ can be merged after any item:
 |---|---|---|---|
 | 0 | CI: actions off Node.js 20; custom-auth flake | (none) | done on `main` (3bb983a, 192f0af); CI run 37286030252 green, no Node 20 warning |
 | 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | **done** (bcfec61..14943e4) |
-| 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045, `hr_34` | to do |
+| 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045 (unused), `hr_34` | **done** (ca079be..c6066d2) |
 | 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | to do |
 | 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | to do |
 | 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | to do |
@@ -1188,3 +1188,18 @@ CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check
   `pgapex.app_id`); `has_role()` answers with the automation's roles during a SQL run (treat them like a security
   definer function's); row values become escaped literals. Parity row → ✅ (text in the agent report: actions with
   conditions, stop/skip/disable, `meta.run_automation()`). Tests 730 pass / 8 skip, e2e 90/90, upgrade from v0.23.0 ok.
+- **2 workflow invoke API: DONE** (ca079be..c6066d2, pushed). Step type `invoke_api` in `src/workflow.ts`: a REST
+  data source of the app (`source` + `params`, its web credential) or a URL (`url`, `method`, `credential`, `body`);
+  `&VAR.` from workflow variables; `variables` (variable → JSON path, or the source's first-row columns),
+  `status_variable` (then an error status doesn't fault), `response_variable`, `timeout` 1–60 s. The page process's
+  call code moved into `invoke()` in `src/websources.ts` (shared; allow-list, SSRF checks, credential URLs unchanged).
+  **No transaction during the call:** the path is committed as `waiting` with a lease (3 × timeout + 30 s), the call
+  runs, then a new transaction checks the path still waits with the same lease (terminated/retried meanwhile → result
+  dropped); a server dying mid-call → lease expires → fault "didn't finish" (no automatic repeat of a POST). Limit: the
+  in-process runner awaits each call. Builder help/validation, diagram class `.wf-invoke_api`, Advisor
+  (`invokeStepReferences`). Steps are jsonb: no migration, export/import **not** redefined. HR
+  `hr_34_workflow_invoke_api.sql` (workflow `DEPARTMENT_CHECK`, `hr.notify_me`, button on page 23). No env vars.
+  Security: only own-app sources/credentials; host fixed by the developer (no substitutions in the host, URL-encoded
+  after it); fields re-checked before each call; response can't overwrite `DETAIL_PK`/`WORKFLOW_ID`/`INITIATOR`;
+  secrets never in variables/events/errors. Parity: add invoke API to the Workflow row, missing stays e-mail activity
+  (not planned) and multi-tenancy. Tests 748 pass / 8 skip, e2e 90/90 (coordinator re-ran the full suite).
