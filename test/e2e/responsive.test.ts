@@ -395,6 +395,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql: '/builder/sql',
         objects: '/builder/sql/objects?o=hr.emp',
         load: '/builder/sql/load',
+        unload: '/builder/sql/unload',
+        unload_table: '/builder/sql/unload?table=hr.emp',
+        unload_query: '/builder/sql/unload?source=query',
         scripts: '/builder/sql/scripts',
         script_new: '/builder/sql/scripts/new',
         script: `/builder/sql/scripts/${(await owner.one(`insert into meta.sql_script (name, content) values ('E2E script', 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp;\nselect 1/0;')
