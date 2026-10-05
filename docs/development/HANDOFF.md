@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 36 released as v0.28.0). Sprints 3–36 are merged into `main` and released as **v0.28.0** (migrations 001–063 are released: add 064+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_42` are released.
+Last updated: 2026-10-06 (sprint 36 released as v0.28.0; sprint 37 in progress on `sprint-37`). Sprints 3–36 are merged into `main` and released as **v0.28.0** (migrations 001–063 are released: add 064+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_42` are released.
 
 ## Project in one paragraph
 
@@ -1455,6 +1455,23 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   inline styles. Not done: live preview, style colours in dark mode, conditional/dynamic properties, template options
   on items/report columns. Coordinator: Theme Roller row text (stays 🟡: 26.1 conditional/dynamic properties missing),
   Dark mode row text, CHANGELOG; totals unchanged 85/20/10/3. Tests: see "State at the handoff" above.
+
+## Sprint 37 (IN PROGRESS): Workspaces, an "Iris"-like default style, then the 🟡 rows (owner, 2026-10-06: "move on with the next tasks from the handoff and apex-feature-parity, work autonomously")
+
+Branch `sprint-37` from `main` (v0.28.0). One agent (mode A), tests on `pgapex-ci` (5446).
+
+| # | Item | Reserved | Status |
+|---|---|---|---|
+| 1 | **Workspaces** (row "Workspaces (multi-tenant)"): `meta.workspace`, `meta.workspace_member`, `meta.app.workspace_id` (existing apps and developers → workspace 1 "Default"); current workspace in the builder session (switcher in the header); app lists, dashboard, search, create/import, working copies scoped to it; every `/builder/apps/:id` and `/builder/pages/:pid` request (GET and POST) refused with 404 for an app outside the developer's workspaces (administrators: all); Workspace utilities → Workspaces (administrators): create, rename, delete when empty, members, move applications | 064 | in progress |
+| 2 | **New default style like "Iris"** (row ❌) | 065 if needed | todo |
+| 3 | 🟡 rows, one by one (Theme Roller, Instance administration, PL/SQL APIs, …) | 066+ | todo |
+
+**Workspaces design decision:** not a security boundary between developers who write SQL. Application code runs on the
+runtime connection with `SET LOCAL ROLE` (a `RESET ROLE` in a process gets pgapex_runtime's rights), the SQL Workshop
+runs as the owner, and security definer functions trust `pgapex.*` settings. Real tenant isolation would need a
+separate runtime login per workspace and an audit of the 73 definer functions. Workspaces therefore organise
+applications and developers and limit what the builder shows and changes; the docs say so and recommend separate
+installations (databases) for tenants that must not see each other. Parity row → 🟡.
 
 ## Sprint 36 (DONE, v0.28.0): AI with Claude and OpenAI (owner, 2026-10-05: "keep going, I want Claude and OpenAI as options for the AI, work with 1 agent and keep going, don't stop")
 
