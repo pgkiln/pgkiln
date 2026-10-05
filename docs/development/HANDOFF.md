@@ -1266,8 +1266,8 @@ tested, committed and pushed on `sprint-33` before the next agent starts, so the
 | # | Item (parity row) | Reserved | Status |
 |---|---|---|---|
 | 1 | Charts: Gantt (tasks with start/end, progress, dependencies optional), pyramid and polar charts, server-side SVG like the others, with drill-down and the data-table alternative | 048 (unused), `hr_35` | **done** (5d857e8..acf68b0) |
-| 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (only if needed), `hr_36` | **in progress** |
-| 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | to do |
+| 2 | Map region: marker clustering, several layers per map (markers, lines/areas, heat map each with its own query), spatial filtering on the server with PostGIS when installed (bounding box / distance) and a plain lat/lng fallback | 049 (unused), `hr_36` | **done** (1d885c6..9b67ee1) |
+| 3 | REST data sources: writing back from forms and grids (insert/update/delete through the source's endpoints), synchronisation into a local table (on demand and scheduled, merge/replace), OAuth2 password flow and refresh tokens | 050, `hr_37` | **in progress** |
 | 4 | Debug messages (APEX debug): `meta.debug(level, text)` from application SQL, per-request debug entries with timings when debug is on, a viewer in the builder per page view, retention; plus an install/upgrade log of migrations in the builder's administration | 051, (no HR) | to do |
 | 5 | APEX PL/SQL API equivalents: `meta.web_request(...)` (APEX_WEB_SERVICE through the outgoing allow-list/SSRF checks), `meta.parse_data(...)` (APEX_DATA_PARSER for CSV/JSON/XLSX in bytea) where feasible in SQL, documented as a reference | 052, `hr_38` (only if useful) | to do |
 | 6 | Theme Roller: style variants (several saved styles per app, switch per user) and template options on regions/buttons (a fixed list of CSS classes per component) | 053, (no HR) | to do |
@@ -1289,6 +1289,19 @@ CI-style run in a clean worktree without `.env` (throwaway postgres:17 on 5446),
   issue: the Gantt "today" line uses the server's UTC time, not the session time zone. Security: region query as
   the app role (RLS), values escaped, dependency ids only used as map keys, `kind` allow-listed. Tests 802 pass /
   8 skip, e2e 94/94. Coordinator: Charts row ✅, Regions 17/3, totals 83/22/10/3, CHANGELOG `[Unreleased]`.
+- **2 maps: DONE** (1d885c6..9b67ee1, pushed). `config.layers` (≤7 extra: name, source SQL as the app role, markers or
+  heat, cluster, link, hidden), legend toggle, colour per layer, per-layer errors; clustering in `public/app.js`;
+  `src/runtime/spatial.ts` (area helpers moved from report.ts): `r<id>_bb` and new `r<id>_near=lat,lng,km` (map
+  `filter: "distance"`), PostGIS detected via `pg_extension` (cached 1 min) → `ST_Intersects`/`ST_DWithin`, else
+  lat/lng box + haversine (poles, antimeridian). Builder map settings per layer, Advisor checks layer SQL. Gantt today
+  line in the session time zone. HR `hr_36_map_layers.sql` page 33 "Field visits" (`hr.field_visit`). No migration,
+  export/import not redefined, no env vars. Verified against `postgis/postgis:17-3.5` (throwaway, port 5447); a
+  real-PostGIS test skips without the extension. Security (for SECURITY.md): layer SQL as the app role (RLS), links
+  only to openable pages, names/texts as escaped JSON or HTML and DOM-built popups, `_near`/`_bb` parsed as numbers
+  with range checks (only narrow visible rows), the app role needs USAGE on the PostGIS schema. Tests 823 pass /
+  9 skip, e2e 95/95. **Note:** an `npm run dev` (`tsx watch`, started 13:34 outside this session) shared the dev DB
+  and made workflow/job tests fail; the agent stopped its listener on 3100 but its watcher (pid 144937) restarts it
+  on file changes. Not killed by the coordinator (may be the owner's).
 
 ## Sprint 34 (PLANNED, owner 2026-10-05: "add to the next sprint")
 

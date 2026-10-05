@@ -10,6 +10,14 @@ All notable changes to this project are documented here. The format follows
   today line and a time axis from hours to years; pyramid (area-proportional, or two series back to
   back as a population pyramid); polar area. Server-side SVG with tooltips, a data table and
   drill-down links like the other charts. HR example page 32 "Project plan".
+- **Map layers and clustering**: up to 8 layers per map, each with its own query (markers, GeoJSON or
+  PostGIS lines and areas, heat map), a legend to switch them, and marker clustering. A report can be
+  filtered by the distance from the map's centre (`r<id>_near`) as well as by the visible area; with
+  PostGIS installed the filters use `ST_Intersects`/`ST_DWithin`, otherwise latitude/longitude. HR
+  example page 33 "Field visits".
+
+### Fixed
+- The Gantt "today" line uses the session's time zone.
 
 ## [0.24.0] - 2026-10-05
 
