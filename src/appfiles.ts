@@ -105,6 +105,8 @@ const CODE: Record<string, Record<string, string>> = {
   task_definition: { action_code: 'sql' },
   template_component: { template: 'html', wrapper: 'html' },
   rest_source: { body: 'json' },
+  list: { query: 'sql' },
+  supporting_script: { script: 'sql' },
 };
 const isLong = (v: unknown): v is string => typeof v === 'string' && (v.includes('\n') || v.length > 60);
 const codeExt = (table: string, column: string, row: any) =>
@@ -149,6 +151,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['web_credentials', 'shared/web-credentials', 'web_credential'],
   ['rest_sources', 'shared/rest-sources', 'rest_source'],
   ['data_load_definitions', 'shared/data-load-definitions', 'data_load_def'],
+  ['lists', 'shared/lists', 'list'],
+  ['supporting_scripts', 'shared/supporting-objects', 'supporting_script'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
@@ -169,7 +173,7 @@ const SINGLE: [section: string, path: string, sort: string[]][] = [
   ['text_messages', 'globalization/text-messages.json', ['name', 'language']],
 ];
 
-const KNOWN = new Set(['format', 'app', 'app_processes', 'translations', 'nav', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
+const KNOWN = new Set(['format', 'app', 'app_processes', 'translations', 'nav', 'list_entries', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
 
 const byColumns = (cols: string[]) => (a: any, b: any) => {
   for (const c of cols) {
@@ -221,6 +225,12 @@ export function docToFiles(doc: Doc): FileMap {
   for (const [lang, rows] of byLang) w.json(`globalization/translations/${slug(lang) || 'none'}.json`, rows.sort(byColumns(['source'])));
 
   w.json('navigation.json', navTree(doc.nav ?? []));
+  // list entries: per list, a tree like the navigation (no ids)
+  if (doc.list_entries?.length) {
+    const byList = new Map<string, any[]>();
+    for (const e of doc.list_entries) byList.set(String(e.list_name), [...(byList.get(String(e.list_name)) ?? []), e]);
+    w.json('shared/list-entries.json', Object.fromEntries([...byList].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([name, rows]) => [name, navTree(rows)])));
+  }
 
   for (const page of doc.pages ?? []) writePage(w, page);
 
@@ -381,6 +391,21 @@ export function filesToDoc(files: FileMap): Doc {
   };
   walk(read('navigation.json'), null);
   doc.nav = flat;
+
+  if (files.has('shared/list-entries.json')) {
+    const entries: any[] = [];
+    let entryId = 0;
+    const walkList = (rows: any[], parent: number | null) => {
+      for (const e of rows) {
+        const { children, ...row } = e;
+        const id = ++entryId;
+        entries.push({ ...row, id, parent_id: parent });
+        walkList(children ?? [], id);
+      }
+    };
+    for (const rows of Object.values(read('shared/list-entries.json', {}) as Record<string, any[]>)) walkList(rows, null);
+    doc.list_entries = entries;
+  }
 
   const pageDirs = [...new Set([...files.keys()].map((p) => /^pages\/([^/]+)\//.exec(p)?.[1]).filter((d): d is string => !!d))].sort();
   let regionId = 0;

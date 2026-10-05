@@ -1,3 +1,4 @@
+import { blockingLock, refuseLocked } from './locks.ts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { readFileSync } from 'node:fs';
 import { html, raw, type Raw } from '../html.ts';
@@ -223,6 +224,14 @@ export async function developer(req: Req, reply: FastifyReply) {
   if (req.method === 'POST' && req.body?.__csrf !== s.csrf_token) {
     reply.code(403).send('Invalid CSRF token; reload the page and try again.');
     return null;
+  }
+  // a page or application locked by another developer can't be changed (locks.ts)
+  if (req.method === 'POST') {
+    const hit = await blockingLock(s.username, req.url);
+    if (hit) {
+      await refuseLocked(req, reply, s, hit);
+      return null;
+    }
   }
   return s;
 }

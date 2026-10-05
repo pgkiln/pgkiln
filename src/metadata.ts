@@ -40,13 +40,20 @@ export interface App {
   alias: string;
   name: string;
   home_page: number;
-  authentication: 'none' | 'app_users' | 'header' | 'database';
+  authentication: 'none' | 'app_users' | 'header' | 'database' | 'custom';
   /** header authentication: the user-name header, automatic accounts, sign-out URL */
   header_name: string | null;
   header_auto_create: boolean | null;
   /** database authentication: the roles that may sign in, or the members of db_auth_member_of */
   db_auth_roles: string[] | null;
   db_auth_member_of: string | null;
+  /** custom authentication: a named function or a PL/pgSQL body checking p_username and p_password, and post-authentication code */
+  custom_auth_function: string | null;
+  custom_auth_code: string | null;
+  custom_auth_post_code: string | null;
+  /** lists (meta.list) shown as the navigation menu and the navigation bar */
+  nav_list: string | null;
+  navbar_list: string | null;
   logout_url: string | null;
   /** 'assigned': only accounts granted access; 'any_user': any active account */
   access_control: 'assigned' | 'any_user';
@@ -88,7 +95,7 @@ export interface Region {
   id: number;
   seq: number;
   title: string | null;
-  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector';
+  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
@@ -261,7 +268,7 @@ const agg = (table: string, fk: string, parent: string, appId: string) =>
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.db_role, a.debug, a.theme,
+    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.db_role, a.debug, a.theme,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format, a.time_zone, a.time_zone_auto, a.currency,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,

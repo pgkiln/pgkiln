@@ -12,6 +12,7 @@ import { renderCalendar } from './calendar.ts';
 import { CHART_KINDS, renderChartBody, type GaugeConfig } from './charts.ts';
 import { renderFacets } from './facets.ts';
 import { renderSmartFilters } from './smart-filters.ts';
+import { renderListRegion } from './lists.ts';
 import { renderDisplaySelector } from './display-selector.ts';
 import { renderGrid } from './grid.ts';
 import { masterItemOf, mastersOf } from './master-detail.ts';
@@ -305,6 +306,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'display_selector':
       body = renderDisplaySelector(ctx, r);
+      break;
+    case 'list':
+      body = await renderListRegion(ctx, r);
       break;
     case 'tasks':
       body = await renderTasks(ctx, r);

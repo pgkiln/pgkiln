@@ -505,4 +505,7 @@ export const fr: Record<MessageKey, string> = {
   'workflow.terminated': 'Workflow {id} arrêté.',
   'workflow.retried': 'Workflow {id} relancé.',
   'workflow.no_instance': 'Aucun workflow n’est sélectionné.',
+  'list.missing': 'La liste {list} n’existe pas.',
+  'list.empty': 'Rien à afficher.',
+  'list.navbar': 'Barre de navigation',
 };

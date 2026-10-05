@@ -29,7 +29,7 @@ export interface Hit {
   snippet: Raw;
 }
 
-const TEXT_KINDS = new Set<string>(['text', 'code', 'json', 'select', 'upper', 'textarea', 'list', 'authz', 'page', 'icon', 'build_option']);
+const TEXT_KINDS = new Set<string>(['text', 'code', 'json', 'select', 'upper', 'textarea', 'list', 'authz', 'page', 'icon', 'build_option', 'list_name']);
 const PAGE_FIELDS = [
   { name: 'name', label: 'Name', kind: 'text' as const },
   { name: 'title', label: 'Title', kind: 'text' as const },
@@ -96,7 +96,8 @@ export type Target =
   | { type: 'page'; pageNo: number }
   | { type: 'layout'; name: string }
   | { type: 'document'; name: string }
-  | { type: 'template_component'; name: string };
+  | { type: 'template_component'; name: string }
+  | { type: 'list'; name: string };
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -142,6 +143,10 @@ export function whereUsed(entries: Entry[], target: Target, self?: { kind: strin
           // a template_component region, or a report's column_templates
           if (f.kind === 'json') add(entry, f.label, f.value, new RegExp(`"component"\\s*:\\s*"${escapeRe(target.name)}"`).exec(f.value));
           break;
+        case 'list':
+          // a list region ("list": "NAME"); the list's own entries are listed under it
+          if (f.kind === 'json') add(entry, f.label, f.value, new RegExp(`"list"\\s*:\\s*"${escapeRe(target.name)}"`, 'i').exec(f.value));
+          break;
         case 'document':
           if (entry.kind === 'button' && f.name === 'document') add(entry, f.label, f.value, f.value.toUpperCase() === target.name.toUpperCase() ? /.+/.exec(f.value) : null);
           else add(entry, f.label, f.value, new RegExp(`[?&"]doc=${escapeRe(target.name)}(?![A-Za-z0-9_])`, 'i').exec(f.value));
@@ -161,6 +166,7 @@ export function targetOf(kind: string, row: any): Target | null {
   if (kind === 'report_layout' && row?.name) return { type: 'layout', name: row.name };
   if (kind === 'document_template' && row?.name) return { type: 'document', name: row.name };
   if (kind === 'template_component' && row?.static_id) return { type: 'template_component', name: row.static_id };
+  if (kind === 'list' && row?.name) return { type: 'list', name: row.name };
   if (kind === 'page' && row?.page_no !== undefined) return { type: 'page', pageNo: Number(row.page_no) };
   return null;
 }

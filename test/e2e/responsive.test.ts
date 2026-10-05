@@ -410,11 +410,27 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         providers: '/builder/users/providers',
         directories: '/builder/users/directories',
         user: `/builder/users/${(await owner.one(`select id from meta.account where username = 'king'`)).id}`,
+        // (sprint 31) lists, the list region, supporting objects, a locked page with comments
+        list: `/builder/apps/${appId}/shared?c=list-${(await owner.one(`select id from meta.list where app_id = $1 and name = 'HR_SHORTCUTS'`, [appId])).id}`,
+        list_entry: `/builder/apps/${appId}/shared?c=list_entry-${(await owner.one(`select id from meta.list_entry where app_id = $1 and list_name = 'HR_SHORTCUTS' order by seq limit 1`, [appId])).id}`,
+        list_region: await (async () => {
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 31 and r.type = 'list' order by r.seq, r.id limit 1`, [appId]);
+          return `/builder/pages/${r.page_id}?c=region-${r.id}`;
+        })(),
+        supporting_objects: `/builder/apps/${appId}/supporting-objects?imported=1`,
+        locked_page: `/builder/pages/${(await owner.one('select id from meta.page where app_id = $1 and page_no = 31', [appId])).id}`,
       };
-      for (const [name, url] of Object.entries(urls)) {
-        const res = await page.goto(`${base}${url}`);
-        assert.equal(res?.status(), 200, name);
-        await check(page, `builder-${name}`, vp);
+      await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
+      await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
+      try {
+        for (const [name, url] of Object.entries(urls)) {
+          const res = await page.goto(`${base}${url}`);
+          assert.equal(res?.status(), 200, name);
+          await check(page, `builder-${name}`, vp);
+        }
+      } finally {
+        await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
       }
       await page.context().close();
     });

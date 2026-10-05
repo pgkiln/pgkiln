@@ -150,7 +150,7 @@ describe('authorization', () => {
     const allen = await as('allen');
     const page = (await allen.get('/a/hr/2')).body;
     assert.doesNotMatch(page, /Audit trail/);
-    assert.doesNotMatch(page, /href="\/a\/hr\/3/, 'no edit links for non-managers');
+    assert.doesNotMatch(page, /href="\/a\/hr\/3(?![0-9])/, 'no edit links for non-managers');
   });
 
   test('a button that is not rendered cannot be pressed', async () => {
@@ -3148,5 +3148,337 @@ describe('sprint 31 logic', () => {
     const res = await b.submit(`/a/hr/28/da/${da.id}`, { __dialog_closed: '1' });
     assert.equal(res.statusCode, 403);
     assert.equal((await b.post(`/a/hr/28/da/${da.id}`, { __dialog_closed: '1' })).statusCode, 403, 'no CSRF token');
+  });
+});
+
+describe('sprint 31 builder: custom authentication, lists, locks, comments, supporting objects', () => {
+  const alias = 'sec31-builder';
+  const ROLE = 'pgapex_s31_builder';
+  const SCHEMA = 's31_builder';
+  const DEV_A = 'dev_s31a';
+  const DEV_B = 'dev_s31b';
+  const DEV_PW = 'Dev-s31-password!';
+  const CHECK = `return exists (select 1 from ${SCHEMA}.users where name = p_username and pw_hash = crypt(p_password, pw_hash));`;
+  let sApp: number;
+  let sPage: number;
+
+  before(async () => {
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgapex_runtime`);
+    await owner.query(`create schema ${SCHEMA}`);
+    await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
+    await owner.query(`create table ${SCHEMA}.users (name text primary key, pw_hash text not null)`);
+    await owner.query(`insert into ${SCHEMA}.users values ('erin', crypt('Erin-pw-31!', gen_salt('bf', 4)))`);
+    await owner.query(`grant select on ${SCHEMA}.users to ${ROLE}`);
+    await owner.query(`delete from meta.developer where username in ($1, $2)`, [DEV_A, DEV_B]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($3), false), ($2, meta.hash_password($3), false)`, [DEV_A, DEV_B, DEV_PW]);
+    sApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role, custom_auth_code) values ($1, 'S31 builder', 'custom', $2, $3) returning id`, [alias, ROLE, CHECK])).id;
+    sPage = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home') returning id`, [sApp])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 2, 'Second')`, [sApp]);
+    await owner.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Who', 'static', '<p>Signed in as &APP_USER.</p>')`, [sPage]);
+  });
+
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [sApp]);
+    await owner.query(`delete from meta.app where alias = 'sec31-builder-copy'`);
+    await owner.query(`delete from meta.developer where username in ($1, $2)`, [DEV_A, DEV_B]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+
+  const attempt = async (username: string, password: string) => {
+    const b = new Browser();
+    await b.get(`/a/${alias}/login`);
+    return { b, res: await b.post(`/a/${alias}/login`, { __csrf: b.lastCsrf, username, password }) };
+  };
+  const dev = async (user = 'admin', password = 'admin') => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username: user, password })).statusCode, 303, `builder sign-in as ${user}`);
+    await b.get('/builder');
+    return b;
+  };
+  const setCode = (code: string | null, fn: string | null = null) => owner.query('update meta.app set custom_auth_code = $2, custom_auth_function = $3 where id = $1', [sApp, code, fn]);
+
+  describe('custom authentication', () => {
+    test('injection attempts, NUL bytes and empty passwords are refused; nobody signs in without a check', async () => {
+      for (const [u, p] of [["erin' or '1'='1", "' or '1'='1"], ['erin', "x' or true --"], ['erin', ''], ['erin\u0000', 'Erin-pw-31!'], ['', 'Erin-pw-31!'], ['erin', 'Erin-pw-31!\u0000']] as const) {
+        const { b, res } = await attempt(u, p);
+        assert.ok([400, 401].includes(res.statusCode), `${JSON.stringify(u)}: ${res.statusCode}`);
+        assert.equal((await b.get(`/a/${alias}/1`)).statusCode, 302);
+      }
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+      await setCode(null);
+      try {
+        assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 401);
+      } finally {
+        await setCode(CHECK);
+        await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+      }
+    });
+
+    test('a check that errors, returns null or echoes the password refuses, and the password is never logged', async () => {
+      for (const code of [`raise exception 'pw %', p_password;`, 'return null;', `return p_password::int > 0;`, 'select 1/0;']) {
+        await setCode(code);
+        const { b, res } = await attempt('erin', 'Erin-pw-31!');
+        assert.equal(res.statusCode, 401, code);
+        assert.doesNotMatch(res.body, /Erin-pw-31!/);
+        assert.equal((await b.get(`/a/${alias}/1`)).statusCode, 302);
+      }
+      await setCode(CHECK);
+      const log = JSON.stringify((await owner.query('select * from meta.activity_log where app_id = $1', [sApp])).rows);
+      assert.ok(log.includes('check failed'), 'failures are logged');
+      assert.ok(!log.includes('Erin-pw-31!'), 'no password in the log');
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+    });
+
+    test('the check runs as the app\'s role: pgapex\'s own tables are out of reach, and its temporary function is gone afterwards', async () => {
+      await setCode(`return exists (select 1 from meta.developer);`);
+      try {
+        assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 401);
+        await setCode(`return current_user = '${ROLE}' and session_user <> current_user;`);
+        assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 303);
+        // a body can't escape its function with a guessed dollar-quote tag
+        await setCode(`return true; $pgapex$; create table ${SCHEMA}.pwned(x int); $pgapex$`);
+        assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 401);
+        assert.equal((await owner.one(`select to_regclass('${SCHEMA}.pwned') as t`)).t, null);
+        assert.equal((await owner.one(`select count(*)::int as n from pg_proc where proname like 'pgapex_auth_%'`)).n, 0);
+      } finally {
+        await setCode(CHECK);
+        await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+      }
+    });
+
+    test('a function name must be a plain name; the database refuses anything else', async () => {
+      for (const bad of ['x; drop table y', 'App.Check', 'a.b.c', 'f()', '"x"'])
+        await assert.rejects(owner.query('update meta.app set custom_auth_function = $2 where id = $1', [sApp, bad]), /check/, bad);
+      // a function that doesn't exist (or isn't granted) refuses the sign-in
+      await setCode(CHECK, `${SCHEMA}.no_such_function`);
+      try {
+        assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 401);
+      } finally {
+        await setCode(CHECK);
+        await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+      }
+    });
+
+    test('no other way in: no CSRF token, the password-change form, SSO, an app_users password; the session stays in its app; throttling', async () => {
+      const b = new Browser();
+      await b.get(`/a/${alias}/login`);
+      assert.equal((await b.post(`/a/${alias}/login`, { username: 'erin', password: 'Erin-pw-31!' })).statusCode, 403);
+      assert.equal((await b.post(`/a/${alias}/password`, { __csrf: b.lastCsrf, username: 'erin', password: 'Erin-pw-31!', new_password: 'Xx-new-pw-31!', confirm_password: 'Xx-new-pw-31!' })).statusCode, 403);
+      assert.ok((await b.get(`/a/${alias}/sso/any`)).statusCode >= 300);
+      assert.equal((await b.get(`/a/${alias}/1`)).statusCode, 302);
+      assert.equal((await b.post(`/a/${alias}/login`, { __csrf: b.lastCsrf, username: 'king', password: 'king' })).statusCode, 401);
+      const ok = await attempt('erin', 'Erin-pw-31!');
+      assert.equal(ok.res.statusCode, 303);
+      assert.match((await ok.b.get(`/a/${alias}/1`)).body, /Signed in as erin/);
+      assert.equal((await ok.b.get('/a/hr/1')).statusCode, 302);
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+      for (let i = 0; i < 5; i++) assert.equal((await attempt('erin', `wrong-${i}`)).res.statusCode, 401);
+      assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 429);
+      await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+    });
+  });
+
+  describe('lists', () => {
+    before(async () => {
+      await owner.query('update meta.app set authentication = $2 where id = $1', [sApp, 'none']);
+      await owner.query(`update meta.page set requires_auth = false where app_id = $1`, [sApp]);
+    });
+    after(() => owner.query('update meta.app set authentication = $2 where id = $1', [sApp, 'custom']));
+
+    test('unsafe entry URLs are refused by the database; labels, badges and descriptions are escaped', async () => {
+      await owner.query(`insert into meta.list (app_id, name) values ($1, 'SEC')`, [sApp]);
+      for (const url of ['javascript:alert(1)', '//evil.example', '../builder', 'data:text/html,x', 'JaVaScRiPt:x', 'https://a" onclick="x', '\\\\evil', ' javascript:x', '.hidden'])
+        await assert.rejects(owner.query(`insert into meta.list_entry (app_id, list_name, label, target_url) values ($1, 'SEC', 'x', $2)`, [sApp, url]), /check/, url);
+      await owner.query(
+        `insert into meta.list_entry (app_id, list_name, seq, label, badge, description, target_page) values ($1, 'SEC', 10, '<img src=x onerror=alert(1)>', '<b>7</b>', '<script>x()</script>', 2)`,
+        [sApp],
+      );
+      const region = (await owner.one(`insert into meta.region (page_id, title, type, config) values ($1, 'Sec list', 'list', '{"list": "SEC", "template": "cards"}') returning id`, [sPage])).id;
+      try {
+        const body = (await new Browser().get(`/a/${alias}/1`)).body;
+        assert.doesNotMatch(body, /<img src=x/);
+        assert.doesNotMatch(body, /<b>7<\/b>/);
+        assert.doesNotMatch(body, /<script>x\(\)/);
+        assert.match(body, /&lt;img src=x onerror=alert\(1\)&gt;/);
+      } finally {
+        await owner.query('delete from meta.region where id = $1', [region]);
+      }
+    });
+
+    test('a SQL list runs as the app\'s role; unsafe URLs and bad item names from rows are dropped; item values are signed', async () => {
+      await owner.query(`insert into meta.list (app_id, name, type, query) values ($1, 'SECQ', 'sql', $2)`, [
+        sApp,
+        `select * from (values (current_user::text, 2, '{"P2_X": "1", "bad name\\"": "2"}', null::text), ('js', null, null, 'javascript:alert(1)'), ('proto', null, null, '//evil.example')) v(label, page, items, url)`,
+      ]);
+      const region = (await owner.one(`insert into meta.region (page_id, title, type, config) values ($1, 'Sql list', 'list', '{"list": "SECQ"}') returning id`, [sPage])).id;
+      try {
+        const body = (await new Browser().get(`/a/${alias}/1`)).body;
+        assert.match(body, new RegExp(`<span>${ROLE}</span>`));
+        assert.match(body, /href="\/a\/sec31-builder\/2\?P2_X=1&amp;cs=[0-9a-f]+"/);
+        assert.doesNotMatch(body, /bad\+name|bad%20name/);
+        assert.doesNotMatch(body, /javascript:|evil\.example/);
+        // a query the app's role can't run shows an error, not pgapex's data
+        await owner.query(`update meta.list set query = 'select username as label from meta.developer' where app_id = $1 and name = 'SECQ'`, [sApp]);
+        const denied = (await new Browser().get(`/a/${alias}/1`)).body;
+        assert.doesNotMatch(denied, /<span>admin<\/span>/);
+      } finally {
+        await owner.query('delete from meta.region where id = $1', [region]);
+      }
+    });
+
+    test('the builder refuses a bad list name in the region settings and in the app settings', async () => {
+      const b = await dev();
+      const region = (await owner.one(`insert into meta.region (page_id, title, type, config) values ($1, 'Rs', 'list', '{}') returning id`, [sPage])).id;
+      try {
+        await b.get(`/builder/pages/${sPage}?c=region-${region}`);
+        await b.post(`/builder/pages/${sPage}/region/${region}/settings`, { __csrf: b.lastCsrf, list: '"><script>', template: '"><b>' });
+        assert.deepEqual((await owner.one('select config from meta.region where id = $1', [region])).config, {});
+        await assert.rejects(owner.query(`update meta.app set nav_list = 'x"><y' where id = $1`, [sApp]), /check/);
+      } finally {
+        await owner.query('delete from meta.region where id = $1', [region]);
+      }
+    });
+  });
+
+  describe('locks and comments', () => {
+    test('another developer\'s page or application lock refuses changes (also as JSON), not just in the UI', async () => {
+      const a = await dev(DEV_A, DEV_PW);
+      const bb = await dev(DEV_B, DEV_PW);
+      await a.get(`/builder/apps/${sApp}`);
+      assert.equal((await a.post(`/builder/apps/${sApp}/lock`, { __csrf: a.lastCsrf, page_no: '1', note: '<b>mine</b>' })).statusCode, 303);
+      try {
+        await bb.get(`/builder/pages/${sPage}`);
+        const before = (await owner.one('select count(*)::int as n from meta.region where page_id = $1', [sPage])).n;
+        const res = await bb.post(`/builder/pages/${sPage}/c/region`, { __csrf: bb.lastCsrf, title: 'Sneaky', type: 'static', columns: '12', template: 'standard', config: '' });
+        assert.ok([302, 303].includes(res.statusCode));
+        const json = await app.inject({
+          method: 'POST', url: `/builder/pages/${sPage}/delete`,
+          payload: new URLSearchParams({ __csrf: bb.lastCsrf }).toString(),
+          headers: { cookie: [...bb.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+        });
+        assert.equal(json.statusCode, 423);
+        assert.equal((await owner.one('select count(*)::int as n from meta.region where page_id = $1', [sPage])).n, before);
+        assert.ok(await owner.one('select 1 as ok from meta.page where id = $1', [sPage]), 'page not deleted');
+        // the note is escaped where it is shown
+        const page = (await bb.get(`/builder/pages/${sPage}`)).body;
+        assert.doesNotMatch(page, /<b>mine<\/b>/);
+        assert.match(page, /&lt;b&gt;mine&lt;\/b&gt;/);
+        // a developer who is not an administrator can't break it
+        assert.equal((await bb.post(`/builder/apps/${sApp}/unlock`, { __csrf: bb.lastCsrf, page_no: '1' })).statusCode, 403);
+        assert.ok(await owner.one('select 1 as ok from meta.builder_lock where app_id = $1 and page_no = 1', [sApp]));
+        // a page number that isn't a page of this app can't be locked; nor without a CSRF token
+        assert.equal((await bb.post(`/builder/apps/${sApp}/lock`, { __csrf: bb.lastCsrf, page_no: '999' })).statusCode, 404);
+        assert.equal((await bb.post(`/builder/apps/${sApp}/lock`, { __csrf: bb.lastCsrf, page_no: '1; drop' })).statusCode, 404);
+        assert.equal((await bb.post(`/builder/apps/${sApp}/lock`, { page_no: '2' })).statusCode, 403);
+        // the application lock: settings, shared components and deleting the app are refused
+        await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, $2)`, [sApp, DEV_A]);
+        await bb.get(`/builder/apps/${sApp}/settings`);
+        await bb.post(`/builder/apps/${sApp}/settings`, { __csrf: bb.lastCsrf, name: 'Renamed', alias, home_page: '1', authentication: 'none', language: 'en' });
+        await bb.post(`/builder/apps/${sApp}/shared/lov`, { __csrf: bb.lastCsrf, name: 'SNEAKY', query: 'select 1, 1' });
+        await bb.post(`/builder/apps/${sApp}/delete`, { __csrf: bb.lastCsrf });
+        const appRow = await owner.one('select name from meta.app where id = $1', [sApp]);
+        assert.equal(appRow?.name, 'S31 builder');
+        assert.equal(await owner.one(`select 1 from meta.lov where app_id = $1 and name = 'SNEAKY'`, [sApp]), undefined);
+        // the administrator breaks it, and that is logged
+        const admin = await dev();
+        await admin.get(`/builder/apps/${sApp}`);
+        assert.equal((await admin.post(`/builder/apps/${sApp}/unlock`, { __csrf: admin.lastCsrf, page_no: '0' })).statusCode, 303);
+        assert.ok(await owner.one(`select 1 as ok from meta.activity_log where app_id = $1 and event = 'lock_broken'`, [sApp]));
+      } finally {
+        await owner.query('delete from meta.builder_lock where app_id = $1', [sApp]);
+        await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+      }
+    });
+
+    test('comments: escaped, length-limited, only the author or an administrator deletes; ids of another app are refused', async () => {
+      const a = await dev(DEV_A, DEV_PW);
+      const bb = await dev(DEV_B, DEV_PW);
+      await a.get(`/builder/apps/${sApp}`);
+      await a.post(`/builder/apps/${sApp}/comments`, { __csrf: a.lastCsrf, page_no: '1', body: '<script>alert(1)</script>' });
+      await a.post(`/builder/apps/${sApp}/comments`, { __csrf: a.lastCsrf, page_no: '1', body: 'x'.repeat(4001) });
+      await a.post(`/builder/apps/${sApp}/comments`, { __csrf: a.lastCsrf, page_no: '1', body: '   ' });
+      const rows = (await owner.query('select id, body from meta.dev_comment where app_id = $1', [sApp])).rows;
+      assert.equal(rows.length, 1);
+      const page = (await bb.get(`/builder/pages/${sPage}`)).body;
+      assert.doesNotMatch(page, /<script>alert\(1\)<\/script>/);
+      assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+      assert.equal((await bb.post(`/builder/apps/${sApp}/comments/${rows[0].id}/delete`, { __csrf: bb.lastCsrf })).statusCode, 403);
+      const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+      assert.equal((await a.post(`/builder/apps/${hr}/comments/${rows[0].id}/delete`, { __csrf: a.lastCsrf })).statusCode, 404);
+      assert.equal((await a.post(`/builder/apps/${sApp}/comments/${rows[0].id}/delete`, { __csrf: a.lastCsrf })).statusCode, 303);
+      assert.equal((await owner.one('select count(*)::int as n from meta.dev_comment where app_id = $1', [sApp])).n, 0);
+    });
+
+    test('only administrators add, remove or promote developers; nobody demotes themselves', async () => {
+      const a = await dev(DEV_A, DEV_PW);
+      await a.get('/builder/developers');
+      assert.equal((await a.post('/builder/developers', { __csrf: a.lastCsrf, username: 'dev_s31_evil', password: 'Evil-s31-password!', is_admin: 'true' })).statusCode, 403);
+      assert.equal((await a.post('/builder/developers/admin', { __csrf: a.lastCsrf, username: DEV_A, is_admin: 'true' })).statusCode, 403);
+      assert.equal((await a.post('/builder/developers/delete', { __csrf: a.lastCsrf, username: DEV_B })).statusCode, 403);
+      assert.equal(await owner.one(`select 1 from meta.developer where username = 'dev_s31_evil'`), undefined);
+      assert.equal((await owner.one('select is_admin from meta.developer where username = $1', [DEV_A])).is_admin, false);
+      const admin = await dev();
+      await admin.get('/builder/developers');
+      await admin.post('/builder/developers/admin', { __csrf: admin.lastCsrf, username: 'admin', is_admin: 'false' });
+      assert.equal((await owner.one(`select is_admin from meta.developer where username = 'admin'`)).is_admin, true);
+    });
+
+    test('locks and comments are not exported', async () => {
+      await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 1, $2)`, [sApp, DEV_A]);
+      await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 1, $2, 'secret note s31')`, [sApp, DEV_A]);
+      try {
+        const doc = JSON.stringify((await owner.one('select meta.export_app($1) as d', [alias])).d);
+        assert.doesNotMatch(doc, /secret note s31|builder_lock|dev_comment/);
+      } finally {
+        await owner.query('delete from meta.builder_lock where app_id = $1', [sApp]);
+        await owner.query('delete from meta.dev_comment where app_id = $1', [sApp]);
+      }
+    });
+  });
+
+  describe('supporting objects', () => {
+    test('import never runs them; running needs a developer and a CSRF token; they run as the app\'s role and an error undoes everything', async () => {
+      await owner.query(
+        `insert into meta.supporting_script (app_id, name, kind, seq, script) values
+          ($1, 'make', 'install', 10, 'create table ${SCHEMA}.s31_made (x int); insert into ${SCHEMA}.s31_made values (1);'),
+          ($1, 'escalate', 'upgrade', 10, 'create table ${SCHEMA}.s31_up (x int); select username from meta.developer;')`,
+        [sApp],
+      );
+      await owner.query(`grant create on schema ${SCHEMA} to ${ROLE}`);
+      try {
+        const doc = (await owner.one('select meta.export_app($1) as d', [alias])).d;
+        const copy = (await owner.one(`select meta.import_app($1::jsonb, 'sec31-builder-copy') as id`, [JSON.stringify(doc)])).id;
+        assert.equal((await owner.one('select count(*)::int as n from meta.supporting_script where app_id = $1', [copy])).n, 2);
+        assert.equal((await owner.one(`select to_regclass('${SCHEMA}.s31_made') as t`)).t, null, 'not run on import');
+        // without a builder session, or without a CSRF token
+        const anon = new Browser();
+        assert.ok([302, 303, 401, 403].includes((await anon.post(`/builder/apps/${sApp}/supporting-objects/run`, { kind: 'install' })).statusCode));
+        const b = await dev();
+        await b.get(`/builder/apps/${sApp}/supporting-objects`);
+        assert.equal((await b.post(`/builder/apps/${sApp}/supporting-objects/run`, { kind: 'install' })).statusCode, 403);
+        assert.equal((await b.post(`/builder/apps/${sApp}/supporting-objects/run`, { __csrf: b.lastCsrf, kind: 'drop everything' })).statusCode, 400);
+        assert.equal(await owner.one(`select to_regclass('${SCHEMA}.s31_made') as t`).then((r) => r.t), null);
+        // the upgrade reads pgapex's own table: refused for the app's role, and the table it made is gone too
+        const up = await b.post(`/builder/apps/${sApp}/supporting-objects/run`, { __csrf: b.lastCsrf, kind: 'upgrade' });
+        assert.equal(up.statusCode, 200);
+        assert.match(up.body, /rolled back/);
+        assert.equal((await owner.one(`select to_regclass('${SCHEMA}.s31_up') as t`)).t, null);
+        assert.ok(await owner.one(`select 1 as ok from meta.activity_log where app_id = $1 and event = 'supporting_objects'`, [sApp]));
+        // the install runs as the app's role: the table belongs to it
+        await b.post(`/builder/apps/${sApp}/supporting-objects/run`, { __csrf: b.lastCsrf, kind: 'install' });
+        assert.equal((await owner.one(`select tableowner from pg_tables where schemaname = '${SCHEMA}' and tablename = 's31_made'`)).tableowner, ROLE);
+        await owner.query(`delete from meta.app where id = $1`, [copy]);
+      } finally {
+        await owner.query(`drop table if exists ${SCHEMA}.s31_made, ${SCHEMA}.s31_up`);
+        await owner.query('delete from meta.supporting_script where app_id = $1', [sApp]);
+        await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
+      }
+    });
   });
 });

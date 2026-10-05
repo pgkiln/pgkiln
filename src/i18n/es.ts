@@ -505,4 +505,7 @@ export const es: Record<MessageKey, string> = {
   'workflow.terminated': 'Flujo de trabajo {id} terminado.',
   'workflow.retried': 'El flujo de trabajo {id} se está ejecutando de nuevo.',
   'workflow.no_instance': 'No hay ningún flujo de trabajo seleccionado.',
+  'list.missing': 'La lista {list} no existe.',
+  'list.empty': 'Nada que mostrar.',
+  'list.navbar': 'Barra de navegación',
 };

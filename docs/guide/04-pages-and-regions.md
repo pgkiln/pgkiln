@@ -44,6 +44,7 @@ only when true) and `authz` (an authorization scheme).
 | [`display_selector`](#display_selector-region-display-selector) | Tabs or a select list that show one region (or group of regions) of the page at a time |
 | [`map`](#map) | Places (markers) and shapes on an interactive map |
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
+| [`list`](#list-lists) | A list (Shared Components → Lists) as nested links, a badge list, cards or tabs |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
@@ -685,6 +686,50 @@ Attributes: `expanded` (levels open at first, default 1), `link` (as for maps; `
 column), `empty`. The tree is drawn on the server with `<details>`: it works without JavaScript,
 and the browser's find-in-page opens closed branches. Clicking a label follows the link; the rest
 of the row opens and closes the branch. Up to 5000 nodes.
+
+### `list` (lists)
+
+A **list** (APEX: Shared Components → Lists) is a named set of links kept under **Shared Components
+→ Lists**. A list region shows it; the same list can also be the application's **navigation menu**
+or **navigation bar** (**Settings → Theme**: *Navigation menu list*, *Navigation bar list*). A list is:
+
+- **static**: its **entries** (Shared Components → Lists → a list → *Add entry*), each with a label,
+  an icon, a target, a badge, a description, a parent entry (a sub menu, up to 6 levels), a
+  sequence, a condition (SQL), an authorization scheme and a build option; or
+- **sql**: the rows of a query, run as the application's database role with the usual binds:
+
+```sql
+select d.dname as label, 2 as page, null::jsonb as items, 'building' as icon,
+       (select count(*) from hr.emp e where e.deptno = d.deptno)::text as badge,
+       initcap(d.loc) as description
+  from hr.dept d order by d.dname
+```
+
+  Only `label` is required; the other columns are `page`, `items` (JSON object of item values),
+  `url`, `icon`, `badge`, `description`, and `id` / `parent_id` for nesting. At most 500 rows.
+
+An entry's **target** is a page of the application with item values (`{"P3_ID": "&P2_ID."}`; links
+carry the [checksum](08-security.md#session-state-protection) like other generated links), a path
+inside the application (`2?tab=open`), or an `http(s)://` address (opened with
+`rel="noopener noreferrer"`); other URLs (`javascript:`, `//host`, `../`) are refused when saved and
+left out when they come from a query or a substitution. Labels, badges and descriptions take
+`&ITEM.` substitutions and are always escaped.
+
+Entries the user may not see are left out: a failing condition or authorization scheme, an excluded
+build option, or a target page the user may not open (the page's authorization, like the
+navigation menu); a heading without a target and without visible children too. The entry for the
+current page is marked (`aria-current="page"`); in the navigation menu its parents are open.
+
+Attributes (the region's **Settings** in the page designer):
+
+| Key | Meaning |
+|---|---|
+| `list` | The list's name (upper case) |
+| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description) or `tabs` (the top-level entries as tabs) |
+
+The HR example's page 31 (Shortcuts) shows a static list with each template (with a badge from an
+item, child entries, a manager-only entry and one of an excluded build option) and a department
+list from a query; its navigation bar is the list `HR_NAVBAR`.
 
 ### Template components
 
