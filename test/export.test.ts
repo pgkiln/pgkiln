@@ -39,6 +39,7 @@ const SECTIONS: Record<string, string> = {
   build_option: 'build_options',
   web_credential: 'web_credentials',
   rest_source: 'rest_sources',
+  data_load_def: 'data_load_definitions',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

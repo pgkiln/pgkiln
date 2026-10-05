@@ -1,11 +1,11 @@
 import pg from 'pg';
 import { applyBinds, literal } from '../binds.ts';
-import { savepoint, type Client } from '../db.ts';
+import { runtime, savepoint, type Client } from '../db.ts';
 import type { Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
 import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, tempIds } from './files.ts';
-import { autoMap, LoadError, LoadFailed, loadRows, parseFile, tableColumns, type LoadMode } from '../dataload.ts';
+import { autoMap, LoadError, LoadFailed, loadRows, loadWithDefinition, parseFile, tableColumns, type DataLoadDefinition, type FileFormat, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { invokeApi } from './rest-sources.ts';
 import { lovLookup, ratingMax } from './items.ts';
@@ -257,6 +257,11 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
 
 interface DataLoadConfig {
   file_item?: string;
+  /** a data load definition of the app (Shared Components): table, format, mapping, transformations */
+  definition?: string;
+  /** without a definition: the file format (default: detected) and the XML row element */
+  format?: FileFormat;
+  row_tag?: string;
   table?: string;
   mode?: LoadMode;
   skip_errors?: boolean;
@@ -272,7 +277,7 @@ async function dataLoad(ctx: PageContext, p: Process): Promise<string | null> {
   const t = ctx.locale.t;
   const conf = (p.config ?? {}) as DataLoadConfig;
   const fileItem = conf.file_item?.toUpperCase();
-  if (!fileItem || !conf.table) throw new Error(`Process "${p.name}" needs "file_item" and "table" in its configuration.`);
+  if (!fileItem || !(conf.table || conf.definition)) throw new Error(`Process "${p.name}" needs "file_item" and "table" or "definition" in its configuration.`);
   // shown on the file item (see errorItem)
   const fail = (message: string) => Object.assign(new Error(message), { column: fileItem.toLowerCase() });
   const c = ctx.client!;
@@ -280,24 +285,34 @@ async function dataLoad(ctx: PageContext, p: Process): Promise<string | null> {
   const file = isTempId(id) ? (await c.query('select filename, content from meta.temp_files where id = $1', [id])).rows[0] : undefined;
   if (!file) throw fail(t('load.no_file'));
   const headers = conf.headers !== false;
+  // invalid values and RAISE messages are shown; other errors are logged
+  const describe = async (e: unknown) => {
+    const code = (e as pg.DatabaseError).code ?? '';
+    return code.startsWith('22') || code === 'P0001' ? (e as Error).message : publicError(ctx, e, `data load of ${conf.table ?? conf.definition}`);
+  };
   try {
-    const sheet = await parseFile(file.filename, file.content, { headers });
-    const columns = conf.columns
-      ? sheet.headers.flatMap((h, index) => (conf.columns![h] ? [{ index, column: conf.columns![h] }] : []))
-      : autoMap(sheet.headers, await tableColumns(c, conf.table));
-    if (!columns.length) throw fail(t('load.no_columns', { table: conf.table }));
-    const r = await loadRows(c, sheet, {
-      table: conf.table,
-      columns,
-      mode: conf.mode ?? 'append',
-      skipErrors: !!conf.skip_errors,
-      firstRow: headers ? 2 : 1,
-      // invalid values and RAISE messages are shown; other errors are logged
-      describe: async (e) => {
-        const code = (e as pg.DatabaseError).code ?? '';
-        return code.startsWith('22') || code === 'P0001' ? (e as Error).message : publicError(ctx, e, `data load of ${conf.table}`);
-      },
-    });
+    let r;
+    if (conf.definition) {
+      // read as pgapex_runtime (the request's connection has switched to the app's role)
+      const def = await runtime.one<DataLoadDefinition>('select * from meta.data_load_def where app_id = $1 and name = upper($2)', [ctx.app.id, conf.definition]);
+      if (!def) throw new Error(`Process "${p.name}": data load definition ${conf.definition} not found.`);
+      r = await loadWithDefinition(c, def, file, { describe });
+    } else {
+      const table = conf.table!;
+      const sheet = await parseFile(file.filename, file.content, { headers, format: conf.format, rowTag: conf.row_tag });
+      const columns = conf.columns
+        ? sheet.headers.flatMap((h, index) => (conf.columns![h] ? [{ index, column: conf.columns![h] }] : []))
+        : autoMap(sheet.headers, await tableColumns(c, table));
+      if (!columns.length) throw fail(t('load.no_columns', { table }));
+      r = await loadRows(c, sheet, {
+        table,
+        columns,
+        mode: conf.mode ?? 'append',
+        skipErrors: !!conf.skip_errors,
+        firstRow: headers ? 2 : 1,
+        describe,
+      });
+    }
     await c.query('select meta.delete_temp_file($1)', [id]);
     ctx.session.state[fileItem] = null;
     const counts = { inserted: String(r.inserted), updated: String(r.updated), failed: String(r.failed) };

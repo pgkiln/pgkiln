@@ -17,7 +17,7 @@ import { regionKeys } from '../appfiles.ts';
 export const REPLACED = [
   'authz_scheme', 'app_item', 'app_process', 'lov', 'app_group_role', 'text_message', 'translation',
   'report_layout', 'automation', 'document_template', 'task_definition', 'workflow_definition',
-  'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'nav_entry', 'page',
+  'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'data_load_def', 'nav_entry', 'page',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow'];
