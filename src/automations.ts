@@ -291,6 +291,12 @@ export function startScheduler() {
       await (await import('./restsync.ts')).syncTick();
     } catch (e) {
       console.error('REST synchronisation:', (e as Error).message);
+    }
+    try {
+      // debug messages past their retention (at most once an hour; src/debug.ts)
+      await (await import('./debug.ts')).purgeDebug();
+    } catch (e) {
+      console.error('debug messages:', (e as Error).message);
     } finally {
       busy = false;
     }

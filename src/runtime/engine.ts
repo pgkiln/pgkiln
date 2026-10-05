@@ -12,7 +12,7 @@ import { itemMask, lovLookup, ratingMax } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { conditionHolds } from './logic.ts';
 import { BACKGROUND_TYPES, downloadFile, workflowProcess, type ChainConfig } from './processes.ts';
-import { bindValues, publicError, stripSemicolon, substitute, toState, type Errors, type PageContext } from './context.ts';
+import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type Errors, type PageContext } from './context.ts';
 
 const ident = pg.escapeIdentifier;
 
@@ -443,7 +443,11 @@ export async function runChain(ctx: PageContext, chain: Process, names: Set<stri
   return messages;
 }
 
-async function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
+function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
+  return timed(ctx, 6, 'process', () => `process "${p.name}" (${p.type})`, () => runOneStep(ctx, p, names, depth));
+}
+
+async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
   try {
     if (ctx.background && !BACKGROUND_TYPES.has(p.type)) throw new Error(ctx.locale.t('process.background_type', { name: p.name, type: p.type }));
     switch (p.type) {
@@ -493,7 +497,10 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
   for (const p of ctx.page.processes) {
     // a chain's children run inside their chain only
     if (p.point !== point || p.parent_process) continue;
-    if (!(await shouldRun(ctx, p))) continue;
+    if (!(await shouldRun(ctx, p))) {
+      dbg(ctx, 9, 'process', () => `process "${p.name}" skipped (button, authorization or condition)`);
+      continue;
+    }
     const msg = await runOne(ctx, p, names, 0);
     if (msg) messages.push(msg);
   }
@@ -505,7 +512,7 @@ export async function runAppProcesses(ctx: PageContext, point: 'after_login' | '
   for (const p of ctx.app.app_processes) {
     if (p.point !== point || !(await isAuthorized(ctx, p.authz))) continue;
     try {
-      await savepoint(ctx.client!, () => runSql(ctx, p.code, new Set(ctx.app.app_items)));
+      await timed(ctx, 6, 'process', () => `application process "${p.name}"`, () => savepoint(ctx.client!, () => runSql(ctx, p.code, new Set(ctx.app.app_items))));
     } catch (e) {
       ctx.errors.page.push(await publicError(ctx, e, `application process "${p.name}"`));
     }

@@ -21,6 +21,7 @@ const NOT_EXPORTED = new Set([
   'process_job', // background runs of chain processes: data of this installation
   'builder_lock', // page and application locks of this installation's developers
   'dev_comment', // developer comments: builder notes of this installation
+  'debug_view', // debug messages: requests recorded by this installation
 ]);
 
 /** Where each exported table appears in the document. */

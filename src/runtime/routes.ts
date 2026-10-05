@@ -17,7 +17,8 @@ import { checksumValid, LOGIN_WINDOW_MINUTES, urlChecksum } from '../security.ts
 import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type SsoResult } from '../sso.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
-import { bindValues, publicError, stripSemicolon, toState, writeOut, type PageContext } from './context.ts';
+import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
+import { debugOf, finishDebug, startDebug } from '../debug.ts';
 import { clearPageItems, fetchForms, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
 import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov } from './items.ts';
@@ -187,6 +188,7 @@ export const txContext = (ctx: PageContext) => ({
   sessionId: ctx.session.id,
   lang: ctx.locale.lang,
   timeZone: ctx.locale.timeZone,
+  debug: ctx.debug,
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */
@@ -225,7 +227,16 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
     else reply.redirect(`${base}/login?next=${encodeURIComponent(req.url)}`);
     return null;
   }
+  // debug messages (src/debug.ts): only when the application's debug level is on
+  const debug = startDebug(req, app);
+  if (debug) {
+    debug.pageNo = page.page_no;
+    debug.username = user;
+    debug.sessionId = session.id;
+    debug.add(6, 'session', `page ${page.page_no} "${page.name}", user ${user}, language ${locale.lang}${locale.timeZone ? `, time zone ${locale.timeZone}` : ''}`);
+  }
   return {
+    debug,
     app,
     page,
     session,
@@ -247,6 +258,7 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
 }
 
 async function forbidden(ctx: PageContext, reply: FastifyReply, message: string, detail: string) {
+  dbg(ctx, 2, 'access', `refused (403): ${detail}`);
   logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail });
   const t = ctx.locale.t;
   const main = html`<div class="t-titlebar"><h1>${t('error.access_denied')}</h1></div>
@@ -303,6 +315,8 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
       continue;
     }
     const posted = Array.isArray(raw) ? raw[raw.length - 1] : raw;
+    // level 9 only, and never the value of a password item
+    dbg(ctx, 9, 'item', () => `${item.name} posted: ${item.type === 'password' ? '(password, not shown)' : posted === undefined ? '(not sent)' : JSON.stringify(String(posted).slice(0, 200))}`);
     if (item.type === 'richtext') ctx.session.state[item.name] = cleanRichText(posted) || null;
     else if (item.type === 'markdown') ctx.session.state[item.name] = posted ? String(posted).replace(/\r\n?/g, '\n') : null;
     else if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
@@ -327,6 +341,13 @@ async function renderResponse(ctx: PageContext, reply: FastifyReply, code = 200)
 }
 
 export async function runtimeRoutes(app: FastifyInstance) {
+  // debug messages: stored after the response (only requests with a debug log; src/debug.ts)
+  app.addHook('onError', async (req, _reply, err) => {
+    debugOf(req)?.add(1, 'error', `unhandled: ${err.message}`);
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    if (debugOf(req)) await finishDebug(req, reply.statusCode);
+  });
   app.get<{ Params: Params }>('/a/:alias', async (req, reply) => {
     const a = await loadApp(req.params.alias);
     if (!a) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
@@ -359,23 +380,26 @@ export async function runtimeRoutes(app: FastifyInstance) {
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
-        await checkPageAccess(ctx);
-        await runAppProcesses(ctx, 'before_page');
+        await timed(ctx, 4, 'page', 'page authorization', () => checkPageAccess(ctx));
+        await timed(ctx, 4, 'page', 'application processes (before page)', () => runAppProcesses(ctx, 'before_page'));
         // before header (as in APEX): branches, then computations and processes
         if (!docName && !downloadKey) {
           const to = await branchTarget(ctx, 'before_header');
-          if (to) return { redirect: to };
+          if (to) {
+            dbg(ctx, 4, 'branch', `before header: redirect to ${to.split('?')[0]}`);
+            return { redirect: to };
+          }
         }
-        await fetchForms(ctx);
-        await runComputations(ctx, 'before_header');
+        await timed(ctx, 4, 'page', 'fetch form rows', () => fetchForms(ctx));
+        await timed(ctx, 4, 'page', 'computations (before header)', () => runComputations(ctx, 'before_header'));
         try {
-          await runProcesses(ctx, 'load');
+          await timed(ctx, 4, 'page', 'processes (load)', () => runProcesses(ctx, 'load'));
         } catch (e) {
           ctx.errors.page.push((e as Error).message);
         }
         // a download process on load sends its file instead of the page
         if (ctx.download && !docName && !downloadKey) return { download: ctx.download };
-        await computeVisibility(ctx);
+        await timed(ctx, 4, 'page', 'visibility (authorization, conditions)', () => computeVisibility(ctx));
         if (docName) return renderDocument(ctx, docName);
         if (downloadKey) {
           const format = downloadKey.slice(downloadKey.indexOf('_') + 1);
@@ -401,7 +425,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
           }
           return { streamed: true };
         }
-        return { html: await renderPage(ctx) };
+        return { html: await timed(ctx, 4, 'page', 'render page', () => renderPage(ctx)) };
       });
     } catch (e) {
       if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `page ${ctx.page.page_no}`);
@@ -462,14 +486,15 @@ export async function runtimeRoutes(app: FastifyInstance) {
     try {
       button = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
-        await checkPageAccess(ctx);
-        await runAppProcesses(ctx, 'before_page');
+        await timed(ctx, 4, 'page', 'page authorization', () => checkPageAccess(ctx));
+        await timed(ctx, 4, 'page', 'application processes (before page)', () => runAppProcesses(ctx, 'before_page'));
         // Visibility is decided on the state the page was rendered with,
         // BEFORE the posted values are applied.
-        const vis = await computeVisibility(ctx);
+        const vis = await timed(ctx, 4, 'page', 'visibility (authorization, conditions)', () => computeVisibility(ctx));
         const requested = body.__request ?? '';
         const pressed = requested ? vis.buttons.get(requested) : undefined;
         if (requested && pressed?.action !== 'submit') throw new Forbidden(ctx.locale.t('error.action_unavailable'));
+        dbg(ctx, 4, 'submit', requested ? `button ${requested}` : 'submit without a button');
         applyPostedItems(ctx, body);
         await applyUploads(ctx, files, body, txContext);
         if (Object.keys(ctx.errors.items).length) throw new ValidationFailed(ctx.errors);
@@ -477,21 +502,25 @@ export async function runtimeRoutes(app: FastifyInstance) {
         ctx.request = pressed.name;
         snapshot = { ...ctx.session.state };
         try {
-          await runComputations(ctx, 'after_submit');
+          await timed(ctx, 4, 'page', 'computations (after submit)', () => runComputations(ctx, 'after_submit'));
         } catch (e) {
           if (e instanceof ComputationFailed) throw new ProcessFailed(e.message, null);
           throw e;
         }
-        if (ctx.request !== 'DELETE') await validate(ctx);
-        messages = await runProcesses(ctx, 'submit');
+        if (ctx.request !== 'DELETE') await timed(ctx, 4, 'page', 'validations', () => validate(ctx));
+        messages = await timed(ctx, 4, 'page', 'processes (submit)', () => runProcesses(ctx, 'submit'));
         // after processing: the first branch that applies; else the button's target page
         branchTo = await branchTarget(ctx, 'after_processing');
+        if (branchTo) dbg(ctx, 4, 'branch', `after processing: ${branchTo.split('?')[0]}`);
         return pressed;
       });
     } catch (e) {
       if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `forged or unavailable request "${body.__request}" on page ${ctx.page.page_no}`);
-      if (e instanceof ValidationFailed) ctx.errors = e.errors;
-      else if (e instanceof ProcessFailed) {
+      if (e instanceof ValidationFailed) {
+        ctx.errors = e.errors;
+        dbg(ctx, 2, 'validation', `failed: ${[...e.errors.page, ...Object.entries(e.errors.items).map(([k, v]) => `${k}: ${v}`)].join('; ')}`);
+      } else if (e instanceof ProcessFailed) {
+        dbg(ctx, 1, 'process', `failed, rolled back: ${e.message}`);
         ctx.session.state = { ...snapshot };
         if (e.item) ctx.errors.items[e.item] = e.message;
         else ctx.errors.page.push(e.message);

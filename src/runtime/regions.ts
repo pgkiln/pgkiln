@@ -5,7 +5,7 @@ import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Button, Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
-import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
+import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { fillItems, linkAttrs, linkColumns } from './links.ts';
 import { renderCalendar } from './calendar.ts';
@@ -256,11 +256,20 @@ function lazyPlaceholder(ctx: PageContext, r: Region) {
 }
 
 export async function renderRegion(ctx: PageContext, r: Region, hidden: Set<string> = new Set()) {
-  if (!ctx.vis!.regions.has(r.id)) return '';
+  if (!ctx.vis!.regions.has(r.id)) {
+    dbg(ctx, 9, 'region', () => `region "${r.title ?? r.id}" (${r.type}) not rendered (authorization or condition)`);
+    return '';
+  }
+  if (ctx.debug?.on(6)) return timed(ctx, 6, 'region', `region "${r.title ?? r.id}" (${r.type})`, () => renderRegionNow(ctx, r, hidden));
+  return renderRegionNow(ctx, r, hidden);
+}
+
+async function renderRegionNow(ctx: PageContext, r: Region, hidden: Set<string>) {
   let body: Raw | null = null;
   const setting = cacheOf(r);
   const cacheKeyOf = setting ? cacheKey(ctx, r, setting) : null;
   if (cacheKeyOf && !ctx.cacheRefresh) body = useCached(ctx, cacheKeyOf);
+  if (body) dbg(ctx, 6, 'region', 'from the region cache');
   if (!body && lazyOf(r) && ctx.loadNow !== r.id && !ctx.params.has(`r${r.id}_load`)) body = lazyPlaceholder(ctx, r);
   if (!body)
     body = setting ? await renderCaching(ctx, r, setting, cacheKeyOf!, () => renderBody(ctx, r, hidden)) : await renderBody(ctx, r, hidden);

@@ -20,6 +20,7 @@ import { templateRoutes } from './builder/templates.ts';
 import { searchRoutes } from './builder/search.ts';
 import { advisorRoutes } from './builder/advisor.ts';
 import { topSqlRoutes } from './builder/top-sql.ts';
+import { diagnosticsRoutes } from './builder/diagnostics.ts';
 import { ldapRoutes } from './builder/ldap.ts';
 import { documentRoutes } from './builder/documents.ts';
 import { pwaBuilderRoutes } from './builder/pwa.ts';
@@ -87,6 +88,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(searchRoutes);
   await app.register(advisorRoutes);
   await app.register(topSqlRoutes);
+  await app.register(diagnosticsRoutes);
   await app.register(ldapRoutes);
   await app.register(documentRoutes);
   await app.register(pwaBuilderRoutes);

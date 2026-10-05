@@ -39,6 +39,10 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
     }
   }
   const applied: string[] = [];
+  const startedAt = new Date();
+  // an empty database: this run installs pgapex, else it upgrades it
+  const fresh = !(await client.query(`select to_regclass('public.pgapex_migration') is not null as ok`)).rows[0].ok;
+  let failure: string | null = null;
   async function apply(dir: string, table: string) {
     await client.query(`create table if not exists public.${table} (name text primary key, applied_at timestamptz not null default now())`);
     const done = new Set((await client.query(`select name from public.${table}`)).rows.map((r) => r.name));
@@ -55,6 +59,7 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
       } catch (e) {
         await client.query('rollback');
         log('FAILED\n');
+        failure = `${dir}/${file}: ${(e as Error).message}`;
         throw e;
       }
     }
@@ -67,7 +72,36 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
     }
     if (o.example) await apply(`examples/${o.example}`, 'pgapex_seed');
   } finally {
+    if (applied.length || failure) await recordRun(client, o.root, { startedAt, fresh, applied, failure }).catch(() => {});
     await client.end();
   }
   return applied;
+}
+
+/**
+ * The install/upgrade log (Builder → Workspace utilities → Installation): one
+ * row per run of the migrations that applied something or failed. Created
+ * here, like public.pgapex_migration, so it exists before the first migration.
+ */
+async function recordRun(client: pg.Client, root: string, r: { startedAt: Date; fresh: boolean; applied: string[]; failure: string | null }) {
+  await client.query(`create table if not exists public.pgapex_install_log (
+    id bigserial primary key,
+    started_at timestamptz not null,
+    finished_at timestamptz not null default now(),
+    version text,
+    kind text not null check (kind in ('install', 'upgrade')),
+    applied text[] not null default '{}',
+    status text not null check (status in ('ok', 'failed')),
+    error text,
+    db_user text not null default current_user)`);
+  let version: string | null = null;
+  try {
+    version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version ?? null;
+  } catch {
+    // a root without package.json (an unpacked release is fine without it)
+  }
+  await client.query(
+    'insert into public.pgapex_install_log (started_at, version, kind, applied, status, error) values ($1, $2, $3, $4, $5, $6)',
+    [r.startedAt, version, r.fresh ? 'install' : 'upgrade', r.applied, r.failure ? 'failed' : 'ok', r.failure?.slice(0, 4000) ?? null],
+  );
 }

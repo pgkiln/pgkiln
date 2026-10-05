@@ -278,6 +278,8 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('db_role', 'Database role (parsing schema)', a.db_role, { help: 'All application SQL runs as this role (SET LOCAL ROLE), so grants and row level security apply. Leave empty only for trusted internal apps.' })}
               <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
                 <small class="help">Shows database error details to end users. Development only.</small></div>
+              <div class="field"><span class="label">Debug messages</span><span>${a.debug_level ? html`<b>on, level ${a.debug_level}</b>` : 'off'} · <a href="${BASE}/apps/${a.id}/debug">Debug messages</a></span>
+                <small class="help">Records every request's steps with timings and the messages of <code>meta.debug(level, text)</code>, kept ${a.debug_retention_days} days.</small></div>
             </div>
             <h3>HTTP header authentication</h3>
             <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgapex trusts it only from the proxy addresses in <code>PGAPEX_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
@@ -348,6 +350,7 @@ export async function builderRoutes(app: FastifyInstance) {
           ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : html`<b>no check configured: nobody can sign in</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
           ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
+          <li>${a.debug_level ? `✗ Debug messages are on (level ${a.debug_level}): every request is recorded` : '✓ Debug messages are off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
           <li>Public pages: ${(await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n}</li>
         </ul>`)}
@@ -449,6 +452,7 @@ export async function builderRoutes(app: FastifyInstance) {
       </div>
       <div class="columns">
         <p><a class="btn" href="${BASE}/apps/${a.id}/top-sql">${icon('database')} Top SQL</a> <span class="muted">the slowest statements of this application's database role</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/debug">${icon('list')} Debug messages</a> <span class="muted">${a.debug_level ? `on (level ${a.debug_level}): ` : 'off: '}timed steps of each request and messages from <code>meta.debug()</code></span></p>
         ${region('Page views by page (7 days)', html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Page</th><th>Name</th><th class="num">Views</th><th class="num">Avg ms</th><th class="num">Max ms</th></tr></thead>
           <tbody>${byPage.rows.map((r) => html`<tr><td class="num">${r.page_no}</td><td>${r.name}</td><td class="num">${r.views}</td><td class="num">${r.avg_ms}</td><td class="num">${r.max_ms}</td></tr>`)}</tbody></table></div>`)}
         ${region('Recent events', html`<p class="muted u-mt0">${req.query.all === '1' ? html`Showing all events. <a href="?">Hide page views</a>` : html`Sign-ins, denials and errors. <a href="?all=1">Include page views</a>`}</p>

@@ -59,6 +59,8 @@ export interface AppContext {
   lang?: string;
   /** time zone of the request (validated against pg_timezone_names); unset: the database's */
   timeZone?: string | null;
+  /** the request's debug log (src/debug.ts): sets pgapex.debug_level and collects NOTICEs (meta.debug) */
+  debug?: { level: number; notice(msg: { message?: string; detail?: string; hint?: string; severity?: string }): void };
 }
 
 /**
@@ -75,12 +77,22 @@ export async function appTx<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): 
               set_config('statement_timeout', $4, true),
               set_config('pgapex.lang', $5, true),
               set_config('pgapex.public_url', $6, true),
-              set_config('TimeZone', coalesce($7, current_setting('TimeZone')), true)`,
+              set_config('TimeZone', coalesce($7, current_setting('TimeZone')), true),
+              set_config('pgapex.debug_level', $8, true)${ctx.debug ? `, set_config('client_min_messages', 'notice', true)` : ''}`,
       [ctx.appUser, ctx.sessionId, String(ctx.appId), process.env.STATEMENT_TIMEOUT ?? '30s', ctx.lang ?? '',
-       (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, ''), ctx.timeZone ?? null],
+       (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, ''), ctx.timeZone ?? null,
+       String(ctx.debug?.level ?? 0)],
     );
     if (ctx.dbRole) await c.query(`set local role ${pg.escapeIdentifier(ctx.dbRole)}`);
-    return fn(c);
+    if (!ctx.debug) return fn(c);
+    const debug = ctx.debug;
+    const listener = (msg: { message?: string; detail?: string; hint?: string; severity?: string }) => debug.notice(msg);
+    c.on('notice', listener);
+    try {
+      return await fn(c);
+    } finally {
+      c.off('notice', listener);
+    }
   });
 }
 

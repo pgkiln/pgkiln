@@ -4,6 +4,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { APP_COLORS, BASE, csrf, developer, input, region, select, send, shell, type Req } from './ui.ts';
 import type { Session } from '../session.ts';
+import { isAdmin } from './locks.ts';
 
 // The workspace pages of the builder, laid out like APEX's App Builder: the
 // home page (tiles, a searchable list of applications as a report or as
@@ -267,6 +268,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
         ${card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
       </div>`;
     return send(reply, s, shell(s, 'Workspace utilities', [['App Builder', BASE], ['Workspace utilities']], main));
   });
