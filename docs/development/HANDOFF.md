@@ -1446,6 +1446,21 @@ in the Sprint 35 table of HANDOFF.md; your worktree is /home/nickquispel/project
 
 **Workstream reports:** (filled in as agents finish)
 
+- **appwizard: DONE** (branch `sprint-35-appwizard`, merged into `sprint-35`). No migration (059 unused), no HR part, no new
+  tables or env vars. `src/builder/appsheets.ts` (several XLSX sheets / JSON arrays → several tables, key and foreign
+  keys proposed from names, types and values, "Update the proposals" without JS, one transaction: tables, rows, FKs with
+  indexes, report+form per table via `meta.generate_page`, navigation, optional dashboard with a chart per table);
+  `src/builder/appwizard.ts` (`/builder/create/paste`: CSV/TSV text ≤4 MB as a session temp file; `/builder/create/tables`:
+  tables/views of an existing schema → report+form or report per table). `dataload.ts` exports `cellText`, `tableSheet`.
+  Tests `test/app-wizard.test.ts` (+ `test/xlsxbook.ts`), security block "sprint 35 appwizard", e2e pages `create_paste`,
+  `create_tables` and a several-sheets flow. Docs ch. 3, 12. Security (for SECURITY.md): developer session + CSRF; pasted
+  data is a temp file owned by the builder session; names validated and quoted, key = a chosen column index, FKs
+  recomputed on the server and only proposed ones applied; meta/information_schema/pg_* refused as parsing and source
+  schema; posted table names only matched against a fresh catalog lookup; escaped output; one transaction. By design the
+  app from existing tables gets the blank-app grants on every table of the schema; an FK to another schema may give a
+  select list the app role can't read. Agent's tests: 925 pass / 10 skip, e2e 107/107. Parity row: ✅ (text in the
+  agent's report: several sheets, FKs proposed, pasted data, existing tables; missing: blueprints).
+
 ## Sprint 34 (DONE, v0.26.0, owner 2026-10-05: "add to the next sprint"; "read the handoff, apex feature parity and keep going")
 
 Branch `sprint-34` from `main` (v0.25.0). Worked by one session directly (no sub-agents), same rules as
