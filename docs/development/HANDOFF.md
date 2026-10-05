@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-05. Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
+Last updated: 2026-10-05. Sprint 32 is in progress on `sprint-32` (see its section). Sprints 3–31 are merged into `main` and released as **v0.23.0** (migrations 001–043 are released: add 044+; 033 and 035 were never used). HR example files up to `hr_32` are released.
 
 ## Project in one paragraph
 
@@ -1142,10 +1142,31 @@ AFTER trigger (the BEFORE trigger broke `pgapex import --replace` depending on r
 8 skip, e2e 90/90; clean worktree with CI env only: fresh 713/8 and upgrade from v0.22.0 713/8. Released as
 **v0.23.0** (parity 79/26/10/6). Sprint 32 not started (owner).
 
-## Sprint 32 (PLANNED, owner 2026-10-05)
+## Sprint 32 (IN PROGRESS): parity items one after another (owner: "keep going with the handoff.md, sprint and apex-feature-parity, with only 1 agent at the time", 2026-10-05)
 
-- **CI: move GitHub Actions off Node.js 20** (deprecated; the runs show a warning): `actions/checkout`,
-  `actions/setup-node` and `actions/upload-artifact` in `.github/workflows/ci.yml` to their current major versions
-  (check the latest releases first); confirm the warning is gone in the run annotations. Also note: `ubuntu-latest`
-  moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres service, Playwright deps).
-- Further items: pick from the parity matrix after sprint 31 is merged.
+Branch `sprint-32` from `main` (v0.23.0 + 3bb983a, the custom-auth test flake fix (same race as 68d8b65, which made
+every CI upgrade job red after the sprint 31 merge) + 192f0af, CI actions checkout/setup-node/upload-artifact moved
+to v7 (Node.js 24), both committed straight to `main`). **One agent at a time** works in the main checkout (no
+worktree), dev DB `pgapex-db` on 5434, app 3100. Rules: `docs/development/sprint-32-agent-rules.md`. Items in order;
+each one is finished, tested and committed on `sprint-32` (and pushed) before the next agent starts, so the branch
+can be merged after any item:
+
+| # | Item (parity row) | Reserved | Status |
+|---|---|---|---|
+| 0 | CI: actions off Node.js 20; custom-auth flake | (none) | done on `main` (3bb983a, 192f0af) |
+| 1 | Automations: several actions per automation (ordered, each with its own condition), error handling per row (stop / skip and continue, errors in the run log), on-demand runs from SQL (`meta.run_automation(...)`, like `APEX_AUTOMATION.EXECUTE`) | migration 044, HR `hr_33` | to do |
+| 2 | Workflow: an **invoke API** activity (a REST data source or URL through the existing invoke-API code, response values into workflow variables, outgoing allow-list/SSRF checks). No e-mail activity (no e-mail features) | 045, `hr_34` | to do |
+| 3 | Data Workshop: **unload data** (a table or a query to CSV, JSON, XLSX or XML, streamed with a cursor) | 046 (only if needed), `hr_35` (only if useful) | to do |
+| 4 | Create page wizards for more page types: cards, calendar, chart, map, faceted search report, form only, master-detail | 047 (only if needed) | to do |
+| 5 | Create application from a spreadsheet (upload CSV/XLSX → new table in the app schema + report and form pages) | 048 (only if needed) | to do |
+
+Later CI note: `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; check the first CI run after that date (Postgres
+service, Playwright deps).
+
+**If a session ends:** `git log --oneline main..sprint-32` and `git status`; commit any uncommitted work as `wip:`;
+launch the next agent with "Read `docs/development/sprint-32-agent-rules.md` and follow it. Item <n> of the Sprint 32
+table in HANDOFF.md." When the items are done (or usage runs low): parity rows + summary counts, CHANGELOG 0.24.0,
+SECURITY.md, `.env.example`, version, CI upgrade matrix + v0.24.0, chapter 12 version line, this file; clean-worktree
+CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check `gh run list -R NickVrgr/Postgresql_APEX`.
+
+**Item reports:** (filled in as agents finish)
