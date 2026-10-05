@@ -17,6 +17,7 @@ src/
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
                            or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
+  subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
   workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
                            merge into the main application or refresh the copy, both through cli/replace.ts
   cli/                     the command line: main.ts (commands, help, exit codes), files.ts (directories,
@@ -146,6 +147,7 @@ src/
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
     themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
+    subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
     workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)

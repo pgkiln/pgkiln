@@ -63,6 +63,7 @@ The home page is laid out like APEX's App Builder:
 | Parsing schema | The database schema the app works with. Choose an existing schema, or leave it on "new schema" to create one named after the alias |
 | Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)), *Custom* (your own PL/pgSQL function, see [chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) or *None* (a public app) |
 | First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
+| Start from | Shown when there are **boilerplate** applications (Settings → Application type): their pages, shared components and settings are copied into the new application, which keeps its own name, alias, role and authentication ([application types](#application-types-and-subscriptions)) |
 
 Creating the app also:
 
@@ -365,6 +366,32 @@ Components used by the whole application:
 | **Data load definitions** | A target table, file format (CSV, Excel, JSON, XML with its row element) and column mapping with transformations, for SQL Workshop → Load Data and the `data_load` process ([chapter 16](16-files.md#data-load-definitions)) |
 | **Lists** | Named sets of links (static entries with nesting, badges, conditions and authorization, or a query) for list regions, the navigation menu and the navigation bar ([chapter 4](04-pages-and-regions.md#list-lists)) |
 | **Supporting objects** | Install, upgrade and deinstall scripts that travel with the export ([below](#supporting-objects)) |
+
+### Application types and subscriptions
+
+APEX 26.1's theme, library and boilerplate applications, and subscribed shared components. Each
+application has a **type** (Settings → Application type):
+
+| Type | Meaning |
+|---|---|
+| Standard | An ordinary application |
+| Theme application | Offers its theme (colours, navigation, light/dark settings and the Theme Roller's styles) and its template components to other applications |
+| Library application | Offers its lists of values, authorization schemes, build options, template components and lists (with their entries) to other applications |
+| Boilerplate application | A starting point: **Create** offers it under *Start from* |
+
+**Shared Components → Subscriptions** subscribes the application to one of those components: it is
+copied now (replacing a component with the same name) and remembered as a subscription. The page
+lists the subscriptions with their state (*in sync*, or *differs* when the master or the copy
+changed); **Refresh** (one, or all) copies the master's definition again, replacing changes made
+here, and **Unsubscribe** keeps the component as it is but forgets where it came from. The
+component's own page in Shared Components says where it comes from, with a Refresh button.
+
+On a theme or library application the same page lists its **subscribers**, and **Publish**
+refreshes every subscriber of a component at once (an application locked by another developer is
+skipped and named in the message). Subscribing, refreshing and publishing are logged in the activity
+log (`subscription`). A subscribed list of values that uses a REST data source needs a data source
+with the same name in the subscribing application. Subscriptions are links between the
+applications of this installation and are not exported (the type is).
 
 ### Supporting objects
 
