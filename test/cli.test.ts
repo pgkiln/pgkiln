@@ -3,7 +3,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -13,6 +13,7 @@ import { closePools, owner } from '../src/db.ts';
 import { docToFiles, filesToDoc, regionKeys, slug, stableJson } from '../src/appfiles.ts';
 import { readDir, readZip } from '../src/cli/files.ts';
 import { checkSchema } from '../src/cli/replace.ts';
+import { pendingMigrations } from '../src/migrate.ts';
 import { Browser } from './helpers.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'pgapex-cli-'));
@@ -71,6 +72,15 @@ function normalise(doc: any) {
 const exportDoc = async (alias: string) => (await owner.one('select meta.export_app($1) as d', [alias])).d;
 
 describe('pgapex command line', () => {
+  test('the server knows when the database lacks migrations', async () => {
+    assert.deepEqual(await pendingMigrations(root), []);
+    const fake = join(tmp, 'newer');
+    mkdirSync(join(fake, 'db/migrations'), { recursive: true });
+    for (const f of readdirSync(join(root, 'db/migrations'))) writeFileSync(join(fake, 'db/migrations', f), '');
+    writeFileSync(join(fake, 'db/migrations', '999_newer.sql'), 'select 1');
+    assert.deepEqual(await pendingMigrations(fake), ['999_newer.sql']);
+  });
+
   test('help, version and exit codes', () => {
     const help = cli('--help');
     assert.equal(help.code, 0);
