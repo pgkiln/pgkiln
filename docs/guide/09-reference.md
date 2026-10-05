@@ -55,7 +55,9 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `alias` | text | URL name (`^[a-z][a-z0-9_-]*$`), unique |
 | `name` | text | Display name |
 | `home_page` | int | Page opened by `/a/<alias>` |
-| `authentication` | text | `app_users` or `none` |
+| `authentication` | text | `app_users`, `header`, `database`, `custom` or `none` |
+| `custom_auth_function`, `custom_auth_code`, `custom_auth_post_code` | text | Custom authentication: a function `(p_username text, p_password text) returns boolean`, or a PL/pgSQL body, and post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) |
+| `nav_list`, `navbar_list` | text | A list shown as the navigation menu (instead of `nav_entry`) and as the navigation bar |
 | `access_control` | text | `assigned` (only accounts with access) or `any_user` |
 | `local_login` | boolean | Offer username and password sign-in |
 | `sso_providers` | text[] | Names of identity providers (OpenID Connect or SAML) offered on the login page |
@@ -85,6 +87,16 @@ needed and grants access; deleting revokes access.
 **`nav_entry`**: `app_id`, `parent_id` (sub-menu), `seq`, `label`, `icon`, `target_page`, `authz`.
 
 **`lov`**: `app_id`, `name` (uppercase; used as `LOV:NAME`), `query`, `rest_source` (the query then reads the source's rows from `rest`).
+
+**`list`**: `app_id`, `name` (uppercase), `type` (`static` / `sql`), `query`, `description`
+([chapter 4](04-pages-and-regions.md#list-lists)).
+
+**`list_entry`**: `app_id`, `list_name`, `parent_id` (an entry of the same list), `seq`, `label`, `icon`, `target_page`,
+`target_items` (jsonb), `target_url` (a path inside the app or an `http(s)` address), `badge`, `description`, `condition`,
+`authz`, `build_option`.
+
+**`supporting_script`**: `app_id`, `name`, `kind` (`install` / `upgrade` / `deinstall`), `seq`, `script`
+([chapter 3](03-builder.md#supporting-objects)).
 
 **`web_credential`**: `app_id`, `name` (uppercase), `description`, `type` (`basic` / `header` / `bearer` / `oauth2`), `username` (or client id),
 `header_name`, `token_url`, `scope`, `valid_for` (text[] of URL prefixes), `secret_enc` (encrypted by the server; not readable by the
@@ -125,7 +137,7 @@ navigation entries and application processes have the same `build_option` column
 | Column | Description |
 |---|---|
 | `page_id`, `seq`, `title` | |
-| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `tasks`, `workflows`, `static`, `dynamic` |
+| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `list`, `tasks`, `workflows`, `static`, `dynamic` |
 | `source` | SELECT (or HTML for `static`) |
 | `table_name`, `pk_column` | For `form` and `grid` |
 | `pk_item` | For `form`: the item holding the key |
@@ -167,8 +179,10 @@ navigation entries and application processes have the same `build_option` column
 | Table | Contents | Readable by the runtime role |
 |---|---|---|
 | `session` | Sessions: `token_hash` (SHA-256 of the cookie), `app_id` (NULL = builder), `username`, `roles` (resolved at sign-in), `csrf_token`, `state` (jsonb session state), `created_at`, `last_seen` | yes |
-| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
-| `developer` | Builder accounts | no |
+| `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`; builder: `lock_broken`, `supporting_objects`, …), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
+| `developer` | Builder accounts (`is_admin`: manages developers, breaks locks) | no |
+| `builder_lock` | Page (`page_no`) and application (`page_no` 0) locks: `locked_by`, `locked_at`, `note` | no |
+| `dev_comment` | Developer comments on an application (`page_no` 0) or page: `author`, `body`, `created_at` | no |
 | `auth_provider` | OpenID Connect and SAML providers (`protocol`; SAML: `idp_sso_url`, `idp_cert`): `name`, `display_name`, `issuer`, `client_id`, `client_secret`, `scopes`, `username_claim`, `groups_claim`, `auto_create`, `enabled` | no |
 | `account_identity` | Links an account to a provider's subject (`provider_id`, `subject`, `account_id`) | no |
 | `sso_pending` | Sign-ins in progress (state, PKCE verifier, nonce or SAML request ID; kept for 10 minutes) | no |
@@ -180,6 +194,8 @@ navigation entries and application processes have the same `build_option` column
 | `workflow`, `workflow_event` | Workflow instances (state, current step, variables, their version and a copy of its steps) and their history; reached through `meta.workflows` / `meta.workflow_events` and the functions | no |
 | `workflow_branch` | The parallel branches of workflow instances (step, wait, task and state of each) | no |
 | `task`, `task_event` | Tasks and their history; reached only through `meta.tasks`, `meta.task_events` and the `meta.*_task` functions | no |
+| `list`, `list_entry` | Lists and their entries per app (see above) | yes (read) |
+| `supporting_script` | Supporting objects per app (see above) | no |
 | `document_template` | Document templates per app: `name`, `description`, `query`, `template`, `layout`, `filename`, `authz` | yes (read) |
 | `ldap_identity` | Links an account to a directory entry (`directory_id`, `subject` = entryUUID or DN) | no |
 | `persistent_login` | "Keep me signed in" tokens: `token_hash`, `account_id`, `app_id`, `groups`, `method`, `expires_at` | no |

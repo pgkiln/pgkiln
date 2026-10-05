@@ -12,7 +12,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
 | Application, page, region, item, button | The same, stored in `meta.*` |
 | Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |
-| Shared components | Navigation menu, authorization schemes, lists of values, application items, application processes, build options |
+| Shared components | Navigation menu, lists, authorization schemes, lists of values, application items, application processes, build options, supporting objects |
 | `:P1_ITEM`, `:APP_USER`, `:REQUEST`, `&ITEM.` | The same syntax |
 | `v('P1_ITEM')` | `meta.v('P1_ITEM')` |
 | `apex_page.get_url` / `apex_util.prepare_url` | `meta.page_url(page, items)` |
@@ -73,7 +73,9 @@ APEX's "Social Sign-In" scheme, with identity-provider groups mapped to applicat
 in to a second app is then silent via the identity provider's session. See
 [chapter 8](08-security.md#single-sign-on-openid-connect). **SAML 2.0** providers and **LDAP /
 Active Directory** passwords work the same way (groups → roles), and *Keep me signed in* matches
-APEX's persistent authentication. Database accounts and custom PL/SQL schemes have no equivalent.
+APEX's persistent authentication. **Database accounts** sign in with PostgreSQL login roles, and
+**custom authentication** calls your own PL/pgSQL function (APEX: a custom PL/SQL scheme), see
+[chapter 8](08-security.md#custom-authentication-a-plpgsql-function).
 
 ## ORDS and PostgREST
 

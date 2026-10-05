@@ -10,6 +10,9 @@ Each application chooses its **authentication** in **Settings**:
 | Authentication | Behaviour |
 |---|---|
 | **App users** | A login page at `/a/<alias>/login`, checked against the **user directory** |
+| **HTTP header** | A trusted reverse proxy names the user ([below](#http-header-authentication-reverse-proxy)) |
+| **Database accounts** | PostgreSQL login roles and their passwords ([below](#database-accounts-postgresql-roles)) |
+| **Custom** | Your own PL/pgSQL checks the user name and password ([below](#custom-authentication-a-plpgsql-function)) |
 | **None** | A public application. Everybody is `nobody` |
 
 In an app with a login, pages require sign-in unless *Requires authentication* is unchecked on
@@ -282,6 +285,42 @@ throttling (`LOGIN_MAX_FAILURES_PER_USER`, `LOGIN_MAX_FAILURES_PER_IP`); the act
 `superuser refused`, `connection refused (28P01)`, …), never the password. When the database
 can't be reached the page says so (503). *Keep me signed in*, LDAP, single sign-on and the
 password-change form are not used by these apps.
+
+### Custom authentication (a PL/pgSQL function)
+
+APEX's *Custom* authentication scheme: your own code decides whether a user name and password are
+valid, e.g. against a users table of your application. In **Settings → Security** choose
+Authentication **Custom** and fill in, under *Custom authentication*, one of:
+
+- **Function name**: a function `(p_username text, p_password text) returns boolean`, in lower case,
+  optionally with its schema (`app.check_login`). The app's database role needs `EXECUTE` on it. It
+  takes precedence over the body.
+- **Or function body**: PL/pgSQL with `p_username` and `p_password`, returning `true` for a valid
+  sign-in, either a bare `return …;` or a whole `declare … begin … end` block:
+
+```sql
+return exists (select 1 from app.users
+                where name = p_username and not locked
+                  and pw_hash = crypt(p_password, pw_hash));
+```
+
+Optionally, **Post-authentication code** runs after a successful check with `p_username` (and
+`meta.app_user()` set to it), e.g. to record the last sign-in; raising an exception refuses the
+sign-in. *After login* application processes run afterwards as usual.
+
+Both run **as the application's database role**, in one transaction, in a temporary function that is
+dropped again; nothing is kept unless the check returns `true` and the post-authentication code
+succeeds. The password is only ever a query parameter: it is never part of the SQL text, never
+stored and never logged. A check that returns `false` or `null`, or raises an error, gets the same
+"invalid" answer as a wrong password and counts towards the sign-in throttling; the activity log has
+`login` (detail `custom`) and `login_failed` with `custom: check returned false`, `check failed
+(<SQLSTATE>)` or `post-authentication failed (<SQLSTATE>)`, never the error message (it could repeat
+the password). With neither a function nor a body nobody can sign in.
+
+The session's user (`:APP_USER`) is the user name as typed; app roles come from **Access control**
+like for other users (an account of the same name, if there is one), or from the app's own tables
+in authorization schemes. The login page has the user name and password form only: *Keep me signed
+in*, LDAP, single sign-on and the password-change form are not used by these apps.
 
 ### Keep me signed in
 

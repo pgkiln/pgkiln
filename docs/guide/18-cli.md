@@ -66,6 +66,9 @@ hr/
     template-components/status_badge.json   (named by static id; the template in status_badge.template.html)
     automations/ document-templates/ task-definitions/ workflow-definitions/ rest-modules/
     web-credentials/ rest-sources/      (web credentials never contain their secret)
+    lists/hr_shortcuts.json           (a query list's query in hr_departments.query.sql)
+    list-entries.json                 the entries of every list, per list as a tree
+    supporting-objects/check-the-sample-data.json   (the script in .script.sql; never run on import)
     group-roles.json
   globalization/
     text-messages.json

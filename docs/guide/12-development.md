@@ -27,6 +27,7 @@ src/
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   headerauth.ts            HTTP-header authentication: trusted proxies (PGAPEX_AUTH_HEADER_PROXIES), header checks, accounts
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
+  customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
   api.ts                   REST API tokens for PostgREST, API role checks
@@ -76,6 +77,7 @@ src/
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
     rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process
     tree.ts                tree region
+    lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals)
@@ -98,7 +100,7 @@ src/
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: next run, Run now, run history
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
-    region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector
+    region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     top-sql.ts             Top SQL per app role from pg_stat_statements
@@ -111,6 +113,8 @@ src/
     websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
+    locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST), developer comments, administrators
+    supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
   app.css                  theme (light/dark, responsive)
   app.js                   client runtime: dialogs, popup LOVs, dynamic actions (focus, classes, messages), grids, menus, lazy regions (no inline JS)
@@ -138,6 +142,8 @@ test/
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
+  custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
