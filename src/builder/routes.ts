@@ -6,6 +6,7 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { appStyles } from '../runtime/styles.ts';
+import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
 import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
@@ -16,7 +17,7 @@ import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
-import { checkNewApp, createApp, createAppError } from './newapp.ts';
+import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
@@ -128,7 +129,12 @@ export async function builderRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       const checked = await checkNewApp(b);
-      const { id, existingAccount } = await owner.tx((c) => createApp(c, checked)).catch((e) => {
+      const boilerplate = /^\d{1,9}$/.test(b.boilerplate ?? '') ? Number(b.boilerplate) : null;
+      const { id, existingAccount } = await owner.tx(async (c) => {
+        const made = await createApp(c, checked);
+        if (boilerplate) await startFromBoilerplate(c, made.id, checked, boilerplate);
+        return made;
+      }).catch((e) => {
         throw new Error(createAppError(e, checked.alias));
       });
       flash(s, existingAccount
@@ -272,6 +278,8 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('name', 'Name', a.name, { required: true })}
               ${input('alias', 'Alias', a.alias, { required: true })}
               ${input('home_page', 'Home page', a.home_page, { type: 'number' })}
+              ${select('app_type', 'Application type', a.app_type ?? 'standard', APP_TYPES.map((t): [string, string] => [t, APP_TYPE_LABELS[t]]),
+                'Theme and library applications offer their theme or shared components to other applications (Shared Components → Subscriptions); Create application can start from a boilerplate application.')}
             </div>
             <h3>Security</h3>
             <div class="form-grid">
@@ -373,7 +381,8 @@ export async function builderRoutes(app: FastifyInstance) {
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
                 header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
-                custom_auth_function = $23, custom_auth_code = $24, custom_auth_post_code = $25, nav_list = $26, navbar_list = $27, updated_at = now() where id = $1`,
+                custom_auth_function = $23, custom_auth_code = $24, custom_auth_post_code = $25, nav_list = $26, navbar_list = $27,
+                app_type = $28, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            accent: /^#[0-9a-f]{6}$/i.test(b.accent ?? '') ? b.accent : undefined,
@@ -400,7 +409,8 @@ export async function builderRoutes(app: FastifyInstance) {
          b.custom_auth_code?.trim() || null,
          b.custom_auth_post_code?.trim() || null,
          b.nav_list?.trim().toUpperCase() || null,
-         b.navbar_list?.trim().toUpperCase() || null],
+         b.navbar_list?.trim().toUpperCase() || null,
+         (APP_TYPES as readonly string[]).includes(b.app_type ?? '') ? b.app_type : 'standard'],
       );
       await saveTimeZoneSettings(req.params.id, b);
       flash(s, 'Settings saved.');

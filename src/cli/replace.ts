@@ -32,7 +32,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (053) the style variant each user chose
   'account_style',
   // (055) working copies: the link between a copy and its main application
-  'working_copy'];
+  'working_copy',
+  // (056) subscriptions to other applications' components (by name)
+  'subscription'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
