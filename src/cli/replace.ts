@@ -34,13 +34,17 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (055) working copies: the link between a copy and its main application
   'working_copy',
   // (056) subscriptions to other applications' components (by name)
-  'subscription'];
+  'subscription',
+  // (057) users' Data Reporter reports (user data, like saved reports)
+  'data_report'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
 const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.definition_id', 'automation_log.automation_id', 'process_job.process_id',
   // (050) synchronisation runs follow their REST data source (name)
-  'rest_sync_log.source_id'];
+  'rest_sync_log.source_id',
+  // (057) Data Reporter reports follow their region like saved reports
+  'data_report.region_id'];
 
 type Db = pg.ClientBase | pg.Pool;
 
@@ -132,6 +136,12 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
   if (pairs.length)
     await db.query(
       `update meta.saved_report s set region_id = m.neu
+         from unnest($1::int[], $2::int[]) as m(old, neu) where s.region_id = m.old`,
+      [pairs.map((p) => p[0]), pairs.map((p) => p[1])],
+    );
+  if (pairs.length)
+    await db.query(
+      `update meta.data_report s set region_id = m.neu
          from unnest($1::int[], $2::int[]) as m(old, neu) where s.region_id = m.old`,
       [pairs.map((p) => p[0]), pairs.map((p) => p[1])],
     );

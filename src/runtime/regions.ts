@@ -18,6 +18,7 @@ import { renderDisplaySelector } from './display-selector.ts';
 import { renderGrid } from './grid.ts';
 import { masterItemOf, mastersOf } from './master-detail.ts';
 import { renderTasks } from './tasks.ts';
+import { renderDataReporter } from './data-reporter.ts';
 import { renderWorkflows } from './workflows.ts';
 import { renderMap } from './maps.ts';
 import { renderTree } from './tree.ts';
@@ -337,6 +338,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'template_component':
       body = await renderTemplateRegion(ctx, r);
+      break;
+    case 'data_reporter':
+      body = await renderDataReporter(ctx, r);
       break;
     case 'dynamic':
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The

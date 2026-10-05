@@ -1339,3 +1339,28 @@ td.tc-cell { overflow-wrap: anywhere; }
   :root:not([data-theme="light"]) .btn.to-success, :root:not([data-theme="light"]) .btn.to-danger { color: #10141a; }
 }
 :root[data-theme="dark"] .btn.to-success, :root[data-theme="dark"] .btn.to-danger { color: #10141a; }
+
+/* Data Reporter (src/runtime/data-reporter.ts) */
+.reporter { overflow-wrap: anywhere; min-width: 0; }
+.reporter-head { margin-bottom: 0.75rem; }
+.reporter-title { margin: 0.3rem 0 0.1rem; font-size: 1.1rem; }
+.reporter-h { font-size: 1rem; margin: 1rem 0 0.4rem; }
+.reporter-desc { margin: 0.15rem 0 0; }
+.reporter-new { display: flex; flex-direction: column; gap: 0.3rem; }
+.reporter-sources { margin: 0.3rem 0 0; font-size: 0.85rem; }
+.reporter-sources dt { font-weight: 600; }
+.reporter-sources dd { margin: 0 0 0.3rem; color: var(--muted); }
+.reporter-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.reporter-editor { margin-bottom: 1rem; }
+.reporter-editor > summary { cursor: pointer; font-weight: 600; margin-bottom: 0.6rem; }
+.reporter-set { border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem 0.6rem; margin: 0 0 0.75rem; min-width: 0; }
+.reporter-set legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.3rem; }
+.reporter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
+.reporter-row > select, .reporter-row > input { flex: 1 1 9rem; min-width: 0; }
+.reporter-row > .label { flex: 0 0 7rem; }
+.reporter-checks { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
+.reporter-chart { margin-bottom: 0.75rem; }
+.reporter-save { margin-top: 1rem; }
+@media (max-width: 600px) {
+  .reporter-row > .label { flex-basis: 100%; }
+}
