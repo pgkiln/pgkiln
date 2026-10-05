@@ -69,7 +69,7 @@ describe('number format masks (HR page 29)', () => {
   test('aggregates and control breaks keep the column mask (counts stay plain)', async () => {
     const king = await as('king');
     const r = await region('Salaries');
-    const body = (await king.get(`/a/hr/29?lang=en&r${r}_ac=salary&r${r}_af=sum&r${r}_a=sum|salary&r${r}_a=count|salary`)).body;
+    const body = (await king.get(`/a/hr/29?lang=en&r${r}_a=sum|salary&r${r}_a=count|salary`)).body;
     assert.match(text(body), /Sum: €\d{1,3},\d{3}\.\d{2}/);
     assert.match(text(body), /Count: \d+</);
   });
@@ -230,6 +230,7 @@ describe('time zones', () => {
 
   test('My account: the user\'s own time zone wins over the browser\'s and is kept on the account', async () => {
     const king = await as('king');
+    await king.get('/a/hr/29');
     await king.post('/a/hr/tz', { __csrf: king.lastCsrf, tz: 'Asia/Tokyo' });
     let page = (await king.get('/a/hr/account?lang=en')).body;
     assert.match(page, /<select id="time_zone" name="time_zone"/);

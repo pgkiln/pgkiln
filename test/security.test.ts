@@ -2509,3 +2509,130 @@ describe('sprint 30', () => {
     else assert.ok([302, 303, 403].includes(res.statusCode));
   });
 });
+
+describe('sprint 31 i18n: time zones and format masks', () => {
+  // the browser's time zone, the sign-in form's __tz and My account's time zone only ever
+  // become one of pg_timezone_names' names; format masks only shape output that is escaped
+  let page29: number;
+  const zoneOn29 = async (b: Browser) => /data-label="Time zone">([^<]*)</.exec((await b.get('/a/hr/29')).body)?.[1];
+  before(async () => {
+    page29 = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 29`, [appId])).id;
+    await owner.query(`update meta.account set time_zone = null where username in ('king', 'blake')`);
+  });
+  after(async () => {
+    await owner.query(`update meta.account set time_zone = null where username in ('king', 'blake')`);
+    await owner.query(`update meta.app set time_zone = null, time_zone_auto = true where id = $1`, [appId]);
+  });
+
+  test('POST /tz needs the session\'s CSRF token and takes only known time zone names', async () => {
+    const king = await as('king');
+    const before = await zoneOn29(king);
+    assert.equal((await king.post('/a/hr/tz', { tz: 'Asia/Tokyo' })).statusCode, 403, 'no token');
+    assert.equal((await king.post('/a/hr/tz', { __csrf: 'x'.repeat(48), tz: 'Asia/Tokyo' })).statusCode, 403, 'a wrong token');
+    for (const tz of ["UTC'; drop table hr.emp; --", 'utc', '../../etc/passwd', 'posix/Europe/Amsterdam', 'Europe/Amsterdam\u0000', 'x'.repeat(65), '', 'GMT+5,UTC']) {
+      const res = await king.post('/a/hr/tz', { __csrf: king.lastCsrf, tz });
+      assert.equal(res.statusCode, 422, JSON.stringify(tz));
+    }
+    assert.equal((await king.post('/a/hr/tz', { __csrf: king.lastCsrf, tz: ['Asia/Tokyo', 'UTC'] })).statusCode, 422, 'a list is not a name');
+    assert.equal(await zoneOn29(king), before, 'nothing changed');
+    assert.equal((await owner.one(`select count(*)::int as n from hr.emp`)).n > 0, true);
+    assert.equal((await king.post('/a/nosuchapp/tz', { __csrf: king.lastCsrf, tz: 'UTC' })).statusCode, 404);
+  });
+
+  test('one session\'s time zone does not reach another session or user', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/29');
+    assert.equal((await king.post('/a/hr/tz', { __csrf: king.lastCsrf, tz: 'Pacific/Auckland' })).statusCode, 200);
+    assert.equal(await zoneOn29(king), 'Pacific/Auckland');
+    const blake = await as('blake');
+    assert.notEqual(await zoneOn29(blake), 'Pacific/Auckland');
+    // the browser's zone is the session's, not the account's
+    assert.equal((await owner.one(`select time_zone from meta.account where username = 'king'`)).time_zone, null);
+  });
+
+  test('the sign-in form\'s __tz and My account\'s time zone refuse unknown names', async () => {
+    const b = new Browser();
+    await b.get('/a/hr/login');
+    assert.equal((await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'blake', password: 'blake', __tz: "Europe/Paris' or '1'='1" })).statusCode, 303);
+    assert.notEqual(await zoneOn29(b), "Europe/Paris' or '1'='1");
+    await b.get('/a/hr/account');
+    const res = await b.post('/a/hr/account', { __csrf: b.lastCsrf, time_zone: "UTC'; select pg_sleep(5); --" });
+    assert.equal(res.statusCode, 422);
+    assert.equal((await owner.one(`select time_zone from meta.account where username = 'blake'`)).time_zone, null);
+    // without the token nothing is saved
+    assert.equal((await b.post('/a/hr/account', { time_zone: 'Asia/Tokyo' })).statusCode, 303);
+    assert.equal((await owner.one(`select time_zone from meta.account where username = 'blake'`)).time_zone, null);
+    // a username field doesn't pick another account
+    await b.get('/a/hr/account');
+    await b.post('/a/hr/account', { __csrf: b.lastCsrf, time_zone: 'Asia/Tokyo', username: 'king' });
+    assert.equal((await owner.one(`select time_zone from meta.account where username = 'king'`)).time_zone, null);
+    assert.equal((await owner.one(`select time_zone from meta.account where username = 'blake'`)).time_zone, 'Asia/Tokyo');
+  });
+
+  test('without an automatic time zone neither the browser nor the user can choose one', async () => {
+    await owner.query(`update meta.app set time_zone_auto = false, time_zone = 'UTC' where id = $1`, [appId]);
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/29');
+      assert.equal((await king.post('/a/hr/tz', { __csrf: king.lastCsrf, tz: 'Asia/Tokyo' })).json().reload, false);
+      await king.get('/a/hr/account');
+      await king.post('/a/hr/account', { __csrf: king.lastCsrf, time_zone: 'Asia/Tokyo' });
+      assert.equal((await owner.one(`select time_zone from meta.account where username = 'king'`)).time_zone, null);
+      assert.equal(await zoneOn29(king), 'UTC');
+    } finally {
+      await owner.query(`update meta.app set time_zone = null, time_zone_auto = true where id = $1`, [appId]);
+    }
+  });
+
+  test('the database refuses a time zone that is not a name, whoever writes it', async () => {
+    await assert.rejects(owner.query(`update meta.app set time_zone = 'UTC''; --' where id = $1`, [appId]), /check/);
+    await assert.rejects(runtime.query(`update meta.account set time_zone = 'a b' where username = 'king'`), /check/);
+    await assert.rejects(owner.query(`update meta.app set currency = 'eu<' where id = $1`, [appId]), /check/);
+  });
+
+  test('builder settings: an unknown time zone or currency is refused, nothing is saved', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const before = await owner.one('select time_zone, currency from meta.app where id = $1', [appId]);
+    for (const [time_zone, currency] of [['Mars/Olympus', 'EUR'], ['UTC', '<b>'], ["UTC'; --", 'EUR']]) {
+      const page = (await dev.get(`/builder/apps/${appId}/settings`)).body;
+      assert.match(page, /name="time_zone"/);
+      await dev.post(`/builder/apps/${appId}/settings`, { __csrf: dev.lastCsrf, time_zone, currency });
+      assert.deepEqual(await owner.one('select time_zone, currency from meta.app where id = $1', [appId]), before, `${time_zone} ${currency}`);
+    }
+    // an app user is not a developer
+    const king = await as('king');
+    assert.notEqual((await king.post(`/builder/apps/${appId}/settings`, { __csrf: king.lastCsrf, time_zone: 'UTC' })).statusCode, 200);
+  });
+
+  test('format masks: literal text and currency symbols are escaped; a bad mask falls back to the plain value', async () => {
+    const r = (await owner.one(`select id, config from meta.region where page_id = $1 and title = 'Salaries'`, [page29]));
+    await owner.query(`update meta.region set config = config || $2 where id = $1`,
+      [r.id, JSON.stringify({ formats: { hiredate: 'DD "<img src=x onerror=alert(1)>" YYYY', salary: '9G<script>', yearly: '9'.repeat(5000) } })]);
+    await owner.query(`insert into meta.text_message (app_id, name, language, text) values ($1, 'FORMAT.CURRENCY', 'en', '<script>') on conflict do nothing`, [appId]);
+    try {
+      const king = await as('king');
+      const body = (await king.get('/a/hr/29?lang=en')).body;
+      assert.equal(body.includes('<img src=x'), false);
+      assert.equal(body.includes('<script>'), false);
+      assert.match(body, /&lt;img src=x onerror=alert\(1\)&gt;/);
+      assert.match(body, /data-label="Salary">5000\.00</, 'an invalid mask: the plain value');
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [r.id, r.config]);
+      await owner.query(`delete from meta.text_message where app_id = $1 and name = 'FORMAT.CURRENCY'`, [appId]);
+    }
+  });
+
+  test('a masked number item: odd input is kept as text for validation and only ever bound', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/29?lang=en');
+    for (const v of ["1'; drop table hr.emp; --", '<b>1</b>', 'NaN', 'Infinity', '1e99999', '--1']) {
+      await king.get('/a/hr/29');
+      const res = await king.post('/a/hr/29', { __csrf: king.lastCsrf, P29_AMOUNT: v, __request: 'CONVERT' });
+      assert.equal(res.statusCode, 422, v.slice(0, 20));
+      assert.equal(res.body.includes('<b>1</b>'), false);
+    }
+    assert.equal((await owner.one(`select count(*)::int as n from hr.emp`)).n > 0, true);
+  });
+});
