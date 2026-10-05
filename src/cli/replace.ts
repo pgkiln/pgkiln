@@ -40,7 +40,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (060) which AI services an application may use (installation data), its AI usage log and AI requests from SQL
   'app_ai_service', 'ai_usage', 'ai_request',
   // (061) AI assistant conversations (per session, follow their region)
-  'ai_conversation'];
+  'ai_conversation',
+  // (063) blueprints: the application created from one (builder data)
+  'blueprint'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
