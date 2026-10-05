@@ -542,6 +542,7 @@ steps; the builder checks them and draws the flow.
 | `sql` | Runs SQL; the columns of the row it returns become variables | `code`, `next` |
 | `switch` | Goes to the first case whose condition is true | `cases: [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}]`, `otherwise` |
 | `wait` | Waits before going on | `for` (`30 minutes`, `2 days`), `next` |
+| `invoke_api` | Calls a REST data source or a URL on the server; values of the response become variables ([below](#invoke-api-steps)) | `source` + `params`, or `url`, `method`, `credential`, `body`; `variables`, `status_variable`, `response_variable`, `timeout`, `next` |
 | `parallel` | Starts a branch at each of its steps; they run side by side | `branches` (the first step of each, at least two), `join` |
 | `join` | Where the branches of a `parallel` step meet | `wait_for` (`all`, the default, or `any`), `next` |
 | `end` | Ends the workflow | |
@@ -578,6 +579,52 @@ servers can share a database: each instance is locked while it runs.
 A step that fails puts the workflow in **faulted** with the error; an administrator (the
 definition's administrator role) fixes the cause and **retries** the step. A task that is
 cancelled ends the workflow unless the step has a `cancelled` branch.
+
+### Invoke API steps
+
+An `invoke_api` step (APEX: the *Invoke API* activity) calls a web service: a
+[REST data source](19-rest-data-sources.md) of the application (its URL, method, parameters and web
+credential), or a URL. It is the same code as the [invoke_api page process](19-rest-data-sources.md#the-invoke_api-process),
+with the same protections: only hosts on the server's allow-list (`PGAPEX_REST_ALLOWED_HOSTS`,
+`PGAPEX_REST_PRIVATE_HOSTS`), addresses checked when the connection is made, a credential only sent to
+its *valid for* URLs, a size limit on the response.
+
+```json
+[{"name": "RATE",  "type": "invoke_api", "source": "EXCHANGE", "params": {"currency": "&CURRENCY."},
+                   "variables": {"RATE": "rates.EUR", "RATE_DATE": "date"}, "status_variable": "HTTP_STATUS", "timeout": 20},
+ {"name": "ORDER", "type": "invoke_api", "url": "https://shop.example.com/api/orders/&ORDER_ID./confirm", "method": "POST",
+                   "credential": "SHOP_API", "body": "{\"note\": &NOTE., \"rate\": &RATE.}", "response_variable": "CONFIRMATION"},
+ {"name": "BOOK",  "type": "sql", "code": "select expenses.book(:DETAIL_PK::int, :RATE::numeric) as booked_at"}]
+```
+
+| Field | |
+|---|---|
+| `source`, `params` | A REST data source and its parameter values; parameters left out take their default |
+| `url`, `method`, `credential`, `body` | Or a URL (`GET` by default; `POST`, `PUT`, `PATCH`, `DELETE`), a web credential and a JSON body. The host is fixed: `&VAR.` only after it, URL-encoded; in the body a value becomes a JSON string |
+| `variables` | Variable → JSON path in the response (`rates.EUR`, `items[0].id`). Without it, the first row's columns of a source become variables |
+| `status_variable` | Gets the HTTP status; then an error status doesn't fault the step (the response isn't read), so a `switch` can decide |
+| `response_variable` | Gets the whole JSON response |
+| `timeout` | Seconds (1–60); default the source's time limit, 10 for a URL |
+
+`&VAR.` in parameters, the URL and the body is a variable (or `DETAIL_PK`, `WORKFLOW_ID`,
+`INITIATOR`, `TASK_OUTCOME`, `TASK_APPROVER`); a name that is no variable is sent as written. A call
+that fails (a refused host, a time-out, an error status without `status_variable`, a response that
+isn't JSON) **faults the step** like a failing SQL step, with the reason in the console; an
+administrator retries it there, which calls again.
+
+**No transaction during the call.** The step first commits its path as *waiting* at the step,
+with a lease well past the time limit (the history says `calling REST data source EXCHANGE`); the
+server makes the call, then a new transaction checks that the path still waits at that step with
+that lease and goes on with the response. A workflow terminated meanwhile keeps its state and the
+response is dropped; other parallel branches go on during the call. If the server stops during a
+call, the lease runs out and the step faults (*didn't finish*) instead of calling again, since a
+`POST` may not be safe to repeat: retry it from the console. While a call runs the server's runner
+waits for it, so long time limits delay other workflows on that server.
+
+The builder checks the fields; the Advisor also reports a REST data source, parameter or web
+credential that doesn't exist (errors), a required parameter without a value, and a `&VAR.` that no
+step sets and the title doesn't name (warnings: give it to `meta.start_workflow`). The diagram shows
+the step as *invoke API* with its source.
 
 **Parallel branches.** A `parallel` step (APEX: parallel activities) starts a branch at each step
 in `branches`; every branch runs on its own (its own step, wait and task) until it reaches the
@@ -627,5 +674,8 @@ branches are cancelled); administrators can retry a faulted one.
 created. Its version 2 (part 18) prepares the workplace (the manager's task) and, in a parallel
 branch, the access that employees with a salary of 2500 or more need (a switch and an
 administrator's task); when both branches are done, the manager is notified (SQL). Version 1, which
-did this one after the other, is inactive. *My tasks* (page 14) shows the workflows.
+did this one after the other, is inactive. *My tasks* (page 14) shows the workflows. Part 34 adds
+`DEPARTMENT_CHECK`, started by *Check in a workflow* on page 23: an `invoke_api` step reads the
+department from the example's own REST API (the `DEPARTMENT` source of part 23, so the server must
+allow `127.0.0.1:3100`), a `switch` on `HTTP_STATUS`, and SQL that notifies the initiator.
 

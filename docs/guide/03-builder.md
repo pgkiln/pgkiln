@@ -259,7 +259,7 @@ Components used by the whole application:
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
 | **REST modules** | REST endpoints (method, path, SQL) served by pgapex, with an OpenAPI description ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)) |
-| **Workflows** | Multi-step processes of tasks, SQL, decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
+| **Workflows** | Multi-step processes of tasks, SQL, web service calls (invoke API), decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
 | **Build options** | Include / exclude switches for features; pages and their components name one in their *Build option* property, and *Used in* lists them ([chapter 6](06-processing.md#build-options)) |
@@ -350,7 +350,9 @@ Database code (views, functions, RLS policies) isn't part of the application, so
   without running them (`notify`, `call`, `set`, …) are listed as notes.
 - **References:** pages, items, lists of values, authorization schemes, report layouts and
   regions that a component names but that don't exist (also build options, which leave the
-  component out, and the items computations set or copy); grids without a key or a save process.
+  component out, and the items computations set or copy); grids without a key or a save process;
+  workflow `invoke_api` steps that name a REST data source, parameter or web credential that
+  doesn't exist, leave a required parameter empty or use a `&VAR.` no step sets.
 - **PL/pgSQL functions:** when the `plpgsql_check` extension is installed, the functions in the
   schemas the application's role can use are checked with `plpgsql_check_function_tb` (see
   [extensions](15-extensions.md)).

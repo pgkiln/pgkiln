@@ -29,7 +29,8 @@ src/
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
-  workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), the diagram
+  workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), invoke_api steps
+                           (the call between two transactions, with a lease), Advisor references, the diagram
   process-jobs.ts          background execution chains: the job queue (SKIP LOCKED, NOTIFY + polling), running a job as the app role
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
@@ -52,7 +53,8 @@ src/
   maptiles.ts              map tile server URL, attribution and CSP origin
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
-  websources.ts            web credentials (incl. OAuth2 token cache) and REST data sources: requests, JSON paths, typed rows, response cache
+  websources.ts            web credentials (incl. OAuth2 token cache) and REST data sources: requests, JSON paths, typed rows, response cache;
+                           invoke(): the invoke API call shared by the invoke_api process and workflow step
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
@@ -83,7 +85,7 @@ src/
     maps.ts                map region (data for Leaflet: markers or heat, report filter; list fallback, head assets)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
-    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process
+    rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke())
     tree.ts                tree region
     lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
@@ -159,6 +161,7 @@ test/
   charts.test.ts           chart markup per kind (geometry as classes), gauges, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
+  workflow-invoke.test.ts  workflow invoke_api steps: the call between transactions, faults, retry, lease, Advisor, export (mock service)
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
