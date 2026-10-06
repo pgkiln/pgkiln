@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 - **Icons**: 136 line icons (was 39), and an icon picker in the builder (a grid with a filter box, without script a list of radio buttons).
+- **Accessibility audit**: axe-core checks every page of the HR example (light, dark and Iris) and the builder's main
+  pages against WCAG 2.1 A and AA in the e2e tests; no violations allowed.
+
+### Fixed
+- Accessibility: chart bars and groups with a description get `role="img"`; gauge drill links are named by their
+  visible text; rich-text toolbar buttons are named by their action, not their glyph; a tree's linked branches no
+  longer put a link inside the disclosure; tables that scroll sideways can be reached and scrolled from the keyboard.
+- The region display selector's current tab was drawn in the accent's text colour (white on white in the light theme).
+- Search hits in the builder are readable in the dark theme.
 
 ## [0.29.0] - 2026-10-06
 

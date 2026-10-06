@@ -17,7 +17,7 @@ let entry: { id: number; icon: string | null };
 before(async () => {
   app = await buildApp({ logger: false });
   hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
-  entry = await owner.one(`select id, icon from meta.nav_entry where app_id = $1 and target_page = 1`, [hr]);
+  entry = (await owner.one(`select id, icon from meta.nav_entry where app_id = $1 and target_page = 1`, [hr]))!;
 });
 after(async () => {
   await owner.query('update meta.nav_entry set icon = $2 where id = $1', [entry.id, entry.icon]);

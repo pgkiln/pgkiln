@@ -304,7 +304,9 @@ npm run db:reset     # fresh database
 CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
-- **e2e**: the browser tests, uploading the screenshots as an artifact;
+- **e2e**: the browser tests, uploading the screenshots as an artifact; `test/e2e/accessibility.test.ts` runs
+  axe-core (WCAG 2.1 A and AA rules) on every page of the HR example (light, dark, Iris) and the builder's main pages
+  and allows no violation;
 - **upgrade**: installs older releases (`v0.6.0` … `v0.29.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 

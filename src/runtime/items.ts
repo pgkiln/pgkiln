@@ -296,13 +296,13 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         const rich = item.type === 'richtext';
         const t = ctx.locale.t;
         const tool = (cmd: string, key: string, glyph: string) =>
-          html`<button type="button" class="btn rte-btn" data-cmd="${cmd}" title="${t(key)}" aria-label="${t(key)}">${glyph}</button>`;
+          html`<button type="button" class="btn rte-btn" data-cmd="${cmd}" title="${t(key)}"><span aria-hidden="true">${glyph}</span><span class="sr-only">${t(key)}</span></button>`;
         control = html`<div class="rte" data-${rich ? 'richtext' : 'markdown'}="${id}">
           <div class="rte-toolbar" role="toolbar" aria-label="${t('editor.toolbar')}" aria-controls="${id}" hidden>
             ${tool('bold', 'editor.bold', 'B')}${tool('italic', 'editor.italic', 'I')}${rich ? tool('underline', 'editor.underline', 'U') : ''}${tool('strike', 'editor.strike', 'S')}
             ${tool('heading', 'editor.heading', 'H')}${rich ? tool('paragraph', 'editor.paragraph', '¶') : ''}${tool('bullets', 'editor.bullets', '•')}${tool('numbers', 'editor.numbers', '1.')}
             ${tool('quote', 'editor.quote', '❝')}${tool('code', 'editor.code', '</>')}
-            <button type="button" class="btn rte-btn" data-cmd="link" data-prompt="${t('editor.link_prompt')}" title="${t('editor.link')}" aria-label="${t('editor.link')}">↗</button>
+            <button type="button" class="btn rte-btn" data-cmd="link" data-prompt="${t('editor.link_prompt')}" title="${t('editor.link')}"><span aria-hidden="true">↗</span><span class="sr-only">${t('editor.link')}</span></button>
             ${rich ? html`${tool('unlink', 'editor.unlink', '⊘')}${tool('clear', 'editor.clear', 'Tx')}` : ''}
           </div>
           <textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 8}"${aria}>${rich ? sanitizeHtml(value) : value}</textarea>

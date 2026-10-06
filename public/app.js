@@ -1357,6 +1357,34 @@ document.querySelectorAll('select[name="app_id"]').forEach((sel) => {
   sel.addEventListener('change', () => syncRoleHints(sel));
 });
 
+// A table that scrolls sideways can be scrolled from the keyboard: the scrolling box
+// gets the focus (tabindex 0) and a name (its region's heading). Only boxes that
+// actually overflow, checked on load and when the window size changes.
+function markScrollingTables() {
+  for (const box of document.querySelectorAll('.table-wrap')) {
+    const scrolls = box.scrollWidth > box.clientWidth + 1;
+    if (scrolls && !box.hasAttribute('tabindex')) {
+      box.setAttribute('tabindex', '0');
+      box.setAttribute('role', 'region');
+      const heading = box.closest('section, .region, .ide-region')?.querySelector('h2, h3');
+      box.setAttribute('aria-label', heading?.textContent.trim() || 'Table');
+      box.dataset.scrollMarked = '1';
+    } else if (!scrolls && box.dataset.scrollMarked) {
+      box.removeAttribute('tabindex');
+      box.removeAttribute('role');
+      box.removeAttribute('aria-label');
+      delete box.dataset.scrollMarked;
+    }
+  }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markScrollingTables);
+else markScrollingTables();
+let scrollTablesTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(scrollTablesTimer);
+  scrollTablesTimer = setTimeout(markScrollingTables, 200);
+});
+
 // Actions → Print (the print stylesheet hides navigation and toolbars).
 document.addEventListener('click', (e) => {
   if (!e.target.closest?.('[data-print]')) return;
