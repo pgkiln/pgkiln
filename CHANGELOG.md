@@ -35,6 +35,14 @@ All notable changes to this project are documented here. The format follows
   (`"tiles": true`, MVT 2.1 encoded by pgapex without a dependency, at most 10,000 rows per tile), drawn on canvases
   with popups. Both filter on the server (PostGIS or latitude/longitude) as the application's role. *Load* in the
   map's settings; HR example page 41, 20,000 weather stations (`hr_48`).
+- **Graphical query builder**: SQL Workshop → Query Builder shows the chosen tables as boxes on a canvas (dragged
+  by a handle or moved with the arrow keys, placed where left), the joins as lines; drag a column onto a column of
+  another table to join them (or choose the pair under Joins), instead of a cross join or the foreign key; column
+  functions (count, count distinct, sum, average, minimum, maximum) with an automatic `group by`.
+
+### Fixed
+- Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases
+  (and the ticked columns and conditions) could point at the other table.
 
 ## [0.30.0] - 2026-10-06
 

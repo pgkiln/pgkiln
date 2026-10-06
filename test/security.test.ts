@@ -6040,3 +6040,25 @@ describe('sprint 39 map layers loaded by the browser', () => {
     assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
   });
 });
+
+describe('sprint 39 query builder canvas', () => {
+  test('joins, functions, positions and the table order: only catalog names and fixed functions reach the SQL; the page escapes them', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    assert.equal((await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+    const evil = `x"><script>alert(1)</script>`;
+    const q = new URLSearchParams([
+      ['schema', 'hr'], ['t', 'emp'], ['t', 'dept'], ['o', `dept,emp,${evil}`],
+      ['j', `t1.ename=t2.dname) or (1=1`], ['j', `t1.ename=t2.${evil}`], ['ja', 't1.ename; drop table hr.emp'], ['jb', 't2.dname'],
+      ['fn', 't2.sal:pg_sleep'], ['fn', `t2.sal:sum); drop table hr.emp; --`], ['fn', `${evil}:count`], ['fn', 't2.sal:sum'],
+      ['p', `${evil}:1,2`], ['p', 'emp:1,2;drop'],
+    ]);
+    const res = await dev.get(`/builder/sql/query?${q}`);
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /<script>alert|1=1|pg_sleep|drop table hr\.emp/);
+    const sql = /<pre class="source"[^>]*>([\s\S]*?)<\/pre>/.exec(res.body)![1];
+    assert.match(sql, /sum\(t2\.&quot;sal&quot;\) as &quot;sum_sal&quot;/, 'the order from o: dept is t1, emp t2; only the known function stays');
+    assert.match(sql, /join &quot;hr&quot;\.&quot;emp&quot; t2 on t2\.&quot;deptno&quot; = t1\.&quot;deptno&quot;/, 'no valid drawn join: the foreign key');
+    assert.ok((await owner.one(`select to_regclass('hr.emp') as e`)).e);
+  });
+});

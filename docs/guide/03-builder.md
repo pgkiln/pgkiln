@@ -806,12 +806,19 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
   | guid | none`, `# schema: name`, `# prefix: xx`, `# drop: true`, `# auditcols: true`. `view name
   t1 t2` creates a view joining the tables by their foreign keys. Names become valid identifiers
   and values literals, so the DDL is always well-formed; problems are listed with line numbers.
-- **Query Builder**: choose a schema and its tables and views; joins follow the **foreign keys**
-  (inner or left; tables without one are cross joined, with a note). Pick the columns, conditions
-  (`=`, `<>`, `<`, `like`, `in (a, b)`, `is null` …, combined with AND or OR), the sort, `distinct`
-  and a row limit. The SELECT is shown and opens in SQL Commands. The state is in the URL, so a
-  query can be bookmarked; it works without JavaScript. Only names from the catalog are used, and
-  condition values are string literals.
+- **Query Builder**: choose a schema and its tables and views. Each chosen table is a **box on a
+  canvas** with its columns: tick the columns to show and pick a function (count, count distinct,
+  sum, average, minimum, maximum) for any of them; with a function the other chosen columns become
+  the `group by`. Joins follow the **foreign keys** and are drawn as lines between the columns.
+  To join other columns, drag the dot next to a column onto a column of another table (a dashed
+  line), or choose the two columns under **Joins**; a table without either is cross joined, with a
+  note. Each join can be inner or left. Drag a table by its handle, or focus the handle and use
+  the arrow keys (Shift for bigger steps); it stays where it was left. On phones the tables are
+  stacked. Then pick conditions (`=`, `<>`, `<`, `like`, `in (a, b)`, `is null` …, combined with
+  AND or OR), the sort, `distinct` and a row limit. The SELECT is shown and opens in SQL Commands.
+  The state is in the URL (tables in the order chosen, joins, functions and the tables' places), so
+  a query can be bookmarked; everything except dragging works without JavaScript. Only names from
+  the catalog and the fixed functions are used, and condition values are string literals.
 - **Load Data**: load a CSV, TSV, Excel, JSON or XML file into a new table (with inferred column
   types) or an existing one (append, merge by primary key, or replace), with a per-row error
   report, or with a saved **data load definition**; a mapping can be saved as one

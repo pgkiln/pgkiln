@@ -157,7 +157,7 @@ src/
     sql.ts                 SQL Workshop: SQL commands, object browser
     scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
-    querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key, buildQuery() from the URL
+    querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages

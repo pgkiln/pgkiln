@@ -6,10 +6,14 @@ import { icon } from '../icons.ts';
 import { BASE, csrf, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
 
 // SQL Workshop → Query Builder: pick tables and views of a schema; joins
-// follow their foreign keys; choose columns, conditions and the sort order;
-// the SELECT is shown and can be run in SQL Commands. The whole state is in
-// the query string (a GET form), so it works without JavaScript and can be
-// bookmarked.
+// follow their foreign keys, or columns joined by the developer (drawn on
+// the canvas from one column to another, or chosen in a form); choose
+// columns (with count/sum/avg/min/max: the other columns are grouped by),
+// conditions and the sort order; the SELECT is shown and can be run in SQL
+// Commands. The whole state is in the query string (a GET form), so it
+// works without JavaScript and can be bookmarked. (0.31) The chosen tables
+// are boxes on a canvas: builder.js places them (positions in p=table:x,y),
+// lets them be dragged and draws the joins as lines.
 //
 // Safety: identifiers come only from the catalog (anything else is dropped)
 // and are quoted with escapeIdentifier; operators come from a fixed list;
@@ -42,7 +46,24 @@ export interface QuerySpec {
   order: { column: string; dir: 'asc' | 'desc' }[];
   limit: number | null;
   distinct: boolean;
+  /** (0.31) joins chosen by the developer: alias.column = alias.column */
+  joins: { a: string; b: string }[];
+  /** (0.31) a function per column (alias.column → one of FUNCTIONS) */
+  fns: Record<string, string>;
+  /** (0.31) canvas positions per table name */
+  positions: Record<string, { x: number; y: number }>;
 }
+
+/** Column functions; any of them makes the other chosen columns the GROUP BY. */
+export const FUNCTIONS: Record<string, string> = {
+  count: 'count',
+  count_distinct: 'count distinct',
+  sum: 'sum',
+  avg: 'average',
+  min: 'minimum',
+  max: 'maximum',
+};
+const fnSql = (fn: string, col: string) => (fn === 'count_distinct' ? `count(distinct ${col})` : `${fn}(${col})`);
 
 export const OPERATORS: Record<string, string> = {
   '=': 'equals',
@@ -64,8 +85,10 @@ export interface BuiltQuery {
   sql: string;
   /** the aliases of the chosen tables, in order */
   aliases: Map<string, string>;
-  /** how each table after the first is joined (null: cross join, no foreign key found) */
-  joins: { alias: string; table: string; fk: CatalogFk | null }[];
+  /** how each table after the first is joined (fk and custom empty: cross join) */
+  joins: { alias: string; table: string; fk: CatalogFk | null; custom: { a: string; b: string }[] }[];
+  /** whether the query groups (a column has a function) */
+  grouped: boolean;
   notes: string[];
 }
 
@@ -78,49 +101,69 @@ export function buildQuery(relations: CatalogRelation[], fks: CatalogFk[], spec:
   const aliases = new Map(tables.map((t, k) => [t, `t${k + 1}`]));
   const q = (t: string) => `${ident(spec.schema)}.${ident(t)}`;
 
-  // join order: each next table is the first one with a foreign key to or from a table already joined
+  const tableOf = (ref: string) => {
+    const [alias, col] = ref.split('.', 2);
+    const t = [...aliases].find(([, a]) => a === alias)?.[0];
+    return t && col && byName.get(t)!.columns.some((c) => c.name === col) ? t : null;
+  };
+  const colRef = (ref: string) => (tableOf(ref) ? `${ref.split('.', 2)[0]}.${ident(ref.split('.', 2)[1])}` : null);
+  // the developer's joins: two existing columns of two different chosen tables
+  const custom = spec.joins.filter((j) => tableOf(j.a) && tableOf(j.b) && tableOf(j.a) !== tableOf(j.b));
+
+  // join order: each next table is the first one joined by the developer, or with a foreign key, to a table already joined
   const joined = [tables[0]];
   const joins: BuiltQuery['joins'] = [];
   const pending = tables.slice(1);
+  const customFor = (t: string) =>
+    custom.filter((j) => (tableOf(j.a) === t && joined.includes(tableOf(j.b)!)) || (tableOf(j.b) === t && joined.includes(tableOf(j.a)!)));
   while (pending.length) {
-    let pick = -1;
+    let pick = pending.findIndex((t) => customFor(t).length);
     let fk: CatalogFk | null = null;
-    for (const [k, t] of pending.entries()) {
-      fk = fks.find((f) => f.from !== f.to && ((f.from === t && joined.includes(f.to)) || (f.to === t && joined.includes(f.from)))) ?? null;
-      if (fk) {
-        pick = k;
-        break;
+    if (pick < 0)
+      for (const [k, t] of pending.entries()) {
+        fk = fks.find((f) => f.from !== f.to && ((f.from === t && joined.includes(f.to)) || (f.to === t && joined.includes(f.from)))) ?? null;
+        if (fk) {
+          pick = k;
+          break;
+        }
       }
-    }
     if (pick < 0) {
       pick = 0;
-      notes.push(`No foreign key connects ${pending[0]} to the other tables: it is cross joined.`);
+      notes.push(`No foreign key connects ${pending[0]} to the other tables: it is cross joined. Join two of their columns on the canvas, or under Joins.`);
     }
     const t = pending.splice(pick, 1)[0];
-    joins.push({ alias: aliases.get(t)!, table: t, fk });
+    joins.push({ alias: aliases.get(t)!, table: t, fk: customFor(t).length ? null : fk, custom: customFor(t) });
     joined.push(t);
   }
 
-  const colRef = (ref: string) => {
-    const [alias, col] = ref.split('.', 2);
-    const t = [...aliases].find(([, a]) => a === alias)?.[0];
-    if (!t || !col || !byName.get(t)!.columns.some((c) => c.name === col)) return null;
-    return `${alias}.${ident(col)}`;
+  // a column with a function is chosen even when it isn't ticked
+  const fns = Object.fromEntries(Object.entries(spec.fns).filter(([ref, fn]) => fn in FUNCTIONS && colRef(ref)));
+  const refs = [...new Set([...spec.columns, ...Object.keys(fns)])];
+  const chosen = refs.map((c) => [c, colRef(c)] as const).filter((x): x is readonly [string, string] => !!x[1]);
+  const grouped = Object.keys(fns).length > 0;
+  const outName = (ref: string) => {
+    const col = ref.split('.', 2)[1];
+    if (fns[ref]) return `${fns[ref]}_${col}`;
+    // distinct output names when two tables have a column of the same name
+    return chosen.filter(([r]) => !fns[r] && r.split('.', 2)[1] === col).length > 1 ? `${ref.split('.')[0]}_${col}` : null;
   };
-
-  const chosen = spec.columns.map((c) => [c, colRef(c)] as const).filter((x): x is readonly [string, string] => !!x[1]);
+  const expr = (ref: string, sql: string) => (fns[ref] ? fnSql(fns[ref], sql) : sql);
   const select = chosen.length
     ? chosen.map(([ref, sql]) => {
-        // distinct output names when two tables have a column of the same name
-        const col = ref.split('.', 2)[1];
-        const clash = chosen.filter(([r]) => r.split('.', 2)[1] === col).length > 1;
-        return clash ? `${sql} as ${ident(`${ref.split('.')[0]}_${col}`)}` : sql;
+        const name = outName(ref);
+        return name ? `${expr(ref, sql)} as ${ident(name)}` : sql;
       })
     : tables.map((t) => `${aliases.get(t)}.*`);
+  const groupBy = grouped ? chosen.filter(([ref]) => !fns[ref]).map(([, sql]) => sql) : [];
 
   let from = `${q(tables[0])} ${aliases.get(tables[0])}`;
   for (const j of joins) {
     const a = j.alias;
+    if (j.custom.length) {
+      const on = j.custom.map((c) => `${colRef(c.a)} = ${colRef(c.b)}`).join(' and ');
+      from += `\n  ${spec.joinTypes[a] === 'left' ? 'left join' : 'join'} ${q(j.table)} ${a} on ${on}`;
+      continue;
+    }
     if (!j.fk) {
       from += `\n  cross join ${q(j.table)} ${a}`;
       continue;
@@ -143,14 +186,17 @@ export function buildQuery(relations: CatalogRelation[], fks: CatalogFk[], spec:
   }
   const order = spec.order.flatMap((o) => {
     const col = colRef(o.column);
-    return col ? [`${col}${o.dir === 'desc' ? ' desc' : ''}`] : [];
+    // grouped: a column with a function sorts by its result; others must be grouped by
+    if (!col || (grouped && !fns[o.column] && !groupBy.includes(col))) return [];
+    return [`${expr(o.column, col)}${o.dir === 'desc' ? ' desc' : ''}`];
   });
 
   let sql = `select ${spec.distinct ? 'distinct ' : ''}${select.join(',\n       ')}\n  from ${from}`;
   if (conds.length) sql += `\n where ${conds.join(spec.any ? '\n    or ' : '\n   and ')}`;
+  if (groupBy.length) sql += `\n group by ${groupBy.join(', ')}`;
   if (order.length) sql += `\n order by ${order.join(', ')}`;
   if (spec.limit) sql += `\n limit ${spec.limit}`;
-  return { sql, aliases, joins, notes };
+  return { sql, aliases, joins, notes, grouped };
 }
 
 /** Tables and views of a schema, with their columns, and the foreign keys between its tables. */
@@ -196,7 +242,10 @@ export function specFromQuery(q: Record<string, unknown>, schema: string): Query
   for (const [k, v] of Object.entries(q)) if (/^jt_t\d+$/.test(k)) joinTypes[k.slice(3)] = v === 'left' ? 'left' : 'inner';
   return {
     schema,
-    tables: list(q.t).slice(0, 20),
+    // in the order they were chosen (o: the previous order; the form lists the tables alphabetically), so aliases stay
+    tables: ((order) => list(q.t).slice(0, 20).map((t, k) => [t, order.indexOf(t) < 0 ? 1000 + k : order.indexOf(t)] as const).sort((a, b) => a[1] - b[1]).map(([t]) => t))(
+      list(q.o).join(',').split(','),
+    ),
     columns: list(q.c).slice(0, 500),
     joinTypes,
     where: wc.slice(0, 20).map((column, k) => ({ column, op: wo[k] ?? '=', value: wv[k] ?? '' })),
@@ -204,6 +253,18 @@ export function specFromQuery(q: Record<string, unknown>, schema: string): Query
     order: oc.slice(0, 5).map((column, k) => ({ column, dir: od[k] === 'desc' ? 'desc' : 'asc' })),
     limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100000) : null,
     distinct: q.distinct === '1',
+    joins: [
+      ...list(q.j).slice(0, 20).map((v) => v.split('=', 2)),
+      // the form's "add a join" pair
+      ...(list(q.ja)[0] && list(q.jb)[0] ? [[list(q.ja)[0], list(q.jb)[0]]] : []),
+    ].filter((x) => x.length === 2 && x[0] && x[1]).map(([a, b]) => ({ a, b })),
+    fns: Object.fromEntries(list(q.fn).slice(0, 500).map((v) => [v.slice(0, v.lastIndexOf(':')), v.slice(v.lastIndexOf(':') + 1)]).filter(([ref, fn]) => ref && fn in FUNCTIONS)),
+    positions: Object.fromEntries(
+      list(q.p).slice(0, 20).flatMap((v) => {
+        const m = /^(.+):(\d{1,5}),(\d{1,5})$/.exec(v);
+        return m ? [[m[1], { x: Math.min(Number(m[2]), 20000), y: Math.min(Number(m[3]), 20000) }]] : [];
+      }),
+    ),
   };
 }
 
@@ -226,10 +287,18 @@ export async function queryBuilderRoutes(app: FastifyInstance) {
 
     const allCols = chosen.flatMap((t) => rels.find((r) => r.name === t)!.columns.map((c) => ({ ref: `${built!.aliases.get(t)}.${c.name}`, label: `${built!.aliases.get(t)}.${c.name}`, table: t, type: c.type })));
     const colOptions = (current: string) => html`<option value="">-</option>${allCols.map((c) => html`<option value="${c.ref}"${sel(c.ref === current)}>${c.label} (${c.type})</option>`)}`;
+    // the canvas's lines: foreign keys (first column pair) and the developer's joins
+    const lines = built
+      ? built.joins.flatMap((j) =>
+          j.custom.length
+            ? j.custom.map((c) => ({ a: c.a, b: c.b, custom: true }))
+            : j.fk ? [{ a: `${built.aliases.get(j.fk.from)}.${j.fk.fromCols[0]}`, b: `${built.aliases.get(j.fk.to)}.${j.fk.toCols[0]}`, custom: false }] : [],
+        )
+      : [];
     const wheres = [...spec.where.filter((w) => w.column), { column: '', op: '=', value: '' }];
     const orders = [...spec.order.filter((o) => o.column), { column: '', dir: 'asc' as const }];
 
-    const form = html`<form method="get" action="${BASE}/sql/query">
+    const form = html`<form method="get" action="${BASE}/sql/query">${chosen.length ? html`<input type="hidden" name="o" value="${chosen.join(',')}">` : ''}
       ${region('1. Tables and views', html`<div class="form-grid"><div class="field"><label class="label" for="f_schema">Schema</label>
           <select id="f_schema" name="schema">${schemas.map((x) => html`<option${sel(x === schema)}>${x}</option>`)}</select></div></div>
         ${rels.length
@@ -240,20 +309,41 @@ export async function queryBuilderRoutes(app: FastifyInstance) {
         <div class="buttons"><button class="btn">${icon('check')} Apply</button></div>`)}
       ${built
         ? html`<div class="u-spacer"></div>
+        ${region('2. Columns', html`<p class="muted u-mt0">None ticked: all columns. A function (count, sum, …) groups the rows by the other chosen columns. Drag a table by its handle (or focus the handle and use the arrow keys); drag the dot next to a column onto a column of another table to join them.</p>
+          <label class="check u-mb1"><input type="checkbox" name="distinct" value="1"${check(spec.distinct)}> Distinct rows</label>
+          <div class="qb-canvas" data-joins="${JSON.stringify(lines)}">${chosen.map((t, k) => {
+            const a = built!.aliases.get(t)!;
+            const pos = spec.positions[t] ?? { x: 16 + k * 272, y: 16 };
+            return html`<div class="qb-table" data-table="${t}" data-alias="${a}" data-x="${pos.x}" data-y="${pos.y}">
+              ${spec.positions[t] ? html`<input type="hidden" name="p" value="${t}:${pos.x},${pos.y}">` : ''}
+              <div class="qb-table-head"><button type="button" class="qb-move" hidden aria-label="Move ${t} (arrow keys)" title="Drag to move">${icon('menu')}</button>
+                <strong>${t}</strong> <span class="muted small">${a}</span></div>
+              <ul class="qb-cols">${rels.find((r) => r.name === t)!.columns.map((c) => {
+                const ref = `${a}.${c.name}`;
+                return html`<li class="qb-col" data-ref="${ref}">
+                  <label class="check"><input type="checkbox" name="c" value="${ref}"${check(spec.columns.includes(ref))}> ${c.name}</label>
+                  <span class="muted small qb-type">${c.type}</span>
+                  <select name="fn" aria-label="Function for ${ref}"><option value="">-</option>${Object.entries(FUNCTIONS).map(([fn, label]) => html`<option value="${ref}:${fn}"${sel(spec.fns[ref] === fn)}>${label}</option>`)}</select>
+                  ${chosen.length > 1 ? html`<button type="button" class="qb-link" hidden data-ref="${ref}" aria-label="Join ${ref} to a column of another table" title="Drag onto a column of another table to join them"></button>` : ''}
+                </li>`;
+              })}</ul></div>`;
+          })}</div>`)}
         ${built.joins.length
-          ? region('2. Joins', html`<p class="muted u-mt0">From the foreign keys between the chosen tables.</p>
+          ? html`<div class="u-spacer"></div>${region('3. Joins', html`<p class="muted u-mt0">From the foreign keys between the chosen tables, or the columns you joined.</p>
               ${built.notes.map((n) => html`<div class="alert alert-error" role="alert">${n}</div>`)}
               <ul class="qb-joins">${built.joins.map((j) => html`<li class="u-mb1">${j.table} <span class="muted">${j.alias}</span>
-                ${j.fk ? html` on ${j.fk.from}(${j.fk.fromCols.join(', ')}) → ${j.fk.to}(${j.fk.toCols.join(', ')})
-                  <label class="sr-only" for="f_jt_${j.alias}">Join type for ${j.table}</label>
-                  <select id="f_jt_${j.alias}" name="jt_${j.alias}"><option value="inner">inner join</option><option value="left"${sel(spec.joinTypes[j.alias] === 'left')}>left join (keep rows without a match)</option></select>` : html` (cross join)`}</li>`)}</ul>`)
+                ${j.custom.length
+                  ? html` on ${j.custom.map((c, k) => html`${k ? ' and ' : ''}<label class="check qb-inline"><input type="checkbox" name="j" value="${c.a}=${c.b}" checked> ${c.a} = ${c.b}</label>`)}`
+                  : j.fk ? html` on ${j.fk.from}(${j.fk.fromCols.join(', ')}) → ${j.fk.to}(${j.fk.toCols.join(', ')})` : html` (cross join)`}
+                ${j.fk || j.custom.length ? html`<label class="sr-only" for="f_jt_${j.alias}">Join type for ${j.table}</label>
+                  <select id="f_jt_${j.alias}" name="jt_${j.alias}"><option value="inner">inner join</option><option value="left"${sel(spec.joinTypes[j.alias] === 'left')}>left join (keep rows without a match)</option></select>` : ''}</li>`)}</ul>
+              <fieldset class="field"><legend class="label">Join two columns</legend><div class="qb-cond">
+                <select name="ja" aria-label="Join: column">${colOptions('')}</select><span class="qb-eq">=</span>
+                <select name="jb" aria-label="Join: column of another table">${colOptions('')}</select></div></fieldset>
+              <div class="buttons"><button class="btn">${icon('check')} Apply</button></div>`)}`
           : ''}
         <div class="u-spacer"></div>
-        ${region('3. Columns', html`<p class="muted u-mt0">None ticked: all columns.</p>
-          <label class="check u-mb1"><input type="checkbox" name="distinct" value="1"${check(spec.distinct)}> Distinct rows</label>
-          <div class="qb-pick">${allCols.map((c) => html`<label class="check"><input type="checkbox" name="c" value="${c.ref}"${check(spec.columns.includes(c.ref))}> ${c.label}</label>`)}</div>`)}
-        <div class="u-spacer"></div>
-        ${region('4. Conditions', html`<fieldset class="field"><legend class="label">Rows must match</legend><div class="radio-group">
+        ${region(`${built.joins.length ? 4 : 3}. Conditions`, html`<fieldset class="field"><legend class="label">Rows must match</legend><div class="radio-group">
             <label class="check"><input type="radio" name="any" value="and"${check(!spec.any)}> all conditions</label>
             <label class="check"><input type="radio" name="any" value="or"${check(spec.any)}> any condition</label></div></fieldset>
           ${wheres.map((w, k) => html`<div class="qb-cond">
@@ -262,7 +352,7 @@ export async function queryBuilderRoutes(app: FastifyInstance) {
             <input name="wv" value="${w.value}" aria-label="Condition ${k + 1}: value"></div>`)}
           <div class="buttons"><button class="btn">${icon('plus')} Apply / add a condition</button></div>`)}
         <div class="u-spacer"></div>
-        ${region('5. Sort and limit', html`${orders.map((o, k) => html`<div class="qb-cond">
+        ${region(`${built.joins.length ? 5 : 4}. Sort and limit`, html`${orders.map((o, k) => html`<div class="qb-cond">
             <select name="oc" aria-label="Sort ${k + 1}: column">${colOptions(o.column)}</select>
             <select name="od" aria-label="Sort ${k + 1}: direction"><option value="asc">ascending</option><option value="desc"${sel(o.dir === 'desc')}>descending</option></select><span></span></div>`)}
           <div class="form-grid"><div class="field"><label class="label" for="f_limit">At most (rows)</label><input id="f_limit" name="limit" type="number" min="1" max="100000" value="${spec.limit ?? ''}"></div></div>
