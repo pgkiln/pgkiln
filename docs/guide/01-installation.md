@@ -48,6 +48,35 @@ The tests use it as their fixture: `npm test` and `npm run test:e2e` install it 
 2. Point `DATABASE_URL` in `.env` at it, then run `npm run db:migrate` (and `npm run example:hr` for the example application).
 3. Set `RUNTIME_DATABASE_URL` for the `pgapex_runtime` role that the first migration creates (see below).
 
+The owner doesn't have to be a superuser: a role with `CREATEROLE` that owns the database is enough
+(`pgcrypto` is a trusted extension).
+
+### Installing into an existing database
+
+pgapex can live next to your own schemas: it adds the schema `meta`, three bookkeeping tables in
+`public` (`pgapex_migration`, `pgapex_seed`, `pgapex_install_log`) and the login roles
+`pgapex_runtime`, `pgapex_authenticator` and `pgapex_anon` (roles belong to the whole server). It
+changes nothing else. When the pgapex owner is not the database's owner, a database administrator
+grants, once:
+
+```sql
+create role pgapex login createrole password 'choose-a-password';
+grant connect, create on database shop to pgapex;
+grant create on schema public to pgapex;   -- since PostgreSQL 15 only the database owner may by default
+```
+
+Applications run as a role of their own, which the builder grants rights on its parsing schema. For
+a schema the pgapex owner doesn't own, its owner passes those rights on first:
+
+```sql
+-- as the owner of the schema sales
+grant usage on schema sales to pgapex with grant option;
+grant select, insert, update, delete on all tables in schema sales to pgapex with grant option;
+grant usage, select on all sequences in schema sales to pgapex with grant option;
+```
+
+(or the administrator grants them to the application's role, `app_<alias>`, directly).
+
 ## The two database connections
 
 pgapex deliberately uses **two** database logins:
