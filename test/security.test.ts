@@ -5966,3 +5966,35 @@ describe('sprint 39 zips and parsing in SQL', () => {
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<x><y>1</y></x>', 'utf8'), 'x.xml', 'auto', true, null, $1)`, ['y"] | //*[local-name()="x']), /not an element name/);
   });
 });
+
+describe('sprint 39 object storage', () => {
+  test('the bucket must pass the web client\'s allow-list and address checks; the secret never shows', async () => {
+    const { putObject } = await import('../src/objectstore.ts');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC39_S3'`, [hr]);
+    await owner.query(`insert into meta.web_credential (app_id, name, type, username, scope, secret_enc) values ($1, 'SEC39_S3', 'aws_sigv4', 'AKIDSEC39', 'eu-west-1', $2)`, [hr, encryptSecret('sec39-super-secret')]);
+    const saved = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS };
+    try {
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = '*';
+      delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+      for (const url of ['http://169.254.169.254/latest', 'http://127.0.0.1:9/bucket', 'http://10.0.0.1/bucket']) {
+        const e = await putObject(hr, { url, credential: 'SEC39_S3' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
+        assert.ok(e, url);
+        assert.doesNotMatch(e!.message, /sec39-super-secret/);
+      }
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = 'objects.example.com';
+      const e = await putObject(hr, { url: 'https://elsewhere.example.org/b', credential: 'SEC39_S3' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
+      assert.match(e!.message, /not allowed|allow/i);
+      // another type of credential can't sign object storage requests, and an aws_sigv4 one can't be used for REST calls
+      const e2 = await putObject(hr, { url: 'https://objects.example.com/b', credential: 'NO_SUCH' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
+      assert.match(e2!.message, /does not exist/);
+    } finally {
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = saved.allowed;
+      if (saved.priv === undefined) delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+      else process.env.PGAPEX_REST_PRIVATE_HOSTS = saved.priv;
+      if (saved.allowed === undefined) delete process.env.PGAPEX_REST_ALLOWED_HOSTS;
+      await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC39_S3'`, [hr]);
+    }
+  });
+});

@@ -26,6 +26,10 @@ All notable changes to this project are documented here. The format follows
   APEX_ZIP as `meta.zip_add` / `zip_finish` / the aggregate `zip_agg` / `zip_entries` / `zip_entry`; the server
   unpacks .zip and .xlsx files it receives (uploads, web responses) for SQL, for 24 hours; `meta.v_boolean(item)`;
   an APEX_JSON → PostgreSQL mapping in the reference.
+- **Object storage for file items** (migration 071): `object_store` keeps a file item's files in an S3-compatible
+  bucket (AWS Signature Version 4, web credentials of the new type `aws_sigv4`); the source column holds the key;
+  replaced and removed files are deleted after the commit, files of a failed save at once; downloads go through
+  the app as before.
 
 ## [0.30.0] - 2026-10-06
 

@@ -201,6 +201,9 @@ export const txContext = (ctx: PageContext) => ({
   lang: ctx.locale.lang,
   timeZone: ctx.locale.timeZone,
   debug: ctx.debug,
+  // tasks for after this transaction (object storage: src/objectstore.ts)
+  afterCommit: (ctx.afterCommit ??= []),
+  afterRollback: (ctx.afterRollback ??= []),
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */

@@ -1,10 +1,11 @@
 import pg from 'pg';
 import { applyBinds, literal } from '../binds.ts';
 import { runtime, savepoint, type Client } from '../db.ts';
-import type { Process, Region } from '../metadata.ts';
+import type { Item, Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
-import { formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, tempIds } from './files.ts';
+import { dropObjects, dropObjectsSince, formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, storeOf, storeTempFile, tempIds } from './files.ts';
+import type { ObjectStoreConfig } from '../objectstore.ts';
 import { autoMap, LoadError, LoadFailed, loadRows, loadWithDefinition, parseFile, tableColumns, type DataLoadDefinition, type FileFormat, type LoadMode } from '../dataload.ts';
 import { esc } from '../html.ts';
 import { invokeApi, restFetchRow, restFormDml } from './rest-sources.ts';
@@ -238,13 +239,32 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   // its name and type columns, or nothing when no new file was uploaded
   const assignments: [string, string][] = [];
   const uploaded: string[] = [];
+  // object storage: the stored keys of files this save replaces or removes (deleted after the commit)
+  const replaced: [ObjectStoreConfig, string][] = [];
+  const storedKey = async (i: Item) =>
+    pk === null ? null : ((await c.query({ text: `select ${ident(i.source_column!)}::text from ${table} where ${pkCol} = ${literal(pk)}`, rowMode: 'array' })).rows[0]?.[0] as string | null) ?? null;
   for (const i of columns) {
     const v = state[i.name] ?? null;
     if (i.type !== 'file') {
       if (op === 'update' || v !== null) assignments.push([ident(i.source_column!), literal(v)]);
       continue;
     }
-    const conf = (i.config ?? {}) as { filename_column?: string; mime_column?: string };
+    const conf = (i.config ?? {}) as { filename_column?: string; mime_column?: string; size_column?: string };
+    const store = storeOf(i);
+    if (store && (isTempId(v) || (v === REMOVE && op === 'update'))) {
+      if (op === 'update') replaced.push([store, (await storedKey(i))!]);
+      if (isTempId(v)) {
+        uploaded.push(v);
+        const f = await storeTempFile(ctx, store, v);
+        assignments.push([ident(i.source_column!), literal(f.key)]);
+        if (conf.filename_column) assignments.push([ident(conf.filename_column), literal(f.filename)]);
+        if (conf.mime_column) assignments.push([ident(conf.mime_column), literal(f.mime)]);
+        if (conf.size_column) assignments.push([ident(conf.size_column), literal(String(f.size))]);
+      } else {
+        for (const col of [i.source_column!, conf.filename_column, conf.mime_column, conf.size_column]) if (col) assignments.push([ident(col), 'null']);
+      }
+      continue;
+    }
     const file = (col: string) => `(select ${col} from meta.temp_files where id = ${literal(v)}::uuid)`;
     if (isTempId(v)) {
       uploaded.push(v);
@@ -257,8 +277,9 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       if (conf.mime_column) assignments.push([ident(conf.mime_column), 'null']);
     }
   }
-  // saved into the row: the temporary files are no longer needed
+  // saved into the row: the temporary files are no longer needed, replaced objects go after the commit
   const done = async () => {
+    for (const [store, key] of replaced) dropObjects(ctx, store, [key]);
     for (const id of uploaded) await c.query('select meta.delete_temp_file($1)', [id]);
     for (const i of columns) if (i.type === 'file') state[i.name] = null;
   };
@@ -287,7 +308,14 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   }
 
   await saveFileLists(ctx, r, 'delete');
+  // the record's files in object storage go with it (after the commit)
+  const gone: [ObjectStoreConfig, string | null][] = [];
+  for (const i of columns) {
+    const store = i.type === 'file' ? storeOf(i) : null;
+    if (store) gone.push([store, await storedKey(i)]);
+  }
   const res = await c.query(`delete from ${table} where ${pkCol} = ${literal(pk)}`);
+  for (const [store, key] of gone) dropObjects(ctx, store, [key]);
   if (res.rowCount !== 1) throw new Error(ctx.locale.t('form.changed'));
   clearPageItems(ctx);
   return p.success_message ?? ctx.locale.t('form.deleted');
@@ -460,7 +488,16 @@ async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, dept
   try {
     if (ctx.background && !BACKGROUND_TYPES.has(p.type)) throw new Error(ctx.locale.t('process.background_type', { name: p.name, type: p.type }));
     switch (p.type) {
-      case 'form_dml': return await formDml(ctx, p);
+      case 'form_dml': {
+        // a save that fails removes the files it put into object storage (its rows were not written)
+        const mark = ctx.objectsPut?.length ?? 0;
+        try {
+          return await formDml(ctx, p);
+        } catch (e) {
+          await dropObjectsSince(ctx, mark);
+          throw e;
+        }
+      }
       case 'grid_dml': return await gridDml(ctx, p);
       case 'data_load': return await dataLoad(ctx, p);
       case 'invoke_api': return await invokeApi(ctx, p, names);

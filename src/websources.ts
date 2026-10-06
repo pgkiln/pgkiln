@@ -20,7 +20,7 @@ export interface WebCredential {
   id: number;
   app_id: number;
   name: string;
-  type: 'basic' | 'header' | 'bearer' | 'oauth2';
+  type: 'basic' | 'header' | 'bearer' | 'oauth2' | 'aws_sigv4';
   username: string | null;
   header_name: string | null;
   token_url: string | null;
@@ -189,7 +189,7 @@ export function operationProblems(s: { url?: unknown; params?: unknown; columns?
 
 export const GRANT_TYPES = ['client_credentials', 'password', 'refresh_token'];
 
-export function credentialProblems(c: { type?: unknown; header_name?: unknown; token_url?: unknown; valid_for?: unknown; username?: unknown; grant_type?: unknown; oauth_username?: unknown }): string[] {
+export function credentialProblems(c: { type?: unknown; header_name?: unknown; token_url?: unknown; valid_for?: unknown; username?: unknown; grant_type?: unknown; oauth_username?: unknown; scope?: unknown }): string[] {
   const out: string[] = [];
   if (c.type === 'header' && (typeof c.header_name !== 'string' || !HEADER.test(c.header_name))) out.push('An HTTP header credential needs the header\'s name, e.g. X-API-Key.');
   if (c.type === 'header' && typeof c.header_name === 'string' && RESERVED_HEADERS.has(c.header_name.toLowerCase()) && c.header_name.toLowerCase() !== 'authorization')
@@ -202,6 +202,10 @@ export function credentialProblems(c: { type?: unknown; header_name?: unknown; t
     if (grant === 'password' && (typeof c.oauth_username !== 'string' || !c.oauth_username)) out.push('The OAuth2 password flow needs the user name to sign in with (in "OAuth2 user name").');
   }
   if (c.type === 'basic' && (typeof c.username !== 'string' || !c.username)) out.push('Basic authentication needs a user name.');
+  if (c.type === 'aws_sigv4') {
+    if (typeof c.username !== 'string' || !/^[A-Za-z0-9]{8,128}$/.test(c.username)) out.push('An object store credential needs the access key id (in "User name / client id / access key id").');
+    if (typeof c.scope !== 'string' || !/^[a-z0-9-]{1,40}$/.test(c.scope)) out.push('An object store credential needs the region (in "Scope / region"), e.g. eu-west-1.');
+  }
   for (const v of Array.isArray(c.valid_for) ? c.valid_for : []) {
     try {
       const u = new URL(String(v));
@@ -546,6 +550,8 @@ async function credentialHeaders(c: WebCredential, url: string, timeoutMs: numbe
     }
     case 'oauth2':
       return { authorization: `Bearer ${await oauthToken(c, timeoutMs, fresh)}` };
+    case 'aws_sigv4':
+      throw new WebError(`Web credential ${c.name} (aws_sigv4) signs object storage requests of file items only.`);
     default:
       throw new WebError(`Web credential ${c.name} has an unknown type.`);
   }

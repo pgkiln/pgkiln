@@ -64,7 +64,7 @@ Shared Components → **Web credentials** → ＋ Add.
 | Property | Meaning |
 |---|---|
 | Name | Uppercase, e.g. `WEATHER_API`; sources and processes use the credential by this name |
-| Authentication | `basic` (user name + password), `header` (an HTTP header with the secret, e.g. `X-API-Key`), `bearer` (`Authorization: Bearer <secret>`), `oauth2` |
+| Authentication | `basic` (user name + password), `header` (an HTTP header with the secret, e.g. `X-API-Key`), `bearer` (`Authorization: Bearer <secret>`), `oauth2`, `aws_sigv4` (an S3-compatible object store's access key: the access key id as user name, the secret access key as secret, the region as scope; signs the requests of [file items in object storage](16-files.md#object-storage), not of REST data sources) |
 | Grant type | `oauth2`: `client_credentials` (default), `password` or `refresh_token` ([below](#oauth2-grant-types)) |
 | User name / client id | `basic`: the user name; `oauth2`: the client id |
 | OAuth2 user name | `oauth2` with `password`: the user pgapex signs in as |

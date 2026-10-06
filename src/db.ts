@@ -61,6 +61,15 @@ export interface AppContext {
   timeZone?: string | null;
   /** the request's debug log (src/debug.ts): sets pgapex.debug_level and collects NOTICEs (meta.debug) */
   debug?: { level: number; notice(msg: { message?: string; detail?: string; hint?: string; severity?: string }): void };
+  /** run once the transaction committed (e.g. removing replaced files from object storage); errors are logged */
+  afterCommit?: (() => Promise<void>)[];
+  /** run when the transaction was rolled back (e.g. removing files stored for it) */
+  afterRollback?: (() => Promise<void>)[];
+}
+
+async function runAll(tasks: (() => Promise<void>)[] | undefined, what: string) {
+  for (const t of tasks?.splice(0) ?? [])
+    await t().catch((e) => console.error(`${what}:`, (e as Error).message));
 }
 
 /**
@@ -69,6 +78,20 @@ export interface AppContext {
  * exposed to SQL via meta.app_id(), meta.app_user() and meta.v().
  */
 export async function appTx<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): Promise<T> {
+  if (!ctx.afterCommit && !ctx.afterRollback) return appTxInner(ctx, fn);
+  try {
+    const result = await appTxInner(ctx, fn);
+    if (ctx.afterRollback) ctx.afterRollback.length = 0;
+    await runAll(ctx.afterCommit, 'after commit');
+    return result;
+  } catch (e) {
+    if (ctx.afterCommit) ctx.afterCommit.length = 0;
+    await runAll(ctx.afterRollback, 'after rollback');
+    throw e;
+  }
+}
+
+async function appTxInner<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): Promise<T> {
   return runtime.tx(async (c) => {
     await c.query(
       `select set_config('pgapex.app_user', $1, true),

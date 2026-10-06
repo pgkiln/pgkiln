@@ -155,6 +155,38 @@ select :P5_TICKET_ID::int, filename, mime_type, content
 A session keeps at most 20 temporary files, so keep `max_files` at 10 or less (the server caps
 it at 10) and save the files before users upload many more.
 
+### Object storage
+
+APEX 26.1 stores File Browse items in object storage as well. In pgapex a single or multiple file
+item keeps its files in an **S3-compatible bucket** (Amazon S3, MinIO, Cloudflare R2, Wasabi,
+Backblaze B2, OCI's S3 compatibility API, …) with `object_store` in its attributes:
+
+```json
+{"object_store": {"url": "https://s3.eu-west-1.amazonaws.com/hr-files", "credential": "S3_HR", "prefix": "photos/"},
+ "filename_column": "photo_name", "mime_column": "photo_mime", "size_column": "photo_size"}
+```
+
+- `url`: the bucket's URL, path style (`https://s3.<region>.amazonaws.com/<bucket>`,
+  `http://minio:9000/<bucket>`) or virtual-host style (`https://<bucket>.s3.<region>.amazonaws.com`).
+  Its host must be on the server's allow-list (`PGAPEX_REST_ALLOWED_HOSTS`, and
+  `PGAPEX_REST_PRIVATE_HOSTS` for a store on your own network), like every call pgapex makes
+  ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)).
+- `credential`: a [web credential](19-rest-data-sources.md#web-credentials) of type `aws_sigv4`
+  (access key id, secret access key, region); requests are signed with AWS Signature Version 4.
+  Its *Valid for* URLs should name the bucket.
+- `prefix`: keys start with it; each file gets `<prefix><random id>/<file name>`.
+- The item's **source column holds the object's key** (a `text` column) instead of the bytes;
+  `size_column` (optional) the size, which the form shows. Name and type columns work as before.
+  For a multiple item the child table's rows hold the keys.
+
+Uploads stay temporary files of the session until the form is saved; then the file goes to the
+bucket and its key into the row. A file that is replaced or removed, or whose record is deleted, is
+deleted from the bucket **after the save committed**; when the save fails, the file just stored is
+deleted again, so the bucket follows the table. Downloads go through pgapex as before: the row is
+read as the application's role (RLS applies), the link carries the user's checksum, and the
+content is fetched from the bucket and sent with the same headers. Users never see the bucket's
+address or the credential. Downloads are limited to `MAX_UPLOAD_MB`.
+
 ### Downloads and security
 
 - **Download links** carry a checksum bound to the user, the page, the item and the record. A

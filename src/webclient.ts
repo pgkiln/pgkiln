@@ -41,6 +41,8 @@ export interface WebRequest {
   body?: string | Buffer;
   timeoutMs?: number;
   maxBytes?: number;
+  /** maxBytes may exceed PGAPEX_REST_MAX_BYTES (object storage: files up to MAX_UPLOAD_MB) */
+  allowLarge?: boolean;
 }
 
 export interface WebResponse {
@@ -207,7 +209,7 @@ function once(url: URL, req: WebRequest, deadline: number, maxBytes: number): Pr
 
 /** Call a web service with the server's protections (see the top of this file). */
 export async function webRequest(raw: string, req: WebRequest = {}): Promise<WebResponse> {
-  const maxBytes = Math.min(req.maxBytes ?? maxResponseBytes(), maxResponseBytes());
+  const maxBytes = req.allowLarge && req.maxBytes ? req.maxBytes : Math.min(req.maxBytes ?? maxResponseBytes(), maxResponseBytes());
   const deadline = Date.now() + Math.min(Math.max(req.timeoutMs ?? 10_000, 100), 60_000);
   let url = new URL(raw);
   let headers: Record<string, string> = { 'user-agent': 'pgapex', 'accept-encoding': 'gzip, deflate', ...req.headers };

@@ -3,6 +3,7 @@
 // from this spec, and SQL column names only ever come from here (never from
 // the request).
 
+import { objectStoreProblem } from '../objectstore.ts';
 import { formatSettingsProblem } from '../runtime/format.ts';
 import { scheduleProblem } from '../automations.ts';
 import { ICONS } from '../icons.ts';
@@ -94,7 +95,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'layers',
     summary: (r) => r.title ?? `(${r.type})`,
     defaults: { type: 'report', columns: 12, template: 'standard' },
-    validate: (v) => formatSettingsProblem(v.config),
+    validate: (v) => formatSettingsProblem(v.config) ?? (v.type === 'file' ? objectStoreProblem((v.config as Record<string, unknown> | null)?.object_store) : null),
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
       { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'list', 'static', 'dynamic', 'data_reporter', 'ai_assistant', 'plugin'], group: 'Identification' },
