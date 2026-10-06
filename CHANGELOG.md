@@ -39,6 +39,10 @@ All notable changes to this project are documented here. The format follows
   by a handle or moved with the arrow keys, placed where left), the joins as lines; drag a column onto a column of
   another table to join them (or choose the pair under Joins), instead of a cross join or the foreign key; column
   functions (count, count distinct, sum, average, minimum, maximum) with an automatic `group by`.
+- **Tenants for workflows and tasks** (migration 072): `meta.set_tenant(tenant)` / `meta.tenant_id()` (APEX:
+  `APEX_SESSION.SET_TENANT_ID`). Workflows, the tasks they create, tasks and background execution chains carry the
+  session's tenant; the task list, the workflow console, `meta.tasks` / `meta.workflows` and every action reach only
+  the session's tenant (a session without one: those without one).
 
 ### Fixed
 - Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases

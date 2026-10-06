@@ -91,6 +91,8 @@ export async function appTx<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): 
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function appTxInner<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): Promise<T> {
   return runtime.tx(async (c) => {
     await c.query(
@@ -101,10 +103,12 @@ async function appTxInner<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): Pr
               set_config('pgapex.lang', $5, true),
               set_config('pgapex.public_url', $6, true),
               set_config('TimeZone', coalesce($7, current_setting('TimeZone')), true),
-              set_config('pgapex.debug_level', $8, true)${ctx.debug ? `, set_config('client_min_messages', 'notice', true)` : ''}`,
+              set_config('pgapex.debug_level', $8, true),
+              -- (0.31) the session's tenant (meta.set_tenant), read here so a change applies at once
+              set_config('pgapex.tenant_id', coalesce((select tenant_id from meta.session where id = $9::uuid), ''), true)${ctx.debug ? `, set_config('client_min_messages', 'notice', true)` : ''}`,
       [ctx.appUser, ctx.sessionId, String(ctx.appId), process.env.STATEMENT_TIMEOUT ?? '30s', ctx.lang ?? '',
        (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, ''), ctx.timeZone ?? null,
-       String(ctx.debug?.level ?? 0)],
+       String(ctx.debug?.level ?? 0), UUID.test(ctx.sessionId) ? ctx.sessionId : null],
     );
     if (ctx.dbRole) await c.query(`set local role ${pg.escapeIdentifier(ctx.dbRole)}`);
     if (!ctx.debug) return fn(c);

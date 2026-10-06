@@ -15,6 +15,8 @@ triggers, your own functions).
 | `meta.message(name, variadic params)` | text | A text message in the current language, `%0`…`%9` replaced; falls back to the base and primary language |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
+| `meta.set_tenant(tenant)` | void | Sets (or with NULL or `''` clears) the current session's tenant (APEX: `apex_session.set_tenant_id`): at once and for the session's next requests. Workflows and tasks then carry it and show only to that tenant ([chapter 6](06-processing.md#tenants)) |
+| `meta.tenant_id()` | text | The current session's tenant, or NULL (APEX: `sys_context('APEX$SESSION', 'APP_TENANT_ID')`); in a workflow step, the workflow's tenant |
 | `meta.v_boolean(name)` | boolean | An item's value as a boolean (APEX 26.1: BOOLEAN session state): `true`, `t`, `yes`, `y`, `1`, `on` → true; `false`, `f`, `no`, `n`, `0`, `off` → false; empty or anything else → NULL. Switches and checkboxes store `true` / `false`, so `:P3_ACTIVE::boolean` works in SQL too |
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
@@ -35,7 +37,7 @@ triggers, your own functions).
 | `meta.zip_entries(zip)`, `meta.zip_entry(zip, name)` | table / bytea | The files in a zip and one file's content (APEX: `apex_zip.get_files`, `apex_zip.get_file_content`) |
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
-`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.debug_level`, `pgapex.public_url`
+`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.tenant_id`, `pgapex.debug_level`, `pgapex.public_url`
 (the server's `PUBLIC_URL`), `pgapex.web_pending` (set by `meta.web_request`).
 
 ### Web requests from SQL

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
-import { closePools, owner, runtime } from '../src/db.ts';
+import { appTx, closePools, owner, runtime } from '../src/db.ts';
 import { signText, urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
 import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
@@ -6060,5 +6060,27 @@ describe('sprint 39 query builder canvas', () => {
     assert.match(sql, /sum\(t2\.&quot;sal&quot;\) as &quot;sum_sal&quot;/, 'the order from o: dept is t1, emp t2; only the known function stays');
     assert.match(sql, /join &quot;hr&quot;\.&quot;emp&quot; t2 on t2\.&quot;deptno&quot; = t1\.&quot;deptno&quot;/, 'no valid drawn join: the foreign key');
     assert.ok((await owner.one(`select to_regclass('hr.emp') as e`)).e);
+  });
+});
+
+describe('sprint 39 workflow and task tenants', () => {
+  test("application SQL sets only its own session's tenant; it can't write sessions or another app's", async () => {
+    const { db_role: role } = await owner.one(`select db_role from meta.app where alias = 'hr'`);
+    await as('blake');
+    const mine = (await owner.one(`select id from meta.session where app_id = $1 and username = 'blake' order by created_at desc limit 1`, [appId])).id;
+    await as('king');
+    const theirs = (await owner.one(`select id from meta.session where app_id = $1 and username = 'king' order by created_at desc limit 1`, [appId])).id;
+    // as the application's role: the session table is out of reach
+    await assert.rejects(
+      appTx({ appId, alias: 'hr', dbRole: role, appUser: 'blake', sessionId: mine }, (c) => c.query(`update meta.session set tenant_id = 'x' where id = $1`, [theirs])),
+      /permission denied/,
+    );
+    await appTx({ appId, alias: 'hr', dbRole: role, appUser: 'blake', sessionId: mine }, (c) => c.query(`select meta.set_tenant('blake-co')`));
+    assert.equal((await owner.one('select tenant_id from meta.session where id = $1', [mine])).tenant_id, 'blake-co');
+    assert.equal((await owner.one('select tenant_id from meta.session where id = $1', [theirs])).tenant_id, null, "the other session's tenant is unchanged");
+    // a session of another application is not changed through this one's app id
+    await appTx({ appId: appId + 100000, alias: 'x', dbRole: role, appUser: 'blake', sessionId: mine }, (c) => c.query(`select meta.set_tenant('elsewhere')`));
+    assert.equal((await owner.one('select tenant_id from meta.session where id = $1', [mine])).tenant_id, 'blake-co');
+    await owner.query('update meta.session set tenant_id = null where id = $1', [mine]);
   });
 });

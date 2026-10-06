@@ -715,6 +715,25 @@ A step that fails puts the workflow in **faulted** with the error; an administra
 definition's administrator role) fixes the cause and **retries** the step. A task that is
 cancelled ends the workflow unless the step has a `cancelled` branch.
 
+<a id="tenants"></a>**Tenants** (APEX: multi-tenant workflows and tasks, `APEX_SESSION.SET_TENANT_ID`).
+An application that serves several customers (tenants) from the same tables sets the session's
+tenant once the user signed in, e.g. in a post-authentication or page process:
+
+```sql
+select meta.set_tenant((select company_code from staff where username = meta.app_user()))
+```
+
+From then on (in the same transaction already, and in the session's next requests)
+`meta.tenant_id()` returns it, and the workflows and tasks the session starts carry it. A task
+created by a workflow gets the workflow's tenant, and the workflow's steps run with it. The task
+list, the workflow console, the views `meta.tasks` and `meta.workflows`, and every action (claim,
+complete, delegate, cancel, terminate, retry) only reach the workflows and tasks of the session's
+tenant: a user with the same roles in another tenant doesn't see them. A session without a tenant
+sees only those without one, so existing applications are unchanged. An execution chain in the
+background runs with the tenant of the session that queued it. Filter your own tables the same way
+(`where tenant_id = meta.tenant_id()`, or a row level security policy). Use row level security in
+the tenant's tables as well: the tenant is a value the application sets, not a database boundary.
+
 ### Invoke API steps
 
 An `invoke_api` step (APEX: the *Invoke API* activity) calls a web service: a

@@ -332,6 +332,8 @@ interface Instance {
   due: boolean;
   initiator: string;
   db_role: string | null;
+  /** (0.31) '' without a tenant */
+  tenant_id: string;
 }
 
 /** Where a workflow is: its main path (branch null) or one of its parallel branches. */
@@ -429,7 +431,7 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
   const w = (
     await c.query<Instance & { leased: boolean }>(
       `select w.id::text, w.app_id, w.name, w.detail_pk, w.vars, w.steps, w.state, w.current_step, w.waiting_task::text,
-              coalesce(w.wait_until <= now(), false) as due, w.initiator, a.db_role,
+              coalesce(w.wait_until <= now(), false) as due, w.initiator, a.db_role, coalesce(w.tenant_id, '') as tenant_id,
               coalesce(w.wait_until = $2::timestamptz, false) as leased
          from meta.workflow w join meta.app a on a.id = w.app_id
         where w.id = $1 and w.state in ('active', 'waiting', 'faulted')
@@ -469,8 +471,10 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
   at.branch = k.branch;
   await c.query(
     `select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true),
-            set_config('pgapex.workflow_id', $3, true), set_config('statement_timeout', '30s', true)`,
-    [String(w.app_id), w.initiator, w.id],
+            set_config('pgapex.workflow_id', $3, true), set_config('statement_timeout', '30s', true),
+            set_config('pgapex.tenant_id', $4, true)`,
+    // (0.31) the workflow's tenant: its steps' SQL and the tasks it creates belong to it
+    [String(w.app_id), w.initiator, w.id, w.tenant_id],
   );
   const steps = w.steps;
   const s = steps.find((x) => x.name === k.current_step);
