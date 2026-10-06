@@ -141,11 +141,9 @@ describe('cropping a picture before upload (hr_45: the photo is square)', () => 
     await frame.press('Shift+ArrowLeft');
     await frame.press('ArrowRight');
     await dlg.locator('button[value="apply"]').click();
-    await page.waitForFunction(async () => {
-      const img = await createImageBitmap((document.getElementById('P3_PHOTO') as HTMLInputElement).files![0]);
-      return img.width !== 300;
-    });
-    const out = await chosen(page);
+    // waitForFunction can't wait for an async predicate (a promise is truthy): poll from here
+    let out = await chosen(page);
+    for (const until = Date.now() + 10_000; out.w === 300 && Date.now() < until; out = await chosen(page)) await page.waitForTimeout(50);
     assert.equal(out.name, 'wide.png', 'a PNG stays a PNG');
     assert.equal(out.w, out.h, `square: ${JSON.stringify(out)}`);
     assert.ok(out.w > 100 && out.w < 200, `about 80% of the height, a bit smaller: ${out.w}`);
