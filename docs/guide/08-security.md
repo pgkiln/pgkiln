@@ -336,6 +336,22 @@ groups from the sign-in are mapped to roles again). Signing out, a new password,
 account or removing its access ends it, and **My account → Sign out on all devices** ends it for every
 browser. An expired password always needs the password form.
 
+### Session sharing between applications
+
+Applications that use the user directory (*App users*) and have the same **Session sharing group** (Settings →
+Sign-in methods; lower case letters, digits and `_`) share a sign-in (APEX: session sharing). After signing in to one,
+opening another application of the group signs the user in there without the sign-in page:
+
+- each application still checks **its own access** (an access row, *any active account* or mapped directory/identity
+  provider groups) and gives **its own roles**; without access the user gets that application's sign-in page;
+- the shared sign-in is a cookie for the whole site (path `/`, `HttpOnly`, `SameSite=Lax`, `Secure` behind HTTPS) with
+  a random token; only its SHA-256 is stored (`meta.shared_login`, readable by the owner connection only);
+- it ends after the session idle time without use or the maximum session length (Instance settings), when the
+  account is deactivated, and when the user **signs out of any application of the group**, which also ends the
+  sessions of the other applications that came from it.
+
+Applications of different groups, and applications without a group, sign in on their own.
+
 ### What sign-in protects against
 
 - **Brute force**: after 5 failed attempts for a username (or 50 from one IP address) within 15

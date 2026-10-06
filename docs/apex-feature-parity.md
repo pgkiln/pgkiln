@@ -17,13 +17,13 @@ Last reviewed: 2026-10-06 (pgapex 0.29.0: workspaces; the Iris base style; drawe
 | Regions | 19 | 1 | 0 | 0 | All everyday regions; sixteen chart types with drill-down; calendars with week/day/list views and drag and drop; faceted search, smart filters and a region display selector; interactive reports with breaks, aggregates, highlights, compute, group by, pivot, chart view and saved reports; maps and trees; template components; row ranges, lazy loading and region caching for large tables |
 | Items | 10 | 2 | 0 | 0 | All common items, file upload (several files per item), rich text and Markdown editors, star rating, combobox, date range, QR code, password reveal |
 | Logic and processing | 9 | 3 | 0 | 1 | Core APEX model complete with computations, conditional branches, build options and menu buttons, download, chain and workflow processes; no custom JavaScript in dynamic actions |
-| Security | 19 | 1 | 0 | 0 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
+| Security | 20 | 0 | 0 | 0 | On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
 | User interface | 8 | 2 | 0 | 0 | Universal Theme-like and responsive; smaller theme roller and icon set |
 | Globalization | 5 | 1 | 0 | 0 | One translated app like 26.1; number format masks and automatic time zone; fourteen built-in languages |
 | Data and integration | 8 | 1 | 0 | 2 | REST APIs via PostgREST, REST data sources that write back and synchronise, web credentials with OAuth2 grants, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 5 | 1 | 0 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; AI with Claude or OpenAI: *Generate text with AI*, an assistant region with tools, natural-language report filters and blueprints |
 | Administration | 4 | 1 | 0 | 0 | Workspaces that group applications and developers (not a tenant boundary); Top SQL per app; debug messages per request; an install/upgrade log |
-| **Total** | **101** | **14** | **0** | **3** | 118 APEX features compared: 86% available, 12% partial |
+| **Total** | **102** | **13** | **0** | **3** | 118 APEX features compared: 86% available, 11% partial |
 
 (Counts are of the rows in the tables below.)
 
@@ -126,7 +126,7 @@ Last reviewed: 2026-10-06 (pgapex 0.29.0: workspaces; the Iris base style; drawe
 | Activity monitoring and audit | ✅ | Page views, sign-ins, denials, errors per app. Database-level auditing via `pgaudit` |
 | Error handling that hides internals | ✅ | Reference numbers; debug mode per app |
 | Content Security Policy without `unsafe-inline` (26.1) | ✅ | Scripts and styles: `script-src 'self'`, `style-src 'self' 'nonce-…'`. No inline scripts or `style` attributes; theme colours and chart geometry are in one `<style>` with a fresh nonce per response |
-| Session sharing between applications | 🟡 | Each app has its own session; with OpenID Connect the second sign-in is silent. APEX: workspace sharing or a custom cookie |
+| Session sharing between applications | ✅ | Applications with the same *session sharing group* share a sign-in: the others open without signing in again, each with its own access check and roles; signing out of one signs out of all; idle and maximum times apply ([chapter 8](guide/08-security.md#session-sharing-between-applications)). With OpenID Connect the second sign-in is silent too |
 | LDAP and SAML authentication | ✅ | LDAP / Active Directory (search + bind, StartTLS/LDAPS, groups → roles) and SAML 2.0 (signed assertions, SP metadata), next to local passwords and OpenID Connect |
 | Database accounts, HTTP-header authentication | ✅ | HTTP header variable (`header`): the user from a header set by a reverse proxy or SSO gateway, trusted only from proxy addresses in `PGAPEX_AUTH_HEADER_PROXIES`, session bound to the header value, optional automatic accounts, sign-out URL; database accounts (`database`): a PostgreSQL login role and its password, checked by PostgreSQL through a short-lived connection, only listed roles or members of a role ([chapter 8](guide/08-security.md)) |
 | Custom authentication | ✅ | A PL/pgSQL function or body checks the user name and password as the app's database role, plus post-authentication code; throttling and the activity log as for other types ([chapter 8](guide/08-security.md)) |

@@ -5841,3 +5841,12 @@ describe('sprint 38 picture cropping', () => {
     }
   });
 });
+
+describe('sprint 38 session sharing', () => {
+  test('shared sign-ins are closed to applications; only hashes are stored', async () => {
+    await assert.rejects(runtime.query('select * from meta.shared_login'), /permission denied/);
+    const cols = (await owner.query(`select column_name from information_schema.columns where table_schema = 'meta' and table_name = 'shared_login'`)).rows.map((r) => r.column_name);
+    assert.ok(cols.includes('token_hash') && !cols.includes('token'));
+    await assert.rejects(owner.query(`update meta.app set session_group = 'Bad Group' where alias = 'hr'`), /check constraint/);
+  });
+});

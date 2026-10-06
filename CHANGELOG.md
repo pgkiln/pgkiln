@@ -11,6 +11,8 @@ All notable changes to this project are documented here. The format follows
   pages against WCAG 2.1 A and AA in the e2e tests; no violations allowed.
 - **Cropping pictures** before upload: file items with `"crop"` (free, 1:1, 4:3, 3:4, 16:9, 3:2, 2:3) open a crop
   dialog (mouse and keyboard) for the chosen picture. HR example: the employee photo is square (`hr_45`).
+- **Session sharing between applications** (migration 067): applications with the same session sharing group share a
+  sign-in, each with its own access check and roles; signing out of one signs out of all.
 
 ### Fixed
 - Accessibility: chart bars and groups with a description get `role="img"`; gauge drill links are named by their
