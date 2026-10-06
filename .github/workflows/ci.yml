@@ -135,3 +135,26 @@ jobs:
       - name: Upgrade to this commit
         run: npm run example:hr
       - run: npm test
+
+  docker:
+    # what a user runs: deploy/.env.example filled in, docker compose up -d
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start with the example .env
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 24)/; s/^RUNTIME_PASSWORD=$/RUNTIME_PASSWORD=$(openssl rand -hex 24)/" .env
+          sed -i "s/^PGAPEX_SECRET_KEY=$/PGAPEX_SECRET_KEY=$(openssl rand -hex 24)/; s/^PGAPEX_ADMIN_PASSWORD=$/PGAPEX_ADMIN_PASSWORD=ci-admin-password-0123/" .env
+          echo PGAPEX_EXAMPLE=hr >> .env
+          docker compose up -d --build --wait --wait-timeout 300
+      - name: Check it
+        run: |
+          curl -fsS http://127.0.0.1:3100/healthz
+          curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
+          curl -fsS -o /dev/null http://127.0.0.1:3100/builder/login
+      - name: Logs
+        if: always()
+        working-directory: deploy
+        run: docker compose logs

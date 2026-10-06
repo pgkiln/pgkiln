@@ -1,0 +1,64 @@
+# pgapex with Docker: cp .env.example .env, fill in the secrets, docker compose up -d
+# (docs/guide/01-installation.md, "Docker").
+#
+# Profiles (COMPOSE_PROFILES in .env): db = the bundled PostgreSQL (leave it
+# out to use your own server: set DATABASE_URL and RUNTIME_DATABASE_URL);
+# https = Caddy in front with a certificate for PGAPEX_DOMAIN.
+
+services:
+  db:
+    image: postgres:17
+    profiles: [db]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pgapex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: pgapex
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "pgapex", "-d", "pgapex"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pgapex:
+    image: ${PGAPEX_IMAGE:-pgapex:local}
+    build: ..
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://pgapex:${POSTGRES_PASSWORD:-}@db:5432/pgapex}
+      RUNTIME_DATABASE_URL: ${RUNTIME_DATABASE_URL:-postgres://pgapex_runtime:${RUNTIME_PASSWORD:-}@db:5432/pgapex}
+      HOST: 0.0.0.0
+      PORT: "3100"
+    extra_hosts:
+      # a PostgreSQL on the Docker host itself: DATABASE_URL=postgres://…@host.docker.internal:5432/…
+      - host.docker.internal:host-gateway
+    ports:
+      # only this machine by default; PGAPEX_BIND=0.0.0.0 opens it to the network
+      - "${PGAPEX_BIND:-127.0.0.1}:${PGAPEX_PORT:-3100}:3100"
+
+  https:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    depends_on: [pgapex]
+    command: caddy reverse-proxy --from ${PGAPEX_DOMAIN:-localhost} --to pgapex:3100
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

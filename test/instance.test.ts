@@ -102,3 +102,13 @@ describe('instance settings', () => {
     }
   });
 });
+
+describe('health check', () => {
+  test('/healthz answers without a session and reveals nothing', async () => {
+    const res = await app.inject({ method: 'GET', url: '/healthz' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body, 'ok\n');
+    assert.equal(res.headers['cache-control'], 'no-store');
+    assert.equal(res.headers['set-cookie'], undefined);
+  });
+});

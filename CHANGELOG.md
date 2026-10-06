@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Docker**: a `Dockerfile` and `deploy/compose.yaml` (PostgreSQL 17 + pgapex, optional Caddy for HTTPS):
+  `cp .env.example .env`, fill in four secrets, `docker compose up -d`. The container (`scripts/docker-start.ts`)
+  refuses empty or placeholder secrets (listing all problems at once), migrates under an advisory lock, sets the
+  runtime role's password from `.env`, replaces the builder's `admin` / `admin` and gives `pgapex_authenticator` a
+  random password on a new install; optional HR example (`PGAPEX_EXAMPLE=hr`). Port bound to 127.0.0.1 by default;
+  your own PostgreSQL by leaving out the `db` profile. `GET /healthz` for health checks; a CI job starts the
+  stack as a user would. `tsx` moved to the runtime dependencies (the server and the CLI run with it).
+- Installation guide: installing into an existing database (the grants an administrator gives).
 - **Static application files** (migration 068): Shared Components → Static application files uploads or writes
   JavaScript, CSS, JSON, images and fonts (no HTML), served at `/a/<alias>/static/<name>` with long caching per
   version; every page or one page loads chosen `.js` and `.css` files; exported with the application (as the files

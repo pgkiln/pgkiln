@@ -61,7 +61,8 @@
     "openai": "^7.28.0",
     "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
-    "read-excel-file": "^9.3.10"
+    "read-excel-file": "^9.3.10",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
@@ -69,7 +70,6 @@
     "@types/pg": "^8.23.1",
     "axe-core": "^4.14.0",
     "playwright": "^1.63.0",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "xml-crypto": "^6.3.2"
   }

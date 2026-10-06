@@ -48,6 +48,35 @@ The tests use it as their fixture: `npm test` and `npm run test:e2e` install it 
 2. Point `DATABASE_URL` in `.env` at it, then run `npm run db:migrate` (and `npm run example:hr` for the example application).
 3. Set `RUNTIME_DATABASE_URL` for the `pgapex_runtime` role that the first migration creates (see below).
 
+The owner doesn't have to be a superuser: a role with `CREATEROLE` that owns the database is enough
+(`pgcrypto` is a trusted extension).
+
+### Installing into an existing database
+
+pgapex can live next to your own schemas: it adds the schema `meta`, three bookkeeping tables in
+`public` (`pgapex_migration`, `pgapex_seed`, `pgapex_install_log`) and the login roles
+`pgapex_runtime`, `pgapex_authenticator` and `pgapex_anon` (roles belong to the whole server). It
+changes nothing else. When the pgapex owner is not the database's owner, a database administrator
+grants, once:
+
+```sql
+create role pgapex login createrole password 'choose-a-password';
+grant connect, create on database shop to pgapex;
+grant create on schema public to pgapex;   -- since PostgreSQL 15 only the database owner may by default
+```
+
+Applications run as a role of their own, which the builder grants rights on its parsing schema. For
+a schema the pgapex owner doesn't own, its owner passes those rights on first:
+
+```sql
+-- as the owner of the schema sales
+grant usage on schema sales to pgapex with grant option;
+grant select, insert, update, delete on all tables in schema sales to pgapex with grant option;
+grant usage, select on all sequences in schema sales to pgapex with grant option;
+```
+
+(or the administrator grants them to the application's role, `app_<alias>`, directly).
+
 ## The two database connections
 
 pgapex deliberately uses **two** database logins:
@@ -134,6 +163,46 @@ which is read at startup; real environment variables take precedence.
 | `npm run typecheck` | TypeScript type check |
 | `npm test` | Unit and security tests (need the database; install the HR example first, as their fixture) |
 | `npm run test:e2e` | Browser tests at phone, tablet and desktop widths (run `npx playwright install chromium` once) |
+
+## Docker
+
+The quickest way to run pgapex: an image with the server and a compose file with PostgreSQL 17,
+in `deploy/`. Docker is all you need.
+
+```bash
+cd deploy
+cp .env.example .env
+# fill in POSTGRES_PASSWORD, RUNTIME_PASSWORD, PGAPEX_SECRET_KEY (e.g. `openssl rand -hex 24` each)
+# and PGAPEX_ADMIN_PASSWORD (12+ characters)
+docker compose up -d
+```
+
+Open http://127.0.0.1:3100/builder and sign in as `admin` with `PGAPEX_ADMIN_PASSWORD`.
+
+**What happens at each start** (`scripts/docker-start.ts`): the container checks the settings and
+lists everything missing at once (it doesn't start on empty or placeholder secrets), waits for the
+database, applies new migrations (with a lock, so several containers migrate once), sets the
+password of `pgapex_runtime` from `RUNTIME_DATABASE_URL`, and replaces the builder's `admin` /
+`admin` with `PGAPEX_ADMIN_PASSWORD` (a password changed later in the builder is kept). On a new
+install `pgapex_authenticator` (PostgREST) gets a random password, or
+`PGAPEX_AUTHENTICATOR_PASSWORD`. `GET /healthz` answers `ok` when the database is reachable; the
+image's health check uses it.
+
+**Settings** go in `deploy/.env`: the ones in `.env.example`, and any other setting of the
+[configuration reference](#configuration-reference).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `COMPOSE_PROFILES` | `db` | `db`: the bundled PostgreSQL (its data is in the volume `pgdata`). Remove it to use your own server; add `https` for Caddy |
+| `DATABASE_URL`, `RUNTIME_DATABASE_URL` | the bundled database | Your own PostgreSQL ([existing database](#installing-into-an-existing-database)); a server on the Docker host itself is `host.docker.internal` |
+| `PGAPEX_PORT`, `PGAPEX_BIND` | `3100`, `127.0.0.1` | Only this machine can connect by default; `PGAPEX_BIND=0.0.0.0` opens plain HTTP to the network |
+| `PGAPEX_DOMAIN` | | With the `https` profile: Caddy gets a certificate for this name (its DNS must point at the machine, ports 80 and 443 open). Set `PUBLIC_URL=https://…`, `COOKIE_SECURE=true` and `TRUST_PROXY=true` with it. Installing apps on phones and push notifications need HTTPS |
+| `PGAPEX_EXAMPLE` | | `hr` installs the HR example (its demo users have weak passwords: not on a public server) |
+| `PGAPEX_IMAGE` | `pgapex:local` | Use a published image instead of building one from this checkout |
+
+**Upgrading:** `git pull`, then `docker compose up -d --build`; the new container migrates the
+database before it starts serving. Back up first (`docker compose exec db pg_dump -U pgapex pgapex > backup.sql`).
+Keep `PGAPEX_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys) can't be decrypted.
 
 ## Upgrading
 
