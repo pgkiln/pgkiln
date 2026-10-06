@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Static application files** (migration 068): Shared Components → Static application files uploads or writes
+  JavaScript, CSS, JSON, images and fonts (no HTML), served at `/a/<alias>/static/<name>` with long caching per
+  version; every page or one page loads chosen `.js` and `.css` files; exported with the application (as the files
+  themselves under `static/` in a directory export).
+- **Execute JavaScript** dynamic action: calls a function a static file registered with
+  `pgapex.actions.register(name, fn)`; the page receives only the name, so the CSP stays `script-src 'self'`.
+  `window.pgapex` also offers `getValue`, `setValue`, `showSuccess`, `showError` and `clearErrors`. HR example:
+  the salary per year on the employee form (`hr_46`).
+
 ## [0.30.0] - 2026-10-06
 
 ### Added

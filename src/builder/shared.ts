@@ -134,6 +134,8 @@ export async function sharedRoutes(app: FastifyInstance) {
       <li><a href="${BASE}/apps/${a.id}/shared"${!selKind && !newKind ? raw(' aria-current="page"') : ''}>${icon('users')}<span>Access control</span><span class="kind">${users.length}</span></a></li>
       <li class="group">Globalization</li>
       <li><a href="${BASE}/apps/${a.id}/globalization">${icon('file')}<span>Translations and text messages</span><span class="kind">${[a.language, ...(a.languages ?? [])].join(', ')}</span></a></li>
+      <li class="group">Files</li>
+      <li><a href="${BASE}/apps/${a.id}/static-files">${icon('file')}<span>Static application files</span></a></li>
       <li class="group">Subscriptions</li>
       <li><a href="${BASE}/apps/${a.id}/subscriptions">${icon('layers')}<span>Subscriptions and subscribers</span>${a.app_type && a.app_type !== 'standard' ? html`<span class="kind">${a.app_type}</span>` : ''}</a></li>
       ${SHARED.map((kind) => {

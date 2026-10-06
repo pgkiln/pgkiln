@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { urlChecksum } from '../security.ts';
 import { pwaBody, pwaHead } from './pwa.ts';
 import { mapHead } from './maps.ts';
+import { staticHead } from './static-files.ts';
 import { appStyles, chosenStyle, chosenStyleName, styleChoice, themeCss } from './styles.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -36,6 +37,8 @@ function dynamicActionsJson(ctx: PageContext) {
       message: d.message,
       // add_class / remove_class: names checked by the database (and again in app.js)
       classes: d.css_classes ? d.css_classes.split(' ').filter((c) => /^[a-z][a-z0-9_-]{0,39}$/.test(c)) : [],
+      // execute_javascript: the name of a function a static file registered (never code)
+      fn: d.action === 'execute_javascript' && /^[A-Za-z_$][\w$.-]{0,99}$/.test(d.code?.trim() ?? '') ? d.code!.trim() : null,
     }));
 }
 
@@ -195,7 +198,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       'data-base': ctx.base,
       'data-page': String(ctx.page.page_no),
       'data-dialog': '1',
-    }, html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}`, root);
+    }, html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`, root);
 
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
@@ -238,7 +241,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     </div>`,
     `t-app${topNav ? ' nav-top' : ''}`,
     { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user) },
-    html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}`,
+    html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
     root,
   );
 }

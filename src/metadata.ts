@@ -30,6 +30,12 @@ export interface PageSummary {
   dialog_size?: 'small' | 'medium' | 'large';
 }
 
+/** (068) a static application file a page loads: its name and a version (for the browser cache) */
+export interface StaticInclude {
+  name: string;
+  v: number;
+}
+
 export interface AppProcess {
   id: number;
   name: string;
@@ -104,6 +110,8 @@ export interface App {
   time_zone: string | null;
   time_zone_auto: boolean | null;
   currency: string | null;
+  /** (068) static files (.js, .css) every page loads, in order; missing files are left out */
+  static_includes: StaticInclude[];
 }
 
 export interface Region {
@@ -228,7 +236,9 @@ export interface DynamicAction {
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
   condition_value: string | null;
   action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit'
-    | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate';
+    | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate'
+    /** (068) code: the name of a function a static file registered (pgapex.actions.register) */
+    | 'execute_javascript';
   affected_items: string | null;
   affected_region_id: number | null;
   code: string | null;
@@ -279,7 +289,14 @@ export interface Page extends PageSummary {
   processes: Process[];
   computations: Computation[];
   branches: Branch[];
+  /** (068) static files (.js, .css) this page loads after the application's */
+  static_includes: StaticInclude[];
 }
+
+/** The static files a list of names refers to, in that order, with their version. */
+const includes = (names: string, appId: string) =>
+  `coalesce((select jsonb_agg(jsonb_build_object('name', f.name, 'v', floor(extract(epoch from f.updated_at))::bigint) order by u.o)
+               from unnest(${names}) with ordinality u(n, o) join meta.static_file f on f.app_id = ${appId} and f.name = u.n), '[]')`;
 
 // Components whose build option is excluded are left out here, so the runtime
 // neither renders nor runs them (meta.build_option_on, migration 029).
@@ -300,7 +317,8 @@ export async function loadApp(alias: string) {
             coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message))
                         from meta.authz_scheme s where s.app_id = a.id), '[]') as authz_schemes,
             coalesce((select jsonb_agg(i.name) from meta.app_item i where i.app_id = a.id), '[]') as app_items,
-            ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes
+            ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes,
+            ${includes('a.static_includes', 'a.id')} as static_includes
        from meta.app a
       where a.alias = $1`,
     [alias],
@@ -318,7 +336,8 @@ export async function loadPage(appId: number, pageNo: number) {
             ${agg('meta.validation', 'page_id', 'p', 'p.app_id')} as validations,
             ${agg('meta.process', 'page_id', 'p', 'p.app_id')} as processes,
             ${agg('meta.computation', 'page_id', 'p', 'p.app_id')} as computations,
-            ${agg('meta.branch', 'page_id', 'p', 'p.app_id')} as branches
+            ${agg('meta.branch', 'page_id', 'p', 'p.app_id')} as branches,
+            ${includes('p.static_includes', 'p.app_id')} as static_includes
        from meta.page p
       where p.app_id = $1 and p.page_no = $2 and meta.build_option_on(p.app_id, p.build_option)`,
     [appId, pageNo],

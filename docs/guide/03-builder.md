@@ -541,6 +541,33 @@ statement by statement in **one transaction**: the first error undoes the whole 
 shows each statement with its result (up to 20 rows) or its error, and the activity log records the
 run (`supporting_objects`). Statements may take up to 10 minutes each.
 
+### Static application files
+
+APEX's *Static Application Files*: JavaScript, CSS, JSON, images and fonts that belong to the
+application. **Shared Components → Static application files** uploads them (several at once; a
+file with the same name is replaced), writes and edits text files in the browser, renames and
+deletes them. They are served from the application's own address,
+`/a/<alias>/static/<name>`, to anyone (like APEX's `#APP_FILES#`), so don't put secrets in them,
+and they are part of the export (section `static_files`, base64; in a directory export the files
+themselves under `static/`).
+
+- **Names**: letters, digits, `_`, `-` and `.`, with an extension from a fixed list (`js`, `mjs`,
+  `css`, `json`, `map`, `txt`, `csv`, `md`, images including `svg`, fonts, `pdf`, `mp3`, `mp4`,
+  `webm`). **No HTML**: a page of your own would run with the application's rights. Up to 5 MB a
+  file.
+- **Loading them**: *Every page loads* lists the `.js` and `.css` files every page of the
+  application includes, in order; a page adds its own under **Page → Appearance → JavaScript and
+  CSS files** (APEX's *JavaScript File URLs* and *CSS File URLs*). Scripts load with
+  `<script src defer>` after pgapex's own, stylesheets with `<link>`; a name that is not uploaded
+  yet is left out until it is. Renaming a file updates both lists.
+- **Caching**: pages link to `…/static/<name>?v=<version>`, which browsers keep for a year; a
+  change gives a new version. A link without `?v=` is checked again every time (with an ETag).
+- **The Content-Security-Policy stays strict** (`script-src 'self'`): code runs only from these
+  files, never inline. An SVG opened on its own is sandboxed, so a script in it never runs.
+
+JavaScript in these files registers functions for the dynamic action
+[Execute JavaScript](07-dynamic-actions.md#execute-javascript).
+
 ## Users (the user directory)
 
 **Builder → Users** lists every account with the applications (and roles) it can use. Create

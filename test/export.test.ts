@@ -59,6 +59,7 @@ const SECTIONS: Record<string, string> = {
   list: 'lists',
   list_entry: 'list_entries',
   supporting_script: 'supporting_scripts',
+  static_file: 'static_files',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

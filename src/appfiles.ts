@@ -12,7 +12,8 @@
 //   entry's parent) use keys instead of ids.
 // - Long or multi-line code (SQL, PL/pgSQL, templates) moves to a sibling
 //   file <base>.<column>.<ext>; the column is then left out of the JSON.
-// - Binary values (logos, the PWA icon) are written as binary files.
+// - Binary values (logos, the PWA icon) are written as binary files, and
+//   static application files as themselves under static/ (with static/files.json).
 // - Sections and columns this file does not know travel unchanged
 //   (columns in the component's JSON, unknown sections in extra/).
 
@@ -175,8 +176,10 @@ const SINGLE: [section: string, path: string, sort: string[]][] = [
 ];
 
 const ACTIONS_DIR = 'shared/automation-actions';
+const STATIC_DIR = 'static';
+const STATIC_INDEX = `${STATIC_DIR}/files.json`;
 
-const KNOWN = new Set(['format', 'app', 'app_processes', 'translations', 'nav', 'list_entries', 'automation_actions', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
+const KNOWN = new Set(['format', 'app', 'static_files', 'app_processes', 'translations', 'nav', 'list_entries', 'automation_actions', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
 
 const byColumns = (cols: string[]) => (a: any, b: any) => {
   for (const c of cols) {
@@ -245,6 +248,13 @@ export function docToFiles(doc: Doc): FileMap {
       const dir = `${ACTIONS_DIR}/${autoKey.get(name) ?? (slug(name) || 'automation')}`;
       uniqueKeys(rows, (r) => r.name, 'action').forEach((k, i) => w.record(dir, `${seqPrefix(rows[i].seq)}-${k}`, 'automation_action', rows[i]));
     }
+  }
+
+  // (068) static application files: each as itself, their types in static/files.json
+  const statics: any[] = doc.static_files ?? [];
+  if (statics.length) {
+    w.json(STATIC_INDEX, statics.map((f) => ({ name: f.name, mime: f.mime })).sort(byColumns(['name'])));
+    for (const f of statics) w.files.set(`${STATIC_DIR}/${f.name}`, Buffer.from(String(f.content ?? '').replace(/\s+/g, ''), 'base64'));
   }
 
   for (const page of doc.pages ?? []) writePage(w, page);
@@ -430,6 +440,13 @@ export function filesToDoc(files: FileMap): Doc {
     .flatMap((d) => readRecords(files, `${ACTIONS_DIR}/${d}`).map(mergeCode))
     .sort((a, b) => cmp(a.automation_name, b.automation_name) || (a.seq ?? 0) - (b.seq ?? 0) || cmp(a.name, b.name));
   if (actions.length || !doc.automations.some((a: any) => a.code != null)) doc.automation_actions = actions;
+
+  if (files.has(STATIC_INDEX))
+    doc.static_files = (read(STATIC_INDEX) as { name: string; mime: string }[]).map((f) => {
+      const content = files.get(`${STATIC_DIR}/${f.name}`);
+      if (!content) throw new Error(`${STATIC_DIR}/${f.name} not found (listed in ${STATIC_INDEX})`);
+      return { name: f.name, mime: f.mime, content: content.toString('base64') };
+    });
 
   const pageDirs = [...new Set([...files.keys()].map((p) => /^pages\/([^/]+)\//.exec(p)?.[1]).filter((d): d is string => !!d))].sort();
   let regionId = 0;

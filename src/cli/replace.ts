@@ -20,6 +20,8 @@ export const REPLACED = [
   'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'data_load_def', 'nav_entry', 'page',
   // (042) a list before its entries (they follow it by name), supporting objects
   'list', 'list_entry', 'supporting_script',
+  // (068) static application files
+  'static_file',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',

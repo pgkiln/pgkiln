@@ -184,7 +184,12 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'bolt',
     summary: (d) => d.name,
     defaults: { event: 'change', action: 'show' },
-    validate: (v) => (v.css_classes && !CLASS_LIST.test(String(v.css_classes)) ? 'CSS classes: up to five names of lower case letters, digits, - and _, separated by spaces.' : null),
+    validate: (v) =>
+      v.css_classes && !CLASS_LIST.test(String(v.css_classes))
+        ? 'CSS classes: up to five names of lower case letters, digits, - and _, separated by spaces.'
+        : v.action === 'execute_javascript' && !/^[A-Za-z_$][\w$.-]{0,99}$/.test(String(v.code ?? '').trim())
+          ? 'Execute JavaScript: Code is the name of a function a static file registers with pgapex.actions.register(name, fn), e.g. highlightLate.'
+          : null,
     fields: [
       { name: 'name', label: 'Name', kind: 'text', group: 'When' },
       { name: 'event', label: 'Event', kind: 'select', options: ['change', 'click', 'load', 'dialog_closed'], group: 'When',
@@ -192,11 +197,11 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'trigger_element', label: 'Item(s) / button / dialog page', kind: 'upper', group: 'When', help: 'Comma separated item names, or a button name for click, or for dialog_closed the dialog page numbers (empty: any dialog).' },
       { name: 'condition_type', label: 'Client-side condition', kind: 'select', options: ['', 'equals', 'not_equals', 'in_list', 'is_null', 'is_not_null'], group: 'When' },
       { name: 'condition_value', label: 'Condition value', kind: 'text', group: 'When' },
-      { name: 'action', label: 'Action', kind: 'select', options: ['show', 'hide', 'enable', 'disable', 'set_value', 'execute_sql', 'refresh_region', 'refresh_item', 'alert', 'submit', 'set_focus', 'add_class', 'remove_class', 'show_success', 'show_error', 'clear_errors', 'ai_generate'], group: 'Action',
-        help: 'show/hide/enable/disable reverse automatically when the condition is false. set_focus: the first affected item (or the region). show_error: on the affected items, or at the top. clear_errors: of the affected items, or all. ai_generate: runs the "Generate text with AI" process named in Code through AJAX, without submitting the page (on a submit button, the button submits instead when JavaScript is off).' },
+      { name: 'action', label: 'Action', kind: 'select', options: ['show', 'hide', 'enable', 'disable', 'set_value', 'execute_sql', 'refresh_region', 'refresh_item', 'alert', 'submit', 'set_focus', 'add_class', 'remove_class', 'show_success', 'show_error', 'clear_errors', 'ai_generate', 'execute_javascript'], group: 'Action',
+        help: 'show/hide/enable/disable reverse automatically when the condition is false. set_focus: the first affected item (or the region). show_error: on the affected items, or at the top. clear_errors: of the affected items, or all. ai_generate: runs the "Generate text with AI" process named in Code through AJAX, without submitting the page (on a submit button, the button submits instead when JavaScript is off). execute_javascript: calls the function named in Code, registered by a static application file (Shared Components → Static Application Files).' },
       { name: 'affected_items', label: 'Affected items', kind: 'upper', group: 'Action' },
       { name: 'affected_region_id', label: 'Affected region', kind: 'region', group: 'Action' },
-      { name: 'code', label: 'SQL', kind: 'code', wide: true, group: 'Action', help: 'set_value: a SELECT whose columns set the affected items · execute_sql: any SQL; returned columns named like items set them · ai_generate: the name of an ai_generate process on this page (its output items are updated; items to submit default to the items its prompts use).' },
+      { name: 'code', label: 'SQL', kind: 'code', wide: true, group: 'Action', help: 'set_value: a SELECT whose columns set the affected items · execute_sql: any SQL; returned columns named like items set them · ai_generate: the name of an ai_generate process on this page (its output items are updated; items to submit default to the items its prompts use) · execute_javascript: the name of a function registered with pgapex.actions.register(name, fn) in a static file the page loads.' },
       { name: 'items_to_submit', label: 'Items to submit', kind: 'upper', group: 'Action' },
       { name: 'message', label: 'Message (alert, show_success, show_error)', kind: 'text', group: 'Action' },
       { name: 'css_classes', label: 'CSS classes (add_class, remove_class)', kind: 'text', group: 'Action', help: 'Up to five class names, e.g. is-highlight is-muted (lower case letters, digits, - and _).' },

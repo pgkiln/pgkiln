@@ -5850,3 +5850,48 @@ describe('sprint 38 session sharing', () => {
     await assert.rejects(owner.query(`update meta.app set session_group = 'Bad Group' where alias = 'hr'`), /check constraint/);
   });
 });
+
+describe('sprint 39 static application files', () => {
+  test('only developers change files, with CSRF; applications only read them; content is escaped in the editor', async () => {
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const anon = new Browser();
+    assert.equal((await anon.get(`/builder/apps/${hr}/static-files`)).statusCode, 302);
+    assert.equal((await anon.post(`/builder/apps/${hr}/static-files/save`, { __csrf: 'x', name: 'sec39.js', content: '1' })).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    try {
+      assert.equal((await dev.post(`/builder/apps/${hr}/static-files/save`, { __csrf: 'forged', name: 'sec39.js', content: '1' })).statusCode, 403);
+      assert.equal((await dev.post(`/builder/apps/${hr}/static-files/delete`, { __csrf: 'forged', name: 'hr.js' })).statusCode, 403);
+      assert.equal((await dev.post(`/builder/apps/${hr}/static-files/includes`, { __csrf: 'forged', includes: '' })).statusCode, 403);
+      await dev.get(`/builder/apps/${hr}/static-files?new=1`);
+      await dev.post(`/builder/apps/${hr}/static-files/save`, { __csrf: dev.lastCsrf, name: 'sec39.js', content: '</textarea><script>alert(1)</script>' });
+      const editor = (await dev.get(`/builder/apps/${hr}/static-files?edit=sec39.js`)).body;
+      assert.ok(!editor.includes('</textarea><script>alert(1)'), 'the content is escaped');
+      // the runtime role reads files but cannot change them
+      await assert.rejects(runtime.query(`update meta.static_file set content = '' where app_id = $1`, [hr]), /permission denied/);
+      await assert.rejects(runtime.query(`update meta.app set static_includes = '{}' where id = $1`, [hr]), /permission denied/);
+      // another application's file is not served under this alias
+      const other = await owner.one(`select id, alias from meta.app where alias <> 'hr' order by id limit 1`);
+      if (other) assert.equal((await anon.get(`/a/${other.alias}/static/sec39.js`)).statusCode, 404);
+      // an include name cannot break out of the tag (the database refuses such names; the page escapes anyway)
+      await assert.rejects(owner.query(`insert into meta.static_file (app_id, name, mime, content) values ($1, 'a"><script>.js', 'text/javascript', '')`, [hr]), /check constraint/);
+    } finally {
+      await owner.query(`delete from meta.static_file where app_id = $1 and name = 'sec39.js'`, [hr]);
+    }
+  });
+
+  test('"Execute JavaScript" never sends code to the page: only a registered function\'s name', async () => {
+    const pid = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2`)).id;
+    await owner.query(`insert into meta.dynamic_action (page_id, seq, name, event, action, code) values ($1, 950, 'sec39', 'load', 'execute_javascript', '"};alert(1);//')`, [pid]);
+    try {
+      const b = new Browser();
+      await b.get('/a/hr/login');
+      await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+      const body = (await b.get('/a/hr/2')).body;
+      assert.ok(!body.includes('alert(1)'));
+    } finally {
+      await owner.query(`delete from meta.dynamic_action where name = 'sec39'`);
+    }
+  });
+});

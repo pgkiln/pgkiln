@@ -74,6 +74,9 @@ hr/
   globalization/
     text-messages.json
     translations/nl.json
+  static/
+    files.json                      the static application files and their types
+    hr.js  hr.css                   each file as itself
   pages/
     0003-employees-form/
       page.json
@@ -99,7 +102,8 @@ hr/
   says `"region": "employees"`, a dynamic action `"affected_region": "…"`, a facet or map region
   `"report": "employees"` in its settings. Navigation entries are nested instead of pointing at
   parent ids. A directory exported from two installations of the same application is identical.
-- **Binary values** (a report layout's logo, the PWA icon) are written as image files.
+- **Binary values** (a report layout's logo, the PWA icon) are written as image files, and
+  static application files as themselves under `static/` (listed in `static/files.json`).
 
 Edit the files with any editor and import them again; the directory is the source of truth for the
 application, the database objects (tables, views, functions) stay in your own migration scripts.

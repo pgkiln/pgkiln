@@ -195,6 +195,29 @@ document.documentElement.classList.add('js');
     ...(da.region ? [document.getElementById(`R${da.region}`)].filter(Boolean) : []),
   ];
 
+  // ------------------------------------------------------------ the application's own JavaScript
+  // Static application files (loaded with <script src>, after this file) register
+  // functions here; the dynamic action "Execute JavaScript" calls them by name.
+  const actions = new Map();
+  const ACTION_NAME = /^[A-Za-z_$][\w$.-]{0,99}$/;
+  // every deferred script has run by DOMContentLoaded
+  const scriptsLoaded = new Promise((resolve) =>
+    document.readyState === 'complete' ? resolve() : document.addEventListener('DOMContentLoaded', () => resolve(), { once: true }));
+  window.pgapex = Object.freeze({
+    actions: Object.freeze({
+      register(name, fn) {
+        if (!ACTION_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgapex.actions.register: a name and a function, not ${name}`);
+        actions.set(String(name), fn);
+      },
+    }),
+    getValue: (name) => itemValue(name),
+    setValue: (name, value) => setItemValue(name, value),
+    showSuccess: (message) => showMessage(String(message), 'success'),
+    showError: (message, item) => (item ? itemError(item, String(message)) : showMessage(String(message), 'error')),
+    clearErrors: (...items) => clearErrors(items),
+    page: pageNo,
+  });
+
   async function runDa(da, initial, value, extra) {
     const holds = conditionHolds(da, value);
     switch (da.action) {
@@ -238,6 +261,18 @@ document.documentElement.classList.add('js');
       case 'submit':
         form && form.requestSubmit();
         return;
+      case 'execute_javascript': {
+        await scriptsLoaded;
+        const fn = da.fn && actions.get(da.fn);
+        if (!fn) return console.warn(`pgapex: no function "${da.fn}" registered (pgapex.actions.register) for dynamic action ${da.id}`);
+        try {
+          await fn({ value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message });
+        } catch (e) {
+          console.error(e);
+          showError(e.message);
+        }
+        return;
+      }
     }
     const data = { ...(extra || {}) };
     for (const n of da.submit) data[n] = itemValue(n);

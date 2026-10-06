@@ -1483,7 +1483,7 @@ Branch `sprint-39` from `main` (v0.30.0). One agent; tests on 5446. Migrations f
 
 | # | Parity row | Plan | Status |
 |---|---|---|---|
-| 1 | Dynamic actions (custom JavaScript) | Static application files (Shared Components; JS/CSS served same-origin, so the CSP stays `script-src 'self'`), app/page file references, DA action *Execute JavaScript* calling a function the app's file registers | todo |
+| 1 | Dynamic actions (custom JavaScript) | Static application files (Shared Components; JS/CSS served same-origin, so the CSP stays `script-src 'self'`), app/page file references, DA action *Execute JavaScript* calling a function the app's file registers | **done**: migration 068 (`meta.static_file`, `static_includes` on app and page), `src/runtime/static-files.ts` (route, `staticHead`), `src/builder/static-files.ts`, `window.pgapex` in app.js, dir layout `static/`, `hr_46`; tests `static-files`, `e2e/static-files`, security block; rows ✅ (DA + new *Static application files* row; totals 104/12/0/3) |
 | 2 | Plug-ins (item/region/process/DA with own code) | A plug-in file bundling template component(s), static files and SQL; region/item/DA plug-ins built on 1 | todo |
 | 3 | Theme Roller conditional/dynamic properties | Style chosen by a SQL rule per request; CSS variables from item values (checked) | todo |
 | 4 | APEX PL/SQL APIs | XML in `meta.parse_data`, `meta.v_boolean`, JSON builder mapping, zip | todo |

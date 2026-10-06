@@ -114,7 +114,7 @@ describe('accessibility (axe-core)', () => {
       const urls = [
         '/builder', '/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities', '/builder/workspaces', '/builder/instance',
         `/builder/apps/${app}`, `/builder/apps/${app}/shared`, `/builder/apps/${app}/settings`, `/builder/apps/${app}/theme`,
-        `/builder/apps/${app}/search?q=emp`, `/builder/apps/${app}/advisor`, `/builder/pages/${pid}`, `/builder/pages/${pid}?c=page`,
+        `/builder/apps/${app}/search?q=emp`, `/builder/apps/${app}/advisor`, `/builder/apps/${app}/static-files`, `/builder/apps/${app}/static-files?edit=hr.js`, `/builder/pages/${pid}`, `/builder/pages/${pid}?c=page`,
         '/builder/sql', '/builder/sql/scripts', '/builder/sql/objects', '/builder/users', '/builder/developers', '/builder/ai',
       ];
       for (const u of urls) {
