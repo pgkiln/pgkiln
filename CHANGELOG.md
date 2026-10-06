@@ -60,7 +60,8 @@ All notable changes to this project are documented here. The format follows
   own VAPID key (RFC 8292; `meta.push_key`, encrypted with `PGAPEX_SECRET_KEY`, never exported). Links are pages of
   the app signed for the recipient. Endpoints only at the browsers' push services (`PGAPEX_PUSH_HOSTS`); devices
   end at sign-out, a new password, deactivation or removed access, and on 404/410. Builder: devices, results, a
-  test notification, new keys. No new dependency.
+  test notification, new keys. No new dependency. HR example (`hr_49`): a leave request notifies the manager's
+  devices, a decision the employee's; the notification opens the request.
 - **Parity review**: `docs/apex-feature-parity.md` compares 18 more APEX features (Ajax callbacks, dynamic action
   events and actions, lost update detection, region templates, the developer toolbar, …); the form, PWA and
   unsaved-changes rows were 🟡 or ❌ in fact and now say so.
@@ -68,6 +69,8 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 - Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases
   (and the ticked columns and conditions) could point at the other table.
+- The e2e test of the crop dialog failed on CI: it waited with an async predicate, which Playwright treats as true
+  at once.
 
 ## [0.30.0] - 2026-10-06
 
