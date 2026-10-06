@@ -52,6 +52,9 @@ All notable changes to this project are documented here. The format follows
   ISC) next to pgapex's 136, each served as its own cached file; modifiers after the name (`lg`, `2x`, `spin`,
   `rotate-90`, `flip-h`, `success`, …) and Font APEX names (`fa-users fa-lg`); the builder's icon picker searches
   them and takes any value.
+- **Parity review**: `docs/apex-feature-parity.md` compares 18 more APEX features (Ajax callbacks, dynamic action
+  events and actions, lost update detection, region templates, the developer toolbar, …); the form, PWA and
+  unsaved-changes rows were 🟡 or ❌ in fact and now say so.
 
 ### Fixed
 - Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases
