@@ -1,4 +1,5 @@
 import { disposition } from './processes.ts';
+import { unpackForSql } from '../unpack.ts';
 import pg from 'pg';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { literal } from '../binds.ts';
@@ -8,6 +9,7 @@ import { checksumValid, urlChecksum } from '../security.ts';
 import { checkPageAccess, Forbidden } from './authz.ts';
 import type { PageContext } from './context.ts';
 import { resolveTable } from './engine.ts';
+import { deleteObject, getObject, objectStoreOf, putObject, type ObjectStoreConfig } from '../objectstore.ts';
 
 // File upload items (APEX "File Browse").
 //
@@ -25,6 +27,12 @@ import { resolveTable } from './engine.ts';
 //
 // Downloads go through the application's database role, so row level
 // security applies, and their URLs carry a checksum bound to the user.
+//
+// (0.31) With config.object_store the files go to an S3-compatible bucket
+// (src/objectstore.ts) when the form is saved, and the source column holds
+// the object's key (config.size_column, if any, its size). A replaced or
+// removed file's object is deleted once the save committed; an object stored
+// for a save that rolled back is deleted again.
 
 const ident = pg.escapeIdentifier;
 
@@ -61,6 +69,9 @@ interface FileConfig {
   table?: string;
   parent_column?: string;
   key_column?: string;
+  /** (0.31) object storage: the source column holds the object key */
+  object_store?: ObjectStoreConfig;
+  size_column?: string;
 }
 const cfg = (item: Item) => (item.config ?? {}) as FileConfig;
 export const maxMb = (item: Item) => Math.min(Number(cfg(item).max_mb) || MAX_UPLOAD_MB, MAX_UPLOAD_MB);
@@ -140,6 +151,7 @@ export async function applyUploads(ctx: PageContext, files: Map<string, Upload[]
       // committed on its own, so the upload survives a validation error
       const r = await appTx(tx(ctx), (c) => c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, cleanName(u), u.mimetype || 'application/octet-stream', u.data]));
       ctx.session.state[item.name] = r.rows[0].id;
+      await unpackForSql(u.data); // a zip or .xlsx: readable in SQL (meta.zip_entry, meta.parse_data)
     } else if (body[`${item.name}__REMOVE`] === 'true') {
       ctx.session.state[item.name] = formRegion(ctx, item) ? REMOVE : null;
     }
@@ -171,6 +183,7 @@ async function applyMultiple(ctx: PageContext, item: Item, uploads: Upload[], tx
       added.push((await c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, cleanName(u), u.mimetype || 'application/octet-stream', u.data])).rows[0].id);
   });
   ctx.session.state[item.name] = [...kept, ...added].join(':') || null;
+  if (added.length) for (const u of uploads) await unpackForSql(u.data);
 }
 
 /** The form region whose table stores this item's file, if any. */
@@ -229,16 +242,40 @@ export async function saveFileLists(ctx: PageContext, region: Region, op: 'inser
     if (!child || child.region.id !== region.id || pk === null || pk === undefined) continue;
     const table = await resolveTable(c, child.table);
     const parent = `${ident(child.parent)} = ${literal(pk)}`;
+    const store = storeOf(item);
+    // object storage: the keys of the rows a delete removes, for removing their objects after the commit
+    const objectKeys = async (where: string, values: unknown[] = []) =>
+      store ? (await c.query({ text: `select ${ident(item.source_column!)}::text from ${table} where ${where}`, values, rowMode: 'array' })).rows.map((r) => r[0]) : [];
     if (op === 'delete') {
+      const gone = await objectKeys(parent);
       await c.query(`delete from ${table} where ${parent}`);
+      if (store) dropObjects(ctx, store, gone);
       continue;
     }
     if (!ctx.vis!.editable.has(item.name)) continue;
     const keys = removals(ctx, item).filter((k) => !k.startsWith('temp:'));
-    if (keys.length) await c.query(`delete from ${table} where ${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
+    if (keys.length) {
+      const gone = await objectKeys(`${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
+      await c.query(`delete from ${table} where ${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
+      if (store) dropObjects(ctx, store, gone);
+    }
     const ids = tempIds(ctx.session.state[item.name]);
     if (!ids.length) continue;
     const conf = cfg(item);
+    if (store) {
+      // each file into the bucket, its key (and name, type, size) into a row
+      for (const id of ids) {
+        const f = await storeTempFile(ctx, store, id);
+        const cols: [string, unknown][] = [[child.parent, pk], [item.source_column!, f.key],
+          ...(conf.filename_column ? [[conf.filename_column, f.filename] as [string, unknown]] : []),
+          ...(conf.mime_column ? [[conf.mime_column, f.mime] as [string, unknown]] : []),
+          ...(conf.size_column ? [[conf.size_column, f.size] as [string, unknown]] : [])];
+        await c.query(`insert into ${table} (${cols.map(([k]) => ident(k)).join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, cols.map(([, v]) => v));
+        await c.query('select meta.delete_temp_file($1)', [id]);
+      }
+      ctx.session.state[item.name] = null;
+      continue;
+    }
     const cols = [ident(child.parent), ident(item.source_column!), ...(conf.filename_column ? [ident(conf.filename_column)] : []), ...(conf.mime_column ? [ident(conf.mime_column)] : [])];
     const vals = [literal(pk), 'content', ...(conf.filename_column ? ['filename'] : []), ...(conf.mime_column ? ['mime_type'] : [])];
     await c.query(`insert into ${table} (${cols.join(', ')}) select ${vals.join(', ')} from meta.temp_files where id = any($1::uuid[]) order by created_at, array_position($1::uuid[], id)`, [ids]);
@@ -253,11 +290,42 @@ async function tempInfo(ctx: PageContext, id: string): Promise<FileInfo | null> 
   return f ? { filename: f.filename, mime: f.mime_type, size: f.size, key: `temp:${id}`, pending: true } : null;
 }
 
+/** A file item's object store, or null (files in the database). */
+export const storeOf = (item: Item) => (item.type === 'file' ? objectStoreOf(item.config) : null);
+
+/**
+ * Put one of the session's temporary files into the item's object store
+ * (removed again if the transaction rolls back). Returns what the row stores.
+ */
+export async function storeTempFile(ctx: PageContext, store: ObjectStoreConfig, id: string) {
+  const r = await ctx.client!.query<{ content: Buffer; filename: string; mime_type: string; size: number }>('select content, filename, mime_type, size from meta.temp_files where id = $1', [id]);
+  const f = r.rows[0];
+  if (!f) throw new Error(ctx.locale.t('file.none'));
+  const key = await putObject(ctx.app.id, store, f.filename, f.content, f.mime_type);
+  (ctx.objectsPut ??= []).push([store, key]);
+  ctx.afterRollback?.push(() => deleteObject(ctx.app.id, store, key));
+  return { key, filename: f.filename, mime: f.mime_type, size: f.size };
+}
+
+/** Remove the objects stored since `mark` (a process that failed: its rows were not written). */
+export async function dropObjectsSince(ctx: PageContext, mark: number) {
+  for (const [store, key] of ctx.objectsPut?.splice(mark) ?? []) await deleteObject(ctx.app.id, store, key).catch(() => {});
+}
+
+/** Delete objects once the transaction committed (a replaced or removed file). */
+export function dropObjects(ctx: PageContext, store: ObjectStoreConfig, keys: (string | null | undefined)[]) {
+  for (const key of keys) if (key) ctx.afterCommit?.push(() => deleteObject(ctx.app.id, store, key));
+}
+
 /** Columns that describe a stored file (content, name, type). */
 function fileColumns(item: Item, content: 'size' | 'content') {
   const c = cfg(item);
+  // object storage: the column holds the key; the size is in size_column (else unknown: -1)
+  const size = storeOf(item)
+    ? c.size_column ? `${ident(c.size_column)}::bigint` : `case when ${ident(item.source_column!)} is null then null else -1 end`
+    : `octet_length(${ident(item.source_column!)})`;
   return [
-    content === 'size' ? `octet_length(${ident(item.source_column!)})` : ident(item.source_column!),
+    content === 'size' ? size : ident(item.source_column!),
     c.filename_column ? `${ident(c.filename_column)}::text` : 'null::text',
     c.mime_column ? `${ident(c.mime_column)}::text` : 'null::text',
   ].join(', ');
@@ -288,6 +356,7 @@ export function fileUrl(ctx: PageContext, item: Item, f: FileInfo, inline = fals
 }
 
 export function formatSize(bytes: number) {
+  if (bytes < 0) return ''; // object storage without a size column
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} kB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -308,6 +377,9 @@ export function fileRoutes(app: FastifyInstance, loadContext: Loader, txContext:
       if (!item || !checksumValid(urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { __FILE: name, __KEY: key }), req.query.cs))
         return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `file download checksum error: ${req.url}`);
       let file: { content: Buffer; filename: string; mime: string } | null;
+      // object storage: the column holds the key, the content comes from the bucket (after the row passed RLS)
+      const store = storeOf(item);
+      const contentOf = async (v: Buffer | string) => (store ? await getObject(ctx.app.id, store, String(v)) : (v as Buffer));
       try {
         file = await appTx(txContext(ctx), async (c) => {
           ctx.client = c;
@@ -324,7 +396,8 @@ export function fileRoutes(app: FastifyInstance, loadContext: Loader, txContext:
               rowMode: 'array',
             });
             const [content, filename, mime] = r.rows[0] ?? [];
-            return content ? { content, filename: filename ?? name.toLowerCase(), mime: mime ?? 'application/octet-stream' } : null;
+            const data = content ? await contentOf(content) : null;
+            return data ? { content: data, filename: filename ?? name.toLowerCase(), mime: mime ?? 'application/octet-stream' } : null;
           }
           const region = formRegion(ctx, item);
           if (!region || isMultiple(item)) return null;
@@ -333,7 +406,8 @@ export function fileRoutes(app: FastifyInstance, loadContext: Loader, txContext:
             rowMode: 'array',
           });
           const [content, filename, mime] = r.rows[0] ?? [];
-          return content ? { content, filename: filename ?? name.toLowerCase(), mime: mime ?? 'application/octet-stream' } : null;
+          const data = content ? await contentOf(content) : null;
+          return data ? { content: data, filename: filename ?? name.toLowerCase(), mime: mime ?? 'application/octet-stream' } : null;
         });
       } catch (e) {
         if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `file download on page ${ctx.page.page_no}`);

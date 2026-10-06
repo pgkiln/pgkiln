@@ -62,6 +62,8 @@ src/
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here)
   maptiles.ts              map tile server URL, attribution and CSP origin
+  mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
+  yamltext.ts              the text style of the directory export: a strict YAML subset, written and read
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
   websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
@@ -156,7 +158,7 @@ src/
     sql.ts                 SQL Workshop: SQL commands, object browser
     scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
-    querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key, buildQuery() from the URL
+    querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
     users.ts               user directory and identity providers
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages

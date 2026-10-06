@@ -5,6 +5,70 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Static application files** (migration 068): Shared Components → Static application files uploads or writes
+  JavaScript, CSS, JSON, images and fonts (no HTML), served at `/a/<alias>/static/<name>` with long caching per
+  version; every page or one page loads chosen `.js` and `.css` files; exported with the application (as the files
+  themselves under `static/` in a directory export).
+- **Execute JavaScript** dynamic action: calls a function a static file registered with
+  `pgapex.actions.register(name, fn)`; the page receives only the name, so the CSP stays `script-src 'self'`.
+  `window.pgapex` also offers `getValue`, `setValue`, `showSuccess`, `showError` and `clearErrors`. HR example:
+  the salary per year on the employee form (`hr_46`).
+- **Plug-ins with their own code** (migration 069): region, item, dynamic action and process plug-ins in one
+  `pgapex-plugin/2` file (attributes, JavaScript/CSS as static files registered with `pgapex.plugins.register`, a
+  template component for regions, a PL/pgSQL function for processes, install SQL run only on request as the app's
+  role). Shared Components → Plug-ins; `meta.import_plugin()`; `pgapex plugin build|install`; four examples in
+  `examples/plugins/` used on HR page 40 (`hr_47`).
+- **Conditional and dynamic theme styles**: a Theme Roller style may have a SQL condition (the first style whose
+  condition holds applies, unless the user chose one) and take any of its colours from an item (`&ITEM.`, used only
+  when the value is `#rrggbb`).
+- **More APEX APIs in SQL** (migration 070): `meta.parse_data` reads XML (the data loader's rules) and Excel files;
+  APEX_ZIP as `meta.zip_add` / `zip_finish` / the aggregate `zip_agg` / `zip_entries` / `zip_entry`; the server
+  unpacks .zip and .xlsx files it receives (uploads, web responses) for SQL, for 24 hours; `meta.v_boolean(item)`;
+  an APEX_JSON → PostgreSQL mapping in the reference.
+- **Object storage for file items** (migration 071): `object_store` keeps a file item's files in an S3-compatible
+  bucket (AWS Signature Version 4, web credentials of the new type `aws_sigv4`); the source column holds the key;
+  replaced and removed files are deleted after the commit, files of a failed save at once; downloads go through
+  the app as before.
+- **Map layers for large data sets**: a layer loads only the places in the visible area, again after each move
+  (`"visible_area": true`, at most 2,000 with a "zoom in" note), or is served as **Mapbox Vector Tiles**
+  (`"tiles": true`, MVT 2.1 encoded by pgapex without a dependency, at most 10,000 rows per tile), drawn on canvases
+  with popups. Both filter on the server (PostGIS or latitude/longitude) as the application's role. *Load* in the
+  map's settings; HR example page 41, 20,000 weather stations (`hr_48`).
+- **Graphical query builder**: SQL Workshop → Query Builder shows the chosen tables as boxes on a canvas (dragged
+  by a handle or moved with the arrow keys, placed where left), the joins as lines; drag a column onto a column of
+  another table to join them (or choose the pair under Joins), instead of a cross join or the foreign key; column
+  functions (count, count distinct, sum, average, minimum, maximum) with an automatic `group by`.
+- **Tenants for workflows and tasks** (migration 072): `meta.set_tenant(tenant)` / `meta.tenant_id()` (APEX:
+  `APEX_SESSION.SET_TENANT_ID`). Workflows, the tasks they create, tasks and background execution chains carry the
+  session's tenant; the task list, the workflow console, `meta.tasks` / `meta.workflows` and every action reach only
+  the session's tenant (a session without one: those without one).
+- **Application files as text** (APEX 26.1: APEXlang): `pgapex export --format text` (and the builder's
+  `?format=text` zip) writes the directory export as YAML, a strict subset any YAML tool reads, with SQL and templates
+  inline as literal blocks; `import`, `diff` and zips read JSON and YAML files alike.
+- **Region Static ID** (migration 073): optional, unique on the page; names the region in exported files (so renaming
+  it keeps its file, references and, on `import --replace`, saved reports) and is rendered as `data-static-id`.
+- **Lucide icons and icon modifiers** (APEX: Font APEX): about 1,600 more line icons (the `lucide-static` package,
+  ISC) next to pgapex's 136, each served as its own cached file; modifiers after the name (`lg`, `2x`, `spin`,
+  `rotate-90`, `flip-h`, `success`, …) and Font APEX names (`fa-users fa-lg`); the builder's icon picker searches
+  them and takes any value.
+- **Push notifications for Progressive Web Apps** (migration 074; APEX: APEX_PWA push notifications): Settings →
+  Progressive Web App → *Push notifications*; users turn them on per device (My account → Notifications, or the
+  new dynamic action `push_subscribe`); `meta.send_push(user, title, body, page, items, tag, urgency, ttl)`,
+  `meta.has_push_subscription(user)` and the new process type `send_push` queue them, and the server sends them
+  after the commit (NOTIFY, else the scheduler), encrypted per device (RFC 8291) and signed with the application's
+  own VAPID key (RFC 8292; `meta.push_key`, encrypted with `PGAPEX_SECRET_KEY`, never exported). Links are pages of
+  the app signed for the recipient. Endpoints only at the browsers' push services (`PGAPEX_PUSH_HOSTS`); devices
+  end at sign-out, a new password, deactivation or removed access, and on 404/410. Builder: devices, results, a
+  test notification, new keys. No new dependency.
+- **Parity review**: `docs/apex-feature-parity.md` compares 18 more APEX features (Ajax callbacks, dynamic action
+  events and actions, lost update detection, region templates, the developer toolbar, …); the form, PWA and
+  unsaved-changes rows were 🟡 or ❌ in fact and now say so.
+
+### Fixed
+- Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases
+  (and the ticked columns and conditions) could point at the other table.
+
 ## [0.30.0] - 2026-10-06
 
 ### Added

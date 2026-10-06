@@ -4,6 +4,142 @@
 // inline scripts.
 document.documentElement.classList.add('js');
 
+// Push notifications (migration 074): the page of an app with notifications on carries
+// the app's public key (data-push) and the user (data-push-user). Subscribing needs a
+// click (My account → Notifications, or the dynamic action push_subscribe); the
+// subscription is sent to /a/<alias>/push/subscribe. A device keeps one user's
+// notifications: signing out ends them (sw.js), and a device another user turned them
+// on for is turned off here, so nobody sees someone else's notifications.
+const pgapexPush = (() => {
+  const body = document.body;
+  const key = body.dataset.push;
+  const user = body.dataset.pushUser || '';
+  const base = body.dataset.base;
+  const metaEl = document.getElementById('pgapex-meta');
+  const meta = (metaEl ? JSON.parse(metaEl.textContent) : null) || {};
+  const t = (k) => (meta.texts && meta.texts[k]) || k;
+  const OWNER = `pgapex-push:${base}`;
+  const store = {
+    get: () => {
+      try {
+        return JSON.parse(localStorage.getItem(OWNER) || 'null');
+      } catch {
+        return null;
+      }
+    },
+    set: (v) => {
+      try {
+        if (v) localStorage.setItem(OWNER, JSON.stringify(v));
+        else localStorage.removeItem(OWNER);
+      } catch {
+        /* private mode: the server still knows the device */
+      }
+    },
+  };
+  const supported = () => !!(key && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+  const bytes = (k) => Uint8Array.from(atob(k.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const sameKey = (sub) => !sub.options || !sub.options.applicationServerKey || b64u(sub.options.applicationServerKey) === key;
+
+  async function send(path, data) {
+    const params = new URLSearchParams(data);
+    params.set('__csrf', meta.csrf || '');
+    const res = await fetch(`${base}/push/${path}`, { method: 'POST', body: params, headers: { accept: 'application/json' }, credentials: 'same-origin' });
+    const json = await res.json().catch(() => ({ error: res.statusText }));
+    if (!res.ok) throw new Error(json.error || res.statusText);
+  }
+  async function current() {
+    const reg = await navigator.serviceWorker.ready;
+    return { reg, sub: await reg.pushManager.getSubscription() };
+  }
+  const register = (sub) => {
+    const j = sub.toJSON();
+    return send('subscribe', { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, key });
+  };
+
+  async function subscribe() {
+    if (!supported()) throw new Error(t('push.unsupported'));
+    if ((await Notification.requestPermission()) !== 'granted') throw new Error(t('push.blocked'));
+    let { reg, sub } = await current();
+    if (sub && !sameKey(sub)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes(key) });
+    await register(sub);
+    store.set({ user, endpoint: sub.endpoint, at: Date.now() });
+  }
+  async function unsubscribe() {
+    const { sub } = await current();
+    store.set(null);
+    if (!sub) return;
+    await send('unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+    await sub.unsubscribe();
+  }
+  /** On: a subscription with the app's current key, notifications allowed. */
+  async function isOn() {
+    if (!supported() || Notification.permission !== 'granted') return false;
+    const { sub } = await current();
+    return !!sub && sameKey(sub);
+  }
+
+  // every page: keep the server's copy current (browsers renew subscriptions), once a day
+  if (supported() && Notification.permission === 'granted') {
+    current()
+      .then(async ({ sub }) => {
+        const owner = store.get();
+        if (!sub) return owner && store.set(null);
+        if (owner && owner.user !== user) {
+          // turned on by someone else on this device: off, so this user doesn't see theirs
+          store.set(null);
+          return sub.unsubscribe();
+        }
+        if (!owner || !sameKey(sub)) return;
+        if (owner.endpoint !== sub.endpoint || Date.now() - (owner.at || 0) > 86400000) {
+          await register(sub);
+          store.set({ user, endpoint: sub.endpoint, at: Date.now() });
+        }
+      })
+      .catch(() => {});
+  }
+
+  // My account → Notifications
+  const box = document.querySelector('[data-push-section]');
+  if (box && supported()) {
+    const status = box.querySelector('[data-push-status]');
+    const button = box.querySelector('[data-push-toggle]');
+    const show = async () => {
+      if (Notification.permission === 'denied') {
+        status.textContent = t('push.blocked');
+        button.hidden = true;
+        return;
+      }
+      const on = await isOn();
+      status.textContent = t(on ? 'push.on' : 'push.off');
+      button.textContent = t(on ? 'push.turn_off' : 'push.turn_on');
+      button.dataset.on = on ? '1' : '';
+      button.hidden = false;
+    };
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      try {
+        if (button.dataset.on) await unsubscribe();
+        else await subscribe();
+        await show();
+      } catch (e) {
+        status.textContent = (e && e.message) || t('push.failed');
+      } finally {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+    });
+    show().catch(() => {});
+  }
+
+  return { supported, subscribe, unsubscribe, isOn, t };
+})();
+
 (() => {
   const body = document.body;
   const base = body.dataset.base;
@@ -195,6 +331,65 @@ document.documentElement.classList.add('js');
     ...(da.region ? [document.getElementById(`R${da.region}`)].filter(Boolean) : []),
   ];
 
+  // ------------------------------------------------------------ the application's own JavaScript
+  // Static application files (loaded with <script src>, after this file) register
+  // functions here; the dynamic action "Execute JavaScript" calls them by name.
+  const actions = new Map();
+  const ACTION_NAME = /^[A-Za-z_$][\w$.-]{0,99}$/;
+  // every deferred script has run by DOMContentLoaded
+  const scriptsLoaded = new Promise((resolve) =>
+    document.readyState === 'complete' ? resolve() : document.addEventListener('DOMContentLoaded', () => resolve(), { once: true }));
+  // Plug-ins (069) register one function each: called for every element with
+  // data-plugin="<name>" (region and item plug-ins, also after a refresh) and
+  // for the plug-in's dynamic actions.
+  const plugins = new Map();
+  const PLUGIN_NAME = /^[a-z][a-z0-9_]{0,59}$/;
+  const pluginAttrs = (el) => {
+    try {
+      return JSON.parse(el.dataset.pluginAttrs || '{}');
+    } catch {
+      return {};
+    }
+  };
+  function startPlugins(root) {
+    const els = [...(root.matches && root.matches('[data-plugin]') ? [root] : []), ...root.querySelectorAll('[data-plugin]')];
+    for (const el of els) {
+      const fn = plugins.get(el.dataset.plugin);
+      if (!fn || el.pgapexPlugin) continue;
+      el.pgapexPlugin = true;
+      const item = el.dataset.item || null;
+      try {
+        fn({ type: item ? 'item' : 'region', element: el, item, attributes: pluginAttrs(el) });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
+  scriptsLoaded.then(() => startPlugins(document));
+  document.addEventListener('pgapex:replaced', (e) => scriptsLoaded.then(() => startPlugins(e.detail)));
+
+  window.pgapex = Object.freeze({
+    actions: Object.freeze({
+      register(name, fn) {
+        if (!ACTION_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgapex.actions.register: a name and a function, not ${name}`);
+        actions.set(String(name), fn);
+      },
+    }),
+    plugins: Object.freeze({
+      register(name, fn) {
+        if (!PLUGIN_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgapex.plugins.register: a plug-in name and a function, not ${name}`);
+        plugins.set(String(name), fn);
+        if (document.readyState !== 'loading') startPlugins(document);
+      },
+    }),
+    getValue: (name) => itemValue(name),
+    setValue: (name, value) => setItemValue(name, value),
+    showSuccess: (message) => showMessage(String(message), 'success'),
+    showError: (message, item) => (item ? itemError(item, String(message)) : showMessage(String(message), 'error')),
+    clearErrors: (...items) => clearErrors(items),
+    page: pageNo,
+  });
+
   async function runDa(da, initial, value, extra) {
     const holds = conditionHolds(da, value);
     switch (da.action) {
@@ -238,6 +433,39 @@ document.documentElement.classList.add('js');
       case 'submit':
         form && form.requestSubmit();
         return;
+      case 'plugin': {
+        await scriptsLoaded;
+        const fn = da.plugin && plugins.get(da.plugin);
+        if (!fn) return console.warn(`pgapex: the plug-in "${da.plugin}" did not register (pgapex.plugins.register) for dynamic action ${da.id}`);
+        try {
+          await fn({ type: 'dynamic_action', value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message, attributes: da.attributes || {} });
+        } catch (e) {
+          console.error(e);
+          showError(e.message);
+        }
+        return;
+      }
+      case 'push_subscribe':
+        // turn on notifications on this device (a click: browsers ask only after one)
+        try {
+          await pgapexPush.subscribe();
+          showMessage(da.message || pgapexPush.t('push.on'), 'success');
+        } catch (e) {
+          showMessage((e && e.message) || pgapexPush.t('push.failed'), 'error');
+        }
+        return;
+      case 'execute_javascript': {
+        await scriptsLoaded;
+        const fn = da.fn && actions.get(da.fn);
+        if (!fn) return console.warn(`pgapex: no function "${da.fn}" registered (pgapex.actions.register) for dynamic action ${da.id}`);
+        try {
+          await fn({ value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message });
+        } catch (e) {
+          console.error(e);
+          showError(e.message);
+        }
+        return;
+      }
     }
     const data = { ...(extra || {}) };
     for (const n of da.submit) data[n] = itemValue(n);
@@ -1881,16 +2109,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     // one Leaflet layer per query: markers (clustered or not) with their lines and areas, or a heat map
     const several = data.layers.length > 1;
-    const built = data.layers.map((l) => {
-      const parts = [];
-      if (l.kind === 'heat') parts.push(heatLayer(l.points));
-      else if (l.cluster) parts.push(clusterLayer(l, popup, data.clusterLabel, several));
-      else for (const p of l.points) parts.push(placeMarker(p, l, popup, several));
-      if (l.shapes.length)
-        parts.push(window.L.geoJSON({ type: 'FeatureCollection', features: l.shapes }, {
-          style: () => (several ? { className: `map-c${l.color}` } : {}),
-          onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)),
-        }));
+    // (0.31) a layer with an area URL loads the places in the visible area; one with a tiles URL is vector tiles
+    const note = zoomNote(map, data.zoomIn);
+    const built = data.layers.map((l, i) => {
+      const parts = l.tiles ? [vectorTiles(l, popup, several, note.set(i))] : l.area ? [areaLayer(l, popup, data, several, note.set(i))] : layerParts(l, popup, data, several);
       return { def: l, layer: window.L.featureGroup(parts) };
     });
     const group = window.L.featureGroup(built.map((b) => b.layer)).addTo(map);
@@ -1912,6 +2134,339 @@ document.addEventListener('DOMContentLoaded', () => {
     if (f) areaFilter(map, f);
   }
 });
+
+// One layer's Leaflet parts: markers (clustered or not) or a heat map, with its lines and areas.
+function layerParts(l, popup, data, several) {
+  const parts = [];
+  if (l.kind === 'heat') parts.push(heatLayer(l.points));
+  else if (l.cluster) parts.push(clusterLayer(l, popup, data.clusterLabel, several));
+  else for (const p of l.points) parts.push(placeMarker(p, l, popup, several));
+  if (l.shapes.length)
+    parts.push(window.L.geoJSON({ type: 'FeatureCollection', features: l.shapes }, {
+      style: () => (several ? { className: `map-c${l.color}` } : {}),
+      onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)),
+    }));
+  return parts;
+}
+
+// The visible area as "south,west,north,east" (west/east wrapped to -180..180, so west > east across the
+// antimeridian; the whole world when zoomed far out), as the server's area filters read it.
+function visibleBox(map) {
+  const r = (v) => Math.round(v * 1e5) / 1e5;
+  const b = map.getBounds();
+  const wrap = (v) => r(((((v + 180) % 360) + 360) % 360) - 180);
+  const wide = b.getEast() - b.getWest() >= 360;
+  return [r(Math.max(-90, b.getSouth())), wide ? -180 : wrap(b.getWest()), r(Math.min(90, b.getNorth())), wide ? 180 : wrap(b.getEast())].join(',');
+}
+
+// "Not every place is shown: zoom in": shown while a visible-area layer or a vector tile hit its row limit.
+function zoomNote(map, text) {
+  const box = window.L.DomUtil.create('div', 'map-note');
+  box.setAttribute('role', 'status');
+  box.hidden = true;
+  const Note = window.L.Control.extend({ onAdd: () => box });
+  new Note({ position: 'topright' }).addTo(map);
+  const cut = new Map();
+  return {
+    // set(layer)(truncated)
+    set: (i) => (truncated) => {
+      cut.set(i, truncated);
+      const any = [...cut.values()].some(Boolean);
+      box.textContent = any ? text : '';
+      box.hidden = !any;
+    },
+  };
+}
+
+// (0.31) A layer loaded for the visible area: again after every move (a quarter second after it stops),
+// with the same markers, clusters, heat map and shapes as a layer that comes with the page.
+function areaLayer(l, popup, data, several, truncated) {
+  const Area = window.L.FeatureGroup.extend({
+    onAdd(map) {
+      window.L.FeatureGroup.prototype.onAdd.call(this, map);
+      this._map = map;
+      map.on('moveend', this._later, this);
+      map.whenReady(this._later, this);
+    },
+    onRemove(map) {
+      map.off('moveend', this._later, this);
+      clearTimeout(this._timer);
+      this._abort?.abort();
+      truncated(false);
+      window.L.FeatureGroup.prototype.onRemove.call(this, map);
+    },
+    // the map's first view doesn't wait for these places
+    getBounds: () => window.L.latLngBounds([]),
+    _later() {
+      clearTimeout(this._timer);
+      this._timer = setTimeout(() => this._load(), 250);
+    },
+    async _load() {
+      const map = this._map;
+      if (!map) return;
+      this._abort?.abort();
+      const abort = (this._abort = new AbortController());
+      try {
+        const res = await fetch(`${l.area}?bb=${encodeURIComponent(visibleBox(map))}`, { credentials: 'same-origin', headers: { accept: 'application/json' }, signal: abort.signal });
+        const got = await res.json();
+        if (!res.ok || abort.signal.aborted || this._map !== map) return;
+        this.clearLayers();
+        for (const part of layerParts({ ...l, points: got.points || [], shapes: got.shapes || [] }, popup, data, several)) this.addLayer(part);
+        truncated(!!got.truncated);
+      } catch {
+        // aborted by a newer move, or offline: the last places stay
+      }
+    },
+  });
+  return new Area();
+}
+
+// (0.31) A layer served as Mapbox Vector Tiles: each tile is fetched, decoded and drawn on a canvas;
+// a click finds the place, line or area under the pointer in the tile's features and opens its popup.
+function vectorTiles(l, popup, several, truncated) {
+  const cut = new Set();
+  const colour = (() => {
+    const probe = document.createElement('span');
+    probe.className = `map-c${several ? l.color : 1}`;
+    probe.hidden = true;
+    document.body.append(probe);
+    const c = getComputedStyle(probe).getPropertyValue('--mc').trim() || '#2a78d6';
+    probe.remove();
+    return c;
+  })();
+  const Tiles = window.L.GridLayer.extend({
+    createTile(coords, done) {
+      const tile = document.createElement('canvas');
+      const ratio = window.devicePixelRatio || 1;
+      const size = this.getTileSize();
+      tile.width = size.x * ratio;
+      tile.height = size.y * ratio;
+      const key = `${coords.x}:${coords.y}:${coords.z}`;
+      fetch(l.tiles.replace('{z}', coords.z).replace('{x}', coords.x).replace('{y}', coords.y), { credentials: 'same-origin' })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(String(res.status));
+          if (res.headers.get('x-pgapex-truncated')) cut.add(key);
+          else cut.delete(key);
+          truncated(cut.size > 0);
+          const layer = readVectorTile(await res.arrayBuffer())[0];
+          tile.pgapexLayer = layer;
+          if (layer) drawVectorTile(tile, layer, colour, l.kind === 'heat');
+          done(null, tile);
+        })
+        .catch((e) => done(e, tile));
+      return tile;
+    },
+    onAdd(map) {
+      // above the base map, below markers and popups; clicks go through to the map (see _click)
+      if (!map.getPane('pgapexTiles')) {
+        const pane = map.createPane('pgapexTiles');
+        pane.style.zIndex = '350';
+        pane.style.pointerEvents = 'none';
+      }
+      window.L.GridLayer.prototype.onAdd.call(this, map);
+      map.on('click', this._click, this);
+    },
+    onRemove(map) {
+      map.off('click', this._click, this);
+      cut.clear();
+      truncated(false);
+      window.L.GridLayer.prototype.onRemove.call(this, map);
+    },
+    getBounds: () => window.L.latLngBounds([]),
+    _click(e) {
+      const map = this._map;
+      const z = this._tileZoom;
+      const size = this.getTileSize();
+      const at = map.project(e.latlng, z);
+      const tx = Math.floor(at.x / size.x);
+      const ty = Math.floor(at.y / size.y);
+      const layer = this._tiles[`${tx}:${ty}:${z}`]?.el.pgapexLayer;
+      if (!layer) return;
+      const scale = layer.extent / size.x;
+      const hit = hitVectorTile(layer, (at.x - tx * size.x) * scale, (at.y - ty * size.y) * scale, 8 * scale);
+      if (hit) window.L.popup().setLatLng(e.latlng).setContent(popup(hit)).openOn(map);
+    },
+  });
+  return new Tiles({ maxZoom: 22, pane: 'pgapexTiles' });
+}
+
+// A Mapbox Vector Tile (protocol buffers) → its layers: { name, extent, features: [{ type, paths, props }] }.
+function readVectorTile(buffer) {
+  const b = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  let pos = 0;
+  const varint = () => {
+    let r = 0;
+    let m = 1;
+    let c;
+    do {
+      c = b[pos++];
+      r += (c & 127) * m;
+      m *= 128;
+    } while (c & 128);
+    return r;
+  };
+  const skip = (wire) => {
+    if (wire === 0) varint();
+    else if (wire === 1) pos += 8;
+    else if (wire === 2) pos += varint();
+    else if (wire === 5) pos += 4;
+    else throw new Error('wire type');
+  };
+  // read the fields of a message up to end: read(field, wire) returns false for a field it skips
+  const message = (end, read) => {
+    while (pos < end) {
+      const k = varint();
+      if (!read(k >> 3, k & 7)) skip(k & 7);
+    }
+  };
+  const text = () => {
+    const n = varint();
+    return new TextDecoder().decode(b.subarray(pos, (pos += n)));
+  };
+  const packed = () => {
+    const end = varint() + pos;
+    const out = [];
+    while (pos < end) out.push(varint());
+    return out;
+  };
+  const value = () => {
+    const end = varint() + pos;
+    let v = null;
+    message(end, (f, w) => {
+      if (f === 1 && w === 2) v = text();
+      else if (f === 2 && w === 5) (v = view.getFloat32(pos, true)), (pos += 4);
+      else if (f === 3 && w === 1) (v = view.getFloat64(pos, true)), (pos += 8);
+      else if ((f === 4 || f === 5) && w === 0) v = varint();
+      else if (f === 6 && w === 0) {
+        const n = varint();
+        v = n % 2 ? -(n + 1) / 2 : n / 2;
+      } else if (f === 7 && w === 0) v = varint() === 1;
+      else return false;
+      return true;
+    });
+    return v;
+  };
+  const layers = [];
+  message(b.length, (f, w) => {
+    if (f !== 3 || w !== 2) return false;
+    const end = varint() + pos;
+    const layer = { name: '', extent: 4096, keys: [], values: [], raw: [] };
+    message(end, (f, w) => {
+      if (f === 1 && w === 2) layer.name = text();
+      else if (f === 3 && w === 2) layer.keys.push(text());
+      else if (f === 4 && w === 2) layer.values.push(value());
+      else if (f === 5 && w === 0) layer.extent = varint();
+      else if (f === 2 && w === 2) {
+        const fend = varint() + pos;
+        const feature = { type: 0, tags: [], geometry: [] };
+        message(fend, (f, w) => {
+          if (f === 2 && w === 2) feature.tags = packed();
+          else if (f === 3 && w === 0) feature.type = varint();
+          else if (f === 4 && w === 2) feature.geometry = packed();
+          else return false;
+          return true;
+        });
+        layer.raw.push(feature);
+      } else return false;
+      return true;
+    });
+    layer.features = layer.raw.map((ft) => {
+      const props = {};
+      for (let i = 0; i + 1 < ft.tags.length; i += 2) props[layer.keys[ft.tags[i]]] = layer.values[ft.tags[i + 1]];
+      return { type: ft.type, paths: tilePaths(ft.geometry), props };
+    });
+    layers.push(layer);
+    return true;
+  });
+  return layers;
+}
+
+// Geometry commands → paths of [x, y] in tile coordinates (MoveTo starts a path; ClosePath ends a ring).
+function tilePaths(cmds) {
+  const paths = [];
+  let x = 0;
+  let y = 0;
+  let path = null;
+  for (let i = 0; i < cmds.length; ) {
+    const id = cmds[i] & 7;
+    const n = cmds[i++] >> 3;
+    if (id === 7) continue;
+    for (let k = 0; k < n; k++) {
+      const dx = cmds[i++];
+      const dy = cmds[i++];
+      x += (dx >>> 1) ^ -(dx & 1);
+      y += (dy >>> 1) ^ -(dy & 1);
+      if (id === 1) paths.push((path = [[x, y]]));
+      else path.push([x, y]);
+    }
+  }
+  return paths;
+}
+
+function drawVectorTile(canvas, layer, colour, heat) {
+  const c = canvas.getContext('2d');
+  const s = canvas.width / layer.extent;
+  const ratio = canvas.width / 256;
+  c.lineJoin = 'round';
+  for (const f of layer.features) {
+    if (f.type === 1) continue;
+    c.beginPath();
+    for (const path of f.paths) path.forEach(([x, y], i) => (i ? c.lineTo(x * s, y * s) : c.moveTo(x * s, y * s)));
+    c.strokeStyle = colour;
+    c.lineWidth = 2.5 * ratio;
+    if (f.type === 3) {
+      c.closePath();
+      c.globalAlpha = 0.2;
+      c.fillStyle = colour;
+      c.fill('evenodd');
+      c.globalAlpha = 1;
+    }
+    c.stroke();
+  }
+  // places on top: dots in the layer's colour (a heat layer: soft, translucent spots)
+  for (const f of layer.features) {
+    if (f.type !== 1) continue;
+    for (const [[x, y]] of f.paths.map((p) => [p[0]])) {
+      c.beginPath();
+      c.arc(x * s, y * s, (heat ? 9 : 5.5) * ratio, 0, Math.PI * 2);
+      c.fillStyle = colour;
+      c.globalAlpha = heat ? 0.25 : 0.9;
+      c.fill();
+      c.globalAlpha = 1;
+      if (!heat) {
+        c.strokeStyle = '#fff';
+        c.lineWidth = 1.5 * ratio;
+        c.stroke();
+      }
+    }
+  }
+}
+
+// The feature under a tile position: a place within tolerance first, then a line within it, then an area around it.
+function hitVectorTile(layer, x, y, tol) {
+  const near = (a, b) => {
+    // distance from the point to segment a-b
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const t = dx || dy ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy))) : 0;
+    return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy);
+  };
+  const inside = (paths) => {
+    let odd = false;
+    for (const p of paths)
+      for (let i = 0, j = p.length - 1; i < p.length; j = i++)
+        if (p[i][1] > y !== p[j][1] > y && x < ((p[j][0] - p[i][0]) * (y - p[i][1])) / (p[j][1] - p[i][1]) + p[i][0]) odd = !odd;
+    return odd;
+  };
+  const fs = layer.features;
+  return (
+    fs.find((f) => f.type === 1 && f.paths.some((p) => Math.hypot(p[0][0] - x, p[0][1] - y) <= tol))?.props ||
+    fs.find((f) => f.type === 2 && f.paths.some((p) => p.some((pt, i) => i && near(p[i - 1], pt) <= tol)))?.props ||
+    fs.find((f) => f.type === 3 && inside(f.paths))?.props ||
+    null
+  );
+}
 
 // A place on a map with several layers is a dot in its layer's colour (map-c1…); a lone layer keeps Leaflet's pins.
 function placeMarker(p, l, popup, several) {
@@ -2139,12 +2694,7 @@ function areaFilter(map, f) {
           location.href = f.url.replace('__NEAR__', encodeURIComponent(near));
           return;
         }
-        const b = map.getBounds();
-        // west/east wrapped to -180..180 (west > east across the antimeridian); the whole world when zoomed far out
-        const wrap = (v) => r(((((v + 180) % 360) + 360) % 360) - 180);
-        const wide = b.getEast() - b.getWest() >= 360;
-        const bb = [r(Math.max(-90, b.getSouth())), wide ? -180 : wrap(b.getWest()), r(Math.min(90, b.getNorth())), wide ? 180 : wrap(b.getEast())].join(',');
-        location.href = f.url.replace('__BB__', encodeURIComponent(bb));
+        location.href = f.url.replace('__BB__', encodeURIComponent(visibleBox(map)));
       });
       box.append(go);
       if (f.area || f.near) {

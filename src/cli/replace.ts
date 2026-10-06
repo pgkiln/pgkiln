@@ -20,6 +20,8 @@ export const REPLACED = [
   'rest_module', 'template_component', 'build_option', 'web_credential', 'rest_source', 'data_load_def', 'nav_entry', 'page',
   // (042) a list before its entries (they follow it by name), supporting objects
   'list', 'list_entry', 'supporting_script',
+  // (068) static application files, (069) plug-ins
+  'static_file', 'plugin',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',
@@ -44,7 +46,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (063) blueprints: the application created from one (builder data)
   'blueprint',
   // (064) the workspace of the application
-  'workspace_app'];
+  'workspace_app',
+  // (074) push notifications: the app's VAPID keys, users' devices, queued notifications
+  'push_key', 'push_subscription', 'push_message'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
@@ -129,8 +133,8 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
   );
   const regions = async (appId: number) => {
     const rows = (
-      await db.query<{ id: number; page_no: number; title: string; type: string }>(
-        `select r.id, p.page_no, r.title, r.type from meta.region r join meta.page p on p.id = r.page_id
+      await db.query<{ id: number; page_no: number; title: string; type: string; static_id: string | null }>(
+        `select r.id, p.page_no, r.title, r.type, r.static_id from meta.region r join meta.page p on p.id = r.page_id
           where p.app_id = $1 order by p.page_no, r.seq, r.id`,
         [appId],
       )

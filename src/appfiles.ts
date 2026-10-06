@@ -12,11 +12,17 @@
 //   entry's parent) use keys instead of ids.
 // - Long or multi-line code (SQL, PL/pgSQL, templates) moves to a sibling
 //   file <base>.<column>.<ext>; the column is then left out of the JSON.
-// - Binary values (logos, the PWA icon) are written as binary files.
+// - Binary values (logos, the PWA icon) are written as binary files, and
+//   static application files as themselves under static/ (with static/files.json).
 // - Sections and columns this file does not know travel unchanged
 //   (columns in the component's JSON, unknown sections in extra/).
+// - (0.31) The "text" style (pgapex export --format text; APEX: APEXlang)
+//   writes every .json file except pgapex.json as .yaml (src/yamltext.ts),
+//   with code inline as literal blocks instead of sibling files. The reader
+//   takes either, file by file, so a directory may mix them.
 
 import { zipSync, type Zippable } from 'fflate';
+import { fromText, toText } from './yamltext.ts';
 
 export type Doc = Record<string, any>;
 /** posix path relative to the application directory → contents */
@@ -70,9 +76,21 @@ export function seqPrefix(seq: unknown) {
   return (seq < 0 ? 'm' : '') + String(Math.abs(Math.trunc(seq))).padStart(4, '0');
 }
 
-/** The static id of a region (unique on its page): from its title, else its type. */
-export function regionKeys(regions: { title?: unknown; type?: unknown }[]) {
-  return uniqueKeys(regions, (r) => slug(r.title) || slug(r.type), 'region');
+/**
+ * The static id of a region (unique on its page): its stored static_id (0.31, APEX: Static ID), else one
+ * from its title, else its type. Stored ones come first, so a derived key never takes their name.
+ */
+export function regionKeys(regions: { title?: unknown; type?: unknown; static_id?: unknown }[]) {
+  const stored = regions.map((r) => (typeof r.static_id === 'string' && slug(r.static_id) === r.static_id ? r.static_id : null));
+  const seen = new Set(stored.filter((k): k is string => !!k));
+  return regions.map((r, i) => {
+    if (stored[i]) return stored[i]!;
+    const base = slug(r.title) || slug(r.type) || 'region';
+    let key = base;
+    for (let n = 2; seen.has(key); n++) key = `${base}-${n}`;
+    seen.add(key);
+    return key;
+  });
 }
 
 const SEQ_SORT = (a: { row: any; base: string }, b: { row: any; base: string }) =>
@@ -108,22 +126,28 @@ const CODE: Record<string, Record<string, string>> = {
   rest_source: { body: 'json' },
   list: { query: 'sql' },
   supporting_script: { script: 'sql' },
+  plugin: { install_sql: 'sql' },
 };
 const isLong = (v: unknown): v is string => typeof v === 'string' && (v.includes('\n') || v.length > 60);
 const codeExt = (table: string, column: string, row: any) =>
   table === 'region' && column === 'source' && row.type === 'static' ? 'html' : CODE[table][column];
 
+export type Style = 'json' | 'text';
+
 class Writer {
   files: FileMap = new Map();
+  constructor(readonly style: Style = 'json') {}
   text(path: string, s: string) {
     this.files.set(path, Buffer.from(s, 'utf8'));
   }
   json(path: string, v: unknown) {
-    this.text(path, stableJson(v));
+    if (this.style === 'text' && path !== MARKER && path.endsWith('.json')) this.text(path.replace(/\.json$/, '.yaml'), toText(v));
+    else this.text(path, stableJson(v));
   }
-  /** <dir>/<base>.json plus <base>.<column>.<ext> for long code columns. */
+  /** <dir>/<base>.json plus <base>.<column>.<ext> for long code columns (text style: <base>.yaml with the code inline). */
   record(dir: string, base: string, table: string, row: Record<string, any>) {
     const r = { ...row };
+    if (this.style === 'text') return this.json(`${dir}/${base}.json`, r);
     for (const column of Object.keys(CODE[table] ?? {})) {
       if (isLong(r[column])) {
         this.text(`${dir}/${base}.${column}.${codeExt(table, column, r)}`, r[column] + '\n');
@@ -154,6 +178,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['data_load_definitions', 'shared/data-load-definitions', 'data_load_def'],
   ['lists', 'shared/lists', 'list'],
   ['supporting_scripts', 'shared/supporting-objects', 'supporting_script'],
+  // (069) plug-ins: install SQL in <name>.install_sql.sql
+  ['plugins', 'shared/plugins', 'plugin'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
@@ -175,8 +201,10 @@ const SINGLE: [section: string, path: string, sort: string[]][] = [
 ];
 
 const ACTIONS_DIR = 'shared/automation-actions';
+const STATIC_DIR = 'static';
+const STATIC_INDEX = `${STATIC_DIR}/files.json`;
 
-const KNOWN = new Set(['format', 'app', 'app_processes', 'translations', 'nav', 'list_entries', 'automation_actions', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
+const KNOWN = new Set(['format', 'app', 'static_files', 'app_processes', 'translations', 'nav', 'list_entries', 'automation_actions', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
 
 const byColumns = (cols: string[]) => (a: any, b: any) => {
   for (const c of cols) {
@@ -188,10 +216,10 @@ const byColumns = (cols: string[]) => (a: any, b: any) => {
 
 // ------------------------------------------------------------------ doc → files
 
-export function docToFiles(doc: Doc): FileMap {
+export function docToFiles(doc: Doc, style: Style = 'json'): FileMap {
   if (doc?.format !== 'pgapex/2') throw new Error(`unsupported export format ${doc?.format ?? '(none)'}`);
-  const w = new Writer();
-  w.json(MARKER, { format: doc.format, layout: LAYOUT });
+  const w = new Writer(style);
+  w.json(MARKER, { format: doc.format, layout: LAYOUT, ...(style === 'text' ? { style } : {}) });
 
   const app = { ...doc.app };
   if (typeof app.pwa_icon === 'string' && app.pwa_icon.startsWith('\\x')) {
@@ -245,6 +273,13 @@ export function docToFiles(doc: Doc): FileMap {
       const dir = `${ACTIONS_DIR}/${autoKey.get(name) ?? (slug(name) || 'automation')}`;
       uniqueKeys(rows, (r) => r.name, 'action').forEach((k, i) => w.record(dir, `${seqPrefix(rows[i].seq)}-${k}`, 'automation_action', rows[i]));
     }
+  }
+
+  // (068) static application files: each as itself, their types in static/files.json
+  const statics: any[] = doc.static_files ?? [];
+  if (statics.length) {
+    w.json(STATIC_INDEX, statics.map((f) => ({ name: f.name, mime: f.mime })).sort(byColumns(['name'])));
+    for (const f of statics) w.files.set(`${STATIC_DIR}/${f.name}`, Buffer.from(String(f.content ?? '').replace(/\s+/g, ''), 'base64'));
   }
 
   for (const page of doc.pages ?? []) writePage(w, page);
@@ -319,15 +354,17 @@ function fromRefs(row: any, deref: (key: unknown) => unknown) {
 /** Records in one directory: <base>.json merged with its <base>.<column>.<ext> files. */
 function readRecords(files: FileMap, dir: string) {
   const prefix = dir + '/';
-  const recs = new Map<string, { base: string; row: any; extra: [string, Buffer][] }>();
+  const recs = new Map<string, { base: string; file: string; row: any; extra: [string, Buffer][] }>();
   const others: [string, string, Buffer][] = [];
   for (const [path, buf] of files) {
     if (!path.startsWith(prefix)) continue;
     const name = path.slice(prefix.length);
     if (name.includes('/')) continue;
-    const m = /^([^.]+)\.json$/.exec(name);
-    if (m) recs.set(m[1], { base: m[1], row: parseJson(path, buf), extra: [] });
-    else others.push([path, name, buf]);
+    const m = /^([^.]+)\.(json|yaml)$/.exec(name);
+    if (m) {
+      if (recs.has(m[1])) throw new Error(`${path}: ${m[1]}.json and ${m[1]}.yaml are the same component: keep one`);
+      recs.set(m[1], { base: m[1], file: path, row: parseJson(path, buf), extra: [] });
+    } else others.push([path, name, buf]);
   }
   for (const [path, name, buf] of others) {
     const m = /^([^.]+)\.([a-z_][a-z0-9_]*)\.[a-z0-9]+$/.exec(name);
@@ -338,13 +375,24 @@ function readRecords(files: FileMap, dir: string) {
   return [...recs.values()];
 }
 
+/** A .json or (text style) .yaml file's value. */
 const parseJson = (path: string, buf: Buffer) => {
+  if (path.endsWith('.yaml')) return fromText(buf.toString('utf8'), path);
   try {
     return JSON.parse(buf.toString('utf8'));
   } catch (e) {
     throw new Error(`${path}: ${(e as Error).message}`);
   }
 };
+
+/** The file at a .json path, or its .yaml twin (text style). */
+const yamlTwin = (path: string) => path.replace(/\.json$/, '.yaml');
+function pick(files: FileMap, path: string): [string, Buffer] | null {
+  const json = files.get(path);
+  const yaml = path.endsWith('.json') && path !== MARKER ? files.get(yamlTwin(path)) : undefined;
+  if (json && yaml) throw new Error(`${path} and ${yamlTwin(path)} are the same file: keep one`);
+  return json ? [path, json] : yaml ? [yamlTwin(path), yaml] : null;
+}
 
 /** File contents → column value: text without the one trailing newline the writer adds. */
 function codeValue(buf: Buffer) {
@@ -365,10 +413,14 @@ export function filesToDoc(files: FileMap): Doc {
   const m = parseJson(MARKER, marker);
   if (m.format !== 'pgapex/2') throw new Error(`unsupported export format ${m.format ?? '(none)'}`);
   if (typeof m.layout === 'number' && m.layout > LAYOUT) throw new Error(`directory layout ${m.layout} is newer than this pgapex understands (${LAYOUT})`);
-  const read = (path: string, dflt: unknown = []) => (files.has(path) ? parseJson(path, files.get(path)!) : dflt);
+  const read = (path: string, dflt: unknown = []) => {
+    const f = pick(files, path);
+    return f ? parseJson(f[0], f[1]) : dflt;
+  };
+  const has = (path: string) => !!pick(files, path);
 
   const doc: Doc = { format: 'pgapex/2' };
-  if (!files.has('app.json')) throw new Error('app.json not found');
+  if (!has('app.json')) throw new Error('app.json not found');
   doc.app = read('app.json');
   for (const [path, buf] of files)
     if (/^app\.pwa_icon\.[a-z0-9]+$/.test(path)) doc.app.pwa_icon = '\\x' + buf.toString('hex');
@@ -390,9 +442,9 @@ export function filesToDoc(files: FileMap): Doc {
   doc.app_processes = readRecords(files, 'shared/app-processes').sort(SEQ_SORT).map(mergeCode);
   for (const [section, path] of SINGLE) doc[section] = read(path);
   doc.translations = [...files.keys()]
-    .filter((p) => /^globalization\/translations\/[^/]+\.json$/.test(p))
+    .filter((p) => /^globalization\/translations\/[^/]+\.(json|yaml)$/.test(p))
     .sort()
-    .flatMap((p) => read(p));
+    .flatMap((p) => parseJson(p, files.get(p)!));
 
   let navId = 0;
   const flat: any[] = [];
@@ -407,7 +459,7 @@ export function filesToDoc(files: FileMap): Doc {
   walk(read('navigation.json'), null);
   doc.nav = flat;
 
-  if (files.has('shared/list-entries.json')) {
+  if (has('shared/list-entries.json')) {
     const entries: any[] = [];
     let entryId = 0;
     const walkList = (rows: any[], parent: number | null) => {
@@ -431,12 +483,19 @@ export function filesToDoc(files: FileMap): Doc {
     .sort((a, b) => cmp(a.automation_name, b.automation_name) || (a.seq ?? 0) - (b.seq ?? 0) || cmp(a.name, b.name));
   if (actions.length || !doc.automations.some((a: any) => a.code != null)) doc.automation_actions = actions;
 
+  if (has(STATIC_INDEX))
+    doc.static_files = (read(STATIC_INDEX) as { name: string; mime: string }[]).map((f) => {
+      const content = files.get(`${STATIC_DIR}/${f.name}`);
+      if (!content) throw new Error(`${STATIC_DIR}/${f.name} not found (listed in ${STATIC_INDEX})`);
+      return { name: f.name, mime: f.mime, content: content.toString('base64') };
+    });
+
   const pageDirs = [...new Set([...files.keys()].map((p) => /^pages\/([^/]+)\//.exec(p)?.[1]).filter((d): d is string => !!d))].sort();
   let regionId = 0;
   doc.pages = pageDirs
     .map((d) => {
       const dir = `pages/${d}`;
-      if (!files.has(`${dir}/page.json`)) throw new Error(`${dir}/page.json not found`);
+      if (!has(`${dir}/page.json`)) throw new Error(`${dir}/page.json not found`);
       const page = read(`${dir}/page.json`);
       const regions = readRecords(files, `${dir}/regions`).sort(SEQ_SORT);
       const idOf = new Map<string, number>(regions.map((r) => [keyFromBase(r.base), ++regionId]));
@@ -449,22 +508,22 @@ export function filesToDoc(files: FileMap): Doc {
       page.regions = regions.map((rec) => {
         const row = mergeCode(rec);
         if (row.config && typeof row.config.report === 'string')
-          row.config = { ...row.config, report: deref(`${dir}/regions/${rec.base}.json`, row.config.report) };
+          row.config = { ...row.config, report: deref(rec.file, row.config.report) };
         return { id: idOf.get(keyFromBase(rec.base)), ...row };
       });
       for (const [section, sub] of PAGE_PARTS.slice(1))
         page[section] = readRecords(files, `${dir}/${sub}`)
           .sort(SEQ_SORT)
-          .map((rec) => fromRefs(mergeCode(rec), (key) => deref(`${dir}/${sub}/${rec.base}.json`, key)));
+          .map((rec) => fromRefs(mergeCode(rec), (key) => deref(rec.file, key)));
       for (const [k, v] of Object.entries(page))
-        if (Array.isArray(v) && !PAGE_PARTS.some(([section]) => section === k)) page[k] = v.map((row) => fromRefs(row, (key) => deref(`${dir}/page.json`, key)));
+        if (Array.isArray(v) && !PAGE_PARTS.some(([section]) => section === k)) page[k] = v.map((row) => fromRefs(row, (key) => deref(pick(files, `${dir}/page.json`)![0], key)));
       return page;
     })
     .sort((a, b) => (a.page_no ?? 0) - (b.page_no ?? 0));
 
   for (const p of [...files.keys()].sort()) {
-    const x = /^extra\/([a-z0-9_]+)\.json$/.exec(p);
-    if (x) doc[x[1]] = read(p);
+    const x = /^extra\/([a-z0-9_]+)\.(json|yaml)$/.exec(p);
+    if (x) doc[x[1]] = parseJson(p, files.get(p)!);
   }
   return doc;
 }

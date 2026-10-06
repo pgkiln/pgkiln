@@ -1,7 +1,7 @@
 import { applyBinds } from '../binds.ts';
 import { runtime, savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
-import { icon, ICONS } from '../icons.ts';
+import { icon, isIcon } from '../icons.ts';
 import type { Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed, sqlTrue } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
@@ -192,7 +192,7 @@ export function navMarkup(nodes: ListNode[], topNav: boolean): Raw[] {
   });
 }
 
-const hasIcon = (n: ListNode) => !!n.icon && (ICONS as readonly string[]).includes(n.icon);
+const hasIcon = (n: ListNode) => isIcon(n.icon);
 
 /** Entries as the navigation bar in the header: links, with a menu for entries with children (labels of entries with an icon hide on small screens). */
 export function navbarMarkup(nodes: ListNode[], label: string): Raw {

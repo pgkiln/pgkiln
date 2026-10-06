@@ -1,0 +1,13 @@
+{
+  "type": "region",
+  "name": "show_more",
+  "label": "Show more list",
+  "version": "1.0.0",
+  "help": "A list of the region's rows (columns LABEL and, optionally, DETAIL) that shows the first few and a button for the rest. Without JavaScript every row shows.",
+  "attributes": [
+    {"name": "VISIBLE", "label": "Rows shown at first", "type": "number", "default": "5"},
+    {"name": "BUTTON", "label": "Button text", "type": "text", "default": "Show all"}
+  ],
+  "template_component": {"static_id": "show_more", "name": "Show more list", "css_classes": ["tc-divided"]},
+  "files": ["show-more.js"]
+}

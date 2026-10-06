@@ -541,6 +541,41 @@ statement by statement in **one transaction**: the first error undoes the whole 
 shows each statement with its result (up to 20 rows) or its error, and the activity log records the
 run (`supporting_objects`). Statements may take up to 10 minutes each.
 
+### Static application files
+
+APEX's *Static Application Files*: JavaScript, CSS, JSON, images and fonts that belong to the
+application. **Shared Components → Static application files** uploads them (several at once; a
+file with the same name is replaced), writes and edits text files in the browser, renames and
+deletes them. They are served from the application's own address,
+`/a/<alias>/static/<name>`, to anyone (like APEX's `#APP_FILES#`), so don't put secrets in them,
+and they are part of the export (section `static_files`, base64; in a directory export the files
+themselves under `static/`).
+
+- **Names**: letters, digits, `_`, `-` and `.`, with an extension from a fixed list (`js`, `mjs`,
+  `css`, `json`, `map`, `txt`, `csv`, `md`, images including `svg`, fonts, `pdf`, `mp3`, `mp4`,
+  `webm`). **No HTML**: a page of your own would run with the application's rights. Up to 5 MB a
+  file.
+- **Loading them**: *Every page loads* lists the `.js` and `.css` files every page of the
+  application includes, in order; a page adds its own under **Page → Appearance → JavaScript and
+  CSS files** (APEX's *JavaScript File URLs* and *CSS File URLs*). Scripts load with
+  `<script src defer>` after pgapex's own, stylesheets with `<link>`; a name that is not uploaded
+  yet is left out until it is. Renaming a file updates both lists.
+- **Caching**: pages link to `…/static/<name>?v=<version>`, which browsers keep for a year; a
+  change gives a new version. A link without `?v=` is checked again every time (with an ETag).
+- **The Content-Security-Policy stays strict** (`script-src 'self'`): code runs only from these
+  files, never inline. An SVG opened on its own is sandboxed, so a script in it never runs.
+
+JavaScript in these files registers functions for the dynamic action
+[Execute JavaScript](07-dynamic-actions.md#execute-javascript).
+
+### Plug-ins
+
+**Shared Components → Plug-ins** imports plug-in files (region, item, dynamic action and process
+types with their own JavaScript, CSS, template and PL/pgSQL), shows what each one brings and where
+it is used, runs its install SQL on request (as the application's role, in one transaction, never
+on import), downloads it again and removes it. See
+[plug-ins with their own code](04-pages-and-regions.md#plug-ins-with-their-own-code).
+
 ## Users (the user directory)
 
 **Builder → Users** lists every account with the applications (and roles) it can use. Create
@@ -771,12 +806,19 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
   | guid | none`, `# schema: name`, `# prefix: xx`, `# drop: true`, `# auditcols: true`. `view name
   t1 t2` creates a view joining the tables by their foreign keys. Names become valid identifiers
   and values literals, so the DDL is always well-formed; problems are listed with line numbers.
-- **Query Builder**: choose a schema and its tables and views; joins follow the **foreign keys**
-  (inner or left; tables without one are cross joined, with a note). Pick the columns, conditions
-  (`=`, `<>`, `<`, `like`, `in (a, b)`, `is null` …, combined with AND or OR), the sort, `distinct`
-  and a row limit. The SELECT is shown and opens in SQL Commands. The state is in the URL, so a
-  query can be bookmarked; it works without JavaScript. Only names from the catalog are used, and
-  condition values are string literals.
+- **Query Builder**: choose a schema and its tables and views. Each chosen table is a **box on a
+  canvas** with its columns: tick the columns to show and pick a function (count, count distinct,
+  sum, average, minimum, maximum) for any of them; with a function the other chosen columns become
+  the `group by`. Joins follow the **foreign keys** and are drawn as lines between the columns.
+  To join other columns, drag the dot next to a column onto a column of another table (a dashed
+  line), or choose the two columns under **Joins**; a table without either is cross joined, with a
+  note. Each join can be inner or left. Drag a table by its handle, or focus the handle and use
+  the arrow keys (Shift for bigger steps); it stays where it was left. On phones the tables are
+  stacked. Then pick conditions (`=`, `<>`, `<`, `like`, `in (a, b)`, `is null` …, combined with
+  AND or OR), the sort, `distinct` and a row limit. The SELECT is shown and opens in SQL Commands.
+  The state is in the URL (tables in the order chosen, joins, functions and the tables' places), so
+  a query can be bookmarked; everything except dragging works without JavaScript. Only names from
+  the catalog and the fixed functions are used, and condition values are string literals.
 - **Load Data**: load a CSV, TSV, Excel, JSON or XML file into a new table (with inferred column
   types) or an existing one (append, merge by primary key, or replace), with a per-row error
   report, or with a saved **data load definition**; a mapping can be saved as one

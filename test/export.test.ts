@@ -23,6 +23,9 @@ const NOT_EXPORTED = new Set([
   'dev_comment', // developer comments: builder notes of this installation
   'debug_view', // debug messages: requests recorded by this installation
   'web_request_log', // web requests queued from SQL and their responses (kept 24 hours)
+  'push_key', // (074) the VAPID key pair: the private key is a secret of this installation
+  'push_subscription', // (074) users' devices (installation data, like sessions)
+  'push_message', // (074) notifications queued with meta.send_push (kept 7 days)
   'account_style', // the style variant each user chose (installation data, like accounts)
   'working_copy', // working copies: builder state of this installation
   'subscription', // subscribed components: links between this installation's applications
@@ -59,6 +62,8 @@ const SECTIONS: Record<string, string> = {
   list: 'lists',
   list_entry: 'list_entries',
   supporting_script: 'supporting_scripts',
+  static_file: 'static_files',
+  plugin: 'plugins',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

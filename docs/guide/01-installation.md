@@ -113,6 +113,9 @@ which is read at startup; real environment variables take precedence.
 | `PGAPEX_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials and the API keys of AI services; at least 32 characters (e.g. `openssl rand -base64 32`). Keep it outside the database; changing it means entering the secrets again ([chapter 19](19-rest-data-sources.md)) |
 | `PGAPEX_REST_ALLOWED_HOSTS` | *(none: no outgoing calls)* | Hosts REST data sources and `invoke_api` may call: `api.example.com`, `*.example.com`, `host:8443`, `*` (any public host) ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)) |
 | `PGAPEX_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (also allows them) |
+| `PGAPEX_PUSH_HOSTS` | the browsers' push services | The hosts push notifications may be posted to: `fcm.googleapis.com,updates.push.services.mozilla.com,web.push.apple.com,*.notify.windows.com` when unset ([chapter 17](17-mobile.md#push-notifications)) |
+| `PGAPEX_PUSH_SUBJECT` | `PUBLIC_URL` when it is https | The contact the push services see (`mailto:ops@example.com` or an https URL); Apple refuses notifications without one |
+| `PGAPEX_PUSH_PRIVATE_HOSTS` | *(none)* | For tests only: a push service on a private or loopback address, also over plain http |
 | `PGAPEX_REST_MAX_BYTES` | `5000000` | Largest web service response read (also after decompression) |
 | `MIGRATE_ON_START` | `false` | `true` applies missing migrations when the server starts. Without it, a server whose database lacks migrations answers every request with 503 and names the missing files until they are applied (`npm run db:migrate` or `pgapex migrate`; no restart needed) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |

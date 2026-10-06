@@ -7,9 +7,10 @@ import { forgetAllRemembered, rememberCookie, rememberedCount } from '../remembe
 import { getSession, logActivity, saveState, takeFlash } from '../session.ts';
 import type { PageContext } from './context.ts';
 import { databaseTimeZone, isTheme, matchLanguage, sameOffset, THEME_COOKIE, timeZoneFor, timeZoneNames, validTimeZone } from './locale.ts';
-import { chrome } from './render.ts';
+import { chrome, clientTexts } from './render.ts';
 import { appStyles, choosable, chosenStyleName, styleChoice } from './styles.ts';
 import { loadApp } from '../metadata.ts';
+import { pushSection } from './push.ts';
 import { appWithLocale, loadContext, safeNext, txContext, type Req } from './routes.ts';
 
 // "My account": details, own password, and preferences (light/dark and
@@ -112,8 +113,10 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
               <form method="post" action="${ctx.base}/account/devices">${csrf}<button class="btn">${t('account.forget_devices')}</button></form>
             </div></section>`
           : ''}
+        ${await pushSection(ctx)}
       </div>
-    </div>`;
+    </div>
+    <script type="application/json" id="pgapex-meta">${raw(JSON.stringify({ csrf: ctx.session.csrf_token, das: [], texts: clientTexts(ctx) }).replace(/</g, '\\u003c'))}</script>`;
   ctx.vis = { regions: new Set(), items: new Set(), editable: new Set(), buttons: new Map(), dynamicActions: new Set() };
   const body = await appTx(txContext(ctx), async (c) => {
     ctx.client = c;

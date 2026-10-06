@@ -47,6 +47,8 @@ interface Job {
   lang: string | null;
   request: string | null;
   binds: Record<string, string | null>;
+  /** (0.31) the tenant of the session that queued it ('': none) */
+  tenant_id: string;
   statement_timeout: string;
 }
 
@@ -83,8 +85,9 @@ async function runJob(job: Job) {
     const messages = await runtime.tx(async (c) => {
       await c.query(
         `select set_config('pgapex.app_user', $1, true), set_config('pgapex.app_id', $2, true), set_config('pgapex.session_id', '', true),
-                set_config('pgapex.process_job_id', $3, true), set_config('statement_timeout', $4, true), set_config('pgapex.lang', $5, true)`,
-        [job.app_user, String(app.id), job.id, job.statement_timeout, locale.lang],
+                set_config('pgapex.process_job_id', $3, true), set_config('statement_timeout', $4, true), set_config('pgapex.lang', $5, true),
+                set_config('pgapex.tenant_id', $6, true)`,
+        [job.app_user, String(app.id), job.id, job.statement_timeout, locale.lang, job.tenant_id],
       );
       if (app.db_role) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
       ctx.client = c;
@@ -110,7 +113,7 @@ async function claim(): Promise<Job | undefined> {
      update meta.process_job j set state = 'running', started_at = now(), updated_at = now(), worker = $1
        from next, meta.app a
       where j.id = next.id and a.id = j.app_id
-     returning j.id::text, j.app_id, a.alias, a.db_role, j.page_no, j.process_id, j.app_user, j.roles, j.lang, j.request, j.binds,
+     returning j.id::text, j.app_id, a.alias, a.db_role, j.page_no, j.process_id, j.app_user, j.roles, j.lang, j.request, j.binds, coalesce(j.tenant_id, '') as tenant_id,
                $2::text as statement_timeout`,
     [WORKER, process.env.STATEMENT_TIMEOUT ?? '30s'],
   );

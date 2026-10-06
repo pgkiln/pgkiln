@@ -1,0 +1,3 @@
+/* Character counter (item plug-in) */
+.char-counter { display: block; text-align: end; font-variant-numeric: tabular-nums; }
+.char-counter.is-full { font-weight: 600; }

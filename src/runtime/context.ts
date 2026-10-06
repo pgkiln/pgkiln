@@ -49,6 +49,13 @@ export interface PageContext {
   css: PageCss;
   /** the response's CSP nonce */
   nonce: string;
+  /** (0.31) tasks for after the current transaction commits or rolls back (txContext, src/db.ts appTx) */
+  afterCommit?: (() => Promise<void>)[];
+  afterRollback?: (() => Promise<void>)[];
+  /** (0.31) objects stored in object storage by this request (a failing process removes its own) */
+  objectsPut?: [import('../objectstore.ts').ObjectStoreConfig, string][];
+  /** (0.31) the style variant whose condition held for this request (undefined: not checked yet) */
+  styleByCondition?: string | null;
   /** The submitted form (POST), e.g. for grid rows. */
   body?: Record<string, unknown>;
   /** language, texts and theme of this request */

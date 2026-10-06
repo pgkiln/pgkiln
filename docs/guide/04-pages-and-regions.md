@@ -118,6 +118,12 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 
 Region-specific options go in the region's **attributes** (`config`, a JSON object).
 
+**Static ID** (APEX: Static ID, optional): lower case letters, digits, `_` and `-`, starting with a
+letter, unique on the page. It names the region in [exported files](18-cli.md#static-ids), so
+renaming the region keeps its file and the references to it, and the page renders it as
+`data-static-id` on the region (`<section id="R12" data-static-id="staff-list">`), for your CSS
+(`[data-static-id="staff-list"]`) and JavaScript. The element's `id` stays `R<id>`.
+
 ---
 
 ### Regions on a REST data source
@@ -782,6 +788,8 @@ The map zooms to fit all places. Attributes:
 | `cluster` | `true`: group markers that are close together (below) |
 | `name` | The name of the region's own layer in the legend (default: the region title) |
 | `layers` | More layers, each with its own query (below) |
+| `visible_area` | `true`: load only the places in the visible area, again when the map moves (below) |
+| `tiles` | `true`: serve the layer as vector tiles, for large data sets (below) |
 | `report` | The id of a report region on the same page that the map filters (below) |
 | `filter` | `area` (default) or `distance`: how the map filters that report |
 
@@ -812,7 +820,8 @@ seven more, each with its own query (the same columns as above) and its own sett
 ```
 
 Each layer has `name` (shown in the legend, translatable like other texts), `source`, and optionally
-`layer` (`markers` or `heat`), `cluster`, `link` and `hidden` (off until the user switches it on).
+`layer` (`markers` or `heat`), `cluster`, `link`, `hidden` (off until the user switches it on),
+`visible_area` and `tiles`.
 On a map with more than one layer each layer's places, lines and areas get their own colour, and a
 **Layers** legend in the corner switches them on and off. Without JavaScript the list below the map
 has a part per layer. A layer whose query fails shows its error above the map; the other layers are
@@ -820,6 +829,31 @@ still drawn. In the Page Designer the map's settings have a fieldset per layer (
 a layer; emptying a layer's query removes it), and the Advisor checks every layer's query. The HR
 example's page 33 (Field visits) has four layers: clustered customer visits, the offices, sales areas
 with delivery routes, and a heat map of the visits.
+
+**Large data sets: the visible area and vector tiles** (APEX: map layers loaded by the visible
+area, vector tiles). By default a layer's rows come with the page (at most 5,000). Two settings load
+them as the map needs them instead, per layer (*Load* in the map's settings):
+
+- `"visible_area": true` (*Rows in the visible area*): the page carries no places for the layer. Once
+  the map shows, and again a quarter second after each move or zoom, the browser asks for the places in
+  the visible area (`…/map/<region>/layer/<n>?bb=south,west,north,east`) and draws them as usual
+  (markers, clusters, a heat map, lines and areas). At most 2,000 come back; when there are more, the
+  map says **Not every place is shown: zoom in to see them all**.
+- `"tiles": true` (*Vector tiles*): the layer is served as [Mapbox Vector Tiles](https://github.com/mapbox/vector-tile-spec)
+  (MVT 2.1), `…/map/<region>/tiles/<n>/<z>/<x>/<y>.mvt`: each 256-pixel tile holds the rows in its
+  area (with a small margin, at most 10,000 per tile). The browser fetches only the tiles it shows and
+  draws the places as dots and the lines and areas in the layer's colour on a canvas; a click opens
+  the popup of the place, line or area under the pointer. Tiles suit tens or hundreds of thousands of
+  rows; they have no clustering and no list below the map. Any MVT client (MapLibre, OpenLayers,
+  QGIS) can read the same URLs from a signed-in session.
+
+Both filter in the layer's SQL on the server, like the report filter below: on a PostGIS
+`geometry`/`geography` column when PostGIS is installed, else on `lat`/`lng` (or `location`), so an
+index on those columns (or a spatial index) keeps them fast. A layer without position columns shows
+an error. The query runs as the application's role with the session's item values, after the same
+checks as the page (page access, the region's condition and authorization). The HR example's page 41
+(Weather stations) has 20,000 stations as vector tiles and the stations above 2,000 m by the visible
+area.
 
 **Filtering a report by the map area** (APEX: map as a spatial filter). Give the map
 `"report": <region id>` of an [interactive report](#report-interactive-report) on the same page.
@@ -851,7 +885,8 @@ box for the area, and for the distance a box around the circle first and then th
 (haversine) distance on a sphere of 6,371 km. The numbers in the URL are parsed and range-checked
 first (anything else is ignored), so no text from the URL reaches the SQL.
 
-Below the map a collapsed list names every place, so the data is reachable without JavaScript and
+Below the map a collapsed list names every place (except for layers loaded by the visible area or as
+vector tiles), so the data is reachable without JavaScript and
 by screen readers. The map uses [Leaflet](https://leafletjs.com) (shipped with pgapex, loaded only
 on pages with a map) and tiles from OpenStreetMap. Their [tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
 suits light use; for production set `MAP_TILE_URL` (and `MAP_ATTRIBUTION`) to your own or a
@@ -1173,6 +1208,62 @@ The HR example installs them (`examples/hr/hr_19_template_components.sql`): page
 contact cards linking to the employee form, recent hires on a timeline, and leave requests with a
 status badge. Template components are part of an application export (`template_components`).
 
+#### Plug-ins with their own code
+
+APEX's region, item, dynamic action and process plug-ins. A plug-in file (`"format":
+"pgapex-plugin/2"`) brings, by type:
+
+| `type` | Brings | Used as |
+|---|---|---|
+| `region` | a template component that renders the region's rows, and JavaScript that gets the region | a region of type `plugin` |
+| `item` | JavaScript that enhances a text field (the value is posted and stored as text, so the form works without it) | an item of type `plugin` |
+| `dynamic_action` | a JavaScript function | a dynamic action with action `plugin`, Code the plug-in's name |
+| `process` | a PL/pgSQL function `schema.fn(attributes jsonb) returns text` (the message), usually created by its install SQL | a process of type `plugin` |
+
+Every plug-in has custom attributes (like a template component's: `text`, `number`, `select`,
+`checkbox`, with defaults); a region, item or process sets their values in `config`, a dynamic
+action in its `config`:
+
+```json
+{"plugin": "show_more", "attributes": {"VISIBLE": "4", "BUTTON": "Show everyone"}}
+```
+
+Values may contain `&ITEM.` substitutions. JavaScript and CSS are
+[static application files](03-builder.md#static-application-files) that come with the plug-in;
+pages that use it load them. The JavaScript registers the plug-in by name:
+
+```js
+pgapex.plugins.register('show_more', ({ type, element, item, attributes }) => {
+  // region and item plug-ins: element is the region's (or field's) element; called again after a refresh
+  // dynamic action plug-ins: the action's context (items, elements, region, value, message) and attributes
+});
+```
+
+The page passes the plug-in's name and attribute values in `data-plugin` and `data-plugin-attrs`
+(and in the dynamic action's JSON); code never travels in the page, so the Content-Security-Policy
+stays `script-src 'self'`. A region plug-in's template is an ordinary template component (checked
+against the allow-list above); its attributes are the plug-in's, and a region Source SELECT gives
+it rows.
+
+**Install SQL** (tables, functions, grants a plug-in needs) is shown under Shared Components →
+Plug-ins and runs only when a developer asks, as the application's database role, in one
+transaction. A plug-in's code runs with the application's rights: install only plug-ins you trust,
+after reading their files.
+
+A plug-in file is built from a source directory with `pgapex plugin build <dir>`: `plugin.json` (the
+file without contents: type, name, label, version, help, attributes, `files`, `template_component`,
+`sql_function`), the files it lists, `template.html` (and `wrapper.html`) for a region, and
+`install.sql`. `pgapex plugin install <file|dir> --app <alias>` adds it to an application; so does
+**Import a plug-in** in the builder and, in SQL, `meta.import_plugin(<app id>, '<plug-in json>'::jsonb,
+p_replace => false)`. **Download plug-in file** gives it back. Plug-ins are part of an application
+export (`plugins`; `shared/plugins/` in a directory export).
+
+`examples/plugins/` has four, each as a source directory and a built file: `show-more` (region: the
+first rows and a *Show all* button), `char-counter` (item: a maximum length with a live count),
+`copy-value` (dynamic action: copy an item's value to the clipboard) and `log-event` (process: record
+an event in `pgapex_plugins.event_log`). HR example part 47 installs them and uses all four on page
+40 (*Plug-ins*).
+
 ### `static` and `dynamic` content
 
 - **`static`**: `source` is HTML written by the developer, with `&ITEM.` substitutions
@@ -1233,7 +1324,7 @@ the URL says.
 | `dynamic` | 1000 | |
 | lists of values (an item's `max_rows`) | 5000 | (up to 50,000) |
 
-Calendars (2,000 events), maps (5,000 places) and trees have their own limits.
+Calendars (2,000 events), maps (5,000 places per layer; 2,000 per visible area, 10,000 per vector tile) and trees have their own limits.
 
 **Lazy loading.** `"lazy": true` (report, chart, cards, dynamic, tree and template component
 regions) sends the page with a placeholder; the browser then fetches the region from

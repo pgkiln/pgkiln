@@ -1,0 +1,11 @@
+{
+  "type": "dynamic_action",
+  "name": "copy_value",
+  "label": "Copy to clipboard",
+  "version": "1.0.0",
+  "help": "Copies the first affected item's value to the clipboard and shows a success message.",
+  "attributes": [
+    {"name": "MESSAGE", "label": "Message", "type": "text", "default": "Copied."}
+  ],
+  "files": ["copy-value.js"]
+}

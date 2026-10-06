@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
-import { closePools, owner, runtime } from '../src/db.ts';
+import { appTx, closePools, owner, runtime } from '../src/db.ts';
 import { signText, urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
 import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
@@ -4573,7 +4573,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
 
   test('meta.parse_data refuses what it can not parse safely and stays within its limits', async () => {
     await assert.rejects(runtime.query(`select * from meta.parse_data('\\x504b0304'::bytea)`), /Excel/);
-    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>', 'UTF8'))`), /XML is not parsed/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>', 'UTF8'))`), /DTD or entity/);
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_delimiter => '"')`), /delimiter is one character/);
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_format => 'pdf')`), /format is auto/);
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('[1, 2]', 'UTF8'))`), /must be an object/);
@@ -5848,5 +5848,298 @@ describe('sprint 38 session sharing', () => {
     const cols = (await owner.query(`select column_name from information_schema.columns where table_schema = 'meta' and table_name = 'shared_login'`)).rows.map((r) => r.column_name);
     assert.ok(cols.includes('token_hash') && !cols.includes('token'));
     await assert.rejects(owner.query(`update meta.app set session_group = 'Bad Group' where alias = 'hr'`), /check constraint/);
+  });
+});
+
+describe('sprint 39 static application files', () => {
+  test('only developers change files, with CSRF; applications only read them; content is escaped in the editor', async () => {
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const anon = new Browser();
+    assert.equal((await anon.get(`/builder/apps/${hr}/static-files`)).statusCode, 302);
+    assert.equal((await anon.post(`/builder/apps/${hr}/static-files/save`, { __csrf: 'x', name: 'sec39.js', content: '1' })).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    try {
+      assert.equal((await dev.post(`/builder/apps/${hr}/static-files/save`, { __csrf: 'forged', name: 'sec39.js', content: '1' })).statusCode, 403);
+      assert.equal((await dev.post(`/builder/apps/${hr}/static-files/delete`, { __csrf: 'forged', name: 'hr.js' })).statusCode, 403);
+      assert.equal((await dev.post(`/builder/apps/${hr}/static-files/includes`, { __csrf: 'forged', includes: '' })).statusCode, 403);
+      await dev.get(`/builder/apps/${hr}/static-files?new=1`);
+      await dev.post(`/builder/apps/${hr}/static-files/save`, { __csrf: dev.lastCsrf, name: 'sec39.js', content: '</textarea><script>alert(1)</script>' });
+      const editor = (await dev.get(`/builder/apps/${hr}/static-files?edit=sec39.js`)).body;
+      assert.ok(!editor.includes('</textarea><script>alert(1)'), 'the content is escaped');
+      // the runtime role reads files but cannot change them
+      await assert.rejects(runtime.query(`update meta.static_file set content = '' where app_id = $1`, [hr]), /permission denied/);
+      await assert.rejects(runtime.query(`update meta.app set static_includes = '{}' where id = $1`, [hr]), /permission denied/);
+      // another application's file is not served under this alias
+      const other = await owner.one(`select id, alias from meta.app where alias <> 'hr' order by id limit 1`);
+      if (other) assert.equal((await anon.get(`/a/${other.alias}/static/sec39.js`)).statusCode, 404);
+      // an include name cannot break out of the tag (the database refuses such names; the page escapes anyway)
+      await assert.rejects(owner.query(`insert into meta.static_file (app_id, name, mime, content) values ($1, 'a"><script>.js', 'text/javascript', '')`, [hr]), /check constraint/);
+    } finally {
+      await owner.query(`delete from meta.static_file where app_id = $1 and name = 'sec39.js'`, [hr]);
+    }
+  });
+
+  test('"Execute JavaScript" never sends code to the page: only a registered function\'s name', async () => {
+    const pid = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2`)).id;
+    await owner.query(`insert into meta.dynamic_action (page_id, seq, name, event, action, code) values ($1, 950, 'sec39', 'load', 'execute_javascript', '"};alert(1);//')`, [pid]);
+    try {
+      const b = new Browser();
+      await b.get('/a/hr/login');
+      await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+      const body = (await b.get('/a/hr/2')).body;
+      assert.ok(!body.includes('alert(1)'));
+    } finally {
+      await owner.query(`delete from meta.dynamic_action where name = 'sec39'`);
+    }
+  });
+});
+
+describe('sprint 39 plug-ins', () => {
+  test('only developers manage plug-ins, with CSRF; applications cannot change or install them', async () => {
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const anon = new Browser();
+    assert.equal((await anon.get(`/builder/apps/${hr}/plugins`)).statusCode, 302);
+    assert.equal((await anon.get(`/builder/apps/${hr}/plugins/download?name=show_more`)).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    for (const path of ['import', 'delete', 'install'])
+      assert.equal((await dev.post(`/builder/apps/${hr}/plugins/${path}`, { __csrf: 'forged', name: 'show_more', plugin: '{}' })).statusCode, 403, path);
+    assert.ok(await owner.one(`select 1 from meta.plugin where app_id = $1 and name = 'show_more'`, [hr]));
+    await assert.rejects(runtime.query(`update meta.plugin set sql_function = 'pg_catalog.pg_terminate_backend' where app_id = $1`, [hr]), /permission denied/);
+    await assert.rejects(runtime.query(`select meta.import_plugin($1, '{}'::jsonb)`, [hr]), /permission denied/);
+    // a function name is an identifier, never SQL
+    await assert.rejects(owner.query(`update meta.plugin set sql_function = 'x.y(1); drop table hr.emp; --' where app_id = $1 and name = 'log_event'`, [hr]), /check constraint/);
+  });
+
+  test('a page only gets plug-ins of the right type, and attribute values as escaped data', async () => {
+    const pid = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 40`)).id;
+    // a region plug-in named in a dynamic action is not a dynamic action plug-in
+    await owner.query(`insert into meta.dynamic_action (page_id, seq, name, event, action, code, config) values ($1, 950, 'sec39 plugin', 'load', 'plugin', 'show_more', '{"attributes": {"X": "</script><script>alert(1)</script>"}}')`, [pid]);
+    try {
+      const b = new Browser();
+      await b.get('/a/hr/login');
+      await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+      const body = (await b.get('/a/hr/40')).body;
+      const das = JSON.parse(/<script type="application\/json" id="pgapex-meta">([\s\S]*?)<\/script>/.exec(body)![1]).das;
+      const da = das.find((d: { plugin?: string | null; action: string }) => d.action === 'plugin' && d.plugin === null);
+      assert.ok(da, 'no plug-in for a name of another type');
+      assert.ok(!body.includes('<script>alert(1)'));
+    } finally {
+      await owner.query(`delete from meta.dynamic_action where name = 'sec39 plugin'`);
+    }
+  });
+});
+
+describe('sprint 39 conditional and dynamic theme styles', () => {
+  test('conditions run as the application\'s role; item colours reach the CSS only as #rrggbb', async () => {
+    const before = (await owner.one(`select theme from meta.app where alias = 'hr'`)).theme;
+    try {
+      await owner.query(`update meta.app set theme = $1 where alias = 'hr'`, [JSON.stringify({ ...before, style_choice: false, styles: [
+        { name: 'Owner only', accent: '#444444', condition: '(select count(*) from meta.developer) >= 0' },
+        { name: 'Injected', accent: '&AI_ENAME.', condition: 'true' },
+      ] })]);
+      const b = new Browser();
+      await b.get('/a/hr/login');
+      await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+      await runtime.query(`select 1`); // the runtime pool is up
+      const css = /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec((await b.get('/a/hr/1')).body)![1];
+      assert.doesNotMatch(css, /#444444/, 'meta.developer is not readable by the app role: the condition fails');
+      assert.doesNotMatch(css, /KING|--accent:[^#]/i, 'a name is not a colour');
+    } finally {
+      await owner.query(`update meta.app set theme = $1 where alias = 'hr'`, [JSON.stringify(before)]);
+    }
+  });
+});
+
+describe('sprint 39 zips and parsing in SQL', () => {
+  test('unpacked files are reachable only through the functions; names and XML are checked', async () => {
+    await assert.rejects(runtime.query('select * from meta.unpacked_file'), /permission denied/);
+    await assert.rejects(runtime.query(`insert into meta.unpacked_file (digest, kind) values (sha256('x'), 'zip')`), /permission denied/);
+    await assert.rejects(runtime.query(`select meta.zip_add(null, '../../etc/passwd', '\\x00')`), /relative path/);
+    // no entity expansion or external entities
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to($1, 'utf8'))`,
+      ['<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x><y>&e;</y></x>']), /DTD or entity/);
+    // an XPath can't be smuggled in through the row selector
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<x><y>1</y></x>', 'utf8'), 'x.xml', 'auto', true, null, $1)`, ['y"] | //*[local-name()="x']), /not an element name/);
+  });
+});
+
+describe('sprint 39 object storage', () => {
+  test('the bucket must pass the web client\'s allow-list and address checks; the secret never shows', async (t) => {
+    const { putObject } = await import('../src/objectstore.ts');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    const savedKey = process.env.PGAPEX_SECRET_KEY;
+    // CI has no .env: a test-only key for the credential's secret
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    t.after(() => {
+      if (savedKey === undefined) delete process.env.PGAPEX_SECRET_KEY;
+      else process.env.PGAPEX_SECRET_KEY = savedKey;
+    });
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC39_S3'`, [hr]);
+    await owner.query(`insert into meta.web_credential (app_id, name, type, username, scope, secret_enc) values ($1, 'SEC39_S3', 'aws_sigv4', 'AKIDSEC39', 'eu-west-1', $2)`, [hr, encryptSecret('sec39-super-secret')]);
+    const saved = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS };
+    try {
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = '*';
+      delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+      for (const url of ['http://169.254.169.254/latest', 'http://127.0.0.1:9/bucket', 'http://10.0.0.1/bucket']) {
+        const e = await putObject(hr, { url, credential: 'SEC39_S3' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
+        assert.ok(e, url);
+        assert.doesNotMatch(e!.message, /sec39-super-secret/);
+      }
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = 'objects.example.com';
+      const e = await putObject(hr, { url: 'https://elsewhere.example.org/b', credential: 'SEC39_S3' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
+      assert.match(e!.message, /not allowed|allow/i);
+      // another type of credential can't sign object storage requests, and an aws_sigv4 one can't be used for REST calls
+      const e2 = await putObject(hr, { url: 'https://objects.example.com/b', credential: 'NO_SUCH' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
+      assert.match(e2!.message, /does not exist/);
+    } finally {
+      process.env.PGAPEX_REST_ALLOWED_HOSTS = saved.allowed;
+      if (saved.priv === undefined) delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+      else process.env.PGAPEX_REST_PRIVATE_HOSTS = saved.priv;
+      if (saved.allowed === undefined) delete process.env.PGAPEX_REST_ALLOWED_HOSTS;
+      await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC39_S3'`, [hr]);
+    }
+  });
+});
+
+describe('sprint 39 map layers loaded by the browser', () => {
+  const mapRegion = async () =>
+    (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 41 and r.type = 'map'`, [appId])).id as number;
+
+  test('signed out, or a map region the user may not see: no places', async () => {
+    const id = await mapRegion();
+    const urls = [`/a/hr/41/map/${id}/tiles/0/4/8/5.mvt`, `/a/hr/41/map/${id}/layer/1?bb=45,5,47,8`];
+    for (const u of urls) {
+      const res = await new Browser().get(u);
+      assert.notEqual(res.statusCode, 200, u);
+      assert.doesNotMatch(res.body, /Station \d/, u);
+    }
+    try {
+      await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [id]);
+      const blake = await as('blake');
+      for (const u of urls) assert.equal((await blake.get(u)).statusCode, 403, u);
+      assert.equal((await (await as('king')).get(urls[0])).statusCode, 200, 'an administrator still gets the tile');
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [id]);
+    }
+  });
+
+  test("a layer's query runs as the application's role; the area is numbers, never SQL", async () => {
+    const id = await mapRegion();
+    const { source } = await owner.one('select source from meta.region where id = $1', [id]);
+    try {
+      await owner.query('update meta.region set source = $2 where id = $1', [id, 'select 50 as lat, 5 as lng, password_hash as title from meta.account']);
+      const res = await (await as('king')).get(`/a/hr/41/map/${id}/tiles/0/4/8/5.mvt`);
+      assert.equal(res.statusCode, 400);
+      assert.doesNotMatch(res.body, /\$2[aby]\$|argon2/);
+    } finally {
+      await owner.query('update meta.region set source = $2 where id = $1', [id, source]);
+    }
+    const king = await as('king');
+    for (const bb of ["45,5,47,8) or (1=1", "45,5,47,8'; drop table hr.emp; --", '1e2,0,1,1', 'NaN,0,1,1'])
+      assert.equal((await king.get(`/a/hr/41/map/${id}/layer/1?bb=${encodeURIComponent(bb)}`)).statusCode, 400, bb);
+    for (const t of ['99/0/0.mvt', '4/8/5;select', '4/-1/5.mvt', '4/8/99999999999.mvt'])
+      assert.equal((await king.get(`/a/hr/41/map/${id}/tiles/0/${t}`)).statusCode, 404, t);
+    assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
+  });
+});
+
+describe('sprint 39 query builder canvas', () => {
+  test('joins, functions, positions and the table order: only catalog names and fixed functions reach the SQL; the page escapes them', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    assert.equal((await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+    const evil = `x"><script>alert(1)</script>`;
+    const q = new URLSearchParams([
+      ['schema', 'hr'], ['t', 'emp'], ['t', 'dept'], ['o', `dept,emp,${evil}`],
+      ['j', `t1.ename=t2.dname) or (1=1`], ['j', `t1.ename=t2.${evil}`], ['ja', 't1.ename; drop table hr.emp'], ['jb', 't2.dname'],
+      ['fn', 't2.sal:pg_sleep'], ['fn', `t2.sal:sum); drop table hr.emp; --`], ['fn', `${evil}:count`], ['fn', 't2.sal:sum'],
+      ['p', `${evil}:1,2`], ['p', 'emp:1,2;drop'],
+    ]);
+    const res = await dev.get(`/builder/sql/query?${q}`);
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /<script>alert|1=1|pg_sleep|drop table hr\.emp/);
+    const sql = /<pre class="source"[^>]*>([\s\S]*?)<\/pre>/.exec(res.body)![1];
+    assert.match(sql, /sum\(t2\.&quot;sal&quot;\) as &quot;sum_sal&quot;/, 'the order from o: dept is t1, emp t2; only the known function stays');
+    assert.match(sql, /join &quot;hr&quot;\.&quot;emp&quot; t2 on t2\.&quot;deptno&quot; = t1\.&quot;deptno&quot;/, 'no valid drawn join: the foreign key');
+    assert.ok((await owner.one(`select to_regclass('hr.emp') as e`)).e);
+  });
+});
+
+describe('sprint 39 workflow and task tenants', () => {
+  test("application SQL sets only its own session's tenant; it can't write sessions or another app's", async () => {
+    const { db_role: role } = await owner.one(`select db_role from meta.app where alias = 'hr'`);
+    await as('blake');
+    const mine = (await owner.one(`select id from meta.session where app_id = $1 and username = 'blake' order by created_at desc limit 1`, [appId])).id;
+    await as('king');
+    const theirs = (await owner.one(`select id from meta.session where app_id = $1 and username = 'king' order by created_at desc limit 1`, [appId])).id;
+    // as the application's role: the session table is out of reach
+    await assert.rejects(
+      appTx({ appId, alias: 'hr', dbRole: role, appUser: 'blake', sessionId: mine }, (c) => c.query(`update meta.session set tenant_id = 'x' where id = $1`, [theirs])),
+      /permission denied/,
+    );
+    await appTx({ appId, alias: 'hr', dbRole: role, appUser: 'blake', sessionId: mine }, (c) => c.query(`select meta.set_tenant('blake-co')`));
+    assert.equal((await owner.one('select tenant_id from meta.session where id = $1', [mine])).tenant_id, 'blake-co');
+    assert.equal((await owner.one('select tenant_id from meta.session where id = $1', [theirs])).tenant_id, null, "the other session's tenant is unchanged");
+    // a session of another application is not changed through this one's app id
+    await appTx({ appId: appId + 100000, alias: 'x', dbRole: role, appUser: 'blake', sessionId: mine }, (c) => c.query(`select meta.set_tenant('elsewhere')`));
+    assert.equal((await owner.one('select tenant_id from meta.session where id = $1', [mine])).tenant_id, 'blake-co');
+    await owner.query('update meta.session set tenant_id = null where id = $1', [mine]);
+  });
+});
+
+describe('sprint 39 region static ids and text files', () => {
+  test('a static id is letters, digits, _ and -; on the page it is an attribute value only', async () => {
+    const { id } = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 order by r.seq limit 1`, [appId]);
+    for (const bad of ['x"><script>alert(1)</script>', 'Upper', '1abc', 'a b', 'x'.repeat(51)])
+      await assert.rejects(owner.query('update meta.region set static_id = $2 where id = $1', [id, bad]), /check constraint/, bad);
+    try {
+      await owner.query(`update meta.region set static_id = 'staff-list' where id = $1`, [id]);
+      const page = (await (await as('king')).get('/a/hr/2')).body;
+      assert.match(page, new RegExp(`<section class="[^"]*" id="R${id}" data-static-id="staff-list"`));
+    } finally {
+      await owner.query('update meta.region set static_id = null where id = $1', [id]);
+    }
+  });
+
+  test('YAML files are data: anchors, tags and flow collections are refused, a __proto__ key is a key', async () => {
+    const { fromText } = await import('../src/yamltext.ts');
+    for (const bad of ['a: &x 1', 'a: *x', 'a: !!python/object:os.system x', 'a: {b: 1}', 'a: [1]', 'a: >\n  folded'])
+      assert.throws(() => fromText(bad), /outside the subset|double quotes/, bad);
+    const v = fromText('"__proto__":\n  polluted: true\n') as Record<string, unknown>;
+    assert.equal(({} as Record<string, unknown>).polluted, undefined);
+    assert.deepEqual(Object.keys(v), ['__proto__']);
+  });
+});
+
+describe('sprint 39 push notifications', () => {
+  test("application SQL can queue notifications but never reads keys, devices or other apps' messages", async () => {
+    const { db_role: role } = await owner.one(`select db_role from meta.app where alias = 'hr'`);
+    await owner.query('update meta.app set pwa = true, pwa_push = true where id = $1', [appId]);
+    try {
+      const ctx = { appId, alias: 'hr', dbRole: role, appUser: 'king', sessionId: '' };
+      for (const table of ['push_key', 'push_subscription', 'push_message'])
+        await assert.rejects(appTx(ctx, (c) => c.query(`select * from meta.${table}`)), /permission denied/, table);
+      const id = await appTx(ctx, async (c) => (await c.query(`select meta.send_push('scott', 'Hi', null, 3) as id`)).rows[0].id);
+      const msg = await owner.one('select app_id, url, requested_by from meta.push_message where id = $1', [id]);
+      // the link is a page of this application, never a URL the caller chose
+      assert.deepEqual(msg, { app_id: appId, url: '/a/hr/3', requested_by: 'king' });
+      await owner.query('delete from meta.push_message where id = $1', [id]);
+    } finally {
+      await owner.query('update meta.app set pwa_push = false where id = $1', [appId]);
+    }
+  });
+
+  test('the builder push actions need a developer and the CSRF token', async () => {
+    const anon = new FileBrowser(app);
+    for (const path of ['push-test', 'push-keys']) {
+      const res = await anon.post(`/builder/apps/${appId}/pwa/${path}`, { __csrf: 'x', push_user: 'scott' });
+      assert.equal(res.statusCode, 302, path);
+      assert.match(String(res.headers.location), /\/builder\/login/);
+    }
   });
 });

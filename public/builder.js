@@ -9,7 +9,8 @@
 //  - the property editor: a filter box and collapsible property groups;
 //  - the layout canvas: drag and drop to move / create / resize components,
 //    Alt+arrow keys as the keyboard alternative, zoom and maximize;
-//  - input[data-filter-list]: filters the rows it names as you type.
+//  - input[data-filter-list]: filters the rows it names as you type;
+//  - the query builder's canvas: tables placed and dragged, joins drawn as lines.
 (() => {
   'use strict';
   const store = {
@@ -500,8 +501,57 @@
     const box = e.target;
     if (!box.matches?.('input[data-icon-filter]')) return;
     const q = box.value.trim().toLowerCase();
-    for (const c of box.closest('.icon-picker').querySelectorAll('.icon-choice')) c.hidden = !!q && !c.textContent.toLowerCase().includes(q);
+    const picker = box.closest('.icon-picker');
+    for (const c of picker.querySelectorAll('.icon-grid .icon-choice')) c.hidden = !!q && !c.textContent.toLowerCase().includes(q);
+    // (0.31) and the Lucide icons by name and search words, as more choices of the same radio group
+    clearTimeout(box.pgapexTimer);
+    box.pgapexTimer = setTimeout(() => moreIcons(box, picker, q), 250);
   });
+  async function moreIcons(box, picker, q) {
+    const more = picker.querySelector('[data-icon-more]');
+    const name = picker.querySelector('.icon-grid input[type=radio]')?.name;
+    if (!more || !name || !box.dataset.iconSearch) return;
+    if (q.length < 2) {
+      more.replaceChildren();
+      more.hidden = true;
+      return;
+    }
+    let found = { icons: [], version: '' };
+    try {
+      const res = await fetch(`${box.dataset.iconSearch}?q=${encodeURIComponent(q)}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+      if (res.ok) found = await res.json();
+    } catch {}
+    if (box.value.trim().toLowerCase() !== q) return;
+    const NS = 'http://www.w3.org/2000/svg';
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'icon-grid';
+    const legend = document.createElement('legend');
+    legend.className = 'icon-more-legend';
+    legend.textContent = found.icons.length ? `More icons (${found.icons.length})` : 'No more icons';
+    fieldset.append(legend);
+    for (const n of found.icons) {
+      const label = document.createElement('label');
+      label.className = 'icon-choice';
+      label.title = n;
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = name;
+      radio.value = n;
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('class', 'icon');
+      svg.setAttribute('aria-hidden', 'true');
+      const use = document.createElementNS(NS, 'use');
+      use.setAttribute('href', `/static/icon/${n}.svg?v=${encodeURIComponent(found.version)}#i`);
+      svg.append(use);
+      const text = document.createElement('span');
+      text.className = 'icon-name';
+      text.textContent = n;
+      label.append(radio, svg, text);
+      fieldset.append(label);
+    }
+    more.replaceChildren(fieldset);
+    more.hidden = false;
+  }
   document.addEventListener('change', (e) => {
     const radio = e.target;
     const picker = radio.closest?.('.icon-picker');
@@ -515,6 +565,9 @@
     label.textContent = radio.value || '- none -';
     if (!radio.value) label.className = 'muted';
     summary.append(label);
+    // a choice from the grid replaces what was typed under "any icon"
+    const custom = picker.querySelector('[data-icon-custom]');
+    if (custom) custom.value = '';
   });
 
   // Theme Roller: the style form's values on the preview (CSS variables through the CSSOM, which the CSP allows)
@@ -544,7 +597,182 @@
     update();
   }
 
+  // ---------------------------------------------------------------- query builder canvas
+  // (0.31) SQL Workshop → Query Builder: the chosen tables are boxes. On wider screens they are
+  // placed where they were left (data-x/y; dragged by the handle, or moved with its arrow keys,
+  // kept in hidden p=table:x,y inputs for the next Apply); on phones they stay stacked. The joins
+  // are lines between their columns; dragging a column's dot onto a column of another table adds
+  // a join (j=a=b) and applies the form. The Joins section's selects do the same without a mouse.
+  function setupQueryCanvas() {
+    const canvas = document.querySelector('.qb-canvas');
+    if (!canvas) return;
+    const form = canvas.closest('form');
+    let joins = [];
+    try {
+      joins = JSON.parse(canvas.dataset.joins || '[]');
+    } catch {}
+    const free = window.matchMedia('(min-width: 641px)').matches;
+    const boxes = [...canvas.querySelectorAll('.qb-table')];
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'qb-lines');
+    svg.setAttribute('aria-hidden', 'true');
+    canvas.style.position = 'relative';
+    canvas.prepend(svg);
+    const fit = () => {
+      if (!free) return;
+      const h = Math.max(0, ...boxes.map((b) => b.offsetTop + b.offsetHeight));
+      canvas.style.height = `${h + 16}px`;
+    };
+    if (free) {
+      canvas.classList.add('qb-free');
+      for (const b of boxes) {
+        b.style.left = `${Number(b.dataset.x) || 0}px`;
+        b.style.top = `${Number(b.dataset.y) || 0}px`;
+      }
+      for (const m of canvas.querySelectorAll('.qb-move')) m.hidden = false;
+      fit();
+    }
+    // a column's row on the canvas (inside its list's visible part), in canvas coordinates
+    const anchor = (ref) => {
+      const row = [...canvas.querySelectorAll('.qb-col')].find((r) => r.dataset.ref === ref);
+      if (!row) return null;
+      const c = canvas.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      const list = row.parentElement.getBoundingClientRect();
+      const y = Math.min(Math.max(r.top + r.height / 2, list.top), list.bottom);
+      return { left: r.left - c.left + canvas.scrollLeft, right: r.right - c.left + canvas.scrollLeft, y: y - c.top + canvas.scrollTop };
+    };
+    const curve = (a, b) => {
+      // leave from the sides that face each other (both right sides when they overlap)
+      let x1 = a.right;
+      let x2 = b.left;
+      let bend = 40;
+      if (b.right < a.left) [x1, x2] = [a.left, b.right];
+      else if (!(a.right < b.left)) [x1, x2, bend] = [a.right, b.right, -40];
+      const d1 = x1 === a.left ? -Math.abs(bend) : Math.abs(bend);
+      const d2 = bend < 0 ? Math.abs(bend) : x2 === b.left ? -Math.abs(bend) : Math.abs(bend);
+      return `M ${x1} ${a.y} C ${x1 + d1} ${a.y}, ${x2 + d2} ${b.y}, ${x2} ${b.y}`;
+    };
+    const path = (d, cls) => {
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', d);
+      if (cls) p.setAttribute('class', cls);
+      svg.append(p);
+      return p;
+    };
+    const draw = () => {
+      svg.replaceChildren();
+      svg.setAttribute('width', String(canvas.scrollWidth));
+      svg.setAttribute('height', String(canvas.scrollHeight));
+      for (const j of joins) {
+        const a = anchor(j.a);
+        const b = anchor(j.b);
+        if (a && b) path(curve(a, b), j.custom ? 'qb-custom' : '');
+      }
+    };
+    draw();
+    window.addEventListener('resize', draw);
+    canvas.addEventListener('scroll', draw, true);
+
+    // moving a table
+    const keep = (box) => {
+      const value = `${box.dataset.table}:${Math.round(box.offsetLeft)},${Math.round(box.offsetTop)}`;
+      let input = box.querySelector('input[name="p"]');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'p';
+        box.prepend(input);
+      }
+      input.value = value;
+    };
+    const moveTo = (box, x, y) => {
+      box.style.left = `${Math.max(0, Math.round(x))}px`;
+      box.style.top = `${Math.max(0, Math.round(y))}px`;
+      fit();
+      draw();
+    };
+    for (const handle of canvas.querySelectorAll('.qb-move')) {
+      const box = handle.closest('.qb-table');
+      handle.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        const start = { x: e.clientX, y: e.clientY, left: box.offsetLeft, top: box.offsetTop };
+        box.classList.add('qb-dragging');
+        const move = (ev) => moveTo(box, start.left + ev.clientX - start.x, start.top + ev.clientY - start.y);
+        const up = () => {
+          handle.removeEventListener('pointermove', move);
+          box.classList.remove('qb-dragging');
+          keep(box);
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', up, { once: true });
+        handle.addEventListener('pointercancel', up, { once: true });
+      });
+      handle.addEventListener('keydown', (e) => {
+        const step = e.shiftKey ? 64 : 16;
+        const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+        if (!d) return;
+        e.preventDefault();
+        moveTo(box, box.offsetLeft + d[0], box.offsetTop + d[1]);
+        keep(box);
+      });
+    }
+
+    // drawing a join: from a column's dot to a column of another table
+    for (const dot of canvas.querySelectorAll('.qb-link')) {
+      dot.hidden = false;
+      // the mouse gesture only; the Joins section's selects are the keyboard way
+      dot.tabIndex = -1;
+      dot.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        dot.setPointerCapture(e.pointerId);
+        const from = anchor(dot.dataset.ref);
+        const table = dot.closest('.qb-table');
+        const line = path('', 'qb-custom qb-drawing');
+        let target = null;
+        const move = (ev) => {
+          const c = canvas.getBoundingClientRect();
+          const x = ev.clientX - c.left + canvas.scrollLeft;
+          const y = ev.clientY - c.top + canvas.scrollTop;
+          line.setAttribute('d', `M ${x < from.left ? from.left : from.right} ${from.y} L ${x} ${y}`);
+          const row = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.qb-col');
+          const next = row && row.closest('.qb-table') !== table ? row : null;
+          if (next !== target) {
+            target?.classList.remove('qb-target');
+            target = next;
+            target?.classList.add('qb-target');
+          }
+        };
+        const up = () => {
+          dot.removeEventListener('pointermove', move);
+          line.remove();
+          if (!target) return;
+          target.classList.remove('qb-target');
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'j';
+          input.value = `${dot.dataset.ref}=${target.dataset.ref}`;
+          form.append(input);
+          for (const box of boxes) if (free) keep(box);
+          form.requestSubmit();
+        };
+        dot.addEventListener('pointermove', move);
+        dot.addEventListener('pointerup', up, { once: true });
+        dot.addEventListener('pointercancel', () => {
+          dot.removeEventListener('pointermove', move);
+          line.remove();
+          target?.classList.remove('qb-target');
+        }, { once: true });
+      });
+    }
+  }
+
   function init() {
+    setupQueryCanvas();
     setupThemePreview();
     setupTabs();
     for (const tree of document.querySelectorAll('.pd-tree')) setupTree(tree);

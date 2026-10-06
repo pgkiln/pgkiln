@@ -1,5 +1,6 @@
 import { applyBinds } from '../binds.ts';
 import { icon } from '../icons.ts';
+import { pluginAttributes, pluginData, pluginOf } from './plugins.ts';
 import { templateClasses } from './template-options.ts';
 import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -396,8 +397,11 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       .map((a) => ` ${a}`)
       .join(''),
   );
+  // (069) an item plug-in: its JavaScript gets the field (the text input works without it)
+  const plugin = item.type === 'plugin' ? pluginOf(ctx, item.config?.plugin, 'item') : undefined;
+  const pluginAttrs = plugin && editable ? pluginData(plugin.name, pluginAttributes(ctx, plugin, item.config)) : '';
   const tag = useLegend ? 'fieldset' : 'div';
-  return html`${raw(`<${tag}`)} class="field field-${item.type}${error ? ' has-error' : ''}${editable ? '' : ' readonly'}${templateClasses('item', item.template_options)}" data-item="${item.name}"${attrs}>
+  return html`${raw(`<${tag}`)} class="field field-${item.type}${error ? ' has-error' : ''}${editable ? '' : ' readonly'}${templateClasses('item', item.template_options)}" data-item="${item.name}"${attrs}${pluginAttrs}>
     ${labelHtml}${control}${lovError}
     ${item.help ? html`<small class="help" id="${id}_help">${item.help}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}

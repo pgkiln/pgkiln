@@ -15,6 +15,9 @@ triggers, your own functions).
 | `meta.message(name, variadic params)` | text | A text message in the current language, `%0`…`%9` replaced; falls back to the base and primary language |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
+| `meta.set_tenant(tenant)` | void | Sets (or with NULL or `''` clears) the current session's tenant (APEX: `apex_session.set_tenant_id`): at once and for the session's next requests. Workflows and tasks then carry it and show only to that tenant ([chapter 6](06-processing.md#tenants)) |
+| `meta.tenant_id()` | text | The current session's tenant, or NULL (APEX: `sys_context('APEX$SESSION', 'APP_TENANT_ID')`); in a workflow step, the workflow's tenant |
+| `meta.v_boolean(name)` | boolean | An item's value as a boolean (APEX 26.1: BOOLEAN session state): `true`, `t`, `yes`, `y`, `1`, `on` → true; `false`, `f`, `no`, `n`, `0`, `off` → false; empty or anything else → NULL. Switches and checkboxes store `true` / `false`, so `:P3_ACTIVE::boolean` works in SQL too |
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
 | `meta.url_encode(text)` | text | Percent-encodes a URL component |
@@ -27,11 +30,14 @@ triggers, your own functions).
 | `meta.web_request_source(source, params jsonb default null, timeout_s default null)` | bigint | Queue a call of a [REST data source](19-rest-data-sources.md) of the app (its URL, method, headers and web credential; parameter values as text) |
 | `meta.web_response(id)` | jsonb | The request's state and response: `status` (`queued`, `running`, `ok`, `error`), `status_code`, `headers`, `content_type`, `body` (text), `json` (the body parsed when it is JSON), `size`, `url`, `message`, times. NULL for a request of another application |
 | `meta.web_response_blob(id)` | bytea | The response body as bytes (files, images) |
-| `meta.parse_data(content bytea, file_name, format, headers, delimiter, row_selector, skip_rows, max_rows)` | table | The rows of a CSV/TSV or JSON file (APEX: `apex_data_parser.parse`): `line_number`, `cols` (text[] by position), `data` (jsonb by column name). See [parsing files](#parsing-files-in-sql) |
+| `meta.parse_data(content bytea, file_name, format, headers, delimiter, row_selector, skip_rows, max_rows)` | table | The rows of a CSV/TSV, JSON, XML or Excel file (APEX: `apex_data_parser.parse`): `line_number`, `cols` (text[] by position), `data` (jsonb by column name). See [parsing files](#parsing-files-in-sql) |
 | `meta.parse_data_columns(…the same arguments)` | table | The file's columns (APEX: `apex_data_parser.get_columns`): `column_position`, `column_name`, `heading`, `data_type` |
+| `meta.zip_add(zip bytea, name, content bytea)`, `meta.zip_finish(zip)` | bytea | Build a zip (APEX: `apex_zip.add_file`, `apex_zip.finish`); see [zip files](#zip-files-in-sql) |
+| `meta.zip_agg(name, content order by …)` | bytea | Aggregate: one zip of the rows' files |
+| `meta.zip_entries(zip)`, `meta.zip_entry(zip, name)` | table / bytea | The files in a zip and one file's content (APEX: `apex_zip.get_files`, `apex_zip.get_file_content`) |
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
-`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.debug_level`, `pgapex.public_url`
+`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.tenant_id`, `pgapex.debug_level`, `pgapex.public_url`
 (the server's `PUBLIC_URL`), `pgapex.web_pending` (set by `meta.web_request`).
 
 ### Web requests from SQL
@@ -86,6 +92,23 @@ select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
   knows an id can read the response, so don't let users choose the id when responses differ per user.
 - Application roles can't read `meta.web_request_log`; the owner can, e.g. in the SQL Workshop:
   `select id, status, status_code, url, message from meta.web_request_log order by id desc`.
+
+### Push notifications from SQL
+
+APEX_PWA push notifications ([chapter 17](17-mobile.md#push-notifications)); the application needs
+push notifications on (Settings → Progressive Web App).
+
+| Function | Returns |
+|---|---|
+| `meta.send_push(p_user, p_title, p_body, p_page, p_items, p_tag, p_urgency, p_ttl_s)` | Queues a notification for every device of `p_user` that turned notifications on, and returns its id. `p_title` (required, at most 200 characters), `p_body` (at most 1000), `p_page` + `p_items` (a page of the application and item values: the link, signed for the recipient), `p_tag` (1–32 letters, digits, `-`, `_`: replaces an older notification with the same tag), `p_urgency` (`very-low`, `low`, `normal`, `high`), `p_ttl_s` (how long the push service keeps it for an offline device, default 86400, at most 28 days) |
+| `meta.has_push_subscription(p_user)` | Whether the user (default: the current one) has a device with notifications on (APEX_PWA.HAS_PUSH_SUBSCRIPTION) |
+
+The message is sent by the pgapex server **after the transaction commits** (a rolled-back
+transaction sends nothing), at once when the server is notified, otherwise on the scheduler's next
+pass. At most 1000 messages per application wait at a time. Application roles can't read the
+queue; the owner can: `select id, username, status, devices, delivered, message from meta.push_message
+order by id desc` (`sent`: at least one device received it; `no_device`; `error`). Messages are kept
+7 days.
 
 ### AI requests from SQL
 
@@ -156,13 +179,73 @@ select p.cols[1] as name, p.cols[3]::numeric as salary from meta.parse_data(:fil
   unique); types are inferred over all rows: `integer`, `bigint`, `numeric`, `boolean`, `date`
   (ISO), `timestamp`, else `text`.
 - Text is read as UTF-8 (with or without a byte order mark), else as Windows-1252.
-- **Excel (.xlsx) is not supported in SQL**: an `.xlsx` file is a zip archive of compressed parts and
-  PostgreSQL has no function to decompress them. `meta.parse_data` says so; load Excel files with a
-  [`data_load` process or a data load definition](16-files.md#data-loading) (which read `.xlsx` in
-  the server), or save the sheet as CSV. **XML** isn't parsed either: use PostgreSQL's `xmltable()`
-  or the data loader.
+- **XML** (`.xml`, or text starting with `<`): the rows of a repeating element, as the data loader
+  reads them. `p_row_selector` names the row element (`employee`, or a path ending in it:
+  `employees/employee`); without it the element path that occurs most often among elements with
+  children or attributes. Columns are the row's attributes (`@id` → column `id`), its child
+  elements (`name`) and deeper elements by path (`address/city` → `address_city`); namespace
+  prefixes are ignored. Documents with a DTD or entity declarations are refused.
+- **Excel (.xlsx)**: an `.xlsx` file is a zip archive of compressed parts, and PostgreSQL can't
+  decompress. pgapex reads the sheets **when it receives the file**: a file item's upload (so
+  `meta.temp_files` content works) or a [`meta.web_request()`](#web-requests-from-sql) response, and
+  keeps them for 24 hours, found by the file's content. `p_row_selector` names the sheet (default:
+  the first); cells are text as the data loader writes them (dates `YYYY-MM-DD`). Other `.xlsx`
+  content (e.g. a file column of a table) gives an error that says so: load it with a
+  [`data_load` process](16-files.md#data-loading).
 - It runs as the caller (no special rights) and within the statement time limit (a 4 MB CSV file
   of 100,000 rows takes about a second).
+
+### Zip files in SQL
+
+APEX_ZIP in SQL. Build a zip from files, for a download process or a web request body:
+
+```sql
+-- one row per file
+select meta.zip_agg(d.filename, d.content order by d.filename) as content, 'documents.zip' as file_name, 'application/zip' as mime_type
+  from hr.emp_document d where d.empno = :P3_EMPNO;
+
+-- or step by step, like apex_zip.add_file / finish
+declare z bytea;
+begin
+  z := meta.zip_add(z, 'report.csv', convert_to(csv_text, 'UTF8'));
+  z := meta.zip_add(z, 'images/logo.png', logo);
+  z := meta.zip_finish(z);
+end;
+```
+
+Entries are stored uncompressed (PostgreSQL has no compression in SQL); names are relative paths
+in UTF-8 (`..` and leading `/` are refused). For big downloads a `download` process with several
+rows makes a compressed zip in the server instead ([chapter 6](06-processing.md#download)).
+
+Read one:
+
+```sql
+select name, size from meta.zip_entries((select content from meta.temp_files where item_name = 'P8_ZIP'));
+select meta.zip_entry(:zip, 'data/employees.csv');   -- bytea, or null when there's no such file
+select * from meta.parse_data(meta.zip_entry(:zip, 'data/employees.csv'), 'employees.csv');
+```
+
+`meta.zip_entries` and `meta.zip_entry` read zips built in SQL directly. Compressed zips (nearly
+all others) are unpacked by pgapex when it receives them, like Excel files above (a file item's
+upload or a web response; at most 2,000 files and 200 MB unpacked), and read from there for 24
+hours; for any other compressed zip they say so.
+
+### From APEX_JSON
+
+PostgreSQL's JSON functions do what `APEX_JSON` does, in SQL:
+
+| APEX_JSON | PostgreSQL |
+|---|---|
+| `apex_json.open_object` … `write('name', value)` … `close_object` | `jsonb_build_object('name', value, …)` |
+| `open_array` … `close_array` over a cursor | `jsonb_agg(jsonb_build_object(…) order by …)` from a query |
+| `write(p_cursor)` | `select jsonb_agg(to_jsonb(t)) from (…) t` (column names become keys) |
+| `get_clob_output` | the value itself (`::text` for text) |
+| `parse(text)` then `get_varchar2('a.b')`, `get_number`, `get_count` | `doc #>> '{a,b}'`, `(doc ->> 'n')::numeric`, `jsonb_array_length(doc -> 'items')` |
+| `apex_json.find_paths_like` | `jsonb_path_query(doc, '$.**.name')` |
+| `apex_json.to_xmltype` / JSON_TABLE | `json_table(doc, '$.items[*]' columns (…))` (PostgreSQL 17) or `jsonb_to_recordset(doc -> 'items')` |
+
+Web services return JSON through [`meta.web_response(id) -> 'json'`](#web-requests-from-sql), and
+[`meta.parse_data`](#parsing-files-in-sql) turns a JSON file into rows.
 
 ## Functions for developers and scripts
 
@@ -353,6 +436,9 @@ navigation entries and application processes have the same `build_option` column
 | `debug_view` | [Debug messages](06-processing.md#debug-messages): one row per recorded request: `app_id`, `page_no`, `username`, `session_id`, `method`, `path` (without the query string), `status`, `level`, `started_at`, `elapsed_ms`, `entries`. Written through `meta.debug_save()` (runtime role only), not exported | no |
 | `debug_message` | The entries of a recorded request: `view_id`, `seq`, `elapsed_ms` (since the start), `duration_ms` (timed steps), `level`, `component`, `message` | no |
 | `web_request_log` | [Web requests from SQL](#web-requests-from-sql): `app_id`, `status`, the request (`url` or `source` + `params`, `method`, `headers`, `body`, `credential` name, `timeout_s`), `requested_by`, times, the response (`status_code`, `response_url`, `response_headers`, `response_body`), `message`. Kept 24 hours, not exported | no (through `meta.web_response`) |
+| `push_key` | The VAPID key pair of an application with [push notifications](17-mobile.md#push-notifications): `public_key`, `private_key` (encrypted with `PGAPEX_SECRET_KEY`). Not exported | no |
+| `push_subscription` | Devices with notifications on: `app_id`, `username`, `endpoint` (the push service URL), the device's keys `p256dh` and `auth`, `user_agent`, `created_at`, `last_sent_at`, `failures`. Not exported | no (through `meta.has_push_subscription`) |
+| `push_message` | [Push notifications from SQL](#push-notifications-from-sql): `app_id`, `username`, `title`, `body`, `url`, `tag`, `urgency`, `ttl_s`, `status`, `attempts`, `devices`, `delivered`, `message`, `requested_by`, times. Kept 7 days, not exported | no |
 | `ai_service` | [AI services](06-processing.md#generate-text-with-ai) of the installation: `name`, `provider` (`anthropic`, `openai`), `model`, `effort`, `refusal_fallback`, `max_tokens`, `timeout_s`, `base_url`, `api_key_enc` (encrypted with `PGAPEX_SECRET_KEY`, write-only), `enabled`. Not exported | no |
 | `app_ai_service` | Which applications may use which AI service, with daily limits `max_requests` and `max_tokens` (null: no limit). Not exported | no (through `meta.ai_available`) |
 | `ai_usage` | One row per AI request: `at`, `app_id`, `page_no`, `username`, `service`, `provider`, `model`, `source`, `input_tokens`, `output_tokens`, `duration_ms`, `status`, `message` (an error class, never prompt or answer text). Not exported | no |
@@ -426,8 +512,24 @@ from it, for example with a scheduled
 
 ## Icons
 
-136 line icons (`public/icons.svg`), usable in navigation entries, list entries and cards (`icon` column). The
-builder shows them as a picker with a filter box; unknown names show no icon.
+136 line icons of pgapex's own (`public/icons.svg`, listed below), and (0.31) the **Lucide** set of about
+1,600 more in the same 24×24 line style ([lucide.dev/icons](https://lucide.dev/icons/), ISC licence, shipped
+with pgapex; APEX: Font APEX), usable in navigation entries, list entries, cards (`icon` column) and
+template components. An icon value is a name followed by optional **modifiers**:
+
+```text
+users                  pgapex's own icon
+car-front              a Lucide icon (pgapex's own wins where both have the name)
+fa-car-front fa-lg     Font APEX style: the fa- prefix is dropped, so Font APEX names work where Lucide has the icon
+refresh spin           modifiers: xs sm lg 2x 3x 4x · spin pulse · rotate-90 rotate-180 rotate-270 · flip-h flip-v
+truck flip-h success   · colours success warning danger info muted
+```
+
+Unknown names show no icon; unknown modifiers are ignored. `spin` and `pulse` stand still for users who
+ask for reduced motion. Each Lucide icon is its own small file (`/static/icon/<name>.svg`, cached for good,
+versioned with the package), so a page loads only the icons it shows. In the builder the icon picker shows
+pgapex's icons; its filter box also searches the Lucide icons by name and search word (`vehicle` finds
+`car`, `bus`, …), and **Or any icon, with modifiers** takes any value (checked on save).
 
 `home` `users` `user` `building` `chart` `table` `list` `calendar` `shield` `history` `settings` `org` `grid`
 `file` `check` `menu` `logout` `plus` `download` `filter` `database` `code` `activity` `inbox` `close`

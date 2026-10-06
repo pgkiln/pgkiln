@@ -33,6 +33,8 @@ import { moveCalendarEvent } from './calendar.ts';
 import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
 import { invalidatePage, lazyOf } from './region-cache.ts';
 import { applyRowSelection, mastersOf } from './master-detail.ts';
+import { layerInArea, layerTile, parseTile, servedLayer } from './maps.ts';
+import { parseArea } from './spatial.ts';
 import { currentLayout, layoutJson, layoutParam, parseLayout, storeLayout } from './grid-layout.ts';
 import { layoutFromForm, statePart } from './grid.ts';
 import { PassThrough } from 'node:stream';
@@ -44,7 +46,7 @@ import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-type Params = { alias: string; page?: string; id?: string; item?: string; sid?: string };
+type Params = { alias: string; page?: string; id?: string; item?: string; sid?: string; n?: string; z?: string; x?: string; y?: string };
 type Body = Record<string, string | undefined>;
 export type Req = FastifyRequest<{ Params: Params; Body: Body }>;
 
@@ -201,6 +203,9 @@ export const txContext = (ctx: PageContext) => ({
   lang: ctx.locale.lang,
   timeZone: ctx.locale.timeZone,
   debug: ctx.debug,
+  // tasks for after this transaction (object storage: src/objectstore.ts)
+  afterCommit: (ctx.afterCommit ??= []),
+  afterRollback: (ctx.afterRollback ??= []),
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */
@@ -671,6 +676,51 @@ export async function runtimeRoutes(app: FastifyInstance) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
       return reply.code(400).send({ error: await publicError(ctx, e, 'row selection') });
     }
+  });
+
+  // ---------------------------------------------------------------- map layers loaded by the browser
+  // (0.31) A map layer with "visible_area" (JSON for ?bb=south,west,north,east)
+  // or "tiles" (Mapbox Vector Tiles, …/tiles/<layer>/<z>/<x>/<y>.mvt). Page
+  // access and the region's condition and authorization are checked as for
+  // the page; the query runs as the application's role with the session's
+  // item values (read only); the area condition is built on the server.
+  const mapLayer = async (req: Req, reply: FastifyReply, how: 'area' | 'tiles', run: (ctx: PageContext, def: NonNullable<ReturnType<typeof servedLayer>>) => Promise<unknown>) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const r = ctx.page.regions.find((x) => x.id === Number(req.params.id));
+        const def = r && vis.regions.has(r.id) ? servedLayer(r, Number(req.params.n), how) : null;
+        if (!def) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        return run(ctx, def);
+      });
+      return out;
+    } catch (e) {
+      if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'map layer') });
+    }
+  };
+  app.get('/a/:alias/:page/map/:id/layer/:n', async (req: Req, reply) => {
+    const area = parseArea(String((req.query as Record<string, unknown>)?.bb ?? ''));
+    if (!area) return reply.code(400).send({ error: 'bb: south,west,north,east' });
+    const out = await mapLayer(req, reply, 'area', (ctx, def) => layerInArea(ctx, def, area));
+    if (reply.sent || !out) return;
+    reply.header('cache-control', 'private, no-store');
+    return reply.send(out);
+  });
+  app.get('/a/:alias/:page/map/:id/tiles/:n/:z/:x/:y', async (req: Req, reply) => {
+    const t = parseTile(req.params.z ?? '', req.params.x ?? '', req.params.y ?? '');
+    if (!t) return reply.code(404).send({ error: 'Not found' });
+    const out = (await mapLayer(req, reply, 'tiles', (ctx, def) => layerTile(ctx, def, t))) as Awaited<ReturnType<typeof layerTile>> | undefined;
+    if (reply.sent || !out) return;
+    // the page's tile URLs carry a version (v=), so a minute in the browser's cache is safe
+    reply.header('cache-control', 'private, max-age=60');
+    reply.header('content-type', 'application/vnd.mapbox-vector-tile');
+    if (out.truncated) reply.header('x-pgapex-truncated', '1');
+    return reply.send(out.tile);
   });
 
   // ---------------------------------------------------------------- lazy regions

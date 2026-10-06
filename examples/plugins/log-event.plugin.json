@@ -1,0 +1,29 @@
+{
+  "format": "pgapex-plugin/2",
+  "type": "process",
+  "name": "log_event",
+  "label": "Log an event",
+  "version": "1.0.0",
+  "help": "Records an event (name and detail, with the user and time) in pgapex_plugins.event_log and shows MESSAGE. Run the install SQL once; the application's role needs CREATE on the database for it (or run it in the SQL Workshop and grant the role access).",
+  "attributes": [
+    {
+      "name": "EVENT",
+      "label": "Event",
+      "type": "text",
+      "default": "event"
+    },
+    {
+      "name": "DETAIL",
+      "label": "Detail (may use &ITEM.)",
+      "type": "text"
+    },
+    {
+      "name": "MESSAGE",
+      "label": "Message",
+      "type": "text"
+    }
+  ],
+  "sql_function": "pgapex_plugins.log_event",
+  "files": [],
+  "install_sql": "-- Log an event (process plug-in): the table and the function the process calls.\ncreate schema if not exists pgapex_plugins;\n\ncreate table if not exists pgapex_plugins.event_log (\n  id       bigint generated always as identity primary key,\n  at       timestamptz not null default now(),\n  app_user text,\n  event    text not null,\n  detail   text\n);\n\ncreate or replace function pgapex_plugins.log_event(p_attributes jsonb) returns text\nlanguage plpgsql as $$\nbegin\n  insert into pgapex_plugins.event_log (app_user, event, detail)\n  values (meta.app_user(), coalesce(nullif(p_attributes->>'EVENT', ''), 'event'), nullif(p_attributes->>'DETAIL', ''));\n  return nullif(p_attributes->>'MESSAGE', '');\nend\n$$;\n"
+}

@@ -30,6 +30,7 @@ import { cell, columnFormats, maxRows, regionUrl, renderReport } from './report.
 import { cacheKey, cacheOf, lazyOf, renderCaching, useCached } from './region-cache.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { templateClasses } from './template-options.ts';
+import { renderPluginRegion } from './plugins.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -341,6 +342,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
     case 'template_component':
       body = await renderTemplateRegion(ctx, r);
       break;
+    case 'plugin':
+      body = await renderPluginRegion(ctx, r, renderTemplateRegion);
+      break;
     case 'data_reporter':
       body = await renderDataReporter(ctx, r);
       break;
@@ -373,9 +377,11 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   const cls = `region region-${r.type} region-${r.template} col-${r.columns}${templateClasses('region', r.template_options)}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
   const titleId = `R${r.id}_title`;
+  // (0.31) the region's static id, for CSS and JavaScript (the element id stays R<id>)
+  const staticAttr = r.static_id ? raw(` data-static-id="${esc(r.static_id)}"`) : '';
 
   if (r.template === 'plain')
-    return html`<section class="${cls}" id="R${r.id}"${hiddenAttr} aria-label="${r.title}">
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
       ${buttonsOnTop && buttons ? html`<div class="region-toolbar">${buttons}</div>` : ''}
       ${body}
       ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
@@ -383,13 +389,13 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
 
   const header = html`<h2 id="${titleId}">${r.title}</h2>${buttonsOnTop ? buttons : ''}`;
   if (r.template === 'collapsible')
-    return html`<section class="${cls}" id="R${r.id}"${hiddenAttr} aria-labelledby="${titleId}">
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
       <details open><summary class="region-header">${header}</summary>
         <div class="region-body">${body}</div>
         ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
       </details></section>`;
 
-  return html`<section class="${cls}" id="R${r.id}"${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
+  return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
     ${r.title || (buttonsOnTop && buttons) ? html`<header class="region-header">${header}</header>` : ''}
     <div class="region-body">${body}</div>
     ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}

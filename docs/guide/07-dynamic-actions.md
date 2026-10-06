@@ -2,7 +2,9 @@
 
 Dynamic actions add behaviour in the browser without writing JavaScript: showing and hiding
 fields, filling in values computed by SQL, refreshing a region. They are the one part of pgapex
-that needs JavaScript; without it, pages still work, just without these conveniences.
+that needs JavaScript; without it, pages still work, just without these conveniences. When the
+built-in actions are not enough, [Execute JavaScript](#execute-javascript) calls a function of
+your own from a static application file.
 
 ## Anatomy
 
@@ -13,10 +15,11 @@ that needs JavaScript; without it, pages still work, just without these convenie
 | `condition_type`, `condition_value` | Optional client-side condition on the (first) trigger item's value (for `dialog_closed`: on the dialog's page number): `equals`, `not_equals`, `in_list` (comma-separated values), `is_null`, `is_not_null` |
 | `action` | What to do, see below |
 | `affected_items`, `affected_region_id` | What it acts on |
-| `code` | SQL for server-side actions |
+| `code` | SQL for server-side actions; the function's name for `execute_javascript` |
 | `items_to_submit` | Items whose current browser values are sent to the server first |
 | `message` | Text for `alert`, `show_success` and `show_error` |
 | `css_classes` | Class names for `add_class` / `remove_class` |
+| `config` | A `plugin` action's attribute values: `{"attributes": {"MESSAGE": "Copied."}}` |
 | `authz` | Only for authorized users |
 | `build_option` | Only while the [build option](06-processing.md#build-options) is included |
 
@@ -39,9 +42,52 @@ that needs JavaScript; without it, pages still work, just without these convenie
 | `clear_errors` | browser | Removes the error messages of the affected items, or all of them |
 | `ai_generate` | server | Runs the [Generate text with AI](06-processing.md#generate-text-with-ai) process named in `code` (a process of type `ai_generate` on the same page, with that process's authorization and condition) and updates its output items, without submitting the page. Items to submit default to the page items its prompts use (never password items); the affected items default to its output items. On a submit button the button waits for the answer; without JavaScript the button submits the page and the process runs as usual |
 
+| `plugin` | browser | Runs the [dynamic action plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code) named in `code`, with `config` `{"attributes": {…}}` (`&ITEM.` filled in); the function gets the same context as *Execute JavaScript* plus `attributes` |
+| `execute_javascript` | browser | Calls the function named in `code`, which a [static application file](03-builder.md#static-application-files) registered; see [below](#execute-javascript) |
+| `push_subscribe` | browser | Turns on [push notifications](17-mobile.md#push-notifications) on the user's device: the browser asks for permission, then the device is registered. Use it with `click` (browsers ask only after one). `message` is shown when it worked, the browser's reason when not. The app needs push notifications on |
+
 Server-side actions first store `items_to_submit` in session state, run as the application's
 database role like everything else, and check the page's and the dynamic action's authorization.
 The SQL itself never reaches the browser.
+
+## Execute JavaScript
+
+APEX's *Execute JavaScript Code* runs code typed into the action. pgapex's Content-Security-Policy
+allows no inline scripts, so the code lives in a **static application file** instead (Shared
+Components → Static application files, [chapter 3](03-builder.md#static-application-files)) and
+the action names the function to call:
+
+```js
+// hr.js, loaded by every page (Static application files → Every page loads)
+pgapex.actions.register('hr.annualSalary', (da) => {
+  const monthly = Number(pgapex.getValue('P3_SAL')) || 0;
+  for (const field of da.elements) field.dataset.annual = String(monthly * 12);
+});
+```
+
+| event | trigger | action | affected | code |
+|---|---|---|---|---|
+| `change` | `P3_SAL` | `execute_javascript` | `P3_SAL` | `hr.annualSalary` |
+
+The function gets one argument with the action's context:
+
+| Property | Meaning |
+|---|---|
+| `value` | The trigger item's value (change events) |
+| `items` | The names of the affected items |
+| `elements` | The affected items' fields and the affected region, as DOM elements |
+| `region` | The affected region's element, or `null` |
+| `message` | The action's message |
+
+It may return a promise; an exception is shown as an error message. Besides `actions.register`,
+`window.pgapex` offers `getValue(item)`, `setValue(item, value)`, `showSuccess(message)`,
+`showError(message, item?)`, `clearErrors(...items)` and `page` (the page number). A function
+registered later than the page loads is still found: the action waits until every deferred script
+has run. The name may contain letters, digits, `_`, `$`, `.` and `-`; the page only ever receives
+the name, never code. An action whose function is not registered writes a warning to the browser
+console and does nothing.
+
+The HR example (part 46) shows the salary per year under the salary field of page 3 this way.
 
 ## Examples (from the HR sample)
 

@@ -41,6 +41,15 @@ export interface WebRequest {
   body?: string | Buffer;
   timeoutMs?: number;
   maxBytes?: number;
+  /** maxBytes may exceed PGAPEX_REST_MAX_BYTES (object storage: files up to MAX_UPLOAD_MB) */
+  allowLarge?: boolean;
+  /** an allow-list of its own instead of PGAPEX_REST_ALLOWED_HOSTS / PGAPEX_REST_PRIVATE_HOSTS (push services) */
+  hosts?: HostLists;
+}
+
+export interface HostLists {
+  allowed: string[];
+  private: string[];
 }
 
 export interface WebResponse {
@@ -51,7 +60,7 @@ export interface WebResponse {
   url: string;
 }
 
-const list = (v: string | undefined) => (v ?? '').split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+export const list = (v: string | undefined) => (v ?? '').split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
 
 export const maxResponseBytes = () => {
   const n = Number(process.env.PGAPEX_REST_MAX_BYTES);
@@ -74,8 +83,10 @@ function matches(entries: string[], url: URL) {
   });
 }
 
+const restHosts = (): HostLists => ({ allowed: list(process.env.PGAPEX_REST_ALLOWED_HOSTS), private: list(process.env.PGAPEX_REST_PRIVATE_HOSTS) });
+
 /** Why the URL may not be called (null: it may, so far as the host name goes). */
-export function urlProblem(raw: string | URL): string | null {
+export function urlProblem(raw: string | URL, hosts: HostLists = restHosts()): string | null {
   let url: URL;
   try {
     url = typeof raw === 'string' ? new URL(raw) : raw;
@@ -84,9 +95,8 @@ export function urlProblem(raw: string | URL): string | null {
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'Only http and https URLs can be called.';
   if (url.username || url.password) return 'The URL may not contain a user name or password: use a web credential.';
-  const priv = list(process.env.PGAPEX_REST_PRIVATE_HOSTS);
-  if (!matches([...list(process.env.PGAPEX_REST_ALLOWED_HOSTS), ...priv], url))
-    return `The host ${url.host} is not on the server's allow-list (PGAPEX_REST_ALLOWED_HOSTS).`;
+  const priv = hosts.private;
+  if (!matches([...hosts.allowed, ...priv], url)) return `The host ${url.host} is not on the server's allow-list (PGAPEX_REST_ALLOWED_HOSTS).`;
   const host = url.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(host) && isPrivateAddress(host) && !matches(priv, url))
     return `The address ${host} is private, loopback or link-local (allow it with PGAPEX_REST_PRIVATE_HOSTS).`;
@@ -151,7 +161,7 @@ function guardedLookup(allowPrivate: boolean) {
 // ---------------------------------------------------------------- requests
 
 function once(url: URL, req: WebRequest, deadline: number, maxBytes: number): Promise<WebResponse> {
-  const allowPrivate = matches(list(process.env.PGAPEX_REST_PRIVATE_HOSTS), url);
+  const allowPrivate = matches((req.hosts ?? restHosts()).private, url);
   const lib = url.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
     const left = deadline - Date.now();
@@ -207,7 +217,7 @@ function once(url: URL, req: WebRequest, deadline: number, maxBytes: number): Pr
 
 /** Call a web service with the server's protections (see the top of this file). */
 export async function webRequest(raw: string, req: WebRequest = {}): Promise<WebResponse> {
-  const maxBytes = Math.min(req.maxBytes ?? maxResponseBytes(), maxResponseBytes());
+  const maxBytes = req.allowLarge && req.maxBytes ? req.maxBytes : Math.min(req.maxBytes ?? maxResponseBytes(), maxResponseBytes());
   const deadline = Date.now() + Math.min(Math.max(req.timeoutMs ?? 10_000, 100), 60_000);
   let url = new URL(raw);
   let headers: Record<string, string> = { 'user-agent': 'pgapex', 'accept-encoding': 'gzip, deflate', ...req.headers };
@@ -215,7 +225,7 @@ export async function webRequest(raw: string, req: WebRequest = {}): Promise<Web
   let body = req.body;
   const origin = url.origin;
   for (let hop = 0; ; hop++) {
-    const problem = urlProblem(url);
+    const problem = urlProblem(url, req.hosts);
     if (problem) throw new WebError(problem);
     const res = await once(url, { ...req, method, headers, body }, deadline, maxBytes);
     const location = res.headers.location;

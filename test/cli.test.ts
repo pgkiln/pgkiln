@@ -17,7 +17,7 @@ import { pendingMigrations } from '../src/migrate.ts';
 import { Browser } from './helpers.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'pgapex-cli-'));
-const COPIES = ['hr_cli_rt', 'hr_cli_rep', 'hr_cli_zip'];
+const COPIES = ['hr_cli_rt', 'hr_cli_rep', 'hr_cli_zip', 'hr_cli_txt'];
 let app: FastifyInstance;
 
 before(async () => {
@@ -195,6 +195,73 @@ describe('pgapex command line', () => {
     assert.equal(cli('export', 'hr', '-o', file).code, 0);
     assert.equal(cli('diff', 'hr', file).code, 0);
     cli('export', 'hr', '-f', 'dir', '-o', dir);
+  });
+
+  test('the text style (APEXlang-like): YAML with the code inline, lossless, imported and compared like the JSON one', async () => {
+    const dir = join(tmp, 'hr-text');
+    const r = cli('export', 'hr', '-f', 'text', '-o', dir);
+    assert.equal(r.code, 0, r.err);
+    const files = readDir(dir);
+    assert.deepEqual(JSON.parse(files.get('pgapex.json')!.toString()), { format: 'pgapex/2', layout: 1, style: 'text' });
+    const paths = [...files.keys()];
+    assert.ok(!paths.some((p) => p.endsWith('.json') && p !== 'pgapex.json' && !p.startsWith('static/')), 'every component is YAML');
+    assert.ok(!paths.some((p) => /\.(sql|html)$/.test(p) && !p.startsWith('static/')), 'code is inline, not in sibling files');
+    assert.ok(files.has('app.yaml') && files.has('navigation.yaml'));
+    const region = paths.find((p) => p.startsWith('pages/0002-employees/regions/') && files.get(p)!.toString().includes('source: |2'))!;
+    assert.ok(region, 'a region with its query as a literal block');
+    assert.match(files.get(region)!.toString(), /^source: \|2-?\n {2}select /m);
+    // lossless in memory, and through the CLI
+    const original = await exportDoc('hr');
+    assert.deepEqual(normalise(filesToDoc(docToFiles(original, 'text'))), normalise(original));
+    const imp = cli('import', dir, '--alias', 'hr_cli_txt');
+    assert.equal(imp.code, 0, imp.err);
+    assert.deepEqual(normalise(await exportDoc('hr_cli_txt')), normalise(original));
+    // diff compares in the directory's style
+    const same = cli('diff', 'hr', dir);
+    assert.equal(same.code, 0, same.out + same.err);
+    writeFileSync(join(dir, region), files.get(region)!.toString().replace(/^source: \|2(-?)\n {2}select /m, 'source: |2$1\n  select 1 as changed, '));
+    const d = cli('diff', 'hr', dir);
+    assert.equal(d.code, 1);
+    assert.match(d.out, new RegExp(`^M ${region.replace(/\./g, '\\.')}$`, 'm'));
+    assert.match(d.out, /^\+ {2}select 1 as changed, /m);
+  });
+
+  test('a directory may mix JSON and YAML files; the same component twice is refused', () => {
+    const doc = { format: 'pgapex/2', app: { alias: 'x', name: 'X' }, lovs: [{ name: 'DEPTS', query: 'select 1' }], pages: [{ page_no: 1, name: 'Home', regions: [{ id: 1, seq: 10, title: 'Main', type: 'static', source: 'x' }] }] };
+    const json = docToFiles(doc);
+    const text = docToFiles(doc, 'text');
+    const mixed = new Map(json);
+    mixed.delete('shared/lovs/depts.json');
+    mixed.set('shared/lovs/depts.yaml', text.get('shared/lovs/depts.yaml')!);
+    mixed.delete('app.json');
+    mixed.set('app.yaml', text.get('app.yaml')!);
+    assert.deepEqual(filesToDoc(mixed), filesToDoc(json));
+    mixed.set('shared/lovs/depts.json', json.get('shared/lovs/depts.json')!);
+    assert.throws(() => filesToDoc(mixed), /depts\.json and depts\.yaml are the same component/);
+    mixed.delete('shared/lovs/depts.json');
+    mixed.set('app.json', json.get('app.json')!);
+    assert.throws(() => filesToDoc(mixed), /app\.json and app\.yaml are the same file/);
+    // a YAML error names the file and line
+    const broken = new Map(text);
+    broken.set('shared/lovs/depts.yaml', Buffer.from('name: DEPTS\nname: again\n'));
+    assert.throws(() => filesToDoc(broken), /shared\/lovs\/depts\.yaml, line 2: the key "name" appears twice/);
+  });
+
+  test('a region with a stored static id is named by it; derived keys keep out of its way', () => {
+    assert.deepEqual(
+      regionKeys([{ title: 'Employees' }, { title: 'Other', static_id: 'employees' }, { title: 'Employees' }, { title: 'X', static_id: 'Bad Id' }]),
+      ['employees-2', 'employees', 'employees-3', 'x'],
+    );
+    const doc = { format: 'pgapex/2', app: { alias: 'x' }, pages: [{ page_no: 1, name: 'Home',
+      regions: [{ id: 7, seq: 10, title: 'Renamed title', static_id: 'staff', type: 'report', source: 'select 1' }, { id: 8, seq: 20, title: 'Map', type: 'map', config: { report: 7 } }],
+      items: [{ name: 'P1_X', region_id: 7 }] }] };
+    const files = docToFiles(doc);
+    assert.ok(files.has('pages/0001-home/regions/0010-staff.json'));
+    assert.equal(JSON.parse(files.get('pages/0001-home/regions/0020-map.json')!.toString()).config.report, 'staff');
+    assert.equal(JSON.parse(files.get('pages/0001-home/items/none-p1_x.json')!.toString()).region, 'staff', "an item's region by the static id");
+    const back = filesToDoc(files);
+    assert.equal(back.pages[0].regions[0].static_id, 'staff');
+    assert.equal(back.pages[0].regions[1].config.report, back.pages[0].regions[0].id);
   });
 
   test('import --replace updates in place and keeps installation data', async () => {

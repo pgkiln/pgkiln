@@ -384,21 +384,26 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
   set('empty', b.empty?.trim() || undefined);
   set('link', mergeLink(b, a.pages));
   set('layer', b.layer === 'heat' ? 'heat' : undefined);
-  set('cluster', b.cluster === 'true' && b.layer !== 'heat' ? true : undefined);
+  set('cluster', b.cluster === 'true' && b.layer !== 'heat' && b.load !== 'tiles' ? true : undefined);
   set('name', b.name?.trim().slice(0, 60) || undefined);
+  set('visible_area', b.load === 'area' ? true : undefined);
+  set('tiles', b.load === 'tiles' ? true : undefined);
   const report = Number(b.report);
   set('report', b.report && a.reports.has(report) ? report : undefined);
   set('filter', b.filter === 'distance' && out.report !== undefined ? 'distance' : undefined);
-  // more layers: layer<i>_source (empty: the layer is removed), _name, _layer, _cluster, _hidden, _link_page/_items
+  // more layers: layer<i>_source (empty: the layer is removed), _name, _layer, _cluster, _hidden, _load, _link_page/_items
   if (b.layers === '1') {
     const layers: Config[] = [];
     for (let i = 0; i < MAX_EXTRA_LAYERS; i++) {
       const source = b[`layer${i}_source`]?.trim();
       if (!source) continue;
       const layer: Config = { name: b[`layer${i}_name`]?.trim().slice(0, 60) || `Layer ${layers.length + 2}`, source };
+      const load = b[`layer${i}_load`];
       if (b[`layer${i}_layer`] === 'heat') layer.layer = 'heat';
-      else if (b[`layer${i}_cluster`] === 'true') layer.cluster = true;
+      else if (b[`layer${i}_cluster`] === 'true' && load !== 'tiles') layer.cluster = true;
       if (b[`layer${i}_hidden`] === 'true') layer.hidden = true;
+      if (load === 'area') layer.visible_area = true;
+      else if (load === 'tiles') layer.tiles = true;
       const link = mergeLink(b, a.pages, `layer${i}_link`);
       if (link) layer.link = link;
       layers.push(layer);
@@ -518,6 +523,14 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
 }
 
 /** A map's further layers, each with its own query: the filled ones and one empty to add (up to MAX_EXTRA_LAYERS). */
+/** How a map layer's rows reach the browser: with the page, for the visible area, or as vector tiles. */
+function loadField(id: (n: string) => string, name: string, l: Config) {
+  const load = l.tiles === true ? 'tiles' : l.visible_area === true ? 'area' : '';
+  return html`<div class="field"><label class="label" for="${id(name)}">Load</label>
+    <select id="${id(name)}" name="${name}">${opt('', 'All rows with the page', load)}${opt('area', 'Rows in the visible area', load)}${opt('tiles', 'Vector tiles (large data sets)', load)}</select>
+    <small class="help">The visible area and vector tiles need <code>lat</code>/<code>lng</code> (or a PostGIS geometry) and load again as the map moves. Vector tiles draw dots, lines and areas, without clustering or a list.</small></div>`;
+}
+
 async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_no: number; name: string }[], id: (n: string) => string) {
   const layers: Config[] = (Array.isArray(cfg.layers) ? cfg.layers : []).slice(0, MAX_EXTRA_LAYERS);
   const shown = layers.length < MAX_EXTRA_LAYERS ? [...layers, {}] : layers;
@@ -532,6 +545,7 @@ async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_n
           <input id="${id(`${p}_name`)}" name="${p}_name" value="${l.name ?? ''}" maxlength="60"></div>
         <div class="field"><label class="label" for="${id(`${p}_layer`)}">Show places as</label>
           <select id="${id(`${p}_layer`)}" name="${p}_layer">${opt('', 'Markers', l.layer)}${opt('heat', 'Heat map', l.layer)}</select></div>
+        ${loadField(id, `${p}_load`, l)}
         ${check(`${p}_cluster`, 'Group close markers', l.cluster === true)}
         ${check(`${p}_hidden`, 'Off at first', l.hidden === true)}
         <div class="field" data-wide><label class="label" for="${id(`${p}_source`)}">Query</label>
@@ -769,6 +783,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
             <select id="${id('height')}" name="height">${opt('small', 'Small', cfg.height)}${opt('', 'Medium', cfg.height)}${opt('large', 'Large', cfg.height)}</select></div>
           <div class="field"><label class="label" for="${id('zoom')}">Zoom for a single place (1–19)</label>
             <input id="${id('zoom')}" name="zoom" type="number" min="1" max="19" value="${cfg.zoom ?? ''}" placeholder="14"></div>
+          ${loadField(id, 'load', cfg)}
           ${check('cluster', 'Group markers that are close together (clustering)', cfg.cluster === true)}
           ${emptyField(id, cfg)}
         </div></fieldset>

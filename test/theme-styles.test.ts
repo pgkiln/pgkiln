@@ -432,3 +432,71 @@ describe('Theme Roller: dark-mode colours, live preview, items and report column
     }
   });
 });
+
+describe('conditional and dynamic style properties (0.31)', () => {
+  test('a colour may be an item reference; a condition is kept', () => {
+    assert.deepEqual(parseStyle({ name: 'Brand', accent: ' &app_brand. ', condition: " :APP_TENANT = 'north' " }), { name: 'Brand', accent: '&APP_BRAND.', condition: ":APP_TENANT = 'north'" });
+    for (const bad of ['&BRAND', '&1X.', '&A.B.', 'url(x)', '&A.;}body{x'])
+      assert.match(parseStyle({ name: 'x', accent: bad }) as string, /Accent colour: #rrggbb, or &ITEM\./, bad);
+    assert.match(parseStyle({ name: 'x', condition: 'x'.repeat(2001) }) as string, /Condition: at most/);
+  });
+
+  test('an item\'s value becomes a colour only when it is #rrggbb', () => {
+    const style = { name: 'Brand', accent: '&P1_COLOR.', header_dark: '&P1_DARK.' };
+    const values: Record<string, string> = { P1_COLOR: '#00AA11', P1_DARK: 'red;}body{background:url(//evil)' };
+    const css = themeCss({}, style, (n) => values[n]);
+    assert.match(css, /--accent:#00AA11/);
+    assert.doesNotMatch(css, /evil|red;/);
+    assert.equal(themeCss({}, style, () => undefined), '', 'no value: the base colours');
+  });
+
+  test('pages use the first style whose condition holds, unless the user chose one', async () => {
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    await owner.query(`insert into meta.computation (page_id, seq, item_name, point, type, expression) values ($1, 10, 'P1_COLOR', 'before_header', 'static', '#00aa11')`, [pageId]);
+    await owner.query(`insert into meta.item (page_id, seq, name, type) values ($1, 10, 'P1_COLOR', 'hidden')`, [pageId]);
+    const theme = (styles: unknown[]) => owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify({ ...before, styles })]);
+    try {
+      const anon = new Browser(app);
+      // a condition that holds picks its style over the default (Ocean); its accent comes from the item
+      await theme([...STYLES, { name: 'Branded', accent: '&P1_COLOR.', condition: ":P1_COLOR = '#00aa11'" }]);
+      let css = styleTag((await anon.get(`/a/${alias}/1`)).body);
+      assert.match(css, /--accent:#00aa11/);
+      assert.doesNotMatch(css, /#0b7285/, 'not the default style');
+      // conditions that do not hold, or fail, fall back to the default style
+      await theme([...STYLES, { name: 'Never', accent: '#111111', condition: 'false' }, { name: 'Broken', accent: '#222222', condition: 'no_such_column > 1' }]);
+      const page = await anon.get(`/a/${alias}/1`);
+      assert.equal(page.statusCode, 200);
+      css = styleTag(page.body);
+      assert.match(css, /#0b7285/);
+      assert.doesNotMatch(css, /#111111|#222222/);
+      // the user's own choice wins over a condition
+      await theme([...STYLES, { name: 'Always', accent: '#333333', condition: 'true' }]);
+      assert.match(styleTag((await anon.get(`/a/${alias}/1`)).body), /#333333/);
+      await anon.get(`/a/${alias}/1`);
+      await anon.post(`/a/${alias}/account/style`, { __csrf: anon.lastCsrf, style: 'Big text', next: `/a/${alias}/1` });
+      assert.doesNotMatch(styleTag((await anon.get(`/a/${alias}/1`)).body), /#333333/);
+    } finally {
+      await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify(before)]);
+      await owner.query(`delete from meta.computation where page_id = $1`, [pageId]);
+      await owner.query(`delete from meta.item where page_id = $1 and name = 'P1_COLOR'`, [pageId]);
+    }
+  });
+
+  test('the Theme Roller saves an item colour and a condition', async () => {
+    const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+    const dev = new Browser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    try {
+      const page = await dev.get(`/builder/apps/${appId}/theme`);
+      assert.match(page.body, /name="accent_item"/);
+      assert.match(page.body, /name="condition"/);
+      await dev.submit(`/builder/apps/${appId}/theme/styles`, { name: 'Tenant', accent: '#000000', accent_item: '&app_brand.', header_own: 'true', header: '#123456', condition: ":APP_TENANT = 'north'" });
+      const saved = appStyles((await owner.one('select theme from meta.app where id = $1', [appId])).theme).find((s) => s.name === 'Tenant');
+      assert.deepEqual(saved, { name: 'Tenant', accent: '&APP_BRAND.', header: '#123456', condition: ":APP_TENANT = 'north'" });
+      assert.match((await dev.get(`/builder/apps/${appId}/theme?edit=Tenant`)).body, /value="&amp;APP_BRAND\."/);
+    } finally {
+      await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify(before)]);
+    }
+  });
+});

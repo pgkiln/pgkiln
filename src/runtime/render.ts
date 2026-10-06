@@ -1,15 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { urlChecksum } from '../security.ts';
 import { pwaBody, pwaHead } from './pwa.ts';
+import { pushBody } from './push.ts';
 import { mapHead } from './maps.ts';
-import { appStyles, chosenStyle, chosenStyleName, styleChoice, themeCss } from './styles.ts';
+import { staticHead } from './static-files.ts';
+import { pluginAttributes, pluginOf } from './plugins.ts';
+import { appStyles, chosenStyle, chosenStyleName, conditionalStyles, styleChoice, themeCss } from './styles.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
 import { baseLanguage, LANGUAGE_NAMES } from '../i18n.ts';
 import type { NavEntry } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
-import { substitute, type PageContext } from './context.ts';
+import { stripSemicolon, dbg, bindValues, substitute, type PageContext } from './context.ts';
+import { applyBinds } from '../binds.ts';
+import { savepoint } from '../db.ts';
 import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
@@ -36,7 +41,16 @@ function dynamicActionsJson(ctx: PageContext) {
       message: d.message,
       // add_class / remove_class: names checked by the database (and again in app.js)
       classes: d.css_classes ? d.css_classes.split(' ').filter((c) => /^[a-z][a-z0-9_-]{0,39}$/.test(c)) : [],
+      // execute_javascript: the name of a function a static file registered (never code)
+      fn: d.action === 'execute_javascript' && /^[A-Za-z_$][\w$.-]{0,99}$/.test(d.code?.trim() ?? '') ? d.code!.trim() : null,
+      // plugin: the plug-in's name and attribute values (only a plug-in of the application)
+      ...(d.action === 'plugin' ? pluginAction(ctx, d.code, d.config) : {}),
     }));
+
+function pluginAction(ctx: PageContext, name: string | null, config: Record<string, any> | null | undefined) {
+  const p = pluginOf(ctx, name?.trim(), 'dynamic_action');
+  return p ? { plugin: p.name, attributes: pluginAttributes(ctx, p, config) } : { plugin: null };
+}
 }
 
 function conditionHolds(type: string | null, expected: string | null, value: string) {
@@ -121,7 +135,33 @@ async function breadcrumb(ctx: PageContext) {
 // ---------------------------------------------------------------- theme
 
 /** Per-app colours (Theme Roller) and the style variant in use. Only checked values reach the CSS (styles.ts). */
-export const themeStyle = (ctx: Pick<PageContext, 'app' | 'session'>) => themeCss(ctx.app.theme, chosenStyle(ctx.app, ctx.session));
+export const themeStyle = (ctx: Pick<PageContext, 'app' | 'session' | 'styleByCondition'>) =>
+  themeCss(ctx.app.theme, chosenStyle(ctx.app, ctx.session, ctx.styleByCondition), (name) => {
+    const v = ctx.session.state[name];
+    return typeof v === 'string' ? v : undefined;
+  });
+
+/**
+ * (0.31) Conditional styles: the first style whose condition holds for this
+ * request (as the application's role, with bind variables); an error counts
+ * as false and is recorded in the debug log.
+ */
+async function resolveConditionalStyle(ctx: PageContext) {
+  if (ctx.styleByCondition !== undefined || !ctx.client) return;
+  ctx.styleByCondition = null;
+  for (const st of conditionalStyles(ctx.app)) {
+    try {
+      const sql = stripSemicolon(applyBinds(`select (${st.condition})::boolean as ok`, bindValues(ctx)));
+      const r = await savepoint(ctx.client, () => ctx.client!.query(sql));
+      if (r.rows[0]?.ok === true) {
+        ctx.styleByCondition = st.name;
+        return;
+      }
+    } catch (e) {
+      dbg(ctx, 1, 'theme', () => `style ${st.name}: condition failed: ${(e as Error).message}`);
+    }
+  }
+}
 
 /**
  * The page's one inline <style>: theme colours and the data-dependent rules
@@ -188,6 +228,7 @@ export function dialogShapes(ctx: Pick<PageContext, 'app'>): Record<string, [str
 }
 
 export async function chrome(ctx: PageContext, main: Raw, title: string) {
+  await resolveConditionalStyle(ctx);
   const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style };
   const t = ctx.locale.t;
   if (ctx.dialog)
@@ -195,7 +236,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       'data-base': ctx.base,
       'data-page': String(ctx.page.page_no),
       'data-dialog': '1',
-    }, html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}`, root);
+    }, html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`, root);
 
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
@@ -237,8 +278,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <main class="t-main" id="main">${main}</main>
     </div>`,
     `t-app${topNav ? ' nav-top' : ''}`,
-    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user) },
-    html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}`,
+    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)) },
+    html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
     root,
   );
 }
@@ -259,8 +300,9 @@ function formKeys(ctx: PageContext) {
 /** Texts app.js shows (offline banner and queue, location and scan buttons), in the page's language. */
 const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
   'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close', 'common.dismiss',
-  'crop.title', 'crop.apply', 'crop.skip', 'crop.help'] as const;
-const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
+  'crop.title', 'crop.apply', 'crop.skip', 'crop.help',
+  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed'] as const;
+export const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
 
 /** The current page's URL (for returning after a preference change). */
 const here = (ctx: PageContext) => `${ctx.base}/${ctx.page.page_no}`;

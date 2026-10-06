@@ -36,6 +36,9 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_43_drawer.sql` | *Leave request* (page 7) opens as a drawer from the right instead of a centred dialog |
 | `hr_44_built_in_components.sql` | *Team overview* (page 39): the built-in template components: metric cards, an avatar group, a timeline, a media list linking to the department dialog, and comments |
 | `hr_45_photo_crop.sql` | The employee photo (page 3) is cropped to a square in the browser before upload |
+| `hr_46_static_files.sql` | Static application files `hr.js` and `hr.css` on every page; two *Execute JavaScript* dynamic actions show the salary per year on the employee form (page 3) |
+| `hr_47_plugins.sql` | *Plug-ins* (page 40): the four example plug-ins of `examples/plugins/` (a region, an item, a dynamic action and a process plug-in) |
+| `hr_48_map_tiles.sql` | *Weather stations* (page 41): 20,000 generated stations (`hr.weather_station`) as vector tiles, and the stations above 2,000 m loaded for the visible area |
 
 The files run in order, each once (recorded in `public.pgapex_seed`), so new ones can be added
 later. pgapex's own tests use this application as their fixture (`npm test` installs it first).

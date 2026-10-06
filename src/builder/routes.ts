@@ -4,7 +4,7 @@ import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
-import { icon } from '../icons.ts';
+import { icon, LUCIDE_VERSION, searchIcons } from '../icons.ts';
 import { appStyles, BASE_STYLES, baseStyleOf } from '../runtime/styles.ts';
 import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
 import { pwaSection } from './pwa.ts';
@@ -254,18 +254,26 @@ export async function builderRoutes(app: FastifyInstance) {
     }
   });
 
+  // (0.31) the icon picker's search of the Lucide icons (src/icons.ts)
+  app.get(`${BASE}/icons/search`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const q = String((req.query as Record<string, unknown>)?.q ?? '').slice(0, 60);
+    return reply.header('cache-control', 'private, max-age=300').send({ icons: searchIcons(q), version: LUCIDE_VERSION });
+  });
+
   app.get(`${BASE}/apps/:id/export`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.one('select meta.export_app($1) as doc', [a.alias]);
-    // ?format=dir: one file per component, as `pgapex export --format dir` writes it (docs/guide/18-cli.md)
-    if (req.query?.format === 'dir')
+    // ?format=dir|text: one file per component, as `pgapex export --format dir|text` writes it (docs/guide/18-cli.md)
+    if (req.query?.format === 'dir' || req.query?.format === 'text')
       return reply
         .header('content-disposition', `attachment; filename="${a.alias}.pgapex.zip"`)
         .type('application/zip')
-        .send(Buffer.from(filesToZip(docToFiles(r.doc), a.alias)));
+        .send(Buffer.from(filesToZip(docToFiles(r.doc, req.query.format === 'text' ? 'text' : 'json'), a.alias)));
     return reply
       .header('content-disposition', `attachment; filename="${a.alias}.pgapex.json"`)
       .type('application/json')
@@ -369,7 +377,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete application ${a.name} and all its pages?">Delete application</button>
           </form>`)}
-        ${region('Progressive Web App', pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}
+        ${region('Progressive Web App', await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>

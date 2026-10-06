@@ -158,6 +158,19 @@ h2 { font-size: 1rem; margin: 0; font-weight: 600; }
 .skip-link { position: absolute; left: -9999px; top: 0; z-index: 100; background: var(--surface); padding: 0.5rem 1rem; }
 .skip-link:focus { left: 0.5rem; top: 0.5rem; }
 .icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* (0.31) icon modifiers, like Font APEX's: "users lg", "refresh spin", "truck flip-h success" */
+.icon.icon-xs { width: 0.75em; height: 0.75em; } .icon.icon-sm { width: 0.875em; height: 0.875em; }
+.icon.icon-lg { width: 1.33em; height: 1.33em; } .icon.icon-2x { width: 2em; height: 2em; }
+.icon.icon-3x { width: 3em; height: 3em; } .icon.icon-4x { width: 4em; height: 4em; }
+.icon-rotate-90 { transform: rotate(90deg); } .icon-rotate-180 { transform: rotate(180deg); } .icon-rotate-270 { transform: rotate(270deg); }
+.icon-flip-h { transform: scaleX(-1); } .icon-flip-v { transform: scaleY(-1); }
+.icon-success { color: var(--success, #1b7f3b); } .icon-warning { color: var(--warning, #a15c00); } .icon-danger { color: var(--danger, #c0392b); }
+.icon-info { color: var(--accent); } .icon-muted { color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .icon-spin { animation: icon-spin 1.6s linear infinite; }
+  .icon-pulse { animation: icon-spin 1s steps(8) infinite; }
+}
+@keyframes icon-spin { to { transform: rotate(360deg); } }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- header ---------- */
@@ -1153,6 +1166,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .map-heat { pointer-events: none; }
 /* on the map's own (light) tiles in both themes, so fixed colours: the heat ramp of app.js */
 .map-legend { display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.5rem; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #1f2733; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); }
+.map-note { padding: 0.25rem 0.5rem; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #1f2733; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); max-width: 60vw; }
 .map-legend-ramp { width: 72px; height: 10px; border-radius: 3px; background: linear-gradient(to right, rgba(109, 167, 236, 0.2), rgba(109, 167, 236, 0.45) 25%, rgba(57, 135, 229, 0.65) 50%, rgba(28, 92, 171, 0.8) 75%, rgba(13, 54, 107, 0.9)); }
 .map-filter { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; max-width: calc(100vw - 6rem); }
 .map-filter .btn { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); text-decoration: none; }

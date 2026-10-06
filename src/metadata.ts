@@ -1,4 +1,5 @@
 import { runtime } from './db.ts';
+import type { Plugin } from './runtime/plugins.ts';
 
 export interface AuthzScheme {
   name: string;
@@ -28,6 +29,12 @@ export interface PageSummary {
   /** (065) modal pages: a centred dialog or a drawer from an edge, and its size */
   dialog_position?: 'center' | 'left' | 'right' | 'top' | 'bottom';
   dialog_size?: 'small' | 'medium' | 'large';
+}
+
+/** (068) a static application file a page loads: its name and a version (for the browser cache) */
+export interface StaticInclude {
+  name: string;
+  v: number;
 }
 
 export interface AppProcess {
@@ -75,6 +82,8 @@ export interface App {
   pwa_has_icon: boolean;
   pwa_offline_pages: boolean;
   pwa_offline_submit: boolean;
+  /** (074) users may turn on push notifications (src/push.ts) */
+  pwa_push: boolean;
   db_role: string | null;
   debug: boolean;
   /** debug messages: 0 off, else the APEX level 1–9 of what requests record (src/debug.ts) */
@@ -104,13 +113,21 @@ export interface App {
   time_zone: string | null;
   time_zone_auto: boolean | null;
   currency: string | null;
+  /** (068) static files (.js, .css) every page loads, in order; missing files are left out */
+  static_includes: StaticInclude[];
+  /** (069) plug-ins (src/runtime/plugins.ts); install_sql is not loaded */
+  plugins: Plugin[];
+  /** (069) every static file's version, for plug-ins' files */
+  static_files: StaticInclude[];
 }
 
 export interface Region {
   id: number;
   seq: number;
   title: string | null;
-  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant';
+  /** (0.31, 073) optional, unique on the page */
+  static_id?: string | null;
+  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
@@ -130,7 +147,7 @@ export type ItemType =
   | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'radio'
   | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password'
   | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color' | 'file' | 'location'
-  | 'richtext' | 'markdown' | 'rating' | 'combobox' | 'daterange' | 'qrcode';
+  | 'richtext' | 'markdown' | 'rating' | 'combobox' | 'daterange' | 'qrcode' | 'plugin';
 
 export interface Item {
   id: number;
@@ -228,7 +245,13 @@ export interface DynamicAction {
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
   condition_value: string | null;
   action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit'
-    | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate';
+    | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate'
+    /** (068) code: the name of a function a static file registered (pgapex.actions.register) */
+    | 'execute_javascript'
+    /** (074) turn on push notifications on this device (app.js) */
+    | 'push_subscribe'
+    /** (069) code: the name of a dynamic action plug-in; config.attributes its attribute values */
+    | 'plugin';
   affected_items: string | null;
   affected_region_id: number | null;
   code: string | null;
@@ -236,6 +259,8 @@ export interface DynamicAction {
   message: string | null;
   /** add_class / remove_class: space separated class names (checked by the database) */
   css_classes?: string | null;
+  /** (069) a plug-in action's attribute values: {"attributes": {…}} */
+  config?: Record<string, any> | null;
   authz: string | null;
 }
 
@@ -252,7 +277,7 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push';
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;
@@ -279,7 +304,14 @@ export interface Page extends PageSummary {
   processes: Process[];
   computations: Computation[];
   branches: Branch[];
+  /** (068) static files (.js, .css) this page loads after the application's */
+  static_includes: StaticInclude[];
 }
+
+/** The static files a list of names refers to, in that order, with their version. */
+const includes = (names: string, appId: string) =>
+  `coalesce((select jsonb_agg(jsonb_build_object('name', f.name, 'v', floor(extract(epoch from f.updated_at))::bigint) order by u.o)
+               from unnest(${names}) with ordinality u(n, o) join meta.static_file f on f.app_id = ${appId} and f.name = u.n), '[]')`;
 
 // Components whose build option is excluded are left out here, so the runtime
 // neither renders nor runs them (meta.build_option_on, migration 029).
@@ -289,7 +321,7 @@ const agg = (table: string, fk: string, parent: string, appId: string) =>
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.session_group, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.db_role, a.debug, a.debug_level, a.theme,
+    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.session_group, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format, a.time_zone, a.time_zone_auto, a.currency,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
@@ -300,7 +332,11 @@ export async function loadApp(alias: string) {
             coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message))
                         from meta.authz_scheme s where s.app_id = a.id), '[]') as authz_schemes,
             coalesce((select jsonb_agg(i.name) from meta.app_item i where i.app_id = a.id), '[]') as app_items,
-            ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes
+            ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes,
+            ${includes('a.static_includes', 'a.id')} as static_includes,
+            coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' - 'install_sql') from meta.plugin x where x.app_id = a.id), '[]') as plugins,
+            coalesce((select jsonb_agg(jsonb_build_object('name', f.name, 'v', floor(extract(epoch from f.updated_at))::bigint))
+                        from meta.static_file f where f.app_id = a.id and exists (select 1 from meta.plugin x where x.app_id = a.id and f.name = any (x.files))), '[]') as static_files
        from meta.app a
       where a.alias = $1`,
     [alias],
@@ -318,7 +354,8 @@ export async function loadPage(appId: number, pageNo: number) {
             ${agg('meta.validation', 'page_id', 'p', 'p.app_id')} as validations,
             ${agg('meta.process', 'page_id', 'p', 'p.app_id')} as processes,
             ${agg('meta.computation', 'page_id', 'p', 'p.app_id')} as computations,
-            ${agg('meta.branch', 'page_id', 'p', 'p.app_id')} as branches
+            ${agg('meta.branch', 'page_id', 'p', 'p.app_id')} as branches,
+            ${includes('p.static_includes', 'p.app_id')} as static_includes
        from meta.page p
       where p.app_id = $1 and p.page_no = $2 and meta.build_option_on(p.app_id, p.build_option)`,
     [appId, pageNo],

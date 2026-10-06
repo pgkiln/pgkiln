@@ -284,6 +284,74 @@ describe('Query builder', () => {
     assert.equal(await build({ t: 'nope' }), null);
   });
 
+  test('joins drawn by the developer: instead of a cross join or a foreign key, left or inner; nonsense dropped', async () => {
+    const b = await build({ t: ['dept', 'lonely'], j: 't2.x=t1.id', jt_t2: 'left' });
+    assert.match(b!.sql, /left join "ws_qb"\."lonely" t2 on t2\."x" = t1\."id"/);
+    assert.equal(b!.notes.length, 0);
+    assert.deepEqual(b!.joins[0].custom, [{ a: 't2.x', b: 't1.id' }]);
+    // the form's pair, and a drawn join wins over the foreign key
+    const c = await build({ t: ['emp', 'dept'], ja: 't1.id', jb: 't2.id' });
+    assert.match(c!.sql, /\n  join "ws_qb"\."dept" t2 on t1\."id" = t2\."id"$/);
+    assert.equal((await owner.query(c!.sql)).rows.length, 2);
+    // two conditions between the same tables are and-ed
+    const d = await build({ t: ['emp', 'dept'], j: ['t1.dept_id=t2.id', 't1.name=t2.name'] });
+    assert.match(d!.sql, /on t1\."dept_id" = t2\."id" and t1\."name" = t2\."name"$/);
+    // the same table, unknown columns or tables, and text that isn't a column: dropped (back to the foreign key)
+    const e = await build({ t: ['emp', 'dept'], j: ['t1.id=t1.boss', 't1.nope=t2.id', 't3.id=t1.id', 't1.id=t2.id; drop table ws_qb.dept', 'x'] });
+    assert.match(e!.sql, /join "ws_qb"\."dept" t2 on t1\."dept_id" = t2\."id"$/);
+    assert.doesNotMatch(e!.sql, /drop|nope|boss/);
+  });
+
+  test('column functions group by the other chosen columns; sorting by a function or a grouped column', async () => {
+    const b = await build({ t: ['emp', 'dept'], jt_t2: 'left', c: ['t2.name'], fn: ['t1.id:count', 't1.name:max', 't1.boss:nope', 't1.x; drop:sum'], oc: ['t1.id', 't1.boss', 't2.name'], od: ['desc', 'asc', 'asc'] });
+    assert.equal(
+      b!.sql,
+      `select t2."name",
+       count(t1."id") as "count_id",
+       max(t1."name") as "max_name"
+  from "ws_qb"."emp" t1
+  left join "ws_qb"."dept" t2 on t1."dept_id" = t2."id"
+ group by t2."name"
+ order by count(t1."id") desc, t2."name"`,
+    );
+    assert.ok(b!.grouped);
+    assert.deepEqual((await owner.query(b!.sql)).rows, [
+      { name: 'R&D', count_id: '1', max_name: 'Bob' },
+      { name: 'Sales', count_id: '1', max_name: 'Ann' },
+      { name: null, count_id: '1', max_name: "O'Brien" },
+    ]);
+    const c = await build({ t: 'emp', fn: 't1.boss:count_distinct' });
+    assert.equal(c!.sql, `select count(distinct t1."boss") as "count_distinct_boss"\n  from "ws_qb"."emp" t1`);
+    assert.deepEqual((await owner.query(c!.sql)).rows, [{ count_distinct_boss: '1' }]);
+  });
+
+  test('the tables keep the order they were chosen in (the form lists them alphabetically), so aliases stay', () => {
+    assert.deepEqual(specFromQuery({ t: ['dept', 'emp', 'lonely'], o: 'emp,dept' }, 'ws_qb').tables, ['emp', 'dept', 'lonely']);
+    assert.deepEqual(specFromQuery({ t: ['dept', 'emp'] }, 'ws_qb').tables, ['dept', 'emp']);
+  });
+
+  test('canvas positions from the query string: table:x,y, bounded; others ignored', () => {
+    const spec = specFromQuery({ p: ['emp:10,20', 'dept:999999,1', 'x:-1,2', 'bad', 'a:b:3,4'] }, 'ws_qb');
+    assert.deepEqual(spec.positions, { emp: { x: 10, y: 20 }, 'a:b': { x: 3, y: 4 } });
+  });
+
+  test('the canvas: a box per table with its columns, the joins as data, positions kept', async () => {
+    const page = (await dev.get('/builder/sql/query?schema=ws_qb&t=emp&t=dept&p=dept:300,40&j=t1.name=t2.name')).body;
+    assert.match(page, /<div class="qb-canvas" data-joins="([^"]*)">/);
+    const joins = JSON.parse(/data-joins="([^"]*)"/.exec(page)![1].replace(/&quot;/g, '"'));
+    assert.deepEqual(joins, [{ a: 't1.name', b: 't2.name', custom: true }]);
+    assert.match(page, /<div class="qb-table" data-table="emp" data-alias="t1" data-x="16" data-y="16">/);
+    assert.match(page, /<div class="qb-table" data-table="dept" data-alias="t2" data-x="300" data-y="40">\s*<input type="hidden" name="p" value="dept:300,40">/);
+    assert.match(page, /<li class="qb-col" data-ref="t1\.dept_id">/);
+    assert.match(page, /<option value="t1\.id:count">count<\/option>/);
+    assert.match(page, /<input type="checkbox" name="j" value="t1\.name=t2\.name" checked>/);
+    assert.match(page, /<select name="ja" aria-label="Join: column">/);
+    // one table: no join dots
+    assert.doesNotMatch((await dev.get('/builder/sql/query?schema=ws_qb&t=emp')).body, /qb-link/);
+    const fk = JSON.parse(/data-joins="([^"]*)"/.exec((await dev.get('/builder/sql/query?schema=ws_qb&t=emp&t=dept')).body)![1].replace(/&quot;/g, '"'));
+    assert.deepEqual(fk, [{ a: 't1.dept_id', b: 't2.id', custom: false }]);
+  });
+
   test('the page shows the SQL and a form to run it in SQL Commands', async () => {
     const page = await dev.get('/builder/sql/query?schema=ws_qb&t=emp&t=dept');
     assert.equal(page.statusCode, 200);

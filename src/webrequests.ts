@@ -1,4 +1,5 @@
 import { owner, type Client } from './db.ts';
+import { purgeUnpacked, unpackForSql } from './unpack.ts';
 import { call, invoke, loadCredential } from './websources.ts';
 import { WebError, type WebResponse } from './webclient.ts';
 
@@ -103,6 +104,7 @@ export async function runPending(c: Client, appId: number, onRequest?: (r: Pendi
   for (const r of taken) {
     const t0 = Date.now();
     const res = await execute(appId, r);
+    await unpackForSql(res.body); // a zip or .xlsx response, for meta.zip_entry / meta.parse_data
     await c.query('select meta.web_request_done($1, $2, $3, $4, $5::jsonb, $6, $7)', [
       r.id, res.status, res.statusCode, res.url, res.headers ? JSON.stringify(res.headers) : null, res.body, res.message,
     ]);
@@ -112,6 +114,7 @@ export async function runPending(c: Client, appId: number, onRequest?: (r: Pendi
 }
 
 async function finish(id: string, res: RequestResult) {
+  await unpackForSql(res.body);
   await owner.query(
     `update meta.web_request_log set status = $2, finished_at = now(), status_code = $3, response_url = $4, response_headers = $5::jsonb,
             response_body = $6, message = $7 where id = $1 and status = 'running'`,
@@ -161,5 +164,6 @@ export async function webRequestTick(): Promise<string[]> {
   };
   await Promise.all(Array.from({ length: Math.min(PARALLEL, queue.length) }, worker));
   await purgeWebRequests();
+  await purgeUnpacked();
   return claimed.map((r) => r.id);
 }

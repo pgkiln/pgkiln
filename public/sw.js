@@ -2,6 +2,8 @@
 //   static files (app.css, app.js, icons) and the offline page: cached at install, served from the cache
 //   pages (navigations): network first; offline, the cached copy (only when the app keeps pages) or the offline page
 //   signing in or out empties the page cache, so the next person on the device doesn't see them
+//   push notifications (migration 074): shown as they arrive, a click opens their page of the app;
+//   signing out turns them off on this device
 /* global PGAPEX */
 const STATIC = `pgapex-static-${PGAPEX.version}`;
 const PAGES = `pgapex-pages-${PGAPEX.base}`;
@@ -29,7 +31,9 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (req.method === 'POST' && signInOrOut(url)) {
-    event.respondWith(caches.delete(PAGES).then(() => fetch(req)));
+    const signOut = url.pathname === `${PGAPEX.base}/logout`;
+    const copy = signOut ? req.clone() : null;
+    event.respondWith(Promise.all([caches.delete(PAGES), signOut ? endPush(copy) : null]).then(() => fetch(req)));
     return;
   }
   if (req.method !== 'GET') return;
@@ -172,3 +176,60 @@ self.addEventListener('message', (event) => {
   if (m.type === 'pgapex:queue') event.waitUntil(tellClients());
   if (m.type === 'pgapex:discard') event.waitUntil(qrun('forms', 'readwrite', (s) => s.delete(m.id)).then(tellClients));
 });
+
+// ------------------------------------------------------------------ push notifications (074)
+// The server sends {title, body, url, tag}, encrypted for this device (RFC 8291). Only pages of
+// this app open from a notification.
+const appUrl = (u) => {
+  try {
+    const url = new URL(u || '', self.location.origin);
+    return url.origin === self.location.origin && url.pathname.startsWith(`${PGAPEX.base}/`) ? url.href : null;
+  } catch {
+    return null;
+  }
+};
+
+self.addEventListener('push', (event) => {
+  let m = {};
+  try {
+    m = event.data ? event.data.json() : {};
+  } catch {
+    m = { title: event.data ? event.data.text() : '' };
+  }
+  const options = {
+    body: typeof m.body === 'string' ? m.body : '',
+    icon: `${PGAPEX.base}/icon-192.png`,
+    badge: `${PGAPEX.base}/icon-192.png`,
+    data: { url: appUrl(m.url) || appUrl(`${PGAPEX.base}/`) },
+  };
+  if (typeof m.tag === 'string' && m.tag) Object.assign(options, { tag: m.tag, renotify: true });
+  event.waitUntil(self.registration.showNotification(typeof m.title === 'string' && m.title ? m.title : 'Notification', options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = appUrl(event.notification.data && event.notification.data.url) || `${self.location.origin}${PGAPEX.base}/`;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      const same = wins.find((w) => w.url === target);
+      if (same) return same.focus();
+      const mine = wins.find((w) => appUrl(w.url));
+      if (mine && 'navigate' in mine) return mine.focus().then(() => mine.navigate(target));
+      return self.clients.openWindow(target);
+    }),
+  );
+});
+
+// signing out: the server forgets this device (with the sign-out form's CSRF token), the browser ends the subscription
+async function endPush(signOutRequest) {
+  try {
+    const sub = await self.registration.pushManager.getSubscription();
+    if (!sub) return;
+    const form = await signOutRequest.formData();
+    const body = new URLSearchParams({ endpoint: sub.endpoint, __csrf: String(form.get('__csrf') || '') });
+    await fetch(`${PGAPEX.base}/push/unsubscribe`, { method: 'POST', body, headers: { accept: 'application/json' }, credentials: 'same-origin' }).catch(() => {});
+    await sub.unsubscribe();
+  } catch {
+    /* the sign-out goes on */
+  }
+}
