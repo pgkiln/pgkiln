@@ -134,6 +134,7 @@ export const nb: Record<MessageKey, string> = {
   'map.near': "Vis steder innenfor {km} km fra midten",
   'map.layers': "Lag",
   'map.cluster': "{n} steder: zoom inn",
+  'map.zoom_in': "Ikke alle steder vises: zoom inn for å se alle",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Malkomponenten «{name}» finnes ikke i denne applikasjonen.",
   'plugin.missing': "Programtillegget «{name}» finnes ikke i denne applikasjonen.",

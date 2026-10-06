@@ -134,6 +134,7 @@ export const de: Record<MessageKey, string> = {
   'map.near': 'Orte im Umkreis von {km} km um die Mitte anzeigen',
   'map.layers': 'Ebenen',
   'map.cluster': '{n} Orte: hineinzoomen',
+  'map.zoom_in': 'Nicht alle Orte werden angezeigt: vergrößern Sie die Karte, um alle zu sehen',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'Die Vorlagenkomponente „{name}“ existiert in dieser Anwendung nicht.',
   'plugin.missing': "Das Plug-in „{name}“ existiert in dieser Anwendung nicht.",

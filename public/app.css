@@ -1153,6 +1153,7 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .map-heat { pointer-events: none; }
 /* on the map's own (light) tiles in both themes, so fixed colours: the heat ramp of app.js */
 .map-legend { display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.5rem; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #1f2733; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); }
+.map-note { padding: 0.25rem 0.5rem; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #1f2733; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); max-width: 60vw; }
 .map-legend-ramp { width: 72px; height: 10px; border-radius: 3px; background: linear-gradient(to right, rgba(109, 167, 236, 0.2), rgba(109, 167, 236, 0.45) 25%, rgba(57, 135, 229, 0.65) 50%, rgba(28, 92, 171, 0.8) 75%, rgba(13, 54, 107, 0.9)); }
 .map-filter { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; max-width: calc(100vw - 6rem); }
 .map-filter .btn { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); text-decoration: none; }

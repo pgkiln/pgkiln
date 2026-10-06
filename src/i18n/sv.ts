@@ -134,6 +134,7 @@ export const sv: Record<MessageKey, string> = {
   'map.near': "Visa platser inom {km} km från mitten",
   'map.layers': "Lager",
   'map.cluster': "{n} platser: zooma in",
+  'map.zoom_in': "Alla platser visas inte: zooma in för att se alla",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Mallkomponenten ”{name}” finns inte i den här applikationen.",
   'plugin.missing': "Insticksprogrammet ”{name}” finns inte i den här applikationen.",

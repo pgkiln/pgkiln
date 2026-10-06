@@ -134,6 +134,7 @@ export const zh: Record<MessageKey, string> = {
   'map.near': "显示距中心 {km} 公里以内的地点",
   'map.layers': "图层",
   'map.cluster': "{n} 个地点：请放大",
+  'map.zoom_in': "并未显示所有地点：放大即可全部查看",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "此应用程序中不存在模板组件“{name}”。",
   'plugin.missing': "此应用程序中不存在插件“{name}”。",

@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`, `hr_47`; migrations 068, 069).
+Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–071).
 
 ## Project in one paragraph
 
@@ -1488,7 +1488,7 @@ Branch `sprint-39` from `main` (v0.30.0). One agent; tests on 5446. Migrations f
 | 3 | Theme Roller conditional/dynamic properties | Style chosen by a SQL rule per request; CSS variables from item values (checked) | **done**: `condition` and `&ITEM.` colours in `src/runtime/styles.ts`, `resolveConditionalStyle` in render.ts, Theme Roller fields; tests in `theme-styles`, security block; row ✅ (106/10/0/3) |
 | 4 | APEX PL/SQL APIs | XML in `meta.parse_data`, `meta.v_boolean`, JSON builder mapping, zip | **done**: migration 070 (XML via xmltable mirroring `xmlTable`, Excel via `meta.unpacked_file` filled by `src/unpack.ts` on upload/web response, `meta.zip_*`, `meta.v_boolean`), docs ch9; tests `sql-apis`, security; rows APIs + BOOLEAN ✅ (108/8/0/3) |
 | 5 | File browse: object storage | S3-compatible storage for file items (SigV4, web credentials) | **done**: migration 071 (`aws_sigv4` credentials), `src/objectstore.ts`, files.ts/engine.ts (`object_store`, `size_column`, after-commit/rollback hooks in `appTx`), docs ch16/19; tests `object-storage` (mock S3 checking signatures), security; row ✅ (109/7/0/3) |
-| 6 | Map region | Vector tiles; layers filtered by the visible area | todo |
+| 6 | Map region | Vector tiles; layers filtered by the visible area | **done**: no migration (region config `visible_area`, `tiles` per layer); `src/mvt.ts` (MVT 2.1 encoder, no dependency), `servedLayer`/`layerInArea`/`layerTile` in `src/runtime/maps.ts`, routes GET `…/map/:id/layer/:n?bb=` and `…/map/:id/tiles/:n/:z/:x/:y.mvt` in routes.ts, app.js `areaLayer`/`vectorTiles` (own MVT reader, canvas, click hit-test, `map.zoom_in` note in 22 languages), builder *Load* field, `hr_48` (page 41, 20 000 stations); tests `map-tiles` (independent MVT decoder), e2e maps, security block; row ✅ (110/6/0/3) |
 | 7 | SQL scripts, query builder | A graphical query builder canvas | todo |
 | 8 | Workflow multi-tenancy | Tenant per workflow instance | todo |
 | 9 | APEXlang | A human-readable text format for the directory export | todo |

@@ -134,6 +134,7 @@ export const tr: Record<MessageKey, string> = {
   'map.near': "Merkeze {km} km mesafedeki yerleri göster",
   'map.layers': "Katmanlar",
   'map.cluster': "{n} yer: yakınlaştırın",
+  'map.zoom_in': "Tüm yerler gösterilmiyor: hepsini görmek için yakınlaştırın",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "“{name}” şablon bileşeni bu uygulamada yok.",
   'plugin.missing': "“{name}” eklentisi bu uygulamada yok.",

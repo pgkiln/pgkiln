@@ -134,6 +134,7 @@ export const ja: Record<MessageKey, string> = {
   'map.near': "中心から {km} km 以内の場所を表示",
   'map.layers': "レイヤー",
   'map.cluster': "{n} か所: 拡大してください",
+  'map.zoom_in': "すべての場所は表示されていません。拡大するとすべて表示されます",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "テンプレートコンポーネント「{name}」はこのアプリケーションに存在しません。",
   'plugin.missing': "プラグイン「{name}」はこのアプリケーションに存在しません。",

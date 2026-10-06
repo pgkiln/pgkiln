@@ -134,6 +134,7 @@ export const fi: Record<MessageKey, string> = {
   'map.near': "Näytä paikat enintään {km} km:n päässä keskeltä",
   'map.layers': "Tasot",
   'map.cluster': "{n} paikkaa: lähennä",
+  'map.zoom_in': "Kaikkia paikkoja ei näytetä: lähennä nähdäksesi kaikki",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Mallikomponenttia ”{name}” ei ole tässä sovelluksessa.",
   'plugin.missing': "Laajennusta ”{name}” ei ole tässä sovelluksessa.",

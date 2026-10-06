@@ -134,6 +134,7 @@ export const he: Record<MessageKey, string> = {
   'map.near': "הצגת מקומות בטווח {km} ק\"מ מהמרכז",
   'map.layers': "שכבות",
   'map.cluster': "{n} מקומות: הגדילו",
+  'map.zoom_in': "לא כל המקומות מוצגים: הגדילו את המפה כדי לראות את כולם",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "רכיב התבנית \"{name}\" אינו קיים ביישום זה.",
   'plugin.missing': "התוסף \"{name}\" אינו קיים ביישום זה.",

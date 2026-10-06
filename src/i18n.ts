@@ -161,6 +161,7 @@ const en = {
   'map.near': 'Show places within {km} km of the centre',
   'map.layers': 'Layers',
   'map.cluster': '{n} places: zoom in',
+  'map.zoom_in': 'Not every place is shown: zoom in to see them all',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'The template component "{name}" does not exist in this application.',
   'plugin.missing': 'The plug-in "{name}" does not exist in this application.',
@@ -743,6 +744,7 @@ const nl: Record<MessageKey, string> = {
   'map.near': 'Plaatsen binnen {km} km van het midden tonen',
   'map.layers': 'Lagen',
   'map.cluster': '{n} plaatsen: inzoomen',
+  'map.zoom_in': 'Niet alle plaatsen worden getoond: zoom in om ze allemaal te zien',
   // sjablooncomponenten (src/runtime/template-region.ts)
   'tc.missing': 'Het sjablooncomponent "{name}" bestaat niet in deze applicatie.',
   'plugin.missing': 'De plug-in "{name}" bestaat niet in deze applicatie.',

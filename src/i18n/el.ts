@@ -134,6 +134,7 @@ export const el: Record<MessageKey, string> = {
   'map.near': "Εμφάνιση μερών εντός {km} km από το κέντρο",
   'map.layers': "Επίπεδα",
   'map.cluster': "{n} μέρη: μεγεθύνετε",
+  'map.zoom_in': "Δεν εμφανίζονται όλα τα μέρη: μεγεθύνετε για να τα δείτε όλα",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Το στοιχείο προτύπου «{name}» δεν υπάρχει σε αυτή την εφαρμογή.",
   'plugin.missing': "Το πρόσθετο «{name}» δεν υπάρχει σε αυτή την εφαρμογή.",

@@ -134,6 +134,7 @@ export const es: Record<MessageKey, string> = {
   'map.near': 'Mostrar los lugares a menos de {km} km del centro',
   'map.layers': 'Capas',
   'map.cluster': '{n} lugares: acercar',
+  'map.zoom_in': 'No se muestran todos los lugares: acerque el mapa para verlos todos',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'El componente de plantilla "{name}" no existe en esta aplicación.',
   'plugin.missing': "El plug-in \"{name}\" no existe en esta aplicación.",

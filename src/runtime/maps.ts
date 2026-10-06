@@ -7,8 +7,9 @@ import { pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { pageHref } from './links.ts';
 import { key, regionUrl } from './report.ts';
-import { geoJsonSelect, parseArea, parseNear, postgis, spatialColumn, type PostGis } from './spatial.ts';
+import { geoJsonSelect, parseArea, parseNear, postgis, spatialColumn, spatialConditions, type MapArea, type PostGis } from './spatial.ts';
 import { tileAttribution, tileUrl } from '../maptiles.ts';
+import { encodeTile, tileArea, type TileFeature } from '../mvt.ts';
 
 // Map region (APEX: Map region). The SELECT returns, per row, a position
 // (columns lat and lng, latitude and longitude, or location as "lat,lng")
@@ -31,10 +32,20 @@ import { tileAttribution, tileUrl } from '../maptiles.ts';
 // (r<id>_bb=south,west,north,east) or, with filter "distance", to the places
 // within a distance of the map's centre (r<id>_near=lat,lng,km); the report
 // runs the condition on the server (see spatial.ts: PostGIS or lat/lng).
+// (0.31) A layer with "visible_area": true loads only what lies in the map's
+// visible area, again whenever the map moves (…/map/<region>/layer/<n>?bb=…;
+// at most MAX_AREA_ROWS, with a "zoom in" note beyond). A layer with
+// "tiles": true is served as Mapbox Vector Tiles (…/map/<region>/tiles/<n>/
+// <z>/<x>/<y>.mvt, src/mvt.ts) for big data sets: each tile holds the rows in
+// its area. Both filter on the server like the report filter (spatial.ts:
+// PostGIS when installed, else latitude/longitude), as the application's role.
 // The map is drawn in the browser by Leaflet (public/app.js, /static/vendor/leaflet/),
 // with tiles from MAP_TILE_URL (OpenStreetMap by default; the CSP allows its origin).
 
 const MAX_ROWS = 5000;
+/** rows per visible-area load, and per vector tile */
+export const MAX_AREA_ROWS = 2000;
+export const MAX_TILE_ROWS = 10000;
 /** the region's own query and at most this many more layers */
 export const MAX_EXTRA_LAYERS = 7;
 const num = (v: unknown) => (v === null || v === undefined || v === '' ? NaN : Number(v));
@@ -56,6 +67,10 @@ export interface LayerDef {
   cluster: boolean;
   link: Link | undefined;
   hidden: boolean;
+  /** (0.31) loaded for the visible area only, again when the map moves */
+  visibleArea: boolean;
+  /** (0.31) served as vector tiles */
+  tiles: boolean;
 }
 
 /** The map's layers: the region's own query first, then config.layers (with a query each). */
@@ -67,6 +82,8 @@ export function layerDefs(r: Region): LayerDef[] {
     cluster: r.config.cluster === true,
     link: r.config.link,
     hidden: false,
+    visibleArea: r.config.visible_area === true,
+    tiles: r.config.tiles === true,
   };
   const more = (Array.isArray(r.config.layers) ? r.config.layers : [])
     .filter((l: any) => l && typeof l === 'object' && typeof l.source === 'string' && l.source.trim())
@@ -78,21 +95,33 @@ export function layerDefs(r: Region): LayerDef[] {
       cluster: l.cluster === true,
       link: l.link && typeof l.link === 'object' && Number.isInteger(l.link.page) ? l.link : undefined,
       hidden: l.hidden === true,
+      visibleArea: l.visible_area === true,
+      tiles: l.tiles === true,
     }));
   return [first, ...more];
 }
 
-/** A layer query's SELECT (with a GeoJSON column for a PostGIS geometry when PostGIS is installed). */
-export function layerSql(sql: string, g: PostGis | null, fields: { name: string; dataTypeID: number }[] | null) {
+/** A layer query's SELECT (with a GeoJSON column for a PostGIS geometry when PostGIS is installed), optionally within an area. */
+export function layerSql(sql: string, g: PostGis | null, fields: { name: string; dataTypeID: number }[] | null, area: MapArea | null = null, limit = MAX_ROWS) {
   const shape = g && fields && !fields.some((f) => f.name.toLowerCase() === 'geojson') ? spatialColumn(new Map(fields.map((f) => [f.name, f.dataTypeID])), g) : null;
-  return `select ${shape && g ? geoJsonSelect(g, shape) : '*'} from (\n${sql}\n) "__m" limit ${MAX_ROWS}`;
+  let where = '';
+  if (area) {
+    const cond = spatialConditions({ area, near: null }, new Map((fields ?? []).map((f) => [f.name, f.dataTypeID])), g, '"__m"');
+    if (!cond.ok) throw new Error('This map layer has no position to filter by the visible area (lat and lng, location, or a PostGIS geometry).');
+    where = ` where ${cond.where.join(' and ')}`;
+  }
+  return `select ${shape && g ? geoJsonSelect(g, shape) : '*'} from (\n${sql}\n) "__m"${where} limit ${limit}`;
 }
 
-async function loadLayer(ctx: PageContext, def: LayerDef, g: PostGis | null) {
+async function loadLayer(ctx: PageContext, def: LayerDef, g: PostGis | null, opts: { area?: MapArea | null; limit?: number } = {}) {
   const sql = stripSemicolon(applyBinds(def.source, bindValues(ctx)));
   const c = ctx.client!;
-  const probe = g ? (await savepoint(c, () => c.query(`select * from (\n${sql}\n) "__m" limit 0`))).fields : null;
-  const rows: Record<string, unknown>[] = (await savepoint(c, () => c.query(layerSql(sql, g, probe as pg.FieldDef[] | null)))).rows;
+  const limit = opts.limit ?? MAX_ROWS;
+  const probe = g || opts.area ? (await savepoint(c, () => c.query(`select * from (\n${sql}\n) "__m" limit 0`))).fields : null;
+  // one row more than the limit tells that there is more
+  const all: Record<string, unknown>[] = (await savepoint(c, () => c.query(layerSql(sql, g, probe as pg.FieldDef[] | null, opts.area ?? null, opts.area ? limit + 1 : limit)))).rows;
+  const truncated = !!opts.area && all.length > limit;
+  const rows = truncated ? all.slice(0, limit) : all;
   const link = def.link;
   const linkOk = link ? await pageAllowed(ctx, link.page) : false;
   const col = (row: Record<string, unknown>, name: string) => {
@@ -128,19 +157,25 @@ async function loadLayer(ctx: PageContext, def: LayerDef, g: PostGis | null) {
     const weight = Number.isFinite(w) && w > 0 ? w : Number.isNaN(w) ? 1 : 0;
     if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) points.push({ lat, lng, title, body, href, weight });
   }
-  return { points, shapes };
+  return { points, shapes, truncated };
 }
 
 export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
   const g = await postgis();
   const defs = layerDefs(r);
   const t = ctx.locale.t;
-  const layers: { name: string; kind: LayerDef['kind']; cluster: boolean; hidden: boolean; color: number; points: Point[]; shapes: unknown[] }[] = [];
+  const layers: { name: string; kind: LayerDef['kind']; cluster: boolean; hidden: boolean; color: number; points: Point[]; shapes: unknown[]; area?: string; tiles?: string }[] = [];
   const errors: Raw[] = [];
+  const base = `${ctx.base}/${ctx.page.page_no}/map/${r.id}`;
+  const version = Date.now().toString(36);
   for (const [i, def] of defs.entries()) {
     try {
-      const { points, shapes } = await loadLayer(ctx, def, g);
-      layers.push({ name: ctx.locale.tr(def.name), kind: def.kind, cluster: def.cluster && def.kind === 'markers', hidden: def.hidden, color: i + 1, points, shapes });
+      // vector tiles and visible-area layers: the browser fetches what it shows; nothing in the page
+      const { points, shapes } = def.tiles || def.visibleArea ? { points: [], shapes: [] } : await loadLayer(ctx, def, g);
+      layers.push({ name: ctx.locale.tr(def.name), kind: def.kind, cluster: def.cluster && def.kind === 'markers' && !def.tiles, hidden: def.hidden, color: i + 1, points, shapes,
+        ...(def.visibleArea && !def.tiles ? { area: `${base}/layer/${i}` } : {}),
+        // v: tiles are cached for a minute; a new page view (other item values) gets new ones
+        ...(def.tiles ? { tiles: `${base}/tiles/${i}/{z}/{x}/{y}.mvt?v=${version}` } : {}) });
     } catch (e) {
       const where = i ? `map "${r.title ?? r.id}", layer "${def.name}"` : `map "${r.title ?? r.id}"`;
       const alert = html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, where)}</div>`;
@@ -149,7 +184,7 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
       errors.push(alert);
     }
   }
-  if (!layers.some((l) => l.points.length || l.shapes.length)) return html`${errors}<p class="empty">${r.config.empty ?? t('report.no_data')}</p>`;
+  if (!layers.some((l) => l.points.length || l.shapes.length || l.tiles || l.area)) return html`${errors}<p class="empty">${r.config.empty ?? t('report.no_data')}</p>`;
   const height = ['small', 'large'].includes(r.config.height) ? r.config.height : 'medium';
   // the report this map filters: a visible report region on the same page
   const report = ctx.page.regions.find((x) => x.id === Number(r.config.report) && x.type === 'report' && ctx.vis?.regions.has(x.id));
@@ -180,6 +215,7 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
     legend: [t('map.fewer'), t('map.more')],
     layersLabel: t('map.layers'),
     clusterLabel: t('map.cluster'),
+    zoomIn: t('map.zoom_in'),
     filter: filter || null,
     layers,
   };
@@ -190,7 +226,34 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
     </details>`;
   return html`${errors}<div class="map map-${height}" data-map role="region" aria-label="${r.title ?? 'Map'}"></div>
     <script type="application/json" class="map-data">${raw(JSON.stringify(data).replace(/</g, '\\u003c'))}</script>
-    ${layers.filter((l, i) => !i || l.points.length).map(list)}`;
+    ${layers.filter((l, i) => !l.tiles && !l.area && (!i || l.points.length)).map(list)}`;
+}
+
+/** A layer the browser loads by itself: in the visible area (JSON) or as vector tiles; null when the layer isn't one. */
+export function servedLayer(r: Region, n: number, how: 'area' | 'tiles'): LayerDef | null {
+  const def = r.type === 'map' && Number.isInteger(n) ? layerDefs(r)[n] : undefined;
+  return def && (how === 'tiles' ? def.tiles : def.visibleArea && !def.tiles) ? def : null;
+}
+
+/** A visible-area layer's places and shapes within the area (at most MAX_AREA_ROWS; truncated: there are more). */
+export async function layerInArea(ctx: PageContext, def: LayerDef, area: MapArea) {
+  return loadLayer(ctx, def, await postgis(), { area, limit: MAX_AREA_ROWS });
+}
+
+/** A tile's address, or null when it isn't one (zoom 0…22). */
+export function parseTile(z: string, x: string, y: string) {
+  const [zz, xx, yy] = [z, x, y.replace(/\.mvt$/, '')].map((v) => (/^\d{1,7}$/.test(v) ? Number(v) : NaN));
+  return zz <= 22 && xx < 2 ** zz && yy < 2 ** zz ? { z: zz, x: xx, y: yy } : null;
+}
+
+/** One vector tile of a layer: the rows in the tile's area (with a small margin, so markers at the edge are whole). */
+export async function layerTile(ctx: PageContext, def: LayerDef, t: { z: number; x: number; y: number }) {
+  const { points, shapes, truncated } = await loadLayer(ctx, def, await postgis(), { area: tileArea(t.z, t.x, t.y, 1 / 16), limit: MAX_TILE_ROWS });
+  const features: TileFeature[] = [
+    ...points.map((p) => ({ geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { title: p.title, body: p.body, href: p.href, weight: p.weight } })),
+    ...(shapes as { geometry: TileFeature['geometry']; properties: TileFeature['properties'] }[]).map((s) => ({ geometry: s.geometry, properties: s.properties })),
+  ];
+  return { tile: encodeTile('places', t.z, t.x, t.y, features), truncated };
 }
 
 function safeJson(s: string) {

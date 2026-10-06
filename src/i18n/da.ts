@@ -134,6 +134,7 @@ export const da: Record<MessageKey, string> = {
   'map.near': "Vis steder inden for {km} km fra midten",
   'map.layers': "Lag",
   'map.cluster': "{n} steder: zoom ind",
+  'map.zoom_in': "Ikke alle steder vises: zoom ind for at se dem alle",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Skabelonkomponenten “{name}” findes ikke i denne applikation.",
   'plugin.missing': "Plug-in’et “{name}” findes ikke i denne applikation.",

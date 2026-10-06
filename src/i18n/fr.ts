@@ -134,6 +134,7 @@ export const fr: Record<MessageKey, string> = {
   'map.near': 'Afficher les lieux à moins de {km} km du centre',
   'map.layers': 'Calques',
   'map.cluster': '{n} lieux : zoomer',
+  'map.zoom_in': 'Tous les lieux ne sont pas affichés : zoomez pour les voir tous',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'Le composant de modèle « {name} » n’existe pas dans cette application.',
   'plugin.missing': "Le plug-in « {name} » n’existe pas dans cette application.",

@@ -134,6 +134,7 @@ export const ru: Record<MessageKey, string> = {
   'map.near': "Показать места в пределах {km} км от центра",
   'map.layers': "Слои",
   'map.cluster': "Мест: {n}, приблизьте",
+  'map.zoom_in': "Показаны не все места: приблизьте карту, чтобы увидеть все",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Компонента шаблона «{name}» нет в этом приложении.",
   'plugin.missing': "Плагина «{name}» нет в этом приложении.",

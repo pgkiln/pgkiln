@@ -134,6 +134,7 @@ export const cs: Record<MessageKey, string> = {
   'map.near': "Zobrazit místa do {km} km od středu",
   'map.layers': "Vrstvy",
   'map.cluster': "Míst: {n}, přibližte",
+  'map.zoom_in': "Nezobrazují se všechna místa: přibližte mapu, abyste viděli všechna",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Komponenta šablony „{name}“ v této aplikaci neexistuje.",
   'plugin.missing': "Zásuvný modul „{name}“ v této aplikaci neexistuje.",

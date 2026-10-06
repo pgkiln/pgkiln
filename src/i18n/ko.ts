@@ -134,6 +134,7 @@ export const ko: Record<MessageKey, string> = {
   'map.near': "중심에서 {km}km 이내의 장소 표시",
   'map.layers': "레이어",
   'map.cluster': "장소 {n}곳: 확대하세요",
+  'map.zoom_in': "모든 장소가 표시되지 않았습니다. 모두 보려면 확대하세요",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "이 애플리케이션에 템플릿 구성 요소 '{name}'이(가) 없습니다.",
   'plugin.missing': "이 애플리케이션에 플러그인 '{name}'이(가) 없습니다.",

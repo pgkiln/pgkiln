@@ -165,6 +165,48 @@ describe('map and tree regions', () => {
     await context.close();
   });
 
+  test('a large map: vector tiles drawn on canvases with popups, the visible-area layer clustered, a note to zoom in', async () => {
+    const { context, page } = await signedIn();
+    const mvt: string[] = [];
+    page.on('response', (r) => r.url().includes('.mvt') && mvt.push(`${r.status()} ${r.headers()['content-type']}`));
+    await page.goto(`${base}/a/hr/41`);
+    await page.locator('.leaflet-container').waitFor();
+    // the visible-area layer: clusters of the high stations, more than the limit in view
+    await page.locator('.map-cluster').first().waitFor();
+    const note = page.locator('.map-note');
+    await note.waitFor();
+    assert.equal(await note.textContent(), 'Not every place is shown: zoom in to see them all');
+    // the tiles: drawn on canvases in their own pane
+    const tiles = page.locator('.leaflet-pgapexTiles-pane canvas');
+    await tiles.first().waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('.leaflet-pgapexTiles-pane canvas.leaflet-tile-loaded').length > 0);
+    assert.ok(mvt.length > 0 && mvt.every((m) => m === '200 application/vnd.mapbox-vector-tile'), mvt.join());
+    // switch the high stations off, then click a drawn station
+    await page.locator('.map-layers label', { hasText: 'High stations' }).locator('input').uncheck();
+    assert.equal(await page.locator('.map-cluster').count(), 0);
+    const at = await page.evaluate(() => {
+      for (const c of document.querySelectorAll<HTMLCanvasElement>('.leaflet-pgapexTiles-pane canvas.leaflet-tile-loaded')) {
+        const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        for (let i = 0; i < d.length; i += 4)
+          // the middle of a dot: the layer's blue, nearly opaque
+          if (d[i + 3] > 200 && d[i + 2] > 180 && d[i] < 80) {
+            const box = c.getBoundingClientRect();
+            const px = (i / 4) % c.width;
+            const py = Math.floor(i / 4 / c.width);
+            return { x: box.left + (px * box.width) / c.width, y: box.top + (py * box.height) / c.height };
+          }
+      }
+      return null;
+    });
+    assert.ok(at, 'a station is drawn');
+    await page.mouse.click(at!.x, at!.y);
+    const popup = page.locator('.leaflet-popup-content');
+    await popup.waitFor();
+    assert.match((await popup.textContent()) ?? '', /^Station \d+\d+ m$/);
+    assert.deepEqual(await violations(page), []);
+    await context.close();
+  });
+
   test('the tree opens and closes; nodes link to the record', async () => {
     const { context, page } = await signedIn();
     await page.goto(`${base}/a/hr/8`);

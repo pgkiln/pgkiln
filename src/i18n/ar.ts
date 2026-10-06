@@ -134,6 +134,7 @@ export const ar: Record<MessageKey, string> = {
   'map.near': "إظهار الأماكن في حدود {km} كم من المركز",
   'map.layers': "الطبقات",
   'map.cluster': "{n} أماكن: قم بالتكبير",
+  'map.zoom_in': "لا تظهر جميع الأماكن: كبّر الخريطة لرؤيتها كلها",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "مكوّن القالب «{name}» غير موجود في هذا التطبيق.",
   'plugin.missing': "المكوّن الإضافي «{name}» غير موجود في هذا التطبيق.",

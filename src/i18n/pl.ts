@@ -134,6 +134,7 @@ export const pl: Record<MessageKey, string> = {
   'map.near': "Pokaż miejsca w promieniu {km} km od środka",
   'map.layers': "Warstwy",
   'map.cluster': "{n} miejsc: przybliż",
+  'map.zoom_in': "Nie wszystkie miejsca są widoczne: przybliż, aby zobaczyć wszystkie",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Komponent szablonu „{name}” nie istnieje w tej aplikacji.",
   'plugin.missing': "Wtyczka „{name}” nie istnieje w tej aplikacji.",

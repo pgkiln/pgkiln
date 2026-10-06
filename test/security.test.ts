@@ -5998,3 +5998,45 @@ describe('sprint 39 object storage', () => {
     }
   });
 });
+
+describe('sprint 39 map layers loaded by the browser', () => {
+  const mapRegion = async () =>
+    (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 41 and r.type = 'map'`, [appId])).id as number;
+
+  test('signed out, or a map region the user may not see: no places', async () => {
+    const id = await mapRegion();
+    const urls = [`/a/hr/41/map/${id}/tiles/0/4/8/5.mvt`, `/a/hr/41/map/${id}/layer/1?bb=45,5,47,8`];
+    for (const u of urls) {
+      const res = await new Browser().get(u);
+      assert.notEqual(res.statusCode, 200, u);
+      assert.doesNotMatch(res.body, /Station \d/, u);
+    }
+    try {
+      await owner.query(`update meta.region set authz = 'ADMIN' where id = $1`, [id]);
+      const blake = await as('blake');
+      for (const u of urls) assert.equal((await blake.get(u)).statusCode, 403, u);
+      assert.equal((await (await as('king')).get(urls[0])).statusCode, 200, 'an administrator still gets the tile');
+    } finally {
+      await owner.query(`update meta.region set authz = null where id = $1`, [id]);
+    }
+  });
+
+  test("a layer's query runs as the application's role; the area is numbers, never SQL", async () => {
+    const id = await mapRegion();
+    const { source } = await owner.one('select source from meta.region where id = $1', [id]);
+    try {
+      await owner.query('update meta.region set source = $2 where id = $1', [id, 'select 50 as lat, 5 as lng, password_hash as title from meta.account']);
+      const res = await (await as('king')).get(`/a/hr/41/map/${id}/tiles/0/4/8/5.mvt`);
+      assert.equal(res.statusCode, 400);
+      assert.doesNotMatch(res.body, /\$2[aby]\$|argon2/);
+    } finally {
+      await owner.query('update meta.region set source = $2 where id = $1', [id, source]);
+    }
+    const king = await as('king');
+    for (const bb of ["45,5,47,8) or (1=1", "45,5,47,8'; drop table hr.emp; --", '1e2,0,1,1', 'NaN,0,1,1'])
+      assert.equal((await king.get(`/a/hr/41/map/${id}/layer/1?bb=${encodeURIComponent(bb)}`)).statusCode, 400, bb);
+    for (const t of ['99/0/0.mvt', '4/8/5;select', '4/-1/5.mvt', '4/8/99999999999.mvt'])
+      assert.equal((await king.get(`/a/hr/41/map/${id}/tiles/0/${t}`)).statusCode, 404, t);
+    assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
+  });
+});

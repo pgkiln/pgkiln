@@ -30,6 +30,11 @@ All notable changes to this project are documented here. The format follows
   bucket (AWS Signature Version 4, web credentials of the new type `aws_sigv4`); the source column holds the key;
   replaced and removed files are deleted after the commit, files of a failed save at once; downloads go through
   the app as before.
+- **Map layers for large data sets**: a layer loads only the places in the visible area, again after each move
+  (`"visible_area": true`, at most 2,000 with a "zoom in" note), or is served as **Mapbox Vector Tiles**
+  (`"tiles": true`, MVT 2.1 encoded by pgapex without a dependency, at most 10,000 rows per tile), drawn on canvases
+  with popups. Both filter on the server (PostGIS or latitude/longitude) as the application's role. *Load* in the
+  map's settings; HR example page 41, 20,000 weather stations (`hr_48`).
 
 ## [0.30.0] - 2026-10-06
 
