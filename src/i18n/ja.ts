@@ -155,6 +155,10 @@ export const ja: Record<MessageKey, string> = {
   'item.scan': "スキャン",
   'item.locate_error': "位置情報を取得できません。",
   'item.scan_close': "閉じる",
+  'crop.title': "画像のトリミング",
+  'crop.apply': "この部分を使用",
+  'crop.skip': "画像全体を使用",
+  'crop.help': "枠をドラッグして移動し、角をドラッグしてサイズを変更します。キーボードでは矢印キーで移動、Shift + 矢印キーでサイズを変更します。",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "書式付きテキスト: 基本的な HTML (段落、太字、斜体、リスト、リンク) は保持され、それ以外は削除されます。",
   'item.markdown_hint': "Markdown: **太字**、_斜体_、# 見出し、- リスト、[リンク](https://…)。",

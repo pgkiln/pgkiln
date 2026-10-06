@@ -1523,3 +1523,16 @@ td.to-col-center, th.to-col-center { text-align: center; }
 .ai-filter-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .ai-filter-row input { flex: 1 1 14rem; min-width: 0; }
 button.is-busy { opacity: 0.7; cursor: progress; }
+
+/* crop dialog for file items with "crop" (app.js cropPicture) */
+dialog.crop-dialog { border: 0; border-radius: var(--radius); padding: 1rem 1.25rem; background: var(--surface); color: var(--text); box-shadow: 0 24px 60px rgb(0 0 0 / 30%); max-width: calc(100vw - 1rem); }
+dialog.crop-dialog::backdrop { background: rgb(15 20 30 / 55%); }
+.crop-dialog h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.crop-help { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.85rem; max-width: 36rem; }
+.crop-stage { position: relative; margin: 0 auto 0.75rem; touch-action: none; user-select: none; }
+.crop-stage canvas { display: block; width: 100%; height: 100%; }
+.crop-frame { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgb(0 0 0 / 50%); cursor: move; outline: none; }
+.crop-frame:focus-visible { border-color: var(--accent); }
+.crop-handle { position: absolute; right: -8px; bottom: -8px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: nwse-resize; }
+.crop-stage { overflow: hidden; }
+.crop-dialog .buttons { display: flex; justify-content: flex-end; gap: 0.5rem; }

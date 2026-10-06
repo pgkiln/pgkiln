@@ -129,6 +129,8 @@ describe('Progressive Web App', () => {
     for (let i = 0; i < noise.length; i++) noise[i] = i % 4 === 3 ? 255 : Math.floor(Math.random() * 256);
     const big = png(2400, 2400, noise);
     await page.setInputFiles('#P3_PHOTO', { name: 'big.png', mimeType: 'image/png', buffer: big });
+    // (hr_45) the photo is cropped to a square first: keep the proposed part
+    await page.click('dialog.crop-dialog button[value="apply"]');
     await page.waitForFunction(() => (document.getElementById('P3_PHOTO') as HTMLInputElement).files![0].type === 'image/jpeg');
     const size = await page.evaluate(async () => {
       const f = (document.getElementById('P3_PHOTO') as HTMLInputElement).files![0];

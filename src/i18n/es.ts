@@ -155,6 +155,10 @@ export const es: Record<MessageKey, string> = {
   'item.scan': 'Escanear',
   'item.locate_error': 'La ubicación no está disponible.',
   'item.scan_close': 'Cerrar',
+  'crop.title': "Recortar la imagen",
+  'crop.apply': "Usar esta parte",
+  'crop.skip': "Mantener la imagen completa",
+  'crop.help': "Arrastre el marco para moverlo y su esquina para cambiar el tamaño. Con el teclado: las flechas lo mueven; Mayús y las flechas cambian el tamaño.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': 'Texto con formato: se conserva el HTML básico (párrafos, negrita, cursiva, listas, enlaces); todo lo demás se elimina.',
   'item.markdown_hint': 'Markdown: **negrita**, _cursiva_, # encabezado, - lista, [enlace](https://…).',

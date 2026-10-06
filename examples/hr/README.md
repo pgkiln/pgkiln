@@ -35,6 +35,7 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_42_hr_assistant.sql` | *HR assistant* (page 38): an AI assistant region with a context query over the HR policies (`hr.policy`, full-text search on the question) and four tools run as `hr_app` (the user's leave, colleagues, departments, and *request_leave*, the only one that changes data), next to a staff list with *Ask in your own words* (natural-language filters). Needs an AI service named `HR_ASSISTANT` (see part 41) |
 | `hr_43_drawer.sql` | *Leave request* (page 7) opens as a drawer from the right instead of a centred dialog |
 | `hr_44_built_in_components.sql` | *Team overview* (page 39): the built-in template components: metric cards, an avatar group, a timeline, a media list linking to the department dialog, and comments |
+| `hr_45_photo_crop.sql` | The employee photo (page 3) is cropped to a square in the browser before upload |
 
 The files run in order, each once (recorded in `public.pgapex_seed`), so new ones can be added
 later. pgapex's own tests use this application as their fixture (`npm test` installs it first).

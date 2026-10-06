@@ -418,16 +418,21 @@ function qrControl(ctx: PageContext, item: Item, value: string) {
  * A file item: the stored (or just uploaded) file with a preview for images,
  * a remove option, and the file input.
  */
-/** The <input type="file"> of a file item, with its accept, capture and max_px attributes. */
+/** Aspect ratios a file item may crop pictures to (config "crop"). */
+export const CROP_RATIOS = ['free', '1:1', '4:3', '3:4', '16:9', '3:2', '2:3'];
+
+/** The <input type="file"> of a file item, with its accept, capture, max_px and crop attributes. */
 function fileInput(ctx: PageContext, item: Item, aria: Raw) {
-  const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number };
+  const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number; crop?: string };
   // capture: open the camera on phones ("environment" = the back camera); max_px: photos are made smaller before upload (app.js)
   const capture = conf.capture === 'user' || conf.capture === 'environment' ? raw(` capture="${conf.capture}"`) : '';
   const maxPx = Number(conf.max_px) >= 200 && Number(conf.max_px) <= 8000 ? raw(` data-max-px="${Math.round(Number(conf.max_px))}"`) : '';
   const multiple = isMultiple(item) ? raw(' multiple') : '';
+  // (0.30) crop: a picture is cropped in the browser before upload (app.js), to an aspect ratio from a fixed list
+  const crop = !isMultiple(item) && typeof conf.crop === 'string' && CROP_RATIOS.includes(conf.crop) ? raw(` data-crop="${conf.crop}"`) : '';
   // data-drop: app.js turns the field into a drop zone that also takes pasted files, with this hint
   const drop = ctx.locale.t(isMultiple(item) ? 'file.drop_many' : 'file.drop');
-  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx} data-drop="${drop}"${aria}>`;
+  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx}${crop} data-drop="${drop}"${aria}>`;
 }
 
 /** A multiple file item: its files (stored and new), each with a remove box, and the file input. */

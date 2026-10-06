@@ -5823,3 +5823,21 @@ describe('sprint 37 instance settings', () => {
     assert.equal(await owner.one(`select value from meta.setting where name = 'session_max_hours'`), undefined);
   });
 });
+
+describe('sprint 38 picture cropping', () => {
+  test('only listed aspect ratios reach the file input', async () => {
+    const item = await owner.one(`select i.id, i.config from meta.item i join meta.page p on p.id = i.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 3 and i.name = 'P3_PHOTO'`);
+    const b = new Browser();
+    await b.get('/a/hr/login');
+    await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+    try {
+      assert.match((await b.get('/a/hr/3')).body, /id="P3_PHOTO"[^>]* data-crop="1:1"/);
+      for (const bad of ['1:1" onload="alert(1)', '5:4', '', 'free ']) {
+        await owner.query('update meta.item set config = config || $2 where id = $1', [item.id, JSON.stringify({ crop: bad })]);
+        assert.doesNotMatch((await b.get('/a/hr/3')).body, /data-crop=/, JSON.stringify(bad));
+      }
+    } finally {
+      await owner.query('update meta.item set config = $2 where id = $1', [item.id, JSON.stringify(item.config)]);
+    }
+  });
+});
