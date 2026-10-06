@@ -72,7 +72,7 @@ describe('instance settings', () => {
     const b = await admin();
     const page = (await b.get('/builder/instance')).body;
     assert.match(page, /Session idle time \(minutes\)/);
-    assert.match(page, /<code>DATABASE_URL<\/code><\/td><td data-label="Value">set \(hidden\)/);
+    assert.match(page, /<code>DATABASE_URL<\/code><\/td><td data-label="Value" class="cell-break">set \(hidden\)/);
     const password = new URL(process.env.DATABASE_URL!).password;
     if (password) assert.ok(!page.includes(`:${password}@`), 'no connection password');
     if (process.env.API_JWT_SECRET) assert.ok(!page.includes(process.env.API_JWT_SECRET));

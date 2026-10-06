@@ -1363,7 +1363,7 @@ describe('sprint 26 views: calendar drag and drop, create links, chart drill-dow
       await owner.query(`update meta.region set config = config || '{"link": {"page": 3, "items": {"P3_EMPNO": "#x#"}}}' where id = $1`, [chart.id]);
       const none = (await allen.get('/a/hr/24')).body;
       assert.doesNotMatch(none, /\/a\/hr\/3\?/, 'page 3 needs MANAGER');
-      assert.match(none, /class="bubble s1 \w+" data-tip=/);
+      assert.match(none, /class="bubble s1 \w+" role="img" data-tip=/);
     } finally {
       await owner.query(`update meta.region set config = $2, source = $3 where id = $1`, [chart.id, JSON.stringify(chart.config), source]);
     }

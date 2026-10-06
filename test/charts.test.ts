@@ -165,7 +165,7 @@ describe('sprint 26: drill-down links', () => {
 
   test('marks without a drill-down stay focusable for their tooltips', () => {
     const { body } = render('funnel', [['a', 1]], fields('label', 'A'));
-    assert.match(body, /<div class="funnel-row" data-tip="a: 1" aria-label="a: 1" tabindex="0">/);
+    assert.match(body, /<div class="funnel-row" role="img" data-tip="a: 1" aria-label="a: 1" tabindex="0">/);
     assert.doesNotMatch(body, /<a /);
   });
 });
