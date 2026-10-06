@@ -136,6 +136,7 @@ export const es: Record<MessageKey, string> = {
   'map.cluster': '{n} lugares: acercar',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'El componente de plantilla "{name}" no existe en esta aplicación.',
+  'plugin.missing': "El plug-in \"{name}\" no existe en esta aplicación.",
   'tc.invalid': 'El componente de plantilla "{name}" no es válido y no se muestra.',
   'pwa.offline_title': 'Sin conexión',
   'pwa.offline_text': 'Esta página no está en este dispositivo. Abajo se muestran las páginas que abrió antes; los formularios que envíe se guardan y se envían cuando vuelva la conexión.',

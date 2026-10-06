@@ -568,6 +568,14 @@ themselves under `static/`).
 JavaScript in these files registers functions for the dynamic action
 [Execute JavaScript](07-dynamic-actions.md#execute-javascript).
 
+### Plug-ins
+
+**Shared Components → Plug-ins** imports plug-in files (region, item, dynamic action and process
+types with their own JavaScript, CSS, template and PL/pgSQL), shows what each one brings and where
+it is used, runs its install SQL on request (as the application's role, in one transaction, never
+on import), downloads it again and removes it. See
+[plug-ins with their own code](04-pages-and-regions.md#plug-ins-with-their-own-code).
+
 ## Users (the user directory)
 
 **Builder → Users** lists every account with the applications (and roles) it can use. Create

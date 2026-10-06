@@ -136,6 +136,7 @@ export const uk: Record<MessageKey, string> = {
   'map.cluster': "Місць: {n}, наблизьте",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Компонента шаблону «{name}» немає в цьому застосунку.",
+  'plugin.missing': "Плагіна «{name}» немає в цьому застосунку.",
   'tc.invalid': "Компонент шаблону «{name}» недійсний і не показується.",
   'pwa.offline_title': "Немає з'єднання",
   'pwa.offline_text': "Цієї сторінки немає на пристрої. Раніше відкриті сторінки наведено нижче; надіслані форми зберігаються й будуть надіслані, коли з'єднання відновиться.",

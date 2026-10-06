@@ -136,6 +136,7 @@ export const fi: Record<MessageKey, string> = {
   'map.cluster': "{n} paikkaa: lähennä",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Mallikomponenttia ”{name}” ei ole tässä sovelluksessa.",
+  'plugin.missing': "Laajennusta ”{name}” ei ole tässä sovelluksessa.",
   'tc.invalid': "Mallikomponentti ”{name}” ei ole kelvollinen, eikä sitä näytetä.",
   'pwa.offline_title': "Olet offline-tilassa",
   'pwa.offline_text': "Tämä sivu ei ole tällä laitteella. Aiemmin avaamasi sivut ovat alla; lähettämäsi lomakkeet säilytetään ja lähetetään, kun yhteys palaa.",

@@ -136,6 +136,7 @@ export const de: Record<MessageKey, string> = {
   'map.cluster': '{n} Orte: hineinzoomen',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'Die Vorlagenkomponente „{name}“ existiert in dieser Anwendung nicht.',
+  'plugin.missing': "Das Plug-in „{name}“ existiert in dieser Anwendung nicht.",
   'tc.invalid': 'Die Vorlagenkomponente „{name}“ ist ungültig und wird nicht angezeigt.',
   'pwa.offline_title': 'Sie sind offline',
   'pwa.offline_text': 'Diese Seite ist nicht auf diesem Gerät gespeichert. Zuvor geöffnete Seiten sind unten aufgeführt; gesendete Formulare werden aufbewahrt und gesendet, sobald die Verbindung wieder besteht.',

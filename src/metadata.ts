@@ -1,4 +1,5 @@
 import { runtime } from './db.ts';
+import type { Plugin } from './runtime/plugins.ts';
 
 export interface AuthzScheme {
   name: string;
@@ -112,13 +113,17 @@ export interface App {
   currency: string | null;
   /** (068) static files (.js, .css) every page loads, in order; missing files are left out */
   static_includes: StaticInclude[];
+  /** (069) plug-ins (src/runtime/plugins.ts); install_sql is not loaded */
+  plugins: Plugin[];
+  /** (069) every static file's version, for plug-ins' files */
+  static_files: StaticInclude[];
 }
 
 export interface Region {
   id: number;
   seq: number;
   title: string | null;
-  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant';
+  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
@@ -138,7 +143,7 @@ export type ItemType =
   | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'radio'
   | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password'
   | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color' | 'file' | 'location'
-  | 'richtext' | 'markdown' | 'rating' | 'combobox' | 'daterange' | 'qrcode';
+  | 'richtext' | 'markdown' | 'rating' | 'combobox' | 'daterange' | 'qrcode' | 'plugin';
 
 export interface Item {
   id: number;
@@ -238,7 +243,9 @@ export interface DynamicAction {
   action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit'
     | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate'
     /** (068) code: the name of a function a static file registered (pgapex.actions.register) */
-    | 'execute_javascript';
+    | 'execute_javascript'
+    /** (069) code: the name of a dynamic action plug-in; config.attributes its attribute values */
+    | 'plugin';
   affected_items: string | null;
   affected_region_id: number | null;
   code: string | null;
@@ -246,6 +253,8 @@ export interface DynamicAction {
   message: string | null;
   /** add_class / remove_class: space separated class names (checked by the database) */
   css_classes?: string | null;
+  /** (069) a plug-in action's attribute values: {"attributes": {…}} */
+  config?: Record<string, any> | null;
   authz: string | null;
 }
 
@@ -262,7 +271,7 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin';
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;
@@ -318,7 +327,10 @@ export async function loadApp(alias: string) {
                         from meta.authz_scheme s where s.app_id = a.id), '[]') as authz_schemes,
             coalesce((select jsonb_agg(i.name) from meta.app_item i where i.app_id = a.id), '[]') as app_items,
             ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes,
-            ${includes('a.static_includes', 'a.id')} as static_includes
+            ${includes('a.static_includes', 'a.id')} as static_includes,
+            coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' - 'install_sql') from meta.plugin x where x.app_id = a.id), '[]') as plugins,
+            coalesce((select jsonb_agg(jsonb_build_object('name', f.name, 'v', floor(extract(epoch from f.updated_at))::bigint))
+                        from meta.static_file f where f.app_id = a.id and exists (select 1 from meta.plugin x where x.app_id = a.id and f.name = any (x.files))), '[]') as static_files
        from meta.app a
       where a.alias = $1`,
     [alias],

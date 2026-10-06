@@ -136,6 +136,7 @@ export const fr: Record<MessageKey, string> = {
   'map.cluster': '{n} lieux : zoomer',
   // template components (src/runtime/template-region.ts)
   'tc.missing': 'Le composant de modèle « {name} » n’existe pas dans cette application.',
+  'plugin.missing': "Le plug-in « {name} » n’existe pas dans cette application.",
   'tc.invalid': 'Le composant de modèle « {name} » n’est pas valide et n’est pas affiché.',
   'pwa.offline_title': 'Vous êtes hors ligne',
   'pwa.offline_text': 'Cette page n’est pas disponible sur cet appareil. Les pages ouvertes précédemment sont listées ci-dessous ; les formulaires envoyés sont conservés et transmis dès le retour de la connexion.',

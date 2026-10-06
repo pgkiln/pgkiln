@@ -5895,3 +5895,40 @@ describe('sprint 39 static application files', () => {
     }
   });
 });
+
+describe('sprint 39 plug-ins', () => {
+  test('only developers manage plug-ins, with CSRF; applications cannot change or install them', async () => {
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const anon = new Browser();
+    assert.equal((await anon.get(`/builder/apps/${hr}/plugins`)).statusCode, 302);
+    assert.equal((await anon.get(`/builder/apps/${hr}/plugins/download?name=show_more`)).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    for (const path of ['import', 'delete', 'install'])
+      assert.equal((await dev.post(`/builder/apps/${hr}/plugins/${path}`, { __csrf: 'forged', name: 'show_more', plugin: '{}' })).statusCode, 403, path);
+    assert.ok(await owner.one(`select 1 from meta.plugin where app_id = $1 and name = 'show_more'`, [hr]));
+    await assert.rejects(runtime.query(`update meta.plugin set sql_function = 'pg_catalog.pg_terminate_backend' where app_id = $1`, [hr]), /permission denied/);
+    await assert.rejects(runtime.query(`select meta.import_plugin($1, '{}'::jsonb)`, [hr]), /permission denied/);
+    // a function name is an identifier, never SQL
+    await assert.rejects(owner.query(`update meta.plugin set sql_function = 'x.y(1); drop table hr.emp; --' where app_id = $1 and name = 'log_event'`, [hr]), /check constraint/);
+  });
+
+  test('a page only gets plug-ins of the right type, and attribute values as escaped data', async () => {
+    const pid = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 40`)).id;
+    // a region plug-in named in a dynamic action is not a dynamic action plug-in
+    await owner.query(`insert into meta.dynamic_action (page_id, seq, name, event, action, code, config) values ($1, 950, 'sec39 plugin', 'load', 'plugin', 'show_more', '{"attributes": {"X": "</script><script>alert(1)</script>"}}')`, [pid]);
+    try {
+      const b = new Browser();
+      await b.get('/a/hr/login');
+      await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+      const body = (await b.get('/a/hr/40')).body;
+      const das = JSON.parse(/<script type="application\/json" id="pgapex-meta">([\s\S]*?)<\/script>/.exec(body)![1]).das;
+      const da = das.find((d: { plugin?: string | null; action: string }) => d.action === 'plugin' && d.plugin === null);
+      assert.ok(da, 'no plug-in for a name of another type');
+      assert.ok(!body.includes('<script>alert(1)'));
+    } finally {
+      await owner.query(`delete from meta.dynamic_action where name = 'sec39 plugin'`);
+    }
+  });
+});

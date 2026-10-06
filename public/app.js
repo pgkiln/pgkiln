@@ -203,11 +203,47 @@ document.documentElement.classList.add('js');
   // every deferred script has run by DOMContentLoaded
   const scriptsLoaded = new Promise((resolve) =>
     document.readyState === 'complete' ? resolve() : document.addEventListener('DOMContentLoaded', () => resolve(), { once: true }));
+  // Plug-ins (069) register one function each: called for every element with
+  // data-plugin="<name>" (region and item plug-ins, also after a refresh) and
+  // for the plug-in's dynamic actions.
+  const plugins = new Map();
+  const PLUGIN_NAME = /^[a-z][a-z0-9_]{0,59}$/;
+  const pluginAttrs = (el) => {
+    try {
+      return JSON.parse(el.dataset.pluginAttrs || '{}');
+    } catch {
+      return {};
+    }
+  };
+  function startPlugins(root) {
+    const els = [...(root.matches && root.matches('[data-plugin]') ? [root] : []), ...root.querySelectorAll('[data-plugin]')];
+    for (const el of els) {
+      const fn = plugins.get(el.dataset.plugin);
+      if (!fn || el.pgapexPlugin) continue;
+      el.pgapexPlugin = true;
+      const item = el.dataset.item || null;
+      try {
+        fn({ type: item ? 'item' : 'region', element: el, item, attributes: pluginAttrs(el) });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
+  scriptsLoaded.then(() => startPlugins(document));
+  document.addEventListener('pgapex:replaced', (e) => scriptsLoaded.then(() => startPlugins(e.detail)));
+
   window.pgapex = Object.freeze({
     actions: Object.freeze({
       register(name, fn) {
         if (!ACTION_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgapex.actions.register: a name and a function, not ${name}`);
         actions.set(String(name), fn);
+      },
+    }),
+    plugins: Object.freeze({
+      register(name, fn) {
+        if (!PLUGIN_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgapex.plugins.register: a plug-in name and a function, not ${name}`);
+        plugins.set(String(name), fn);
+        if (document.readyState !== 'loading') startPlugins(document);
       },
     }),
     getValue: (name) => itemValue(name),
@@ -261,6 +297,18 @@ document.documentElement.classList.add('js');
       case 'submit':
         form && form.requestSubmit();
         return;
+      case 'plugin': {
+        await scriptsLoaded;
+        const fn = da.plugin && plugins.get(da.plugin);
+        if (!fn) return console.warn(`pgapex: the plug-in "${da.plugin}" did not register (pgapex.plugins.register) for dynamic action ${da.id}`);
+        try {
+          await fn({ type: 'dynamic_action', value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message, attributes: da.attributes || {} });
+        } catch (e) {
+          console.error(e);
+          showError(e.message);
+        }
+        return;
+      }
       case 'execute_javascript': {
         await scriptsLoaded;
         const fn = da.fn && actions.get(da.fn);

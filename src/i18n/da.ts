@@ -136,6 +136,7 @@ export const da: Record<MessageKey, string> = {
   'map.cluster': "{n} steder: zoom ind",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Skabelonkomponenten “{name}” findes ikke i denne applikation.",
+  'plugin.missing': "Plug-in’et “{name}” findes ikke i denne applikation.",
   'tc.invalid': "Skabelonkomponenten “{name}” er ugyldig og vises ikke.",
   'pwa.offline_title': "Du er offline",
   'pwa.offline_text': "Denne side er ikke på enheden. Sider, du har åbnet før, står nedenfor; formularer, du sender, gemmes og sendes, når forbindelsen er tilbage.",

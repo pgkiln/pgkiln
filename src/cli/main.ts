@@ -287,6 +287,55 @@ const COMMANDS: Record<string, Command> = {
     },
   },
 
+  plugin: {
+    usage: 'pgapex plugin build <dir> [-o <file>] | pgapex plugin install <file|dir> --app <alias> [--replace]',
+    summary: 'build a plug-in file from its sources, or install one into an application',
+    details:
+      'A plug-in source directory holds plugin.json (format pgapex-plugin/2 without file contents),\n' +
+      'the files it lists (JavaScript, CSS, …), template.html (and wrapper.html) for a region plug-in\'s\n' +
+      'template component, and install.sql. build writes <name>.plugin.json (or -o); install adds the\n' +
+      'plug-in, its files and template to an application. Install SQL never runs: review it and run\n' +
+      'it from the builder (Shared Components → Plug-ins).',
+    options: { output: { type: 'string', short: 'o' }, app: { type: 'string' }, replace: { type: 'boolean' } },
+    optionHelp: [
+      ['-o, --output <file>', 'build: where to write the plug-in file'],
+      ['--app <alias>', 'install: the application'],
+      ['--replace', 'install: replace a plug-in, files and template with the same names'],
+    ],
+    positionals: [2, 2],
+    async run(v, [action, path]) {
+      const { pluginFromSources } = await import('../runtime/plugins.ts');
+      if (!existsSync(path)) throw new UsageError(`${path} not found`);
+      const load = () =>
+        statSync(path).isDirectory()
+          ? pluginFromSources((name) => (existsSync(join(path, name)) ? readFileSync(join(path, name)) : undefined))
+          : JSON.parse(readFileSync(path, 'utf8'));
+      if (action === 'build') {
+        if (!statSync(path).isDirectory()) throw new UsageError('build takes a plug-in source directory');
+        const doc = load();
+        const file = resolve(String(v.output ?? `${doc.name}.plugin.json`));
+        writeFileSync(file, JSON.stringify(doc, null, 2) + '\n');
+        out(`Wrote ${file} (${doc.type} plug-in ${doc.name}, ${doc.files.length} file(s)).\n`);
+        return EXIT.ok;
+      }
+      if (action === 'install') {
+        if (!v.app) throw new UsageError('install needs --app <alias>');
+        const doc = load();
+        const { parsePluginDocument } = await import('../runtime/plugins.ts');
+        const parsed = parsePluginDocument(doc);
+        if (typeof parsed === 'string') throw new Error(parsed);
+        await withDb(async (db) => {
+          const a = await db.query('select id from meta.app where alias = $1', [v.app]);
+          if (!a.rows[0]) throw new Error(`application ${v.app} not found (pgapex apps lists them)`);
+          await db.query('select meta.import_plugin($1, $2::jsonb, $3)', [a.rows[0].id, JSON.stringify({ ...doc, files: parsed.files }), !!v.replace]);
+        });
+        out(`Installed ${parsed.plugin.type} plug-in ${parsed.plugin.name} into ${v.app}.${parsed.plugin.install_sql ? ' It has install SQL: review and run it in the builder.' : ''}\n`);
+        return EXIT.ok;
+      }
+      throw new UsageError('pgapex plugin build <dir> | pgapex plugin install <file|dir> --app <alias>');
+    },
+  },
+
   users: {
     usage: 'pgapex users list|add|password [<username>] [options]',
     summary: 'list accounts and builder developers, add one, set a password',

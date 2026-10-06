@@ -109,6 +109,7 @@ const CODE: Record<string, Record<string, string>> = {
   rest_source: { body: 'json' },
   list: { query: 'sql' },
   supporting_script: { script: 'sql' },
+  plugin: { install_sql: 'sql' },
 };
 const isLong = (v: unknown): v is string => typeof v === 'string' && (v.includes('\n') || v.length > 60);
 const codeExt = (table: string, column: string, row: any) =>
@@ -155,6 +156,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['data_load_definitions', 'shared/data-load-definitions', 'data_load_def'],
   ['lists', 'shared/lists', 'list'],
   ['supporting_scripts', 'shared/supporting-objects', 'supporting_script'],
+  // (069) plug-ins: install SQL in <name>.install_sql.sql
+  ['plugins', 'shared/plugins', 'plugin'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */

@@ -1173,6 +1173,62 @@ The HR example installs them (`examples/hr/hr_19_template_components.sql`): page
 contact cards linking to the employee form, recent hires on a timeline, and leave requests with a
 status badge. Template components are part of an application export (`template_components`).
 
+#### Plug-ins with their own code
+
+APEX's region, item, dynamic action and process plug-ins. A plug-in file (`"format":
+"pgapex-plugin/2"`) brings, by type:
+
+| `type` | Brings | Used as |
+|---|---|---|
+| `region` | a template component that renders the region's rows, and JavaScript that gets the region | a region of type `plugin` |
+| `item` | JavaScript that enhances a text field (the value is posted and stored as text, so the form works without it) | an item of type `plugin` |
+| `dynamic_action` | a JavaScript function | a dynamic action with action `plugin`, Code the plug-in's name |
+| `process` | a PL/pgSQL function `schema.fn(attributes jsonb) returns text` (the message), usually created by its install SQL | a process of type `plugin` |
+
+Every plug-in has custom attributes (like a template component's: `text`, `number`, `select`,
+`checkbox`, with defaults); a region, item or process sets their values in `config`, a dynamic
+action in its `config`:
+
+```json
+{"plugin": "show_more", "attributes": {"VISIBLE": "4", "BUTTON": "Show everyone"}}
+```
+
+Values may contain `&ITEM.` substitutions. JavaScript and CSS are
+[static application files](03-builder.md#static-application-files) that come with the plug-in;
+pages that use it load them. The JavaScript registers the plug-in by name:
+
+```js
+pgapex.plugins.register('show_more', ({ type, element, item, attributes }) => {
+  // region and item plug-ins: element is the region's (or field's) element; called again after a refresh
+  // dynamic action plug-ins: the action's context (items, elements, region, value, message) and attributes
+});
+```
+
+The page passes the plug-in's name and attribute values in `data-plugin` and `data-plugin-attrs`
+(and in the dynamic action's JSON); code never travels in the page, so the Content-Security-Policy
+stays `script-src 'self'`. A region plug-in's template is an ordinary template component (checked
+against the allow-list above); its attributes are the plug-in's, and a region Source SELECT gives
+it rows.
+
+**Install SQL** (tables, functions, grants a plug-in needs) is shown under Shared Components →
+Plug-ins and runs only when a developer asks, as the application's database role, in one
+transaction. A plug-in's code runs with the application's rights: install only plug-ins you trust,
+after reading their files.
+
+A plug-in file is built from a source directory with `pgapex plugin build <dir>`: `plugin.json` (the
+file without contents: type, name, label, version, help, attributes, `files`, `template_component`,
+`sql_function`), the files it lists, `template.html` (and `wrapper.html`) for a region, and
+`install.sql`. `pgapex plugin install <file|dir> --app <alias>` adds it to an application; so does
+**Import a plug-in** in the builder and, in SQL, `meta.import_plugin(<app id>, '<plug-in json>'::jsonb,
+p_replace => false)`. **Download plug-in file** gives it back. Plug-ins are part of an application
+export (`plugins`; `shared/plugins/` in a directory export).
+
+`examples/plugins/` has four, each as a source directory and a built file: `show-more` (region: the
+first rows and a *Show all* button), `char-counter` (item: a maximum length with a live count),
+`copy-value` (dynamic action: copy an item's value to the clipboard) and `log-event` (process: record
+an event in `pgapex_plugins.event_log`). HR example part 47 installs them and uses all four on page
+40 (*Plug-ins*).
+
 ### `static` and `dynamic` content
 
 - **`static`**: `source` is HTML written by the developer, with `&ITEM.` substitutions

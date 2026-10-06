@@ -30,6 +30,7 @@ import { cell, columnFormats, maxRows, regionUrl, renderReport } from './report.
 import { cacheKey, cacheOf, lazyOf, renderCaching, useCached } from './region-cache.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { templateClasses } from './template-options.ts';
+import { renderPluginRegion } from './plugins.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -340,6 +341,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'template_component':
       body = await renderTemplateRegion(ctx, r);
+      break;
+    case 'plugin':
+      body = await renderPluginRegion(ctx, r, renderTemplateRegion);
       break;
     case 'data_reporter':
       body = await renderDataReporter(ctx, r);

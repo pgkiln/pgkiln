@@ -42,6 +42,11 @@ export interface RunResult {
 /** Run the scripts of one kind as the application's role, in one transaction. */
 export async function runSupportingScripts(app: { id: number; alias: string; db_role: string | null }, kind: Kind, developerName: string): Promise<RunResult> {
   const scripts = (await owner.query<{ name: string; script: string }>('select name, script from meta.supporting_script where app_id = $1 and kind = $2 order by seq, name', [app.id, kind])).rows;
+  return runScripts(app, scripts, developerName);
+}
+
+/** Run scripts as the application's role, statement by statement, in one transaction (plug-ins' install SQL too). */
+export async function runScripts(app: { id: number; alias: string; db_role: string | null }, scripts: { name: string; script: string }[], developerName: string): Promise<RunResult> {
   const results: StatementResult[] = [];
   class Failed extends Error {}
   try {
@@ -71,7 +76,7 @@ export async function runSupportingScripts(app: { id: number; alias: string; db_
 
 const cell = (v: unknown) => (v === null ? html`<span class="null">null</span>` : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
-function resultsHtml(kind: Kind, r: RunResult): Raw {
+export function resultsHtml(kind: string, r: RunResult): Raw {
   return html`<div class="alert ${r.ok ? 'alert-success' : 'alert-error'}" role="status">${r.ok
       ? `The ${kind} scripts ran: ${r.results.length} statement(s), committed.`
       : `The ${kind} scripts failed: everything they did was undone (rolled back).`}</div>

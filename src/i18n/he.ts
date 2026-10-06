@@ -136,6 +136,7 @@ export const he: Record<MessageKey, string> = {
   'map.cluster': "{n} מקומות: הגדילו",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "רכיב התבנית \"{name}\" אינו קיים ביישום זה.",
+  'plugin.missing': "התוסף \"{name}\" אינו קיים ביישום זה.",
   'tc.invalid': "רכיב התבנית \"{name}\" אינו תקין ואינו מוצג.",
   'pwa.offline_title': "אין חיבור",
   'pwa.offline_text': "הדף אינו נמצא במכשיר. הדפים שפתחתם קודם מופיעים למטה; טפסים שתשלחו יישמרו ויישלחו כשהחיבור יחזור.",

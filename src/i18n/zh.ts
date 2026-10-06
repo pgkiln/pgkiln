@@ -136,6 +136,7 @@ export const zh: Record<MessageKey, string> = {
   'map.cluster': "{n} 个地点：请放大",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "此应用程序中不存在模板组件“{name}”。",
+  'plugin.missing': "此应用程序中不存在插件“{name}”。",
   'tc.invalid': "模板组件“{name}”无效，未显示。",
   'pwa.offline_title': "您已离线",
   'pwa.offline_text': "此页面不在本设备上。以前打开过的页面列在下方；您提交的表单会被保存，并在连接恢复后发送。",

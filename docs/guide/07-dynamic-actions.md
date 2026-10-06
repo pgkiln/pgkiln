@@ -19,6 +19,7 @@ your own from a static application file.
 | `items_to_submit` | Items whose current browser values are sent to the server first |
 | `message` | Text for `alert`, `show_success` and `show_error` |
 | `css_classes` | Class names for `add_class` / `remove_class` |
+| `config` | A `plugin` action's attribute values: `{"attributes": {"MESSAGE": "Copied."}}` |
 | `authz` | Only for authorized users |
 | `build_option` | Only while the [build option](06-processing.md#build-options) is included |
 
@@ -41,6 +42,7 @@ your own from a static application file.
 | `clear_errors` | browser | Removes the error messages of the affected items, or all of them |
 | `ai_generate` | server | Runs the [Generate text with AI](06-processing.md#generate-text-with-ai) process named in `code` (a process of type `ai_generate` on the same page, with that process's authorization and condition) and updates its output items, without submitting the page. Items to submit default to the page items its prompts use (never password items); the affected items default to its output items. On a submit button the button waits for the answer; without JavaScript the button submits the page and the process runs as usual |
 
+| `plugin` | browser | Runs the [dynamic action plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code) named in `code`, with `config` `{"attributes": {…}}` (`&ITEM.` filled in); the function gets the same context as *Execute JavaScript* plus `attributes` |
 | `execute_javascript` | browser | Calls the function named in `code`, which a [static application file](03-builder.md#static-application-files) registered; see [below](#execute-javascript) |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's

@@ -136,6 +136,7 @@ export const ko: Record<MessageKey, string> = {
   'map.cluster': "장소 {n}곳: 확대하세요",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "이 애플리케이션에 템플릿 구성 요소 '{name}'이(가) 없습니다.",
+  'plugin.missing': "이 애플리케이션에 플러그인 '{name}'이(가) 없습니다.",
   'tc.invalid': "템플릿 구성 요소 '{name}'이(가) 올바르지 않아 표시되지 않습니다.",
   'pwa.offline_title': "오프라인 상태입니다",
   'pwa.offline_text': "이 페이지는 이 기기에 없습니다. 이전에 연 페이지가 아래에 있습니다. 보낸 양식은 보관되었다가 연결이 복구되면 전송됩니다.",

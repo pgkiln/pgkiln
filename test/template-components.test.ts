@@ -134,7 +134,8 @@ describe('components and plug-in files', () => {
 
   test('the example plug-ins are valid and survive a round trip', () => {
     const dir = new URL('../examples/plugins/', import.meta.url);
-    const files = readdirSync(dir).filter((f) => f.endsWith('.plugin.json'));
+    // template component plug-ins (pgapex-plugin/1); test/plugins.test.ts checks the others
+    const files = readdirSync(dir).filter((f) => f.endsWith('.plugin.json') && JSON.parse(readFileSync(new URL(f, dir), 'utf8')).format === 'pgapex-plugin/1');
     assert.ok(files.length >= 3);
     for (const f of files) {
       const doc = JSON.parse(readFileSync(new URL(f, dir), 'utf8'));

@@ -136,6 +136,7 @@ export const cs: Record<MessageKey, string> = {
   'map.cluster': "Míst: {n}, přibližte",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Komponenta šablony „{name}“ v této aplikaci neexistuje.",
+  'plugin.missing': "Zásuvný modul „{name}“ v této aplikaci neexistuje.",
   'tc.invalid': "Komponenta šablony „{name}“ není platná a nezobrazuje se.",
   'pwa.offline_title': "Jste offline",
   'pwa.offline_text': "Tato stránka není v zařízení. Dříve otevřené stránky jsou uvedeny níže; odeslané formuláře se uchovají a odešlou, až bude připojení obnoveno.",

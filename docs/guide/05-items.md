@@ -33,6 +33,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `combobox` | free text with suggestions from the list of values; several values become tags | **colon-separated** values, e.g. `SQL:Sales` |
 | `daterange` | two date pickers, *From* and *To* | `from:to`, e.g. `2026-01-01:2026-06-30` |
 | `qrcode` | display only: the value as a QR code (SVG drawn on the server) | whatever was set |
+| `plugin` | an [item plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code): a text field its JavaScript enhances; `config`: `{"plugin": "char_counter", "attributes": {"MAX": "140"}}` | text |
 
 Use multi-value items in SQL with `string_to_array`:
 

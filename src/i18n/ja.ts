@@ -136,6 +136,7 @@ export const ja: Record<MessageKey, string> = {
   'map.cluster': "{n} か所: 拡大してください",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "テンプレートコンポーネント「{name}」はこのアプリケーションに存在しません。",
+  'plugin.missing': "プラグイン「{name}」はこのアプリケーションに存在しません。",
   'tc.invalid': "テンプレートコンポーネント「{name}」は無効なため表示されません。",
   'pwa.offline_title': "オフラインです",
   'pwa.offline_text': "このページはこのデバイスにありません。以前に開いたページは下に一覧表示されます。送信したフォームは保存され、接続が戻ると送信されます。",

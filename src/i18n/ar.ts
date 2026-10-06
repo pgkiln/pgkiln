@@ -136,6 +136,7 @@ export const ar: Record<MessageKey, string> = {
   'map.cluster': "{n} أماكن: قم بالتكبير",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "مكوّن القالب «{name}» غير موجود في هذا التطبيق.",
+  'plugin.missing': "المكوّن الإضافي «{name}» غير موجود في هذا التطبيق.",
   'tc.invalid': "مكوّن القالب «{name}» غير صالح ولا يُعرض.",
   'pwa.offline_title': "أنت غير متصل",
   'pwa.offline_text': "هذه الصفحة غير موجودة على هذا الجهاز. الصفحات التي فتحتها من قبل مدرجة أدناه؛ تُحفظ النماذج التي ترسلها وتُرسل عند عودة الاتصال.",

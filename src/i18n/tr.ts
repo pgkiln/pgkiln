@@ -136,6 +136,7 @@ export const tr: Record<MessageKey, string> = {
   'map.cluster': "{n} yer: yakınlaştırın",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "“{name}” şablon bileşeni bu uygulamada yok.",
+  'plugin.missing': "“{name}” eklentisi bu uygulamada yok.",
   'tc.invalid': "“{name}” şablon bileşeni geçerli değil ve gösterilmiyor.",
   'pwa.offline_title': "Çevrimdışısınız",
   'pwa.offline_text': "Bu sayfa bu cihazda yok. Daha önce açtığınız sayfalar aşağıda listelenir; gönderdiğiniz formlar saklanır ve bağlantı geri geldiğinde gönderilir.",

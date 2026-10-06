@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
   `pgapex.actions.register(name, fn)`; the page receives only the name, so the CSP stays `script-src 'self'`.
   `window.pgapex` also offers `getValue`, `setValue`, `showSuccess`, `showError` and `clearErrors`. HR example:
   the salary per year on the employee form (`hr_46`).
+- **Plug-ins with their own code** (migration 069): region, item, dynamic action and process plug-ins in one
+  `pgapex-plugin/2` file (attributes, JavaScript/CSS as static files registered with `pgapex.plugins.register`, a
+  template component for regions, a PL/pgSQL function for processes, install SQL run only on request as the app's
+  role). Shared Components → Plug-ins; `meta.import_plugin()`; `pgapex plugin build|install`; four examples in
+  `examples/plugins/` used on HR page 40 (`hr_47`).
 
 ## [0.30.0] - 2026-10-06
 

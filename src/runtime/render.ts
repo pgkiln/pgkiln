@@ -3,6 +3,7 @@ import { urlChecksum } from '../security.ts';
 import { pwaBody, pwaHead } from './pwa.ts';
 import { mapHead } from './maps.ts';
 import { staticHead } from './static-files.ts';
+import { pluginAttributes, pluginOf } from './plugins.ts';
 import { appStyles, chosenStyle, chosenStyleName, styleChoice, themeCss } from './styles.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -39,7 +40,14 @@ function dynamicActionsJson(ctx: PageContext) {
       classes: d.css_classes ? d.css_classes.split(' ').filter((c) => /^[a-z][a-z0-9_-]{0,39}$/.test(c)) : [],
       // execute_javascript: the name of a function a static file registered (never code)
       fn: d.action === 'execute_javascript' && /^[A-Za-z_$][\w$.-]{0,99}$/.test(d.code?.trim() ?? '') ? d.code!.trim() : null,
+      // plugin: the plug-in's name and attribute values (only a plug-in of the application)
+      ...(d.action === 'plugin' ? pluginAction(ctx, d.code, d.config) : {}),
     }));
+
+function pluginAction(ctx: PageContext, name: string | null, config: Record<string, any> | null | undefined) {
+  const p = pluginOf(ctx, name?.trim(), 'dynamic_action');
+  return p ? { plugin: p.name, attributes: pluginAttributes(ctx, p, config) } : { plugin: null };
+}
 }
 
 function conditionHolds(type: string | null, expected: string | null, value: string) {

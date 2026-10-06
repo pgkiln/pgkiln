@@ -136,6 +136,7 @@ export const nb: Record<MessageKey, string> = {
   'map.cluster': "{n} steder: zoom inn",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Malkomponenten «{name}» finnes ikke i denne applikasjonen.",
+  'plugin.missing': "Programtillegget «{name}» finnes ikke i denne applikasjonen.",
   'tc.invalid': "Malkomponenten «{name}» er ugyldig og vises ikke.",
   'pwa.offline_title': "Du er frakoblet",
   'pwa.offline_text': "Denne siden er ikke på enheten. Sider du har åpnet før, står nedenfor; skjemaer du sender, tas vare på og sendes når forbindelsen er tilbake.",

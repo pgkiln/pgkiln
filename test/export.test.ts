@@ -60,6 +60,7 @@ const SECTIONS: Record<string, string> = {
   list_entry: 'list_entries',
   supporting_script: 'supporting_scripts',
   static_file: 'static_files',
+  plugin: 'plugins',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

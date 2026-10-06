@@ -1,0 +1,11 @@
+{
+  "type": "item",
+  "name": "char_counter",
+  "label": "Character counter",
+  "version": "1.0.0",
+  "help": "A text field that stops at a maximum length and shows how many characters are used. Without JavaScript it is a plain text field; add a validation if the limit matters on the server too.",
+  "attributes": [
+    {"name": "MAX", "label": "Maximum characters", "type": "number", "default": "100"}
+  ],
+  "files": ["char-counter.js", "char-counter.css"]
+}

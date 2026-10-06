@@ -14,6 +14,7 @@ import { runAiProcess } from './ai.ts';
 import { itemMask, lovLookup, ratingMax } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { conditionHolds } from './logic.ts';
+import { runPluginProcess } from './plugins.ts';
 import { BACKGROUND_TYPES, downloadFile, workflowProcess, type ChainConfig } from './processes.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type Errors, type PageContext } from './context.ts';
 
@@ -465,6 +466,7 @@ async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, dept
       case 'invoke_api': return await invokeApi(ctx, p, names);
       case 'workflow': return await workflowProcess(ctx, p, names);
       case 'ai_generate': return (await runAiProcess(ctx, p, names)).message;
+      case 'plugin': return await runPluginProcess(ctx, p.config, p.name);
       case 'download':
         // sent instead of the page (routes.ts); the first download of a request wins
         ctx.download ??= await downloadFile(ctx, p);

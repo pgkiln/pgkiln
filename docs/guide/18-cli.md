@@ -37,6 +37,8 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgapex export <alias> [--format json\|dir] [--out <path>]` | `json` (default): the `pgapex/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below |
 | `pgapex import <path> [--alias <alias>] [--replace]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place |
 | `pgapex diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
+| `pgapex plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgapex-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
+| `pgapex plugin install <file\|dir> --app <alias> [--replace]` | Adds a plug-in (file or source directory) to an application; its install SQL is not run |
 | `pgapex users list [--developers]` | Accounts with their applications and roles, or builder developers |
 | `pgapex users add <username> [--developer] [--app <alias> --roles a,b] [--name …] [--email …]` | Adds an account (optionally with access to an application) or a builder developer |
 | `pgapex users password <username> [--developer]` | Sets a password and ends that user's sessions |
@@ -70,6 +72,7 @@ hr/
     list-entries.json                 the entries of every list, per list as a tree
     automation-actions/remind-managers/0010-remind-the-manager.json   (per automation; code in .code.sql, condition in .condition.sql)
     supporting-objects/check-the-sample-data.json   (the script in .script.sql; never run on import)
+    plugins/log_event.json            (install SQL in log_event.install_sql.sql; never run on import)
     group-roles.json
   globalization/
     text-messages.json

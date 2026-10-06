@@ -11,6 +11,7 @@ import { html } from '../html.ts';
 import { runtime } from '../db.ts';
 import { loadApp } from '../metadata.ts';
 import type { PageContext } from './context.ts';
+import { pluginsOnPage } from './plugins.ts';
 
 /** The file types an application may have, by extension. */
 export const STATIC_TYPES: Record<string, string> = {
@@ -39,7 +40,10 @@ export const includable = (name: string) => /\.(m?js|css)$/i.test(name);
 
 /** The <script> and <link> tags for the application's and the page's included files. */
 export function staticHead(ctx: PageContext) {
-  const files = [...(ctx.app.static_includes ?? []), ...(ctx.page.static_includes ?? [])];
+  // the plug-ins' files (at their version) after the application's, then the page's
+  const version = new Map<string, number>((ctx.app.static_files ?? []).map((f) => [f.name, f.v]));
+  const pluginFiles = pluginsOnPage(ctx).flatMap((p) => p.files.filter((n) => version.has(n)).map((name) => ({ name, v: version.get(name)! })));
+  const files = [...(ctx.app.static_includes ?? []), ...pluginFiles, ...(ctx.page.static_includes ?? [])];
   const seen = new Set<string>();
   return files
     .filter((f) => includable(f.name) && !seen.has(f.name) && seen.add(f.name))

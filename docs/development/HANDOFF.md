@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released.
+Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`, `hr_47`; migrations 068, 069).
 
 ## Project in one paragraph
 
@@ -1484,7 +1484,7 @@ Branch `sprint-39` from `main` (v0.30.0). One agent; tests on 5446. Migrations f
 | # | Parity row | Plan | Status |
 |---|---|---|---|
 | 1 | Dynamic actions (custom JavaScript) | Static application files (Shared Components; JS/CSS served same-origin, so the CSP stays `script-src 'self'`), app/page file references, DA action *Execute JavaScript* calling a function the app's file registers | **done**: migration 068 (`meta.static_file`, `static_includes` on app and page), `src/runtime/static-files.ts` (route, `staticHead`), `src/builder/static-files.ts`, `window.pgapex` in app.js, dir layout `static/`, `hr_46`; tests `static-files`, `e2e/static-files`, security block; rows ✅ (DA + new *Static application files* row; totals 104/12/0/3) |
-| 2 | Plug-ins (item/region/process/DA with own code) | A plug-in file bundling template component(s), static files and SQL; region/item/DA plug-ins built on 1 | todo |
+| 2 | Plug-ins (item/region/process/DA with own code) | A plug-in file bundling template component(s), static files and SQL; region/item/DA plug-ins built on 1 | **done**: migration 069 (`meta.plugin`, type/action `plugin`, `dynamic_action.config`, `meta.import_plugin`), `src/runtime/plugins.ts`, `src/builder/plugins.ts`, `pgapex.plugins.register` in app.js, `pgapex plugin build\|install`, `examples/plugins/<name>/` sources + built files, `hr_47` (page 40); tests `plugins`, e2e, security; row ✅ (105/11/0/3) |
 | 3 | Theme Roller conditional/dynamic properties | Style chosen by a SQL rule per request; CSS variables from item values (checked) | todo |
 | 4 | APEX PL/SQL APIs | XML in `meta.parse_data`, `meta.v_boolean`, JSON builder mapping, zip | todo |
 | 5 | File browse: object storage | S3-compatible storage for file items (SigV4, web credentials) | todo |

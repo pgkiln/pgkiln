@@ -113,6 +113,7 @@ two combine well; see error handling below.
 | `download` | Send a file made by a query instead of the page ([below](#download)) |
 | `chain` | An **execution chain**: run the processes that name it as their chain, in sequence, optionally in the background ([below](#execution-chains)) |
 | `workflow` | Start a [workflow](#workflows), or terminate or retry an instance ([below](#workflow-processes)) |
+| `plugin` | A [process plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code): calls its PL/pgSQL function with the attribute values (`config`: `{"plugin": "log_event", "attributes": {"DETAIL": "&P40_NOTE."}}`, `&ITEM.` filled in) as the application's role; the text it returns is the message |
 
 | Property | Meaning |
 |---|---|
@@ -121,7 +122,7 @@ two combine well; see error handling below.
 | `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds (server-side condition, as for computations and branches) |
 | `parent_process` | The name of a `chain` process on the page: this process then runs only inside that chain |
 | `region_id` | The form or grid region, for `form_dml` / `grid_dml` |
-| `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain` or `workflow` process (JSON) |
+| `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain`, `workflow` or `plugin` process (JSON) |
 | `success_message` | Shown after the redirect; messages of several processes are joined |
 | `authz` | Skipped when the user isn't authorized |
 | `seq` | Order |

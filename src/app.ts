@@ -48,6 +48,7 @@ import { workflowRoutes } from './runtime/workflows.ts';
 import { pwaRoutes } from './runtime/pwa.ts';
 import { staticFileRoutes } from './runtime/static-files.ts';
 import { staticFileBuilderRoutes } from './builder/static-files.ts';
+import { pluginRoutes } from './builder/plugins.ts';
 import { restRoutes } from './runtime/rest.ts';
 import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
@@ -132,6 +133,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(lockRoutes);
   await app.register(supportingRoutes);
   await app.register(staticFileBuilderRoutes);
+  await app.register(pluginRoutes);
   await app.register(sqlRoutes);
   await app.register(usersRoutes);
   await app.register(dataLoadRoutes);

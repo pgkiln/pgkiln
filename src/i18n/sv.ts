@@ -136,6 +136,7 @@ export const sv: Record<MessageKey, string> = {
   'map.cluster': "{n} platser: zooma in",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Mallkomponenten ”{name}” finns inte i den här applikationen.",
+  'plugin.missing': "Insticksprogrammet ”{name}” finns inte i den här applikationen.",
   'tc.invalid': "Mallkomponenten ”{name}” är ogiltig och visas inte.",
   'pwa.offline_title': "Du är offline",
   'pwa.offline_text': "Den här sidan finns inte på enheten. Sidor du har öppnat tidigare listas nedan; formulär du skickar sparas och skickas när anslutningen är tillbaka.",

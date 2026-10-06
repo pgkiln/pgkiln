@@ -136,6 +136,7 @@ export const pl: Record<MessageKey, string> = {
   'map.cluster': "{n} miejsc: przybliż",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Komponent szablonu „{name}” nie istnieje w tej aplikacji.",
+  'plugin.missing': "Wtyczka „{name}” nie istnieje w tej aplikacji.",
   'tc.invalid': "Komponent szablonu „{name}” jest nieprawidłowy i nie jest wyświetlany.",
   'pwa.offline_title': "Jesteś offline",
   'pwa.offline_text': "Tej strony nie ma na tym urządzeniu. Poniżej są strony otwarte wcześniej; wysłane formularze zostaną zachowane i wysłane po przywróceniu połączenia.",

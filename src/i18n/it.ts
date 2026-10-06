@@ -136,6 +136,7 @@ export const it: Record<MessageKey, string> = {
   'map.cluster': "{n} luoghi: ingrandisci",
   // template components (src/runtime/template-region.ts)
   'tc.missing': "Il componente modello “{name}” non esiste in questa applicazione.",
+  'plugin.missing': "Il plug-in “{name}” non esiste in questa applicazione.",
   'tc.invalid': "Il componente modello “{name}” non è valido e non viene mostrato.",
   'pwa.offline_title': "Sei offline",
   'pwa.offline_text': "Questa pagina non è su questo dispositivo. Le pagine aperte in precedenza sono elencate qui sotto; i moduli inviati vengono conservati e spediti quando torna la connessione.",
