@@ -15,6 +15,7 @@ triggers, your own functions).
 | `meta.message(name, variadic params)` | text | A text message in the current language, `%0`…`%9` replaced; falls back to the base and primary language |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
+| `meta.v_boolean(name)` | boolean | An item's value as a boolean (APEX 26.1: BOOLEAN session state): `true`, `t`, `yes`, `y`, `1`, `on` → true; `false`, `f`, `no`, `n`, `0`, `off` → false; empty or anything else → NULL. Switches and checkboxes store `true` / `false`, so `:P3_ACTIVE::boolean` works in SQL too |
 | `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
 | `meta.url_encode(text)` | text | Percent-encodes a URL component |
@@ -27,8 +28,11 @@ triggers, your own functions).
 | `meta.web_request_source(source, params jsonb default null, timeout_s default null)` | bigint | Queue a call of a [REST data source](19-rest-data-sources.md) of the app (its URL, method, headers and web credential; parameter values as text) |
 | `meta.web_response(id)` | jsonb | The request's state and response: `status` (`queued`, `running`, `ok`, `error`), `status_code`, `headers`, `content_type`, `body` (text), `json` (the body parsed when it is JSON), `size`, `url`, `message`, times. NULL for a request of another application |
 | `meta.web_response_blob(id)` | bytea | The response body as bytes (files, images) |
-| `meta.parse_data(content bytea, file_name, format, headers, delimiter, row_selector, skip_rows, max_rows)` | table | The rows of a CSV/TSV or JSON file (APEX: `apex_data_parser.parse`): `line_number`, `cols` (text[] by position), `data` (jsonb by column name). See [parsing files](#parsing-files-in-sql) |
+| `meta.parse_data(content bytea, file_name, format, headers, delimiter, row_selector, skip_rows, max_rows)` | table | The rows of a CSV/TSV, JSON, XML or Excel file (APEX: `apex_data_parser.parse`): `line_number`, `cols` (text[] by position), `data` (jsonb by column name). See [parsing files](#parsing-files-in-sql) |
 | `meta.parse_data_columns(…the same arguments)` | table | The file's columns (APEX: `apex_data_parser.get_columns`): `column_position`, `column_name`, `heading`, `data_type` |
+| `meta.zip_add(zip bytea, name, content bytea)`, `meta.zip_finish(zip)` | bytea | Build a zip (APEX: `apex_zip.add_file`, `apex_zip.finish`); see [zip files](#zip-files-in-sql) |
+| `meta.zip_agg(name, content order by …)` | bytea | Aggregate: one zip of the rows' files |
+| `meta.zip_entries(zip)`, `meta.zip_entry(zip, name)` | table / bytea | The files in a zip and one file's content (APEX: `apex_zip.get_files`, `apex_zip.get_file_content`) |
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
 `pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.debug_level`, `pgapex.public_url`
@@ -156,13 +160,73 @@ select p.cols[1] as name, p.cols[3]::numeric as salary from meta.parse_data(:fil
   unique); types are inferred over all rows: `integer`, `bigint`, `numeric`, `boolean`, `date`
   (ISO), `timestamp`, else `text`.
 - Text is read as UTF-8 (with or without a byte order mark), else as Windows-1252.
-- **Excel (.xlsx) is not supported in SQL**: an `.xlsx` file is a zip archive of compressed parts and
-  PostgreSQL has no function to decompress them. `meta.parse_data` says so; load Excel files with a
-  [`data_load` process or a data load definition](16-files.md#data-loading) (which read `.xlsx` in
-  the server), or save the sheet as CSV. **XML** isn't parsed either: use PostgreSQL's `xmltable()`
-  or the data loader.
+- **XML** (`.xml`, or text starting with `<`): the rows of a repeating element, as the data loader
+  reads them. `p_row_selector` names the row element (`employee`, or a path ending in it:
+  `employees/employee`); without it the element path that occurs most often among elements with
+  children or attributes. Columns are the row's attributes (`@id` → column `id`), its child
+  elements (`name`) and deeper elements by path (`address/city` → `address_city`); namespace
+  prefixes are ignored. Documents with a DTD or entity declarations are refused.
+- **Excel (.xlsx)**: an `.xlsx` file is a zip archive of compressed parts, and PostgreSQL can't
+  decompress. pgapex reads the sheets **when it receives the file**: a file item's upload (so
+  `meta.temp_files` content works) or a [`meta.web_request()`](#web-requests-from-sql) response, and
+  keeps them for 24 hours, found by the file's content. `p_row_selector` names the sheet (default:
+  the first); cells are text as the data loader writes them (dates `YYYY-MM-DD`). Other `.xlsx`
+  content (e.g. a file column of a table) gives an error that says so: load it with a
+  [`data_load` process](16-files.md#data-loading).
 - It runs as the caller (no special rights) and within the statement time limit (a 4 MB CSV file
   of 100,000 rows takes about a second).
+
+### Zip files in SQL
+
+APEX_ZIP in SQL. Build a zip from files, for a download process or a web request body:
+
+```sql
+-- one row per file
+select meta.zip_agg(d.filename, d.content order by d.filename) as content, 'documents.zip' as file_name, 'application/zip' as mime_type
+  from hr.emp_document d where d.empno = :P3_EMPNO;
+
+-- or step by step, like apex_zip.add_file / finish
+declare z bytea;
+begin
+  z := meta.zip_add(z, 'report.csv', convert_to(csv_text, 'UTF8'));
+  z := meta.zip_add(z, 'images/logo.png', logo);
+  z := meta.zip_finish(z);
+end;
+```
+
+Entries are stored uncompressed (PostgreSQL has no compression in SQL); names are relative paths
+in UTF-8 (`..` and leading `/` are refused). For big downloads a `download` process with several
+rows makes a compressed zip in the server instead ([chapter 6](06-processing.md#download)).
+
+Read one:
+
+```sql
+select name, size from meta.zip_entries((select content from meta.temp_files where item_name = 'P8_ZIP'));
+select meta.zip_entry(:zip, 'data/employees.csv');   -- bytea, or null when there's no such file
+select * from meta.parse_data(meta.zip_entry(:zip, 'data/employees.csv'), 'employees.csv');
+```
+
+`meta.zip_entries` and `meta.zip_entry` read zips built in SQL directly. Compressed zips (nearly
+all others) are unpacked by pgapex when it receives them, like Excel files above (a file item's
+upload or a web response; at most 2,000 files and 200 MB unpacked), and read from there for 24
+hours; for any other compressed zip they say so.
+
+### From APEX_JSON
+
+PostgreSQL's JSON functions do what `APEX_JSON` does, in SQL:
+
+| APEX_JSON | PostgreSQL |
+|---|---|
+| `apex_json.open_object` … `write('name', value)` … `close_object` | `jsonb_build_object('name', value, …)` |
+| `open_array` … `close_array` over a cursor | `jsonb_agg(jsonb_build_object(…) order by …)` from a query |
+| `write(p_cursor)` | `select jsonb_agg(to_jsonb(t)) from (…) t` (column names become keys) |
+| `get_clob_output` | the value itself (`::text` for text) |
+| `parse(text)` then `get_varchar2('a.b')`, `get_number`, `get_count` | `doc #>> '{a,b}'`, `(doc ->> 'n')::numeric`, `jsonb_array_length(doc -> 'items')` |
+| `apex_json.find_paths_like` | `jsonb_path_query(doc, '$.**.name')` |
+| `apex_json.to_xmltype` / JSON_TABLE | `json_table(doc, '$.items[*]' columns (…))` (PostgreSQL 17) or `jsonb_to_recordset(doc -> 'items')` |
+
+Web services return JSON through [`meta.web_response(id) -> 'json'`](#web-requests-from-sql), and
+[`meta.parse_data`](#parsing-files-in-sql) turns a JSON file into rows.
 
 ## Functions for developers and scripts
 

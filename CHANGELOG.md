@@ -22,6 +22,10 @@ All notable changes to this project are documented here. The format follows
 - **Conditional and dynamic theme styles**: a Theme Roller style may have a SQL condition (the first style whose
   condition holds applies, unless the user chose one) and take any of its colours from an item (`&ITEM.`, used only
   when the value is `#rrggbb`).
+- **More APEX APIs in SQL** (migration 070): `meta.parse_data` reads XML (the data loader's rules) and Excel files;
+  APEX_ZIP as `meta.zip_add` / `zip_finish` / the aggregate `zip_agg` / `zip_entries` / `zip_entry`; the server
+  unpacks .zip and .xlsx files it receives (uploads, web responses) for SQL, for 24 hours; `meta.v_boolean(item)`;
+  an APEX_JSON → PostgreSQL mapping in the reference.
 
 ## [0.30.0] - 2026-10-06
 

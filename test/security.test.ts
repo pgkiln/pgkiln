@@ -4573,7 +4573,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
 
   test('meta.parse_data refuses what it can not parse safely and stays within its limits', async () => {
     await assert.rejects(runtime.query(`select * from meta.parse_data('\\x504b0304'::bytea)`), /Excel/);
-    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>', 'UTF8'))`), /XML is not parsed/);
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>', 'UTF8'))`), /DTD or entity/);
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_delimiter => '"')`), /delimiter is one character/);
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('a', 'UTF8'), p_format => 'pdf')`), /format is auto/);
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('[1, 2]', 'UTF8'))`), /must be an object/);
@@ -5951,5 +5951,18 @@ describe('sprint 39 conditional and dynamic theme styles', () => {
     } finally {
       await owner.query(`update meta.app set theme = $1 where alias = 'hr'`, [JSON.stringify(before)]);
     }
+  });
+});
+
+describe('sprint 39 zips and parsing in SQL', () => {
+  test('unpacked files are reachable only through the functions; names and XML are checked', async () => {
+    await assert.rejects(runtime.query('select * from meta.unpacked_file'), /permission denied/);
+    await assert.rejects(runtime.query(`insert into meta.unpacked_file (digest, kind) values (sha256('x'), 'zip')`), /permission denied/);
+    await assert.rejects(runtime.query(`select meta.zip_add(null, '../../etc/passwd', '\\x00')`), /relative path/);
+    // no entity expansion or external entities
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to($1, 'utf8'))`,
+      ['<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x><y>&e;</y></x>']), /DTD or entity/);
+    // an XPath can't be smuggled in through the row selector
+    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<x><y>1</y></x>', 'utf8'), 'x.xml', 'auto', true, null, $1)`, ['y"] | //*[local-name()="x']), /not an element name/);
   });
 });

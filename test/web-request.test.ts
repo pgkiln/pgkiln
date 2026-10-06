@@ -334,11 +334,13 @@ describe('meta.parse_data: CSV and JSON in SQL, like the data loader', () => {
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to($1, 'UTF8'), p_max_rows => 2)`, ['a\n1\n2\n3\n']), /the file has 3 rows; at most 2/);
   });
 
-  test('Excel and XML are refused with a pointer to the data loader', async () => {
+  test('Excel needs pgapex to have read the file; XML is parsed (070)', async () => {
     const { readFileSync } = await import('node:fs');
+    const { createHash } = await import('node:crypto');
     const xlsx = readFileSync(new URL('./fixtures/employees.xlsx', import.meta.url));
-    await assert.rejects(runtime.query('select * from meta.parse_data($1)', [xlsx]), /Excel \(\.xlsx\) files can't be parsed in SQL/);
-    await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to('<rows><r><a>1</a></r></rows>', 'UTF8'))`), /XML is not parsed/);
+    await owner.query('delete from meta.unpacked_file where digest = $1', [createHash('sha256').update(xlsx).digest()]);
+    await assert.rejects(runtime.query('select * from meta.parse_data($1)', [xlsx]), /Excel \(\.xlsx\) file has not been read by pgapex/);
+    assert.deepEqual((await runtime.query(`select data from meta.parse_data(convert_to('<rows><r><a>1</a></r></rows>', 'UTF8'))`)).rows, [{ data: { a: '1' } }]);
     await assert.rejects(runtime.query(`select * from meta.parse_data('\\x610062'::bytea, p_format => 'csv')`), /not a text/);
   });
 

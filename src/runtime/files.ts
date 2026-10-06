@@ -1,4 +1,5 @@
 import { disposition } from './processes.ts';
+import { unpackForSql } from '../unpack.ts';
 import pg from 'pg';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { literal } from '../binds.ts';
@@ -140,6 +141,7 @@ export async function applyUploads(ctx: PageContext, files: Map<string, Upload[]
       // committed on its own, so the upload survives a validation error
       const r = await appTx(tx(ctx), (c) => c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, cleanName(u), u.mimetype || 'application/octet-stream', u.data]));
       ctx.session.state[item.name] = r.rows[0].id;
+      await unpackForSql(u.data); // a zip or .xlsx: readable in SQL (meta.zip_entry, meta.parse_data)
     } else if (body[`${item.name}__REMOVE`] === 'true') {
       ctx.session.state[item.name] = formRegion(ctx, item) ? REMOVE : null;
     }
@@ -171,6 +173,7 @@ async function applyMultiple(ctx: PageContext, item: Item, uploads: Upload[], tx
       added.push((await c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, cleanName(u), u.mimetype || 'application/octet-stream', u.data])).rows[0].id);
   });
   ctx.session.state[item.name] = [...kept, ...added].join(':') || null;
+  if (added.length) for (const u of uploads) await unpackForSql(u.data);
 }
 
 /** The form region whose table stores this item's file, if any. */
