@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 37 released as v0.29.0). Sprints 3–37 are merged into `main` and released as **v0.29.0** (migrations 001–066 are released: add 067+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_44` are released.
+Last updated: 2026-10-06 (sprint 37 released as v0.29.0; sprint 38 done on `sprint-38`, releasing as v0.30.0). Sprints 3–37 are merged into `main` and released as **v0.29.0** (migrations 001–066 are released: add 067+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_44` are released.
 
 ## Project in one paragraph
 
@@ -1477,12 +1477,23 @@ installations (databases) for tenants that must not see each other. Parity row �
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
 
-## Sprint 38 (NEXT): the remaining 🟡 rows (owner's standing instruction: keep going without asking)
+## Sprint 38 (IN PROGRESS → release 0.30.0): the remaining 🟡 rows (owner's standing instruction: keep going without asking)
 
-Candidates in order: (1) icons (Font APEX-like set: grow the 31 line icons, an icon picker), (2) an accessibility
-audit (axe-core in the e2e run, fix what it finds), (3) image cropping for file items, (4) session sharing between
-applications (a shared sign-in for apps that opt in), (5) `meta.zip`/JSON builder APIs, (6) more built-in languages
-(fi, tr, el, ru, uk, ko, ar, he). Branch `sprint-38` from `main`; one agent; tests on 5446.
+Branch `sprint-38` from `main` (v0.29.0). One agent; tests on 5446.
+
+| # | Item | Reserved | Status |
+|---|---|---|---|
+| 1 | Icons: 136 line icons (was 39), an icon picker in the builder (`forms.ts iconPicker`) | — | **done** (`test/icons.test.ts`) |
+| 2 | Accessibility: axe-core (dev dependency) audit in `test/e2e/accessibility.test.ts`; fixes (role=img chart marks, tree toggles, rich-text buttons, scrolling tables, contrast) | — | **done**, row ✅ |
+| 3 | Cropping pictures before upload (file item `"crop"`), crop dialog in app.js, texts in all languages | `hr_45` | **done** |
+| 4 | Session sharing between applications (`meta.app.session_group`, `meta.shared_login`, `src/sharedlogin.ts`) | 067 | **done** (`test/session-sharing.test.ts`), row ✅ |
+| 5 | `meta.zip` / JSON builder APIs | — | **not started** (PostgreSQL can't deflate in SQL; would need a server-side queue like `web_request`) |
+| 6 | More built-in languages: fi, tr, el, ru, uk, ko, ar, he (22 in all) | — | **done** |
+
+Parity totals after sprint 38: 102 / 13 / 0 / 3 (86% available).
+
+**Next (sprint 39) candidates:** the zip API (queued like `meta.web_request`), more languages towards ~34 (hu, ro, sk,
+sl, hr, bg, lt, lv, et, vi, th, id, hi), map vector tiles, Theme Roller conditional properties, workflow multi-tenancy.
 
 ## Sprint 36 (DONE, v0.28.0): AI with Claude and OpenAI (owner, 2026-10-05: "keep going, I want Claude and OpenAI as options for the AI, work with 1 agent and keep going, don't stop")
 
