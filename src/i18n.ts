@@ -16,6 +16,14 @@ import { nb } from './i18n/nb.ts';
 import { cs } from './i18n/cs.ts';
 import { ja } from './i18n/ja.ts';
 import { zh } from './i18n/zh.ts';
+import { fi } from './i18n/fi.ts';
+import { tr } from './i18n/tr.ts';
+import { el } from './i18n/el.ts';
+import { ru } from './i18n/ru.ts';
+import { uk } from './i18n/uk.ts';
+import { ko } from './i18n/ko.ts';
+import { ar } from './i18n/ar.ts';
+import { he } from './i18n/he.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -1183,7 +1191,7 @@ const nl: Record<MessageKey, string> = {
   'ai_filter.sort': "gesorteerd op {column}",
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh, fi, tr, el, ru, uk, ko, ar, he };
 // browsers send 'no' as well as 'nb' for Norwegian Bokmål
 BUILTIN.no = nb;
 
@@ -1191,7 +1199,7 @@ BUILTIN.no = nb;
 export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk'], ['cs', 'Čeština'], ['ja', '日本語'], ['zh', '中文']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk'], ['cs', 'Čeština'], ['ja', '日本語'], ['zh', '中文'], ['fi', 'Suomi'], ['tr', 'Türkçe'], ['el', 'Ελληνικά'], ['ru', 'Русский'], ['uk', 'Українська'], ['ko', '한국어'], ['ar', 'العربية'], ['he', 'עברית']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {

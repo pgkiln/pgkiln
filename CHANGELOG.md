@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format follows
   dialog (mouse and keyboard) for the chosen picture. HR example: the employee photo is square (`hr_45`).
 - **Session sharing between applications** (migration 067): applications with the same session sharing group share a
   sign-in, each with its own access check and roles; signing out of one signs out of all.
+- **Eight more built-in languages**: Finnish, Turkish, Greek, Russian, Ukrainian, Korean, Arabic and Hebrew (twenty-two
+  in all; Arabic and Hebrew right to left).
 
 ### Fixed
 - Accessibility: chart bars and groups with a description get `role="img"`; gauge drill links are named by their
