@@ -43,6 +43,11 @@ All notable changes to this project are documented here. The format follows
   `APEX_SESSION.SET_TENANT_ID`). Workflows, the tasks they create, tasks and background execution chains carry the
   session's tenant; the task list, the workflow console, `meta.tasks` / `meta.workflows` and every action reach only
   the session's tenant (a session without one: those without one).
+- **Application files as text** (APEX 26.1: APEXlang): `pgapex export --format text` (and the builder's
+  `?format=text` zip) writes the directory export as YAML, a strict subset any YAML tool reads, with SQL and templates
+  inline as literal blocks; `import`, `diff` and zips read JSON and YAML files alike.
+- **Region Static ID** (migration 073): optional, unique on the page; names the region in exported files (so renaming
+  it keeps its file, references and, on `import --replace`, saved reports) and is rendered as `data-static-id`.
 
 ### Fixed
 - Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases

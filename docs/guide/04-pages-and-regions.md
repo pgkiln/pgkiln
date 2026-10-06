@@ -118,6 +118,12 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 
 Region-specific options go in the region's **attributes** (`config`, a JSON object).
 
+**Static ID** (APEX: Static ID, optional): lower case letters, digits, `_` and `-`, starting with a
+letter, unique on the page. It names the region in [exported files](18-cli.md#static-ids), so
+renaming the region keeps its file and the references to it, and the page renders it as
+`data-static-id` on the region (`<section id="R12" data-static-id="staff-list">`), for your CSS
+(`[data-static-id="staff-list"]`) and JavaScript. The element's `id` stays `R<id>`.
+
 ---
 
 ### Regions on a REST data source

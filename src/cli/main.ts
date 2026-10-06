@@ -181,20 +181,21 @@ const COMMANDS: Record<string, Command> = {
   },
 
   export: {
-    usage: 'pgapex export <alias> [--format json|dir] [--out <path>]',
+    usage: 'pgapex export <alias> [--format json|dir|text] [--out <path>]',
     summary: 'export an application as one JSON file or as a directory with a file per component',
     details:
       'json (default) writes the pgapex/2 document (sorted keys) to --out or standard output.\n' +
       'dir writes a directory (default ./<alias>): files that are no longer part of the application\n' +
-      'are removed, dot files (.git) are left alone; a non-empty directory without pgapex.json is refused.',
+      'are removed, dot files (.git) are left alone; a non-empty directory without pgapex.json is refused.\n' +
+      'text writes the same directory with YAML instead of JSON and the code inline (APEXlang-like).',
     options: { format: { type: 'string', short: 'f', default: 'json' }, out: { type: 'string', short: 'o' } },
     optionHelp: [
-      ['-f, --format json|dir', 'output format (default json)'],
+      ['-f, --format json|dir|text', 'output format (default json)'],
       ['-o, --out <path>', 'file (json) or directory (dir)'],
     ],
     positionals: [1, 1],
     async run(v, [alias]) {
-      if (v.format !== 'json' && v.format !== 'dir') throw new UsageError(`unknown format ${v.format}: use json or dir`);
+      if (v.format !== 'json' && v.format !== 'dir' && v.format !== 'text') throw new UsageError(`unknown format ${v.format}: use json, dir or text`);
       const doc = await withDb((db) => exportDoc(db, alias));
       if (v.format === 'json') {
         if (v.out) {
@@ -205,7 +206,7 @@ const COMMANDS: Record<string, Command> = {
       }
       const { writeDir } = await import('./files.ts');
       const dir = (v.out as string) ?? alias;
-      const files = docToFiles(doc);
+      const files = docToFiles(doc, v.format === 'text' ? 'text' : 'json');
       const r = writeDir(dir, files);
       err(`Exported ${alias} to ${dir}/ (${files.size} files; ${r.written} written, ${r.removed} removed).\n`);
       return EXIT.ok;
@@ -274,7 +275,9 @@ const COMMANDS: Record<string, Command> = {
       const { compareFiles, unifiedDiff } = await import('./diff.ts');
       const source = await readSource(path);
       const theirs = source.files ?? docToFiles(source.doc);
-      const ours = docToFiles(await withDb((db) => exportDoc(db, alias)));
+      // in the directory's style: a text-style directory compares with YAML files
+      const style = theirs && [...theirs.keys()].some((p) => p.endsWith('.yaml')) ? 'text' : 'json';
+      const ours = docToFiles(await withDb((db) => exportDoc(db, alias)), style);
       const changes = compareFiles(ours, theirs);
       if (!v.quiet) {
         for (const c of changes) {

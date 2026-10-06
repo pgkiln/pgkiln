@@ -123,6 +123,8 @@ export interface Region {
   id: number;
   seq: number;
   title: string | null;
+  /** (0.31, 073) optional, unique on the page */
+  static_id?: string | null;
   type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin';
   source: string | null;
   table_name: string | null;

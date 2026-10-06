@@ -98,6 +98,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     validate: (v) => formatSettingsProblem(v.config) ?? (v.type === 'file' ? objectStoreProblem((v.config as Record<string, unknown> | null)?.object_store) : null),
     fields: [
       { name: 'title', label: 'Title', kind: 'text', group: 'Identification' },
+      { name: 'static_id', label: 'Static ID', kind: 'text', group: 'Identification',
+        help: 'Optional, unique on the page: lower case letters, digits, _ and -, starting with a letter. Names the region in exported files (so renaming it keeps them) and is data-static-id on the page, for CSS and JavaScript.' },
       { name: 'type', label: 'Type', kind: 'select', options: ['report', 'grid', 'form', 'chart', 'cards', 'calendar', 'facets', 'smart_filters', 'display_selector', 'tasks', 'workflows', 'map', 'tree', 'template_component', 'list', 'static', 'dynamic', 'data_reporter', 'ai_assistant', 'plugin'], group: 'Identification' },
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source',
         help: 'report/grid: a SELECT (use :ITEM binds) · chart: label column + one numeric column per series · cards: title, subtitle, body, badge, icon · calendar: start_date, end_date, title · map: lat and lng (or location "lat,lng"), title, body, geojson · tree: id, parent_id, label, icon · template_component: any SELECT (its columns are #COLUMN# in the template), or empty for one instance · dynamic: a SELECT returning HTML (escape with meta.html_escape) · static: HTML with &ITEM. substitutions.' },

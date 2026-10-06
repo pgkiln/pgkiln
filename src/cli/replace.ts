@@ -131,8 +131,8 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
   );
   const regions = async (appId: number) => {
     const rows = (
-      await db.query<{ id: number; page_no: number; title: string; type: string }>(
-        `select r.id, p.page_no, r.title, r.type from meta.region r join meta.page p on p.id = r.page_id
+      await db.query<{ id: number; page_no: number; title: string; type: string; static_id: string | null }>(
+        `select r.id, p.page_no, r.title, r.type, r.static_id from meta.region r join meta.page p on p.id = r.page_id
           where p.app_id = $1 order by p.page_no, r.seq, r.id`,
         [appId],
       )

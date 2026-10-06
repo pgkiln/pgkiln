@@ -6084,3 +6084,27 @@ describe('sprint 39 workflow and task tenants', () => {
     await owner.query('update meta.session set tenant_id = null where id = $1', [mine]);
   });
 });
+
+describe('sprint 39 region static ids and text files', () => {
+  test('a static id is letters, digits, _ and -; on the page it is an attribute value only', async () => {
+    const { id } = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 order by r.seq limit 1`, [appId]);
+    for (const bad of ['x"><script>alert(1)</script>', 'Upper', '1abc', 'a b', 'x'.repeat(51)])
+      await assert.rejects(owner.query('update meta.region set static_id = $2 where id = $1', [id, bad]), /check constraint/, bad);
+    try {
+      await owner.query(`update meta.region set static_id = 'staff-list' where id = $1`, [id]);
+      const page = (await (await as('king')).get('/a/hr/2')).body;
+      assert.match(page, new RegExp(`<section class="[^"]*" id="R${id}" data-static-id="staff-list"`));
+    } finally {
+      await owner.query('update meta.region set static_id = null where id = $1', [id]);
+    }
+  });
+
+  test('YAML files are data: anchors, tags and flow collections are refused, a __proto__ key is a key', async () => {
+    const { fromText } = await import('../src/yamltext.ts');
+    for (const bad of ['a: &x 1', 'a: *x', 'a: !!python/object:os.system x', 'a: {b: 1}', 'a: [1]', 'a: >\n  folded'])
+      assert.throws(() => fromText(bad), /outside the subset|double quotes/, bad);
+    const v = fromText('"__proto__":\n  polluted: true\n') as Record<string, unknown>;
+    assert.equal(({} as Record<string, unknown>).polluted, undefined);
+    assert.deepEqual(Object.keys(v), ['__proto__']);
+  });
+});

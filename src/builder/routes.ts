@@ -260,12 +260,12 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.one('select meta.export_app($1) as doc', [a.alias]);
-    // ?format=dir: one file per component, as `pgapex export --format dir` writes it (docs/guide/18-cli.md)
-    if (req.query?.format === 'dir')
+    // ?format=dir|text: one file per component, as `pgapex export --format dir|text` writes it (docs/guide/18-cli.md)
+    if (req.query?.format === 'dir' || req.query?.format === 'text')
       return reply
         .header('content-disposition', `attachment; filename="${a.alias}.pgapex.zip"`)
         .type('application/zip')
-        .send(Buffer.from(filesToZip(docToFiles(r.doc), a.alias)));
+        .send(Buffer.from(filesToZip(docToFiles(r.doc, req.query.format === 'text' ? 'text' : 'json'), a.alias)));
     return reply
       .header('content-disposition', `attachment; filename="${a.alias}.pgapex.json"`)
       .type('application/json')

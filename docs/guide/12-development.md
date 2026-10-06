@@ -63,6 +63,7 @@ src/
   metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here)
   maptiles.ts              map tile server URL, attribution and CSP origin
   mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
+  yamltext.ts              the text style of the directory export: a strict YAML subset, written and read
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
   websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh

@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–072).
+Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–073).
 
 ## Project in one paragraph
 
@@ -1491,7 +1491,7 @@ Branch `sprint-39` from `main` (v0.30.0). One agent; tests on 5446. Migrations f
 | 6 | Map region | Vector tiles; layers filtered by the visible area | **done**: no migration (region config `visible_area`, `tiles` per layer); `src/mvt.ts` (MVT 2.1 encoder, no dependency), `servedLayer`/`layerInArea`/`layerTile` in `src/runtime/maps.ts`, routes GET `…/map/:id/layer/:n?bb=` and `…/map/:id/tiles/:n/:z/:x/:y.mvt` in routes.ts, app.js `areaLayer`/`vectorTiles` (own MVT reader, canvas, click hit-test, `map.zoom_in` note in 22 languages), builder *Load* field, `hr_48` (page 41, 20 000 stations); tests `map-tiles` (independent MVT decoder), e2e maps, security block; row ✅ (110/6/0/3) |
 | 7 | SQL scripts, query builder | A graphical query builder canvas | **done**: `querybuilder.ts` (drawn joins `j`/`ja`+`jb`, functions `fn=ref:fn` with group by, positions `p`, table order `o`, fixes aliases shifting after Apply), canvas in builder.js `setupQueryCanvas` (no inline styles: CSSOM), builder.css `.qb-*`; tests `workshop` (Query builder), e2e `query-builder`, security block; row ✅ (111/5/0/3) |
 | 8 | Workflow multi-tenancy | Tenant per workflow instance | **done**: migration 072 (`meta.session.tenant_id`, `meta.set_tenant`/`tenant_id()`, `tenant_id` on workflow/task/process_job defaulting to `meta.tenant_id()`, `task_rights` and the two views filter), `appTx` reads the session's tenant per transaction, the runner and process jobs set it; tests `tenants`, security block; row ✅ (112/4/0/3) |
-| 9 | APEXlang | A human-readable text format for the directory export | todo |
+| 9 | APEXlang | A human-readable text format for the directory export | **done**: `src/yamltext.ts` (strict YAML subset writer/reader, cross-checked with PyYAML on the whole HR export), `docToFiles(doc, 'text')`, reader takes .json or .yaml per file, `pgapex export --format text`, diff in the directory's style, builder `?format=text`; migration 073 `meta.region.static_id` (region key in exports, `data-static-id`, builder field, replace.ts keeps saved reports); tests `yamltext`, `cli` (text round trip, mixed, static ids), security block; row ✅ (113/3/0/3) |
 | 10 | Icons | Grow the set further | todo |
 | 11 | BOOLEAN session state, Workspaces isolation | Typed boolean helpers; per-workspace runtime login | BOOLEAN **done** with item 4 (`meta.v_boolean`); workspaces isolation todo |
 

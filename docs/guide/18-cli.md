@@ -34,7 +34,7 @@ any (see [what is not exported](03-builder.md#export-format)).
 |---|---|
 | `pgapex migrate [--example <name>]` | Applies the migrations that were not applied yet, then optionally `examples/<name>/` (same as `npm run db:migrate` / `npm run example:hr`; `--root` and `--seed` as in `scripts/migrate.ts`) |
 | `pgapex apps [--json]` | Lists the applications: alias, number of pages, name |
-| `pgapex export <alias> [--format json\|dir] [--out <path>]` | `json` (default): the `pgapex/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below |
+| `pgapex export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgapex/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
 | `pgapex import <path> [--alias <alias>] [--replace]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place |
 | `pgapex diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
 | `pgapex plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgapex-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
@@ -111,6 +111,43 @@ hr/
 Edit the files with any editor and import them again; the directory is the source of truth for the
 application, the database objects (tables, views, functions) stay in your own migration scripts.
 
+### Text files (APEXlang)
+
+APEX 26.1 writes applications in APEXlang, a human-readable text format. `pgapex export hr
+--format text` writes the same directory with every component as **YAML** instead of JSON, and the
+SQL, PL/pgSQL and templates **inline** as literal blocks, so a region with its query, or a process
+with its code, is one file you read top to bottom:
+
+```yaml
+config:
+  link:
+    column: empno
+    items:
+      P3_EMPNO: "#empno#"
+    page: 3
+seq: 10
+source: |2-
+  select e.empno, e.ename, e.job, d.dname as department
+    from hr.emp e
+    left join hr.dept d on d.deptno = e.deptno
+static_id: null
+title: Employees
+type: report
+```
+
+The files are a strict subset of YAML 1.2 that any YAML tool reads: block mappings and lists,
+plain or double-quoted strings (JSON escapes), numbers, `true`/`false`/`null`, and literal blocks
+(`|2-`) for text over several lines; keys are sorted. pgapex reads exactly that subset back, so
+anchors, tags, flow collections (`[a, b]`, `{a: 1}`) and folded blocks are refused with the file
+and line; `#` comment lines are allowed (they are not kept by the next export). Text that could be
+read as something else (`yes`, `10`, `2026-01-01`, `a: b`) is written in double quotes.
+`pgapex.json` stays JSON and says `"style": "text"`.
+
+`import`, `diff` and the builder's zip read JSON and YAML files alike, file by file, so a
+directory may mix them (the same component as both `.json` and `.yaml` is refused). `diff`
+exports the application in the directory's style, and compares YAML and JSON files by content.
+Switching an existing directory from `dir` to `text` (or back) rewrites every file once.
+
 ### Static ids
 
 APEX 26.1 gives components a static id so that application files diff cleanly and can be applied
@@ -120,12 +157,14 @@ a component:
 | Component | Static id |
 |---|---|
 | page | its page number |
-| region | its title as a key (`Who's out this week` → `who-s-out-this-week`), its type when it has no title; `-2`, `-3` for duplicates on a page |
+| region | its **Static ID** when it has one (0.31: an optional region attribute, unique on the page), else its title as a key (`Who's out this week` → `who-s-out-this-week`), its type when it has no title; `-2`, `-3` for duplicates on a page |
 | item, button, dynamic action, validation, process | its name as a key (`P3_ENAME` → `p3_ename`), else its label, event and action, item or type |
 | shared components | their name |
 
 A key is lower case `a-z`, `0-9`, `_` and `-`. The static id is the part of the file name after the
-sequence number; renaming a region in the builder renames its file in the next export. When you
+sequence number; renaming a region without a stored Static ID renames its file in the next export
+(give regions that others refer to a Static ID to keep their files, references and, with
+`import --replace`, the users' saved reports stable). When you
 edit the files by hand, keep a reference and the file name of the region it points at in step:
 `import` and `diff` report a reference to a region that doesn't exist on the page.
 
@@ -189,7 +228,7 @@ imported copy differs from its source in `app.json` (the alias) and in automatio
 ### In the builder
 
 **Export** in the builder downloads the JSON file. `/builder/apps/<id>/export?format=dir`
-downloads the directory format as a `.zip` (one folder named after the alias, fixed timestamps,
+(or `?format=text`) downloads the directory format as a `.zip` (one folder named after the alias, fixed timestamps,
 so the same application gives the same zip). `pgapex import hr.pgapex.zip` and `pgapex diff` read
 the zip directly.
 

@@ -36,6 +36,8 @@ type Found = Map<string, { help: string; pages: string[]; example: string }>;
 
 /** Run axe on the page (or a frame's document) and collect the violations under `name`. */
 async function audit(page: Page, name: string, found: Found) {
+  // lazy regions first: while one loads it is dimmed on purpose (aria-busy), which isn't its contrast
+  await page.waitForFunction(() => !document.querySelector('[aria-busy="true"], .region-lazy'), null, { timeout: 10000 }).catch(() => {});
   await page.evaluate(AXE);
   const r = await page.evaluate((tags) => (window as any).axe.run(document, { runOnly: { type: 'tag', values: tags } }), TAGS);
   for (const v of r.violations as { id: string; help: string; nodes: { html: string }[] }[]) {

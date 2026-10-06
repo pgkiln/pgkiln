@@ -1,5 +1,6 @@
 // Comparing two sets of application files, and a small line diff for the output.
 import { stableJson, type FileMap } from '../appfiles.ts';
+import { fromText, toText } from '../yamltext.ts';
 
 export interface FileChange {
   path: string;
@@ -7,8 +8,14 @@ export interface FileChange {
   status: 'A' | 'D' | 'M';
 }
 
-/** JSON files compare by content (key order and spacing don't matter), others byte by byte. */
+/** JSON and YAML files compare by content (key order and spacing don't matter), others byte by byte. */
 function canonical(path: string, buf: Buffer) {
+  if (path.endsWith('.yaml'))
+    try {
+      return Buffer.from(toText(fromText(buf.toString('utf8'), path)));
+    } catch {
+      return buf;
+    }
   if (!path.endsWith('.json')) return buf;
   try {
     return Buffer.from(stableJson(JSON.parse(buf.toString('utf8'))));
