@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 38 released as v0.30.0). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released.
+Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released.
 
 ## Project in one paragraph
 
@@ -1476,6 +1476,24 @@ installations (databases) for tenants that must not see each other. Parity row �
 **Release 0.29.0 (2026-10-06):** CI-style run on 5446: 1069 pass / 10 skip, e2e 136/136. Parity totals 100/15/0/3
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
+
+## Sprint 39 (IN PROGRESS): every remaining 🟡 parity row except languages (owner, 2026-10-06: "make sure that all other apex feature parity are done before you continue with the other languages")
+
+Branch `sprint-39` from `main` (v0.30.0). One agent; tests on 5446. Migrations from 068.
+
+| # | Parity row | Plan | Status |
+|---|---|---|---|
+| 1 | Dynamic actions (custom JavaScript) | Static application files (Shared Components; JS/CSS served same-origin, so the CSP stays `script-src 'self'`), app/page file references, DA action *Execute JavaScript* calling a function the app's file registers | todo |
+| 2 | Plug-ins (item/region/process/DA with own code) | A plug-in file bundling template component(s), static files and SQL; region/item/DA plug-ins built on 1 | todo |
+| 3 | Theme Roller conditional/dynamic properties | Style chosen by a SQL rule per request; CSS variables from item values (checked) | todo |
+| 4 | APEX PL/SQL APIs | XML in `meta.parse_data`, `meta.v_boolean`, JSON builder mapping, zip | todo |
+| 5 | File browse: object storage | S3-compatible storage for file items (SigV4, web credentials) | todo |
+| 6 | Map region | Vector tiles; layers filtered by the visible area | todo |
+| 7 | SQL scripts, query builder | A graphical query builder canvas | todo |
+| 8 | Workflow multi-tenancy | Tenant per workflow instance | todo |
+| 9 | APEXlang | A human-readable text format for the directory export | todo |
+| 10 | Icons | Grow the set further | todo |
+| 11 | BOOLEAN session state, Workspaces isolation | Typed boolean helpers; per-workspace runtime login | todo |
 
 ## Sprint 38 (DONE, v0.30.0): the remaining 🟡 rows (owner's standing instruction: keep going without asking)
 
