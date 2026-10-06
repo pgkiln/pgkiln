@@ -5932,3 +5932,24 @@ describe('sprint 39 plug-ins', () => {
     }
   });
 });
+
+describe('sprint 39 conditional and dynamic theme styles', () => {
+  test('conditions run as the application\'s role; item colours reach the CSS only as #rrggbb', async () => {
+    const before = (await owner.one(`select theme from meta.app where alias = 'hr'`)).theme;
+    try {
+      await owner.query(`update meta.app set theme = $1 where alias = 'hr'`, [JSON.stringify({ ...before, style_choice: false, styles: [
+        { name: 'Owner only', accent: '#444444', condition: '(select count(*) from meta.developer) >= 0' },
+        { name: 'Injected', accent: '&AI_ENAME.', condition: 'true' },
+      ] })]);
+      const b = new Browser();
+      await b.get('/a/hr/login');
+      await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+      await runtime.query(`select 1`); // the runtime pool is up
+      const css = /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec((await b.get('/a/hr/1')).body)![1];
+      assert.doesNotMatch(css, /#444444/, 'meta.developer is not readable by the app role: the condition fails');
+      assert.doesNotMatch(css, /KING|--accent:[^#]/i, 'a name is not a colour');
+    } finally {
+      await owner.query(`update meta.app set theme = $1 where alias = 'hr'`, [JSON.stringify(before)]);
+    }
+  });
+});

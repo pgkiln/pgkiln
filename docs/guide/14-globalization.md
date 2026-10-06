@@ -225,6 +225,7 @@ application. The base style and colours under Settings → Theme are the *Standa
 | Font | *System* (default), *Humanist sans*, *Geometric sans*, *Serif*, *Rounded*, *Monospace* (font stacks of fonts on the device; nothing is downloaded) |
 | Font size | 14, 15 (default), 16 or 17 px |
 | Corners | Square, 4, 8 (default) or 14 px, for regions, buttons and fields |
+| Condition | Optional SQL: the style applies when it holds, see [below](#conditional-and-dynamic-styles) |
 
 The page shows a **live preview** of the style you are adding or editing (colours, font, size and corners on a
 sample region, field and buttons, as you change them; without JavaScript the preview shows the base style).
@@ -241,3 +242,21 @@ The styles are part of the application's definition: they are stored in `meta.ap
 don't (they belong to the installation, and `pgapex import --replace` keeps them). Only values from
 the fixed lists become CSS, in the page's one nonce'd `<style>`; a style's name is shown as text and
 never reaches the CSS. Regions and buttons can add [template options](04-pages-and-regions.md#template-options).
+
+### Conditional and dynamic styles
+
+APEX's *conditional and dynamic theme style properties*, for an application that looks different
+per tenant, environment or user group:
+
+- **Conditional styles.** A style's **Condition** is a SQL boolean expression with bind variables,
+  e.g. `:APP_TENANT = 'north'` or `meta.has_role('AUDITOR')`. On every page, users who did not choose
+  a style themselves get the first style (in the list's order) whose condition holds, else the
+  default style. The condition runs as the application's database role in the page's transaction;
+  an error counts as *false* and is written to the [debug messages](06-processing.md#debug-messages).
+- **Dynamic colours.** Instead of a picked colour, any of a style's four colours may be an item
+  reference such as `&APP_BRAND_COLOUR.`: the item's value in session state (set by a computation,
+  an application process after login, a form…), used when it is a `#rrggbb` colour and ignored
+  otherwise, so a stored value can never become anything but a colour in the CSS.
+
+Together: one style *Tenant brand* with condition `:APP_BRAND_COLOUR is not null` and accent
+`&APP_BRAND_COLOUR.` gives each tenant its colour from a table, read once after sign-in.

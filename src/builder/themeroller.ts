@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { appStyles, BASE_STYLES, baseStyleOf, FONT_SIZES, FONTS, HEX, MAX_STYLES, parseStyle, RADII, STYLE_NAME, type StyleVariant } from '../runtime/styles.ts';
+import { appStyles, BASE_STYLES, baseStyleOf, FONT_SIZES, FONTS, HEX, ITEM_REF, MAX_STYLES, parseStyle, RADII, STYLE_NAME, type StyleVariant } from '../runtime/styles.ts';
 import { REGION_OPTIONS, BUTTON_OPTIONS } from '../runtime/template-options.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
@@ -31,11 +31,15 @@ const label = (list: Record<string, { label: string }>, k: string | undefined) =
 
 function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVariant | null, base: Theme) {
   const colour = (name: 'accent' | 'header' | 'accent_dark' | 'header_dark', title: string, fallback: string) => {
-    const own = !!st?.[name];
-    const value = st?.[name] ?? (typeof base[name] === 'string' && HEX.test(base[name] as string) ? (base[name] as string) : fallback);
+    const ref = st?.[name] && ITEM_REF.test(st[name]!) ? st[name]! : '';
+    const own = !!st?.[name] && !ref;
+    const value = (own ? st?.[name] : undefined) ?? (typeof base[name] === 'string' && HEX.test(base[name] as string) ? (base[name] as string) : fallback);
     return html`<div class="field"><label class="label" for="f_${name}">${title}</label>
       <input id="f_${name}" name="${name}" type="color" value="${value}">
-      <label class="check"><input type="checkbox" name="${name}_own" value="true"${own ? raw(' checked') : ''}> Use this colour (else the base colour)</label></div>`;
+      <label class="check"><input type="checkbox" name="${name}_own" value="true"${own ? raw(' checked') : ''}> Use this colour (else the base colour)</label>
+      <label class="sub" for="f_${name}_item">…or the value of an item</label>
+      <input id="f_${name}_item" name="${name}_item" value="${ref}" placeholder="&amp;APP_BRAND_COLOUR." autocomplete="off" spellcheck="false">
+      <small class="help">A dynamic colour: the item's value when it is #rrggbb (else the base colour).</small></div>`;
   };
   const baseOf = BASE_STYLES[baseStyleOf(base)];
   const choices = (list: Record<string, { label: string }>) => [['', '- as the base -'] as [string, string], ...Object.entries(list).map(([k, v]): [string, string] => [k, v.label])];
@@ -64,6 +68,9 @@ function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVarian
       ${select('font', 'Font', st?.font ?? '', choices(FONTS))}
       ${select('font_size', 'Font size', st?.font_size ?? '', choices(FONT_SIZES))}
       ${select('radius', 'Corners', st?.radius ?? '', choices(RADII))}
+      <div class="field" data-wide><label class="label" for="f_condition">Condition (SQL)</label>
+        <textarea id="f_condition" name="condition" class="code" rows="2" spellcheck="false" data-code="sql" placeholder=":APP_TENANT = 'north'">${st?.condition ?? ''}</textarea>
+        <small class="help">Optional. A boolean expression with bind variables, run as the application's role on every page: users who did not choose a style get the first style whose condition holds, else the default style (APEX: conditional theme styles).</small></div>
     </div>
     <div class="buttons"><button class="btn btn-hot">${st ? 'Save style' : 'Add style'}</button>
       ${st ? html`<a class="btn" href="${BASE}/apps/${appId}/theme">Cancel</a>` : ''}</div>
@@ -79,7 +86,8 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     const theme: Theme = a.theme ?? {};
     const styles = appStyles(a.theme);
     const editing = typeof req.query.edit === 'string' ? styles.find((x) => x.name === req.query.edit) ?? null : null;
-    const swatch = (hex: string | undefined) => (hex ? html`<input type="color" value="${hex}" disabled aria-label="${hex}" class="swatch"> <code>${hex}</code>` : html`<span class="muted">base</span>`);
+    const swatch = (hex: string | undefined) =>
+      !hex ? html`<span class="muted">base</span>` : ITEM_REF.test(hex) ? html`<code>${hex}</code>` : html`<input type="color" value="${hex}" disabled aria-label="${hex}" class="swatch"> <code>${hex}</code>`;
     const main = html`${appHeader(a, 'settings')}
       <div class="ide-body">
         ${region('Theme Roller: style variants', html`
@@ -89,7 +97,7 @@ export async function themeRollerRoutes(app: FastifyInstance) {
             The colours apply to the light theme, the dark-mode colours to the dark theme (pick light colours there); fonts, sizes and corners to both.</p>
           ${styles.length
             ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Accent</th><th>Header</th><th>Dark accent</th><th>Dark header</th><th>Font</th><th>Font size</th><th>Corners</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
-                ${styles.map((x) => html`<tr><td>${x.name}${theme.style === x.name ? html` <span class="badge">default</span>` : ''}</td>
+                ${styles.map((x) => html`<tr><td>${x.name}${theme.style === x.name ? html` <span class="badge">default</span>` : ''}${x.condition ? html`<br><small class="muted">when <code>${x.condition.length > 60 ? `${x.condition.slice(0, 60)}…` : x.condition}</code></small>` : ''}</td>
                   <td>${swatch(x.accent)}</td><td>${swatch(x.header)}</td><td>${swatch(x.accent_dark)}</td><td>${swatch(x.header_dark)}</td><td>${label(FONTS, x.font)}</td><td>${label(FONT_SIZES, x.font_size)}</td><td>${label(RADII, x.radius)}</td>
                   <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/theme?edit=${encodeURIComponent(x.name)}">${icon('edit')} Edit</a>
                     <form method="post" action="${BASE}/apps/${a.id}/theme/styles/delete" class="u-inline">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
@@ -125,10 +133,12 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     const target = `${BASE}/apps/${id}/theme`;
     const parsed = parseStyle({
       name: b.name, font: b.font, font_size: b.font_size, radius: b.radius,
-      accent: b.accent_own === 'true' ? b.accent : undefined,
-      header: b.header_own === 'true' ? b.header : undefined,
-      accent_dark: b.accent_dark_own === 'true' ? b.accent_dark : undefined,
-      header_dark: b.header_dark_own === 'true' ? b.header_dark : undefined,
+      // an item reference wins over a picked colour
+      accent: b.accent_item?.trim() || (b.accent_own === 'true' ? b.accent : undefined),
+      header: b.header_item?.trim() || (b.header_own === 'true' ? b.header : undefined),
+      accent_dark: b.accent_dark_item?.trim() || (b.accent_dark_own === 'true' ? b.accent_dark : undefined),
+      header_dark: b.header_dark_item?.trim() || (b.header_dark_own === 'true' ? b.header_dark : undefined),
+      condition: b.condition,
     });
     if (typeof parsed === 'string') {
       flash(s, parsed, 'error');

@@ -19,6 +19,9 @@ All notable changes to this project are documented here. The format follows
   template component for regions, a PL/pgSQL function for processes, install SQL run only on request as the app's
   role). Shared Components → Plug-ins; `meta.import_plugin()`; `pgapex plugin build|install`; four examples in
   `examples/plugins/` used on HR page 40 (`hr_47`).
+- **Conditional and dynamic theme styles**: a Theme Roller style may have a SQL condition (the first style whose
+  condition holds applies, unless the user chose one) and take any of its colours from an item (`&ITEM.`, used only
+  when the value is `#rrggbb`).
 
 ## [0.30.0] - 2026-10-06
 

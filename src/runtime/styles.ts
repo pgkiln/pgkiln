@@ -3,16 +3,26 @@
 // (theme.style) and, when theme.style_choice is on, each user may pick
 // another (My account / the user menu; kept in meta.account_style).
 //
+// Conditional and dynamic properties (0.31): a style may have a condition (a
+// SQL boolean expression, run as the application's role): without a choice of
+// their own, users get the first style whose condition holds, else the
+// default. A colour may be an item reference (&ITEM.): its value in session
+// state, used only when it is a #rrggbb colour.
+//
 // Security: a style's values come from fixed lists (hex colours, keys of
 // FONTS / FONT_SIZES / RADII). Only those constants and checked hex values
 // are written into the page's nonce'd <style>; a style's name is shown as
 // escaped HTML and never reaches CSS. Stored values are checked again here
-// when the CSS is made, so a hand-edited theme cannot inject CSS.
+// when the CSS is made, so a hand-edited theme cannot inject CSS; an item's
+// value is checked as a colour when the CSS is made.
 
 import type { App } from '../metadata.ts';
 import type { Session } from '../session.ts';
 
 export const HEX = /^#[0-9a-f]{6}$/i;
+/** A colour taken from an item at request time: &ITEM. */
+export const ITEM_REF = /^&([A-Z][A-Z0-9_]{0,59})\.$/;
+const MAX_CONDITION = 2000;
 
 /**
  * Base styles (APEX: the theme style of Universal Theme; 26.1's default is
@@ -66,6 +76,8 @@ export interface StyleVariant {
   font?: string;
   font_size?: string;
   radius?: string;
+  /** (0.31) SQL boolean expression: the style applies when it holds (and the user chose none) */
+  condition?: string;
 }
 
 const own = (o: Record<string, unknown>, k: unknown) => typeof k === 'string' && Object.hasOwn(o, k);
@@ -82,7 +94,11 @@ export function parseStyle(v: Record<string, unknown>): StyleVariant | string {
   for (const k of ['accent', 'header', 'accent_dark', 'header_dark'] as const) {
     const x = v[k];
     if (x === undefined || x === null || x === '') continue;
-    if (typeof x !== 'string' || !HEX.test(x)) return `${colourLabels[k]}: #rrggbb.`;
+    if (typeof x === 'string' && ITEM_REF.test(x.trim().toUpperCase())) {
+      out[k] = x.trim().toUpperCase();
+      continue;
+    }
+    if (typeof x !== 'string' || !HEX.test(x)) return `${colourLabels[k]}: #rrggbb, or &ITEM. for an item's value.`;
     out[k] = x.toLowerCase();
   }
   for (const [k, list, label] of [['font', FONTS, 'Font'], ['font_size', FONT_SIZES, 'Font size'], ['radius', RADII, 'Corners']] as const) {
@@ -90,6 +106,10 @@ export function parseStyle(v: Record<string, unknown>): StyleVariant | string {
     if (x === undefined || x === null || x === '') continue;
     if (!own(list, x)) return `${label}: choose from ${Object.keys(list).join(', ')}.`;
     out[k] = x as string;
+  }
+  if (typeof v.condition === 'string' && v.condition.trim()) {
+    if (v.condition.length > MAX_CONDITION) return `Condition: at most ${MAX_CONDITION} characters.`;
+    out.condition = v.condition.trim();
   }
   return out;
 }
@@ -113,7 +133,7 @@ export const styleChoice = (app: Pick<App, 'theme'>) => app.theme?.style_choice 
  * The style variant for this request: the user's choice (when allowed and the
  * style still exists; '' = the base colours), else the app's default, else none.
  */
-export function chosenStyle(app: Pick<App, 'theme'>, session: Pick<Session, 'state'> | undefined): StyleVariant | null {
+export function chosenStyle(app: Pick<App, 'theme'>, session: Pick<Session, 'state'> | undefined, byCondition?: string | null): StyleVariant | null {
   const styles = appStyles(app.theme);
   const find = (n: unknown) => (typeof n === 'string' ? styles.find((s) => s.name === n) : undefined);
   if (styleChoice(app)) {
@@ -122,8 +142,12 @@ export function chosenStyle(app: Pick<App, 'theme'>, session: Pick<Session, 'sta
     const s = find(mine);
     if (s) return s;
   }
-  return find(app.theme?.style) ?? null;
+  // (0.31) the first style whose condition held for this request
+  return find(byCondition) ?? find(app.theme?.style) ?? null;
 }
+
+/** The styles with a condition, in order (the caller runs them: SQL, as the application's role). */
+export const conditionalStyles = (app: Pick<App, 'theme'>) => appStyles(app.theme).filter((s) => s.condition);
 
 /** The name of the style in use ('' = the base colours). */
 export const chosenStyleName = (app: Pick<App, 'theme'>, session: Pick<Session, 'state'> | undefined) => chosenStyle(app, session)?.name ?? '';
@@ -132,7 +156,17 @@ export const chosenStyleName = (app: Pick<App, 'theme'>, session: Pick<Session, 
 export const choosable = (app: Pick<App, 'theme'>, name: unknown): name is string =>
   styleChoice(app) && typeof name === 'string' && (name === '' || appStyles(app.theme).some((s) => s.name === name));
 
-const colourVars = (accent?: string, header?: string) => {
+/** An item's value for &ITEM. colours (session state), when the CSS is made. */
+export type ItemValue = (name: string) => string | undefined;
+
+const colourVars = (accent?: string, header?: string, item?: ItemValue) => {
+  // an item reference becomes the item's value, used only when it is a #rrggbb colour
+  const value = (c?: string) => {
+    const ref = c ? ITEM_REF.exec(c) : null;
+    return ref ? item?.(ref[1])?.trim() : c;
+  };
+  accent = value(accent);
+  header = value(header);
   const vars: string[] = [];
   if (accent && HEX.test(accent)) vars.push(`--accent:${accent};--accent-soft:color-mix(in srgb, ${accent} 14%, var(--surface))`);
   if (header && HEX.test(header)) vars.push(`--header:${header};`);
@@ -143,17 +177,17 @@ const colourVars = (accent?: string, header?: string) => {
  * The theme's CSS: the base colours (Settings → Theme), then the style
  * variant in use. Only checked hex values and constants from the lists above.
  */
-export function themeCss(theme: App['theme'] | undefined, style: StyleVariant | null): string {
+export function themeCss(theme: App['theme'] | undefined, style: StyleVariant | null, item?: ItemValue): string {
   const out: string[] = [];
   const base = colourVars(theme?.accent, theme?.header);
   // html:root ties with app.css's html[data-style] rules and comes later, so own colours win over a base style's
   if (base.length) out.push(`html:root{${base.join('')}}`);
   // dark mode: the same specificity as app.css's dark palettes (html[data-style]…), later in the page
-  const dark = [...colourVars(theme?.accent_dark, theme?.header_dark), ...(style ? colourVars(style.accent_dark, style.header_dark) : [])];
+  const dark = [...colourVars(theme?.accent_dark, theme?.header_dark), ...(style ? colourVars(style.accent_dark, style.header_dark, item) : [])];
   if (dark.length)
     out.push(`@media (prefers-color-scheme: dark){html:root:not([data-theme="light"]){${dark.join('')}}}html:root[data-theme="dark"]{${dark.join('')}}`);
   if (style) {
-    const colours = colourVars(style.accent, style.header);
+    const colours = colourVars(style.accent, style.header, item);
     if (colours.length) out.push(`html:root{${colours.join('')}}`);
     const all: string[] = [];
     if (style.font && own(FONTS, style.font)) all.push(`--font:${FONTS[style.font].css};`);

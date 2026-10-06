@@ -49,6 +49,8 @@ export interface PageContext {
   css: PageCss;
   /** the response's CSP nonce */
   nonce: string;
+  /** (0.31) the style variant whose condition held for this request (undefined: not checked yet) */
+  styleByCondition?: string | null;
   /** The submitted form (POST), e.g. for grid rows. */
   body?: Record<string, unknown>;
   /** language, texts and theme of this request */

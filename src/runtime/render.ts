@@ -4,14 +4,16 @@ import { pwaBody, pwaHead } from './pwa.ts';
 import { mapHead } from './maps.ts';
 import { staticHead } from './static-files.ts';
 import { pluginAttributes, pluginOf } from './plugins.ts';
-import { appStyles, chosenStyle, chosenStyleName, styleChoice, themeCss } from './styles.ts';
+import { appStyles, chosenStyle, chosenStyleName, conditionalStyles, styleChoice, themeCss } from './styles.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
 import { baseLanguage, LANGUAGE_NAMES } from '../i18n.ts';
 import type { NavEntry } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
-import { substitute, type PageContext } from './context.ts';
+import { stripSemicolon, dbg, bindValues, substitute, type PageContext } from './context.ts';
+import { applyBinds } from '../binds.ts';
+import { savepoint } from '../db.ts';
 import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
@@ -132,7 +134,33 @@ async function breadcrumb(ctx: PageContext) {
 // ---------------------------------------------------------------- theme
 
 /** Per-app colours (Theme Roller) and the style variant in use. Only checked values reach the CSS (styles.ts). */
-export const themeStyle = (ctx: Pick<PageContext, 'app' | 'session'>) => themeCss(ctx.app.theme, chosenStyle(ctx.app, ctx.session));
+export const themeStyle = (ctx: Pick<PageContext, 'app' | 'session' | 'styleByCondition'>) =>
+  themeCss(ctx.app.theme, chosenStyle(ctx.app, ctx.session, ctx.styleByCondition), (name) => {
+    const v = ctx.session.state[name];
+    return typeof v === 'string' ? v : undefined;
+  });
+
+/**
+ * (0.31) Conditional styles: the first style whose condition holds for this
+ * request (as the application's role, with bind variables); an error counts
+ * as false and is recorded in the debug log.
+ */
+async function resolveConditionalStyle(ctx: PageContext) {
+  if (ctx.styleByCondition !== undefined || !ctx.client) return;
+  ctx.styleByCondition = null;
+  for (const st of conditionalStyles(ctx.app)) {
+    try {
+      const sql = stripSemicolon(applyBinds(`select (${st.condition})::boolean as ok`, bindValues(ctx)));
+      const r = await savepoint(ctx.client, () => ctx.client!.query(sql));
+      if (r.rows[0]?.ok === true) {
+        ctx.styleByCondition = st.name;
+        return;
+      }
+    } catch (e) {
+      dbg(ctx, 1, 'theme', () => `style ${st.name}: condition failed: ${(e as Error).message}`);
+    }
+  }
+}
 
 /**
  * The page's one inline <style>: theme colours and the data-dependent rules
@@ -199,6 +227,7 @@ export function dialogShapes(ctx: Pick<PageContext, 'app'>): Record<string, [str
 }
 
 export async function chrome(ctx: PageContext, main: Raw, title: string) {
+  await resolveConditionalStyle(ctx);
   const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style };
   const t = ctx.locale.t;
   if (ctx.dialog)
