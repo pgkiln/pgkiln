@@ -6108,3 +6108,31 @@ describe('sprint 39 region static ids and text files', () => {
     assert.deepEqual(Object.keys(v), ['__proto__']);
   });
 });
+
+describe('sprint 39 push notifications', () => {
+  test("application SQL can queue notifications but never reads keys, devices or other apps' messages", async () => {
+    const { db_role: role } = await owner.one(`select db_role from meta.app where alias = 'hr'`);
+    await owner.query('update meta.app set pwa = true, pwa_push = true where id = $1', [appId]);
+    try {
+      const ctx = { appId, alias: 'hr', dbRole: role, appUser: 'king', sessionId: '' };
+      for (const table of ['push_key', 'push_subscription', 'push_message'])
+        await assert.rejects(appTx(ctx, (c) => c.query(`select * from meta.${table}`)), /permission denied/, table);
+      const id = await appTx(ctx, async (c) => (await c.query(`select meta.send_push('scott', 'Hi', null, 3) as id`)).rows[0].id);
+      const msg = await owner.one('select app_id, url, requested_by from meta.push_message where id = $1', [id]);
+      // the link is a page of this application, never a URL the caller chose
+      assert.deepEqual(msg, { app_id: appId, url: '/a/hr/3', requested_by: 'king' });
+      await owner.query('delete from meta.push_message where id = $1', [id]);
+    } finally {
+      await owner.query('update meta.app set pwa_push = false where id = $1', [appId]);
+    }
+  });
+
+  test('the builder push actions need a developer and the CSRF token', async () => {
+    const anon = new FileBrowser(app);
+    for (const path of ['push-test', 'push-keys']) {
+      const res = await anon.post(`/builder/apps/${appId}/pwa/${path}`, { __csrf: 'x', push_user: 'scott' });
+      assert.equal(res.statusCode, 302, path);
+      assert.match(String(res.headers.location), /\/builder\/login/);
+    }
+  });
+});

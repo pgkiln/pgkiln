@@ -113,6 +113,7 @@ two combine well; see error handling below.
 | `download` | Send a file made by a query instead of the page ([below](#download)) |
 | `chain` | An **execution chain**: run the processes that name it as their chain, in sequence, optionally in the background ([below](#execution-chains)) |
 | `workflow` | Start a [workflow](#workflows), or terminate or retry an instance ([below](#workflow-processes)) |
+| `send_push` | A [push notification](17-mobile.md#push-notifications) to a user's devices ([below](#send-push-notification)) |
 | `plugin` | A [process plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code): calls its PL/pgSQL function with the attribute values (`config`: `{"plugin": "log_event", "attributes": {"DETAIL": "&P40_NOTE."}}`, `&ITEM.` filled in) as the application's role; the text it returns is the message |
 
 | Property | Meaning |
@@ -122,7 +123,7 @@ two combine well; see error handling below.
 | `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds (server-side condition, as for computations and branches) |
 | `parent_process` | The name of a `chain` process on the page: this process then runs only inside that chain |
 | `region_id` | The form or grid region, for `form_dml` / `grid_dml` |
-| `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain`, `workflow` or `plugin` process (JSON) |
+| `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain`, `workflow`, `send_push` or `plugin` process (JSON) |
 | `success_message` | Shown after the redirect; messages of several processes are joined |
 | `authz` | Skipped when the user isn't authorized |
 | `seq` | Order |
@@ -293,6 +294,23 @@ the workflow's administrator for terminate, the administrator for retry). From S
 looks up the employee (a `sql` child) and then starts the ONBOARDING workflow (a `workflow` child);
 *Stop onboarding* terminates it; *Year-end check* is a background chain whose jobs the region
 "My background jobs" lists from `meta.process_jobs`.
+
+### Send push notification
+
+A `send_push` process (APEX: *Send Push Notification*) sends a [push
+notification](17-mobile.md#push-notifications) to the devices of one user, without SQL:
+
+```json
+{"to": "&P5_APPROVER.", "title": "Leave request from &APP_USER.", "body": "&P5_DAYS. days from &P5_START.",
+ "page": 5, "items": {"P5_ID": "&P5_ID."}, "tag": "leave-&P5_ID.", "urgency": "high"}
+```
+
+`to`, `title` and `body` take `&ITEM.` substitutions; `page` and `items` are the page the notification
+opens (signed for the recipient); `tag` (letters, digits, `-`, `_`) makes a newer notification replace
+an older one; `urgency` is `very-low`, `low`, `normal` (default) or `high`. The notification is
+queued in the page's transaction and sent after the submit commits; a user without a device gets
+nothing (no error). The application needs push notifications on (Settings → Progressive Web App).
+From SQL the same is `meta.send_push(...)` ([chapter 9](09-reference.md#push-notifications-from-sql)).
 
 ### Generate text with AI
 

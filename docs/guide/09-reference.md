@@ -93,6 +93,23 @@ select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
 - Application roles can't read `meta.web_request_log`; the owner can, e.g. in the SQL Workshop:
   `select id, status, status_code, url, message from meta.web_request_log order by id desc`.
 
+### Push notifications from SQL
+
+APEX_PWA push notifications ([chapter 17](17-mobile.md#push-notifications)); the application needs
+push notifications on (Settings → Progressive Web App).
+
+| Function | Returns |
+|---|---|
+| `meta.send_push(p_user, p_title, p_body, p_page, p_items, p_tag, p_urgency, p_ttl_s)` | Queues a notification for every device of `p_user` that turned notifications on, and returns its id. `p_title` (required, at most 200 characters), `p_body` (at most 1000), `p_page` + `p_items` (a page of the application and item values: the link, signed for the recipient), `p_tag` (1–32 letters, digits, `-`, `_`: replaces an older notification with the same tag), `p_urgency` (`very-low`, `low`, `normal`, `high`), `p_ttl_s` (how long the push service keeps it for an offline device, default 86400, at most 28 days) |
+| `meta.has_push_subscription(p_user)` | Whether the user (default: the current one) has a device with notifications on (APEX_PWA.HAS_PUSH_SUBSCRIPTION) |
+
+The message is sent by the pgapex server **after the transaction commits** (a rolled-back
+transaction sends nothing), at once when the server is notified, otherwise on the scheduler's next
+pass. At most 1000 messages per application wait at a time. Application roles can't read the
+queue; the owner can: `select id, username, status, devices, delivered, message from meta.push_message
+order by id desc` (`sent`: at least one device received it; `no_device`; `error`). Messages are kept
+7 days.
+
 ### AI requests from SQL
 
 `meta.ai_generate(service, prompt, system, schema)` queues a request to an
@@ -419,6 +436,9 @@ navigation entries and application processes have the same `build_option` column
 | `debug_view` | [Debug messages](06-processing.md#debug-messages): one row per recorded request: `app_id`, `page_no`, `username`, `session_id`, `method`, `path` (without the query string), `status`, `level`, `started_at`, `elapsed_ms`, `entries`. Written through `meta.debug_save()` (runtime role only), not exported | no |
 | `debug_message` | The entries of a recorded request: `view_id`, `seq`, `elapsed_ms` (since the start), `duration_ms` (timed steps), `level`, `component`, `message` | no |
 | `web_request_log` | [Web requests from SQL](#web-requests-from-sql): `app_id`, `status`, the request (`url` or `source` + `params`, `method`, `headers`, `body`, `credential` name, `timeout_s`), `requested_by`, times, the response (`status_code`, `response_url`, `response_headers`, `response_body`), `message`. Kept 24 hours, not exported | no (through `meta.web_response`) |
+| `push_key` | The VAPID key pair of an application with [push notifications](17-mobile.md#push-notifications): `public_key`, `private_key` (encrypted with `PGAPEX_SECRET_KEY`). Not exported | no |
+| `push_subscription` | Devices with notifications on: `app_id`, `username`, `endpoint` (the push service URL), the device's keys `p256dh` and `auth`, `user_agent`, `created_at`, `last_sent_at`, `failures`. Not exported | no (through `meta.has_push_subscription`) |
+| `push_message` | [Push notifications from SQL](#push-notifications-from-sql): `app_id`, `username`, `title`, `body`, `url`, `tag`, `urgency`, `ttl_s`, `status`, `attempts`, `devices`, `delivered`, `message`, `requested_by`, times. Kept 7 days, not exported | no |
 | `ai_service` | [AI services](06-processing.md#generate-text-with-ai) of the installation: `name`, `provider` (`anthropic`, `openai`), `model`, `effort`, `refusal_fallback`, `max_tokens`, `timeout_s`, `base_url`, `api_key_enc` (encrypted with `PGAPEX_SECRET_KEY`, write-only), `enabled`. Not exported | no |
 | `app_ai_service` | Which applications may use which AI service, with daily limits `max_requests` and `max_tokens` (null: no limit). Not exported | no (through `meta.ai_available`) |
 | `ai_usage` | One row per AI request: `at`, `app_id`, `page_no`, `username`, `service`, `provider`, `model`, `source`, `input_tokens`, `output_tokens`, `duration_ms`, `status`, `message` (an error class, never prompt or answer text). Not exported | no |

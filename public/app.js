@@ -4,6 +4,142 @@
 // inline scripts.
 document.documentElement.classList.add('js');
 
+// Push notifications (migration 074): the page of an app with notifications on carries
+// the app's public key (data-push) and the user (data-push-user). Subscribing needs a
+// click (My account → Notifications, or the dynamic action push_subscribe); the
+// subscription is sent to /a/<alias>/push/subscribe. A device keeps one user's
+// notifications: signing out ends them (sw.js), and a device another user turned them
+// on for is turned off here, so nobody sees someone else's notifications.
+const pgapexPush = (() => {
+  const body = document.body;
+  const key = body.dataset.push;
+  const user = body.dataset.pushUser || '';
+  const base = body.dataset.base;
+  const metaEl = document.getElementById('pgapex-meta');
+  const meta = (metaEl ? JSON.parse(metaEl.textContent) : null) || {};
+  const t = (k) => (meta.texts && meta.texts[k]) || k;
+  const OWNER = `pgapex-push:${base}`;
+  const store = {
+    get: () => {
+      try {
+        return JSON.parse(localStorage.getItem(OWNER) || 'null');
+      } catch {
+        return null;
+      }
+    },
+    set: (v) => {
+      try {
+        if (v) localStorage.setItem(OWNER, JSON.stringify(v));
+        else localStorage.removeItem(OWNER);
+      } catch {
+        /* private mode: the server still knows the device */
+      }
+    },
+  };
+  const supported = () => !!(key && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+  const bytes = (k) => Uint8Array.from(atob(k.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const sameKey = (sub) => !sub.options || !sub.options.applicationServerKey || b64u(sub.options.applicationServerKey) === key;
+
+  async function send(path, data) {
+    const params = new URLSearchParams(data);
+    params.set('__csrf', meta.csrf || '');
+    const res = await fetch(`${base}/push/${path}`, { method: 'POST', body: params, headers: { accept: 'application/json' }, credentials: 'same-origin' });
+    const json = await res.json().catch(() => ({ error: res.statusText }));
+    if (!res.ok) throw new Error(json.error || res.statusText);
+  }
+  async function current() {
+    const reg = await navigator.serviceWorker.ready;
+    return { reg, sub: await reg.pushManager.getSubscription() };
+  }
+  const register = (sub) => {
+    const j = sub.toJSON();
+    return send('subscribe', { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, key });
+  };
+
+  async function subscribe() {
+    if (!supported()) throw new Error(t('push.unsupported'));
+    if ((await Notification.requestPermission()) !== 'granted') throw new Error(t('push.blocked'));
+    let { reg, sub } = await current();
+    if (sub && !sameKey(sub)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes(key) });
+    await register(sub);
+    store.set({ user, endpoint: sub.endpoint, at: Date.now() });
+  }
+  async function unsubscribe() {
+    const { sub } = await current();
+    store.set(null);
+    if (!sub) return;
+    await send('unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+    await sub.unsubscribe();
+  }
+  /** On: a subscription with the app's current key, notifications allowed. */
+  async function isOn() {
+    if (!supported() || Notification.permission !== 'granted') return false;
+    const { sub } = await current();
+    return !!sub && sameKey(sub);
+  }
+
+  // every page: keep the server's copy current (browsers renew subscriptions), once a day
+  if (supported() && Notification.permission === 'granted') {
+    current()
+      .then(async ({ sub }) => {
+        const owner = store.get();
+        if (!sub) return owner && store.set(null);
+        if (owner && owner.user !== user) {
+          // turned on by someone else on this device: off, so this user doesn't see theirs
+          store.set(null);
+          return sub.unsubscribe();
+        }
+        if (!owner || !sameKey(sub)) return;
+        if (owner.endpoint !== sub.endpoint || Date.now() - (owner.at || 0) > 86400000) {
+          await register(sub);
+          store.set({ user, endpoint: sub.endpoint, at: Date.now() });
+        }
+      })
+      .catch(() => {});
+  }
+
+  // My account → Notifications
+  const box = document.querySelector('[data-push-section]');
+  if (box && supported()) {
+    const status = box.querySelector('[data-push-status]');
+    const button = box.querySelector('[data-push-toggle]');
+    const show = async () => {
+      if (Notification.permission === 'denied') {
+        status.textContent = t('push.blocked');
+        button.hidden = true;
+        return;
+      }
+      const on = await isOn();
+      status.textContent = t(on ? 'push.on' : 'push.off');
+      button.textContent = t(on ? 'push.turn_off' : 'push.turn_on');
+      button.dataset.on = on ? '1' : '';
+      button.hidden = false;
+    };
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      try {
+        if (button.dataset.on) await unsubscribe();
+        else await subscribe();
+        await show();
+      } catch (e) {
+        status.textContent = (e && e.message) || t('push.failed');
+      } finally {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+    });
+    show().catch(() => {});
+  }
+
+  return { supported, subscribe, unsubscribe, isOn, t };
+})();
+
 (() => {
   const body = document.body;
   const base = body.dataset.base;
@@ -309,6 +445,15 @@ document.documentElement.classList.add('js');
         }
         return;
       }
+      case 'push_subscribe':
+        // turn on notifications on this device (a click: browsers ask only after one)
+        try {
+          await pgapexPush.subscribe();
+          showMessage(da.message || pgapexPush.t('push.on'), 'success');
+        } catch (e) {
+          showMessage((e && e.message) || pgapexPush.t('push.failed'), 'error');
+        }
+        return;
       case 'execute_javascript': {
         await scriptsLoaded;
         const fn = da.fn && actions.get(da.fn);

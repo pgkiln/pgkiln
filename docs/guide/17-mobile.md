@@ -14,6 +14,7 @@ the home screen with its own icon, full screen, and working on when the network 
 | Name under the icon | The short name on the home screen (the application's name when empty) |
 | Keep visited pages on the device | Pages a user opened are shown again when there is no connection (with a notice that they may be out of date) |
 | Keep forms sent without a connection | Forms submitted offline are kept on the device and sent when the connection is back |
+| Push notifications | Users may turn on notifications per device; application code sends them ([below](#push-notifications)) |
 | Icon | A square PNG of at least 512 × 512 pixels. Without one, the app gets a tile with its initial in the theme's accent colour |
 
 Installing needs HTTPS in production (any address except `localhost` / `127.0.0.1`); pgapex behind
@@ -68,6 +69,60 @@ Validations, processes and row level security run when the form arrives, as for 
 The page's `Permissions-Policy` allows the camera and the position for the application itself and
 nothing else; the browser asks the user for permission the first time.
 
+## Push notifications
+
+APEX: *Push Notifications* of a Progressive Web App, `APEX_PWA.SEND_PUSH_NOTIFICATION`, the *Send
+Push Notification* process. A notification appears on the user's phone or computer like a message
+from an installed app, also when the app is closed, and opens a page of the app when tapped.
+
+**Turning it on.** Settings → Progressive Web App → *Push notifications* (the app must be
+installable, and the server needs `PGAPEX_SECRET_KEY`: the key that signs notifications is stored
+encrypted). Each application gets its own key pair (VAPID, RFC 8292) the first time; it is never part
+of an export.
+
+**Users choose per device.** *My account → Notifications* has a *Turn on notifications* button for
+the device in use: the browser asks for permission, and the device is registered for that user. A
+[dynamic action](07-dynamic-actions.md#actions) `push_subscribe` on a button does the same anywhere in the
+app (browsers only ask after a click). On iPhone and iPad (iOS 16.4 and later), notifications work
+only after the app was added to the home screen.
+
+**Sending.** From application SQL (a process, an automation, a workflow step, a trigger):
+
+```sql
+select meta.send_push(
+  p_user  => :P5_APPROVER,                      -- the user name
+  p_title => 'Leave request from ' || :APP_USER,
+  p_body  => '3 days from 12 October',
+  p_page  => 5, p_items => jsonb_build_object('P5_ID', :P5_ID),   -- the page it opens
+  p_tag   => 'leave-' || :P5_ID);                -- a newer one with the same tag replaces it
+```
+
+or declaratively with a [`send_push` process](06-processing.md#send-push-notification). The
+notification goes to every device on which that user turned notifications on
+(`meta.has_push_subscription(user)` tells whether there is one). The link is signed for the
+**recipient** (session state protection), not for the sender, and is always a page of the
+application: a notification can't point elsewhere.
+
+**When it is sent.** `meta.send_push` only queues the message (`meta.push_message`): the pgapex server
+sends it right after the transaction commits, so a submit that fails sends nothing. Each message
+is encrypted for the device (RFC 8291) and posted to the browser's push service (Google, Mozilla,
+Apple or Microsoft), which delivers it when the device is online, for up to `p_ttl_s` seconds
+(default one day). A push service that is busy is tried again (3 attempts); a device the service no
+longer knows is removed. Settings → Progressive Web App shows the number of devices, the last week's
+results, and a *Send test* button.
+
+**Privacy and security.**
+
+- The push service sees only an encrypted message; the title and text are readable on the device only.
+- A device belongs to one user: **signing out** turns notifications off on that device, and a
+  device whose notifications another user turned on is turned off when the next user opens the app.
+- A **new password**, a **deactivated account** or **removed access** to the app removes the user's
+  devices.
+- The server posts only to the browsers' push services (`PGAPEX_PUSH_HOSTS`), over HTTPS, to public
+  addresses; a subscription naming another host is refused.
+- *New keys* (Settings → Progressive Web App) replaces the key pair, for example if the server's
+  secret key may have leaked; every device then has to turn notifications on again.
+
 ## Example
 
 The HR example application is a PWA: install it from the browser menu on a phone, open a few pages,
@@ -76,5 +131,5 @@ employee form records a work location and takes the photo with the camera (`exam
 
 ## Not included
 
-Push notifications (APEX 23.1) need a push service and stored subscriptions; they are not part of
-pgapex yet. Native app store packaging is not needed: the installed PWA is the app.
+Native app store packaging is not needed: the installed PWA is the app. Notifications have a title,
+a text and a link; images and action buttons in a notification are not supported.

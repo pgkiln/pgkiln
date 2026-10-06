@@ -44,6 +44,7 @@ your own from a static application file.
 
 | `plugin` | browser | Runs the [dynamic action plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code) named in `code`, with `config` `{"attributes": {…}}` (`&ITEM.` filled in); the function gets the same context as *Execute JavaScript* plus `attributes` |
 | `execute_javascript` | browser | Calls the function named in `code`, which a [static application file](03-builder.md#static-application-files) registered; see [below](#execute-javascript) |
+| `push_subscribe` | browser | Turns on [push notifications](17-mobile.md#push-notifications) on the user's device: the browser asks for permission, then the device is registered. Use it with `click` (browsers ask only after one). `message` is shown when it worked, the browser's reason when not. The app needs push notifications on |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's
 database role like everything else, and check the page's and the dynamic action's authorization.

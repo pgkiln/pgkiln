@@ -52,6 +52,15 @@ All notable changes to this project are documented here. The format follows
   ISC) next to pgapex's 136, each served as its own cached file; modifiers after the name (`lg`, `2x`, `spin`,
   `rotate-90`, `flip-h`, `success`, …) and Font APEX names (`fa-users fa-lg`); the builder's icon picker searches
   them and takes any value.
+- **Push notifications for Progressive Web Apps** (migration 074; APEX: APEX_PWA push notifications): Settings →
+  Progressive Web App → *Push notifications*; users turn them on per device (My account → Notifications, or the
+  new dynamic action `push_subscribe`); `meta.send_push(user, title, body, page, items, tag, urgency, ttl)`,
+  `meta.has_push_subscription(user)` and the new process type `send_push` queue them, and the server sends them
+  after the commit (NOTIFY, else the scheduler), encrypted per device (RFC 8291) and signed with the application's
+  own VAPID key (RFC 8292; `meta.push_key`, encrypted with `PGAPEX_SECRET_KEY`, never exported). Links are pages of
+  the app signed for the recipient. Endpoints only at the browsers' push services (`PGAPEX_PUSH_HOSTS`); devices
+  end at sign-out, a new password, deactivation or removed access, and on 404/410. Builder: devices, results, a
+  test notification, new keys. No new dependency.
 - **Parity review**: `docs/apex-feature-parity.md` compares 18 more APEX features (Ajax callbacks, dynamic action
   events and actions, lost update detection, region templates, the developer toolbar, …); the form, PWA and
   unsaved-changes rows were 🟡 or ❌ in fact and now say so.

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { urlChecksum } from '../security.ts';
 import { pwaBody, pwaHead } from './pwa.ts';
+import { pushBody } from './push.ts';
 import { mapHead } from './maps.ts';
 import { staticHead } from './static-files.ts';
 import { pluginAttributes, pluginOf } from './plugins.ts';
@@ -277,7 +278,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <main class="t-main" id="main">${main}</main>
     </div>`,
     `t-app${topNav ? ' nav-top' : ''}`,
-    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user) },
+    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)) },
     html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
     root,
   );
@@ -299,8 +300,9 @@ function formKeys(ctx: PageContext) {
 /** Texts app.js shows (offline banner and queue, location and scan buttons), in the page's language. */
 const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
   'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close', 'common.dismiss',
-  'crop.title', 'crop.apply', 'crop.skip', 'crop.help'] as const;
-const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
+  'crop.title', 'crop.apply', 'crop.skip', 'crop.help',
+  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed'] as const;
+export const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
 
 /** The current page's URL (for returning after a preference change). */
 const here = (ctx: PageContext) => `${ctx.base}/${ctx.page.page_no}`;

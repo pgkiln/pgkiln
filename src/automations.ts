@@ -300,6 +300,12 @@ export function startScheduler() {
       console.error('web requests:', (e as Error).message);
     }
     try {
+      // push notifications queued from SQL (meta.send_push; src/push.ts), when the listener missed them
+      await (await import('./push.ts')).pushTick();
+    } catch (e) {
+      console.error('push notifications:', (e as Error).message);
+    }
+    try {
       // AI requests queued from SQL (meta.ai_generate; src/ai/requests.ts)
       await (await import('./ai/requests.ts')).aiRequestTick();
     } catch (e) {
