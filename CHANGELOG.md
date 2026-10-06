@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-06
+
 ### Added
 - **Icons**: 136 line icons (was 39), and an icon picker in the builder (a grid with a filter box, without script a list of radio buttons).
 - **Accessibility audit**: axe-core checks every page of the HR example (light, dark and Iris) and the builder's main
