@@ -5968,9 +5968,16 @@ describe('sprint 39 zips and parsing in SQL', () => {
 });
 
 describe('sprint 39 object storage', () => {
-  test('the bucket must pass the web client\'s allow-list and address checks; the secret never shows', async () => {
+  test('the bucket must pass the web client\'s allow-list and address checks; the secret never shows', async (t) => {
     const { putObject } = await import('../src/objectstore.ts');
     const { encryptSecret } = await import('../src/secrets.ts');
+    const savedKey = process.env.PGAPEX_SECRET_KEY;
+    // CI has no .env: a test-only key for the credential's secret
+    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    t.after(() => {
+      if (savedKey === undefined) delete process.env.PGAPEX_SECRET_KEY;
+      else process.env.PGAPEX_SECRET_KEY = savedKey;
+    });
     const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
     await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC39_S3'`, [hr]);
     await owner.query(`insert into meta.web_credential (app_id, name, type, username, scope, secret_enc) values ($1, 'SEC39_S3', 'aws_sigv4', 'AKIDSEC39', 'eu-west-1', $2)`, [hr, encryptSecret('sec39-super-secret')]);

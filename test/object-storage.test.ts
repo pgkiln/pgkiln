@@ -18,6 +18,9 @@ import { objectStoreProblem, signV4 } from '../src/objectstore.ts';
 import { encryptSecret } from '../src/secrets.ts';
 import { Browser } from './helpers.ts';
 
+// web credential secrets are encrypted: CI has no .env
+process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+
 const ALIAS = 't-objstore';
 const ACCESS = 'AKIDTESTKEY123';
 const SECRET = 'test/secret+key';
