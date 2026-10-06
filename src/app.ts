@@ -56,7 +56,7 @@ import { MAX_UPLOAD_MB } from './runtime/files.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
 import { debugOf, finishDebug } from './debug.ts';
 import { migrate, pendingMigrations } from './migrate.ts';
-import { ownerUrl } from './db.ts';
+import { ownerUrl, runtime } from './db.ts';
 import { refreshInstanceSettings } from './instance.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 import { lucideSymbol } from './icons.ts';
@@ -120,6 +120,15 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: 20, fields: 2000, fieldSize: 1024 * 1024, parts: 2100 },
   });
   await app.register(fastifyStatic, { root: join(root, 'public'), prefix: '/static/' });
+  // for container health checks and load balancers: the runtime connection works (503 while migrations are missing, above)
+  app.get('/healthz', async (_req, reply) => {
+    try {
+      await runtime.query('select 1');
+      return reply.type('text/plain').header('cache-control', 'no-store').send('ok\n');
+    } catch {
+      return reply.code(503).type('text/plain').header('cache-control', 'no-store').send('database unavailable\n');
+    }
+  });
   // Leaflet for map regions (BSD-2-Clause), served from the package itself
   await app.register(fastifyStatic, { root: join(root, 'node_modules', 'leaflet', 'dist'), prefix: '/static/vendor/leaflet/', decorateReply: false });
   // (0.31) Lucide icons (ISC), one per file, as a one-symbol sprite for <use href="…#i"> (src/icons.ts)

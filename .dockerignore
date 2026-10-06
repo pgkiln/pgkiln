@@ -1,0 +1,12 @@
+# only what the image needs (see the COPY lines in Dockerfile)
+.git
+.github
+.env
+.env.*
+node_modules
+test
+test-results
+docs
+deploy
+docker
+*.log

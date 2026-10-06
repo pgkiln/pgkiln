@@ -11,6 +11,8 @@ db/
 examples/                  example applications as SQL (the tutorial)
 examples/plugins/          plug-in files (template components) to import
 scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
+scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
+deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)
 bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)

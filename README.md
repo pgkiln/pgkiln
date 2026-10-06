@@ -13,6 +13,16 @@ them.
 
 ## Quick start
 
+With Docker (no Node.js needed):
+
+```bash
+cd deploy
+cp .env.example .env   # fill in the four secrets
+docker compose up -d   # http://127.0.0.1:3100/builder (admin / the password from .env)
+```
+
+Or from the source, for developing:
+
 ```bash
 npm install
 cp .env.example .env
