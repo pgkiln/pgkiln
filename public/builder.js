@@ -501,8 +501,57 @@
     const box = e.target;
     if (!box.matches?.('input[data-icon-filter]')) return;
     const q = box.value.trim().toLowerCase();
-    for (const c of box.closest('.icon-picker').querySelectorAll('.icon-choice')) c.hidden = !!q && !c.textContent.toLowerCase().includes(q);
+    const picker = box.closest('.icon-picker');
+    for (const c of picker.querySelectorAll('.icon-grid .icon-choice')) c.hidden = !!q && !c.textContent.toLowerCase().includes(q);
+    // (0.31) and the Lucide icons by name and search words, as more choices of the same radio group
+    clearTimeout(box.pgapexTimer);
+    box.pgapexTimer = setTimeout(() => moreIcons(box, picker, q), 250);
   });
+  async function moreIcons(box, picker, q) {
+    const more = picker.querySelector('[data-icon-more]');
+    const name = picker.querySelector('.icon-grid input[type=radio]')?.name;
+    if (!more || !name || !box.dataset.iconSearch) return;
+    if (q.length < 2) {
+      more.replaceChildren();
+      more.hidden = true;
+      return;
+    }
+    let found = { icons: [], version: '' };
+    try {
+      const res = await fetch(`${box.dataset.iconSearch}?q=${encodeURIComponent(q)}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+      if (res.ok) found = await res.json();
+    } catch {}
+    if (box.value.trim().toLowerCase() !== q) return;
+    const NS = 'http://www.w3.org/2000/svg';
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'icon-grid';
+    const legend = document.createElement('legend');
+    legend.className = 'icon-more-legend';
+    legend.textContent = found.icons.length ? `More icons (${found.icons.length})` : 'No more icons';
+    fieldset.append(legend);
+    for (const n of found.icons) {
+      const label = document.createElement('label');
+      label.className = 'icon-choice';
+      label.title = n;
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = name;
+      radio.value = n;
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('class', 'icon');
+      svg.setAttribute('aria-hidden', 'true');
+      const use = document.createElementNS(NS, 'use');
+      use.setAttribute('href', `/static/icon/${n}.svg?v=${encodeURIComponent(found.version)}#i`);
+      svg.append(use);
+      const text = document.createElement('span');
+      text.className = 'icon-name';
+      text.textContent = n;
+      label.append(radio, svg, text);
+      fieldset.append(label);
+    }
+    more.replaceChildren(fieldset);
+    more.hidden = false;
+  }
   document.addEventListener('change', (e) => {
     const radio = e.target;
     const picker = radio.closest?.('.icon-picker');
@@ -516,6 +565,9 @@
     label.textContent = radio.value || '- none -';
     if (!radio.value) label.className = 'muted';
     summary.append(label);
+    // a choice from the grid replaces what was typed under "any icon"
+    const custom = picker.querySelector('[data-icon-custom]');
+    if (custom) custom.value = '';
   });
 
   // Theme Roller: the style form's values on the preview (CSS variables through the CSSOM, which the CSP allows)

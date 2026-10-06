@@ -48,6 +48,10 @@ All notable changes to this project are documented here. The format follows
   inline as literal blocks; `import`, `diff` and zips read JSON and YAML files alike.
 - **Region Static ID** (migration 073): optional, unique on the page; names the region in exported files (so renaming
   it keeps its file, references and, on `import --replace`, saved reports) and is rendered as `data-static-id`.
+- **Lucide icons and icon modifiers** (APEX: Font APEX): about 1,600 more line icons (the `lucide-static` package,
+  ISC) next to pgapex's 136, each served as its own cached file; modifiers after the name (`lg`, `2x`, `spin`,
+  `rotate-90`, `flip-h`, `success`, …) and Font APEX names (`fa-users fa-lg`); the builder's icon picker searches
+  them and takes any value.
 
 ### Fixed
 - Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases

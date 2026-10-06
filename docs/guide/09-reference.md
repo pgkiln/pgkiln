@@ -492,8 +492,24 @@ from it, for example with a scheduled
 
 ## Icons
 
-136 line icons (`public/icons.svg`), usable in navigation entries, list entries and cards (`icon` column). The
-builder shows them as a picker with a filter box; unknown names show no icon.
+136 line icons of pgapex's own (`public/icons.svg`, listed below), and (0.31) the **Lucide** set of about
+1,600 more in the same 24×24 line style ([lucide.dev/icons](https://lucide.dev/icons/), ISC licence, shipped
+with pgapex; APEX: Font APEX), usable in navigation entries, list entries, cards (`icon` column) and
+template components. An icon value is a name followed by optional **modifiers**:
+
+```text
+users                  pgapex's own icon
+car-front              a Lucide icon (pgapex's own wins where both have the name)
+fa-car-front fa-lg     Font APEX style: the fa- prefix is dropped, so Font APEX names work where Lucide has the icon
+refresh spin           modifiers: xs sm lg 2x 3x 4x · spin pulse · rotate-90 rotate-180 rotate-270 · flip-h flip-v
+truck flip-h success   · colours success warning danger info muted
+```
+
+Unknown names show no icon; unknown modifiers are ignored. `spin` and `pulse` stand still for users who
+ask for reduced motion. Each Lucide icon is its own small file (`/static/icon/<name>.svg`, cached for good,
+versioned with the package), so a page loads only the icons it shows. In the builder the icon picker shows
+pgapex's icons; its filter box also searches the Lucide icons by name and search word (`vehicle` finds
+`car`, `bus`, …), and **Or any icon, with modifiers** takes any value (checked on save).
 
 `home` `users` `user` `building` `chart` `table` `list` `calendar` `shield` `history` `settings` `org` `grid`
 `file` `check` `menu` `logout` `plus` `download` `filter` `database` `code` `activity` `inbox` `close`

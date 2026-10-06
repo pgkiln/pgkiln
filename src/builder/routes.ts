@@ -4,7 +4,7 @@ import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
-import { icon } from '../icons.ts';
+import { icon, LUCIDE_VERSION, searchIcons } from '../icons.ts';
 import { appStyles, BASE_STYLES, baseStyleOf } from '../runtime/styles.ts';
 import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
 import { pwaSection } from './pwa.ts';
@@ -252,6 +252,14 @@ export async function builderRoutes(app: FastifyInstance) {
       flash(s, (e as Error).message, 'error');
       return back(reply, s, `${BASE}/apps/${req.params.id}`);
     }
+  });
+
+  // (0.31) the icon picker's search of the Lucide icons (src/icons.ts)
+  app.get(`${BASE}/icons/search`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const q = String((req.query as Record<string, unknown>)?.q ?? '').slice(0, 60);
+    return reply.header('cache-control', 'private, max-age=300').send({ icons: searchIcons(q), version: LUCIDE_VERSION });
   });
 
   app.get(`${BASE}/apps/:id/export`, async (req: Req, reply) => {

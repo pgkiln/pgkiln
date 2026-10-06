@@ -1,9 +1,9 @@
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Session } from '../session.ts';
-import { icon } from '../icons.ts';
+import { icon, ICON_MODIFIERS, isIcon, lucideNames } from '../icons.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
-import { csrf, type Body } from './ui.ts';
+import { BASE, csrf, type Body } from './ui.ts';
 import { codeAttrs } from './code-editor.ts';
 
 // Shared helpers of the builder pages: lookups for select lists, the generic
@@ -50,16 +50,22 @@ export function buildOptionChoices(lk: Lookups, v: string | null | undefined): [
  */
 export function iconPicker(id: string, name: string, label: string, current: string, help: Raw | '' = '') {
   const known = (ICON_OPTIONS as readonly string[]).includes(current);
+  // (0.31) any other icon: a Lucide name or a Font APEX one, with modifiers ("car-front lg", "fa-refresh fa-spin")
+  const other = current && !known ? current : '';
   return html`<div class="field icon-field"><span class="label" id="${id}_label">${label}</span>
     <details class="icon-picker">
-      <summary aria-describedby="${id}_label">${current && known ? html`${icon(current)}<span>${current}</span>` : html`<span class="muted">- none -</span>`}</summary>
+      <summary aria-describedby="${id}_label">${current && isIcon(current) ? html`${icon(current)}<span>${current}</span>` : html`<span class="muted">- none -</span>`}</summary>
       <div class="icon-picker-panel">
         <label class="sr-only" for="${id}_filter">Filter icons</label>
-        <input id="${id}_filter" type="search" placeholder="Filter icons…" data-icon-filter autocomplete="off">
+        <input id="${id}_filter" type="search" placeholder="Filter icons… (also searches ${String(lucideNames().size)} more)" data-icon-filter data-icon-search="${BASE}/icons/search" autocomplete="off">
         <fieldset class="icon-grid"><legend class="sr-only">${label}</legend>
           <label class="icon-choice"><input type="radio" name="${name}" value=""${current === '' || !known ? raw(' checked') : ''}><span class="icon-none" aria-hidden="true">∅</span><span class="icon-name">none</span></label>
           ${ICON_OPTIONS.filter(Boolean).map((n) => html`<label class="icon-choice" title="${n}"><input type="radio" name="${name}" value="${n}"${current === n ? raw(' checked') : ''}>${icon(n)}<span class="icon-name">${n}</span></label>`)}
         </fieldset>
+        <div class="icon-more" data-icon-more hidden></div>
+        <div class="field u-mt075"><label class="label" for="${id}_custom">Or any icon, with modifiers</label>
+          <input id="${id}_custom" name="${name}__custom" value="${other}" maxlength="100" placeholder="car-front lg" data-icon-custom>
+          <small class="help">One of the ${String(lucideNames().size)} <a href="https://lucide.dev/icons/" rel="noopener" target="_blank">Lucide icons</a> or a Font APEX name (<code>fa-users</code>), then modifiers: ${ICON_MODIFIERS.join(', ')}. Filled in, it wins over the grid.</small></div>
       </div>
     </details>${help}</div>`;
 }

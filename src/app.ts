@@ -59,6 +59,7 @@ import { ownerUrl } from './db.ts';
 import { refreshInstanceSettings } from './instance.ts';
 import { loadSecrets, securityHeaders } from './security.ts';
 
+import { lucideSymbol } from './icons.ts';
 export async function buildApp(opts: { logger?: boolean } = {}) {
   // a database older than the code: apply the migrations (MIGRATE_ON_START=true)
   // or answer every request with a clear 503 instead of "column … does not exist"
@@ -121,6 +122,14 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   // Leaflet for map regions (BSD-2-Clause), served from the package itself
   await app.register(fastifyStatic, { root: join(root, 'node_modules', 'leaflet', 'dist'), prefix: '/static/vendor/leaflet/', decorateReply: false });
   await app.register(runtimeRoutes);
+  // (0.31) Lucide icons (ISC), one per file, as a one-symbol sprite for <use href="…#i"> (src/icons.ts)
+  app.get('/static/icon/:file', async (req, reply) => {
+    const m = /^([a-z0-9-]{1,60})\.svg$/.exec((req.params as { file: string }).file);
+    const svg = m ? lucideSymbol(m[1]) : null;
+    if (!svg) return reply.code(404).type('text/plain').send('Not found');
+    // the page's URL carries the package version, so the file never changes under it
+    return reply.header('cache-control', 'public, max-age=31536000, immutable').type('image/svg+xml').send(svg);
+  });
   await app.register(accountRoutes);
   await app.register(taskRoutes);
   await app.register(workflowRoutes);

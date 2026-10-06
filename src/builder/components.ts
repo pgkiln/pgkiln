@@ -6,7 +6,7 @@
 import { objectStoreProblem } from '../objectstore.ts';
 import { formatSettingsProblem } from '../runtime/format.ts';
 import { scheduleProblem } from '../automations.ts';
-import { ICONS } from '../icons.ts';
+import { ICONS, isIcon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems } from '../workflow.ts';
 import { workflowBeforeSave } from './workflows.ts';
@@ -691,6 +691,13 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
       case 'automation_name':
         values[f.name] = v === '' ? null : v.trim();
         break;
+      case 'icon': {
+        // (0.31) the picker's "any icon" field (a Lucide name, Font APEX name, modifiers) wins over the grid
+        const custom = String(body[`${f.name}__custom`] ?? '').trim().replace(/\s+/g, ' ');
+        if (custom && !isIcon(custom)) throw new Error(`${f.label}: there is no icon "${custom.split(' ')[0]}" (see the icon picker)`);
+        values[f.name] = custom ? custom.slice(0, 100) : v === '' ? null : v;
+        break;
+      }
       case 'secret':
         // not trimmed: a secret is what was typed
         values[f.name] = raw ? raw : null;
