@@ -155,6 +155,10 @@ export const zh: Record<MessageKey, string> = {
   'item.scan': "扫描",
   'item.locate_error': "无法获取位置。",
   'item.scan_close': "关闭",
+  'crop.title': "裁剪图片",
+  'crop.apply': "使用此部分",
+  'crop.skip': "保留整张图片",
+  'crop.help': "拖动边框可移动它，拖动其角可调整大小。使用键盘：方向键移动，Shift + 方向键调整大小。",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "格式文本：保留基本 HTML（段落、粗体、斜体、列表、链接），其他内容将被删除。",
   'item.markdown_hint': "Markdown：**粗体**、_斜体_、# 标题、- 列表、[链接](https://…)。",

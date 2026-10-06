@@ -155,6 +155,10 @@ export const pt: Record<MessageKey, string> = {
   'item.scan': "Digitalizar",
   'item.locate_error': "A localização não está disponível.",
   'item.scan_close': "Fechar",
+  'crop.title': "Recortar a imagem",
+  'crop.apply': "Usar esta parte",
+  'crop.skip': "Manter a imagem inteira",
+  'crop.help': "Arraste a moldura para a mover e o canto para a redimensionar. Com o teclado: as setas movem-na, Shift e as setas redimensionam-na.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "Texto formatado: o HTML básico (parágrafos, negrito, itálico, listas, ligações) é mantido, tudo o resto é removido.",
   'item.markdown_hint': "Markdown: **negrito**, _itálico_, # título, - lista, [ligação](https://…).",

@@ -1357,6 +1357,34 @@ document.querySelectorAll('select[name="app_id"]').forEach((sel) => {
   sel.addEventListener('change', () => syncRoleHints(sel));
 });
 
+// A table that scrolls sideways can be scrolled from the keyboard: the scrolling box
+// gets the focus (tabindex 0) and a name (its region's heading). Only boxes that
+// actually overflow, checked on load and when the window size changes.
+function markScrollingTables() {
+  for (const box of document.querySelectorAll('.table-wrap')) {
+    const scrolls = box.scrollWidth > box.clientWidth + 1;
+    if (scrolls && !box.hasAttribute('tabindex')) {
+      box.setAttribute('tabindex', '0');
+      box.setAttribute('role', 'region');
+      const heading = box.closest('section, .region, .ide-region')?.querySelector('h2, h3');
+      box.setAttribute('aria-label', heading?.textContent.trim() || 'Table');
+      box.dataset.scrollMarked = '1';
+    } else if (!scrolls && box.dataset.scrollMarked) {
+      box.removeAttribute('tabindex');
+      box.removeAttribute('role');
+      box.removeAttribute('aria-label');
+      delete box.dataset.scrollMarked;
+    }
+  }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markScrollingTables);
+else markScrollingTables();
+let scrollTablesTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(scrollTablesTimer);
+  scrollTablesTimer = setTimeout(markScrollingTables, 200);
+});
+
 // Actions → Print (the print stylesheet hides navigation and toolbars).
 document.addEventListener('click', (e) => {
   if (!e.target.closest?.('[data-print]')) return;
@@ -1598,9 +1626,137 @@ document.addEventListener('DOMContentLoaded', () => {
       return file; // keep the original
     }
   }
+  // file items with data-crop: the user chooses the part of a picture to upload (to the item's aspect ratio,
+  // or free), then max_px applies. Keyboard: arrow keys move the frame, Shift + arrow keys resize it.
+  const CROP_RATIOS = { free: 0, '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '16:9': 16 / 9, '3:2': 3 / 2, '2:3': 2 / 3 };
+  async function cropPicture(file, ratio) {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || !window.createImageBitmap || !HTMLDialogElement.prototype.showModal) return file;
+    let img;
+    try {
+      img = await createImageBitmap(file);
+    } catch {
+      return file;
+    }
+    const dlg = document.createElement('dialog');
+    dlg.className = 'crop-dialog';
+    dlg.setAttribute('aria-labelledby', 'crop-title');
+    dlg.innerHTML = '<form method="dialog"><h2 id="crop-title"></h2><p class="crop-help"></p><div class="crop-stage"><canvas></canvas><div class="crop-frame" tabindex="0" role="group"><span class="crop-handle" aria-hidden="true"></span></div></div><div class="buttons"><button value="skip" class="btn"></button><button value="apply" class="btn btn-hot"></button></div></form>';
+    dlg.querySelector('h2').textContent = t('crop.title');
+    dlg.querySelector('.crop-help').textContent = t('crop.help');
+    dlg.querySelector('[value=skip]').textContent = t('crop.skip');
+    dlg.querySelector('[value=apply]').textContent = t('crop.apply');
+    document.body.append(dlg);
+    const stageW = Math.min(560, window.innerWidth - 64);
+    const stageH = Math.min(420, window.innerHeight - 280);
+    const scale = Math.min(stageW / img.width, stageH / img.height, 1);
+    const W = Math.max(1, Math.round(img.width * scale));
+    const H = Math.max(1, Math.round(img.height * scale));
+    const canvas = dlg.querySelector('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    canvas.getContext('2d').drawImage(img, 0, 0, W, H);
+    const stage = dlg.querySelector('.crop-stage');
+    stage.style.width = `${W}px`;
+    stage.style.height = `${H}px`;
+    const frame = dlg.querySelector('.crop-frame');
+    frame.setAttribute('aria-label', t('crop.title'));
+    // the frame in display pixels: the largest centred box of the ratio, at 80%
+    let w = W * 0.8;
+    let h = H * 0.8;
+    if (ratio) {
+      if (w / h > ratio) w = h * ratio;
+      else h = w / ratio;
+    }
+    let x = (W - w) / 2;
+    let y = (H - h) / 2;
+    const clamp = () => {
+      const min = 16;
+      w = Math.max(min, Math.min(w, W));
+      h = ratio ? w / ratio : Math.max(min, Math.min(h, H));
+      if (h > H) {
+        h = H;
+        if (ratio) w = h * ratio;
+      }
+      x = Math.max(0, Math.min(x, W - w));
+      y = Math.max(0, Math.min(y, H - h));
+    };
+    const draw = () => {
+      clamp();
+      frame.style.left = `${x}px`;
+      frame.style.top = `${y}px`;
+      frame.style.width = `${w}px`;
+      frame.style.height = `${h}px`;
+    };
+    draw();
+    let drag = null;
+    frame.addEventListener('pointerdown', (e) => {
+      drag = { mode: e.target.classList.contains('crop-handle') ? 'size' : 'move', px: e.clientX, py: e.clientY, x, y, w, h };
+      frame.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    frame.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.px;
+      const dy = e.clientY - drag.py;
+      if (drag.mode === 'move') {
+        x = drag.x + dx;
+        y = drag.y + dy;
+      } else {
+        w = drag.w + dx;
+        h = ratio ? w / ratio : drag.h + dy;
+      }
+      draw();
+    });
+    frame.addEventListener('pointerup', () => (drag = null));
+    frame.addEventListener('keydown', (e) => {
+      const step = e.altKey ? 1 : 8;
+      const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        w += d[0] || -d[1];
+        if (!ratio) h += d[1] || 0;
+      } else {
+        x += d[0];
+        y += d[1];
+      }
+      draw();
+    });
+    dlg.showModal();
+    frame.focus();
+    const choice = await new Promise((resolve) => dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }));
+    dlg.remove();
+    if (choice !== 'apply') return file;
+    const sx = x / scale;
+    const sy = y / scale;
+    const sw = Math.max(1, Math.round(w / scale));
+    const sh = Math.max(1, Math.round(h / scale));
+    const out = document.createElement('canvas');
+    out.width = sw;
+    out.height = sh;
+    out.getContext('2d').drawImage(img, sx, sy, w / scale, h / scale, 0, 0, sw, sh);
+    const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise((r) => out.toBlob(r, type, 0.9));
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, '') + (type === 'image/png' ? '.png' : '.jpg'), { type });
+  }
   document.addEventListener('change', async (e) => {
     const input = e.target;
-    if (!(input instanceof HTMLInputElement) || input.type !== 'file' || !input.dataset.maxPx || !input.files || !input.files[0]) return;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'file' || !input.dataset.crop || !input.files || !input.files[0]) return;
+    if (!window.DataTransfer || !Object.prototype.hasOwnProperty.call(CROP_RATIOS, input.dataset.crop)) return;
+    const original = input.files[0];
+    let file = await cropPicture(original, CROP_RATIOS[input.dataset.crop]);
+    if (input.dataset.maxPx) file = await smaller(file, Number(input.dataset.maxPx));
+    if (file === original) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new CustomEvent('pgapex:cropped', { bubbles: true }));
+  });
+  document.addEventListener('change', async (e) => {
+    const input = e.target;
+    // (inputs with data-crop make their pictures smaller after the crop, above)
+    if (!(input instanceof HTMLInputElement) || input.type !== 'file' || !input.dataset.maxPx || input.dataset.crop || !input.files || !input.files[0]) return;
     if (!window.createImageBitmap || !window.DataTransfer) return;
     const max = Number(input.dataset.maxPx);
     const files = [...input.files];

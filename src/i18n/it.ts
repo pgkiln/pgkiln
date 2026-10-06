@@ -155,6 +155,10 @@ export const it: Record<MessageKey, string> = {
   'item.scan': "Scansiona",
   'item.locate_error': "La posizione non è disponibile.",
   'item.scan_close': "Chiudi",
+  'crop.title': "Ritaglia l'immagine",
+  'crop.apply': "Usa questa parte",
+  'crop.skip': "Mantieni l'immagine intera",
+  'crop.help': "Trascina la cornice per spostarla e il suo angolo per ridimensionarla. Con la tastiera: le frecce la spostano, Maiusc e le frecce la ridimensionano.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "Testo formattato: l'HTML di base (paragrafi, grassetto, corsivo, elenchi, link) viene mantenuto, tutto il resto viene rimosso.",
   'item.markdown_hint': "Markdown: **grassetto**, _corsivo_, # titolo, - elenco, [link](https://…).",

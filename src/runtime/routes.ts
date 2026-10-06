@@ -1,5 +1,6 @@
 import { PageCss } from '../css.ts';
 import { forgetRemember, issueRemember, useRemember } from '../remember.ts';
+import { endShared, issueShared, sharingGroup, useShared } from '../sharedlogin.ts';
 import { appDirectories, ldapAuthenticate, LdapError, resolveLdapAccount } from '../ldap.ts';
 import { finishSamlSignIn, samlMetadata, startSamlSignIn } from '../saml.ts';
 import { dbAuthenticate } from '../dbauth.ts';
@@ -95,6 +96,8 @@ interface SignInOptions {
   method?: string;
   /** a remembered sign-in keeps the expiry of the original one */
   rememberUntil?: Date;
+  /** (067) the sign-in came from the group's shared sign-in (its token hash) */
+  shared?: string;
 }
 
 /** Sign-in: replace the session with one for the user and run the after-login processes. */
@@ -121,6 +124,9 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
     `select s.style from meta.account_style s join meta.account a on a.id = s.account_id
       where lower(a.username) = lower($1) and s.app_id = $2`, [username, a.id]);
   if (style) s.state.__STYLE = style.style;
+  // (067) session sharing: the session belongs to the group's shared sign-in (a new one after a real sign-in)
+  const shared = opts.shared ?? (await issueShared(req, reply, a, username, { groups: opts.groups, method: opts.method }));
+  if (shared) s.state.__SHARED = shared;
   await saveState(s);
 
   if (a.app_processes.some((p) => p.point === 'after_login')) {
@@ -210,6 +216,14 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
       session = await signIn(req, reply, app, session, remembered.username, {
         extraRoles: remembered.roles, groups: remembered.groups, method: remembered.method,
         remember: true, rememberUntil: remembered.expiresAt, detail: 'remember me',
+      });
+  }
+  // (067) another application of the session sharing group was signed in to: sign in here too
+  if (!session.username && sharingGroup(app)) {
+    const shared = await useShared(req, reply, app);
+    if (shared)
+      session = await signIn(req, reply, app, session, shared.username, {
+        extraRoles: shared.roles, groups: shared.groups, method: shared.method, shared: shared.hash, detail: 'shared sign-in',
       });
   }
   const langBefore = session.state.__LANG;
@@ -1214,6 +1228,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (req.body?.__csrf !== session.csrf_token) return reply.redirect(`${base}/${a.home_page}`, 303);
     if (session.username) logActivity({ appId: a.id, username: session.username, event: 'logout', ip: clientIp(req) });
     await forgetRemember(req, reply, a);
+    await endShared(req, reply, a);
     await destroySession(reply, session, base);
     if (a.authentication === 'header') {
       // the proxy would sign the user in again at once: go to its sign-out page, if any

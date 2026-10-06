@@ -105,3 +105,57 @@ describe('dropping and pasting files', () => {
     await context.close();
   });
 });
+
+describe('cropping a picture before upload (hr_45: the photo is square)', () => {
+  // a 300 × 200 picture made in the page, put into the photo field like a chosen file
+  const choose = (page: Page) =>
+    page.evaluate(async () => {
+      const c = document.createElement('canvas');
+      c.width = 300;
+      c.height = 200;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#3366cc';
+      g.fillRect(0, 0, 300, 200);
+      const blob: Blob = await new Promise((r) => c.toBlob((b) => r(b!), 'image/png'));
+      const input = document.getElementById('P3_PHOTO') as HTMLInputElement;
+      const dt = new DataTransfer();
+      dt.items.add(new File([blob], 'wide.png', { type: 'image/png' }));
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  const chosen = (page: Page) =>
+    page.evaluate(async () => {
+      const f = (document.getElementById('P3_PHOTO') as HTMLInputElement).files![0];
+      const img = await createImageBitmap(f);
+      return { name: f.name, w: img.width, h: img.height };
+    });
+
+  test('the crop dialog: keyboard resizing, the result is square; "keep" leaves the picture as it was', async () => {
+    const { context, page } = await employeeForm();
+    await choose(page);
+    const dlg = page.locator('dialog.crop-dialog');
+    await dlg.waitFor();
+    assert.match(await dlg.locator('h2').textContent() ?? '', /Crop the picture/);
+    const frame = dlg.locator('.crop-frame');
+    assert.equal(await frame.evaluate((el) => el === document.activeElement), true, 'the frame has the focus');
+    await frame.press('Shift+ArrowLeft');
+    await frame.press('ArrowRight');
+    await dlg.locator('button[value="apply"]').click();
+    await page.waitForFunction(async () => {
+      const img = await createImageBitmap((document.getElementById('P3_PHOTO') as HTMLInputElement).files![0]);
+      return img.width !== 300;
+    });
+    const out = await chosen(page);
+    assert.equal(out.name, 'wide.png', 'a PNG stays a PNG');
+    assert.equal(out.w, out.h, `square: ${JSON.stringify(out)}`);
+    assert.ok(out.w > 100 && out.w < 200, `about 80% of the height, a bit smaller: ${out.w}`);
+    assert.equal(await page.locator('dialog.crop-dialog').count(), 0, 'the dialog is gone');
+    // keep the whole picture
+    await choose(page);
+    await page.locator('dialog.crop-dialog button[value="skip"]').click();
+    await page.waitForFunction(() => !document.querySelector('dialog.crop-dialog'));
+    assert.deepEqual(await chosen(page), { name: 'wide.png', w: 300, h: 200 });
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
+});

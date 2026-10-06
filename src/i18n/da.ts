@@ -155,6 +155,10 @@ export const da: Record<MessageKey, string> = {
   'item.scan': "Scan",
   'item.locate_error': "Placeringen er ikke tilgængelig.",
   'item.scan_close': "Luk",
+  'crop.title': "Beskær billedet",
+  'crop.apply': "Brug denne del",
+  'crop.skip': "Behold hele billedet",
+  'crop.help': "Træk rammen for at flytte den og dens hjørne for at ændre størrelsen. Med tastaturet: piletasterne flytter, Skift og piletasterne ændrer størrelsen.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "Formateret tekst: grundlæggende HTML (afsnit, fed, kursiv, lister, links) bevares, alt andet fjernes.",
   'item.markdown_hint': "Markdown: **fed**, _kursiv_, # overskrift, - liste, [link](https://…).",

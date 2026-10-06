@@ -41,7 +41,7 @@ export async function instanceRoutes(app: FastifyInstance) {
           <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Variable</th><th>Value</th><th>Purpose</th></tr></thead>
           <tbody>${CONFIGURATION.map((c) => {
             const v = configurationValue(c);
-            return html`<tr><td data-label="Variable"><code>${c.env}</code></td><td data-label="Value">${v.set ? v.value : html`<span class="muted">${v.value}</span>`}</td><td data-label="Purpose">${c.help}</td></tr>`;
+            return html`<tr><td data-label="Variable"><code>${c.env}</code></td><td data-label="Value" class="cell-break">${v.set ? v.value : html`<span class="muted">${v.value}</span>`}</td><td data-label="Purpose">${c.help}</td></tr>`;
           })}</tbody></table></div>`)}
       </div>`;
     return send(reply, s, shell(s, 'Instance settings', crumbs, main));

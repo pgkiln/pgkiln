@@ -42,7 +42,8 @@ src/
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
-  i18n/                    de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh: the built-in texts of the other languages (English and Dutch are in i18n.ts)
+  i18n/                    de, fr, es, it, pt, pl, sv, da, nb, fi, cs, tr, el, ru, uk, ja, zh, ko, ar, he: the built-in texts of
+                           the other languages (English and Dutch are in i18n.ts)
   numformat.ts             number format masks (999G990D00): format, parse, language separators
   binds.ts                 :BIND scanner → escaped literals, splitStatements, SqlParams (query parameters) (unit tested)
   dataload.ts              CSV/XLSX/JSON/XML parsing, type inference, batched loading with row errors, data load definitions (mapping, transformations, format masks)
@@ -304,8 +305,10 @@ npm run db:reset     # fresh database
 CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
-- **e2e**: the browser tests, uploading the screenshots as an artifact;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.29.0`) with their sample data, upgrades to the
+- **e2e**: the browser tests, uploading the screenshots as an artifact; `test/e2e/accessibility.test.ts` runs
+  axe-core (WCAG 2.1 A and AA rules) on every page of the HR example (light, dark, Iris) and the builder's main pages
+  and allows no violation;
+- **upgrade**: installs older releases (`v0.6.0` … `v0.30.0`) with their sample data, upgrades to the
   commit and runs `npm test` on the result. Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the

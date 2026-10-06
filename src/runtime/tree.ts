@@ -65,8 +65,14 @@ export async function renderTree(ctx: PageContext, r: Region): Promise<Raw> {
       label = html`<a ${linkAttrs(ctx, link.page, items)}>${label}</a>`;
     }
     if (!n.children.length) return html`<li class="tree-leaf">${label}</li>`;
-    return html`<li><details${depth < expanded ? raw(' open') : ''}><summary>${label} <span class="tree-count">${n.children.length}</span></summary>
-      <ul>${n.children.map((ch) => draw(ch, depth + 1))}</ul></details></li>`;
+    const open = depth < expanded ? raw(' open') : '';
+    const children = html`<ul>${n.children.map((ch) => draw(ch, depth + 1))}</ul>`;
+    // a linked branch: the link is a row of its own and the disclosure only toggles (no link inside <summary>)
+    if (linkOk && link)
+      return html`<li class="tree-branch"><span class="tree-row">${label} <span class="tree-count" aria-hidden="true">${n.children.length}</span></span>
+        <details${open}><summary><span class="sr-only">${n.label} (${n.children.length})</span></summary>${children}</details></li>`;
+    return html`<li><details${open}><summary>${label} <span class="tree-count">${n.children.length}</span></summary>
+      ${children}</details></li>`;
   };
   return html`<ul class="tree-view">${roots.map((n) => draw(n, 0))}</ul>`;
 }

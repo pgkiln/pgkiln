@@ -155,6 +155,10 @@ export const cs: Record<MessageKey, string> = {
   'item.scan': "Skenovat",
   'item.locate_error': "Poloha není k dispozici.",
   'item.scan_close': "Zavřít",
+  'crop.title': "Oříznout obrázek",
+  'crop.apply': "Použít tuto část",
+  'crop.skip': "Ponechat celý obrázek",
+  'crop.help': "Rámeček přesunete tažením a jeho velikost změníte tažením rohu. Klávesnicí: šipky ho posouvají, Shift se šipkami mění velikost.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "Formátovaný text: základní HTML (odstavce, tučné, kurzíva, seznamy, odkazy) zůstane, vše ostatní se odstraní.",
   'item.markdown_hint': "Markdown: **tučně**, _kurzíva_, # nadpis, - seznam, [odkaz](https://…).",

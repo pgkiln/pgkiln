@@ -155,6 +155,10 @@ export const fr: Record<MessageKey, string> = {
   'item.scan': 'Scanner',
   'item.locate_error': 'La position n’est pas disponible.',
   'item.scan_close': 'Fermer',
+  'crop.title': "Recadrer l’image",
+  'crop.apply': "Utiliser cette partie",
+  'crop.skip': "Garder l’image entière",
+  'crop.help': "Faites glisser le cadre pour le déplacer et son coin pour le redimensionner. Au clavier : les flèches le déplacent, Maj et les flèches le redimensionnent.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': 'Texte formaté : le HTML de base (paragraphes, gras, italique, listes, liens) est conservé, tout le reste est supprimé.',
   'item.markdown_hint': 'Markdown : **gras**, _italique_, # titre, - liste, [lien](https://…).',

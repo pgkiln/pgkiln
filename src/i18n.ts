@@ -16,6 +16,14 @@ import { nb } from './i18n/nb.ts';
 import { cs } from './i18n/cs.ts';
 import { ja } from './i18n/ja.ts';
 import { zh } from './i18n/zh.ts';
+import { fi } from './i18n/fi.ts';
+import { tr } from './i18n/tr.ts';
+import { el } from './i18n/el.ts';
+import { ru } from './i18n/ru.ts';
+import { uk } from './i18n/uk.ts';
+import { ko } from './i18n/ko.ts';
+import { ar } from './i18n/ar.ts';
+import { he } from './i18n/he.ts';
 
 export type Params = Record<string, string | number | null | undefined>;
 export type Translate = (key: string, params?: Params) => string;
@@ -174,6 +182,10 @@ const en = {
   'item.scan': 'Scan',
   'item.locate_error': 'The location is not available.',
   'item.scan_close': 'Close',
+  'crop.title': "Crop the picture",
+  'crop.apply': "Use this part",
+  'crop.skip': "Keep the whole picture",
+  'crop.help': "Drag the frame to move it and its corner to resize it. With the keyboard: arrow keys move it, Shift and arrow keys resize it.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': 'Formatted text: basic HTML (paragraphs, bold, italic, lists, links) is kept, everything else is removed.',
   'item.markdown_hint': 'Markdown: **bold**, _italic_, # heading, - list, [link](https://…).',
@@ -751,6 +763,10 @@ const nl: Record<MessageKey, string> = {
   'item.scan': 'Scannen',
   'item.locate_error': 'De locatie is niet beschikbaar.',
   'item.scan_close': 'Sluiten',
+  'crop.title': "Afbeelding bijsnijden",
+  'crop.apply': "Dit deel gebruiken",
+  'crop.skip': "Hele afbeelding houden",
+  'crop.help': "Sleep het kader om het te verplaatsen en de hoek om het groter of kleiner te maken. Met het toetsenbord: pijltjestoetsen verplaatsen, Shift en pijltjestoetsen veranderen de grootte.",
   'item.richtext_hint': 'Opgemaakte tekst: eenvoudige HTML (alinea\'s, vet, cursief, lijsten, links) blijft bewaard, de rest wordt verwijderd.',
   'item.markdown_hint': 'Markdown: **vet**, _cursief_, # kop, - lijst, [link](https://…).',
   'item.rating_of': '{n} van {max}',
@@ -1175,7 +1191,7 @@ const nl: Record<MessageKey, string> = {
   'ai_filter.sort': "gesorteerd op {column}",
 };
 
-const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh };
+const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh, fi, tr, el, ru, uk, ko, ar, he };
 // browsers send 'no' as well as 'nb' for Norwegian Bokmål
 BUILTIN.no = nb;
 
@@ -1183,7 +1199,7 @@ BUILTIN.no = nb;
 export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
 /** Languages pgapex's own texts are available in. */
-export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk'], ['cs', 'Čeština'], ['ja', '日本語'], ['zh', '中文']];
+export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk'], ['cs', 'Čeština'], ['ja', '日本語'], ['zh', '中文'], ['fi', 'Suomi'], ['tr', 'Türkçe'], ['el', 'Ελληνικά'], ['ru', 'Русский'], ['uk', 'Українська'], ['ko', '한국어'], ['ar', 'العربية'], ['he', 'עברית']];
 
 /** Names of languages for the language picker (in their own language). */
 export const LANGUAGE_NAMES: Record<string, string> = {

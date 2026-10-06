@@ -170,8 +170,8 @@ describe('map and tree regions', () => {
     await page.goto(`${base}/a/hr/8`);
     const smith = page.locator('.tree-view a', { hasText: 'Smith' });
     assert.equal(await smith.isVisible(), false, 'two levels open: Smith is deeper');
-    // the label is a link; the rest of the row (the count) opens the branch
-    await page.locator('.tree-view summary', { hasText: 'Ford' }).locator('.tree-count').click();
+    // the label is a link; the disclosure triangle in front of it opens the branch (no link inside <summary>)
+    await page.locator('.tree-row a', { hasText: 'Ford' }).locator('xpath=ancestor::li[1]/details/summary').click();
     assert.equal(await smith.isVisible(), true);
     await smith.click();
     const frame = page.locator('dialog.t-dialog[open] iframe');

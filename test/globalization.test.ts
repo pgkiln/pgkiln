@@ -289,7 +289,7 @@ describe('built-in texts in German, French and Spanish', () => {
       for (const k of Object.keys(en)) assert.equal(holes(own[k]), holes(en[k]), `${lang} ${k}: the same placeholders`);
       if (lang !== 'en') assert.notEqual(translator(lang)('login.title'), translator('en')('login.title'), `${lang} login.title`);
     }
-    assert.deepEqual(BUILTIN_LANGUAGES.map(([l]) => l), ['en', 'nl', 'de', 'fr', 'es', 'it', 'pt', 'pl', 'sv', 'da', 'nb', 'cs', 'ja', 'zh']);
+    assert.deepEqual(BUILTIN_LANGUAGES.map(([l]) => l), ['en', 'nl', 'de', 'fr', 'es', 'it', 'pt', 'pl', 'sv', 'da', 'nb', 'cs', 'ja', 'zh', 'fi', 'tr', 'el', 'ru', 'uk', 'ko', 'ar', 'he']);
   });
 
   for (const [lang, title, required] of [['de', 'Anmelden', /ist erforderlich|muss/], ['fr', 'Se connecter', /obligatoire/], ['es', 'Iniciar sesión', /obligatorio/]] as const)
@@ -305,4 +305,21 @@ describe('built-in texts in German, French and Spanish', () => {
         await owner.query(`update meta.app set languages = array['nl'] where id = $1`, [appId]);
       }
     });
+
+  test('every built-in language serves the sign-in page in its own words; Arabic and Hebrew right to left', async () => {
+    const langs = BUILTIN_LANGUAGES.map(([l]) => l).filter((l) => l !== 'en');
+    await owner.query('update meta.app set languages = $2 where id = $1', [appId, langs]);
+    try {
+      for (const lang of langs) {
+        const body = (await new Browser(app, { 'accept-language': `${lang},en;q=0.5` }).get('/a/hr/login')).body;
+        assert.match(body, new RegExp(`<html lang="${lang}"${['ar', 'he'].includes(lang) ? ' dir="rtl"' : '(?! dir)'}`), lang);
+        const title = translator(lang)('login.title').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        assert.match(body, new RegExp(title), `${lang}: ${translator(lang)('login.title')}`);
+      }
+      // the browser's "no" (Norwegian) gets Bokmål
+      assert.equal(translator('no')('login.title'), translator('nb')('login.title'));
+    } finally {
+      await owner.query(`update meta.app set languages = array['nl'] where id = $1`, [appId]);
+    }
+  });
 });

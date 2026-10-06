@@ -5,6 +5,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-06
+
+### Added
+- **Icons**: 136 line icons (was 39), and an icon picker in the builder (a grid with a filter box, without script a list of radio buttons).
+- **Accessibility audit**: axe-core checks every page of the HR example (light, dark and Iris) and the builder's main
+  pages against WCAG 2.1 A and AA in the e2e tests; no violations allowed.
+- **Cropping pictures** before upload: file items with `"crop"` (free, 1:1, 4:3, 3:4, 16:9, 3:2, 2:3) open a crop
+  dialog (mouse and keyboard) for the chosen picture. HR example: the employee photo is square (`hr_45`).
+- **Session sharing between applications** (migration 067): applications with the same session sharing group share a
+  sign-in, each with its own access check and roles; signing out of one signs out of all.
+- **Eight more built-in languages**: Finnish, Turkish, Greek, Russian, Ukrainian, Korean, Arabic and Hebrew (twenty-two
+  in all; Arabic and Hebrew right to left).
+
+### Fixed
+- Accessibility: chart bars and groups with a description get `role="img"`; gauge drill links are named by their
+  visible text; rich-text toolbar buttons are named by their action, not their glyph; a tree's linked branches no
+  longer put a link inside the disclosure; tables that scroll sideways can be reached and scrolled from the keyboard.
+- The region display selector's current tab was drawn in the accent's text colour (white on white in the light theme).
+- Search hits in the builder are readable in the dark theme.
+
 ## [0.29.0] - 2026-10-06
 
 ### Added

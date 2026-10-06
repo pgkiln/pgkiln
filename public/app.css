@@ -945,7 +945,7 @@ td[data-add]:hover > .cal-add, .cal-add:focus-visible { opacity: 1; }
 .rds-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--border); }
 .rds-tab { display: inline-block; padding: 0.5rem 0.9rem; text-decoration: none; color: var(--text); border-bottom: 3px solid transparent; margin-bottom: -1px; border-radius: var(--radius) var(--radius) 0 0; }
 .rds-tab:hover { background: var(--surface-2); }
-.rds-tab.is-current { border-bottom-color: var(--accent); color: var(--accent-text, var(--accent)); font-weight: 600; }
+.rds-tab.is-current { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
 .rds-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rds-select-label { display: block; }
 .rds-select { width: 100%; max-width: 24rem; }
@@ -1179,6 +1179,15 @@ path.map-near { stroke: #1f2733; stroke-dasharray: 6 4; fill: #1f2733; fill-opac
 .tree-view a, .tree-view summary > span, .tree-leaf > span { display: inline-flex; align-items: center; gap: 0.35rem; }
 .tree-leaf { padding-left: 1rem; }
 .tree-count { font-size: 0.75rem; color: var(--muted); }
+/* a linked branch: the disclosure triangle sits in front of the link's row */
+.tree-branch { position: relative; }
+.tree-branch > .tree-row { display: inline-flex; align-items: center; gap: 0.35rem; }
+.tree-branch > details > summary { position: absolute; top: 0; left: -1.1rem; width: 1.1rem; height: 1.5em; cursor: pointer; list-style: none; color: var(--muted); }
+.tree-branch > details > summary::-webkit-details-marker { display: none; }
+.tree-branch > details > summary::before { content: "▸"; display: block; text-align: center; }
+.tree-branch > details[open] > summary::before { content: "▾"; }
+.tree-branch > details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+.cell-break { overflow-wrap: anywhere; word-break: break-word; }
 
 /* Workflow diagram (inline SVG; no style attributes) */
 .wf-wrap { overflow-x: auto; padding: 0.5rem 0; }
@@ -1210,7 +1219,7 @@ path.map-near { stroke: #1f2733; stroke-dasharray: 6 4; fill: #1f2733; fill-opac
 .hits li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.25rem 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .hits li > a { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .hits .hit-snippet { grid-column: 1 / -1; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.82rem; color: var(--muted); background: none; padding: 0; }
-.hits mark { background: rgb(250 204 21 / 45%); color: var(--text); border-radius: 2px; }
+.hits mark { background: #fde68a; color: #1b2330; border-radius: 2px; }
 .used-in { margin-top: 1.5rem; }
 .sql-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; display: block; max-height: 12rem; overflow: auto; }
 .small { font-size: 0.82rem; }
@@ -1514,3 +1523,16 @@ td.to-col-center, th.to-col-center { text-align: center; }
 .ai-filter-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .ai-filter-row input { flex: 1 1 14rem; min-width: 0; }
 button.is-busy { opacity: 0.7; cursor: progress; }
+
+/* crop dialog for file items with "crop" (app.js cropPicture) */
+dialog.crop-dialog { border: 0; border-radius: var(--radius); padding: 1rem 1.25rem; background: var(--surface); color: var(--text); box-shadow: 0 24px 60px rgb(0 0 0 / 30%); max-width: calc(100vw - 1rem); }
+dialog.crop-dialog::backdrop { background: rgb(15 20 30 / 55%); }
+.crop-dialog h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.crop-help { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.85rem; max-width: 36rem; }
+.crop-stage { position: relative; margin: 0 auto 0.75rem; touch-action: none; user-select: none; }
+.crop-stage canvas { display: block; width: 100%; height: 100%; }
+.crop-frame { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgb(0 0 0 / 50%); cursor: move; outline: none; }
+.crop-frame:focus-visible { border-color: var(--accent); }
+.crop-handle { position: absolute; right: -8px; bottom: -8px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: nwse-resize; }
+.crop-stage { overflow: hidden; }
+.crop-dialog .buttons { display: flex; justify-content: flex-end; gap: 0.5rem; }

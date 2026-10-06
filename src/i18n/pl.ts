@@ -155,6 +155,10 @@ export const pl: Record<MessageKey, string> = {
   'item.scan': "Skanuj",
   'item.locate_error': "Lokalizacja jest niedostępna.",
   'item.scan_close': "Zamknij",
+  'crop.title': "Przytnij obraz",
+  'crop.apply': "Użyj tego fragmentu",
+  'crop.skip': "Zachowaj cały obraz",
+  'crop.help': "Przeciągnij ramkę, aby ją przesunąć, a jej róg, aby zmienić rozmiar. Klawiaturą: strzałki przesuwają, Shift ze strzałkami zmienia rozmiar.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "Tekst sformatowany: podstawowy HTML (akapity, pogrubienie, kursywa, listy, linki) zostaje, reszta jest usuwana.",
   'item.markdown_hint': "Markdown: **pogrubienie**, _kursywa_, # nagłówek, - lista, [link](https://…).",

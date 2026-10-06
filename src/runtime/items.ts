@@ -296,13 +296,13 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         const rich = item.type === 'richtext';
         const t = ctx.locale.t;
         const tool = (cmd: string, key: string, glyph: string) =>
-          html`<button type="button" class="btn rte-btn" data-cmd="${cmd}" title="${t(key)}" aria-label="${t(key)}">${glyph}</button>`;
+          html`<button type="button" class="btn rte-btn" data-cmd="${cmd}" title="${t(key)}"><span aria-hidden="true">${glyph}</span><span class="sr-only">${t(key)}</span></button>`;
         control = html`<div class="rte" data-${rich ? 'richtext' : 'markdown'}="${id}">
           <div class="rte-toolbar" role="toolbar" aria-label="${t('editor.toolbar')}" aria-controls="${id}" hidden>
             ${tool('bold', 'editor.bold', 'B')}${tool('italic', 'editor.italic', 'I')}${rich ? tool('underline', 'editor.underline', 'U') : ''}${tool('strike', 'editor.strike', 'S')}
             ${tool('heading', 'editor.heading', 'H')}${rich ? tool('paragraph', 'editor.paragraph', '¶') : ''}${tool('bullets', 'editor.bullets', '•')}${tool('numbers', 'editor.numbers', '1.')}
             ${tool('quote', 'editor.quote', '❝')}${tool('code', 'editor.code', '</>')}
-            <button type="button" class="btn rte-btn" data-cmd="link" data-prompt="${t('editor.link_prompt')}" title="${t('editor.link')}" aria-label="${t('editor.link')}">↗</button>
+            <button type="button" class="btn rte-btn" data-cmd="link" data-prompt="${t('editor.link_prompt')}" title="${t('editor.link')}"><span aria-hidden="true">↗</span><span class="sr-only">${t('editor.link')}</span></button>
             ${rich ? html`${tool('unlink', 'editor.unlink', '⊘')}${tool('clear', 'editor.clear', 'Tx')}` : ''}
           </div>
           <textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 8}"${aria}>${rich ? sanitizeHtml(value) : value}</textarea>
@@ -418,16 +418,21 @@ function qrControl(ctx: PageContext, item: Item, value: string) {
  * A file item: the stored (or just uploaded) file with a preview for images,
  * a remove option, and the file input.
  */
-/** The <input type="file"> of a file item, with its accept, capture and max_px attributes. */
+/** Aspect ratios a file item may crop pictures to (config "crop"). */
+export const CROP_RATIOS = ['free', '1:1', '4:3', '3:4', '16:9', '3:2', '2:3'];
+
+/** The <input type="file"> of a file item, with its accept, capture, max_px and crop attributes. */
 function fileInput(ctx: PageContext, item: Item, aria: Raw) {
-  const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number };
+  const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number; crop?: string };
   // capture: open the camera on phones ("environment" = the back camera); max_px: photos are made smaller before upload (app.js)
   const capture = conf.capture === 'user' || conf.capture === 'environment' ? raw(` capture="${conf.capture}"`) : '';
   const maxPx = Number(conf.max_px) >= 200 && Number(conf.max_px) <= 8000 ? raw(` data-max-px="${Math.round(Number(conf.max_px))}"`) : '';
   const multiple = isMultiple(item) ? raw(' multiple') : '';
+  // (0.30) crop: a picture is cropped in the browser before upload (app.js), to an aspect ratio from a fixed list
+  const crop = !isMultiple(item) && typeof conf.crop === 'string' && CROP_RATIOS.includes(conf.crop) ? raw(` data-crop="${conf.crop}"`) : '';
   // data-drop: app.js turns the field into a drop zone that also takes pasted files, with this hint
   const drop = ctx.locale.t(isMultiple(item) ? 'file.drop_many' : 'file.drop');
-  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx} data-drop="${drop}"${aria}>`;
+  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx}${crop} data-drop="${drop}"${aria}>`;
 }
 
 /** A multiple file item: its files (stored and new), each with a remove box, and the file input. */

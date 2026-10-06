@@ -40,6 +40,20 @@ first one. The files go into the file input, so they are checked and saved exact
 files (and photos are made smaller first with `max_px`). A file dropped next to a drop zone doesn't
 open in the browser, so the form isn't lost.
 
+### Cropping pictures
+
+With `"crop"` in a single-file item's attributes, a picture the user chooses (or drops, or pastes) opens a **crop
+dialog** before it is uploaded: a frame over the picture to drag and resize (with the keyboard: arrow keys move it,
+Shift and arrow keys resize it, Alt for single pixels). *Use this part* uploads the cropped picture, *Keep the whole
+picture* the original. Values: `"free"`, `"1:1"`, `"4:3"`, `"3:4"`, `"16:9"`, `"3:2"`, `"2:3"` (other values are
+ignored). JPEG, PNG and WebP pictures are cropped (a PNG stays a PNG, the others become JPEG); `max_px` then makes
+the result smaller. Without JavaScript the picture is uploaded as chosen. HR example: the employee photo (page 3) is
+cropped to a square (`hr_45`).
+
+```json
+{"accept": "image/*", "crop": "1:1", "max_px": 800}
+```
+
 ### In a table column (form regions)
 
 Give the item a `source_column` of type `bytea` in a [form region](04-pages-and-regions.md#form).

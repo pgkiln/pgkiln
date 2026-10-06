@@ -1363,7 +1363,7 @@ describe('sprint 26 views: calendar drag and drop, create links, chart drill-dow
       await owner.query(`update meta.region set config = config || '{"link": {"page": 3, "items": {"P3_EMPNO": "#x#"}}}' where id = $1`, [chart.id]);
       const none = (await allen.get('/a/hr/24')).body;
       assert.doesNotMatch(none, /\/a\/hr\/3\?/, 'page 3 needs MANAGER');
-      assert.match(none, /class="bubble s1 \w+" data-tip=/);
+      assert.match(none, /class="bubble s1 \w+" role="img" data-tip=/);
     } finally {
       await owner.query(`update meta.region set config = $2, source = $3 where id = $1`, [chart.id, JSON.stringify(chart.config), source]);
     }
@@ -5821,5 +5821,32 @@ describe('sprint 37 instance settings', () => {
     assert.equal((await adm.post('/builder/instance', { __csrf: 'forged', session_max_hours: '1' })).statusCode, 403);
     await adm.post('/builder/instance', { __csrf: adm.lastCsrf, session_max_hours: "1; drop table meta.setting" });
     assert.equal(await owner.one(`select value from meta.setting where name = 'session_max_hours'`), undefined);
+  });
+});
+
+describe('sprint 38 picture cropping', () => {
+  test('only listed aspect ratios reach the file input', async () => {
+    const item = await owner.one(`select i.id, i.config from meta.item i join meta.page p on p.id = i.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 3 and i.name = 'P3_PHOTO'`);
+    const b = new Browser();
+    await b.get('/a/hr/login');
+    await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
+    try {
+      assert.match((await b.get('/a/hr/3')).body, /id="P3_PHOTO"[^>]* data-crop="1:1"/);
+      for (const bad of ['1:1" onload="alert(1)', '5:4', '', 'free ']) {
+        await owner.query('update meta.item set config = config || $2 where id = $1', [item.id, JSON.stringify({ crop: bad })]);
+        assert.doesNotMatch((await b.get('/a/hr/3')).body, /data-crop=/, JSON.stringify(bad));
+      }
+    } finally {
+      await owner.query('update meta.item set config = $2 where id = $1', [item.id, JSON.stringify(item.config)]);
+    }
+  });
+});
+
+describe('sprint 38 session sharing', () => {
+  test('shared sign-ins are closed to applications; only hashes are stored', async () => {
+    await assert.rejects(runtime.query('select * from meta.shared_login'), /permission denied/);
+    const cols = (await owner.query(`select column_name from information_schema.columns where table_schema = 'meta' and table_name = 'shared_login'`)).rows.map((r) => r.column_name);
+    assert.ok(cols.includes('token_hash') && !cols.includes('token'));
+    await assert.rejects(owner.query(`update meta.app set session_group = 'Bad Group' where alias = 'hr'`), /check constraint/);
   });
 });

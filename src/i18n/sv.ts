@@ -155,6 +155,10 @@ export const sv: Record<MessageKey, string> = {
   'item.scan': "Skanna",
   'item.locate_error': "Platsen är inte tillgänglig.",
   'item.scan_close': "Stäng",
+  'crop.title': "Beskär bilden",
+  'crop.apply': "Använd den här delen",
+  'crop.skip': "Behåll hela bilden",
+  'crop.help': "Dra ramen för att flytta den och dess hörn för att ändra storleken. Med tangentbordet: piltangenterna flyttar, Skift och piltangenterna ändrar storleken.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': "Formaterad text: grundläggande HTML (stycken, fetstil, kursiv, listor, länkar) behålls, allt annat tas bort.",
   'item.markdown_hint': "Markdown: **fetstil**, _kursiv_, # rubrik, - lista, [länk](https://…).",

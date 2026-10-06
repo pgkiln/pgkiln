@@ -56,13 +56,15 @@ interface Series {
 
 let link: ChartOptions['link'];
 /** A mark: an <a> when the chart drills down (row i, series si), else `tag` (focusable when asked). */
-function mark(tag: 'div' | 'span', i: number, si: number | null, cls: string, tip: string | null, inner: unknown, focusable = true): Raw {
+function mark(tag: 'div' | 'span', i: number, si: number | null, cls: string, tip: string | null, inner: unknown, focusable = true, namedByContent = false): Raw {
   const href = link?.(i, si) ?? null;
-  const tipAttr = tip === null ? '' : html` data-tip="${tip}" aria-label="${tip}"`;
+  // a drill link with visible text is named by that text; elsewhere the tip is the name (role img: a labelled graphic)
+  const tipAttr = tip === null ? '' : href && namedByContent ? html` data-tip="${tip}"` : html` data-tip="${tip}" aria-label="${tip}"`;
   if (href) return html`<a class="${cls} drill" ${href}${tipAttr}${focusable ? '' : raw(' tabindex="-1"')}>${inner}</a>`;
+  const role = tip === null ? '' : raw(' role="img"');
   return tag === 'div'
-    ? html`<div class="${cls}"${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</div>`
-    : html`<span class="${cls}"${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</span>`;
+    ? html`<div class="${cls}"${role}${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</div>`
+    : html`<span class="${cls}"${role}${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</span>`;
 }
 
 const MAX_SERIES = 8;
@@ -203,7 +205,7 @@ function column(labels: string[], series: Series[]) {
       })}${!multi && labels.length <= 12
         ? html`<span class="col-value ${css.cls(`bottom:${pct(Math.max(y(series[0].values[i]), zero))}`)}">${compact.format(series[0].values[i])}</span>`
         : ''}`;
-      return multi ? html`<div class="col-group" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}">${inner}</div>` : mark('div', i, 0, 'col-group', tip(l, series, i), inner);
+      return multi ? html`<div class="col-group" role="img" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}">${inner}</div>` : mark('div', i, 0, 'col-group', tip(l, series, i), inner);
     })}</div>
   </div>${xLabels(labels)}`;
 }
@@ -233,7 +235,7 @@ function stacked(labels: string[], series: Series[]) {
         const cls = `col seg${edge} s${si + 1} ${css.cls(`bottom:${pct(y(from))};height:${pct(y(from + Math.abs(v)) - y(from))}`)}`;
         return link ? mark('span', i, si, cls, `${l} · ${s.name}: ${fmt.format(v)}`, '', false) : html`<span class="${cls}"></span>`;
       });
-      return html`<div class="col-group" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}"><span class="col-slot stack">${segments}</span></div>`;
+      return html`<div class="col-group" role="img" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}"><span class="col-slot stack">${segments}</span></div>`;
     })}</div>
   </div>${xLabels(labels)}`;
 }
@@ -441,7 +443,7 @@ function gauge(labels: string[], series: Series[], g: GaugeConfig) {
       <span class="gauge-scale" aria-hidden="true"><span>${compact.format(min)}</span><span>${compact.format(max)}</span></span>
       <span class="gauge-label">${labels[i]}</span>
       ${status ? html`<span class="gauge-status status-${status}"><span class="status-icon" aria-hidden="true">${status === 'good' ? '✓' : '!'}</span>${texts[status]}</span>` : ''}`;
-    return mark('div', i, 0, 'gauge', t, inner);
+    return mark('div', i, 0, 'gauge', t, inner, true, true);
   })}</div>`;
 }
 

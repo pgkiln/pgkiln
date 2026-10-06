@@ -155,6 +155,10 @@ export const de: Record<MessageKey, string> = {
   'item.scan': 'Scannen',
   'item.locate_error': 'Der Standort ist nicht verfügbar.',
   'item.scan_close': 'Schließen',
+  'crop.title': "Bild zuschneiden",
+  'crop.apply': "Diesen Ausschnitt verwenden",
+  'crop.skip': "Ganzes Bild behalten",
+  'crop.help': "Ziehen Sie den Rahmen, um ihn zu verschieben, und seine Ecke, um die Größe zu ändern. Mit der Tastatur: Pfeiltasten verschieben, Umschalt und Pfeiltasten ändern die Größe.",
   // rich text, Markdown, star rating, combobox, date range, password, QR code items
   'item.richtext_hint': 'Formatierter Text: einfaches HTML (Absätze, fett, kursiv, Listen, Links) bleibt erhalten, alles andere wird entfernt.',
   'item.markdown_hint': 'Markdown: **fett**, _kursiv_, # Überschrift, - Liste, [Link](https://…).',
