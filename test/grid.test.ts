@@ -290,6 +290,22 @@ describe('grid regions on HR page 27', () => {
     }
   });
 
+  test('a grid column with a list of values only takes values the list offers', async () => {
+    const page = (await king.get('/a/hr/27')).body;
+    const staff = sectionOf((await king.get(selectLink(page, '40'))).body, R.Staff);
+    const g = `g${R.Staff}`;
+    const jobCol = new RegExp(`<select name="${g}_n0_(c\\d+)"`).exec(staff)?.[1];
+    assert.ok(jobCol, 'the new row has a job select');
+    try {
+      const res = await king.submit('/a/hr/27', { ...gridForm(staff, g), __request: `GRID_SAVE_${R.Staff}`, [`${g}_n0_c1`]: 'GRIDLOV', [`${g}_n0_${jobCol}`]: 'EMPEROR', [`${g}_n0_c4`]: '2026-01-02' });
+      assert.notEqual(res.statusCode, 303);
+      assert.match(res.body, /choose a value from the list/);
+      assert.equal((await owner.one(`select count(*)::int as n from hr.emp where ename = 'GRIDLOV'`)).n, 0);
+    } finally {
+      await owner.query(`delete from hr.emp where ename = 'GRIDLOV'`);
+    }
+  });
+
   test('the builder shows the new grid settings', async () => {
     const dev = new Browser(app);
     await dev.get('/builder/login');

@@ -12,7 +12,7 @@ import { invokeApi, restFetchRow, restFormDml } from './rest-sources.ts';
 import { runPending } from '../webrequests.ts';
 import { runPendingAi } from '../ai/requests.ts';
 import { runAiProcess } from './ai.ts';
-import { itemMask, lovLookup, ratingMax } from './items.ts';
+import { itemMask, LOV_CHECKED, lovContains, MULTI_VALUE, ratingMax, splitValues } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { conditionHolds } from './logic.ts';
 import { runPluginProcess } from './plugins.ts';
@@ -154,8 +154,9 @@ export async function validate(ctx: PageContext) {
     const label = i.label ?? i.name;
     if (i.type === 'rating' && !(/^\d{1,2}$/.test(v) && Number(v) >= 1 && Number(v) <= ratingMax(i)))
       fail(i.name, ctx.locale.t('error.rating', { label, max: ratingMax(i) }));
-    // a popup LOV posts a return value: it must be one its list of values returns
-    if (i.type === 'popup_lov' && !(await lovLookup(ctx, i, v))) fail(i.name, ctx.locale.t('error.lov_value', { label }));
+    // a list item posts return values: each must be one its list of values returns (config.any_value: true allows others)
+    if (LOV_CHECKED.has(i.type) && i.lov && i.config?.any_value !== true && !(await lovContains(ctx, i.lov, MULTI_VALUE.has(i.type) ? splitValues(v) : [v])))
+      fail(i.name, ctx.locale.t('error.lov_value', { label }));
     if (i.type === 'daterange') {
       const m = /^(\d{4}-\d{2}-\d{2})?:(\d{4}-\d{2}-\d{2})?$/.exec(v);
       const valid = (d: string | undefined) => {

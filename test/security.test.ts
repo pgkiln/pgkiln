@@ -6197,11 +6197,26 @@ describe('security review 2026-10-08', () => {
     }
   });
 
+  test('select lists only accept values their list of values offers', async () => {
+    const king = await as('king');
+    await king.get(link('king', 3, { P3_EMPNO: '7934' }));
+    const before = await owner.one('select deptno, job from hr.emp where empno = 7934');
+    const form = { __csrf: king.lastCsrf, __request: 'SAVE', P3_ENAME: 'MILLER', P3_MGR: '7782', P3_HIREDATE: '1982-01-23', P3_SAL: '1300', P3_ACTIVE: 'true' };
+    const forged = await king.post('/a/hr/3', { ...form, P3_JOB: 'CLERK', P3_DEPTNO: '99' });
+    assert.equal(forged.statusCode, 422, 'a department the list does not offer is refused');
+    assert.match(forged.body, /choose a value from the list/);
+    const job = await king.post('/a/hr/3', { ...form, __csrf: king.lastCsrf, P3_JOB: 'EMPEROR', P3_DEPTNO: String(before.deptno) });
+    assert.equal(job.statusCode, 422, 'a job the list does not offer is refused');
+    assert.deepEqual(await owner.one('select deptno, job from hr.emp where empno = 7934'), before, 'nothing was saved');
+    const ok = await king.post('/a/hr/3', { ...form, __csrf: king.lastCsrf, P3_JOB: before.job, P3_DEPTNO: String(before.deptno) });
+    assert.equal(ok.statusCode, 303, 'values from the list are accepted');
+  });
+
   test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
     assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
     assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));
     // the database computes the same checksum (meta.page_url, notifications)
-    for (const items of [{ P3_EMPNO: '7839' }, { P3_ID: 'x&P3_OWNER=me', P3_B: 'ä€😀' }, { P3_E: '' }]) {
+    for (const items of [{ P3_EMPNO: '7839' }, { P3_ID: 'x&P3_OWNER=me', P3_B: 'ä€😀' }, { P3_E: '' }] as Record<string, string>[]) {
       const db = await owner.one('select meta.url_checksum($1, 3, $2, $3) as cs', [appId, 'King', JSON.stringify(items)]);
       assert.equal(db.cs, urlChecksum(appId, 3, 'King', items), JSON.stringify(items));
     }
