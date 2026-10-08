@@ -1782,6 +1782,9 @@ describe('sprint 26 data: REST data sources, web credentials, invoke_api', () =>
       values ($1, 5, 'sec invoke', 'invoke_api', 'submit', 'LOOKUP', $2) returning id`,
       [page, JSON.stringify({ url: `${mockBase}/inv/&P23_DEPTNO.`, items: { P1_SECRET_FLAG: 'path' } })]);
     cleanup.push(`delete from meta.process where id = ${Number(p.id)}`);
+    // the select list takes any value here (since 2026-10-08 a value must come from its list), to test the encoding
+    await owner.query(`update meta.item set config = coalesce(config, '{}') || '{"any_value": true}' where page_id = $1 and name = 'P23_DEPTNO'`, [page]);
+    cleanup.push(`update meta.item set config = config - 'any_value' where page_id = ${Number(page)} and name = 'P23_DEPTNO'`);
     const b = new B(app);
     await b.login('allen');
     const form = formFields((await b.get('/a/hr/23')).body);
