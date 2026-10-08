@@ -6322,6 +6322,16 @@ describe('security review 2026-10-08', () => {
     }
   });
 
+  test('bind values stay values in SQL that PostgreSQL lexes unusually', async () => {
+    const { applyBinds } = await import('../src/binds.ts');
+    const evil = "$ä$, 'pwned' as x -- ' \\' \r\n; select 1 as x; --";
+    for (const sql of ['select $ä$ :A $ä$ as t, :A as v', 'select 1 as a$b$, :A as v', 'select 1 -- note\r, :A as v', "select :A as v where'\\' <> :A"]) {
+      const row = (await runtime.query(applyBinds(sql, { A: evil }))).rows[0];
+      assert.equal(row.v, evil, sql);
+      assert.equal(Object.keys(row).includes('x'), false, sql);
+    }
+  });
+
   test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
     assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
     assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));
