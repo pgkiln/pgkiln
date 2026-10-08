@@ -113,7 +113,7 @@ which is read at startup; real environment variables take precedence.
 | `API_URL` | `http://127.0.0.1:3000` | Where PostgREST serves the REST API ([chapter 13](13-rest-api.md)) |
 | `API_JWT_SECRET` | *(none)* | Signs REST API tokens; at least 32 characters, the same as PostgREST's `jwt-secret`. Without it, tokens can't be issued |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |
-| `TRUST_PROXY` | `false` | `true` behind a reverse proxy, so client IPs (used by login throttling) come from `X-Forwarded-For` |
+| `TRUST_PROXY` | `false` | Behind a reverse proxy, so client IPs (used by login throttling) come from `X-Forwarded-For`: `true` for one proxy, a number for several in a row (e.g. a CDN in front of nginx: `2`), or the proxies' addresses or subnets (`10.0.0.0/8,192.168.1.10`). Only the entries those proxies added are believed, never the ones a client sends along |
 | `PGAPEX_AUTH_HEADER_PROXIES` | *(none)* | Comma-separated IPs and CIDRs (e.g. `10.0.0.5, 192.168.10.0/24`) of the reverse proxies whose user header apps with **HTTP header** authentication trust; checked against the connection's own address, never `X-Forwarded-For`. Unset: header sign-in is refused ([chapter 8](08-security.md#http-header-authentication-reverse-proxy)) |
 | `SESSION_IDLE_MINUTES` | `60` | A session ends after this long without requests. This and the next four can also be set in the builder (Workspace utilities → **Instance settings**), which wins over the variable |
 | `SESSION_MAX_HOURS` | `8` | A session ends this long after sign-in, whatever the activity |

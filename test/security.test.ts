@@ -6286,6 +6286,23 @@ describe('security review 2026-10-08', () => {
     }
   });
 
+  test('TRUST_PROXY believes only the configured proxies, not addresses a client puts in X-Forwarded-For', async () => {
+    const { default: Fastify } = await import('fastify');
+    const { trustProxySetting } = await import('../src/security.ts');
+    const ipFor = async (setting: string | undefined) => {
+      const f = Fastify({ trustProxy: trustProxySetting(setting) as never });
+      f.get('/', async (req) => req.ip);
+      const res = await f.inject({ url: '/', remoteAddress: '10.0.0.5', headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9' } } as never);
+      await f.close();
+      return res.body;
+    };
+    assert.equal(await ipFor('true'), '203.0.113.9', 'one proxy: the address it saw, not the forged first entry');
+    assert.equal(await ipFor('2'), '6.6.6.6', 'two proxies in a row');
+    assert.equal(await ipFor('10.0.0.0/8'), '203.0.113.9', 'a trusted subnet');
+    assert.equal(await ipFor(undefined), '10.0.0.5', 'unset: the socket');
+    assert.equal(await ipFor('false'), '10.0.0.5');
+  });
+
   test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
     assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
     assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));

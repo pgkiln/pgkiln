@@ -40,6 +40,21 @@ export function checksumValid(expected: string, given: string | undefined) {
   return timingSafeEqual(Buffer.from(expected), Buffer.from(given));
 }
 
+/**
+ * Which X-Forwarded-For entries to believe (TRUST_PROXY). "true" means one proxy: the address that proxy
+ * saw (the last entry) is the client, so a client can't put a made-up address in front of it and dodge the
+ * per-IP sign-in throttling. A number is that many proxies in a row; addresses or subnets (comma separated)
+ * trust exactly those proxies. Anything else: no proxy, the socket's address.
+ */
+export function trustProxySetting(v: string | undefined): boolean | string | ((addr: string, hop: number) => boolean) {
+  const t = (v ?? '').trim();
+  // hop 0 is the socket's peer, hop 1 the address it forwarded, …: believe that many proxies
+  const hops = t === 'true' ? 1 : /^\d{1,2}$/.test(t) ? Number(t) : null;
+  if (hops !== null) return hops > 0 ? (_addr: string, hop: number) => hop < hops : false;
+  if (/^[0-9a-f.:/,\s]+$/i.test(t) && /[.:]/.test(t)) return t.split(',').map((x) => x.trim()).filter(Boolean).join(',');
+  return false;
+}
+
 export const newToken = () => randomBytes(32).toString('base64url');
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 

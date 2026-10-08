@@ -160,7 +160,7 @@ Severity is rated for an internet-facing deployment.
 
 1. Change the builder password (the Developers page), or delete `admin` after creating your own account.
 2. `alter role pgapex_runtime password '...'` and set `RUNTIME_DATABASE_URL`.
-3. Run behind HTTPS with `COOKIE_SECURE=true`, and set `TRUST_PROXY=true` behind a reverse proxy (client IPs are needed for throttling).
+3. Run behind HTTPS with `COOKIE_SECURE=true`, and set `TRUST_PROXY=true` behind one reverse proxy (a number for several, or their addresses; client IPs are needed for throttling).
 4. Keep `debug` off for production apps (see the Settings → Security checklist in the builder).
 5. Give each app its own `db_role` with the minimum grants; add RLS where rows are per user or per team.
 6. Restrict network access to `/builder` (reverse proxy or firewall) if developers are a small group.
