@@ -1477,7 +1477,7 @@ installations (databases) for tenants that must not see each other. Parity row �
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
 
-## Sprint 41 (IN PROGRESS): fixes from the security review of 2026-10-08 (owner: "please work on all the found issues")
+## Sprint 41 (DONE, merged, unreleased): fixes from the security review of 2026-10-08 (owner: "please work on all the found issues")
 
 Branch `sprint-41` from `main` (sprints 39 and 40 merged, unreleased). One agent, main checkout. Migration **075**
 (`075_security_review.sql`). Tests in `test/security.test.ts` → "security review 2026-10-08" (and two in "sprint 37 workspaces").
@@ -1498,7 +1498,8 @@ Branch `sprint-41` from `main` (sprints 39 and 40 merged, unreleased). One agent
 | 12 | Document templates without authorization reachable via `?doc=` on any page (public too) | done (anonymous: only templates the page offers with a button) |
 | 13 | Bind scanner: non-ASCII dollar-quote tags, `$` in identifiers, `\r` comments, `WHERE'…'` | done |
 
-Docs done (SECURITY.md second findings table, guide 01/04/05/06/08/13/16, CHANGELOG "Security"). Next: full `npm test`, `npm run test:e2e`, merge.
+Docs done (SECURITY.md second findings table, guide 01/04/05/06/08/13/16, CHANGELOG "Security"). Verified 2026-10-08: `npm test` 1195 pass / 0 fail, `npm run test:e2e` 154 pass; merged into `main`.
+Follow-up (not done): a separate login role per application, so application SQL can't `RESET ROLE` to `pgapex_runtime` (SECURITY.md).
 
 ## Sprint 39 (IN PROGRESS): every remaining 🟡 parity row except languages (owner, 2026-10-06: "make sure that all other apex feature parity are done before you continue with the other languages")
 
