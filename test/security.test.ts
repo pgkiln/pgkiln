@@ -6264,6 +6264,28 @@ describe('security review 2026-10-08', () => {
     }
   });
 
+  test('a DELETE runs the validations made for DELETE (and only those)', async () => {
+    const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 3`, [appId])).id;
+    const emp = (await owner.one(`insert into hr.emp (empno, ename, job, deptno, hiredate, sal) values (7990, 'DELTEST', 'CLERK', 10, current_date, 1000) returning empno`)).empno;
+    const v = (await owner.one(
+      `insert into meta.validation (page_id, name, type, expression, message, when_button) values ($1, 'review no delete', 'sql', 'false', 'Review: this employee cannot be deleted', 'DELETE') returning id`, [pid])).id;
+    try {
+      const king = await as('king');
+      await king.get(link('king', 3, { P3_EMPNO: String(emp) }));
+      // a required item left empty doesn't stop a delete, the DELETE validation does
+      const res = await king.post('/a/hr/3', { __csrf: king.lastCsrf, __request: 'DELETE', P3_ENAME: '' });
+      assert.equal(res.statusCode, 422);
+      assert.match(res.body, /this employee cannot be deleted/);
+      assert.equal((await owner.one('select count(*)::int as n from hr.emp where empno = $1', [emp])).n, 1, 'the row is still there');
+      await owner.query('delete from meta.validation where id = $1', [v]);
+      const ok = await king.post('/a/hr/3', { __csrf: king.lastCsrf, __request: 'DELETE', P3_ENAME: '' });
+      assert.equal(ok.statusCode, 303, 'without it the delete goes through (item checks are skipped)');
+    } finally {
+      await owner.query('delete from meta.validation where id = $1', [v]);
+      await owner.query('delete from hr.emp where empno = $1', [emp]);
+    }
+  });
+
   test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
     assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
     assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));
