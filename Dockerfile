@@ -20,6 +20,7 @@ COPY src ./src
 
 USER node
 EXPOSE 3100
-HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
+# start period: the start script waits up to 2 minutes for the database, then migrates
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5m --start-interval=5s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3100) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 CMD ["node", "--import", "tsx", "scripts/docker-start.ts"]

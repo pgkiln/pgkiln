@@ -38,23 +38,35 @@ export async function pendingMigrations(root: string, databaseUrl?: string): Pro
   }
 }
 
+// errors waiting won't fix: a wrong password or user (28P01, 28000), a missing
+// database (3D000) or role, too few privileges (42501)
+const permanent = new Set(['28P01', '28000', '3D000', '42501']);
+
+/**
+ * A connected client, retrying once a second for up to `seconds` while the
+ * database is still starting; errors that waiting won't fix are thrown at once.
+ */
+export async function connectWhenReady(connectionString: string | undefined, applicationName: string, seconds: number, onWait?: () => void): Promise<pg.Client> {
+  for (let attempt = 1; ; attempt++) {
+    // a pg.Client cannot be reused after a failed connect
+    const client = new pg.Client({ connectionString, application_name: applicationName });
+    try {
+      await client.connect();
+      return client;
+    } catch (e) {
+      if (permanent.has((e as { code?: string }).code ?? '') || attempt >= seconds) throw e;
+      if (attempt === 1) onWait?.();
+      await new Promise((r) => setTimeout(r, 1000)); // database still starting
+    }
+  }
+}
+
 /** Returns the names of the files applied. */
 export async function migrate(o: MigrateOptions): Promise<string[]> {
   const log = o.log ?? ((s: string) => process.stdout.write(s));
   if (o.example != null && !/^[a-z][a-z0-9_-]*$/.test(o.example)) throw new Error('--example needs the name of a directory in examples/, e.g. --example hr');
   if (o.example && !existsSync(join(o.root, 'examples', o.example))) throw new Error(`no example named ${o.example} in ${join(o.root, 'examples')}`);
-  let client: pg.Client;
-  for (let attempt = 1; ; attempt++) {
-    // a pg.Client cannot be reused after a failed connect
-    client = new pg.Client({ connectionString: o.databaseUrl ?? process.env.DATABASE_URL, application_name: 'pgapex-migrate' });
-    try {
-      await client.connect();
-      break;
-    } catch (e) {
-      if (attempt >= (o.waitSeconds ?? 30)) throw e;
-      await new Promise((r) => setTimeout(r, 1000)); // database still starting
-    }
-  }
+  const client = await connectWhenReady(o.databaseUrl ?? process.env.DATABASE_URL, 'pgapex-migrate', o.waitSeconds ?? 30);
   const applied: string[] = [];
   const startedAt = new Date();
   // an empty database: this run installs pgapex, else it upgrades it
