@@ -1477,6 +1477,29 @@ installations (databases) for tenants that must not see each other. Parity row �
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
 
+## Sprint 41 (IN PROGRESS): fixes from the security review of 2026-10-08 (owner: "please work on all the found issues")
+
+Branch `sprint-41` from `main` (sprints 39 and 40 merged, unreleased). One agent, main checkout. Migration **075**
+(`075_security_review.sql`). Tests in `test/security.test.ts` → "security review 2026-10-08" (and two in "sprint 37 workspaces").
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | Hidden report columns usable through URL parameters (computations, filters, search, sort, break, aggregates, views) | done |
+| 2 | REST modules: caller could set `:APP_USER` etc. through query/body; AI tool args too | done |
+| 3 | SSO linked existing accounts by username claim (account takeover); `email_verified` missing = verified | done (075 `link_existing`) |
+| 4 | Select/radio/checkbox group/shuttle and grid select values not checked against the LOV | done |
+| 5 | URL checksum canonicalisation collision (`k=v&k=v`) | done (075, `v2:` + byte lengths) |
+| 6 | My account password change not throttled | done |
+| 7 | Any developer could change identity providers, LDAP directories, password policy, grant access outside workspace | done (administrators only; workspace check) |
+| 8 | `meta.page_url`/`meta.app_id()` trust settable settings; app SQL can `RESET ROLE` to `pgapex_runtime` | docs (SECURITY.md) |
+| 9 | DELETE skipped `when_button = 'DELETE'` validations | done |
+| 10 | `TRUST_PROXY=true` trusts every X-Forwarded-For hop | todo |
+| 11 | Database/custom auth usernames share roles/preferences with same-named accounts | todo |
+| 12 | Document templates without authorization reachable via `?doc=` on any page (public too) | todo |
+| 13 | Bind scanner: non-ASCII dollar-quote tags | todo |
+
+Then: docs (SECURITY.md findings table, guide chapters 04/08/13, CHANGELOG), full `npm test`, e2e, merge.
+
 ## Sprint 39 (IN PROGRESS): every remaining 🟡 parity row except languages (owner, 2026-10-06: "make sure that all other apex feature parity are done before you continue with the other languages")
 
 Branch `sprint-39` from `main` (v0.30.0). One agent; tests on 5446. Migrations from 068.
