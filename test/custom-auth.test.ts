@@ -77,6 +77,22 @@ describe('custom authentication', () => {
     await clearLog();
   });
 
+  test("My account doesn't change the password of a same-named user directory account", async () => {
+    await owner.query(`insert into meta.account (username, password_hash) values ('carol', meta.hash_password('Carol-acct-31!')) on conflict do nothing`);
+    try {
+      const { b } = await signIn('carol', 'Carol-pw-31!');
+      const page = await b.get(`/a/${alias}/account`);
+      assert.doesNotMatch(page.body, /name="new_password"/, 'no password form');
+      const res = await b.submit(`/a/${alias}/account/password`, { password: 'Carol-acct-31!', new_password: 'Changed-pw-31!', confirm_password: 'Changed-pw-31!' });
+      assert.equal(res.statusCode, 403);
+      const still = await owner.one(`select password_hash = crypt('Carol-acct-31!', password_hash) as same from meta.account where username = 'carol'`);
+      assert.equal(still.same, true, 'the account password is unchanged');
+    } finally {
+      await owner.query(`delete from meta.account where username = 'carol'`);
+      await clearLog();
+    }
+  });
+
   test('a named function takes precedence over the body', async () => {
     await owner.query('update meta.app set custom_auth_function = $2, custom_auth_code = $3 where id = $1', [appId, `${SCHEMA}.check_login`, 'return false;']);
     try {
