@@ -6212,6 +6212,27 @@ describe('security review 2026-10-08', () => {
     assert.equal(ok.statusCode, 303, 'values from the list are accepted');
   });
 
+  test('My account: guessing the current password is throttled like sign-ins', async () => {
+    const user = `pwthrottle_${Date.now()}`;
+    await owner.query(`insert into meta.account (username, password_hash) values ($1, meta.hash_password('Correct-horse-9'))`, [user]);
+    await owner.query(`insert into meta.app_access (app_id, account_id) select $1, id from meta.account where username = $2`, [appId, user]);
+    try {
+      const b = new Browser();
+      assert.equal((await b.login(user, 'Correct-horse-9')).statusCode, 303);
+      await b.get('/a/hr/account');
+      const codes: number[] = [];
+      for (let i = 0; i < 7; i++)
+        codes.push((await b.post('/a/hr/account/password', { __csrf: b.lastCsrf, password: `wrong${i}`, new_password: 'Another-pass-77', confirm_password: 'Another-pass-77' })).statusCode);
+      assert.deepEqual(codes.slice(0, 5), [401, 401, 401, 401, 401]);
+      assert.equal(codes[6], 429, 'locked after the sign-in limit');
+      const right = await b.post('/a/hr/account/password', { __csrf: b.lastCsrf, password: 'Correct-horse-9', new_password: 'Another-pass-77', confirm_password: 'Another-pass-77' });
+      assert.equal(right.statusCode, 429, 'even the right password waits while locked');
+    } finally {
+      await owner.query('delete from meta.activity_log where lower(username) = lower($1)', [user]);
+      await owner.query('delete from meta.account where username = $1', [user]);
+    }
+  });
+
   test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
     assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
     assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));

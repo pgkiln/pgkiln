@@ -4,7 +4,8 @@ import { appTx, runtime } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { baseLanguage, LANGUAGE_NAMES } from '../i18n.ts';
 import { forgetAllRemembered, rememberCookie, rememberedCount } from '../remember.ts';
-import { getSession, logActivity, saveState, takeFlash } from '../session.ts';
+import { getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
+import { loginWindowMinutes } from '../security.ts';
 import type { PageContext } from './context.ts';
 import { databaseTimeZone, isTheme, matchLanguage, sameOffset, THEME_COOKIE, timeZoneFor, timeZoneNames, validTimeZone } from './locale.ts';
 import { chrome, clientTexts } from './render.ts';
@@ -189,6 +190,11 @@ export async function accountRoutes(app: FastifyInstance) {
     const t = ctx.locale.t;
     if (b.__csrf !== ctx.session.csrf_token) return reply.redirect(`${ctx.base}/account`, 303);
     if (!ctx.app.local_login) return accountPage(ctx, reply, t('login.password_disabled'), 403);
+    // wrong current passwords count like failed sign-ins: no guessing it from a session left open
+    if (await loginThrottled(ctx.app.id, ctx.user, ctx.ip)) {
+      logActivity({ appId: ctx.app.id, username: ctx.user, event: 'login_locked', ip: ctx.ip, detail: 'password change' });
+      return accountPage(ctx, reply, t('login.throttled', { minutes: loginWindowMinutes() }), 429);
+    }
     if (b.new_password !== b.confirm_password) return accountPage(ctx, reply, t('password.mismatch'), 422);
     const problem = await passwordProblem(b.new_password, { username: ctx.user, t });
     if (problem) return accountPage(ctx, reply, problem, 422);
