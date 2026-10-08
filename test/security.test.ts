@@ -5726,6 +5726,37 @@ describe('sprint 37 workspaces', () => {
   test('workspace tables are closed to the runtime', async () => {
     for (const t of ['workspace', 'workspace_member', 'workspace_app']) await assert.rejects(runtime.query(`select * from meta.${t}`), /permission denied/, t);
   });
+
+  test('(review 2026-10-08) only administrators change identity providers, LDAP directories and the password policy', async () => {
+    await dev.get('/builder/users');
+    const csrf = dev.lastCsrf;
+    const refused = [
+      ['/builder/users/providers', { name: 'pwned_idp', protocol: 'oidc', display_name: 'X', issuer: 'https://evil.example', client_id: 'x', enabled: 'true', link_existing: 'true' }],
+      ['/builder/users/directories', { name: 'pwned_ldap', url: 'ldap://evil.example' }],
+      ['/builder/users/settings', { password_min_length: '6', password_lifetime_days: '0' }],
+    ] as const;
+    for (const [url, form] of refused) assert.equal((await dev.post(url, { __csrf: csrf, ...form })).statusCode, 403, url);
+    for (const url of ['/builder/users/providers', '/builder/users/directories']) assert.equal((await dev.get(url)).statusCode, 403, url);
+    assert.ok(!(await owner.one(`select 1 as ok from meta.auth_provider where name = 'pwned_idp'`)));
+    assert.ok(!(await owner.one(`select 1 as ok from meta.ldap_directory where name = 'pwned_ldap'`)));
+    assert.equal((await adm.get('/builder/users/providers')).statusCode, 200, 'administrators still can');
+  });
+
+  test('(review 2026-10-08) developers only grant access to applications of their workspaces', async () => {
+    await dev.get('/builder/users');
+    await owner.query(`delete from meta.account where username = 'sec_review_acc'`);
+    const acc = (await owner.one(`insert into meta.account (username) values ('sec_review_acc') returning id`)).id;
+    try {
+      for (const [url, form] of [
+        [`/builder/users/${acc}/access`, { app_id: String(hr), roles: 'admin' }],
+        [`/builder/users/${acc}/access/${hr}`, { roles: 'admin' }],
+      ] as const)
+        assert.equal((await dev.post(url, { __csrf: dev.lastCsrf, ...form })).statusCode, 404, url);
+      assert.ok(!(await owner.one('select 1 as ok from meta.app_access where account_id = $1', [acc])), 'no access was granted');
+    } finally {
+      await owner.query(`delete from meta.account where username = 'sec_review_acc'`);
+    }
+  });
 });
 
 describe('sprint 37 drawers', () => {

@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
+import { appAllowed } from './workspaces.ts';
 import { html, raw } from '../html.ts';
 import { accountSettings, clearAccountSettings, passwordProblem } from '../accounts.ts';
 import { loginMaxFailuresPerUser, loginWindowMinutes } from '../security.ts';
 import { acsUrl, metadataUrl, spEntityId } from '../saml.ts';
 import { discover, publicUrl, redirectUri } from '../sso.ts';
-import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { administrator, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // The workspace user directory (like APEX's workspace users with
 // Application Access Control): one account per person, access and roles
@@ -176,7 +177,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/settings`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Password policy');
     if (!s) return;
     const b = req.body ?? {};
     const n = (v: string | undefined, min: number, max: number) => String(Math.min(max, Math.max(min, Math.round(Number(v) || 0))));
@@ -333,6 +334,8 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post(`${BASE}/users/:id(^\\d+$)/access`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // only applications of the developer's workspaces (workspaces.ts)
+    if (!/^\d{1,9}$/.test(String(req.body?.app_id ?? '')) || !(await appAllowed(s, req.body?.app_id ?? ''))) return reply.code(404).send('Not found');
     await grantAccess(req.body?.app_id ?? '', req.params.id, splitRoles(req.body?.roles));
     flash(s, 'Access granted.');
     return back(reply, s, `${BASE}/users/${req.params.id}`);
@@ -341,6 +344,8 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post(`${BASE}/users/:id(^\\d+$)/access/:appId`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // only applications of the developer's workspaces (workspaces.ts)
+    if (!/^\d{1,9}$/.test(String(req.params.appId)) || !(await appAllowed(s, req.params.appId))) return reply.code(404).send('Not found');
     await grantAccess(req.params.appId, req.params.id, splitRoles(req.body?.roles));
     flash(s, 'Roles saved. The user gets them at the next sign-in.');
     return back(reply, s, `${BASE}/users/${req.params.id}`);
@@ -349,6 +354,8 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post(`${BASE}/users/:id(^\\d+$)/access/:appId/revoke`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // only applications of the developer's workspaces (workspaces.ts)
+    if (!/^\d{1,9}$/.test(String(req.params.appId)) || !(await appAllowed(s, req.params.appId))) return reply.code(404).send('Not found');
     await owner.query('delete from meta.app_access where account_id = $1 and app_id = $2', [req.params.id, req.params.appId]);
     await endSessions(req.params.id, req.params.appId);
     flash(s, 'Access revoked.');
@@ -400,7 +407,7 @@ export async function usersRoutes(app: FastifyInstance) {
   ];
 
   app.get(`${BASE}/users/providers`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create, link_existing,
         (select count(*) from meta.account_identity i where i.provider_id = p.id)::int as linked,
@@ -425,7 +432,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const b = req.body ?? {};
     try {
@@ -443,7 +450,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.get(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const pr = await owner.one('select *, client_secret is not null as has_secret from meta.auth_provider where id = $1', [req.params.id]);
     if (!pr) return reply.code(404).send('Not found');
@@ -469,7 +476,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const b = req.body ?? {};
     const current = /^\d+$/.test(req.params.id) ? await owner.one('select name, protocol from meta.auth_provider where id = $1', [req.params.id]) : undefined;
@@ -490,7 +497,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers/:id/test`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const pr = await owner.one('select issuer from meta.auth_provider where id = $1', [req.params.id]);
     try {
@@ -503,7 +510,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers/:id/delete`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     await owner.query('delete from meta.auth_provider where id = $1', [req.params.id]);
     flash(s, 'Provider deleted.');

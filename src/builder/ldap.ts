@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { testDirectory, type Directory } from '../ldap.ts';
-import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
+import { administrator, back, BASE, csrf, flash, input, region, send, shell, type Req } from './ui.ts';
 
 // Users → LDAP directories: the directories an application's password form
 // can check (enabled per app under Settings → Sign-in methods). The bind
@@ -55,7 +55,7 @@ const COLUMNS = 'display_name, url, start_tls, tls_verify, bind_dn, user_base, u
 
 export async function ldapRoutes(app: FastifyInstance) {
   app.get(`${BASE}/users/directories`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'LDAP directories');
     if (!s) return;
     const rows = (await owner.query(`select id, name, display_name, url, enabled, auto_create,
         (select count(*) from meta.ldap_identity i where i.directory_id = d.id)::int as linked,
@@ -80,7 +80,7 @@ export async function ldapRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/directories`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'LDAP directories');
     if (!s) return;
     const b = req.body ?? {};
     try {
@@ -98,7 +98,7 @@ export async function ldapRoutes(app: FastifyInstance) {
   });
 
   app.get(`${BASE}/users/directories/:id`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'LDAP directories');
     if (!s) return;
     const d = /^\d+$/.test(req.params.id) ? await owner.one('select *, bind_password is not null as has_password from meta.ldap_directory where id = $1', [req.params.id]) : undefined;
     if (!d) return reply.code(404).send('Not found');
@@ -119,7 +119,7 @@ export async function ldapRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/directories/:id`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'LDAP directories');
     if (!s) return;
     const b = req.body ?? {};
     try {
@@ -137,7 +137,7 @@ export async function ldapRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/directories/:id/test`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'LDAP directories');
     if (!s) return;
     const d = /^\d+$/.test(req.params.id) ? await owner.one<Directory>('select * from meta.ldap_directory where id = $1', [req.params.id]) : undefined;
     if (!d) return reply.code(404).send('Not found');
@@ -150,7 +150,7 @@ export async function ldapRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/directories/:id/delete`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'LDAP directories');
     if (!s) return;
     const d = await owner.one('delete from meta.ldap_directory where id = $1 returning name', [req.params.id]);
     // and from the applications that used it
