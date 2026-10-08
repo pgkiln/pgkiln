@@ -6,16 +6,18 @@
 // 2. Applies the migrations, holding an advisory lock so that several
 //    containers starting together migrate once.
 // 3. Gives the login roles the migrations create their own passwords: the
-//    runtime role the one in RUNTIME_DATABASE_URL; on a new install the
-//    PostgREST role pgapex_authenticator a random one (or
-//    PGAPEX_AUTHENTICATOR_PASSWORD).
+//    runtime role the one in RUNTIME_DATABASE_URL when it can't sign in with
+//    it; the PostgREST role pgapex_authenticator a random one while it still
+//    has its well-known default (or PGAPEX_AUTHENTICATOR_PASSWORD). Roles
+//    belong to the whole server, so a password that already works is left
+//    alone: other databases on the server may use it.
 // 4. Replaces the builder's admin / admin with PGAPEX_ADMIN_PASSWORD; while
 //    admin still has that password, the server doesn't start.
 // 5. Installs an example application (PGAPEX_EXAMPLE=hr) when asked.
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { root } from '../src/env.ts';
-import { migrate } from '../src/migrate.ts';
+import { connectWhenReady, migrate } from '../src/migrate.ts';
 
 const say = (s: string) => console.log(`pgapex: ${s}`);
 const fail = (s: string): never => {
@@ -38,8 +40,6 @@ function dbUrl(name: string, hint: string) {
   }
 }
 
-const placeholders = ['POSTGRES_PASSWORD', 'RUNTIME_PASSWORD', 'PGAPEX_SECRET_KEY', 'PGAPEX_ADMIN_PASSWORD'].filter((k) => process.env[k] === 'change-me');
-if (placeholders.length) problems.push(`replace "change-me": ${placeholders.join(', ')}`);
 if ((process.env.PGAPEX_SECRET_KEY ?? '').length < 32)
   problems.push('PGAPEX_SECRET_KEY needs at least 32 characters (e.g. `openssl rand -hex 24`); it encrypts stored secrets: keep it, and keep it out of database backups');
 const ownerUrl = dbUrl('DATABASE_URL', 'set POSTGRES_PASSWORD, or DATABASE_URL for your own server');
@@ -50,18 +50,44 @@ if (adminPassword && (adminPassword.length < 12 || adminPassword === 'admin')) p
 if (problems.length) fail(`can't start; fix these in .env (see deploy/.env.example):\n  - ${problems.join('\n  - ')}`);
 const example = (process.env.PGAPEX_EXAMPLE ?? '').trim();
 
-// wait for the database (it may still be starting), then hold the lock while migrating
-const lock = new pg.Client({ connectionString: ownerUrl.href, application_name: 'pgapex-start' });
-for (let attempt = 1; ; attempt++) {
-  try {
-    await lock.connect();
-    break;
-  } catch (e) {
-    if (attempt >= 60) fail(`can't reach the database: ${(e as Error).message}`);
-    if (attempt === 1) say('waiting for the database …');
-    await new Promise((r) => setTimeout(r, 1000));
-  }
+// The connection URL of DATABASE_URL's server and database for another role.
+function as(role: string, password: string) {
+  const u = new URL(ownerUrl.href);
+  u.username = encodeURIComponent(role);
+  u.password = encodeURIComponent(password);
+  return u;
 }
+
+// Whether the server accepts this URL's password: 'yes', 'no' (a wrong
+// password), 'any' (it doesn't check passwords, e.g. trust) or 'unknown'
+// (it refuses the role for another reason, e.g. pg_hba.conf).
+async function signsIn(url: URL): Promise<'yes' | 'no' | 'any' | 'unknown'> {
+  const attempt = async (href: string) => {
+    const c = new pg.Client({ connectionString: href, application_name: 'pgapex-start', connectionTimeoutMillis: 10_000 });
+    try {
+      await c.connect();
+      return 'ok';
+    } catch (e) {
+      return (e as { code?: string }).code === '28P01' ? 'wrong' : 'other';
+    } finally {
+      await c.end().catch(() => {});
+    }
+  };
+  const r = await attempt(url.href);
+  if (r !== 'ok') return r === 'wrong' ? 'no' : 'unknown';
+  const other = new URL(url.href);
+  other.password = randomBytes(12).toString('hex');
+  return (await attempt(other.href)) === 'ok' ? 'any' : 'yes';
+}
+
+// wait for the database (it may still be starting), then hold the lock while migrating
+const lock = await connectWhenReady(ownerUrl.href, 'pgapex-start', 120, () => say('waiting for the database …')).catch((e) =>
+  fail(
+    (e as { code?: string }).code === '28P01'
+      ? `the database refused the password in DATABASE_URL. The bundled database keeps the POSTGRES_PASSWORD of its first start (in the volume pgdata): put that one back, or change it inside the database first (docs/guide/01-installation.md, "Docker").`
+      : `can't connect to the database: ${(e as Error).message}`,
+  ),
+);
 const q = (sql: string, params: unknown[] = []) => lock.query(sql, params);
 await q(`select pg_advisory_lock(hashtext('pgapex-migrate'))`);
 try {
@@ -69,18 +95,27 @@ try {
   const fresh = applied.some((f) => f.endsWith('/001_meta.sql'));
   say(applied.length ? `${applied.length} file(s) applied${fresh ? ' (new install)' : ''}` : 'the database is up to date');
 
-  const setPassword = async (role: string, password: string, what: string) => {
+  const setPassword = async (role: string, password: string, done: string, what: string) => {
     try {
       await q(`alter role ${pg.escapeIdentifier(role)} password ${pg.escapeLiteral(password)}`);
+      say(done);
     } catch (e) {
       // e.g. an owner without CREATEROLE on a managed server: the administrator sets it
       say(`could not set the password of ${role} (${(e as Error).message}); ${what}`);
     }
   };
-  await setPassword(runtimeUrl.username, decodeURIComponent(runtimeUrl.password), 'make sure it matches RUNTIME_DATABASE_URL.');
-  if (fresh) {
-    const api = process.env.PGAPEX_AUTHENTICATOR_PASSWORD || randomBytes(24).toString('hex');
-    await setPassword('pgapex_authenticator', api, 'change it before using PostgREST.');
+  const shared = 'roles belong to the whole server: other databases on it that use this role need the new password too';
+  if ((await signsIn(runtimeUrl)) === 'no')
+    await setPassword(runtimeUrl.username, decodeURIComponent(runtimeUrl.password), `${runtimeUrl.username} has the password from RUNTIME_DATABASE_URL now (${shared})`, 'make sure it matches RUNTIME_DATABASE_URL.');
+  const api = process.env.PGAPEX_AUTHENTICATOR_PASSWORD;
+  if (api) {
+    if ((await signsIn(as('pgapex_authenticator', api))) === 'no')
+      await setPassword('pgapex_authenticator', api, `pgapex_authenticator has the password from PGAPEX_AUTHENTICATOR_PASSWORD now (${shared})`, 'set it before using PostgREST.');
+  } else {
+    const dflt = await signsIn(as('pgapex_authenticator', 'pgapex_authenticator'));
+    if (dflt === 'yes')
+      await setPassword('pgapex_authenticator', randomBytes(24).toString('hex'), 'pgapex_authenticator had its default password; it has a random one now (PGAPEX_AUTHENTICATOR_PASSWORD chooses one for PostgREST)', 'change it before using PostgREST.');
+    else if (dflt === 'unknown') say('could not check whether pgapex_authenticator still has its default password; if it does, change it (or set PGAPEX_AUTHENTICATOR_PASSWORD).');
   }
 
   const admin = (await q(`select password_hash = crypt('admin', password_hash) as weak from meta.developer where username = 'admin'`)).rows[0];

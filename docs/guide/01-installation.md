@@ -180,13 +180,20 @@ docker compose up -d
 Open http://127.0.0.1:3100/builder and sign in as `admin` with `PGAPEX_ADMIN_PASSWORD`.
 
 **What happens at each start** (`scripts/docker-start.ts`): the container checks the settings and
-lists everything missing at once (it doesn't start on empty or placeholder secrets), waits for the
-database, applies new migrations (with a lock, so several containers migrate once), sets the
-password of `pgapex_runtime` from `RUNTIME_DATABASE_URL`, and replaces the builder's `admin` /
-`admin` with `PGAPEX_ADMIN_PASSWORD` (a password changed later in the builder is kept). On a new
-install `pgapex_authenticator` (PostgREST) gets a random password, or
-`PGAPEX_AUTHENTICATOR_PASSWORD`. `GET /healthz` answers `ok` when the database is reachable; the
-image's health check uses it.
+lists everything missing at once (it doesn't start on empty or too short secrets), waits for the
+database, applies new migrations (with a lock, so several containers migrate once), and replaces
+the builder's `admin` / `admin` with `PGAPEX_ADMIN_PASSWORD` (a password changed later in the
+builder is kept). When `pgapex_runtime` can't sign in with the password in `RUNTIME_DATABASE_URL`,
+it gets that password; while `pgapex_authenticator` (PostgREST) still has its well-known default,
+it gets a random one, or `PGAPEX_AUTHENTICATOR_PASSWORD`. PostgreSQL roles belong to the whole
+server, not to one database: other pgapex databases on the same server share them, and with them
+these passwords. `GET /healthz` answers `ok` when the database is reachable; the image's health
+check uses it.
+
+**`POSTGRES_PASSWORD` counts at the first start only**: the bundled database keeps it in the volume
+`pgdata`. To change it later, change it in the database first
+(`docker compose exec db psql -U pgapex -c "\password pgapex"`), then in `.env`. A wrong password
+stops the container at once with a message saying so.
 
 **Settings** go in `deploy/.env`: the ones in `.env.example`, and any other setting of the
 [configuration reference](#configuration-reference).
@@ -200,8 +207,10 @@ image's health check uses it.
 | `PGAPEX_EXAMPLE` | | `hr` installs the HR example (its demo users have weak passwords: not on a public server) |
 | `PGAPEX_IMAGE` | `pgapex:local` | Use a published image instead of building one from this checkout |
 
-**Upgrading:** `git pull`, then `docker compose up -d --build`; the new container migrates the
-database before it starts serving. Back up first (`docker compose exec db pg_dump -U pgapex pgapex > backup.sql`).
+**Upgrading:** built from this checkout: `git pull`, then `docker compose up -d --build`. With a
+published image (`PGAPEX_IMAGE`): `docker compose pull`, then `docker compose up -d` (`--build`
+would build this checkout under the published name). The new container migrates the database
+before it starts serving. Back up first (`docker compose exec db pg_dump -U pgapex pgapex > backup.sql`).
 Keep `PGAPEX_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys) can't be decrypted.
 
 ## Upgrading

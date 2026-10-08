@@ -23,12 +23,15 @@ services:
       retries: 20
 
   pgapex:
+    # a published image is pulled; pgapex:local is built from this checkout
     image: ${PGAPEX_IMAGE:-pgapex:local}
     build: ..
     restart: unless-stopped
     depends_on:
+      # not service_healthy: the start script waits for the database itself, and
+      # it lists every missing setting even when the database can't start
       db:
-        condition: service_healthy
+        condition: service_started
         required: false
     env_file:
       - path: .env
@@ -36,6 +39,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://pgapex:${POSTGRES_PASSWORD:-}@db:5432/pgapex}
       RUNTIME_DATABASE_URL: ${RUNTIME_DATABASE_URL:-postgres://pgapex_runtime:${RUNTIME_PASSWORD:-}@db:5432/pgapex}
+      # fixed inside the container (ports, Caddy); PGAPEX_PORT sets the published port
       HOST: 0.0.0.0
       PORT: "3100"
     extra_hosts:
