@@ -23,13 +23,13 @@ first version (MVP). Every finding below has a regression test in
 | Database role | The runtime connects as `pgapex_runtime` (NOINHERIT). It can read metadata and manage sessions, but cannot read `meta.developer`, password hashes or `meta.instance_setting`. It can reach an application's data only through `SET LOCAL ROLE <app db_role>`. |
 | Application role ("parsing schema") | Every request runs in a transaction as the app's `db_role`. Postgres grants decide what the app can touch at all. |
 | Row level security | `meta.app_user()` and `meta.has_role()` expose the signed-in application user to SQL, so RLS policies (and triggers, audit logs) know *who* is acting, not just which database role. |
-| Authentication | Local accounts: bcrypt (pgcrypto) behind the `meta.authenticate()` SECURITY DEFINER function, constant work for unknown users, throttling per user and per IP. Single sign-on: OpenID Connect with PKCE, browser-bound one-time state, nonce, JWKS signature, issuer/audience/expiry checks and linking by subject; SAML 2.0 with signed assertions only, issuer, audience, recipient, validity and one-time `InResponseTo`, the same browser binding (a same-site re-post, since the IdP's cross-site POST carries no Lax cookie). LDAP: search, then bind as the user (empty passwords refused, RFC 4515 filter escaping), write-only service password. "Keep me signed in": a rotating one-time token (SHA-256 stored, owner-only), fixed expiry, access re-checked on each use, ended by sign-out, new password, deactivation or removed access. Session rotation on every sign-in. |
+| Authentication | Local accounts: bcrypt (pgcrypto) behind the `meta.authenticate()` SECURITY DEFINER function, constant work for unknown users, throttling per user and per IP. Single sign-on: OpenID Connect with PKCE, browser-bound one-time state, nonce, JWKS signature, issuer/audience/expiry checks and linking by subject (an existing account of the same name only when the provider allows it, and with the e-mail claim only when verified); SAML 2.0 with signed assertions only, issuer, audience, recipient, validity and one-time `InResponseTo`, the same browser binding (a same-site re-post, since the IdP's cross-site POST carries no Lax cookie). LDAP: search, then bind as the user (empty passwords refused, RFC 4515 filter escaping), write-only service password. "Keep me signed in": a rotating one-time token (SHA-256 stored, owner-only), fixed expiry, access re-checked on each use, ended by sign-out, new password, deactivation or removed access. Session rotation on every sign-in. |
 | Authorization schemes | On pages, regions, items, buttons, processes, dynamic actions and navigation entries. They are role based or SQL based and fail closed when unknown. |
 | REST API (PostgREST) | Tokens are HS256 JWTs (shared `API_JWT_SECRET`) or identity-provider tokens. PostgREST switches to the app's API role (never one that bypasses RLS). `meta.api_check()` runs before every request and rejects tokens of inactive accounts or accounts without access; roles are read live. Only the `api` schema is exposed; the anonymous role has no privileges. |
 | Passwords | Password policy (length, letters and digits, no username), expiry and change on first use enforced before a session exists; changing a password needs the current one and ends other sessions. |
 | Approvals | Task tables are closed to application roles; `meta.tasks` and the `meta.*_task` functions check, for every call, who may see, claim, decide, delegate or cancel (one rights function for both). Initiators can't decide their own requests unless the definition allows it. The completion SQL runs as the application's role in the same transaction, so RLS applies and an error undoes the decision. |
 | Workflows | Steps run as the application's role (grants and RLS apply), variables are binds (escaped literals), the instance tables are closed to application roles; only initiators and administrators see a workflow, terminate it, and only administrators retry. |
-| REST modules | Bearer tokens only (HS256 with `API_JWT_SECRET`, the app claim must match; no cookies, so no CSRF), the account (active, access) or OAuth client (not revoked) checked on every request, handler roles via `meta.has_role()`, SQL as the application's role (RLS) with every value a bind. |
+| REST modules | Bearer tokens only (HS256 with `API_JWT_SECRET`, the app claim must match; no cookies, so no CSRF), the account (active, access) or OAuth client (not revoked) checked on every request, handler roles via `meta.has_role()`, SQL as the application's role (RLS) with every value a bind; `:APP_USER`, `:APP_ID` and the other built-in binds come from the server, never from the request. |
 | Progressive Web Apps | Off by default, per app. Kept pages (opt-in) are removed at every sign-in and sign-out; forms kept offline are sent only for the user who filled them in, with a fresh CSRF token, and processed at most once (submission ids); the record a form was opened for is signed with the form. `Permissions-Policy` allows camera and geolocation for the application itself only (`camera=(self), microphone=(), geolocation=(self)`). |
 | Outgoing web requests (REST data sources) | Off until `PGAPEX_REST_ALLOWED_HOSTS` lists hosts. Only http/https without user:password; the resolved address is checked at connect time and is the one connected to (no DNS rebinding); private, loopback, link-local (cloud metadata), CGNAT, multicast and documentation ranges are refused, also as IPv4-mapped, NAT64 and 6to4 addresses, unless the host is in `PGAPEX_REST_PRIVATE_HOSTS`; at most 3 redirects, each re-checked, credential headers dropped when a redirect leaves the origin; time and size limits (also after decompression). Parameter values are URL-encoded after a fixed host (`.`/`..` refused), header values are one line, and `Authorization`, `Cookie`, `Host` and transport headers can't be set on a source. Response values reach SQL as one escaped literal through `jsonb_to_recordset` with checked column names, as the app's role. |
 | Web credential secrets | Encrypted with AES-256-GCM using `PGAPEX_SECRET_KEY`, which lives outside the database (a dump alone reveals nothing); write-only in the builder, never exported, logged or shown in errors; the runtime role's column grant leaves out `secret_enc`. Changing the key means entering the secrets again. |
@@ -103,6 +103,27 @@ Severity is rated for an internet-facing deployment.
 | 13 | **CSV export formula injection** (new feature). | Low | Text cells starting with `= + - @` get a leading `'`. |
 | 14 | **Read-only conditions failed open** (found during this review): an erroring condition made an item editable. | Medium | Read-only conditions fail closed. Region and button conditions already did. |
 
+## Findings of the review of 2026-10-08 and their fixes
+
+A second full review, mainly of what end users and API callers can reach. Regression tests are in
+`test/security.test.ts` ("security review 2026-10-08"), `test/sso.test.ts`, `test/grid.test.ts`,
+`test/custom-auth.test.ts` and `test/binds.test.ts`.
+
+| # | Finding | Severity | Fix |
+|---|---|---|---|
+| 1 | **Hidden report columns readable through the URL**: computed columns, filters, highlights, the search, sorting, control breaks, aggregates and the group by, pivot and chart views took any column of the query, including those in `hidden`. | Medium–High | Only the shown columns can be used; the search looks only at them. |
+| 2 | **REST modules: `:APP_USER` set by the caller** (`?app_user=KING`); query, body and path values filled every bind. | Medium | `APP_USER`, `APP_ID`, `APP_ALIAS` (and `APP_SESSION`, `APP_PAGE_ID`, `REQUEST`, `APP_LANGUAGE`) come from the server; such parameters are dropped, and refused as path parameters. AI assistant tool arguments can't replace them either. |
+| 3 | **Single sign-on linked an existing account by the username claim** on first use, and a missing `email_verified` counted as verified: where users choose that claim at the provider, they could take over an account. | Medium–High | Per-provider *Link existing accounts* (`link_existing`, off for new providers; migration 075 keeps it on for existing ones), only verified e-mail addresses link; SAML usernames are checked like OIDC ones. |
+| 4 | **List values not checked**: select lists, radio groups, checkbox groups, shuttles and grid select columns accepted any posted value. | Medium | Posted values must be returned by the item's list of values (`config.any_value: true` opts out); comboboxes stay free text. |
+| 5 | **URL checksum ambiguity**: names and values were joined as `k=v&k=v`, so a value containing `&OTHER=` signed two items. | Medium | Each name and value carries its byte length, with a version prefix (TypeScript and `meta.url_checksum`, migration 075). Links signed before the upgrade need a new checksum. |
+| 6 | **My account password change not throttled**: the current password could be guessed from an open session. | Low | The sign-in throttle applies; database, custom and header apps don't offer the form at all. |
+| 7 | **Any developer could change identity providers, LDAP directories and the password policy**, and grant access to applications outside their workspace. | Medium | Administrators only; access grants are checked against the developer's workspaces. |
+| 8 | **`meta.page_url()` trusts settable settings**, and application SQL can `RESET ROLE` to `pgapex_runtime`. | Info | Documented below: the app role is not a sandbox for developer SQL. |
+| 9 | **Validations for DELETE never ran** (a DELETE skipped validation altogether). | Low | A DELETE runs the validations made for it (`when_button = 'DELETE'`) and skips the item checks. |
+| 10 | **`TRUST_PROXY=true` trusted every `X-Forwarded-For` entry**, so behind an appending proxy a client could choose its IP and dodge the per-IP throttle. | Low | `true` trusts one proxy; a number that many; addresses or subnets name them. |
+| 11 | **Document templates via `?doc=` on public pages**: anyone could download every template without an authorization scheme. | Low | Users who aren't signed in only get templates the page offers with a visible document button. |
+| 12 | **Bind scanner and PostgreSQL could disagree** on non-ASCII dollar-quote tags, `$` inside identifiers, `\r` ending a comment and `WHERE'…'`. | Low | The scanner follows PostgreSQL's lexer for these cases. |
+
 ## Things that remain the developer's responsibility
 
 - **Developer SQL is trusted**, as in APEX. It runs as the app role, so the
@@ -147,6 +168,19 @@ Severity is rated for an internet-facing deployment.
   or RLS.
 - **Streamed downloads** keep a read-only transaction open while a slow
   client reads; `STATEMENT_TIMEOUT` applies to each fetch.
+- **The app role is not a sandbox for developer SQL.** pgapex switches to the application's role with
+  `SET LOCAL ROLE`, and SQL can always `RESET ROLE` back to the session's login role, `pgapex_runtime`.
+  So application SQL (processes, regions, REST handlers, custom authentication, supporting objects)
+  can do what the runtime role can: read every application's metadata and sessions, set
+  `pgapex.app_id` / `pgapex.app_user` and call `meta.page_url()` for any application and user (valid
+  checksums), or change sessions. Treat every developer as trusted with all applications of the
+  instance, as the workspace notes say; end users never write SQL. A separate login role per
+  application would close this.
+- **Administrators and developers**: SQL Commands, SQL Scripts and the other SQL Workshop tools run on
+  the owner connection for every developer, so a developer can change anything, including
+  `meta.developer.is_admin`. The administrator-only pages (instance settings, AI services, identity
+  providers, LDAP directories, the password policy, developers) prevent mistakes; they are not a
+  boundary against a developer who means harm.
 - **App id from SQL (known gap, to fix)**: `meta.app_id()` reads the `pgapex.app_id` setting, which an
   application's own SQL can change. Requests queued from SQL (`meta.web_request`, `meta.ai_generate`) could
   therefore be made under another application's id, using its web credentials or AI services and quota.

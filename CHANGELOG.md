@@ -76,6 +76,32 @@ All notable changes to this project are documented here. The format follows
   events and actions, lost update detection, region templates, the developer toolbar, …); the form, PWA and
   unsaved-changes rows were 🟡 or ❌ in fact and now say so.
 
+### Security
+Fixes from the security review of 2026-10-08 (details and severities in SECURITY.md; migration 075).
+- **Hidden report columns** can no longer be shown, searched, filtered, sorted or aggregated by editing
+  the URL (computed columns, filters, highlights, control breaks, group by, pivot and chart views).
+- **REST modules**: `:APP_USER`, `:APP_ID` and the other built-in binds come from the server; a caller's
+  `?app_user=…` (or body field) no longer sets them. AI assistant tool arguments can't either.
+- **Single sign-on** links an existing account with the same username only when the provider allows it
+  (*Link existing accounts*, new column `auth_provider.link_existing`; **on for providers that exist at the
+  upgrade** so sign-in keeps working: review it), and with the e-mail claim only when the address is
+  verified. SAML usernames are checked like OpenID Connect ones.
+- **Lists of values are enforced**: select lists, radio groups, checkbox groups, shuttles and grid select
+  columns only accept values their list returns (`"any_value": true` opts out).
+- **URL checksums** are unambiguous (byte lengths and a version in the signed text): links signed before
+  the upgrade (bookmarks, notifications) ask for a new checksum.
+- **My account**: wrong current passwords count towards the sign-in throttle; database, custom and header
+  apps no longer offer the password form.
+- **Identity providers, LDAP directories and the password policy** are for administrators only; granting
+  access is limited to applications of the developer's workspaces.
+- A **DELETE** runs the validations made for it (`when_button` `DELETE`); before, it ran none.
+- **`TRUST_PROXY=true`** trusts one proxy, not every `X-Forwarded-For` entry; a number or addresses for more.
+- **`?doc=`** on a page that doesn't require sign-in only gives the templates the page offers with a button.
+- The **bind scanner** follows PostgreSQL's lexer for non-ASCII dollar-quote tags, `$` in identifiers,
+  `\r` ending a comment and `WHERE'…'`.
+- SECURITY.md: the application role is not a sandbox for developer SQL (`RESET ROLE`), and the
+  administrator pages are not a boundary while the SQL Workshop runs as the owner.
+
 ### Fixed
 - Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases
   (and the ticked columns and conditions) could point at the other table.

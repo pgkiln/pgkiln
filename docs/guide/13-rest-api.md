@@ -30,7 +30,7 @@ same row level security, and both publish an OpenAPI description.
 | `method` | `GET`, `POST`, `PUT`, `PATCH` or `DELETE` |
 | `path` | Segments with `:parameters`, e.g. `orders/:id/lines` |
 | `type` | `collection`: a SELECT, returned page by page as `{items, offset, limit, has_more}` (`?limit=` up to 500, `?offset=`, `page_size` for the default); the page streams from a cursor as a chunked JSON array (an error before the first rows is still a 4xx/5xx, a failure after them ends the response short) · `item`: one row as an object, 404 when there is none · `sql`: statements; the first row of the last one is the response (201 for POST, 204 without a row; `status` overrides) |
-| `source` | The SQL. Binds: path parameters, query parameters and the fields of a JSON (or form) body, upper case (`:ID`, `:CUSTOMER`); `:BODY` is the whole JSON body |
+| `source` | The SQL. Binds: path parameters, query parameters and the fields of a JSON (or form) body, upper case (`:ID`, `:CUSTOMER`); `:BODY` is the whole JSON body. `:APP_USER` (the caller), `:APP_ID` and `:APP_ALIAS` are set by the server: a parameter of that name (or `APP_SESSION`, `APP_PAGE_ID`, `REQUEST`, `APP_LANGUAGE`) is ignored, and can't be a path parameter |
 | `roles` | The caller needs one of these roles (as `meta.has_role()` sees them) |
 | `auth` | `token` (default) or `public` (no token; the SQL runs with `meta.app_user()` = `nobody`) |
 | `description` | For the OpenAPI description |

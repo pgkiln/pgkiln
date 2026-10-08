@@ -146,6 +146,13 @@ multi-selects, popup LOVs, grid columns and display items. Three forms:
    list can also read a web service: give it a **REST data source** and query the rows from
    `rest` ([chapter 19](19-rest-data-sources.md#lists-of-values)).
 
+On submit, the value of a select list, radio group, checkbox group, multi-select or popup LOV (each
+value of a multi-value item), and of a grid column with a list of values, must be one its list
+returns at that moment, for that user: a list that leaves out departments a user may not pick also
+keeps a crafted request from choosing them. Otherwise the item gets *"choose a value from the
+list"*. For a list that may legitimately miss the current value, set `"any_value": true` in the
+item's config. A combobox is free text and isn't checked.
+
 ## Popup LOV
 
 A `popup_lov` item shows the chosen value's display text and a **Search** button. The button
