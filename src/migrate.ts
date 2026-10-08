@@ -45,16 +45,19 @@ const permanent = new Set(['28P01', '28000', '3D000', '42501']);
 /**
  * A connected client, retrying once a second for up to `seconds` while the
  * database is still starting; errors that waiting won't fix are thrown at once.
+ * Each attempt gives up after at most 10 seconds, so an unreachable host (dropped
+ * packets) fails within about `seconds` too, not after the OS's TCP timeout.
  */
 export async function connectWhenReady(connectionString: string | undefined, applicationName: string, seconds: number, onWait?: () => void): Promise<pg.Client> {
+  const deadline = Date.now() + seconds * 1000;
   for (let attempt = 1; ; attempt++) {
     // a pg.Client cannot be reused after a failed connect
-    const client = new pg.Client({ connectionString, application_name: applicationName });
+    const client = new pg.Client({ connectionString, application_name: applicationName, connectionTimeoutMillis: Math.max(1000, Math.min(10_000, deadline - Date.now())) });
     try {
       await client.connect();
       return client;
     } catch (e) {
-      if (permanent.has((e as { code?: string }).code ?? '') || attempt >= seconds) throw e;
+      if (permanent.has((e as { code?: string }).code ?? '') || Date.now() + 1000 >= deadline) throw e;
       if (attempt === 1) onWait?.();
       await new Promise((r) => setTimeout(r, 1000)); // database still starting
     }
