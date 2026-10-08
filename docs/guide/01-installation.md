@@ -183,11 +183,15 @@ Open http://127.0.0.1:3100/builder and sign in as `admin` with `PGAPEX_ADMIN_PAS
 lists everything missing at once (it doesn't start on empty or too short secrets), waits for the
 database, applies new migrations (with a lock, so several containers migrate once), and replaces
 the builder's `admin` / `admin` with `PGAPEX_ADMIN_PASSWORD` (a password changed later in the
-builder is kept). When `pgapex_runtime` can't sign in with the password in `RUNTIME_DATABASE_URL`,
-it gets that password; while `pgapex_authenticator` (PostgREST) still has its well-known default,
-it gets a random one, or `PGAPEX_AUTHENTICATOR_PASSWORD`. PostgreSQL roles belong to the whole
-server, not to one database: other pgapex databases on the same server share them, and with them
-these passwords. `GET /healthz` answers `ok` when the database is reachable; the image's health
+builder is kept). `pgapex_runtime` gets the password in `RUNTIME_DATABASE_URL` unless it
+already signs in with it; `pgapex_authenticator` (PostgREST) gets `PGAPEX_AUTHENTICATOR_PASSWORD`,
+or else a random one while it has its well-known default. Roles the start creates get their
+passwords straight away. PostgreSQL roles belong to the whole server, not to one database: other
+pgapex databases on the same server share them, and with them these passwords. When the server
+doesn't check passwords for the container's connection (`trust` in `pg_hba.conf`), the start
+can't tell whether an older `pgapex_authenticator` still has its default and says so in the log:
+set `PGAPEX_AUTHENTICATOR_PASSWORD` then. Checking that default costs one failed sign-in in the
+server log per start; setting `PGAPEX_AUTHENTICATOR_PASSWORD` avoids it. `GET /healthz` answers `ok` when the database is reachable; the image's health
 check uses it.
 
 **`POSTGRES_PASSWORD` counts at the first start only**: the bundled database keeps it in the volume

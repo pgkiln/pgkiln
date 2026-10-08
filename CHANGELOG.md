@@ -9,8 +9,10 @@ All notable changes to this project are documented here. The format follows
 - **Docker**: a `Dockerfile` and `deploy/compose.yaml` (PostgreSQL 17 + pgapex, optional Caddy for HTTPS):
   `cp .env.example .env`, fill in four secrets, `docker compose up -d`. The container (`scripts/docker-start.ts`)
   refuses empty or too short secrets (listing all problems at once), migrates under an advisory lock, sets the
-  runtime role's password from `.env` when it doesn't match, replaces the builder's `admin` / `admin` and gives
-  `pgapex_authenticator` a random password while it has its default; a wrong database password stops it at once; optional HR example (`PGAPEX_EXAMPLE=hr`). Port bound to 127.0.0.1 by default;
+  runtime role's password from `.env` unless it already works, replaces the builder's `admin` / `admin` and gives
+  `pgapex_authenticator` a random password while it has its default (roles it creates get their passwords at once;
+  what it can't check, e.g. under `trust`, it logs); a wrong database password stops it at once, an unreachable
+  host after the 2-minute wait; works with Docker Engine before 25; optional HR example (`PGAPEX_EXAMPLE=hr`). Port bound to 127.0.0.1 by default;
   your own PostgreSQL by leaving out the `db` profile. `GET /healthz` for health checks; a CI job starts the
   stack as a user would. `tsx` moved to the runtime dependencies (the server and the CLI run with it).
 - Installation guide: installing into an existing database (the grants an administrator gives).
