@@ -124,7 +124,8 @@ authorization code flow. The redirect URI is `<PUBLIC_URL>/sso/callback/<name>`,
 | Scopes | Default `openid profile email` |
 | Username claim | The claim that becomes the pgapex username. Choose one users **cannot change themselves**: `preferred_username` (Keycloak), `upn` or `email` (Entra), `email` (Google) |
 | Groups claim | Default `groups`; dot paths work (`realm_access.roles`) |
-| Create accounts automatically | Create a directory account on first sign-in; otherwise only people with an existing account can sign in |
+| Create accounts automatically | Create a directory account on first sign-in; otherwise only people with an account linked to the provider (or linked below) can sign in |
+| Link existing accounts | On the first sign-in, link an existing account with the same username. Turn it on only when users **can't choose** the username claim at the provider, and off again once accounts are linked: otherwise someone could register an existing account's name there and sign in as that account. With the `email` claim only addresses the provider marks verified (`email_verified: true`) link |
 
 Use **Test discovery** to check the issuer URL.
 
@@ -138,7 +139,11 @@ for their session, and may sign in even when they aren't listed individually.
 How accounts are matched:
 
 - The first sign-in links the identity (the provider's stable subject id, `sub`) to the account
-  with the same username, or creates the account when *Create accounts automatically* is on.
+  with the same username when *Link existing accounts* is on, or creates the account when
+  *Create accounts automatically* is on. Otherwise an existing account of that name is refused
+  ("not linked to this identity provider").
+- Identity providers, LDAP directories and the password policy are changed by **administrators**
+  only (they decide who can sign in to every application).
 - Later sign-ins use the link, so a user renaming themselves at the provider can't take over
   another account. An account can be linked to only one identity per provider.
 - Access follows the same rules as passwords: the app's access control, the account's roles in the

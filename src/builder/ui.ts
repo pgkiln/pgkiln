@@ -1,4 +1,4 @@
-import { appOfPath, blockingLock, refuseLocked } from './locks.ts';
+import { appOfPath, blockingLock, isAdmin, refuseLocked } from './locks.ts';
 import { appAllowed, loadWorkspaces, workspaceMenu } from './workspaces.ts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { readFileSync } from 'node:fs';
@@ -218,6 +218,19 @@ export const workshopTabs = (active: WorkshopTab) => {
 export const APP_COLORS = 8;
 
 // ------------------------------------------------------------------ auth
+
+/**
+ * A developer session of an administrator, for installation-wide sign-in settings (identity providers,
+ * LDAP directories, the password policy); other developers get a 403 page. Null when refused.
+ */
+export async function administrator(req: Req, reply: FastifyReply, title: string) {
+  const s = await developer(req, reply);
+  if (!s) return null;
+  if (await isAdmin(s.username)) return s;
+  const main = html`<h1 class="u-mb1">${title}</h1><div class="alert alert-error" role="alert">Only administrators change ${title.toLowerCase()}: they decide who can sign in to every application.</div>`;
+  await send(reply.code(403), s, shell(s, title, [['Users', `${BASE}/users`], [title]], main, 'users'));
+  return null;
+}
 
 export async function developer(req: Req, reply: FastifyReply) {
   const s = await getSession(req, reply, null, BASE);

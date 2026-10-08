@@ -1782,6 +1782,9 @@ describe('sprint 26 data: REST data sources, web credentials, invoke_api', () =>
       values ($1, 5, 'sec invoke', 'invoke_api', 'submit', 'LOOKUP', $2) returning id`,
       [page, JSON.stringify({ url: `${mockBase}/inv/&P23_DEPTNO.`, items: { P1_SECRET_FLAG: 'path' } })]);
     cleanup.push(`delete from meta.process where id = ${Number(p.id)}`);
+    // the select list takes any value here (since 2026-10-08 a value must come from its list), to test the encoding
+    await owner.query(`update meta.item set config = coalesce(config, '{}') || '{"any_value": true}' where page_id = $1 and name = 'P23_DEPTNO'`, [page]);
+    cleanup.push(`update meta.item set config = config - 'any_value' where page_id = ${Number(page)} and name = 'P23_DEPTNO'`);
     const b = new B(app);
     await b.login('allen');
     const form = formFields((await b.get('/a/hr/23')).body);
@@ -5726,6 +5729,37 @@ describe('sprint 37 workspaces', () => {
   test('workspace tables are closed to the runtime', async () => {
     for (const t of ['workspace', 'workspace_member', 'workspace_app']) await assert.rejects(runtime.query(`select * from meta.${t}`), /permission denied/, t);
   });
+
+  test('(review 2026-10-08) only administrators change identity providers, LDAP directories and the password policy', async () => {
+    await dev.get('/builder/users');
+    const csrf = dev.lastCsrf;
+    const refused = [
+      ['/builder/users/providers', { name: 'pwned_idp', protocol: 'oidc', display_name: 'X', issuer: 'https://evil.example', client_id: 'x', enabled: 'true', link_existing: 'true' }],
+      ['/builder/users/directories', { name: 'pwned_ldap', url: 'ldap://evil.example' }],
+      ['/builder/users/settings', { password_min_length: '6', password_lifetime_days: '0' }],
+    ] as const;
+    for (const [url, form] of refused) assert.equal((await dev.post(url, { __csrf: csrf, ...form })).statusCode, 403, url);
+    for (const url of ['/builder/users/providers', '/builder/users/directories']) assert.equal((await dev.get(url)).statusCode, 403, url);
+    assert.ok(!(await owner.one(`select 1 as ok from meta.auth_provider where name = 'pwned_idp'`)));
+    assert.ok(!(await owner.one(`select 1 as ok from meta.ldap_directory where name = 'pwned_ldap'`)));
+    assert.equal((await adm.get('/builder/users/providers')).statusCode, 200, 'administrators still can');
+  });
+
+  test('(review 2026-10-08) developers only grant access to applications of their workspaces', async () => {
+    await dev.get('/builder/users');
+    await owner.query(`delete from meta.account where username = 'sec_review_acc'`);
+    const acc = (await owner.one(`insert into meta.account (username) values ('sec_review_acc') returning id`)).id;
+    try {
+      for (const [url, form] of [
+        [`/builder/users/${acc}/access`, { app_id: String(hr), roles: 'admin' }],
+        [`/builder/users/${acc}/access/${hr}`, { roles: 'admin' }],
+      ] as const)
+        assert.equal((await dev.post(url, { __csrf: dev.lastCsrf, ...form })).statusCode, 404, url);
+      assert.ok(!(await owner.one('select 1 as ok from meta.app_access where account_id = $1', [acc])), 'no access was granted');
+    } finally {
+      await owner.query(`delete from meta.account where username = 'sec_review_acc'`);
+    }
+  });
 });
 
 describe('sprint 37 drawers', () => {
@@ -6140,6 +6174,174 @@ describe('sprint 39 push notifications', () => {
       const res = await anon.post(`/builder/apps/${appId}/pwa/${path}`, { __csrf: 'x', push_user: 'scott' });
       assert.equal(res.statusCode, 302, path);
       assert.match(String(res.headers.location), /\/builder\/login/);
+    }
+  });
+});
+
+describe('security review 2026-10-08', () => {
+  const section = (body: string, id: number) => {
+    const at = body.indexOf(`id="R${id}"`);
+    return at < 0 ? '' : body.slice(at, body.indexOf('</section>', at));
+  };
+
+  test('hidden report columns cannot be shown, searched, filtered, sorted or aggregated through URL parameters', async () => {
+    const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 11`, [appId])).id;
+    const rid = (await owner.one(
+      `insert into meta.region (page_id, seq, title, type, source, config) values ($1, 999, 'Review hidden', 'report',
+        'select empno, ename, sal as secret_sal from hr.emp', '{"hidden": ["secret_sal"]}') returning id`, [pid])).id as number;
+    try {
+      const king = await as('king');
+      const rows = (body: string) => (section(body, rid).match(/<tr[ >]/g) ?? []).length;
+      const all = rows((await king.get('/a/hr/11')).body);
+      const get = async (k: string, v: string) => (await king.get(`/a/hr/11?${new URLSearchParams({ [`r${rid}_${k}`]: v })}`)).body;
+      // a computed column over a hidden one is refused (shown as an error chip, no values)
+      const computed = section(await get('c', 'LEAK|secret_sal'), rid);
+      assert.doesNotMatch(computed, /5000|5,000|5\.000/, 'no hidden values through a computation');
+      assert.equal(rows(await get('f', 'secret_sal|gt|4999')), all, 'a filter on a hidden column is ignored');
+      assert.equal(rows(await get('q', '5000')), rows(await get('q', 'no-such-text-zz')), 'the search does not look into hidden columns');
+      const tbody = (body: string) => /<tbody>([\s\S]*?)<\/tbody>/.exec(section(body, rid))?.[1] ?? '';
+      assert.equal(tbody(await get('s', '3')), tbody((await king.get('/a/hr/11')).body), 'sorting by a hidden column is ignored');
+      assert.doesNotMatch(section(await get('a', 'max|secret_sal'), rid), /5000|5,000|5\.000/, 'no aggregate of a hidden column');
+      const group = (await king.get(`/a/hr/11?r${rid}_v=group&r${rid}_g=ename&r${rid}_ga=${encodeURIComponent('max|secret_sal')}`)).body;
+      assert.doesNotMatch(section(group, rid), /5000|5,000|5\.000/, 'no group-by aggregate of a hidden column');
+      const pivot = (await king.get(`/a/hr/11?r${rid}_v=pivot&r${rid}_pv=${encodeURIComponent('ename|secret_sal|count|empno')}`)).body;
+      assert.doesNotMatch(section(pivot, rid), /5000|5,000|5\.000/, 'no pivot on a hidden column');
+      const brk = (await king.get(`/a/hr/11?r${rid}_b=secret_sal`)).body;
+      assert.doesNotMatch(section(brk, rid), /5000|5,000|5\.000/, 'no control break on a hidden column');
+      // shown columns still work
+      assert.match(section(await get('c', 'TWICE|empno * 2'), rid), /15678/, 'computations over shown columns work');
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [rid]);
+    }
+  });
+
+  test('REST modules: the caller cannot set :APP_USER or other built-in binds', async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'review_binds', 'Review', $2)`,
+      [appId, JSON.stringify([{ method: 'GET', path: 'me', type: 'item', source: 'select :APP_USER as u, :APP_ID as a, :APP_SESSION as s' }])]);
+    try {
+      const token = (await issueApiToken(appId, 'allen', 1)).token;
+      const res = await app.inject({ method: 'GET', url: '/a/hr/rest/review_binds/me?app_user=KING&APP_ID=1&app_session=x', headers: { authorization: `Bearer ${token}` } });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.deepEqual(res.json(), { u: 'allen', a: String(appId), s: null });
+      const { handlerProblems } = await import('../src/runtime/rest.ts');
+      assert.ok(handlerProblems([{ method: 'GET', path: 'x/:app_user', type: 'item', source: 'select 1' }]).some((p) => /set by the server/.test(p)));
+    } finally {
+      await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'review_binds'`, [appId]);
+    }
+  });
+
+  test('select lists only accept values their list of values offers', async () => {
+    const king = await as('king');
+    await king.get(link('king', 3, { P3_EMPNO: '7934' }));
+    const before = await owner.one('select deptno, job from hr.emp where empno = 7934');
+    const form = { __csrf: king.lastCsrf, __request: 'SAVE', P3_ENAME: 'MILLER', P3_MGR: '7782', P3_HIREDATE: '1982-01-23', P3_SAL: '1300', P3_ACTIVE: 'true' };
+    const forged = await king.post('/a/hr/3', { ...form, P3_JOB: 'CLERK', P3_DEPTNO: '99' });
+    assert.equal(forged.statusCode, 422, 'a department the list does not offer is refused');
+    assert.match(forged.body, /choose a value from the list/);
+    const job = await king.post('/a/hr/3', { ...form, __csrf: king.lastCsrf, P3_JOB: 'EMPEROR', P3_DEPTNO: String(before.deptno) });
+    assert.equal(job.statusCode, 422, 'a job the list does not offer is refused');
+    assert.deepEqual(await owner.one('select deptno, job from hr.emp where empno = 7934'), before, 'nothing was saved');
+    const ok = await king.post('/a/hr/3', { ...form, __csrf: king.lastCsrf, P3_JOB: before.job, P3_DEPTNO: String(before.deptno) });
+    assert.equal(ok.statusCode, 303, 'values from the list are accepted');
+  });
+
+  test('My account: guessing the current password is throttled like sign-ins', async () => {
+    const user = `pwthrottle_${Date.now()}`;
+    await owner.query(`insert into meta.account (username, password_hash) values ($1, meta.hash_password('Correct-horse-9'))`, [user]);
+    await owner.query(`insert into meta.app_access (app_id, account_id) select $1, id from meta.account where username = $2`, [appId, user]);
+    try {
+      const b = new Browser();
+      assert.equal((await b.login(user, 'Correct-horse-9')).statusCode, 303);
+      await b.get('/a/hr/account');
+      const codes: number[] = [];
+      for (let i = 0; i < 7; i++)
+        codes.push((await b.post('/a/hr/account/password', { __csrf: b.lastCsrf, password: `wrong${i}`, new_password: 'Another-pass-77', confirm_password: 'Another-pass-77' })).statusCode);
+      assert.deepEqual(codes.slice(0, 5), [401, 401, 401, 401, 401]);
+      assert.equal(codes[6], 429, 'locked after the sign-in limit');
+      const right = await b.post('/a/hr/account/password', { __csrf: b.lastCsrf, password: 'Correct-horse-9', new_password: 'Another-pass-77', confirm_password: 'Another-pass-77' });
+      assert.equal(right.statusCode, 429, 'even the right password waits while locked');
+    } finally {
+      await owner.query('delete from meta.activity_log where lower(username) = lower($1)', [user]);
+      await owner.query('delete from meta.account where username = $1', [user]);
+    }
+  });
+
+  test('a DELETE runs the validations made for DELETE (and only those)', async () => {
+    const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 3`, [appId])).id;
+    const emp = (await owner.one(`insert into hr.emp (empno, ename, job, deptno, hiredate, sal) values (7990, 'DELTEST', 'CLERK', 10, current_date, 1000) returning empno`)).empno;
+    const v = (await owner.one(
+      `insert into meta.validation (page_id, name, type, expression, message, when_button) values ($1, 'review no delete', 'sql', 'false', 'Review: this employee cannot be deleted', 'DELETE') returning id`, [pid])).id;
+    try {
+      const king = await as('king');
+      await king.get(link('king', 3, { P3_EMPNO: String(emp) }));
+      // a required item left empty doesn't stop a delete, the DELETE validation does
+      const res = await king.post('/a/hr/3', { __csrf: king.lastCsrf, __request: 'DELETE', P3_ENAME: '' });
+      assert.equal(res.statusCode, 422);
+      assert.match(res.body, /this employee cannot be deleted/);
+      assert.equal((await owner.one('select count(*)::int as n from hr.emp where empno = $1', [emp])).n, 1, 'the row is still there');
+      await owner.query('delete from meta.validation where id = $1', [v]);
+      const ok = await king.post('/a/hr/3', { __csrf: king.lastCsrf, __request: 'DELETE', P3_ENAME: '' });
+      assert.equal(ok.statusCode, 303, 'without it the delete goes through (item checks are skipped)');
+    } finally {
+      await owner.query('delete from meta.validation where id = $1', [v]);
+      await owner.query('delete from hr.emp where empno = $1', [emp]);
+    }
+  });
+
+  test('TRUST_PROXY believes only the configured proxies, not addresses a client puts in X-Forwarded-For', async () => {
+    const { default: Fastify } = await import('fastify');
+    const { trustProxySetting } = await import('../src/security.ts');
+    const ipFor = async (setting: string | undefined) => {
+      const f = Fastify({ trustProxy: trustProxySetting(setting) as never });
+      f.get('/', async (req) => req.ip);
+      const res = await f.inject({ url: '/', remoteAddress: '10.0.0.5', headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9' } } as never);
+      await f.close();
+      return res.body;
+    };
+    assert.equal(await ipFor('true'), '203.0.113.9', 'one proxy: the address it saw, not the forged first entry');
+    assert.equal(await ipFor('2'), '6.6.6.6', 'two proxies in a row');
+    assert.equal(await ipFor('10.0.0.0/8'), '203.0.113.9', 'a trusted subnet');
+    assert.equal(await ipFor(undefined), '10.0.0.5', 'unset: the socket');
+    assert.equal(await ipFor('false'), '10.0.0.5');
+  });
+
+  test('without signing in, ?doc= only gives the documents the public page offers', async () => {
+    const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 11`, [appId])).id;
+    await owner.query('update meta.page set requires_auth = false where id = $1', [pid]);
+    let button: number | null = null;
+    try {
+      const anon = new Browser();
+      const refused = await anon.get('/a/hr/11?doc=EMPLOYEE_SHEET');
+      assert.equal(refused.statusCode, 403, 'a public page does not hand out any template');
+      assert.doesNotMatch(String(refused.headers['content-type']), /pdf/);
+      const king = await as('king');
+      assert.match(String((await king.get('/a/hr/11?doc=EMPLOYEE_SHEET')).headers['content-type']), /application\/pdf/, 'signed-in users keep ?doc=');
+      button = (await owner.one(`insert into meta.button (page_id, seq, name, label, action, document, target_items) values ($1, 99, 'REVIEW_PRINT', 'Print', 'document', 'EMPLOYEE_SHEET', '{}') returning id`, [pid])).id;
+      assert.match(String((await anon.get('/a/hr/11?doc=EMPLOYEE_SHEET')).headers['content-type']), /application\/pdf/, 'offered by a visible button: allowed');
+    } finally {
+      if (button) await owner.query('delete from meta.button where id = $1', [button]);
+      await owner.query('update meta.page set requires_auth = true where id = $1', [pid]);
+    }
+  });
+
+  test('bind values stay values in SQL that PostgreSQL lexes unusually', async () => {
+    const { applyBinds } = await import('../src/binds.ts');
+    const evil = "$ä$, 'pwned' as x -- ' \\' \r\n; select 1 as x; --";
+    for (const sql of ['select $ä$ :A $ä$ as t, :A as v', 'select 1 as a$b$, :A as v', 'select 1 -- note\r, :A as v', "select :A as v where'\\' <> :A"]) {
+      const row = (await runtime.query(applyBinds(sql, { A: evil }))).rows[0];
+      assert.equal(row.v, evil, sql);
+      assert.equal(Object.keys(row).includes('x'), false, sql);
+    }
+  });
+
+  test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
+    assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
+    assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));
+    // the database computes the same checksum (meta.page_url, notifications)
+    for (const items of [{ P3_EMPNO: '7839' }, { P3_ID: 'x&P3_OWNER=me', P3_B: 'ä€😀' }, { P3_E: '' }] as Record<string, string>[]) {
+      const db = await owner.one('select meta.url_checksum($1, 3, $2, $3) as cs', [appId, 'King', JSON.stringify(items)]);
+      assert.equal(db.cs, urlChecksum(appId, 3, 'King', items), JSON.stringify(items));
     }
   });
 });

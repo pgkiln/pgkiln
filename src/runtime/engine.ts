@@ -12,7 +12,7 @@ import { invokeApi, restFetchRow, restFormDml } from './rest-sources.ts';
 import { runPending } from '../webrequests.ts';
 import { runPendingAi } from '../ai/requests.ts';
 import { runAiProcess } from './ai.ts';
-import { itemMask, lovLookup, ratingMax } from './items.ts';
+import { itemMask, LOV_CHECKED, lovContains, MULTI_VALUE, ratingMax, splitValues } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { conditionHolds } from './logic.ts';
 import { runPluginProcess } from './plugins.ts';
@@ -124,8 +124,15 @@ async function storedFileExists(ctx: PageContext, r: Region, column: string) {
   return res.rows[0]?.ok === true;
 }
 
+/**
+ * The page's checks before processing. A DELETE request skips the item checks (required, list,
+ * number and format: the values don't matter for a delete) and the validations of every button,
+ * but runs the validations made for DELETE (when_button = 'DELETE'), e.g. "approved requests can't
+ * be deleted".
+ */
 export async function validate(ctx: PageContext) {
   const c = ctx.client!;
+  const deleting = ctx.request === 'DELETE';
   const errors: Errors = { page: [], items: {} };
   const state = ctx.session.state;
   const vis = ctx.vis!;
@@ -134,7 +141,7 @@ export async function validate(ctx: PageContext) {
     else errors.page.push(msg);
   };
 
-  for (const i of ctx.page.items) {
+  for (const i of deleting ? [] : ctx.page.items) {
     if (!i.required || !vis.editable.has(i.name)) continue;
     let missing = (state[i.name] ?? null) === null;
     // a file item keeps the stored file unless a new one is uploaded
@@ -148,14 +155,15 @@ export async function validate(ctx: PageContext) {
     if (missing) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
   }
   // a location is "latitude,longitude"; a rating a whole number of stars; a date range "from:to"
-  for (const i of ctx.page.items) {
+  for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (!v || !vis.editable.has(i.name) || errors.items[i.name]) continue;
     const label = i.label ?? i.name;
     if (i.type === 'rating' && !(/^\d{1,2}$/.test(v) && Number(v) >= 1 && Number(v) <= ratingMax(i)))
       fail(i.name, ctx.locale.t('error.rating', { label, max: ratingMax(i) }));
-    // a popup LOV posts a return value: it must be one its list of values returns
-    if (i.type === 'popup_lov' && !(await lovLookup(ctx, i, v))) fail(i.name, ctx.locale.t('error.lov_value', { label }));
+    // a list item posts return values: each must be one its list of values returns (config.any_value: true allows others)
+    if (LOV_CHECKED.has(i.type) && i.lov && i.config?.any_value !== true && !(await lovContains(ctx, i.lov, MULTI_VALUE.has(i.type) ? splitValues(v) : [v])))
+      fail(i.name, ctx.locale.t('error.lov_value', { label }));
     if (i.type === 'daterange') {
       const m = /^(\d{4}-\d{2}-\d{2})?:(\d{4}-\d{2}-\d{2})?$/.exec(v);
       const valid = (d: string | undefined) => {
@@ -168,7 +176,7 @@ export async function validate(ctx: PageContext) {
     }
   }
   // a number item holds a number (one with a format mask was read in the language's notation on submit)
-  for (const i of ctx.page.items) {
+  for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (i.type !== 'number' || !v || !vis.editable.has(i.name) || errors.items[i.name] || isPlainNumber(v)) continue;
     const label = i.label ?? i.name;
@@ -176,7 +184,7 @@ export async function validate(ctx: PageContext) {
     const example = mask ? formatNumber('1234.5', mask, ctx.locale.numbers) : undefined;
     fail(i.name, example && !example.startsWith('#') ? ctx.locale.t('error.number_format', { label, example }) : ctx.locale.t('error.not_number', { label }));
   }
-  for (const i of ctx.page.items) {
+  for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (i.type !== 'location' || !v || !vis.editable.has(i.name) || errors.items[i.name]) continue;
     const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(v);
@@ -184,7 +192,7 @@ export async function validate(ctx: PageContext) {
   }
 
   for (const v of ctx.page.validations) {
-    if (v.when_button && v.when_button !== ctx.request) continue;
+    if (v.when_button ? v.when_button !== ctx.request : deleting) continue;
     if (v.item_name && (!vis.items.has(v.item_name) || errors.items[v.item_name])) continue;
     const value = v.item_name ? (state[v.item_name] ?? null) : null;
     try {

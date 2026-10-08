@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
+import { appAllowed } from './workspaces.ts';
 import { html, raw } from '../html.ts';
 import { accountSettings, clearAccountSettings, passwordProblem } from '../accounts.ts';
 import { loginMaxFailuresPerUser, loginWindowMinutes } from '../security.ts';
 import { acsUrl, metadataUrl, spEntityId } from '../saml.ts';
 import { discover, publicUrl, redirectUri } from '../sso.ts';
-import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { administrator, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // The workspace user directory (like APEX's workspace users with
 // Application Access Control): one account per person, access and roles
@@ -176,7 +177,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/settings`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Password policy');
     if (!s) return;
     const b = req.body ?? {};
     const n = (v: string | undefined, min: number, max: number) => String(Math.min(max, Math.max(min, Math.round(Number(v) || 0))));
@@ -333,6 +334,8 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post(`${BASE}/users/:id(^\\d+$)/access`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // only applications of the developer's workspaces (workspaces.ts)
+    if (!/^\d{1,9}$/.test(String(req.body?.app_id ?? '')) || !(await appAllowed(s, req.body?.app_id ?? ''))) return reply.code(404).send('Not found');
     await grantAccess(req.body?.app_id ?? '', req.params.id, splitRoles(req.body?.roles));
     flash(s, 'Access granted.');
     return back(reply, s, `${BASE}/users/${req.params.id}`);
@@ -341,6 +344,8 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post(`${BASE}/users/:id(^\\d+$)/access/:appId`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // only applications of the developer's workspaces (workspaces.ts)
+    if (!/^\d{1,9}$/.test(String(req.params.appId)) || !(await appAllowed(s, req.params.appId))) return reply.code(404).send('Not found');
     await grantAccess(req.params.appId, req.params.id, splitRoles(req.body?.roles));
     flash(s, 'Roles saved. The user gets them at the next sign-in.');
     return back(reply, s, `${BASE}/users/${req.params.id}`);
@@ -349,6 +354,8 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post(`${BASE}/users/:id(^\\d+$)/access/:appId/revoke`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // only applications of the developer's workspaces (workspaces.ts)
+    if (!/^\d{1,9}$/.test(String(req.params.appId)) || !(await appAllowed(s, req.params.appId))) return reply.code(404).send('Not found');
     await owner.query('delete from meta.app_access where account_id = $1 and app_id = $2', [req.params.id, req.params.appId]);
     await endSessions(req.params.id, req.params.appId);
     flash(s, 'Access revoked.');
@@ -374,7 +381,9 @@ export async function usersRoutes(app: FastifyInstance) {
         ${input('groups_claim', 'Groups claim', pr.groups_claim ?? 'groups', { help: 'Dot paths work, e.g. realm_access.roles' })}
       </div>
       <div class="field u-mt075"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> Create accounts automatically on first sign-in</label>
-        <small class="help">Otherwise only people with an existing account (same username) can sign in.</small></div>
+        <small class="help">Otherwise only people with an account linked to this provider (or allowed below) can sign in.</small></div>
+      <div class="field"><label class="check"><input type="checkbox" name="link_existing" value="true"${pr.link_existing ? raw(' checked') : ''}> Link existing accounts with the same username on their first sign-in</label>
+        <small class="help">Only when users can't choose the username claim themselves at this provider: otherwise someone could register the name of an existing account and take it over. With the e-mail claim, only verified addresses link. Turn it off once the accounts are linked.</small></div>
       <div class="field"><label class="check"><input type="checkbox" name="enabled" value="true"${pr.enabled !== false ? raw(' checked') : ''}> Enabled</label></div>
       ${!isNew && pr.has_secret ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_secret" value="true"> Remove the stored client secret</label></div>` : ''}
       <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add provider' : 'Save'}</button></div>
@@ -394,12 +403,13 @@ export async function usersRoutes(app: FastifyInstance) {
     b.scopes?.trim() || 'openid profile email', b.username_claim?.trim() || 'preferred_username', b.groups_claim?.trim() || 'groups',
     b.auto_create === 'true', b.enabled === 'true',
     protocol === 'saml' ? b.idp_sso_url?.trim() || null : null, protocol === 'saml' ? pem(b.idp_cert) : null,
+    b.link_existing === 'true',
   ];
 
   app.get(`${BASE}/users/providers`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
-    const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create,
+    const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create, link_existing,
         (select count(*) from meta.account_identity i where i.provider_id = p.id)::int as linked,
         (select string_agg(a.alias, ', ' order by a.alias) from meta.app a where p.name = any(a.sso_providers)) as apps
       from meta.auth_provider p order by display_name`)).rows;
@@ -414,7 +424,7 @@ export async function usersRoutes(app: FastifyInstance) {
             <td data-label="Issuer">${r.issuer}</td>
             <td data-label="Used by">${r.apps ?? html`<span class="muted">no apps</span>`}</td>
             <td data-label="Linked accounts">${r.linked}</td>
-            <td data-label="Status">${r.enabled ? 'enabled' : html`<b>disabled</b>`}${r.auto_create ? ' · auto-create' : ''}</td>
+            <td data-label="Status">${r.enabled ? 'enabled' : html`<b>disabled</b>`}${r.auto_create ? ' · auto-create' : ''}${r.link_existing ? ' · links existing accounts' : ''}</td>
           </tr>`) : html`<tr><td colspan="5" class="empty">No identity providers yet.</td></tr>`}</tbody></table></div>`)}
         ${region('Add provider', providerForm({}, `${BASE}/users/providers`, csrf(s), true))}
       </div>`;
@@ -422,13 +432,13 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const b = req.body ?? {};
     try {
       const r = await owner.one(
-        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, idp_sso_url, idp_cert, protocol, client_secret)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, idp_sso_url, idp_cert, link_existing, protocol, client_secret)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
         [b.name?.trim().toLowerCase(), ...providerValues(b, protocolOf(b.protocol), b.name?.trim().toLowerCase() ?? ''), protocolOf(b.protocol), b.client_secret || null],
       );
       flash(s, 'Provider added. Register the redirect URI at the provider, then test the connection.');
@@ -440,7 +450,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.get(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const pr = await owner.one('select *, client_secret is not null as has_secret from meta.auth_provider where id = $1', [req.params.id]);
     if (!pr) return reply.code(404).send('Not found');
@@ -466,7 +476,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const b = req.body ?? {};
     const current = /^\d+$/.test(req.params.id) ? await owner.one('select name, protocol from meta.auth_provider where id = $1', [req.params.id]) : undefined;
@@ -474,8 +484,8 @@ export async function usersRoutes(app: FastifyInstance) {
     try {
       await owner.query(
         `update meta.auth_provider set display_name = $2, issuer = $3, client_id = $4, scopes = $5, username_claim = $6,
-                groups_claim = $7, auto_create = $8, enabled = $9, idp_sso_url = $10, idp_cert = $11,
-                client_secret = case when $13 then null when $12::text is null then client_secret else $12 end
+                groups_claim = $7, auto_create = $8, enabled = $9, idp_sso_url = $10, idp_cert = $11, link_existing = $12,
+                client_secret = case when $14 then null when $13::text is null then client_secret else $13 end
           where id = $1`,
         [req.params.id, ...providerValues(b, current.protocol, current.name), b.client_secret || null, b.remove_secret === 'true'],
       );
@@ -487,7 +497,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers/:id/test`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const pr = await owner.one('select issuer from meta.auth_provider where id = $1', [req.params.id]);
     try {
@@ -500,7 +510,7 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   app.post(`${BASE}/users/providers/:id/delete`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
+    const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     await owner.query('delete from meta.auth_provider where id = $1', [req.params.id]);
     flash(s, 'Provider deleted.');

@@ -62,7 +62,7 @@ POST ──> CSRF check ──> page authorization ──> "before page" app pro
      ──> visibility (with the state as rendered) ──> button allowed?
      ──> copy posted values of editable items into session state
      ──> computations (after_submit)       ── error ──> roll back, re-show page with message
-     ──> validations (not for DELETE)      ── error ──> re-show page with messages (422)
+     ──> validations (DELETE: its own only) ── error ──> re-show page with messages (422)
      ──> processes, in sequence            ── error ──> roll back, re-show page with message
      ──> branches (after_processing): the first that applies
      ──> COMMIT ──> success message ──> redirect to the branch's target,
@@ -89,7 +89,7 @@ Plus: every **required** editable item must have a value.
 |---|---|
 | `item_name` | The message is shown next to this item (otherwise at the top of the page) |
 | `message` | The error message |
-| `when_button` | Only validate for this request |
+| `when_button` | Only validate for this request. A `DELETE` request runs only the validations with `when_button` `DELETE` (e.g. "approved requests can't be deleted"), not the item checks |
 
 Example: commission only for salesmen.
 

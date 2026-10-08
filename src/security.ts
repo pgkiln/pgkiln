@@ -16,15 +16,18 @@ export async function loadSecrets() {
 /**
  * Checksum for item values passed in a URL (session state protection).
  * Bound to app, page and user, so a link cannot be edited or reused by
- * another user. Must match meta.url_checksum() in 001_meta.sql.
+ * another user. Must match meta.url_checksum() (075_security_review.sql).
+ * Every name and value carries its length in bytes, so a value containing
+ * "&NAME=" can't stand for two items.
  */
 export function urlChecksum(appId: number, pageNo: number, user: string, items: Record<string, string>) {
   const norm = Object.fromEntries(Object.entries(items).map(([k, v]) => [k.toUpperCase(), v ?? '']));
+  const part = (s: string) => `${Buffer.byteLength(s)}:${s}`;
   const canonical = Object.keys(norm)
     .sort()
-    .map((k) => `${k}=${norm[k]}`)
+    .map((k) => `${part(k)}=${part(norm[k])}`)
     .join('&');
-  return createHmac('sha256', urlSecret).update(`${appId}:${pageNo}:${user.toLowerCase()}:${canonical}`).digest('hex').slice(0, 32);
+  return createHmac('sha256', urlSecret).update(`v2:${appId}:${pageNo}:${user.toLowerCase()}:${canonical}`).digest('hex').slice(0, 32);
 }
 
 /** A signature for a value the server hands out in a URL and reads back (e.g. a report's keyset position). */
@@ -35,6 +38,21 @@ export function signText(scope: string, text: string) {
 export function checksumValid(expected: string, given: string | undefined) {
   if (!given || given.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(expected), Buffer.from(given));
+}
+
+/**
+ * Which X-Forwarded-For entries to believe (TRUST_PROXY). "true" means one proxy: the address that proxy
+ * saw (the last entry) is the client, so a client can't put a made-up address in front of it and dodge the
+ * per-IP sign-in throttling. A number is that many proxies in a row; addresses or subnets (comma separated)
+ * trust exactly those proxies. Anything else: no proxy, the socket's address.
+ */
+export function trustProxySetting(v: string | undefined): boolean | string | ((addr: string, hop: number) => boolean) {
+  const t = (v ?? '').trim();
+  // hop 0 is the socket's peer, hop 1 the address it forwarded, …: believe that many proxies
+  const hops = t === 'true' ? 1 : /^\d{1,2}$/.test(t) ? Number(t) : null;
+  if (hops !== null) return hops > 0 ? (_addr: string, hop: number) => hop < hops : false;
+  if (/^[0-9a-f.:/,\s]+$/i.test(t) && /[.:]/.test(t)) return t.split(',').map((x) => x.trim()).filter(Boolean).join(',');
+  return false;
 }
 
 export const newToken = () => randomBytes(32).toString('base64url');

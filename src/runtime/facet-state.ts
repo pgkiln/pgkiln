@@ -239,9 +239,21 @@ export function facetWhere(params: URLSearchParams, reportId: number, defs: Map<
 }
 
 /** The condition of the report's text search (the row as text contains the term). */
-export function searchSql(term: string, p: SqlParams) {
-  return `"__q"::text ilike ${p.add(`%${term.replace(/[\\%_]/g, '\\$&')}%`, 'text')}`;
+export function searchSql(term: string, p: SqlParams, columns?: string[]) {
+  const pattern = p.add(`%${term.replace(/[\\%_]/g, '\\$&')}%`, 'text');
+  // with hidden columns, only the shown ones are searched (else the search would reveal hidden values)
+  if (columns) return columns.length ? `concat_ws(' ', ${columns.map((c) => `"__q".${pg.escapeIdentifier(c)}::text`).join(', ')}) ilike ${pattern}` : 'false';
+  return `"__q"::text ilike ${pattern}`;
 }
+
+/** The columns of a report a user may search, filter, sort or compute with: all but the hidden ones (config.hidden). */
+export function userColumnNames(r: Pick<Region, 'config'>, names: string[]) {
+  const hidden = new Set<string>(((r.config.hidden as unknown[] | undefined) ?? []).map((h) => String(h).toLowerCase()));
+  return names.filter((n) => !hidden.has(n.toLowerCase()) && !n.startsWith('__'));
+}
+
+/** Whether the report hides columns (then user input must be limited to the shown ones). */
+export const hidesColumns = (r: Pick<Region, 'config'>) => Array.isArray(r.config.hidden) && r.config.hidden.length > 0;
 
 // ---------------------------------------------------------------- labels
 

@@ -12,8 +12,9 @@ import { owner } from './db.ts';
 //  * ID token signature checked against the provider's JWKS, with issuer,
 //    audience, expiry and an algorithm allow-list;
 //  * accounts are linked by the provider's stable subject ("sub"); an
-//    existing account is linked by username only while it has no identity
-//    at that provider yet;
+//    existing account is linked by username only when the provider allows
+//    it (link_existing), while it has no identity at that provider yet, and
+//    for the e-mail claim only with email_verified = true;
 //  * client secrets are read with the owner connection only.
 
 export interface Provider {
@@ -27,6 +28,8 @@ export interface Provider {
   username_claim: string;
   groups_claim: string;
   auto_create: boolean;
+  /** (075) an existing account with the same username may be linked on its first sign-in here */
+  link_existing: boolean;
   enabled: boolean;
   protocol: 'oidc' | 'saml';
   idp_sso_url: string | null;
@@ -171,19 +174,30 @@ export async function finishSignIn(p: Provider, params: URLSearchParams, browser
   if (!payload.sub) throw new SsoError('The identity token has no subject.');
 
   const username = claim(payload, p.username_claim);
-  if (typeof username !== 'string' || !username || /[\s:]/.test(username) || username.length > 100)
-    throw new SsoError(`The identity token has no usable "${p.username_claim}" claim.`);
+  if (!usableUsername(username)) throw new SsoError(`The identity token has no usable "${p.username_claim}" claim.`);
   if (p.username_claim === 'email' && payload.email_verified === false) throw new SsoError('Your e-mail address is not verified at the identity provider.');
   const rawGroups = claim(payload, p.groups_claim);
   const groups = Array.isArray(rawGroups) ? rawGroups.filter((g): g is string => typeof g === 'string').map((g) => g.replace(/^\//, '')) : [];
 
-  const account = await resolveAccount(p, payload, username);
+  // an unverified e-mail address never links an existing account
+  const verified = p.username_claim !== 'email' || payload.email_verified === true;
+  const account = await resolveAccount(p, payload, username, { mayLink: verified });
   return { appId: pending.app_id, next: pending.next, username: account, groups };
 }
 
-/** Find the account for this identity, link it on first use, or create it (auto_create). */
-/** The account for an identity: linked by subject, else by username (once), else created when allowed. */
-export async function resolveAccount(p: Pick<Provider, 'id' | 'auto_create'>, payload: { sub?: string; name?: unknown; email?: unknown }, username: string) {
+/** A username from an identity provider: text without white space or colons, at most 100 characters. */
+export const usableUsername = (v: unknown): v is string => typeof v === 'string' && !!v && !/[\s:]/.test(v) && v.length <= 100;
+
+/**
+ * The account for an identity: linked by subject, else an existing account of that username
+ * (once, and only when the provider allows linking), else created when allowed.
+ */
+export async function resolveAccount(
+  p: Pick<Provider, 'id' | 'auto_create' | 'link_existing'>,
+  payload: { sub?: string; name?: unknown; email?: unknown },
+  username: string,
+  opts: { mayLink?: boolean } = {},
+) {
   return owner.tx(async (c) => {
     const linked = await c.query(
       `select a.username, a.active from meta.account_identity i join meta.account a on a.id = i.account_id
@@ -201,6 +215,9 @@ export async function resolveAccount(p: Pick<Provider, 'id' | 'auto_create'>, pa
       let row = byName.rows[0];
       if (row?.has_identity)
         throw new SsoError('This account is already linked to another identity at this provider.');
+      // trusting the username claim to name an existing account is the administrator's choice per provider
+      if (row && (!p.link_existing || opts.mayLink === false))
+        throw new SsoError(`An account "${row.username}" exists but is not linked to this identity provider. Ask an administrator to link it.`);
       if (!row) {
         if (!p.auto_create) throw new SsoError(`There is no account for "${username}". Ask an administrator for access.`);
         row = (

@@ -133,6 +133,29 @@ export async function lovLookup(ctx: PageContext, item: Item, value: string): Pr
   return r ? { display: toState(r[0]) ?? '', value: toState(r[1]) ?? '' } : null;
 }
 
+/**
+ * Whether a list of values returns every one of these return values (one query for all). A posted
+ * select list, radio group, checkbox group or shuttle value must be one its list offers: the list may
+ * leave out what the user must not choose (other departments, closed projects).
+ */
+export async function lovContains(ctx: PageContext, lov: string | null, values: string[]): Promise<boolean> {
+  const wanted = [...new Set(values)];
+  if (!wanted.length) return true;
+  const src = await lovSource(ctx, lov);
+  if (!src) return false;
+  if (Array.isArray(src)) return wanted.every((v) => src.some((o) => o.value === v));
+  const c = ctx.client!;
+  const { names, from } = await lovColumns(ctx, src);
+  const ret = names.length > 1 ? 'c1' : 'c0';
+  const res = await savepoint(c, () =>
+    c.query<{ n: number }>({ text: `select count(distinct "${ret}"::text)::int as n from ${from} where "${ret}"::text = any($1::text[])`, values: [wanted] }),
+  );
+  return res.rows[0]?.n === wanted.length;
+}
+
+/** Item types whose posted value must come from their list of values (a combobox takes free text by design). */
+export const LOV_CHECKED = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov']);
+
 /** Rows a list of values reads when its item sets no config.max_rows (1 to 50,000). */
 export const LOV_MAX_ROWS = 5000;
 export const lovMax = (item: Item) => {

@@ -39,3 +39,16 @@ test('splitStatements splits at semicolons outside strings, comments and dollar 
   ]);
   assert.deepEqual(splitStatements('  ;  -- only a comment\n'), []);
 });
+
+test('reads SQL the way PostgreSQL does: non-ASCII dollar tags, $ in identifiers, \\r ending a comment, E only as a prefix', () => {
+  // a dollar-quoted body with a non-ASCII tag is text: a value can't end it
+  assert.equal(applyBinds('select $ä$ :A $ä$, :A', { A: '$ä$ x' }), "select $ä$ :A $ä$, '$ä$ x'");
+  // foo$bar$ is one identifier, not the start of a dollar quote
+  assert.equal(applyBinds('select 1 as a$b$, :A', { A: 'v' }), "select 1 as a$b$, 'v'");
+  // a line comment ends at a carriage return
+  assert.equal(applyBinds('select 1 -- note\r, :A', { A: 'v' }), "select 1 -- note\r, 'v'");
+  // WHERE'…' is the keyword and a plain string (a backslash in it escapes nothing)
+  assert.equal(applyBinds("select 1 where'\\' <> :A", { A: 'v' }), "select 1 where'\\' <> 'v'");
+  // a real E'' string still escapes
+  assert.equal(applyBinds("select E'\\' :B', :A", { A: 'v' }), "select E'\\' :B', 'v'");
+});

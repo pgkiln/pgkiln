@@ -525,7 +525,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
           if (e instanceof ComputationFailed) throw new ProcessFailed(e.message, null);
           throw e;
         }
-        if (ctx.request !== 'DELETE') await timed(ctx, 4, 'page', 'validations', () => validate(ctx));
+        // (a DELETE runs only the validations made for it: see validate())
+        await timed(ctx, 4, 'page', 'validations', () => validate(ctx));
         messages = await timed(ctx, 4, 'page', 'processes (submit)', () => runProcesses(ctx, 'submit'));
         // after processing: the first branch that applies; else the button's target page
         branchTo = await branchTarget(ctx, 'after_processing');

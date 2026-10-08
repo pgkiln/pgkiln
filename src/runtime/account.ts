@@ -4,7 +4,8 @@ import { appTx, runtime } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { baseLanguage, LANGUAGE_NAMES } from '../i18n.ts';
 import { forgetAllRemembered, rememberCookie, rememberedCount } from '../remember.ts';
-import { getSession, logActivity, saveState, takeFlash } from '../session.ts';
+import { getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
+import { loginWindowMinutes } from '../security.ts';
 import type { PageContext } from './context.ts';
 import { databaseTimeZone, isTheme, matchLanguage, sameOffset, THEME_COOKIE, timeZoneFor, timeZoneNames, validTimeZone } from './locale.ts';
 import { chrome, clientTexts } from './render.ts';
@@ -53,7 +54,8 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
   )) ?? {};
   const days = await passwordDaysLeft(ctx.user);
   const devices = ctx.app.remember_me_days ? await rememberedCount(ctx.app.id, ctx.user) : 0;
-  const hasPassword = !!acc.has_password;
+  // only the user directory's own passwords change here (not database roles, custom checks or a proxy's users)
+  const hasPassword = !!acc.has_password && ownPasswords(ctx.app);
   const flash = takeFlash(ctx.session);
   const csrf = html`<input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">`;
   const opt = (name: string, value: string, label: string, checked: boolean) =>
@@ -126,6 +128,9 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
   return reply.code(code).type('text/html').send(body);
 }
 
+/** Whether the app's users sign in with the user directory's passwords (so My account may change them). */
+const ownPasswords = (a: { authentication: string }) => a.authentication === 'app_users';
+
 export async function accountRoutes(app: FastifyInstance) {
   app.get('/a/:alias/account', async (req: Req, reply) => {
     const ctx = await loadContext(req, reply, { pageNo: 'home' });
@@ -188,7 +193,12 @@ export async function accountRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     const t = ctx.locale.t;
     if (b.__csrf !== ctx.session.csrf_token) return reply.redirect(`${ctx.base}/account`, 303);
-    if (!ctx.app.local_login) return accountPage(ctx, reply, t('login.password_disabled'), 403);
+    if (!ctx.app.local_login || !ownPasswords(ctx.app)) return accountPage(ctx, reply, t('login.password_disabled'), 403);
+    // wrong current passwords count like failed sign-ins: no guessing it from a session left open
+    if (await loginThrottled(ctx.app.id, ctx.user, ctx.ip)) {
+      logActivity({ appId: ctx.app.id, username: ctx.user, event: 'login_locked', ip: ctx.ip, detail: 'password change' });
+      return accountPage(ctx, reply, t('login.throttled', { minutes: loginWindowMinutes() }), 429);
+    }
     if (b.new_password !== b.confirm_password) return accountPage(ctx, reply, t('password.mismatch'), 422);
     const problem = await passwordProblem(b.new_password, { username: ctx.user, t });
     if (problem) return accountPage(ctx, reply, problem, 422);

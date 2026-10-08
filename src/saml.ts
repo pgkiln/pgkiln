@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { SAML, ValidateInResponseTo, type CacheProvider, type Profile } from '@node-saml/node-saml';
 import { owner } from './db.ts';
-import { publicUrl, resolveAccount, sha256, SsoError, type Provider, type SsoResult } from './sso.ts';
+import { publicUrl, resolveAccount, sha256, SsoError, usableUsername, type Provider, type SsoResult } from './sso.ts';
 
 // SAML 2.0 sign-in (APEX: SAML Sign-In), service-provider initiated:
 //
@@ -116,7 +116,7 @@ export async function finishSamlSignIn(p: Provider, body: { SAMLResponse?: strin
   if (profile?.issuer !== p.issuer) throw new SsoError(`The SAML response comes from ${profile?.issuer ?? 'an unknown issuer'}, not from ${p.issuer}.`);
   if (!profile?.nameID) throw new SsoError('The SAML response names no user.');
   const username = p.username_claim === 'nameID' ? profile.nameID : values(profile[p.username_claim])[0];
-  if (!username) throw new SsoError(`The SAML response has no "${p.username_claim}" attribute.`);
+  if (!usableUsername(username)) throw new SsoError(`The SAML response has no usable "${p.username_claim}" attribute.`);
   const account = await resolveAccount(p, { sub: profile.nameID, name: values(profile.displayName ?? profile.cn)[0], email: profile.email ?? profile.mail }, username);
   return { appId: pending.app_id, next: pending.next, username: account, groups: values(profile[p.groups_claim]) };
 }

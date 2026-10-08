@@ -113,8 +113,8 @@ before(async () => {
   app = await buildApp({ logger: false });
   appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
   await owner.query(
-    `insert into meta.auth_provider (name, display_name, issuer, client_id, client_secret, groups_claim)
-     values ('mock', 'Mock IdP', $1, $2, $3, 'groups')`,
+    `insert into meta.auth_provider (name, display_name, issuer, client_id, client_secret, groups_claim, link_existing)
+     values ('mock', 'Mock IdP', $1, $2, $3, 'groups', true)`,
     [issuer, CLIENT_ID, SECRET],
   );
   await owner.query(`update meta.app set sso_providers = '{mock}' where id = $1`, [appId]);
@@ -146,6 +146,39 @@ describe('single sign-on (OpenID Connect)', () => {
     assert.equal((await b.get('/a/hr/9')).statusCode, 200, 'king keeps his admin role');
     const link = await owner.one(`select a.username from meta.account_identity i join meta.account a on a.id = i.account_id where i.subject = 'sub-king'`);
     assert.equal(link.username, 'king');
+  });
+
+  test('an existing account is linked only when the provider allows it (account takeover by username claim)', async () => {
+    await owner.query(`insert into meta.account (username) values ('sso_local') on conflict do nothing`);
+    await owner.query(`update meta.auth_provider set link_existing = false, auto_create = true where name = 'mock'`);
+    try {
+      const res = await ssoLogin(new Browser(), { sub: 'sub-claims-local', preferred_username: 'SSO_LOCAL' });
+      assert.equal(res.statusCode, 403);
+      assert.match(res.body, /not linked to this identity provider/);
+      const n = await owner.one(`select count(*)::int as n from meta.account_identity where subject = 'sub-claims-local'`);
+      assert.equal(n.n, 0, 'nothing was linked');
+    } finally {
+      await owner.query(`update meta.auth_provider set link_existing = true, auto_create = false where name = 'mock'`);
+    }
+  });
+
+  test('with the e-mail claim, only a verified address links an existing account', async () => {
+    await owner.query(`insert into meta.account (username) values ('sso_mail@example.com') on conflict do nothing`);
+    await owner.query(`update meta.auth_provider set username_claim = 'email' where name = 'mock'`);
+    try {
+      for (const claims of [{}, { email_verified: false }]) {
+        const res = await ssoLogin(new Browser(), { sub: 'sub-mail', email: 'sso_mail@example.com', ...claims });
+        assert.equal(res.statusCode, 403, JSON.stringify(claims));
+      }
+      const n = await owner.one(`select count(*)::int as n from meta.account_identity where subject = 'sub-mail'`);
+      assert.equal(n.n, 0, 'an unverified address linked nothing');
+      const ok = await ssoLogin(new Browser(), { sub: 'sub-mail', email: 'sso_mail@example.com', email_verified: true });
+      assert.notEqual(ok.statusCode, 500);
+      const linked = await owner.one(`select count(*)::int as n from meta.account_identity where subject = 'sub-mail'`);
+      assert.equal(linked.n, 1, 'a verified address links the account');
+    } finally {
+      await owner.query(`update meta.auth_provider set username_claim = 'preferred_username' where name = 'mock'`);
+    }
   });
 
   test('a linked account cannot be taken over by another subject with the same username', async () => {

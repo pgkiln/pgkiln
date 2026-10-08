@@ -8,7 +8,7 @@ import { checksumValid, urlChecksum } from '../security.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { publicError, toState, type PageContext } from './context.ts';
 import { arrange, cleanLayout, currentLayout, defaultLayout, layoutJson, layoutParam, MAX_FROZEN, MAX_WIDTH, MIN_WIDTH, parseLayout, type GridLayout, type Placed } from './grid-layout.ts';
-import { lovOptions, type LovOption } from './items.ts';
+import { lovContains, lovOptions, type LovOption } from './items.ts';
 import { resolveRestRegion, restAllows, restGridCall, restWritable } from './rest-sources.ts';
 import { fillItems, linkAttrs } from './links.ts';
 import { detailsOf, masterColumnOf, masterItemOf, selectHref, selectRowOf } from './master-detail.ts';
@@ -551,6 +551,11 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
   const table = rest ? '' : ((await c.query('select $1::regclass::text as t', [r.table_name])).rows[0].t as string);
   const pkCol = ident(r.pk_column);
   const required = (name: string) => !!r.config.columns?.[name]?.required;
+  // a column with a list of values (a select in the grid) takes only values its list offers
+  const offered = async (name: string, v: string) => {
+    const lov = r.config.columns?.[name]?.lov;
+    return !lov || v === '' || (await lovContains(ctx, lov, [v]));
+  };
   const norm = (ci: number, v: string | undefined) => (cols[ci].dataTypeID === 16 ? (v === 'true' ? 'true' : 'false') : v ?? '');
 
   const errors: string[] = [];
@@ -594,16 +599,17 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
     }
     const sets: string[] = [];
     const changes: Record<string, string | null> = {};
-    cols.forEach((col, ci) => {
-      if (!writable.has(col.name)) return;
+    for (const [ci, col] of cols.entries()) {
+      if (!writable.has(col.name)) continue;
       // a field that was not posted is left alone (an unchecked checkbox posts nothing: false)
-      if (col.dataTypeID !== 16 && body[`${g}_${i}_c${ci}`] === undefined) return;
+      if (col.dataTypeID !== 16 && body[`${g}_${i}_c${ci}`] === undefined) continue;
       const v = norm(ci, one(`${g}_${i}_c${ci}`));
-      if (v === (orig[ci] ?? null)) return;
+      if (v === (orig[ci] ?? null)) continue;
       if (required(col.name) && v === '') errors.push(ctx.locale.t('grid.required', { row: Number(i) + 1, label: headingOf(r, col.name, ctx.locale.tr) }));
+      if (!(await offered(col.name, v))) errors.push(ctx.locale.t('error.lov_value', { label: `${ctx.locale.t('grid.row', { row: Number(i) + 1 })}: ${headingOf(r, col.name, ctx.locale.tr)}` }));
       sets.push(`${ident(col.name)} = ${literal(v === '' ? null : v)}`);
       changes[col.name] = v === '' ? null : v;
-    });
+    }
     if (!sets.length) continue;
     await attempt(ctx.locale.t('grid.row', { row: Number(i) + 1 }), async () => {
       if (rest) await restGridCall(r, 'update', pk, changes);
@@ -628,6 +634,12 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
         if (v !== '' && !(col.dataTypeID === 16 && v === 'false')) values.push([col.name, v]);
       });
       if (!values.length) continue; // blank template row
+      const notOffered = [];
+      for (const [n, v] of values) if (!(await offered(n, v))) notOffered.push(n);
+      if (notOffered.length) {
+        errors.push(...notOffered.map((n) => ctx.locale.t('error.lov_value', { label: `${ctx.locale.t('grid.new_row')}: ${headingOf(r, n, ctx.locale.tr)}` })));
+        continue;
+      }
       if (masterCol) {
         if (masterValue === null) {
           errors.push(ctx.locale.t('grid.select_master'));

@@ -58,7 +58,7 @@ import { debugOf, finishDebug } from './debug.ts';
 import { migrate, pendingMigrations } from './migrate.ts';
 import { ownerUrl, runtime } from './db.ts';
 import { refreshInstanceSettings } from './instance.ts';
-import { loadSecrets, securityHeaders } from './security.ts';
+import { loadSecrets, securityHeaders, trustProxySetting } from './security.ts';
 import { lucideSymbol } from './icons.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -76,8 +76,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   if (!pending.length) await refreshInstanceSettings(true);
   const app = Fastify({
     logger: opts.logger === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
-    // behind a reverse proxy, set TRUST_PROXY=true so req.ip is the client (login throttling)
-    trustProxy: process.env.TRUST_PROXY === 'true',
+    // behind a reverse proxy, set TRUST_PROXY so req.ip is the client (login throttling)
+    trustProxy: trustProxySetting(process.env.TRUST_PROXY),
   });
   securityHeaders(app);
   if (pending.length) {

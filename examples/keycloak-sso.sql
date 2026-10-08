@@ -4,8 +4,8 @@
 --                   allen / allen-sso (no groups), carol / carol-sso (hr-managers).
 -- king and allen match existing pgapex accounts and are linked on first sign-in;
 -- carol has no pgapex account and is created automatically (auto_create).
-insert into meta.auth_provider (name, display_name, issuer, client_id, client_secret, groups_claim, auto_create)
-values ('keycloak', 'Keycloak', 'http://127.0.0.1:8180/realms/pgapex', 'pgapex', 'pgapex-dev-secret', 'groups', true)
+insert into meta.auth_provider (name, display_name, issuer, client_id, client_secret, groups_claim, auto_create, link_existing)
+values ('keycloak', 'Keycloak', 'http://127.0.0.1:8180/realms/pgapex', 'pgapex', 'pgapex-dev-secret', 'groups', true, true)
 on conflict (name) do nothing;
 
 update meta.app set sso_providers = array(select distinct unnest(sso_providers || '{keycloak}'))

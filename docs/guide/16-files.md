@@ -592,7 +592,8 @@ don't), `class="page-break"` on a `div` or `hr`, `align="right"`/`"center"` (or 
 **Downloading.** A button with action **document** and the template's name downloads it, filled
 with the page's values as they were last loaded or saved (so save a changed form first); any link
 can use `?doc=NAME` too. Item values in such a URL need their checksum like every link, and the
-page's own access rules apply. The HR sample's employee form (page 3) has a *Print* button for the
+page's own access rules apply. Users who haven't signed in (on a page that doesn't require it) only
+get the documents that page offers with a visible document button. The HR sample's employee form (page 3) has a *Print* button for the
 `EMPLOYEE_SHEET` template.
 
 In the builder, **Preview PDF** under the template fills it with item values you type

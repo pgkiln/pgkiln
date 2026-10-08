@@ -13,6 +13,12 @@ export async function renderDocument(ctx: PageContext, name: string) {
   // metadata through the runtime connection: the page's transaction already runs as the app's role
   const tpl = await runtime.one<DocumentTemplate>('select * from meta.document_template where app_id = $1 and name = upper($2)', [ctx.app.id, name.slice(0, 100)]);
   if (!tpl || !(await isAuthorized(ctx, tpl.authz))) throw new Forbidden(ctx.locale.t('error.document_unavailable'));
+  // without signing in (a public page of an app that has sign-in) only the documents the page itself offers
+  // with a visible document button: ?doc= on any public page would otherwise hand out every template
+  if (ctx.app.authentication !== 'none' && !ctx.session.username) {
+    const offered = [...(ctx.vis?.buttons.values() ?? [])].some((b) => b.action === 'document' && (b.document ?? '').toUpperCase() === tpl.name);
+    if (!offered) throw new Forbidden(ctx.locale.t('error.document_unavailable'));
+  }
   const now = new Date().toISOString();
   const data = await savepoint(c, () =>
     documentData(c, stripSemicolon(applyBinds(tpl.query, bindValues(ctx))), {

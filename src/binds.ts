@@ -12,8 +12,15 @@ import pg from 'pg';
 
 export type BindValues = Record<string, string | null | undefined>;
 
+/** Bind names the server sets (see bindValues in runtime/context.ts); input from outside never sets them. */
+export const RESERVED_BINDS = new Set(['APP_USER', 'APP_ID', 'APP_ALIAS', 'APP_SESSION', 'APP_PAGE_ID', 'REQUEST', 'APP_LANGUAGE']);
+
 const IDENT_START = /[A-Za-z_]/;
 const IDENT_CHAR = /[A-Za-z0-9_]/;
+/** A character that can continue an SQL identifier (PostgreSQL allows $ and any non-ASCII letter). */
+const SQL_IDENT_CHAR = /[A-Za-z0-9_$\u0080-\uffff]/;
+/** A dollar-quote tag as PostgreSQL reads it: letters (non-ASCII too), digits and _, not starting with a digit. */
+const DOLLAR_TAG = /^\$([A-Za-z_\u0080-\uffff][A-Za-z0-9_\u0080-\uffff]*)?\$/;
 
 export function literal(value: string | null | undefined): string {
   if (value === null || value === undefined || value === '') return 'NULL';
@@ -44,10 +51,11 @@ export function skipQuoted(sql: string, i: number): number | null {
   const n = sql.length;
   const c = sql[i];
   const next = sql[i + 1];
-  // -- line comment
+  // -- line comment (PostgreSQL ends it at \n or \r)
   if (c === '-' && next === '-') {
-    const end = sql.indexOf('\n', i);
-    return end === -1 ? n : end;
+    let end = i + 2;
+    while (end < n && sql[end] !== '\n' && sql[end] !== '\r') end++;
+    return end;
   }
   // /* block comment */ (Postgres allows nesting)
   if (c === '/' && next === '*') {
@@ -67,7 +75,8 @@ export function skipQuoted(sql: string, i: number): number | null {
   }
   // 'string' (incl. E'...' where backslash escapes a quote) and "identifier"
   if (c === "'" || c === '"') {
-    const backslashEscapes = c === "'" && (sql[i - 1] === 'E' || sql[i - 1] === 'e');
+    // E'…' only when the E is a prefix of its own (WHERE'x' is the keyword WHERE and a plain string)
+    const backslashEscapes = c === "'" && (sql[i - 1] === 'E' || sql[i - 1] === 'e') && !(i >= 2 && SQL_IDENT_CHAR.test(sql[i - 2]));
     let j = i + 1;
     while (j < n) {
       if (backslashEscapes && sql[j] === '\\') {
@@ -85,9 +94,9 @@ export function skipQuoted(sql: string, i: number): number | null {
     }
     return Math.min(n, j + 1);
   }
-  // $tag$ dollar quoting $tag$
-  if (c === '$') {
-    const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
+  // $tag$ dollar quoting $tag$ (a $ inside an identifier, as in foo$bar$, isn't one)
+  if (c === '$' && !(i > 0 && SQL_IDENT_CHAR.test(sql[i - 1]))) {
+    const m = DOLLAR_TAG.exec(sql.slice(i, i + 200));
     if (m) {
       const tag = m[0];
       const end = sql.indexOf(tag, i + tag.length);
