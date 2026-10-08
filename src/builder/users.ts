@@ -374,7 +374,9 @@ export async function usersRoutes(app: FastifyInstance) {
         ${input('groups_claim', 'Groups claim', pr.groups_claim ?? 'groups', { help: 'Dot paths work, e.g. realm_access.roles' })}
       </div>
       <div class="field u-mt075"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> Create accounts automatically on first sign-in</label>
-        <small class="help">Otherwise only people with an existing account (same username) can sign in.</small></div>
+        <small class="help">Otherwise only people with an account linked to this provider (or allowed below) can sign in.</small></div>
+      <div class="field"><label class="check"><input type="checkbox" name="link_existing" value="true"${pr.link_existing ? raw(' checked') : ''}> Link existing accounts with the same username on their first sign-in</label>
+        <small class="help">Only when users can't choose the username claim themselves at this provider: otherwise someone could register the name of an existing account and take it over. With the e-mail claim, only verified addresses link. Turn it off once the accounts are linked.</small></div>
       <div class="field"><label class="check"><input type="checkbox" name="enabled" value="true"${pr.enabled !== false ? raw(' checked') : ''}> Enabled</label></div>
       ${!isNew && pr.has_secret ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_secret" value="true"> Remove the stored client secret</label></div>` : ''}
       <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add provider' : 'Save'}</button></div>
@@ -394,12 +396,13 @@ export async function usersRoutes(app: FastifyInstance) {
     b.scopes?.trim() || 'openid profile email', b.username_claim?.trim() || 'preferred_username', b.groups_claim?.trim() || 'groups',
     b.auto_create === 'true', b.enabled === 'true',
     protocol === 'saml' ? b.idp_sso_url?.trim() || null : null, protocol === 'saml' ? pem(b.idp_cert) : null,
+    b.link_existing === 'true',
   ];
 
   app.get(`${BASE}/users/providers`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create,
+    const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create, link_existing,
         (select count(*) from meta.account_identity i where i.provider_id = p.id)::int as linked,
         (select string_agg(a.alias, ', ' order by a.alias) from meta.app a where p.name = any(a.sso_providers)) as apps
       from meta.auth_provider p order by display_name`)).rows;
@@ -414,7 +417,7 @@ export async function usersRoutes(app: FastifyInstance) {
             <td data-label="Issuer">${r.issuer}</td>
             <td data-label="Used by">${r.apps ?? html`<span class="muted">no apps</span>`}</td>
             <td data-label="Linked accounts">${r.linked}</td>
-            <td data-label="Status">${r.enabled ? 'enabled' : html`<b>disabled</b>`}${r.auto_create ? ' · auto-create' : ''}</td>
+            <td data-label="Status">${r.enabled ? 'enabled' : html`<b>disabled</b>`}${r.auto_create ? ' · auto-create' : ''}${r.link_existing ? ' · links existing accounts' : ''}</td>
           </tr>`) : html`<tr><td colspan="5" class="empty">No identity providers yet.</td></tr>`}</tbody></table></div>`)}
         ${region('Add provider', providerForm({}, `${BASE}/users/providers`, csrf(s), true))}
       </div>`;
@@ -427,8 +430,8 @@ export async function usersRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       const r = await owner.one(
-        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, idp_sso_url, idp_cert, protocol, client_secret)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, idp_sso_url, idp_cert, link_existing, protocol, client_secret)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
         [b.name?.trim().toLowerCase(), ...providerValues(b, protocolOf(b.protocol), b.name?.trim().toLowerCase() ?? ''), protocolOf(b.protocol), b.client_secret || null],
       );
       flash(s, 'Provider added. Register the redirect URI at the provider, then test the connection.');
@@ -474,8 +477,8 @@ export async function usersRoutes(app: FastifyInstance) {
     try {
       await owner.query(
         `update meta.auth_provider set display_name = $2, issuer = $3, client_id = $4, scopes = $5, username_claim = $6,
-                groups_claim = $7, auto_create = $8, enabled = $9, idp_sso_url = $10, idp_cert = $11,
-                client_secret = case when $13 then null when $12::text is null then client_secret else $12 end
+                groups_claim = $7, auto_create = $8, enabled = $9, idp_sso_url = $10, idp_cert = $11, link_existing = $12,
+                client_secret = case when $14 then null when $13::text is null then client_secret else $13 end
           where id = $1`,
         [req.params.id, ...providerValues(b, current.protocol, current.name), b.client_secret || null, b.remove_secret === 'true'],
       );

@@ -9,10 +9,10 @@
 \set cert `curl -s http://127.0.0.1:8180/realms/pgapex/protocol/saml/descriptor | sed -n 's:.*<ds\:X509Certificate>\([^<]*\)</ds\:X509Certificate>.*:\1:p' | head -1`
 
 insert into meta.auth_provider (name, display_name, protocol, issuer, client_id, idp_sso_url, idp_cert,
-                                username_claim, groups_claim, auto_create)
+                                username_claim, groups_claim, auto_create, link_existing)
 values ('keycloak-saml', 'Keycloak (SAML)', 'saml', 'http://127.0.0.1:8180/realms/pgapex',
         'http://127.0.0.1:3100/sso/saml/keycloak-saml/metadata', 'http://127.0.0.1:8180/realms/pgapex/protocol/saml',
-        E'-----BEGIN CERTIFICATE-----\n' || :'cert' || E'\n-----END CERTIFICATE-----', 'nameID', 'groups', true)
+        E'-----BEGIN CERTIFICATE-----\n' || :'cert' || E'\n-----END CERTIFICATE-----', 'nameID', 'groups', true, true)
 on conflict (name) do update set idp_cert = excluded.idp_cert;
 
 update meta.app set sso_providers = array_append(sso_providers, 'keycloak-saml')

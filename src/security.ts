@@ -16,15 +16,18 @@ export async function loadSecrets() {
 /**
  * Checksum for item values passed in a URL (session state protection).
  * Bound to app, page and user, so a link cannot be edited or reused by
- * another user. Must match meta.url_checksum() in 001_meta.sql.
+ * another user. Must match meta.url_checksum() (075_security_review.sql).
+ * Every name and value carries its length in bytes, so a value containing
+ * "&NAME=" can't stand for two items.
  */
 export function urlChecksum(appId: number, pageNo: number, user: string, items: Record<string, string>) {
   const norm = Object.fromEntries(Object.entries(items).map(([k, v]) => [k.toUpperCase(), v ?? '']));
+  const part = (s: string) => `${Buffer.byteLength(s)}:${s}`;
   const canonical = Object.keys(norm)
     .sort()
-    .map((k) => `${k}=${norm[k]}`)
+    .map((k) => `${part(k)}=${part(norm[k])}`)
     .join('&');
-  return createHmac('sha256', urlSecret).update(`${appId}:${pageNo}:${user.toLowerCase()}:${canonical}`).digest('hex').slice(0, 32);
+  return createHmac('sha256', urlSecret).update(`v2:${appId}:${pageNo}:${user.toLowerCase()}:${canonical}`).digest('hex').slice(0, 32);
 }
 
 /** A signature for a value the server hands out in a URL and reads back (e.g. a report's keyset position). */

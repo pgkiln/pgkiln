@@ -38,8 +38,8 @@ before(async () => {
   appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
   await cleanup();
   await owner.query(
-    `insert into meta.auth_provider (name, display_name, protocol, issuer, client_id, idp_sso_url, idp_cert, username_claim, groups_claim, auto_create)
-     values ('mock-saml', 'Mock SAML', 'saml', $1, $2, 'https://idp.example.test/sso', $3, 'nameID', 'groups', true)`,
+    `insert into meta.auth_provider (name, display_name, protocol, issuer, client_id, idp_sso_url, idp_cert, username_claim, groups_claim, auto_create, link_existing)
+     values ('mock-saml', 'Mock SAML', 'saml', $1, $2, 'https://idp.example.test/sso', $3, 'nameID', 'groups', true, true)`,
     [IDP, SP, idp.cert],
   );
   await owner.query(`update meta.app set sso_providers = array_append(sso_providers, 'mock-saml') where id = $1`, [appId]);
