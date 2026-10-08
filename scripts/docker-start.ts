@@ -10,8 +10,10 @@
 //    pgapex_authenticator PGAPEX_AUTHENTICATOR_PASSWORD or else a random one.
 //    A role this start created gets its password at once (it has a
 //    well-known default). Roles belong to the whole server, so for an older
-//    role a password that is known to work is left alone: other databases
-//    on the server may use it. Whatever can't be checked or set is logged.
+//    role the password is set only when the server refuses the configured
+//    one: a password that works, or can't be checked, is left alone because
+//    other databases on the server may use it. Whatever can't be checked or
+//    set is logged.
 // 4. Replaces the builder's admin / admin with PGAPEX_ADMIN_PASSWORD; while
 //    admin still has that password, the server doesn't start.
 // 5. Installs an example application (PGAPEX_EXAMPLE=hr) when asked.
@@ -118,15 +120,19 @@ try {
   const unchecked = (role: string, check: string) =>
     check === 'any' ? `the server lets ${role} sign in here without a password, so its password can't be checked` : `${role} can't sign in here to check its password`;
 
-  // the password the app is configured with: set it unless it is known to work
-  if (runtimeCheck !== 'yes') {
-    if (runtimeCheck === 'any' || runtimeCheck === 'unknown') say(`${unchecked(runtimeRole, runtimeCheck)}; setting the one from RUNTIME_DATABASE_URL`);
+  // the password the app is configured with: set it for a new role or one that
+  // refuses it; when the check is inconclusive (trust, a transient error), leave
+  // an older role alone: other databases may use its password
+  if (runtimeCheck === 'new' || runtimeCheck === 'no') {
     await setPassword(runtimeRole, decodeURIComponent(runtimeUrl.password), `${runtimeRole} has the password from RUNTIME_DATABASE_URL now${runtimeCheck === 'new' ? '' : ` (${shared})`}`, 'make sure it matches RUNTIME_DATABASE_URL.');
+  } else if (runtimeCheck !== 'yes') {
+    say(`${unchecked(runtimeRole, runtimeCheck)}; leaving its password alone. If the app can't sign in, set it to the one in RUNTIME_DATABASE_URL yourself.`);
   }
   if (api) {
-    if (apiCheck !== 'yes') {
-      if (apiCheck === 'any' || apiCheck === 'unknown') say(`${unchecked('pgapex_authenticator', apiCheck)}; setting the one from PGAPEX_AUTHENTICATOR_PASSWORD`);
+    if (apiCheck === 'new' || apiCheck === 'no') {
       await setPassword('pgapex_authenticator', api, `pgapex_authenticator has the password from PGAPEX_AUTHENTICATOR_PASSWORD now${apiCheck === 'new' ? '' : ` (${shared})`}`, 'set it before using PostgREST.');
+    } else if (apiCheck !== 'yes') {
+      say(`${unchecked('pgapex_authenticator', apiCheck)}; leaving its password alone. If PostgREST can't sign in, set it to PGAPEX_AUTHENTICATOR_PASSWORD yourself.`);
     }
   } else if (apiCheck === 'new' || apiCheck === 'yes') {
     // apiCheck checked the well-known default

@@ -189,9 +189,11 @@ or else a random one while it has its well-known default. Roles the start create
 passwords straight away. PostgreSQL roles belong to the whole server, not to one database: other
 pgapex databases on the same server share them, and with them these passwords. When the server
 doesn't check passwords for the container's connection (`trust` in `pg_hba.conf`), the start
-can't tell whether an older `pgapex_authenticator` still has its default and says so in the log:
-set `PGAPEX_AUTHENTICATOR_PASSWORD` then. Checking that default costs one failed sign-in in the
-server log per start; setting `PGAPEX_AUTHENTICATOR_PASSWORD` avoids it. `GET /healthz` answers `ok` when the database is reachable; the image's health
+can't tell whether an older role has the password you configured. The same holds when the check
+fails for another reason, such as a network error. The start then leaves that password alone
+(other databases may use it), says so in the log, and you set it yourself. Without
+`PGAPEX_AUTHENTICATOR_PASSWORD`, checking the authenticator's default costs one failed sign-in in
+the server log per start; setting it avoids that. `GET /healthz` answers `ok` when the database is reachable; the image's health
 check uses it.
 
 **`POSTGRES_PASSWORD` counts at the first start only**: the bundled database keeps it in the volume
