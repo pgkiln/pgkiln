@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { jwtVerify } from 'jose';
 import pg from 'pg';
 import { jwtSecret } from '../api.ts';
-import { applyBinds, splitStatements, type BindValues } from '../binds.ts';
+import { applyBinds, RESERVED_BINDS, splitStatements, type BindValues } from '../binds.ts';
 import { owner, runtime } from '../db.ts';
 import { english } from '../i18n.ts';
 import { loadApp, type App } from '../metadata.ts';
@@ -60,6 +60,8 @@ export function handlerProblems(handlers: unknown): string[] {
     if (typeof h.path !== 'string' || (h.path !== '' && !h.path.split('/').every((s: string) => SEGMENT.test(s))))
       problems.push(`${at}: "path" is like employees or employees/:empno (letters, digits, - _ . and :parameters).`);
     else if (h.path === 'openapi.json') problems.push(`${at}: openapi.json is reserved for the module's description.`);
+    else if (h.path.split('/').some((s: string) => s.startsWith(':') && RESERVED_BINDS.has(s.slice(1).toUpperCase())))
+      problems.push(`${at}: ${[...RESERVED_BINDS].join(', ')} are set by the server and can't be path parameters.`);
     if (!TYPES.includes(h.type)) problems.push(`${at}: "type" is one of ${TYPES.join(', ')}.`);
     if (typeof h.source !== 'string' || !h.source.trim()) problems.push(`${at}: "source" is the SQL.`);
     if (h.type !== 'sql' && h.method !== 'GET') problems.push(`${at}: collection and item handlers answer GET; use "sql" for ${h.method}.`);
@@ -153,6 +155,9 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
       binds.BODY = JSON.stringify(body);
     }
     Object.assign(binds, params);
+    // the built-in names are the server's, never the caller's (?app_user=… must not set :APP_USER)
+    for (const k of Object.keys(binds)) if (RESERVED_BINDS.has(k)) delete binds[k];
+    Object.assign(binds, { APP_USER: who.user, APP_ID: String(a.id), APP_ALIAS: a.alias, APP_SESSION: null, APP_PAGE_ID: null, REQUEST: null });
     const result = await runtime.tx(async (c) => {
       await c.query(
         `select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true),

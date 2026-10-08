@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { chat, chatProvider, type ChatTool, type ToolOutcome } from '../ai/chat.ts';
 import { AiError } from '../ai/types.ts';
-import { applyBinds } from '../binds.ts';
+import { applyBinds, RESERVED_BINDS } from '../binds.ts';
 import { appTx, owner, type Client } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
@@ -245,7 +245,8 @@ async function runTool(ctx: PageContext, tool: ToolDef | undefined, input: Recor
       const { json } = await fetchSource(s, values);
       return { content: rowsJson(toRows(json, s).rows, max) };
     }
-    const binds = { ...bindValues(ctx), ...Object.fromEntries(Object.entries(checked.values).map(([k, v]) => [k.toUpperCase(), v])) };
+    // the model's arguments never replace the server's own names (:APP_USER, :APP_ID, …)
+    const binds = { ...bindValues(ctx), ...Object.fromEntries(Object.entries(checked.values).map(([k, v]) => [k.toUpperCase(), v]).filter(([k]) => !RESERVED_BINDS.has(k as string))) };
     const rows = await appTx(txContext(ctx), (c) => runQuery(c, tool.sql!, binds, max, tool.writes === true));
     return { content: rowsJson(rows, max) };
   } catch (e) {
