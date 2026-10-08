@@ -16,7 +16,7 @@ import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
 import { renderView, VIEWS, type View } from './report-views.ts';
 import { columnTemplates } from './template-components.ts';
-import { facetFilterSql, facetFilters, reportFacetDefs, searchSql } from './facet-state.ts';
+import { facetFilterSql, facetFilters, hidesColumns, reportFacetDefs, searchSql, userColumnNames } from './facet-state.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { checksumValid, signText } from '../security.ts';
 import { parseArea, parseNear, postgis, spatialConditions, type MapArea, type Near } from './spatial.ts';
@@ -381,16 +381,18 @@ export const q = (col: string) => `"__q".${pg.escapeIdentifier(col)}`;
  * A computation that doesn't parse (or whose name is taken) is left out and
  * reported, so the report keeps working and the user can remove it.
  */
-export async function withComputations(ctx: PageContext, src: string, st: ReportState) {
+export async function withComputations(ctx: PageContext, r: Region, src: string, st: ReportState) {
   if (!st.computations.length) return { src, errors: [] as { c: Computation; message: string }[] };
   const columns = await columnsOf(ctx, src);
+  // a computation may only use the shown columns: a hidden one would be shown through it
+  const usable = userColumnNames(r, columns);
   const errors: { c: Computation; message: string }[] = [];
   const exprs: string[] = [];
   const taken = new Set(columns.map((c) => c.toLowerCase()));
   for (const c of st.computations) {
     try {
       if (taken.has(c.name.toLowerCase())) throw new ComputeError(`There is already a column ${c.name}.`);
-      exprs.push(`${computeSql(c.expr, columns)} as ${pg.escapeIdentifier(c.name)}`);
+      exprs.push(`${computeSql(c.expr, usable)} as ${pg.escapeIdentifier(c.name)}`);
       taken.add(c.name.toLowerCase());
     } catch (e) {
       if (!(e instanceof ComputeError)) throw e;
@@ -407,24 +409,27 @@ export async function withComputations(ctx: PageContext, src: string, st: Report
  */
 export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   await resolveRestRegion(ctx, r);
-  const { src } = await withComputations(ctx, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st);
+  const { src } = await withComputations(ctx, r, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st);
   const where: string[] = [];
   // the search term, facet values and range bounds are query parameters
   const p = new SqlParams();
-  if (st.search) where.push(searchSql(st.search, p));
+  const hides = hidesColumns(r);
   const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions));
-  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r);
+  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort));
   // column name → type oid
   const fields = needCols ? await fieldsOf(ctx, src) : [];
   const cols = new Map<string, number>(fields.map((f) => [f.name, f.dataTypeID]));
-  for (const f of st.filters) if (cols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
+  // the columns the user may choose (filters, highlights, control break, aggregates, views, sorting): not the hidden ones
+  const userCols = new Map<string, number>(userColumnNames(r, [...cols.keys()]).map((n) => [n, cols.get(n)!]));
+  if (st.search) where.push(searchSql(st.search, p, hides ? [...userCols.keys()] : undefined));
+  for (const f of st.filters) if (userCols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
   for (const f of facets) {
     const cond = facetFilterSql(f, cols, p);
     if (cond) where.push(cond);
   }
   // the map area and distance: PostGIS on a geometry/geography column when installed, else lat/lng
   if (st.area || st.near) where.push(...spatialConditions(st, cols, await postgis()).where);
-  return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols, names: fields.map((f) => f.name), params: p, values: queryValues(p.values) };
+  return { src, where: where.length ? ` where ${where.join(' and ')}` : '', cols, userCols, names: fields.map((f) => f.name), params: p, values: queryValues(p.values) };
 }
 
 /**
@@ -434,7 +439,7 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
  * max_rows + 1 rows, so a huge table never has to be read to the end.
  */
 export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mode: 'page' | 'csv' | 'xlsx' | 'pdf') {
-  const { src, where: filterWhere, cols, names, params } = await filtered(ctx, r, st);
+  const { src, where: filterWhere, cols, userCols, names, params } = await filtered(ctx, r, st);
   let where = filterWhere;
   const extra: string[] = [];
   const range = rangePaging(r);
@@ -443,11 +448,13 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
     extra.push(range ? 'null::int8 as "__total"' : 'count(*) over () as "__total"');
     // highlights: one boolean per rule, the first true one colors the row
     st.highlights.forEach((h, i) => {
-      if (cols.has(h.column)) extra.push(`coalesce(${OPERATORS[h.op].sql(q(h.column), h.value)}, false) as "__h${i}"`);
+      if (userCols.has(h.column)) extra.push(`coalesce(${OPERATORS[h.op].sql(q(h.column), h.value)}, false) as "__h${i}"`);
     });
   }
   const order: string[] = [];
-  const plan = keysetPlan(r, st, cols, names);
+  // sorting by position: only a shown column (sorting by a hidden one would reveal its order)
+  const sortOk = !st.sort || !hidesColumns(r) || (st.sort <= names.length && userCols.has(names[st.sort - 1]));
+  const plan = keysetPlan(r, sortOk ? st : { ...st, sort: 0 }, cols, names);
   let seek: Seek['dir'] | null = null;
   if (plan) {
     const cond = mode === 'page' && st.seek ? seekCondition(plan, st.seek, params) : null;
@@ -460,8 +467,8 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
     // the position of each row, as text: the sort column, then the keyset columns
     if (mode === 'page') [...(plan.sortCol ? [plan.sortCol] : []), ...plan.kc].forEach((c, i) => extra.push(`${q(c)}::text as "__k${i}"`));
   } else {
-    if (st.breakCol && cols.has(st.breakCol)) order.push(`${q(st.breakCol)} asc nulls last`);
-    if (st.sort) order.push(`${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`);
+    if (st.breakCol && userCols.has(st.breakCol)) order.push(`${q(st.breakCol)} asc nulls last`);
+    if (st.sort && sortOk) order.push(`${st.sort} ${st.desc ? 'desc' : 'asc'} nulls last`);
   }
   const orderBy = order.length ? ` order by ${order.join(', ')}` : '';
   let from = `(\n${src}\n) "__q"${where}`;
@@ -519,8 +526,11 @@ export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: 
  * and per control-break value when there is a break column.
  */
 export async function aggregateRows(ctx: PageContext, r: Region, st: ReportState, numeric: (col: string) => boolean) {
-  const { src, where, cols, values } = await filtered(ctx, r, st);
-  const aggs = st.aggregates.filter((a) => cols.has(a.column) && (!AGGREGATES[a.fn].numeric || numeric(a.column)));
+  const { src, where, cols: all, userCols, values } = await filtered(ctx, r, st);
+  // the user's aggregates on shown columns; a grid's own (config.aggregates, own: false) on any column
+  const usable = (a: Aggregate) => ((a as { own?: boolean }).own === false ? all : userCols).has(a.column);
+  const cols = userCols;
+  const aggs = st.aggregates.filter((a) => usable(a) && (!AGGREGATES[a.fn].numeric || numeric(a.column)));
   if (!aggs.length) return null;
   const exprs = aggs.map((a) => AGGREGATES[a.fn].sql(q(a.column)));
   const c = ctx.client!;
@@ -741,8 +751,9 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     if (info.page > 2) info.prev = seekToken(ctx, r, st, info.page - 1, 'p', at(info.rows[0]));
   }
   const hlIdx = st.highlights.map((_, i) => res.fields.findIndex((f) => f.name === `__h${i}`));
-  const breakIdx = st.breakCol ? fields.findIndex((f) => f.name === st.breakCol) : -1;
   const allCols = visibleColumns(r, fields);
+  // a control break on a shown column only (its values head the groups)
+  const breakIdx = st.breakCol ? (allCols.find(({ f }) => f.name === st.breakCol)?.i ?? -1) : -1;
   const cols = allCols.filter(({ i }) => i !== breakIdx);
   let agg: Awaited<ReturnType<typeof aggregateRows>> = null;
   if (!failure && st.aggregates.length)
@@ -756,7 +767,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const pre = new Set<string>((r.config.preformatted ?? []).map((x: string) => x.toLowerCase()));
   let computeErrors: { c: Computation; message: string }[] = [];
   if (st.computations.length && !failure)
-    computeErrors = (await withComputations(ctx, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st).catch(() => ({ errors: [] }))).errors;
+    computeErrors = (await withComputations(ctx, r, stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx))), st).catch(() => ({ errors: [] }))).errors;
   const selection = st.view === 'report' ? selectionOf(ctx.page, r) : null;
   const selIdx = selection ? fields.findIndex((f) => f.name.toLowerCase() === selection.column.toLowerCase()) : -1;
   const selected = new Set(selIdx >= 0 ? splitValues(ctx.session.state[selection!.item] ?? '') : []);

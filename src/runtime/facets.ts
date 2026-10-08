@@ -8,7 +8,7 @@ import { heading } from './items.ts';
 import { fieldsOf, regionUrl } from './report.ts';
 import {
   CUSTOM_RANGE, facetDefs, facetFilters, facetKeys, facetParamNames, facetWhere, rangeKind, rangeLabel, rangeSql, rangeValue,
-  reportFacetDefs, searchSql, type FacetDef,
+  reportFacetDefs, searchSql, hidesColumns, userColumnNames, type FacetDef,
 } from './facet-state.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 
@@ -54,7 +54,7 @@ const col = (name: string) => `"__q".${pg.escapeIdentifier(name)}`;
 /** The search and every other facet's filter, as conditions (their values in p). */
 function othersWhere(ctx: PageContext, fs: FacetSource, except: string, p: SqlParams, withSearch = true) {
   const where = facetWhere(ctx.params, fs.report.id, fs.all, fs.cols, p, except);
-  if (withSearch && fs.search) where.unshift(searchSql(fs.search, p));
+  if (withSearch && fs.search) where.unshift(searchSql(fs.search, p, hidesColumns(fs.report) ? userColumnNames(fs.report, [...fs.cols.keys()]) : undefined));
   return where;
 }
 

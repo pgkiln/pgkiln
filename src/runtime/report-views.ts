@@ -31,7 +31,7 @@ const notice = (text: string) => html`<p class="muted view-note">${text}</p>`;
 
 async function groupBy(ctx: PageContext, r: Region, st: ReportState): Promise<Raw> {
   const t = ctx.locale.t;
-  const { src, where, cols, values } = await filtered(ctx, r, st);
+  const { src, where, userCols: cols, values } = await filtered(ctx, r, st);
   const groupCols = st.groupBy.columns.filter((c) => cols.has(c));
   if (!groupCols.length) return notice(t('report.view_not_set'));
   const fns = st.groupBy.functions.flatMap((f) => {
@@ -70,7 +70,7 @@ async function groupBy(ctx: PageContext, r: Region, st: ReportState): Promise<Ra
 async function pivot(ctx: PageContext, r: Region, st: ReportState): Promise<Raw> {
   const t = ctx.locale.t;
   const pv = st.pivot;
-  const { src, where, cols, values: params } = await filtered(ctx, r, st);
+  const { src, where, userCols: cols, values: params } = await filtered(ctx, r, st);
   const measure = pv && cols.has(pv.row) && cols.has(pv.column) ? aggSql(pv.fn, pv.value, cols) : null;
   if (!pv || !measure) return notice(t('report.view_not_set'));
   const c = ctx.client!;
@@ -114,7 +114,7 @@ async function pivot(ctx: PageContext, r: Region, st: ReportState): Promise<Raw>
 async function chart(ctx: PageContext, r: Region, st: ReportState): Promise<Raw> {
   const t = ctx.locale.t;
   const ch = st.chart;
-  const { src, where, cols, values } = await filtered(ctx, r, st);
+  const { src, where, userCols: cols, values } = await filtered(ctx, r, st);
   const measure = ch && cols.has(ch.label) ? aggSql(ch.fn, ch.value, cols) : null;
   if (!ch || !measure) return notice(t('report.view_not_set'));
   const series = `${t(`agg.${ch.fn}`)}: ${headingOf(r, ch.value, ctx.locale.tr)}`;
