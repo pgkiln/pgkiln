@@ -6303,6 +6303,25 @@ describe('security review 2026-10-08', () => {
     assert.equal(await ipFor('false'), '10.0.0.5');
   });
 
+  test('without signing in, ?doc= only gives the documents the public page offers', async () => {
+    const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 11`, [appId])).id;
+    await owner.query('update meta.page set requires_auth = false where id = $1', [pid]);
+    let button: number | null = null;
+    try {
+      const anon = new Browser();
+      const refused = await anon.get('/a/hr/11?doc=EMPLOYEE_SHEET');
+      assert.equal(refused.statusCode, 403, 'a public page does not hand out any template');
+      assert.doesNotMatch(String(refused.headers['content-type']), /pdf/);
+      const king = await as('king');
+      assert.match(String((await king.get('/a/hr/11?doc=EMPLOYEE_SHEET')).headers['content-type']), /application\/pdf/, 'signed-in users keep ?doc=');
+      button = (await owner.one(`insert into meta.button (page_id, seq, name, label, action, document, target_items) values ($1, 99, 'REVIEW_PRINT', 'Print', 'document', 'EMPLOYEE_SHEET', '{}') returning id`, [pid])).id;
+      assert.match(String((await anon.get('/a/hr/11?doc=EMPLOYEE_SHEET')).headers['content-type']), /application\/pdf/, 'offered by a visible button: allowed');
+    } finally {
+      if (button) await owner.query('delete from meta.button where id = $1', [button]);
+      await owner.query('update meta.page set requires_auth = true where id = $1', [pid]);
+    }
+  });
+
   test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
     assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
     assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));
