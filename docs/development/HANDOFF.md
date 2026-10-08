@@ -1491,14 +1491,14 @@ Branch `sprint-41` from `main` (sprints 39 and 40 merged, unreleased). One agent
 | 5 | URL checksum canonicalisation collision (`k=v&k=v`) | done (075, `v2:` + byte lengths) |
 | 6 | My account password change not throttled | done |
 | 7 | Any developer could change identity providers, LDAP directories, password policy, grant access outside workspace | done (administrators only; workspace check) |
-| 8 | `meta.page_url`/`meta.app_id()` trust settable settings; app SQL can `RESET ROLE` to `pgapex_runtime` | docs (SECURITY.md) |
+| 8 | `meta.page_url`/`meta.app_id()` trust settable settings; app SQL can `RESET ROLE` to `pgapex_runtime` | documented in SECURITY.md (real fix = a login role per app: follow-up) |
 | 9 | DELETE skipped `when_button = 'DELETE'` validations | done |
-| 10 | `TRUST_PROXY=true` trusts every X-Forwarded-For hop | todo |
-| 11 | Database/custom auth usernames share roles/preferences with same-named accounts | todo |
-| 12 | Document templates without authorization reachable via `?doc=` on any page (public too) | todo |
-| 13 | Bind scanner: non-ASCII dollar-quote tags | todo |
+| 10 | `TRUST_PROXY=true` trusts every X-Forwarded-For hop | done (`true` = 1 hop, number, or addresses) |
+| 11 | Database/custom auth usernames share roles/preferences with same-named accounts | roles: documented behaviour, kept; My account password form now only for `app_users` apps |
+| 12 | Document templates without authorization reachable via `?doc=` on any page (public too) | done (anonymous: only templates the page offers with a button) |
+| 13 | Bind scanner: non-ASCII dollar-quote tags, `$` in identifiers, `\r` comments, `WHERE'…'` | done |
 
-Then: docs (SECURITY.md findings table, guide chapters 04/08/13, CHANGELOG), full `npm test`, e2e, merge.
+Docs done (SECURITY.md second findings table, guide 01/04/05/06/08/13/16, CHANGELOG "Security"). Next: full `npm test`, `npm run test:e2e`, merge.
 
 ## Sprint 39 (IN PROGRESS): every remaining 🟡 parity row except languages (owner, 2026-10-06: "make sure that all other apex feature parity are done before you continue with the other languages")
 
