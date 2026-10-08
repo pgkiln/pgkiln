@@ -6143,3 +6143,67 @@ describe('sprint 39 push notifications', () => {
     }
   });
 });
+
+describe('security review 2026-10-08', () => {
+  const section = (body: string, id: number) => {
+    const at = body.indexOf(`id="R${id}"`);
+    return at < 0 ? '' : body.slice(at, body.indexOf('</section>', at));
+  };
+
+  test('hidden report columns cannot be shown, searched, filtered, sorted or aggregated through URL parameters', async () => {
+    const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 11`, [appId])).id;
+    const rid = (await owner.one(
+      `insert into meta.region (page_id, seq, title, type, source, config) values ($1, 999, 'Review hidden', 'report',
+        'select empno, ename, sal as secret_sal from hr.emp', '{"hidden": ["secret_sal"]}') returning id`, [pid])).id as number;
+    try {
+      const king = await as('king');
+      const rows = (body: string) => (section(body, rid).match(/<tr[ >]/g) ?? []).length;
+      const all = rows((await king.get('/a/hr/11')).body);
+      const get = async (k: string, v: string) => (await king.get(`/a/hr/11?${new URLSearchParams({ [`r${rid}_${k}`]: v })}`)).body;
+      // a computed column over a hidden one is refused (shown as an error chip, no values)
+      const computed = section(await get('c', 'LEAK|secret_sal'), rid);
+      assert.doesNotMatch(computed, /5000|5,000|5\.000/, 'no hidden values through a computation');
+      assert.equal(rows(await get('f', 'secret_sal|gt|4999')), all, 'a filter on a hidden column is ignored');
+      assert.equal(rows(await get('q', '5000')), rows(await get('q', 'no-such-text-zz')), 'the search does not look into hidden columns');
+      const tbody = (body: string) => /<tbody>([\s\S]*?)<\/tbody>/.exec(section(body, rid))?.[1] ?? '';
+      assert.equal(tbody(await get('s', '3')), tbody((await king.get('/a/hr/11')).body), 'sorting by a hidden column is ignored');
+      assert.doesNotMatch(section(await get('a', 'max|secret_sal'), rid), /5000|5,000|5\.000/, 'no aggregate of a hidden column');
+      const group = (await king.get(`/a/hr/11?r${rid}_v=group&r${rid}_g=ename&r${rid}_ga=${encodeURIComponent('max|secret_sal')}`)).body;
+      assert.doesNotMatch(section(group, rid), /5000|5,000|5\.000/, 'no group-by aggregate of a hidden column');
+      const pivot = (await king.get(`/a/hr/11?r${rid}_v=pivot&r${rid}_pv=${encodeURIComponent('ename|secret_sal|count|empno')}`)).body;
+      assert.doesNotMatch(section(pivot, rid), /5000|5,000|5\.000/, 'no pivot on a hidden column');
+      const brk = (await king.get(`/a/hr/11?r${rid}_b=secret_sal`)).body;
+      assert.doesNotMatch(section(brk, rid), /5000|5,000|5\.000/, 'no control break on a hidden column');
+      // shown columns still work
+      assert.match(section(await get('c', 'TWICE|empno * 2'), rid), /15678/, 'computations over shown columns work');
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [rid]);
+    }
+  });
+
+  test('REST modules: the caller cannot set :APP_USER or other built-in binds', async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'review_binds', 'Review', $2)`,
+      [appId, JSON.stringify([{ method: 'GET', path: 'me', type: 'item', source: 'select :APP_USER as u, :APP_ID as a, :APP_SESSION as s' }])]);
+    try {
+      const token = (await issueApiToken(appId, 'allen', 1)).token;
+      const res = await app.inject({ method: 'GET', url: '/a/hr/rest/review_binds/me?app_user=KING&APP_ID=1&app_session=x', headers: { authorization: `Bearer ${token}` } });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.deepEqual(res.json(), { u: 'allen', a: String(appId), s: null });
+      const { handlerProblems } = await import('../src/runtime/rest.ts');
+      assert.ok(handlerProblems([{ method: 'GET', path: 'x/:app_user', type: 'item', source: 'select 1' }]).some((p) => /set by the server/.test(p)));
+    } finally {
+      await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'review_binds'`, [appId]);
+    }
+  });
+
+  test('a URL checksum covers names and values unambiguously (no "&NAME=" inside a value)', async () => {
+    assert.notEqual(urlChecksum(appId, 3, 'u', { P3_ID: 'x&P3_OWNER=me' }), urlChecksum(appId, 3, 'u', { P3_ID: 'x', P3_OWNER: 'me' }));
+    assert.notEqual(urlChecksum(appId, 3, 'u', { A: '1=2' }), urlChecksum(appId, 3, 'u', { 'A=1': '2' }));
+    // the database computes the same checksum (meta.page_url, notifications)
+    for (const items of [{ P3_EMPNO: '7839' }, { P3_ID: 'x&P3_OWNER=me', P3_B: 'ä€😀' }, { P3_E: '' }]) {
+      const db = await owner.one('select meta.url_checksum($1, 3, $2, $3) as cs', [appId, 'King', JSON.stringify(items)]);
+      assert.equal(db.cs, urlChecksum(appId, 3, 'King', items), JSON.stringify(items));
+    }
+  });
+});
