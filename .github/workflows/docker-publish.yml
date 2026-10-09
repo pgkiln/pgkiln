@@ -33,6 +33,9 @@ jobs:
 
       - id: meta
         uses: docker/metadata-action@v6
+        env:
+          # multi-arch images: GitHub links the package to the repository through the index's annotations
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: |
             pgkiln/pgkiln
@@ -47,6 +50,7 @@ jobs:
             org.opencontainers.image.url=https://pgkiln.vargar.eu
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.vendor=Vargar
+            org.opencontainers.image.source=https://github.com/pgkiln/pgkiln
 
       - uses: docker/build-push-action@v7
         with:
@@ -55,6 +59,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
