@@ -11,6 +11,7 @@ db/
 examples/                  example applications as SQL (the tutorial)
 examples/plugins/          plug-in files (template components) to import
 scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
+scripts/screenshots.ts     the README's screenshots in docs/images/ (npm run screenshots, HR example)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)
 bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
@@ -25,8 +26,9 @@ src/
   subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
   workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
                            merge into the main application or refresh the copy, both through cli/replace.ts
-  cli/                     the command line: main.ts (commands, help, exit codes), files.ts (directories,
-                           zip), diff.ts, replace.ts (import --replace in place)
+  cli/                     the command line: main.ts (commands, help, exit codes), apps.ts (connect, export,
+                           read, import), files.ts (directories, zip), diff.ts, replace.ts (import --replace in place),
+                           mcp.ts (`pgapex mcp`: the MCP server for AI coding agents, chapter 20)
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings, NOTICEs to the debug log), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits

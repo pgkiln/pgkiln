@@ -6345,3 +6345,38 @@ describe('security review 2026-10-08', () => {
     }
   });
 });
+
+describe('sprint 42 MCP server for AI agents', () => {
+  test('run_query cannot change anything: one statement, in a read-only transaction', async () => {
+    const { readOnlyQuery } = await import('../src/cli/mcp.ts');
+    const { withDb } = await import('../src/cli/apps.ts');
+    await owner.query('create table if not exists public.mcp_probe (n int)');
+    try {
+      await withDb(async (db) => {
+        for (const sql of [
+          'insert into public.mcp_probe values (1)',
+          // a second statement after ending the transaction (the simple query protocol would run it)
+          'commit; insert into public.mcp_probe values (2)',
+          'rollback; insert into public.mcp_probe values (3)',
+          'set transaction read write',
+          `do $$ begin insert into public.mcp_probe values (4); end $$`,
+          'select 1; insert into public.mcp_probe values (5)',
+          `with x as (insert into public.mcp_probe values (6) returning n) select * from x`,
+        ]) await assert.rejects(readOnlyQuery(db, sql, 10), Error, sql);
+        // still usable afterwards, and still read-only
+        assert.equal((await readOnlyQuery(db, 'select 1 as one', 10)).rows[0].one, 1);
+      });
+      assert.equal((await owner.one('select count(*)::int as n from public.mcp_probe')).n, 0);
+    } finally {
+      await owner.query('drop table public.mcp_probe');
+    }
+  });
+
+  test('run_query hides password hashes, secrets and tokens by column name', async () => {
+    const { readOnlyQuery } = await import('../src/cli/mcp.ts');
+    const { withDb } = await import('../src/cli/apps.ts');
+    const r = await withDb((db) =>
+      readOnlyQuery(db, `select 'x' as password_hash, 'y' as client_secret, 'z' as token, 'w' as api_key, 'ok' as name`, 10));
+    assert.deepEqual(r.rows[0], { password_hash: '(hidden)', client_secret: '(hidden)', token: '(hidden)', api_key: '(hidden)', name: 'ok' });
+  });
+});

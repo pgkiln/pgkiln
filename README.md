@@ -11,6 +11,31 @@ them.
 
 > pgapex is an independent open source project and is not affiliated with Oracle. Oracle and APEX are trademarks of Oracle; the name is provisional.
 
+<p align="center">
+  <img src="docs/images/builder-page-designer.png" alt="The page designer: component tree, layout and property editor" width="100%">
+</p>
+
+## Screenshots
+
+Everything below is the HR example application (`npm run example:hr`) and the builder. The
+screenshots are made by `npm run screenshots`.
+
+| | |
+|---|---|
+| ![Dashboard with metric cards and charts](docs/images/app-dashboard.png) | ![Interactive report with search and filters](docs/images/app-interactive-report.png) |
+| **Dashboard**: metric cards and charts, all of it SQL | **Interactive report**: search, filters, sort, download |
+| ![Faceted search with suggested filters](docs/images/app-faceted-search.png) | ![Map and cards regions](docs/images/app-cards-map.png) |
+| **Smart filters and faceted search** | **Map and cards** regions on the same table |
+| ![Charts in dark mode](docs/images/app-charts-dark.png) | ![Calendar region](docs/images/app-calendar.png) |
+| **Charts**, in dark mode | **Calendar** of leave requests |
+| ![App Builder home](docs/images/builder-home.png) | ![SQL Workshop object browser](docs/images/builder-object-browser.png) |
+| **App Builder** home | **SQL Workshop**: object browser with RLS and grants |
+
+<p align="center">
+  <img src="docs/images/app-phone.png" alt="The dashboard on a phone" width="260"><br>
+  <em>Responsive on phones and tablets, and installable as a Progressive Web App</em>
+</p>
+
 ## Quick start
 
 With Docker (no Node.js needed):
@@ -60,6 +85,26 @@ npm run test:e2e     # browser tests on phone/tablet/desktop (npx playwright ins
 `npm run db:reset` recreates the database (pgapex only). Schema changes go in a new
 `db/migrations/NNN_*.sql` file; `npm run db:migrate` applies pending ones.
 
+## Working with AI coding agents
+
+pgapex ships an **MCP server** (`pgapex mcp`), so Claude Code, Cursor and other agents can find an
+application, read and explain its pages, look at the tables and RLS policies behind them, search
+this documentation, and change the application: export it as files (one YAML file per component,
+SQL inline), edit them, show the diff, and import them again in one transaction. In a checkout,
+`.mcp.json` starts it for Claude Code; for your own project:
+
+```bash
+claude mcp add pgapex -- /path/to/pgapex/bin/pgapex.js mcp
+```
+
+Then ask things like *"explain what happens when I press Save on page 3 of hr"* or *"add a hire
+date column to the employee report and show me the diff"*. Queries it runs are read-only. See
+[AI coding agents](docs/guide/20-ai-agents.md).
+
+Without an agent, the same export and import is on the command line (`pgapex export hr --format text`,
+`pgapex diff`, `pgapex import --replace`, see [the CLI](docs/guide/18-cli.md)) and in the builder
+(*Export* / *Import*).
+
 ## Documentation
 
 The **[user guide](docs/README.md)** explains how everything works: installation and
@@ -97,6 +142,7 @@ For a full comparison with Oracle APEX 26.1, including what's missing, see
 - Export and import of apps as JSON, and developer accounts
 - A `pgapex` command line: migrations, export/import, and apps as one file per component for git
   (diff, update in place)
+- An MCP server for AI coding agents (`pgapex mcp`): read, explain, change, diff and import applications
 
 **Security** is covered in [SECURITY.md](SECURITY.md): least-privilege runtime role, per-app database roles, authorization schemes, checksummed URLs and grid rows, CSRF protection, login throttling, a strict CSP, and 28 security regression tests.
 

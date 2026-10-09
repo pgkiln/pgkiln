@@ -8,11 +8,11 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import { root } from '../env.ts';
-import { docToFiles, filesToDoc, stableJson, type Doc, type FileMap } from '../appfiles.ts';
+import { docToFiles, stableJson } from '../appfiles.ts';
+import { exportDoc, importDoc, readSource, UsageError, withDb } from './apps.ts';
 
 export const EXIT = { ok: 0, differences: 1, usage: 2, failure: 3 } as const;
 
-class UsageError extends Error {}
 
 type Values = Record<string, string | boolean | undefined>;
 interface Command {
@@ -28,54 +28,6 @@ interface Command {
 
 const out = (s: string) => process.stdout.write(s);
 const err = (s: string) => process.stderr.write(s);
-
-// ------------------------------------------------------------------ database
-
-async function connect() {
-  const { default: pg } = await import('pg');
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL is not set (use --db, the environment or .env)');
-  // dates as Postgres sends them, like the server (src/db.ts)
-  for (const oid of [1082, 1114, 1184, 1083, 1266]) pg.types.setTypeParser(oid, (v: string) => v);
-  const client = new pg.Client({ connectionString: url, application_name: 'pgapex-cli' });
-  await client.connect();
-  return client;
-}
-
-async function withDb<T>(fn: (db: Awaited<ReturnType<typeof connect>>) => Promise<T>) {
-  const db = await connect();
-  try {
-    return await fn(db);
-  } finally {
-    await db.end();
-  }
-}
-
-async function exportDoc(db: Awaited<ReturnType<typeof connect>>, alias: string): Promise<Doc> {
-  const r = await db.query('select meta.export_app($1) as doc', [alias]);
-  if (!r.rows[0]?.doc) throw new Error(`application ${alias} not found (pgapex apps lists them)`);
-  return r.rows[0].doc;
-}
-
-/** A JSON export, an application directory or a .zip of one. */
-async function readSource(path: string): Promise<{ doc: Doc; files?: FileMap }> {
-  if (!existsSync(path)) throw new UsageError(`${path} not found`);
-  const { readDir, readZip } = await import('./files.ts');
-  if (statSync(path).isDirectory()) {
-    const files = readDir(path);
-    return { doc: filesToDoc(files), files };
-  }
-  const buf = readFileSync(path);
-  if (buf.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) {
-    const files = readZip(buf);
-    return { doc: filesToDoc(files), files };
-  }
-  try {
-    return { doc: JSON.parse(buf.toString('utf8')) };
-  } catch (e) {
-    throw new Error(`${path}: not a JSON export, a directory or a .zip (${(e as Error).message})`);
-  }
-}
 
 // ------------------------------------------------------------------ password input
 
@@ -232,29 +184,13 @@ const COMMANDS: Record<string, Command> = {
       const { doc } = await readSource(path);
       const alias = (v.alias as string) ?? doc?.app?.alias;
       if (!alias) throw new Error('the export has no alias: use --alias');
-      return withDb(async (db) => {
-        await db.query('begin');
-        try {
-          const exists = (await db.query('select id from meta.app where alias = $1', [alias])).rows[0];
-          let id: number;
-          if (exists && !v.replace) throw new UsageError(`application ${alias} exists: use --replace to update it, or --alias for a copy`);
-          if (exists) {
-            const { replaceApp } = await import('./replace.ts');
-            id = await replaceApp(db, doc, alias);
-          } else id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), alias])).rows[0].id;
-          await db.query('commit');
-          out(exists
-            ? `Replaced ${alias} (application ${id}).\n`
-            : `Imported ${alias} (application ${id}). Check its database role and grant access in the builder.\n`);
-          // supporting objects never run on import: the developer reviews and runs them in the builder
-          const scripts = (await db.query('select count(*)::int as n from meta.supporting_script where app_id = $1', [id])).rows[0].n;
-          if (scripts) out(`It has ${scripts} supporting object script(s); they were not run. Review and run them in the builder: Shared Components → Supporting objects.\n`);
-          return EXIT.ok;
-        } catch (e) {
-          await db.query('rollback').catch(() => {});
-          throw e;
-        }
-      });
+      const r = await withDb((db) => importDoc(db, doc, { alias, replace: !!v.replace }));
+      out(r.replaced
+        ? `Replaced ${alias} (application ${r.id}).\n`
+        : `Imported ${alias} (application ${r.id}). Check its database role and grant access in the builder.\n`);
+      // supporting objects never run on import: the developer reviews and runs them in the builder
+      if (r.scripts) out(`It has ${r.scripts} supporting object script(s); they were not run. Review and run them in the builder: Shared Components → Supporting objects.\n`);
+      return EXIT.ok;
     },
   },
 
@@ -287,6 +223,25 @@ const COMMANDS: Record<string, Command> = {
         if (!v['name-only']) err(changes.length ? `${changes.length} file(s) differ.\n` : 'No differences.\n');
       }
       return changes.length ? EXIT.differences : EXIT.ok;
+    },
+  },
+
+  mcp: {
+    usage: 'pgapex mcp',
+    summary: 'run an MCP server on standard input/output for AI coding agents (Claude Code, Cursor, …)',
+    details:
+      'Lets an agent list applications, read pages and shared components, describe tables, run read-only\n' +
+      'queries, search the user guide, and export, diff and import applications as files.\n' +
+      'The repository\'s .mcp.json starts it for Claude Code; elsewhere:\n' +
+      '  claude mcp add pgapex -- /path/to/pgapex/bin/pgapex.js mcp\n' +
+      'See docs/guide/20-ai-agents.md.',
+    options: {},
+    optionHelp: [],
+    positionals: [0, 0],
+    async run() {
+      const { serve } = await import('./mcp.ts');
+      await serve();
+      return EXIT.ok;
     },
   },
 

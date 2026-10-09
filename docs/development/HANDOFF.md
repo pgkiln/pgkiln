@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-06 (sprint 38 released as v0.30.0; sprint 39 in progress on `sprint-39`). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–073).
+Last updated: 2026-10-09 (sprint 42 in progress on `sprint-42`: MCP server, README screenshots). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–073).
 
 ## Project in one paragraph
 
@@ -1476,6 +1476,21 @@ installations (databases) for tenants that must not see each other. Parity row �
 **Release 0.29.0 (2026-10-06):** CI-style run on 5446: 1069 pass / 10 skip, e2e 136/136. Parity totals 100/15/0/3
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
+
+## Sprint 42 (DONE, merged, unreleased): MCP server for AI agents, README screenshots (owner, 2026-10-09: "add screenshots to the readme … is there something like laravel boost … can we also import / export apps")
+
+Branch `sprint-42` from `main`. One agent, main checkout. No migration.
+
+- done: `pgapex mcp` (`src/cli/mcp.ts`, hand-written JSON-RPC on stdio, 12 tools), shared DB helpers moved to
+  `src/cli/apps.ts`, `.mcp.json`, `CLAUDE.md`, guide chapter 20, `test/mcp.test.ts`, security tests "sprint 42 MCP".
+- done: `scripts/screenshots.ts` (`npm run screenshots`) → `docs/images/*.png`, README gallery + AI agents section.
+- Import/export already existed (CLI `export/import/diff`, builder Export/Import); the MCP tools reuse it.
+- Incident (2026-10-09): while smoke-testing, `run_query` with "commit; delete from hr.emp" ran both statements
+  (pg uses the simple protocol for a query without parameters), emptying hr.emp in the dev DB and cascading to
+  leave_request, emp_document, review. Fixed (`queryMode: 'extended'` + a snapshot before the statement; regression
+  test). Restored emp + leave_request from hr.audit_log, review from a fresh install; emp_document rows and emp
+  photos (if the dev DB had any) are lost; the audit log keeps the delete and the restore.
+- verified: `npm test` 1209 pass / 9 skip / 0 fail; no UI change, so e2e not rerun. Merged into main.
 
 ## Sprint 41 (DONE, merged, unreleased): fixes from the security review of 2026-10-08 (owner: "please work on all the found issues")
 
