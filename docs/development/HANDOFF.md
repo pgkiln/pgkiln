@@ -39,7 +39,7 @@ server-side HTML, plus a builder at `/builder`. Read `docs/README.md` (the user 
 - Tests: `npm test` (needs the DB), `npm run test:e2e` (needs `npx playwright install chromium`).
 - Stop the dev server with `kill $(lsof -t -iTCP:3100 -sTCP:LISTEN)`. **Don't** use `pkill -f server.ts`:
   the pattern matches the calling shell itself.
-- GitHub: `git@github.com:NickVrgr/Postgresql_APEX.git` (SSH push works). The local `gh` CLI is
+- GitHub: `git@github.com:pgkiln/pgkiln.git` (SSH push works). The local `gh` CLI is
   logged in as an account without access to this repo: give the owner compare URLs instead of
   opening PRs.
 - The example app `examples/tasks-app.sql` (ann / ann-password) may be installed in the dev DB.
@@ -935,7 +935,7 @@ large tables", "Lazy loading of regions", "Region caching", "Large downloads wit
    JavaScript the normal render (or a link).
 4. Region caching per user / session / all users for a duration (invalidated on submit of the page); never across apps.
 5. Streamed CSV/Excel downloads with a cursor (DECLARE/FETCH, no new dependency) so memory stays flat.
-The agent commits `wip:` checkpoints often. CI is readable now: `gh run list -R NickVrgr/Postgresql_APEX` /
+The agent commits `wip:` checkpoints often. CI is readable now: `gh run list -R pgkiln/pgkiln` /
 `gh run view <id> --log-failed` (owner logged gh in as NickVrgr on 2026-10-04).
 
 **Result (2026-10-04, v0.19.0):** row ranges (`"pagination": "range"`) and `max_rows` for reports and grids; row limits
@@ -989,7 +989,7 @@ Branch `sprint-30` from `main` (v0.21.0); one agent in the main checkout, dev DB
 **If a session ends:** `git log --oneline main..sprint-30` shows which items are committed; run tsc, `npm run
 db:reset && npm test`, `npm run test:e2e`; update the parity rows of the finished items + summary counts, CHANGELOG
 0.22.0, SECURITY.md, `.env.example`, version, CI matrix + v0.22.0, chapter 12 version line, this file; merge, tag,
-push, check CI with `gh run list -R NickVrgr/Postgresql_APEX`.
+push, check CI with `gh run list -R pgkiln/pgkiln`.
 
 **Result (2026-10-05, v0.22.0):** keyset paging (`"keyset": [...]`, signed `r<id>_k`), report PDFs from a cursor in
 batches (`PDF_MAX_ROWS`), streamed REST collections, authentication type `database` (`src/dbauth.ts`, migration 037).
@@ -1188,7 +1188,7 @@ CI matrix + v0.24.0.
 launch the next agent with "Read `docs/development/sprint-32-agent-rules.md` and follow it. Item <n> of the Sprint 32
 table in HANDOFF.md." When the items are done (or usage runs low): parity rows + summary counts, CHANGELOG 0.24.0,
 SECURITY.md, `.env.example`, version, CI upgrade matrix + v0.24.0, chapter 12 version line, this file; clean-worktree
-CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check `gh run list -R NickVrgr/Postgresql_APEX`.
+CI check (memory: CI has no `.env`), merge into `main`, tag v0.24.0, push, check `gh run list -R pgkiln/pgkiln`.
 
 **Parallel worktree (owner, 2026-10-05: "deploy another agent for the other tasks"):** items 2–4 run one after
 another in a second agent, mode B: worktree `../pgapex-wt/ai2`, branch `sprint-36-ai2` (from `sprint-36` at 28e160d),
@@ -1336,7 +1336,7 @@ e2e 107/107**. Released as 0.25.0 (SECURITY.md rows for items 1–6, CI matrix v
 3. Release 0.25.0: SECURITY.md (security notes of items 1–6 are in the reports below), `.env.example` (no new vars
    in sprint 33), version in package.json, CHANGELOG `[Unreleased]` → `[0.25.0]`, CI upgrade matrix + v0.25.0,
    chapter 12 version line, this file (migrations 048–053 released; 048 and 049 unused), then merge into `main`, tag
-   v0.25.0, push, check `gh run list -R NickVrgr/Postgresql_APEX` (the local `gh` may lack access: give compare URLs).
+   v0.25.0, push, check `gh run list -R pgkiln/pgkiln` (the local `gh` may lack access: give compare URLs).
 4. Sprint 34 (planned below).
 
 Environment notes for the next session: a `tsx watch src/server.ts` (pid 144937, started 13:37, maybe the owner's)
@@ -1486,7 +1486,7 @@ released migrations and HR SQL, dev DB credentials, CHANGELOG history. `package.
 tarball; `npm pack` installs and runs) but is still `"private": true` until the owner publishes.
 
 - done: rename, `npm test` 1209 pass / 9 skip, `npm run test:e2e` 154/154. Merged into main.
-- todo (owner first): owner creates GitHub org `pgkiln` + transfers the repo (then update remote, badge, repository/bugs
+- done: repo moved to `pgkiln/pgkiln` (owner); remote, badge, repository/bugs and clone URLs updated (sprint 44).
   URLs, clone URLs), owner logs in to npm (then drop `private`, `npm publish --dry-run`, owner publishes).
 - pgkiln.vargar.eu: DNS → 46.224.217.153 (Caddy, vargar_nas); no TLS site block yet. Not touched.
 

@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report vulnerabilities **privately** through
-[GitHub private vulnerability reporting](https://github.com/NickVrgr/Postgresql_APEX/security/advisories/new),
+[GitHub private vulnerability reporting](https://github.com/pgkiln/pgkiln/security/advisories/new),
 not as public issues. Include steps to reproduce and the affected version or commit. You will get
 an acknowledgement within a few working days, and a fix and advisory are coordinated with you.
 

@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/NickVrgr/Postgresql_APEX/security/advisories/new
+    url: https://github.com/pgkiln/pgkiln/security/advisories/new
     about: Please report vulnerabilities privately, not as public issues.

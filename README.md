@@ -1,6 +1,6 @@
 # pgkiln
 
-[![CI](https://github.com/NickVrgr/Postgresql_APEX/actions/workflows/ci.yml/badge.svg)](https://github.com/NickVrgr/Postgresql_APEX/actions/workflows/ci.yml)
+[![CI](https://github.com/pgkiln/pgkiln/actions/workflows/ci.yml/badge.svg)](https://github.com/pgkiln/pgkiln/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 A low-code, SQL-driven application builder for PostgreSQL, modeled on
