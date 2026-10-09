@@ -56,7 +56,7 @@ describe('icons', () => {
 
   test('(0.31) Lucide icons, Font APEX names and modifiers', () => {
     assert.ok(lucideNames().size > 1500, `${lucideNames().size} Lucide icons`);
-    // pgapex's own icon wins for a name both have; Lucide fills in the rest
+    // pgkiln's own icon wins for a name both have; Lucide fills in the rest
     assert.deepEqual(iconParts('users'), { name: 'users', set: 'pgapex', classes: [] });
     assert.deepEqual(iconParts('car-front'), { name: 'car-front', set: 'lucide', classes: [] });
     assert.deepEqual(iconParts('fa fa-car-front fa-lg fa-spin'), { name: 'car-front', set: 'lucide', classes: ['icon-lg', 'icon-spin'] });
@@ -82,7 +82,7 @@ describe('icons', () => {
     assert.match(String(res.headers['content-type']), /^image\/svg\+xml/);
     assert.equal(res.headers['cache-control'], 'public, max-age=31536000, immutable');
     assert.match(res.body, /^<!-- Lucide [\d.]+, ISC License, https:\/\/lucide\.dev\/license -->\n<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"><symbol id="i" viewBox="0 0 24 24"><path /);
-    assert.doesNotMatch(res.body, /class="lucide|stroke-width/, 'the .icon CSS draws it, like pgapex\'s own');
+    assert.doesNotMatch(res.body, /class="lucide|stroke-width/, 'the .icon CSS draws it, like pgkiln\'s own');
     for (const bad of ['nope.svg', 'car-front.png', '..%2F..%2Fpackage.json', 'CAR.svg', '%2e%2e.svg'])
       assert.equal((await app.inject({ url: `/static/icon/${bad}` })).statusCode, 404, bad);
   });

@@ -121,7 +121,7 @@ export async function finishSamlSignIn(p: Provider, body: { SAMLResponse?: strin
   return { appId: pending.app_id, next: pending.next, username: account, groups: values(profile[p.groups_claim]) };
 }
 
-/** Service provider metadata (entity ID, ACS) to register pgapex at the IdP. */
+/** Service provider metadata (entity ID, ACS) to register pgkiln at the IdP. */
 export function samlMetadata(p: Provider) {
   return client(p, requestCache(() => {})).generateServiceProviderMetadata(null);
 }

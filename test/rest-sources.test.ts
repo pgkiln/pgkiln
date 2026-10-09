@@ -266,7 +266,7 @@ describe('web credentials', () => {
       (e: Error) => /answered 401 \(invalid_client\)/.test(e.message) && !e.message.includes('wrong'));
   });
 
-  test('the HR API through pgapex\'s own OAuth endpoint', async () => {
+  test('the HR API through pgkiln\'s own OAuth endpoint', async () => {
     const client = await owner.one(`select * from meta.oauth_create_client('hr', 'rest-sources-test', '{admin}')`);
     try {
       const c = cred({ id: 900004, type: 'oauth2', username: client.client_id, token_url: `${base}/oauth/token`, secret_enc: encryptSecret(client.client_secret) });

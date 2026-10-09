@@ -17,7 +17,7 @@ export type ThemeMode = 'auto' | 'light' | 'dark';
 export interface Locale {
   lang: string;
   dir: 'ltr' | 'rtl';
-  /** pgapex's own texts, overridable by text messages */
+  /** pgkiln's own texts, overridable by text messages */
   t: Translate;
   /** translate an application text (label, title, heading, message) */
   tr: (text: string) => string;
@@ -177,7 +177,7 @@ export async function resolveLocale(req: FastifyRequest, app: App, session?: Ses
   lang ??= app.language;
   const { messages, dict } = await texts(app, lang);
   const t = translator(lang, Object.fromEntries(Object.entries(messages).map(([k, v]) => [k.toLowerCase(), v])));
-  // masks: a text message for this language, else the app's, else pgapex's default for the language
+  // masks: a text message for this language, else the app's, else pgkiln's default for the language
   const mask = (key: 'format.date' | 'format.timestamp', appMask: string | null) =>
     messages[key.toUpperCase()] ?? (appMask || t(key) || null);
   let number: Intl.NumberFormat;

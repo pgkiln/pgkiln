@@ -61,7 +61,7 @@ const clip = (v: string | undefined, max: number) => (v ?? '').trim().slice(0, m
 /**
  * The region's settings from the form. Columns must exist in the source's
  * table or view (looked up by `lookup`); a new source is a table or view
- * outside pgapex's and the system's schemas, with all its columns offered
+ * outside pgkiln's and the system's schemas, with all its columns offered
  * except binary ones.
  */
 export async function mergeReporterSettings(

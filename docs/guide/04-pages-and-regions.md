@@ -192,7 +192,7 @@ designer); a question box appears above the report when the application may use 
 
 The question goes to the service with the report's shown columns (names, headings and kinds:
 text, number, date) and its filter operators; the answer is a structured output (filters, a search
-text, a sort column) that pgapex checks again (only those columns and operators, at most five
+text, a sort column) that pgkiln checks again (only those columns and operators, at most five
 filters, short values) and turns into the report's ordinary URL parameters. So the model can only
 set what the user could set by hand in the Actions menu; the report builds the SQL (values as
 escaped literals) and runs it as the application's role, and the user sees which filters were
@@ -873,11 +873,11 @@ distance (a **Within … km** chip; the map draws the circle). In the URL it is
 <a id="postgis"></a>**Spatial filtering on the server, with or without PostGIS.** Both filters run in
 the report's SQL, never in the browser. When the [PostGIS](https://postgis.net) extension is installed
 in the database and the report has a `geometry` or `geography` column (one named `geom`, `geometry`,
-`geog`, `geography`, `the_geom`, `shape` or `location` first, else the first such column), pgapex uses
+`geog`, `geography`, `the_geom`, `shape` or `location` first, else the first such column), pgkiln uses
 PostGIS: the area becomes `ST_Intersects(column, ST_MakeEnvelope(west, south, east, north, 4326))`
 (two envelopes across the antimeridian) and the distance `ST_DWithin(column::geography, point, metres)`,
 so spatial indexes can be used and lines and areas count when they touch the area. Geometry columns
-are expected in WGS 84 (SRID 4326). pgapex finds PostGIS by itself (it looks in `pg_extension` once a
+are expected in WGS 84 (SRID 4326). pgkiln finds PostGIS by itself (it looks in `pg_extension` once a
 minute) and calls its functions in the extension's schema, so the application's database role needs
 `USAGE` on that schema (PostGIS's default, `public`, has it). Without PostGIS, or for a report without
 such a column, the report's `lat`/`lng` (or `location`) columns are compared with numbers: a bounding
@@ -887,7 +887,7 @@ first (anything else is ignored), so no text from the URL reaches the SQL.
 
 Below the map a collapsed list names every place (except for layers loaded by the visible area or as
 vector tiles), so the data is reachable without JavaScript and
-by screen readers. The map uses [Leaflet](https://leafletjs.com) (shipped with pgapex, loaded only
+by screen readers. The map uses [Leaflet](https://leafletjs.com) (shipped with pgkiln, loaded only
 on pages with a map) and tiles from OpenStreetMap. Their [tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
 suits light use; for production set `MAP_TILE_URL` (and `MAP_ATTRIBUTION`) to your own or a
 commercial tile server, e.g. `https://tiles.example.com/{z}/{x}/{y}.png`. The Content-Security-Policy
@@ -959,7 +959,7 @@ in the running application, without the developer writing a page per question. T
 decides *what* may be reported on; users decide *how*.
 
 **The developer** places the region (page designer gallery: *Data Reporter*) and, in its
-**Settings**, adds **data sources**: a table or view each (pgapex's own `meta` schema and the
+**Settings**, adds **data sources**: a table or view each (pgkiln's own `meta` schema and the
 system schemas are never offered), with a static id, a label and a description users see. Every
 column of the source is listed: tick the ones users may use and give them labels and, for numbers
 and dates, a [format mask](14-globalization.md). New sources offer all columns except binary
@@ -1033,7 +1033,7 @@ assistant is thinking and Ctrl+Enter sends.
   e.g. full-text search on policy texts.
 - **Tools** are SQL queries or REST data sources the model may call with arguments you declare
   (`parameters`: `string` (optionally an `enum`), `integer`, `number`, `boolean` or `date`;
-  `"optional": true` allows none). pgapex sends them as strict tools (JSON schemas with every
+  `"optional": true` allows none). pgkiln sends them as strict tools (JSON schemas with every
   property required, no others), checks the model's arguments against them again and runs the tool:
   - a **SQL tool** runs as the application's role; the arguments are bind variables (`:NAME`,
     escaped literals, never SQL text) next to the usual `:APP_USER` and items (parameter names can't
@@ -1125,7 +1125,7 @@ uses all of them except the badge.
 | `#APEX$ROWS#` | in the wrapper only, exactly once: where the rows go |
 
 Templates may come from plug-in files someone else wrote, so they are held to more than "developer
-HTML is trusted". When a template is saved, imported and rendered, pgapex checks it against an
+HTML is trusted". When a template is saved, imported and rendered, pgkiln checks it against an
 allow-list:
 
 - only ordinary content elements (`div`, `span`, `p`, `a`, `img`, `ul`, `table`, `time`, …): no
@@ -1137,7 +1137,7 @@ allow-list:
   again *after* substitution: a value like `javascript:alert(1)` drops the attribute.
 
 So whatever the data, the page gets exactly the template's elements and attributes. For links to
-pages of the application use `#LINK#`: pgapex fills it with a checksummed URL (and opens modal
+pages of the application use `#LINK#`: pgkiln fills it with a checksummed URL (and opens modal
 pages as a dialog). The look comes from classes (the Content-Security-Policy blocks inline styles):
 `tc-badge` (`-success`, `-warning`, `-danger`, `-info`, `-neutral`), `tc-card`, `tc-card-head`,
 `tc-avatar`, `tc-title`, `tc-meta`, `tc-body`, `tc-actions`, `tc-stack`, `tc-row`, `tc-muted`,
@@ -1250,10 +1250,10 @@ Plug-ins and runs only when a developer asks, as the application's database role
 transaction. A plug-in's code runs with the application's rights: install only plug-ins you trust,
 after reading their files.
 
-A plug-in file is built from a source directory with `pgapex plugin build <dir>`: `plugin.json` (the
+A plug-in file is built from a source directory with `pgkiln plugin build <dir>`: `plugin.json` (the
 file without contents: type, name, label, version, help, attributes, `files`, `template_component`,
 `sql_function`), the files it lists, `template.html` (and `wrapper.html`) for a region, and
-`install.sql`. `pgapex plugin install <file|dir> --app <alias>` adds it to an application; so does
+`install.sql`. `pgkiln plugin install <file|dir> --app <alias>` adds it to an application; so does
 **Import a plug-in** in the builder and, in SQL, `meta.import_plugin(<app id>, '<plug-in json>'::jsonb,
 p_replace => false)`. **Download plug-in file** gives it back. Plug-ins are part of an application
 export (`plugins`; `shared/plugins/` in a directory export).
@@ -1285,7 +1285,7 @@ blocked styles and reports them in its developer console.
 
 ## Large tables
 
-pgapex is meant for tables of any size. Reports and grids page in the database (`limit` /
+pgkiln is meant for tables of any size. Reports and grids page in the database (`limit` /
 `offset`), so only one page of rows reaches the server; the settings below keep the rest of the
 page fast too. The HR example's page 25 (*Large tables*, `examples/hr/hr_25_large_tables.sql`)
 shows them on 200,000 generated rows.

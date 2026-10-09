@@ -43,7 +43,7 @@ async function ask(s: Session, req: Parameters<typeof generate>[1]) {
   return generate(svc.name, req, { appId: null, user: s.username, source: 'builder' });
 }
 
-/** Schemas a developer may describe or ask about (not pgapex's, not the system's). */
+/** Schemas a developer may describe or ask about (not pgkiln's, not the system's). */
 async function schemas() {
   return (await owner.query<{ n: string }>(
     `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`)).rows.map((r) => r.n);

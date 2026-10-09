@@ -16,7 +16,7 @@ import { appWithLocale, loadContext, safeNext, txContext, type Req } from './rou
 
 // "My account": details, own password, and preferences (light/dark and
 // language). APEX has the APIs for this (APEX_UTIL.CHANGE_CURRENT_USER_PW,
-// theme style per user); pgapex provides the page itself.
+// theme style per user); pgkiln provides the page itself.
 
 /** Keep a signed-in user's style variant for this app (meta.account_style; '' = the base colours). */
 async function saveStyle(appId: number, username: string, style: string) {

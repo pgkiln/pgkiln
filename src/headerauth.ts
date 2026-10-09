@@ -1,5 +1,5 @@
 // HTTP-header authentication (APEX: HTTP Header Variable). A reverse proxy or
-// single sign-on gateway in front of pgapex authenticates the user and passes
+// single sign-on gateway in front of pgkiln authenticates the user and passes
 // the user name in a request header (by default X-Remote-User). Anyone can
 // send that header, so it is trusted only when the direct peer of the TCP
 // connection (the socket address, never X-Forwarded-For) is one of the proxy

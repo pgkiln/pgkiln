@@ -215,7 +215,7 @@ export async function homeRoutes(app: FastifyInstance) {
     if (!s) return;
     const main = html`<div class="ab-narrow">
       <h1>Import an application</h1>
-      <p class="muted">Paste an application export (<code>meta.export_app()</code>, the builder's Export, or <code>pgapex export</code>). A directory export is imported with <code>pgapex import</code>.</p>
+      <p class="muted">Paste an application export (<code>meta.export_app()</code>, the builder's Export, or <code>pgkiln export</code>). A directory export is imported with <code>pgkiln import</code>.</p>
       ${region('Export file', html`<form method="post" action="${BASE}/import">${csrf(s)}
         <div class="field" data-wide><label class="label" for="f_doc">Export JSON</label><textarea id="f_doc" name="doc" class="code" rows="14" required data-code="json"></textarea></div>
         ${input('alias', 'New alias (optional)', '', { help: 'Leave empty to keep the alias in the export.' })}

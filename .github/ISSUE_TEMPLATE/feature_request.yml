@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest a feature (for example something Oracle APEX has that pgapex lacks)
+description: Suggest a feature (for example something Oracle APEX has that pgkiln lacks)
 labels: [enhancement]
 body:
   - type: textarea

@@ -1,4 +1,4 @@
-// pgapex's own user-facing texts (login, account pages, reports, messages)
+// pgkiln's own user-facing texts (login, account pages, reports, messages)
 // in several languages, like APEX's translated runtime messages (en and nl
 // here, de, fr and es in src/i18n/). An
 // application can override any of them with a text message of the same
@@ -1219,10 +1219,10 @@ const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it
 // browsers send 'no' as well as 'nb' for Norwegian Bokmål
 BUILTIN.no = nb;
 
-/** pgapex's own texts in a built-in language (undefined: not built in). */
+/** pgkiln's own texts in a built-in language (undefined: not built in). */
 export const builtinTexts = (lang: string): Readonly<Record<string, string>> | undefined => BUILTIN[lang];
 
-/** Languages pgapex's own texts are available in. */
+/** Languages pgkiln's own texts are available in. */
 export const BUILTIN_LANGUAGES: [string, string][] = [['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['pl', 'Polski'], ['sv', 'Svenska'], ['da', 'Dansk'], ['nb', 'Norsk'], ['cs', 'Čeština'], ['ja', '日本語'], ['zh', '中文'], ['fi', 'Suomi'], ['tr', 'Türkçe'], ['el', 'Ελληνικά'], ['ru', 'Русский'], ['uk', 'Українська'], ['ko', '한국어'], ['ar', 'العربية'], ['he', 'עברית']];
 
 /** Names of languages for the language picker (in their own language). */
@@ -1242,7 +1242,7 @@ export function format(text: string, params?: Params) {
 
 /**
  * A translator for a language: app text messages first (overrides), then
- * pgapex's built-in texts in that language, then English.
+ * pgkiln's built-in texts in that language, then English.
  */
 export function translator(lang: string, overrides: Record<string, string> = {}): Translate {
   const own = BUILTIN[lang] ?? BUILTIN[baseLanguage(lang)] ?? {};

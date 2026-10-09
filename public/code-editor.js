@@ -1,4 +1,4 @@
-// pgapex builder: code editor for <textarea data-code="sql|plpgsql|json|html|text">.
+// pgkiln builder: code editor for <textarea data-code="sql|plpgsql|json|html|text">.
 //
 // Progressive enhancement, no dependencies. The native textarea stays the
 // source of truth (form posts, undo, spell checking off, screen readers): its

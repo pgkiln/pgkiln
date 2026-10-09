@@ -40,7 +40,7 @@ export function lucideTags(): Record<string, string[]> {
   return tags;
 }
 
-/** A Lucide icon as a one-symbol sprite (id "i"), drawn by the same .icon CSS as pgapex's own; null when there is none. */
+/** A Lucide icon as a one-symbol sprite (id "i"), drawn by the same .icon CSS as pgkiln's own; null when there is none. */
 export function lucideSymbol(name: string): string | null {
   if (!/^[a-z0-9-]{1,60}$/.test(name) || !lucideNames().has(name)) return null;
   const svg = readFileSync(join(LUCIDE_DIR, `${name}.svg`), 'utf8');
@@ -69,7 +69,7 @@ export function iconParts(value: string | null | undefined): { name: string; set
   return { name, set, classes: [...new Set(tokens.filter((t) => t !== name && t in MODIFIERS).map((t) => MODIFIERS[t]))] };
 }
 
-/** Whether a value names an icon (pgapex's or Lucide's, with or without modifiers). */
+/** Whether a value names an icon (pgkiln's or Lucide's, with or without modifiers). */
 export const isIcon = (value: string | null | undefined) => !!iconParts(value);
 
 export function icon(name: string | null | undefined, cls = 'icon') {

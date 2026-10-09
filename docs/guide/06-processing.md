@@ -169,7 +169,7 @@ values so the user can correct them.
 
 ### Debug messages
 
-Like APEX's debug, pgapex can record what each request of an application did and how long every
+Like APEX's debug, pgkiln can record what each request of an application did and how long every
 step took. Set the **debug level** under Activity → **Debug messages** (or follow the link in the
 application's settings):
 
@@ -265,7 +265,7 @@ The job's state is visible to the developer in the page designer (the chain's **
 last runs for every user) and to the user through the view `meta.process_jobs` (the user's own
 jobs: `id`, `name`, `state` = `queued` / `running` / `completed` / `failed`, `steps_done`,
 `steps_total`, `current`, `message`, `error`, times), for example in a report region. Several
-pgapex servers can share the queue: each job is claimed once (`FOR UPDATE SKIP LOCKED`). A job
+pgkiln servers can share the queue: each job is claimed once (`FOR UPDATE SKIP LOCKED`). A job
 whose server stopped while running it is marked failed after two minutes rather than run twice.
 Servers that should not run background processes set `BACKGROUND_PROCESSES=off`;
 `PROCESS_JOB_INTERVAL_S` (default 10) is how often a server looks for jobs besides being woken
@@ -343,7 +343,7 @@ The process is configured in its JSON (`config`), in one of three forms:
 ```
 
 - **`output_item`**: the answer as text goes into one item.
-- **`output_items`** (structured output): pgapex builds a strict JSON schema from the items (the
+- **`output_items`** (structured output): pgkiln builds a strict JSON schema from the items (the
   property names come from the item names without `P5_`, the descriptions from their labels; number
   items are numbers, checkboxes and switches booleans, date items dates as `YYYY-MM-DD`) and asks the
   model for exactly that JSON; each property goes into its item.
@@ -354,7 +354,7 @@ The process is configured in its JSON (`config`), in one of three forms:
   `error_message` (shown instead of the error, which then goes to the debug messages).
 
 Structured outputs use the providers' own JSON schema support (Claude: `output_config.format`,
-OpenAI: `response_format` with `strict: true`), so the answer is valid JSON of that shape; pgapex
+OpenAI: `response_format` with `strict: true`), so the answer is valid JSON of that shape; pgkiln
 checks it once more and fails the process when it isn't (for example when it was cut off at the
 output limit).
 
@@ -426,7 +426,7 @@ error, like a failing process.
 
 ## Branches
 
-After a successful submit pgapex redirects (POST-redirect-GET). **Branches** decide where to: the
+After a successful submit pgkiln redirects (POST-redirect-GET). **Branches** decide where to: the
 first branch, in sequence, whose button, authorization and condition match is taken; when none
 applies, the pressed button's `target_page`, or back to the same page. In a modal dialog, the
 dialog closes instead, and the calling page reloads.
@@ -517,7 +517,7 @@ select (select empno from hr.emp where lower(username) = lower(:APP_USER)) as ai
 ## Automations
 
 **Shared Components → Automations** run SQL or PL/pgSQL on a schedule, like APEX automations:
-nightly clean-ups, reminders, recalculations. The pgapex server schedules them, so no extension is
+nightly clean-ups, reminders, recalculations. The pgkiln server schedules them, so no extension is
 needed (pg_cron isn't available on every managed PostgreSQL service).
 
 | Setting | |
@@ -593,12 +593,12 @@ automation can't run itself. The caller's statement timeout applies, not the aut
 The HR sample's *Leave requests* page (6) has a *Send reminders now* button for admins whose
 process is `select meta.run_automation('Remind managers');`.
 
-**Running more than one pgapex server?** Every server runs the scheduler (every 30 seconds,
+**Running more than one pgkiln server?** Every server runs the scheduler (every 30 seconds,
 `SCHEDULER_INTERVAL_S`). Due automations are claimed with `FOR UPDATE SKIP LOCKED` and a run holds
 an advisory lock, so an automation never runs twice at the same time. Set `AUTOMATIONS=off` on
 servers that shouldn't run them. Exported applications include their automations and actions; an
 imported copy starts with them **switched off**, so a copy never runs the original's jobs unasked.
-Export files of pgapex 0.23 and older (one code field per automation) still import: the code
+Export files of pgkiln 0.23 and older (one code field per automation) still import: the code
 becomes the automation's single action. Scripts may still write `meta.automation.code`: it
 creates or replaces the single action (the column itself stays empty).
 
@@ -676,7 +676,7 @@ open tasks so they don't linger: `select meta.close_tasks('EXPENSE_APPROVAL', :P
 | `meta.task_events` | View: the history and comments of those tasks |
 
 The task tables themselves are closed to the application's role: rights are checked by these
-functions and views, for every call. pgapex sends no e-mail; put a task list on the home page, or
+functions and views, for every call. pgkiln sends no e-mail; put a task list on the home page, or
 use an automation to remind owners of overdue tasks.
 
 **Example:** in the HR sample application, a leave request creates a `LEAVE_APPROVAL` task for the
@@ -722,7 +722,7 @@ The variables (upper case) are binds in every step, with `:DETAIL_PK`, `:WORKFLO
 `:INITIATOR`; after a task step also `:TASK_OUTCOME` (`APPROVED`, `REJECTED`, `COMPLETED`,
 `CANCELLED`) and `:TASK_APPROVER`. The title may use `&VAR.`.
 
-**How it runs.** The pgapex server runs workflows: right after they start or a task of theirs
+**How it runs.** The pgkiln server runs workflows: right after they start or a task of theirs
 ends (`NOTIFY`), and it checks for waits that are over every few seconds (`WORKFLOW_INTERVAL_S`,
 default 10; `WORKFLOWS=off` on servers that shouldn't run them). Each step runs in its own
 transaction **as the application's database role**, with the initiator as `meta.app_user()`, so

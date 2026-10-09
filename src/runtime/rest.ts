@@ -18,7 +18,7 @@ import { publicError, writeOut } from './context.ts';
 //   {"method": "POST", "path": "leave", "type": "sql", "source": "select hr.request_leave(:START_DATE::date, …) as id", "status": 201}
 //   optional: "roles": ["manager"], "auth": "public", "description": "…", "page_size": 25
 //
-// Callers send a bearer token: a pgapex API token (an account) or an OAuth
+// Callers send a bearer token: a pgkiln API token (an account) or an OAuth
 // client token (App → REST API). The account must be active with access to
 // the app, a client must not be revoked: checked on every request, as
 // PostgREST's meta.api_check does. The SQL runs as the application's

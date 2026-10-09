@@ -22,9 +22,9 @@ import pg from 'pg';
 import { root } from '../src/env.ts';
 import { connectWhenReady, migrate } from '../src/migrate.ts';
 
-const say = (s: string) => console.log(`pgapex: ${s}`);
+const say = (s: string) => console.log(`pgkiln: ${s}`);
 const fail = (s: string): never => {
-  console.error(`pgapex: ${s}`);
+  console.error(`pgkiln: ${s}`);
   process.exit(1);
 };
 

@@ -1,6 +1,6 @@
-# Contributing to pgapex
+# Contributing to pgkiln
 
-Thanks for your interest! pgapex aims to be a practical, open alternative to Oracle APEX on
+Thanks for your interest! pgkiln aims to be a practical, open alternative to Oracle APEX on
 PostgreSQL. Bug reports, feature requests (especially "APEX has X"), documentation and code are
 all welcome.
 

@@ -31,7 +31,7 @@ export async function withDb<T>(fn: (db: Db) => Promise<T>) {
 
 export async function exportDoc(db: Db, alias: string): Promise<Doc> {
   const r = await db.query('select meta.export_app($1) as doc', [alias]);
-  if (!r.rows[0]?.doc) throw new Error(`application ${alias} not found (pgapex apps lists them)`);
+  if (!r.rows[0]?.doc) throw new Error(`application ${alias} not found (pgkiln apps lists them)`);
   return r.rows[0].doc;
 }
 

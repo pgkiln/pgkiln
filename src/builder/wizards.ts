@@ -39,7 +39,7 @@ interface Col {
   fk_display: string | null;
 }
 
-/** Tables and views a wizard can use (not pgapex's or the system's), with whether the app's role can read them. */
+/** Tables and views a wizard can use (not pgkiln's or the system's), with whether the app's role can read them. */
 export async function wizardTables(dbRole: string | null) {
   return (
     await owner.query<{ t: string; access: boolean }>(

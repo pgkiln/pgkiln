@@ -334,7 +334,7 @@ describe('meta.parse_data: CSV and JSON in SQL, like the data loader', () => {
     await assert.rejects(runtime.query(`select * from meta.parse_data(convert_to($1, 'UTF8'), p_max_rows => 2)`, ['a\n1\n2\n3\n']), /the file has 3 rows; at most 2/);
   });
 
-  test('Excel needs pgapex to have read the file; XML is parsed (070)', async () => {
+  test('Excel needs pgkiln to have read the file; XML is parsed (070)', async () => {
     const { readFileSync } = await import('node:fs');
     const { createHash } = await import('node:crypto');
     const xlsx = readFileSync(new URL('./fixtures/employees.xlsx', import.meta.url));

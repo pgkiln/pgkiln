@@ -37,7 +37,7 @@ export async function builderRoutes(app: FastifyInstance) {
       documentShell(
         'Sign in · Builder',
         html`<main class="login"><form method="post" class="card login-card">
-          <h1>pgapex Builder</h1>
+          <h1>pgkiln Builder</h1>
           ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
           ${csrf(s)}
           ${input('username', 'Username', '', { required: true, auto: 'username' })}
@@ -268,7 +268,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.one('select meta.export_app($1) as doc', [a.alias]);
-    // ?format=dir|text: one file per component, as `pgapex export --format dir|text` writes it (docs/guide/18-cli.md)
+    // ?format=dir|text: one file per component, as `pgkiln export --format dir|text` writes it (docs/guide/18-cli.md)
     if (req.query?.format === 'dir' || req.query?.format === 'text')
       return reply
         .header('content-disposition', `attachment; filename="${a.alias}.pgapex.zip"`)
@@ -311,7 +311,7 @@ export async function builderRoutes(app: FastifyInstance) {
                 <small class="help">Records every request's steps with timings and the messages of <code>meta.debug(level, text)</code>, kept ${a.debug_retention_days} days.</small></div>
             </div>
             <h3>HTTP header authentication</h3>
-            <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgapex trusts it only from the proxy addresses in <code>PGAPEX_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
+            <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgkiln trusts it only from the proxy addresses in <code>PGAPEX_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
             <div class="form-grid">
               ${input('header_name', 'User name header', a.header_name ?? '', { placeholder: DEFAULT_HEADER, help: 'The request header with the user name (APEX: HTTP Header Variable). Empty: X-Remote-User. A changed or missing header ends the session.' })}
               ${input('logout_url', 'Sign-out URL', a.logout_url ?? '', { placeholder: 'e.g. https://sso.example.com/logout', help: 'Where "Sign out" goes after the session ends, usually the proxy\'s own sign-out page. Empty: a "signed out" page.' })}
@@ -319,7 +319,7 @@ export async function builderRoutes(app: FastifyInstance) {
             <div class="field"><label class="check"><input type="checkbox" name="header_auto_create" value="true"${a.header_auto_create ? raw(' checked') : ''}> Create accounts automatically</label>
               <small class="help">An unknown user name gets a new account with access to this app. Otherwise the account must exist and have access.</small></div>
             <h3>Database accounts</h3>
-            <p class="muted">Only used when Authentication is "Database accounts". Users sign in with a PostgreSQL login role and its password, checked by a short connection to this database as that role. Superusers and pgapex's own roles are always refused; with neither field set nobody can sign in.</p>
+            <p class="muted">Only used when Authentication is "Database accounts". Users sign in with a PostgreSQL login role and its password, checked by a short connection to this database as that role. Superusers and pgkiln's own roles are always refused; with neither field set nobody can sign in.</p>
             <div class="form-grid">
               ${input('db_auth_roles', 'Allowed roles', (a.db_auth_roles ?? []).join(', '), { placeholder: 'e.g. alice, bob', help: 'Login roles that may sign in, comma separated (exact names).' })}
               ${input('db_auth_member_of', 'Or members of role', a.db_auth_member_of ?? '', { placeholder: 'e.g. app_users_group', help: 'Every member of this role may sign in too.' })}
@@ -348,7 +348,7 @@ export async function builderRoutes(app: FastifyInstance) {
               : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
             <h3>Theme</h3>
             <div class="form-grid">
-              ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['standard', 'Standard (pgapex until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
+              ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['standard', 'Standard (pgkiln until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
               ${input('accent', 'Accent colour', a.theme?.accent ?? BASE_STYLES[baseStyleOf(a.theme)].accent, { type: 'color' })}
               ${input('header', 'Header colour', a.theme?.header ?? BASE_STYLES[baseStyleOf(a.theme)].header, { type: 'color' })}
               ${(['accent_dark', 'header_dark'] as const).map((k) => html`<div class="field"><label class="label" for="f_${k}">${k === 'accent_dark' ? 'Accent colour in dark mode' : 'Header colour in dark mode'}</label>

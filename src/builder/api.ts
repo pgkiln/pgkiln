@@ -119,16 +119,16 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
   const main = html`${appHeader(a, 'api')}
     <div class="columns">
       ${region('Setup', html`
-        <p class="muted u-mt0">PostgREST runs next to pgapex and serves the <code>${API_SCHEMA}</code> schema over HTTP. Requests carry a JWT whose <code>role</code> claim is this application’s API role; row level security uses the same <code>meta.app_user()</code> and <code>meta.has_role()</code> as the web pages.</p>
+        <p class="muted u-mt0">PostgREST runs next to pgkiln and serves the <code>${API_SCHEMA}</code> schema over HTTP. Requests carry a JWT whose <code>role</code> claim is this application’s API role; row level security uses the same <code>meta.app_user()</code> and <code>meta.has_role()</code> as the web pages.</p>
         <form method="post" action="${BASE}/apps/${a.id}/api">${csrf(s)}
           <div class="form-grid">
-            ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'For PostgREST: grant it only the api schema’s views and functions, and grant it to pgapex_authenticator. Empty: tokens work for the REST modules pgapex serves (Shared Components → REST modules) only.' })}
+            ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'For PostgREST: grant it only the api schema’s views and functions, and grant it to pgapex_authenticator. Empty: tokens work for the REST modules pgkiln serves (Shared Components → REST modules) only.' })}
           </div>
           <div class="buttons"><button class="btn btn-hot">Save</button></div>
         </form>
         <ul class="checklist u-mt1">
           ${check(status.ok, html`PostgREST at <code>${url}</code>: ${status.ok ? status.detail : html`<b>not reachable</b> (${status.detail})`}`)}
-          ${role ? check(!problem, problem ?? html`<code>${role}</code> is a dedicated role`) : check(false, 'No API role: tokens are for the REST modules pgapex serves only')}
+          ${role ? check(!problem, problem ?? html`<code>${role}</code> is a dedicated role`) : check(false, 'No API role: tokens are for the REST modules pgkiln serves only')}
           ${role && !problem ? check(!!granted?.ok, granted?.ok ? html`pgapex_authenticator may switch to <code>${role}</code>` : html`<b>run</b> <code>grant ${role} to pgapex_authenticator;</code>`) : ''}
         </ul>`)}
       ${region('Issue a token', html`
@@ -172,7 +172,7 @@ export async function apiRoutes(app: FastifyInstance) {
       const problem = role ? await apiRoleProblem(role) : null;
       if (problem) throw new Error(problem);
       await owner.query('update meta.app set api_role = $2, updated_at = now() where id = $1', [req.params.id, role]);
-      flash(s, role ? `API role set to ${role}.` : 'API role removed; new tokens work for the REST modules pgapex serves only.');
+      flash(s, role ? `API role set to ${role}.` : 'API role removed; new tokens work for the REST modules pgkiln serves only.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }

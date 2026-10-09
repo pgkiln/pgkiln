@@ -205,7 +205,7 @@ export async function pwaRoutes(app: FastifyInstance) {
   });
 }
 
-// changes whenever pgapex's static files change (a new service worker then replaces the old one)
+// changes whenever pgkiln's static files change (a new service worker then replaces the old one)
 const SW_VERSION = (() => {
   let h = 0;
   for (const f of ['public/app.css', 'public/app.js', 'public/icons.svg', 'public/sw.js'])

@@ -76,7 +76,7 @@ describe('static application files', () => {
     assert.equal((await owner.one(`select convert_from(content, 'utf8') as c from meta.static_file where app_id = $1 and name = 't-app.js'`, [hr])).c,
       "pgapex.actions.register('tHello', () => {});\n");
     page = await dev.get(`/builder/apps/${hr}/static-files?edit=t-app.js`);
-    assert.match(page.body, /pgapex\.actions\.register\(&#39;tHello&#39;|pgapex\.actions\.register\('tHello'/);
+    assert.match(page.body, /pgapex\.actions\.register\(&#39;tHello&#39;|pgkiln\.actions\.register\('tHello'/);
     // rename: the lists that load it follow
     await owner.query(`update meta.app set static_includes = static_includes || '{t-app.js}' where id = $1`, [hr]);
     await dev.submit(`/builder/apps/${hr}/static-files/save`, { original: 't-app.js', name: 't-main.js', content: 'window.tMain = 1;' });

@@ -484,7 +484,7 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
     ...Object.fromEntries(Object.entries(vars).map(([key, v]) => [key.toUpperCase(), asBind(v)])),
     DETAIL_PK: w.detail_pk, WORKFLOW_ID: w.id, INITIATOR: w.initiator,
   });
-  // the application's SQL runs as its role; pgapex's own bookkeeping as the owner
+  // the application's SQL runs as its role; pgkiln's own bookkeeping as the owner
   // (on an error the transaction is rolled back as a whole: resetting the role then would only hide the error)
   const asApp = async <T>(fn: () => Promise<T>) => {
     if (w.db_role) await c.query(`set local role ${pg.escapeIdentifier(w.db_role)}`);

@@ -701,9 +701,9 @@ describe('sprint 17: workflows', () => {
       const { applyBinds } = await import('../src/binds.ts');
       assert.equal(applyBinds(':SAL::numeric >= 2500', { SAL: "1; drop table hr.emp; --" }), "'1; drop table hr.emp; --'::numeric >= 2500");
     } finally {
-      // a running pgapex server may have taken a step meanwhile: remove its task too
+      // a running pgkiln server may have taken a step meanwhile: remove its task too
       await owner.query('delete from meta.task where workflow_id = $1', [id]);
-      // a running pgapex server may have taken a step meanwhile: remove its task too
+      // a running pgkiln server may have taken a step meanwhile: remove its task too
       await owner.query('delete from meta.task where workflow_id = $1', [id]);
       await owner.query('delete from meta.workflow where id = $1', [id]);
     }
@@ -2141,7 +2141,7 @@ describe('sprint 29 header authentication', () => {
   const envBefore = process.env.PGAPEX_AUTH_HEADER_PROXIES;
   const PROXY = '10.1.2.3';
 
-  /** a cookie-keeping client that talks to pgapex from a given socket address */
+  /** a cookie-keeping client that talks to pgkiln from a given socket address */
   class Client {
     cookies = new Map<string, string>();
     constructor(public remoteAddress = PROXY) {}
@@ -2459,7 +2459,7 @@ describe('sprint 30', () => {
     };
     const failures = async () => (await owner.query(`select username, detail from meta.activity_log where app_id = $1 and event = 'login_failed' order by id`, [dbApp])).rows;
 
-    test('wrong passwords, unlisted, NOLOGIN, superuser and pgapex\'s own roles are refused alike; no password is logged', async () => {
+    test('wrong passwords, unlisted, NOLOGIN, superuser and pgkiln\'s own roles are refused alike; no password is logged', async () => {
       for (const [user, pw] of [[R.ann, 'wrong'], [R.eve, 'Eve-pw-30!'], [R.off, 'Off-pw-30!'], [R.boss, 'Boss-pw-30!'], ['pgapex', 'pgapex'], ['no_such_role_s30', 'x'],
         [`${R.ann}\u0000x`, 'Ann-pw-30!'], ['x'.repeat(64), 'x'], [`${R.ann}' or '1'='1`, "' or '1'='1"], [R.ann, '']] as const) {
         const { b, res } = await attempt(user, pw);
@@ -3064,7 +3064,7 @@ describe('sprint 31 logic', () => {
     assert.match(String(res.headers['content-disposition']), /^attachment; /);
     await owner.query(`update meta.process set code = $2 where id = $1`, [id, `select convert_to(password_hash, 'UTF8'), username, 'text/plain' from meta.app_user`]);
     res = await b.submit('/a/hr/28', { P28_EMPNO: '7839', __request: 'CARD' });
-    assert.equal(res.statusCode, 422, 'the app role cannot read pgapex\'s tables');
+    assert.equal(res.statusCode, 422, 'the app role cannot read pgkiln\'s tables');
     assert.doesNotMatch(res.body, /\$2[aby]\$|scrypt/);
     await owner.query(`update meta.process set code = $2 where id = $1`, [id, `select ename, ename || '.txt', 'text/plain' from hr.emp where empno::text = :P28_EMPNO`]);
     res = await b.submit('/a/hr/28', { P28_EMPNO: "7839' or '1'='1", __request: 'CARD' });
@@ -3238,7 +3238,7 @@ describe('sprint 31 builder: custom authentication, lists, locks, comments, supp
       await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
     });
 
-    test('the check runs as the app\'s role: pgapex\'s own tables are out of reach, and its temporary function is gone afterwards', async () => {
+    test('the check runs as the app\'s role: pgkiln\'s own tables are out of reach, and its temporary function is gone afterwards', async () => {
       await setCode(`return exists (select 1 from meta.developer);`);
       try {
         assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 401);
@@ -3326,7 +3326,7 @@ describe('sprint 31 builder: custom authentication, lists, locks, comments, supp
         assert.match(body, /href="\/a\/sec31-builder\/2\?P2_X=1&amp;cs=[0-9a-f]+"/);
         assert.doesNotMatch(body, /bad\+name|bad%20name/);
         assert.doesNotMatch(body, /javascript:|evil\.example/);
-        // a query the app's role can't run shows an error, not pgapex's data
+        // a query the app's role can't run shows an error, not pgkiln's data
         await owner.query(`update meta.list set query = 'select username as label from meta.developer' where app_id = $1 and name = 'SECQ'`, [sApp]);
         const denied = (await new Browser().get(`/a/${alias}/1`)).body;
         assert.doesNotMatch(denied, /<span>admin<\/span>/);
@@ -3467,7 +3467,7 @@ describe('sprint 31 builder: custom authentication, lists, locks, comments, supp
         assert.equal((await b.post(`/builder/apps/${sApp}/supporting-objects/run`, { kind: 'install' })).statusCode, 403);
         assert.equal((await b.post(`/builder/apps/${sApp}/supporting-objects/run`, { __csrf: b.lastCsrf, kind: 'drop everything' })).statusCode, 400);
         assert.equal(await owner.one(`select to_regclass('${SCHEMA}.s31_made') as t`).then((r) => r.t), null);
-        // the upgrade reads pgapex's own table: refused for the app's role, and the table it made is gone too
+        // the upgrade reads pgkiln's own table: refused for the app's role, and the table it made is gone too
         const up = await b.post(`/builder/apps/${sApp}/supporting-objects/run`, { __csrf: b.lastCsrf, kind: 'upgrade' });
         assert.equal(up.statusCode, 200);
         assert.match(up.body, /rolled back/);
@@ -3532,7 +3532,7 @@ describe('sprint 32 automations: actions, error handling per row, meta.run_autom
     await assert.rejects(asHr((c) => c.query(`select meta.run_automation('sec32 other')`)), /does not exist in this application/);
     // the definition helper is limited to the current application too
     await assert.rejects(asHr((c) => c.query(`select meta.automation_begin('sec32 other')`)), /does not exist in this application/);
-    // the code runs with the caller's grants: pgapex's own tables stay closed
+    // the code runs with the caller's grants: pgkiln's own tables stay closed
     await owner.query(`update meta.automation_action set code = 'select password_hash from meta.account' where app_id = $1 and automation_name = 'sec32 hr'`, [appId]);
     await assert.rejects(asHr((c) => c.query(`select meta.run_automation('sec32 hr')`)), /permission denied/);
     // binds are literals: a row value can't inject SQL
@@ -3997,7 +3997,7 @@ describe('sprint 32 item 5: create application from a file', () => {
     assert.doesNotMatch(page, /<b>x<\/b>/);
   });
 
-  test("the new app's role can use only its own schema; pgapex's and the system's schemas are refused", async () => {
+  test("the new app's role can use only its own schema; pgkiln's and the system's schemas are refused", async () => {
     const priv = await owner.one(
       `select has_table_privilege('app_sec32_ff', 'sec32_ff.sec', 'select,insert,update,delete') as own,
               has_table_privilege('app_sec32_ff', 'meta.account', 'select') as meta,
@@ -4900,7 +4900,7 @@ describe('sprint 35 appwizard', () => {
     assert.match(big.body, /At most 4 MB of text can be pasted/);
   });
 
-  test('existing tables: pgapex, system and unknown schemas are refused; only the schema\'s own tables count', async () => {
+  test('existing tables: pgkiln, system and unknown schemas are refused; only the schema\'s own tables count', async () => {
     const dev = await builder('admin', 'admin', '/builder/create/tables');
     const base = { alias: 'sec35-aw-t', name: 'Sec tables', authentication: 'none' };
     for (const schema of ['meta', 'pg_catalog', 'information_schema', 'pg_toast', 'no_such_schema', "x'; drop table meta.app; --"]) {
@@ -4912,7 +4912,7 @@ describe('sprint 35 appwizard', () => {
       assert.match((await dev.submit('/builder/create/tables', { ...base, schema: SRC, t_0: t })).body, /Choose at least one table or view/, t);
     assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec35-aw-t'`)).rowCount, 0);
     assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
-    // the app's role gets the schema it was built on, not pgapex's tables
+    // the app's role gets the schema it was built on, not pgkiln's tables
     const ok = await dev.submit('/builder/create/tables', { ...base, schema: SRC, t_0: 'thing' });
     assert.equal(ok.statusCode, 200);
     const priv = await owner.one(`select has_table_privilege('app_sec35_aw_t', '${SRC}.thing', 'select') as t, has_table_privilege('app_sec35_aw_t', 'meta.account', 'select') as m`);
@@ -5064,7 +5064,7 @@ describe('sprint 35 reporter', () => {
     await owner.query(`update meta.region set config = config - 'sharing' where id = $1`, [rid]);
   });
 
-  test('reports run as the application\'s role with row level security; pgapex\'s own tables are never a source', async () => {
+  test('reports run as the application\'s role with row level security; pgkiln\'s own tables are never a source', async () => {
     const scott = await user('scott');
     const body = (await scott.get(`/a/hr/36?${new URLSearchParams([[`${P()}src`, 'leave'], [`${P()}col`, 'empno']])}`)).body;
     const empno = (await owner.one(`select empno from hr.emp where username = 'scott'`)).empno;
@@ -5091,7 +5091,7 @@ describe('sprint 35 reporter', () => {
     assert.equal((await runtime.query(`select meta.delete_data_report(1) as d`)).rows[0].d, false);
   });
 
-  test('the builder settings need a developer and the CSRF token, and refuse pgapex\'s own tables', async () => {
+  test('the builder settings need a developer and the CSRF token, and refuse pgkiln\'s own tables', async () => {
     const anon = new FileBrowser(app);
     assert.equal((await anon.post(`/builder/pages/${pageId}/region/${rid}/reporter`, { __csrf: 'x', new_object: '1' })).statusCode, 302);
     const dev = new FileBrowser(app);
@@ -5583,7 +5583,7 @@ describe('sprint 36 app builder ai', () => {
     assert.equal((await owner.one(`select count(*)::int as n from meta.page where app_id = $1 and name = '<b>x</b>'`, [appId])).n, 0, 'proposals create nothing by themselves');
   });
 
-  test('describe tables: only existing tables outside pgapex and the system schemas; notes are plain text in comments', async () => {
+  test('describe tables: only existing tables outside pgkiln and the system schemas; notes are plain text in comments', async () => {
     assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'meta', table: 'developer', 'note:': 'x' })).statusCode, 404);
     assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'no_such_table', 'note:': 'x' })).statusCode, 404);
     assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': "x'; drop table hr.dept; --", comments: 'true' })).statusCode, 303);

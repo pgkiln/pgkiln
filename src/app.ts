@@ -70,7 +70,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     pending = [];
   }
   if (pending.length) {
-    console.error(`pgapex: the database is missing ${pending.length} migration(s) (${pending[0]} …). Run "npm run db:migrate" (or "pgapex migrate"), or start with MIGRATE_ON_START=true.`);
+    console.error(`pgkiln: the database is missing ${pending.length} migration(s) (${pending[0]} …). Run "npm run db:migrate" (or "pgkiln migrate"), or start with MIGRATE_ON_START=true.`);
   }
   await loadSecrets();
   if (!pending.length) await refreshInstanceSettings(true);
@@ -94,8 +94,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
         }
       }
       return reply.code(503).type('text/plain').send(
-        `pgapex: the database is older than this version of pgapex: ${pending.length} migration(s) are not applied (${pending.join(', ')}).\n` +
-          'Run "npm run db:migrate" (or "pgapex migrate"), or start the server with MIGRATE_ON_START=true.\n',
+        `pgkiln: the database is older than this version of pgkiln: ${pending.length} migration(s) are not applied (${pending.join(', ')}).\n` +
+          'Run "npm run db:migrate" (or "pgkiln migrate"), or start the server with MIGRATE_ON_START=true.\n',
       );
     });
   }

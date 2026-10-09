@@ -74,7 +74,7 @@ export function sourcesOf(r: { config: Record<string, any> }): Source[] {
   const out: Source[] = [];
   for (const s of list) {
     if (!s || typeof s !== 'object' || !SOURCE_ID.test(str(s.id)) || !str(s.schema) || !str(s.table) || out.some((x) => x.id === s.id)) continue;
-    // never pgapex's own or the system's tables
+    // never pgkiln's own or the system's tables
     if (RESERVED_SCHEMAS.test(s.schema)) continue;
     const columns = (Array.isArray(s.columns) ? s.columns : []).filter((c: any) => c && typeof c === 'object' && str(c.name));
     out.push({ id: s.id, label: str(s.label) || undefined, description: str(s.description) || undefined, schema: s.schema, table: s.table, columns });

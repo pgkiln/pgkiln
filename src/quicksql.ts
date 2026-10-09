@@ -311,7 +311,7 @@ export function parseQuickSql(source: string): QuickSqlModel {
     const t: QuickSqlTable = { name: qsName(head || 'table'), parent: parent?.name, columns: [], auditCols: settings.auditCols, comment: node.comment, line: node.line };
     for (const d of dirs) {
       if (d.name === 'auditcols' || d.name === 'audit_cols') t.auditCols = true;
-      else if (TABLE_DIRECTIVES_IGNORED.has(d.name)) warnings.push({ line: node.line, message: `/${d.name} on a table is not supported by pgapex's Quick SQL (ignored).` });
+      else if (TABLE_DIRECTIVES_IGNORED.has(d.name)) warnings.push({ line: node.line, message: `/${d.name} on a table is not supported by pgkiln's Quick SQL (ignored).` });
       else warnings.push({ line: node.line, message: `Unknown table directive /${d.name} (ignored).` });
     }
     if (tables.some((x) => x.name === t.name)) warnings.push({ line: node.line, message: `Table ${t.name} is defined twice.` });

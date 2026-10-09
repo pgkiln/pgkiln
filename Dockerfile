@@ -1,4 +1,4 @@
-# pgapex server image. deploy/compose.yaml runs it with a database; see
+# pgkiln server image. deploy/compose.yaml runs it with a database; see
 # docs/guide/01-installation.md, "Docker".
 FROM node:22-bookworm-slim
 

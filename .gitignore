@@ -5,6 +5,6 @@ node_modules/
 coverage/
 test-results/
 playwright-report/
-# applications exported by `pgapex export` / the MCP server's export_app (default apps/<alias>);
-# keep your applications in your own repository, not in pgapex's
+# applications exported by `pgkiln export` / the MCP server's export_app (default apps/<alias>);
+# keep your applications in your own repository, not in pgkiln's
 /apps/

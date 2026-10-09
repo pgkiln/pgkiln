@@ -111,7 +111,7 @@ export function vapidSubject() {
   if (s && /^(mailto:|https:\/\/)\S+$/.test(s)) return s;
   const pub = process.env.PUBLIC_URL?.trim();
   if (pub && pub.startsWith('https://')) return pub;
-  return 'mailto:pgapex@localhost';
+  return 'mailto:pgkiln@localhost';
 }
 
 export async function vapidHeader(endpoint: string, keys: VapidKeys, now = Date.now()) {

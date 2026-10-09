@@ -1,19 +1,21 @@
 # 18. The command line and application files
 
-The `pgapex` command line runs migrations, exports and imports applications, and compares an
+The `pgkiln` command line runs migrations, exports and imports applications, and compares an
 application with files in git (APEX: SQLcl `apex export` and the APEXlang application files). An
 application can be exported as **one JSON file** or as **a directory with one file per component**
 that reads well in pull requests, and imported again, as a copy or over the existing application.
 
 ## Running it
 
-From a pgapex checkout (it runs TypeScript with tsx, like the server):
+From a pgkiln checkout (it runs TypeScript with tsx, like the server):
 
 ```sh
-npm run pgapex -- apps               # through npm
+npm run pgkiln -- apps               # through npm
 npx tsx src/cli/main.ts apps         # directly
-./bin/pgapex.js apps                 # the package's bin entry (also after npm link)
+./bin/pgkiln.js apps                 # the package's bin entry (also after npm link)
 ```
+
+The command was called `pgapex` until 0.31; `pgapex` still works as another name for it (`bin/pgapex.js`, `npm run pgapex`).
 
 It connects with `DATABASE_URL` (the owner role) from the environment or `.env`, the same as
 the server and `npm run db:migrate`; `--db <url>` overrides it. Every command has `--help`.
@@ -32,26 +34,26 @@ any (see [what is not exported](03-builder.md#export-format)).
 
 | Command | What it does |
 |---|---|
-| `pgapex migrate [--example <name>]` | Applies the migrations that were not applied yet, then optionally `examples/<name>/` (same as `npm run db:migrate` / `npm run example:hr`; `--root` and `--seed` as in `scripts/migrate.ts`) |
-| `pgapex apps [--json]` | Lists the applications: alias, number of pages, name |
-| `pgapex export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgapex/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
-| `pgapex import <path> [--alias <alias>] [--replace]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place |
-| `pgapex diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
-| `pgapex mcp` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md) |
-| `pgapex plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgapex-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
-| `pgapex plugin install <file\|dir> --app <alias> [--replace]` | Adds a plug-in (file or source directory) to an application; its install SQL is not run |
-| `pgapex users list [--developers]` | Accounts with their applications and roles, or builder developers |
-| `pgapex users add <username> [--developer] [--app <alias> --roles a,b] [--name …] [--email …]` | Adds an account (optionally with access to an application) or a builder developer |
-| `pgapex users password <username> [--developer]` | Sets a password and ends that user's sessions |
+| `pgkiln migrate [--example <name>]` | Applies the migrations that were not applied yet, then optionally `examples/<name>/` (same as `npm run db:migrate` / `npm run example:hr`; `--root` and `--seed` as in `scripts/migrate.ts`) |
+| `pgkiln apps [--json]` | Lists the applications: alias, number of pages, name |
+| `pgkiln export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgapex/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
+| `pgkiln import <path> [--alias <alias>] [--replace]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place |
+| `pgkiln diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
+| `pgkiln mcp` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md) |
+| `pgkiln plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgapex-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
+| `pgkiln plugin install <file\|dir> --app <alias> [--replace]` | Adds a plug-in (file or source directory) to an application; its install SQL is not run |
+| `pgkiln users list [--developers]` | Accounts with their applications and roles, or builder developers |
+| `pgkiln users add <username> [--developer] [--app <alias> --roles a,b] [--name …] [--email …]` | Adds an account (optionally with access to an application) or a builder developer |
+| `pgkiln users password <username> [--developer]` | Sets a password and ends that user's sessions |
 
 `users` reads the password from standard input (the first line, e.g. from a secret store:
-`printf '%s\n' "$PW" | pgapex users add ops --developer`) or asks for it twice on a terminal. It is
+`printf '%s\n' "$PW" | pgkiln users add ops --developer`) or asks for it twice on a terminal. It is
 never an argument, so it doesn't end up in the shell history, and it must meet the
 [password policy](08-security.md).
 
 ## The directory format
 
-`pgapex export hr --format dir` writes:
+`pgkiln export hr --format dir` writes:
 
 ```
 hr/
@@ -92,7 +94,7 @@ hr/
       validations/0010-commission-only-for-sales.json
       validations/0010-commission-only-for-sales.expression.sql
       processes/0010-process-form-employees.json
-  extra/                            sections of newer pgapex versions this one does not know
+  extra/                            sections of newer pgkiln versions this one does not know
 ```
 
 - **One file per component**, named `<sequence>-<static id>.json` (pages: `<page number>-<name>`;
@@ -114,7 +116,7 @@ application, the database objects (tables, views, functions) stay in your own mi
 
 ### Text files (APEXlang)
 
-APEX 26.1 writes applications in APEXlang, a human-readable text format. `pgapex export hr
+APEX 26.1 writes applications in APEXlang, a human-readable text format. `pgkiln export hr
 --format text` writes the same directory with every component as **YAML** instead of JSON, and the
 SQL, PL/pgSQL and templates **inline** as literal blocks, so a region with its query, or a process
 with its code, is one file you read top to bottom:
@@ -138,7 +140,7 @@ type: report
 
 The files are a strict subset of YAML 1.2 that any YAML tool reads: block mappings and lists,
 plain or double-quoted strings (JSON escapes), numbers, `true`/`false`/`null`, and literal blocks
-(`|2-`) for text over several lines; keys are sorted. pgapex reads exactly that subset back, so
+(`|2-`) for text over several lines; keys are sorted. pgkiln reads exactly that subset back, so
 anchors, tags, flow collections (`[a, b]`, `{a: 1}`) and folded blocks are refused with the file
 and line; `#` comment lines are allowed (they are not kept by the next export). Text that could be
 read as something else (`yes`, `10`, `2026-01-01`, `a: b`) is written in double quotes.
@@ -152,7 +154,7 @@ Switching an existing directory from `dir` to `text` (or back) rewrites every fi
 ### Static ids
 
 APEX 26.1 gives components a static id so that application files diff cleanly and can be applied
-to another installation. pgapex derives them without a schema change, from what already identifies
+to another installation. pgkiln derives them without a schema change, from what already identifies
 a component:
 
 | Component | Static id |
@@ -171,7 +173,7 @@ edit the files by hand, keep a reference and the file name of the region it poin
 
 ### Updating an application in place
 
-`pgapex import hr/ --replace` makes the application with alias `hr` look like the directory:
+`pgkiln import hr/ --replace` makes the application with alias `hr` look like the directory:
 its settings, pages and shared components are those of the files, and components that are not in
 the files any more are removed. What belongs to this installation stays:
 
@@ -195,10 +197,10 @@ time and every time after.
 A typical flow with git:
 
 ```sh
-pgapex export hr --format dir --out apps/hr     # in development, after changes in the builder
+pgkiln export hr --format dir --out apps/hr     # in development, after changes in the builder
 git diff apps/hr                                 # review, commit, open a pull request
-pgapex diff hr apps/hr                           # on the target: what would change (exit code 1)
-pgapex import apps/hr --replace                  # deploy
+pgkiln diff hr apps/hr                           # on the target: what would change (exit code 1)
+pgkiln import apps/hr --replace                  # deploy
 ```
 
 `export --format dir` into an existing directory removes the files of deleted components and
@@ -207,7 +209,7 @@ leaves dot files (`.git`, `.gitattributes`) alone; it refuses a non-empty direct
 
 ### diff
 
-`pgapex diff hr apps/hr` exports the application in memory and compares file by file:
+`pgkiln diff hr apps/hr` exports the application in memory and compares file by file:
 
 ```
 M pages/0002-employees/regions/0010-employees.source.sql
@@ -230,10 +232,10 @@ imported copy differs from its source in `app.json` (the alias) and in automatio
 
 **Export** in the builder downloads the JSON file. `/builder/apps/<id>/export?format=dir`
 (or `?format=text`) downloads the directory format as a `.zip` (one folder named after the alias, fixed timestamps,
-so the same application gives the same zip). `pgapex import hr.pgapex.zip` and `pgapex diff` read
+so the same application gives the same zip). `pgkiln import hr.pgapex.zip` and `pgkiln diff` read
 the zip directly.
 
-## For pgapex developers
+## For pgkiln developers
 
 - `src/appfiles.ts` turns a `pgapex/2` document into files and back (pure functions, used by the
   CLI and the builder); `meta.export_app()` and `meta.import_app()` stay the only exporter and

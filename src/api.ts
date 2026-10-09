@@ -1,7 +1,7 @@
 import { SignJWT } from 'jose';
 import { owner } from './db.ts';
 
-// Tokens for the REST API that PostgREST serves next to pgapex. They're
+// Tokens for the REST API that PostgREST serves next to pgkiln. They're
 // HS256 JWTs signed with API_JWT_SECRET (the same secret PostgREST uses),
 // carrying the claims meta.app_user() / meta.has_role() understand.
 
@@ -17,7 +17,7 @@ export function jwtSecret() {
 /**
  * Why a role can't be an application's API role, or null when it can. A
  * token names the role PostgREST switches to, so it must never be a role
- * that bypasses row level security or owns pgapex's metadata.
+ * that bypasses row level security or owns pgkiln's metadata.
  */
 export async function apiRoleProblem(role: string) {
   const r = await owner.one(
@@ -28,7 +28,7 @@ export async function apiRoleProblem(role: string) {
   );
   if (!r) return `There is no database role "${role}".`;
   if (r.rolsuper || r.rolbypassrls) return `"${role}" bypasses row level security; use a role with only the API's privileges.`;
-  if (r.owns_meta || r.internal) return `"${role}" is one of pgapex's own roles; create a dedicated API role (see the REST API chapter).`;
+  if (r.owns_meta || r.internal) return `"${role}" is one of pgkiln's own roles; create a dedicated API role (see the REST API chapter).`;
   return null;
 }
 
@@ -51,7 +51,7 @@ export async function apiStatus(): Promise<{ ok: boolean; detail: string }> {
 export async function issueApiToken(appId: number, username: string, hours: number) {
   const app = await owner.one('select alias, api_role, access_control from meta.app where id = $1', [appId]);
   if (!app) throw new Error('No such application.');
-  // without an API role the token is for pgapex's own REST modules only (they run as the app's role)
+  // without an API role the token is for pgkiln's own REST modules only (they run as the app's role)
   const problem = app.api_role ? await apiRoleProblem(app.api_role) : null;
   if (problem) throw new Error(problem);
   const acc = await owner.one(

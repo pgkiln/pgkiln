@@ -84,7 +84,7 @@ async function page(s: Session, a: any, query: Record<string, string | undefined
         <small class="help">A file with the same name is replaced.</small>
       </form>`)}
     ${region('Every page loads', html`<form method="post" action="${base}/includes">${csrf(s)}
-        <div class="form-grid">${input('includes', 'Scripts and stylesheets, in order', (a.static_includes ?? []).join(', '), { placeholder: 'e.g. library.js, app.js, app-styles.css', help: `Up to ${MAX_INCLUDES} .js and .css files, loaded in this order after pgapex's own (scripts deferred). A page adds its own files under Page → Appearance.` })}</div>
+        <div class="form-grid">${input('includes', 'Scripts and stylesheets, in order', (a.static_includes ?? []).join(', '), { placeholder: 'e.g. library.js, app.js, app-styles.css', help: `Up to ${MAX_INCLUDES} .js and .css files, loaded in this order after pgkiln's own (scripts deferred). A page adds its own files under Page → Appearance.` })}</div>
         <div class="buttons"><button class="btn btn-hot">Save</button></div>
       </form>`)}`;
 }

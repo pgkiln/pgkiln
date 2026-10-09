@@ -11,7 +11,7 @@ import { getSession, saveState, takeFlash, type Session } from '../session.ts';
 
 export const BASE = '/builder';
 
-/** pgapex's version and the database name, for the builder's status bar. */
+/** pgkiln's version and the database name, for the builder's status bar. */
 const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 const DATABASE = (() => {
   try {
@@ -104,7 +104,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
     `${title} · Builder`,
     html`<a class="skip-link" href="#main">Skip to content</a>
     <nav class="ide-rail" aria-label="Builder">
-      <a class="rail-logo" href="${BASE}" title="pgapex Builder"><span aria-hidden="true">pg</span><span class="sr-only">pgapex Builder home</span></a>
+      <a class="rail-logo" href="${BASE}" title="pgkiln Builder"><span aria-hidden="true">pg</span><span class="sr-only">pgkiln Builder home</span></a>
       <ul class="rail-list">
         ${rail('apps', BASE, 'builder', 'App Builder')}
         ${rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
@@ -150,7 +150,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${s.workspace ? html`<span title="Workspace">${icon('layers')}${s.workspace.name}</span>` : ''}
         <span title="Database">${icon('database')}${DATABASE}</span>
         <span title="Builder language">en</span>
-        <span class="ide-status-version">pgapex ${VERSION}</span>
+        <span class="ide-status-version">pgkiln ${VERSION}</span>
       </footer>
     </div>`,
     `builder-body ide${opts.full ? ' ide-full' : ''}`,

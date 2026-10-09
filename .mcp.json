@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "pgapex": {
+    "pgkiln": {
       "command": "node",
-      "args": ["bin/pgapex.js", "mcp"]
+      "args": ["bin/pgkiln.js", "mcp"]
     }
   }
 }

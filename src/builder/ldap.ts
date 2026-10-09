@@ -17,7 +17,7 @@ function directoryForm(d: Partial<Directory> & { has_password?: boolean }, actio
       ${isNew ? input('name', 'Name', '', { required: true, help: 'lowercase, e.g. corp or ad' }) : ''}
       ${input('display_name', 'Display name', d.display_name, { required: true })}
       ${input('url', 'URL', d.url, { required: true, placeholder: 'ldaps://ldap.example.com or ldap://…:389', help: 'ldaps:// (TLS) or ldap://, with StartTLS below. Plain ldap:// sends passwords unencrypted.' })}
-      ${input('bind_dn', 'Service account DN', d.bind_dn, { placeholder: 'cn=pgapex,ou=services,dc=example,dc=org', help: 'Searches users (and groups). Empty: an anonymous search.' })}
+      ${input('bind_dn', 'Service account DN', d.bind_dn, { placeholder: 'cn=pgkiln,ou=services,dc=example,dc=org', help: 'Searches users (and groups). Empty: an anonymous search.' })}
       ${input('bind_password', 'Service account password', '', { type: 'password', auto: 'new-password', help: d.has_password ? 'A password is stored. Leave empty to keep it.' : '' })}
     </div>
     ${check('start_tls', 'StartTLS (for ldap:// URLs)', !!d.start_tls)}
@@ -27,7 +27,7 @@ function directoryForm(d: Partial<Directory> & { has_password?: boolean }, actio
     <fieldset class="prop-group"><legend>Users</legend><div class="form-grid">
       ${input('user_base', 'User search base', d.user_base, { required: true, placeholder: 'ou=people,dc=example,dc=org' })}
       ${input('user_filter', 'User filter', d.user_filter ?? '(uid={username})', { help: '{username} is replaced by the escaped username. Active Directory: (sAMAccountName={username})' })}
-      ${input('username_attribute', 'Username attribute', d.username_attribute ?? 'uid', { help: 'The pgapex username; AD: sAMAccountName' })}
+      ${input('username_attribute', 'Username attribute', d.username_attribute ?? 'uid', { help: 'The pgkiln username; AD: sAMAccountName' })}
       ${input('display_name_attribute', 'Display name attribute', d.display_name_attribute ?? 'cn')}
       ${input('email_attribute', 'E-mail attribute', d.email_attribute ?? 'mail')}
     </div>

@@ -44,7 +44,7 @@ The runtime sets these settings in each request's transaction (don't set them yo
 
 PostgreSQL can't make an HTTP request without an extension (see [chapter 15](15-extensions.md) for
 `http` and `pg_net`), so `meta.web_request()` doesn't wait for the answer: it **queues** the request in
-`meta.web_request_log` and returns its id. The pgapex server makes the request and stores the response,
+`meta.web_request_log` and returns its id. The pgkiln server makes the request and stores the response,
 which `meta.web_response(id)` returns. When that happens depends on where the SQL runs:
 
 | Queued in | Made | Read the response |
@@ -103,7 +103,7 @@ push notifications on (Settings → Progressive Web App).
 | `meta.send_push(p_user, p_title, p_body, p_page, p_items, p_tag, p_urgency, p_ttl_s)` | Queues a notification for every device of `p_user` that turned notifications on, and returns its id. `p_title` (required, at most 200 characters), `p_body` (at most 1000), `p_page` + `p_items` (a page of the application and item values: the link, signed for the recipient), `p_tag` (1–32 letters, digits, `-`, `_`: replaces an older notification with the same tag), `p_urgency` (`very-low`, `low`, `normal`, `high`), `p_ttl_s` (how long the push service keeps it for an offline device, default 86400, at most 28 days) |
 | `meta.has_push_subscription(p_user)` | Whether the user (default: the current one) has a device with notifications on (APEX_PWA.HAS_PUSH_SUBSCRIPTION) |
 
-The message is sent by the pgapex server **after the transaction commits** (a rolled-back
+The message is sent by the pgkiln server **after the transaction commits** (a rolled-back
 transaction sends nothing), at once when the server is notified, otherwise on the scheduler's next
 pass. At most 1000 messages per application wait at a time. Application roles can't read the
 queue; the owner can: `select id, username, status, devices, delivered, message from meta.push_message
@@ -186,7 +186,7 @@ select p.cols[1] as name, p.cols[3]::numeric as salary from meta.parse_data(:fil
   elements (`name`) and deeper elements by path (`address/city` → `address_city`); namespace
   prefixes are ignored. Documents with a DTD or entity declarations are refused.
 - **Excel (.xlsx)**: an `.xlsx` file is a zip archive of compressed parts, and PostgreSQL can't
-  decompress. pgapex reads the sheets **when it receives the file**: a file item's upload (so
+  decompress. pgkiln reads the sheets **when it receives the file**: a file item's upload (so
   `meta.temp_files` content works) or a [`meta.web_request()`](#web-requests-from-sql) response, and
   keeps them for 24 hours, found by the file's content. `p_row_selector` names the sheet (default:
   the first); cells are text as the data loader writes them (dates `YYYY-MM-DD`). Other `.xlsx`
@@ -226,7 +226,7 @@ select * from meta.parse_data(meta.zip_entry(:zip, 'data/employees.csv'), 'emplo
 ```
 
 `meta.zip_entries` and `meta.zip_entry` read zips built in SQL directly. Compressed zips (nearly
-all others) are unpacked by pgapex when it receives them, like Excel files above (a file item's
+all others) are unpacked by pgkiln when it receives them, like Excel files above (a file item's
 upload or a web response; at most 2,000 files and 200 MB unpacked), and read from there for 24
 hours; for any other compressed zip they say so.
 
@@ -512,14 +512,14 @@ from it, for example with a scheduled
 
 ## Icons
 
-136 line icons of pgapex's own (`public/icons.svg`, listed below), and (0.31) the **Lucide** set of about
+136 line icons of pgkiln's own (`public/icons.svg`, listed below), and (0.31) the **Lucide** set of about
 1,600 more in the same 24×24 line style ([lucide.dev/icons](https://lucide.dev/icons/), ISC licence, shipped
-with pgapex; APEX: Font APEX), usable in navigation entries, list entries, cards (`icon` column) and
+with pgkiln; APEX: Font APEX), usable in navigation entries, list entries, cards (`icon` column) and
 template components. An icon value is a name followed by optional **modifiers**:
 
 ```text
-users                  pgapex's own icon
-car-front              a Lucide icon (pgapex's own wins where both have the name)
+users                  pgkiln's own icon
+car-front              a Lucide icon (pgkiln's own wins where both have the name)
 fa-car-front fa-lg     Font APEX style: the fa- prefix is dropped, so Font APEX names work where Lucide has the icon
 refresh spin           modifiers: xs sm lg 2x 3x 4x · spin pulse · rotate-90 rotate-180 rotate-270 · flip-h flip-v
 truck flip-h success   · colours success warning danger info muted
@@ -528,7 +528,7 @@ truck flip-h success   · colours success warning danger info muted
 Unknown names show no icon; unknown modifiers are ignored. `spin` and `pulse` stand still for users who
 ask for reduced motion. Each Lucide icon is its own small file (`/static/icon/<name>.svg`, cached for good,
 versioned with the package), so a page loads only the icons it shows. In the builder the icon picker shows
-pgapex's icons; its filter box also searches the Lucide icons by name and search word (`vehicle` finds
+pgkiln's icons; its filter box also searches the Lucide icons by name and search word (`vehicle` finds
 `car`, `bus`, …), and **Or any icon, with modifiers** takes any value (checked on save).
 
 `home` `users` `user` `building` `chart` `table` `list` `calendar` `shield` `history` `settings` `org` `grid`

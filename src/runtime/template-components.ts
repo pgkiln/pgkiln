@@ -23,7 +23,7 @@ import { builtinComponents } from './builtin-components.ts';
 //     http(s), mailto, tel and relative URLs; anything else is dropped.
 // So whatever the data, the output has exactly the template's elements and
 // attributes. Links to pages of the application use the #LINK# placeholder,
-// which pgapex fills with a checksummed URL (links.ts).
+// which pgkiln fills with a checksummed URL (links.ts).
 
 export const PLUGIN_FORMAT = 'pgapex-plugin/1';
 /** Layout classes of a component's instances in a region (app.css, "template components"). */
@@ -51,7 +51,7 @@ export interface TemplateComponent {
   wrapper?: string | null;
   css_classes?: string[] | null;
   attributes?: TcAttribute[] | null;
-  /** one of pgapex's own (builtin-components.ts), not the application's */
+  /** one of pgkiln's own (builtin-components.ts), not the application's */
   builtin?: boolean;
 }
 

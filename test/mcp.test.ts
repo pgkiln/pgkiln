@@ -1,4 +1,4 @@
-// `pgapex mcp` (src/cli/mcp.ts): the MCP server for AI coding agents. The
+// `pgkiln mcp` (src/cli/mcp.ts): the MCP server for AI coding agents. The
 // protocol over a real child process, the read tools on the HR example, and
 // the export → edit → diff → import round trip on a copy.
 import { after, before, describe, test } from 'node:test';
@@ -36,7 +36,7 @@ async function call(name: string, args: Record<string, unknown> = {}) {
 
 before(async () => {
   await owner.query('delete from meta.app where alias = $1', [COPY]);
-  server = spawn(process.execPath, [join(root, 'bin/pgapex.js'), 'mcp'], { cwd: tmp });
+  server = spawn(process.execPath, [join(root, 'bin/pgkiln.js'), 'mcp'], { cwd: tmp });
   createInterface({ input: server.stdout }).on('line', (line) => {
     const msg = JSON.parse(line);
     waiting.get(msg.id)?.(msg);
@@ -51,11 +51,11 @@ after(async () => {
   await closePools();
 });
 
-describe('pgapex mcp: protocol', () => {
+describe('pgkiln mcp: protocol', () => {
   test('initialize names the server, offers tools and explains the workflow', async () => {
     const r = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
     assert.equal(r.result.protocolVersion, '2025-06-18');
-    assert.equal(r.result.serverInfo.name, 'pgapex');
+    assert.equal(r.result.serverInfo.name, 'pgkiln');
     assert.ok(r.result.capabilities.tools);
     assert.match(r.result.instructions, /export_app/);
     // an unknown version gets the newest one the server speaks
@@ -90,7 +90,7 @@ describe('pgapex mcp: protocol', () => {
   });
 });
 
-describe('pgapex mcp: reading an application', () => {
+describe('pgkiln mcp: reading an application', () => {
   test('list_apps and app_overview', async () => {
     assert.match(await call('list_apps'), /"alias": "hr"/);
     const o = await call('app_overview', { alias: 'hr' });
@@ -115,7 +115,7 @@ describe('pgapex mcp: reading an application', () => {
   test('describe_schema lists objects and describes a table with its policies', async () => {
     const all = await call('describe_schema', {});
     assert.match(all, /^hr$/m);
-    assert.doesNotMatch(all, /^meta$/m, 'pgapex itself only on request');
+    assert.doesNotMatch(all, /^meta$/m, 'pgkiln itself only on request');
     const emp = JSON.parse(await call('describe_schema', { table: 'hr.leave_request' }));
     assert.ok(emp.columns.some((c: any) => c.column === 'empno'));
     assert.ok(emp.policies.length > 0);
@@ -137,7 +137,7 @@ describe('pgapex mcp: reading an application', () => {
   });
 });
 
-describe('pgapex mcp: export, edit, diff, import', () => {
+describe('pgkiln mcp: export, edit, diff, import', () => {
   test('a copy goes through the whole round trip', async () => {
     // export the example and import it as a copy
     assert.match(await call('export_app', { alias: 'hr', path: 'hr' }), /Exported hr to/);

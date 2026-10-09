@@ -1,4 +1,4 @@
-# pgapex
+# pgkiln
 
 [![CI](https://github.com/NickVrgr/Postgresql_APEX/actions/workflows/ci.yml/badge.svg)](https://github.com/NickVrgr/Postgresql_APEX/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -9,7 +9,8 @@ dynamic actions, validations and processes are rows in the `meta` schema. A
 runtime turns those rows into web pages, and the builder is an editor for
 them.
 
-> pgapex is an independent open source project and is not affiliated with Oracle. Oracle and APEX are trademarks of Oracle; the name is provisional.
+> pgkiln (called *pgapex* until 0.31) is an independent open source project and is not affiliated with Oracle. Oracle and APEX are trademarks of Oracle.
+> Website: [pgkiln.vargar.eu](https://pgkiln.vargar.eu)
 
 <p align="center">
   <img src="docs/images/builder-page-designer.png" alt="The page designer: component tree, layout and property editor" width="100%">
@@ -51,7 +52,7 @@ Or from the source, for developing:
 ```bash
 npm install
 cp .env.example .env
-npm run setup        # Postgres 17 on localhost:5434 + the pgapex schema (migrations)
+npm run setup        # Postgres 17 on localhost:5434 + the pgkiln schema (migrations)
 npm run dev          # http://127.0.0.1:3100/builder (admin / admin)
 ```
 
@@ -62,9 +63,9 @@ translations, documents, approvals) is added in the page designer and Shared Com
 
 ### The example application
 
-pgapex itself contains no application. The repository ships an example built on it, **HR**
+pgkiln itself contains no application. The repository ships an example built on it, **HR**
 (`examples/hr/`): employees and departments, leave requests with approvals, a dashboard, a REST API,
-translations, documents, automations and row level security, all of it ordinary pgapex metadata
+translations, documents, automations and row level security, all of it ordinary pgkiln metadata
 and PostgreSQL code, the way you would build your own.
 
 ```bash
@@ -75,34 +76,34 @@ Users (password = username): `king` is admin and manager (the president), `blake
 managers, `allen` and `scott` are employees, and `demo` is an admin who is not an employee. Sign
 in as different users to see authorization schemes and row level security at work.
 
-### Developing pgapex
+### Developing pgkiln
 
 ```bash
 npm test             # unit + security regression tests (installs the HR example as their fixture)
 npm run test:e2e     # browser tests on phone/tablet/desktop (npx playwright install chromium first)
 ```
 
-`npm run db:reset` recreates the database (pgapex only). Schema changes go in a new
+`npm run db:reset` recreates the database (pgkiln only). Schema changes go in a new
 `db/migrations/NNN_*.sql` file; `npm run db:migrate` applies pending ones.
 
 ## Working with AI coding agents
 
-pgapex ships an **MCP server** (`pgapex mcp`), so Claude Code, Cursor and other agents can find an
+pgkiln ships an **MCP server** (`pgkiln mcp`), so Claude Code, Cursor and other agents can find an
 application, read and explain its pages, look at the tables and RLS policies behind them, search
 this documentation, and change the application: export it as files (one YAML file per component,
 SQL inline), edit them, show the diff, and import them again in one transaction. In a checkout,
 `.mcp.json` starts it for Claude Code; for your own project:
 
 ```bash
-claude mcp add pgapex -- /path/to/pgapex/bin/pgapex.js mcp
+claude mcp add pgkiln -- /path/to/pgkiln/bin/pgkiln.js mcp
 ```
 
 Then ask things like *"explain what happens when I press Save on page 3 of hr"* or *"add a hire
 date column to the employee report and show me the diff"*. Queries it runs are read-only. See
 [AI coding agents](docs/guide/20-ai-agents.md).
 
-Without an agent, the same export and import is on the command line (`pgapex export hr --format text`,
-`pgapex diff`, `pgapex import --replace`, see [the CLI](docs/guide/18-cli.md)) and in the builder
+Without an agent, the same export and import is on the command line (`pgkiln export hr --format text`,
+`pgkiln diff`, `pgkiln import --replace`, see [the CLI](docs/guide/18-cli.md)) and in the builder
 (*Export* / *Import*).
 
 ## Documentation
@@ -110,7 +111,7 @@ Without an agent, the same export and import is on the command line (`pgapex exp
 The **[user guide](docs/README.md)** explains how everything works: installation and
 configuration, concepts, the builder, every region and item type, processing, dynamic actions,
 security, the SQL reference, a step-by-step tutorial, a guide for Oracle APEX developers, and
-developing pgapex itself.
+developing pgkiln itself.
 
 ## What's in the box
 
@@ -140,9 +141,9 @@ For a full comparison with Oracle APEX 26.1, including what's missing, see
 - Settings with theme and a security checklist, and an **activity monitor**
 - **SQL Workshop**: SQL commands, plus an object browser with RLS policies and grants
 - Export and import of apps as JSON, and developer accounts
-- A `pgapex` command line: migrations, export/import, and apps as one file per component for git
+- A `pgkiln` command line: migrations, export/import, and apps as one file per component for git
   (diff, update in place)
-- An MCP server for AI coding agents (`pgapex mcp`): read, explain, change, diff and import applications
+- An MCP server for AI coding agents (`pgkiln mcp`): read, explain, change, diff and import applications
 
 **Security** is covered in [SECURITY.md](SECURITY.md): least-privilege runtime role, per-app database roles, authorization schemes, checksummed URLs and grid rows, CSRF protection, login throttling, a strict CSP, and 28 security regression tests.
 
@@ -202,17 +203,17 @@ Inside functions and `DO` blocks, use `meta.v('P1_X')`.
 | `meta.page_url(3, '{"P3_ID": 7}')` | Link with a valid checksum |
 | `meta.generate_crud('app', 'schema.table', 2, 3)` | The page wizard |
 | `meta.generate_page('app', 'calendar', 'schema.table', 4)` | The other page wizards (form, cards, calendar, chart, map, facets, master_detail) |
-| `meta.export_app('alias')` / `meta.import_app(json)` | Deployment (or `pgapex export` / `pgapex import`, [chapter 18](docs/guide/18-cli.md)) |
+| `meta.export_app('alias')` / `meta.import_app(json)` | Deployment (or `pgkiln export` / `pgkiln import`, [chapter 18](docs/guide/18-cli.md)) |
 
 ## Project layout
 
 ```
-db/migrations/     pgapex: versioned schema (metadata repository, roles, SQL API)
-examples/hr/       an example application built on pgapex (not part of it): schema, PL/pgSQL, RLS, app definition
+db/migrations/     pgkiln: versioned schema (metadata repository, roles, SQL API)
+examples/hr/       an example application built on pgkiln (not part of it): schema, PL/pgSQL, RLS, app definition
 src/runtime/       context, authz, items, report, grid, charts, calendar, facets, regions, render, engine, routes
 src/builder/       builder UI; components.ts is the spec the property editor is generated from
 src/security.ts    checksums, headers, password policy
-src/cli/           the `pgapex` command line (bin/pgapex.js; docs/guide/18-cli.md)
+src/cli/           the `pgkiln` command line (bin/pgkiln.js; docs/guide/18-cli.md)
 public/            theme (CSS), app.js, icon sprite
 test/              bind scanner unit tests, security regression tests, e2e/ browser tests
 ```
