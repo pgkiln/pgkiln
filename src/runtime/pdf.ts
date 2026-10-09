@@ -153,7 +153,7 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
   const c = ctx.client!;
   // the rows come from a cursor in batches and are drawn as they arrive
   const query = await buildSql(ctx, r, st, 'pdf');
-  const cursor = 'pgapex_pdf';
+  const cursor = 'pgkiln_pdf';
   await savepoint(c, () => c.query({ text: `declare ${cursor} no scroll cursor for ${query.text}`, values: query.values }));
   const fetch = () => savepoint(c, () => c.query({ text: `fetch ${PDF_BATCH} from ${cursor}`, rowMode: 'array' }));
   const first = await fetch();
@@ -228,7 +228,7 @@ export async function tablePdf(tb: PdfTable, layout: PdfLayout): Promise<Buffer>
   const margin = layout.margin_mm * MM;
   const size = layout.font_size;
   const [pw, ph] = PAPER[layout.paper] ?? PAPER.A4;
-  const doc = new PDFDocument({ size: [pw, ph], margin, bufferPages: true, autoFirstPage: false, info: { ...tb.info, Creator: 'pgapex' } });
+  const doc = new PDFDocument({ size: [pw, ph], margin, bufferPages: true, autoFirstPage: false, info: { ...tb.info, Creator: 'pgkiln' } });
   const chunks: Buffer[] = [];
   doc.on('data', (b: Buffer) => chunks.push(b));
   const finished = new Promise<void>((resolve, reject) => {

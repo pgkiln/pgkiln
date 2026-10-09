@@ -51,7 +51,7 @@ import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, t
 // be safe to repeat; the console's retry calls again.
 //
 // The server runs workflows when they start or a task of theirs ends
-// (NOTIFY pgapex_workflow) and checks for due waits every few seconds.
+// (NOTIFY pgkiln_workflow) and checks for due waits every few seconds.
 
 export type Step =
   | { name: string; type: 'task'; task: string; owners?: string; next?: string | Record<string, string> }
@@ -470,9 +470,9 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
   if (!k) return !!done;
   at.branch = k.branch;
   await c.query(
-    `select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true),
-            set_config('pgapex.workflow_id', $3, true), set_config('statement_timeout', '30s', true),
-            set_config('pgapex.tenant_id', $4, true)`,
+    `select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', '', true),
+            set_config('pgkiln.workflow_id', $3, true), set_config('statement_timeout', '30s', true),
+            set_config('pgkiln.tenant_id', $4, true)`,
     // (0.31) the workflow's tenant: its steps' SQL and the tasks it creates belong to it
     [String(w.app_id), w.initiator, w.id, w.tenant_id],
   );
@@ -747,7 +747,7 @@ export async function startWorkflowRunner() {
     await listener.connect();
     listener.on('notification', () => void run());
     listener.on('error', (e) => console.error('workflows listener:', e.message));
-    await listener.query('listen pgapex_workflow');
+    await listener.query('listen pgkiln_workflow');
   } catch (e) {
     console.error('workflows: no listener, polling only:', (e as Error).message);
   }

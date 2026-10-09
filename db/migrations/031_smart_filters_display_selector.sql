@@ -33,7 +33,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

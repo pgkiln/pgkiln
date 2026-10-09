@@ -160,7 +160,7 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
     Object.assign(binds, { APP_USER: who.user, APP_ID: String(a.id), APP_ALIAS: a.alias, APP_SESSION: null, APP_PAGE_ID: null, REQUEST: null });
     const result = await runtime.tx(async (c) => {
       await c.query(
-        `select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true),
+        `select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', '', true),
                 set_config('request.jwt.claims', $3, true), set_config('statement_timeout', '30s', true)`,
         [String(a.id), who.user, who.claims ? JSON.stringify(who.claims) : ''],
       );
@@ -175,7 +175,7 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
         const offset = Math.max(0, Math.floor(Number(binds.OFFSET) || 0));
         // streamed: a cursor in the transaction, each batch written as part of the JSON array;
         // the query and the first batch run first, so a failing query is still an error status
-        const cursor = 'pgapex_rest';
+        const cursor = 'pgkiln_rest';
         await c.query(`declare ${cursor} no scroll cursor for select * from (\n${sql}\n) "__r" limit ${size + 1} offset ${offset}`);
         const next = async () => (await c.query(`fetch ${REST_BATCH} from ${cursor}`)).rows;
         let batch = await next();

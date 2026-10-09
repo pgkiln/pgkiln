@@ -3,8 +3,8 @@
 // S3-compatible bucket (a mock that checks every signature): create, replace,
 // remove, delete, a save that rolls back, several files per item, downloads
 // through the application (RLS, checksum), and the credential's checks.
-process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
-process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -19,7 +19,7 @@ import { encryptSecret } from '../src/secrets.ts';
 import { Browser } from './helpers.ts';
 
 // web credential secrets are encrypted: CI has no .env
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
 
 const ALIAS = 't-objstore';
 const ACCESS = 'AKIDTESTKEY123';
@@ -81,9 +81,9 @@ before(async () => {
   await owner.query(`create schema t_objstore;
     create table t_objstore.doc (id serial primary key, title text not null, file_key text, file_name text, file_mime text, file_size int);
     create table t_objstore.attachment (id serial primary key, doc_id int not null references t_objstore.doc on delete cascade, file_key text not null, file_name text, file_mime text, file_size int);
-    grant usage on schema t_objstore to pgapex_runtime;
-    grant all on all tables in schema t_objstore to pgapex_runtime;
-    grant all on all sequences in schema t_objstore to pgapex_runtime;`);
+    grant usage on schema t_objstore to pgkiln_runtime;
+    grant all on all tables in schema t_objstore to pgkiln_runtime;
+    grant all on all sequences in schema t_objstore to pgkiln_runtime;`);
   appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Object storage', 'none') returning id`, [ALIAS])).id;
   await owner.query(`insert into meta.web_credential (app_id, name, type, username, scope, secret_enc, valid_for) values ($1, 'S3', 'aws_sigv4', $2, 'eu-test-1', $3, $4)`,
     [appId, ACCESS, encryptSecret(SECRET), [bucket + '/']]);

@@ -70,7 +70,7 @@ describe('REST API: database', () => {
     const check = (c: Record<string, unknown>) => asApi(c, (q) => q('select meta.api_check()'));
     await check(claims('allen'));
     await assert.rejects(check(claims('allen', { app: 'nope' })), (e: any) => e.code === 'PT401', 'unknown app');
-    await assert.rejects(check({ ...claims('allen'), role: 'pgapex_runtime' }), (e: any) => e.code === 'PT401', 'role is not the app’s API role');
+    await assert.rejects(check({ ...claims('allen'), role: 'pgkiln_runtime' }), (e: any) => e.code === 'PT401', 'role is not the app’s API role');
     await assert.rejects(check(claims('ghost')), (e: any) => e.code === 'PT403', 'no such account');
     const user = `api_${Date.now()}`;
     const acc = (await owner.one(`insert into meta.account (username) values ($1) returning id`, [user])).id;
@@ -90,7 +90,7 @@ describe('REST API: database', () => {
 
   test('a pgkiln session wins over JWT claims', async () => {
     await asApi(claims('king'), async (q) => {
-      await q(`select set_config('pgapex.app_user', 'allen', true), set_config('pgapex.session_id', gen_random_uuid()::text, true)`);
+      await q(`select set_config('pgkiln.app_user', 'allen', true), set_config('pgkiln.session_id', gen_random_uuid()::text, true)`);
       const [r] = await q(`select meta.app_user() as u, meta.has_role('admin') as a`);
       assert.deepEqual(r, { u: 'allen', a: false });
     });
@@ -149,10 +149,10 @@ describe('REST API: tokens', () => {
 
   test('roles that bypass row level security cannot be API roles', async () => {
     assert.equal(await apiRoleProblem('hr_api'), null);
-    assert.match((await apiRoleProblem('pgapex'))!, /bypasses row level security/);
-    assert.match((await apiRoleProblem('pgapex_runtime'))!, /own roles/);
+    assert.match((await apiRoleProblem('pgkiln'))!, /bypasses row level security/);
+    assert.match((await apiRoleProblem('pgkiln_runtime'))!, /own roles/);
     assert.match((await apiRoleProblem('nope'))!, /no database role/);
-    await owner.query(`update meta.app set api_role = 'pgapex' where id = $1`, [appId]);
+    await owner.query(`update meta.app set api_role = 'pgkiln' where id = $1`, [appId]);
     try {
       await assert.rejects(issueApiToken(appId, 'king', 1), /bypasses row level security/);
     } finally {
@@ -183,7 +183,7 @@ describe('REST API: tokens', () => {
     assert.equal(res.headers['cache-control'], 'no-store');
     const token = /id="api_token"[^>]*>([^<]+)</.exec(res.body)?.[1];
     assert.equal(decodeJwt(token!).app_user, 'king');
-    await req('POST', `/builder/apps/${appId}/api`, { __csrf: csrf(res.body), api_role: 'pgapex' });
+    await req('POST', `/builder/apps/${appId}/api`, { __csrf: csrf(res.body), api_role: 'pgkiln' });
     assert.equal((await owner.one('select api_role from meta.app where id = $1', [appId])).api_role, 'hr_api', 'unsafe role refused');
     await owner.query(`delete from meta.activity_log where event = 'api_token' and app_id = $1`, [appId]);
   });

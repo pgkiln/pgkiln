@@ -134,8 +134,8 @@ describe('components and plug-in files', () => {
 
   test('the example plug-ins are valid and survive a round trip', () => {
     const dir = new URL('../examples/plugins/', import.meta.url);
-    // template component plug-ins (pgapex-plugin/1); test/plugins.test.ts checks the others
-    const files = readdirSync(dir).filter((f) => f.endsWith('.plugin.json') && JSON.parse(readFileSync(new URL(f, dir), 'utf8')).format === 'pgapex-plugin/1');
+    // template component plug-ins (pgkiln-plugin/1); test/plugins.test.ts checks the others
+    const files = readdirSync(dir).filter((f) => f.endsWith('.plugin.json') && JSON.parse(readFileSync(new URL(f, dir), 'utf8')).format === 'pgkiln-plugin/1');
     assert.ok(files.length >= 3);
     for (const f of files) {
       const doc = JSON.parse(readFileSync(new URL(f, dir), 'utf8'));
@@ -146,10 +146,10 @@ describe('components and plug-in files', () => {
   });
 
   test('plug-in files of another format or with a bad template are refused', () => {
-    const ok = { format: 'pgapex-plugin/1', type: 'template_component', static_id: 'x', name: 'X', template: '<p>#A#</p>' };
+    const ok = { format: 'pgkiln-plugin/1', type: 'template_component', static_id: 'x', name: 'X', template: '<p>#A#</p>' };
     assert.equal(typeof parsePlugin(ok), 'object');
     assert.match(parsePlugin([]) as string, /JSON object/);
-    assert.match(parsePlugin({ ...ok, format: 'pgapex-plugin/9' }) as string, /Unsupported plug-in format/);
+    assert.match(parsePlugin({ ...ok, format: 'pgkiln-plugin/9' }) as string, /Unsupported plug-in format/);
     assert.match(parsePlugin({ ...ok, type: 'region_plugin' }) as string, /Unsupported plug-in type/);
     assert.match(parsePlugin({ ...ok, template: 1 }) as string, /"template" is missing/);
     assert.match(parsePlugin({ ...ok, template: '<p onclick="x">' }) as string, /Event handler/);
@@ -158,7 +158,7 @@ describe('components and plug-in files', () => {
 
   test('SQL: export and import a plug-in; the trigger refuses scripts', async () => {
     const doc = (await owner.one(`select meta.export_template_component($1, 'status_badge') as d`, [appId])).d;
-    assert.equal(doc.format, 'pgapex-plugin/1');
+    assert.equal(doc.format, 'pgkiln-plugin/1');
     assert.equal(doc.id, undefined);
     assert.equal(doc.app_id, undefined);
     const copy = { ...doc, static_id: 'test_badge', name: 'Test badge' };

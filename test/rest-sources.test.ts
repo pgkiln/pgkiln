@@ -8,9 +8,9 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
 // the server's configuration for these tests: local services are allowed
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
-process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
-process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
+process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner } = await import('../src/db.ts');
@@ -156,14 +156,14 @@ describe('secrets', () => {
     assert.equal(decryptSecret(enc), 'p@ss');
     const tampered = `v1:${Buffer.from(Buffer.from(enc.slice(3), 'base64').map((b, i) => (i === 30 ? b ^ 1 : b))).toString('base64')}`;
     assert.throws(() => decryptSecret(tampered), /cannot be decrypted/);
-    const key = process.env.PGAPEX_SECRET_KEY;
+    const key = process.env.PGKILN_SECRET_KEY;
     try {
-      process.env.PGAPEX_SECRET_KEY = 'another-key-of-at-least-32-characters!!';
+      process.env.PGKILN_SECRET_KEY = 'another-key-of-at-least-32-characters!!';
       assert.throws(() => decryptSecret(enc), /cannot be decrypted/);
-      process.env.PGAPEX_SECRET_KEY = 'short';
-      assert.throws(() => encryptSecret('x'), /PGAPEX_SECRET_KEY/);
+      process.env.PGKILN_SECRET_KEY = 'short';
+      assert.throws(() => encryptSecret('x'), /PGKILN_SECRET_KEY/);
     } finally {
-      process.env.PGAPEX_SECRET_KEY = key;
+      process.env.PGKILN_SECRET_KEY = key;
     }
   });
 });
@@ -182,11 +182,11 @@ describe('outgoing requests (SSRF protection)', () => {
     assert.match(urlProblem('file:///etc/passwd')!, /Only http and https/);
     assert.match(urlProblem('http://user:pw@127.0.0.1/')!, /user name or password/);
     assert.match(urlProblem('http://[::1]/')!, /allow-list/);
-    const saved = process.env.PGAPEX_REST_ALLOWED_HOSTS;
-    const savedPrivate = process.env.PGAPEX_REST_PRIVATE_HOSTS;
+    const saved = process.env.PGKILN_REST_ALLOWED_HOSTS;
+    const savedPrivate = process.env.PGKILN_REST_PRIVATE_HOSTS;
     try {
-      process.env.PGAPEX_REST_PRIVATE_HOSTS = '';
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = '*.example.com, api.other.org:8443, 10.0.0.5';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '';
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*.example.com, api.other.org:8443, 10.0.0.5';
       assert.equal(urlProblem('https://api.example.com/'), null);
       assert.match(urlProblem('https://example.com/')!, /allow-list/, 'the wildcard is for subdomains');
       assert.match(urlProblem('https://evilexample.com/')!, /allow-list/);
@@ -194,11 +194,11 @@ describe('outgoing requests (SSRF protection)', () => {
       assert.match(urlProblem('https://api.other.org/')!, /allow-list/, 'another port');
       assert.match(urlProblem('http://10.0.0.5/')!, /private/, 'allowed, but private');
       assert.match(urlProblem('http://0x7f000001/')!, /allow-list/, 'numeric forms are normalised first');
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = '';
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '';
       assert.match(urlProblem(`https://api.example.com/`)!, /allow-list/, 'unset: nothing is allowed');
     } finally {
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = saved;
-      process.env.PGAPEX_REST_PRIVATE_HOSTS = savedPrivate;
+      process.env.PGKILN_REST_ALLOWED_HOSTS = saved;
+      process.env.PGKILN_REST_PRIVATE_HOSTS = savedPrivate;
     }
   });
 

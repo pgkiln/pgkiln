@@ -22,14 +22,14 @@ let hr: number;
 let dev: Browser;
 const IMP = 'hr-plugin-imp';
 const EXAMPLES = ['char-counter', 'show-more', 'copy-value', 'log-event'];
-const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgapex-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
+const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgkiln-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
 const example = (n: string) => JSON.parse(readFileSync(join(root, 'examples/plugins', `${n}.plugin.json`), 'utf8'));
 const built = (n: string) => pluginFromSources((f) => (existsSync(join(root, 'examples/plugins', n, f)) ? readFileSync(join(root, 'examples/plugins', n, f)) : undefined));
 
 const tiny = (over: Record<string, unknown> = {}) => ({
-  format: 'pgapex-plugin/2', type: 'dynamic_action', name: 't_tiny', label: 'Tiny', version: '1.0',
+  format: 'pgkiln-plugin/2', type: 'dynamic_action', name: 't_tiny', label: 'Tiny', version: '1.0',
   attributes: [{ name: 'WORD', default: 'hi &APP_USER.' }],
-  files: [{ name: 't-tiny.js', content: Buffer.from("pgapex.plugins.register('t_tiny', () => {});\n").toString('base64') }],
+  files: [{ name: 't-tiny.js', content: Buffer.from("pgkiln.plugins.register('t_tiny', () => {});\n").toString('base64') }],
   ...over,
 });
 
@@ -60,7 +60,7 @@ describe('plug-ins', () => {
   test('plug-in files are checked before anything is installed', () => {
     assert.equal(typeof parsePluginDocument(tiny()), 'object');
     const bad: [Record<string, unknown>, RegExp][] = [
-      [{ format: 'pgapex-plugin/1' }, /format/],
+      [{ format: 'pgkiln-plugin/1' }, /format/],
       [{ type: 'authentication' }, /type is one of/],
       [{ name: 'Bad Name' }, /Name/],
       [{ label: '' }, /Label/],
@@ -100,7 +100,7 @@ describe('plug-ins', () => {
     await dev.submit(`/builder/apps/${hr}/plugins/import`, { plugin: JSON.stringify(tiny()) });
     const row = await owner.one(`select * from meta.plugin where app_id = $1 and name = 't_tiny'`, [hr]);
     assert.deepEqual([row.type, row.files], ['dynamic_action', ['t-tiny.js']]);
-    assert.equal((await owner.one(`select convert_from(content, 'utf8') as c from meta.static_file where app_id = $1 and name = 't-tiny.js'`, [hr])).c, "pgapex.plugins.register('t_tiny', () => {});\n");
+    assert.equal((await owner.one(`select convert_from(content, 'utf8') as c from meta.static_file where app_id = $1 and name = 't-tiny.js'`, [hr])).c, "pgkiln.plugins.register('t_tiny', () => {});\n");
     // again without "replace": refused, nothing changed
     await dev.get(`/builder/apps/${hr}/plugins`);
     await dev.submit(`/builder/apps/${hr}/plugins/import`, { plugin: JSON.stringify(tiny({ label: 'Changed' })) });
@@ -132,11 +132,11 @@ describe('plug-ins', () => {
   });
 
   test('install SQL runs only on request, as the application\'s role, in one transaction', async () => {
-    const made = async () => (await owner.one(`select count(*)::int as n from pgapex_plugins.event_log where event = 't_install'`)).n;
-    await owner.query('select meta.import_plugin($1, $2::jsonb, true)', [hr, JSON.stringify(tiny({ name: 't_installer', install_sql: "insert into pgapex_plugins.event_log (event) values ('t_install');\nselect 1/0;" }))]);
+    const made = async () => (await owner.one(`select count(*)::int as n from pgkiln_plugins.event_log where event = 't_install'`)).n;
+    await owner.query('select meta.import_plugin($1, $2::jsonb, true)', [hr, JSON.stringify(tiny({ name: 't_installer', install_sql: "insert into pgkiln_plugins.event_log (event) values ('t_install');\nselect 1/0;" }))]);
     assert.equal(await made(), 0, 'nothing ran on import');
     const page = await dev.get(`/builder/apps/${hr}/plugins?p=t_installer`);
-    assert.match(page.body, /insert into pgapex_plugins\.event_log/);
+    assert.match(page.body, /insert into pgkiln_plugins\.event_log/);
     const run = await dev.submit(`/builder/apps/${hr}/plugins/install`, { name: 't_installer' });
     assert.match(run.body, /division by zero/);
     assert.equal(await made(), 0, 'rolled back');
@@ -178,24 +178,24 @@ describe('plug-ins', () => {
     const king = new Browser(app);
     await king.login('king');
     await king.get('/a/hr/40');
-    const before = (await owner.one(`select count(*)::int as n from pgapex_plugins.event_log`)).n;
+    const before = (await owner.one(`select count(*)::int as n from pgkiln_plugins.event_log`)).n;
     const res = await king.post('/a/hr/40', { __csrf: king.lastCsrf, P40_NOTE: 'plug-in test note', __request: 'LOG' });
     assert.equal(res.statusCode, 303);
     assert.match((await king.get('/a/hr/40')).body, /Note logged\./);
-    const last = await owner.one(`select app_user, event, detail from pgapex_plugins.event_log order by id desc limit 1`);
+    const last = await owner.one(`select app_user, event, detail from pgkiln_plugins.event_log order by id desc limit 1`);
     assert.deepEqual(last, { app_user: 'king', event: 'hr_note', detail: 'plug-in test note' });
-    assert.equal((await owner.one(`select count(*)::int as n from pgapex_plugins.event_log`)).n, before + 1);
+    assert.equal((await owner.one(`select count(*)::int as n from pgkiln_plugins.event_log`)).n, before + 1);
   });
 
   test('plug-ins travel with the export; the directory layout keeps install SQL in its own file', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     const log = doc.plugins.find((p: { name: string }) => p.name === 'log_event');
-    assert.equal(log.sql_function, 'pgapex_plugins.log_event');
+    assert.equal(log.sql_function, 'pgkiln_plugins.log_event');
     const da = doc.pages.find((p: { page_no: number }) => p.page_no === 40).dynamic_actions[0];
     assert.deepEqual(da.config, { attributes: { MESSAGE: 'Note copied.' } });
     const files = docToFiles(doc);
     assert.ok(files.has('shared/plugins/log_event.json'));
-    assert.match(files.get('shared/plugins/log_event.install_sql.sql')!.toString(), /create table if not exists pgapex_plugins\.event_log/);
+    assert.match(files.get('shared/plugins/log_event.install_sql.sql')!.toString(), /create table if not exists pgkiln_plugins\.event_log/);
     const back = filesToDoc(files);
     assert.deepEqual(back.plugins.find((p: { name: string }) => p.name === 'log_event'), log);
     const id = (await owner.one(`select meta.import_app($1::jsonb, $2) as id`, [JSON.stringify(back), IMP])).id;
@@ -210,7 +210,7 @@ describe('plug-ins', () => {
   });
 
   test('pgkiln plugin build and install', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'pgapex-plugin-'));
+    const tmp = mkdtempSync(join(tmpdir(), 'pgkiln-plugin-'));
     try {
       const run = (...args: string[]) => spawnSync(process.execPath, [join(root, 'bin/pgkiln.js'), ...args], { cwd: tmp, encoding: 'utf8' });
       let r = run('plugin', 'build', join(root, 'examples/plugins/show-more'));

@@ -1,4 +1,4 @@
-// Application export/import (format pgapex/2): round trip and coverage of
+// Application export/import (format pgkiln/2): round trip and coverage of
 // every metadata table.
 import { after, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -121,7 +121,7 @@ describe('application export', () => {
 
   test('export → import → export gives the same document', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
-    assert.equal(doc.format, 'pgapex/2');
+    assert.equal(doc.format, 'pgkiln/2');
     for (const key of ['app', 'authz_schemes', 'app_items', 'app_processes', 'lovs', 'group_roles', 'text_messages', 'translations', 'report_layouts', 'automations', 'document_templates', 'task_definitions', 'workflow_definitions', 'rest_modules', 'template_components', 'build_options', 'nav', 'pages'])
       assert.ok(key in doc, `section ${key}`);
     assert.ok(doc.report_layouts.length && doc.pages.some((p: any) => p.regions.some((r: any) => r.type === 'facets')), 'the HR sample covers layouts and facets');
@@ -187,7 +187,7 @@ describe('application export', () => {
   });
 
   test('unknown formats and accounts are refused or left out', async () => {
-    await assert.rejects(owner.query(`select meta.import_app('{"format": "pgapex/9"}'::jsonb, 'x')`), /unsupported export format pgapex\/9/);
+    await assert.rejects(owner.query(`select meta.import_app('{"format": "pgkiln/9"}'::jsonb, 'x')`), /unsupported export format pgkiln\/9/);
     await assert.rejects(owner.query(`select meta.import_app('{}'::jsonb, 'x')`), /unsupported export format \(none\)/);
     const text = JSON.stringify((await owner.one(`select meta.export_app('hr') as d`)).d);
     for (const secret of ['password_hash', 'secret_hash', 'client_secret']) assert.ok(!text.includes(secret), `no ${secret}`);

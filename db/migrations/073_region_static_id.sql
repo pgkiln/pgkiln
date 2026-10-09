@@ -5,7 +5,7 @@
 -- starting with a letter. It names the region in the directory export
 -- (pages/…/regions/<seq>-<static id>.json|yaml) instead of a key derived
 -- from the title, so renaming a region keeps its file, the references to it
--- and, with `pgapex import --replace`, the users' saved reports. The page
+-- and, with `pgkiln import --replace`, the users' saved reports. The page
 -- renders it as data-static-id on the region, for CSS and JavaScript.
 -- =====================================================================
 

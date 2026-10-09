@@ -176,7 +176,7 @@ export async function pwaRoutes(app: FastifyInstance) {
       .type('text/javascript; charset=utf-8')
       .header('cache-control', 'no-cache')
       .header('service-worker-allowed', `${base}/`)
-      .send(`const PGAPEX = ${config};\n${SW}`);
+      .send(`const PGKILN = ${config};\n${SW}`);
   });
 
   app.get<{ Params: { alias: string } }>('/a/:alias/offline', async (req, reply) => {

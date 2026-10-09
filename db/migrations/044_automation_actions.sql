@@ -403,10 +403,10 @@ declare
   v_def    jsonb;
   v_log    bigint;
   v_id     int;
-  v_chain  text := coalesce(current_setting('pgapex.automation_chain', true), '');
-  v_user   text := current_setting('pgapex.app_user', true);
-  v_auto   text := current_setting('pgapex.automation_id', true);
-  v_sess   text := current_setting('pgapex.session_id', true);
+  v_chain  text := coalesce(current_setting('pgkiln.automation_chain', true), '');
+  v_user   text := current_setting('pgkiln.app_user', true);
+  v_auto   text := current_setting('pgkiln.automation_id', true);
+  v_sess   text := current_setting('pgkiln.session_id', true);
   v_res    jsonb;
   v_status text;
   v_msg    text;
@@ -422,15 +422,15 @@ begin
     raise exception 'Automation % is running already.', v_def ->> 'name';
   end if;
   begin
-    perform set_config('pgapex.app_user', v_def -> 'binds' ->> 'APP_USER', true),
-            set_config('pgapex.automation_id', v_id::text, true),
-            set_config('pgapex.session_id', '', true),
-            set_config('pgapex.automation_chain', coalesce(nullif(v_chain, ''), ',') || v_id || ',', true);
+    perform set_config('pgkiln.app_user', v_def -> 'binds' ->> 'APP_USER', true),
+            set_config('pgkiln.automation_id', v_id::text, true),
+            set_config('pgkiln.session_id', '', true),
+            set_config('pgkiln.automation_chain', coalesce(nullif(v_chain, ''), ',') || v_id || ',', true);
     v_res := meta.automation_execute(v_def);
-    perform set_config('pgapex.app_user', coalesce(v_user, ''), true),
-            set_config('pgapex.automation_id', coalesce(v_auto, ''), true),
-            set_config('pgapex.session_id', coalesce(v_sess, ''), true),
-            set_config('pgapex.automation_chain', v_chain, true);
+    perform set_config('pgkiln.app_user', coalesce(v_user, ''), true),
+            set_config('pgkiln.automation_id', coalesce(v_auto, ''), true),
+            set_config('pgkiln.session_id', coalesce(v_sess, ''), true),
+            set_config('pgkiln.automation_chain', v_chain, true);
   exception when others then
     -- the run's changes and settings are rolled back here
     get stacked diagnostics v_msg = message_text, v_state = returned_sqlstate;
@@ -460,7 +460,7 @@ grant execute on function meta.run_automation(text, boolean), meta.automation_be
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -522,7 +522,7 @@ declare
   v_lmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

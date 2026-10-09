@@ -15,9 +15,9 @@ export const BASE = '/builder';
 const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 const DATABASE = (() => {
   try {
-    return decodeURIComponent(new URL(process.env.DATABASE_URL ?? '').pathname.slice(1)) || 'pgapex';
+    return decodeURIComponent(new URL(process.env.DATABASE_URL ?? '').pathname.slice(1)) || 'pgkiln';
   } catch {
-    return 'pgapex';
+    return 'pgkiln';
   }
 })();
 
@@ -67,7 +67,7 @@ export function bicon(name: string, cls = 'icon') {
 // The builder's own light/dark choice (separate from the runtime's): kept in
 // the session and in a cookie, so it survives signing out. Dark by default.
 export type BuilderTheme = 'dark' | 'light' | 'auto';
-export const THEME_COOKIE = 'pgapex_btheme';
+export const THEME_COOKIE = 'pgkiln_btheme';
 export const builderTheme = (s: Session): BuilderTheme => {
   const t = s.state.__BTHEME;
   return t === 'light' || t === 'auto' ? t : 'dark';

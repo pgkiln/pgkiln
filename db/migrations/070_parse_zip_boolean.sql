@@ -10,7 +10,7 @@
 -- - BOOLEAN session state: meta.v_boolean(item).
 --
 -- PostgreSQL can't decompress (inflate) in SQL. Zip archives and .xlsx
--- files are therefore unpacked by the pgapex server when it receives them
+-- files are therefore unpacked by the pgkiln server when it receives them
 -- (a file item's upload, a meta.web_request() response) into
 -- meta.unpacked_file, keyed by the SHA-256 of the file and kept for 24
 -- hours; the SQL functions find their entries and sheets by the content they
@@ -264,7 +264,7 @@ begin
       if v_method <> 0 then
         raise exception using errcode = 'feature_not_supported',
           message = format('meta.zip_entry: %s is compressed, and PostgreSQL can''t decompress', p_name),
-          hint = 'pgapex unpacks zips it receives (a file item''s upload, a meta.web_request() response) for 24 hours; read the file from those.';
+          hint = 'pgkiln unpacks zips it receives (a file item''s upload, a meta.web_request() response) for 24 hours; read the file from those.';
       end if;
       v_local := meta.le_read(p_zip, v_cd + 42, 4);
       return substring(p_zip from v_local + 31 + meta.le_read(p_zip, v_local + 26, 2)::int + meta.le_read(p_zip, v_local + 28, 2)::int
@@ -407,8 +407,8 @@ begin
   select f.sheets into v_sheets from meta.unpacked_file f where f.digest = sha256(p_content) and f.kind = 'xlsx';
   if v_sheets is null then
     raise exception using errcode = 'feature_not_supported',
-      message = 'meta.parse_data: this Excel (.xlsx) file has not been read by pgapex (PostgreSQL can''t decompress it).',
-      hint = 'pgapex reads .xlsx files it receives (a file item''s upload, a meta.web_request() response) for 24 hours; parse those, or load the file with a data_load process.';
+      message = 'meta.parse_data: this Excel (.xlsx) file has not been read by pgkiln (PostgreSQL can''t decompress it).',
+      hint = 'pgkiln reads .xlsx files it receives (a file item''s upload, a meta.web_request() response) for 24 hours; parse those, or load the file with a data_load process.';
   end if;
   select s into v_sheet from jsonb_array_elements(v_sheets) with ordinality x(s, o)
    where nullif(p_sheet, '') is null or s ->> 'name' = p_sheet order by o limit 1;

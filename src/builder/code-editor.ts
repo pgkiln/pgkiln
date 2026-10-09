@@ -219,7 +219,7 @@ export async function codeEditorRoutes(app: FastifyInstance) {
     try {
       await c.query('begin');
       await c.query(`set local statement_timeout = '5s'`);
-      if (target) await c.query(`select set_config('pgapex.app_id', $1, true)`, [String(target.id)]);
+      if (target) await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(target.id)]);
       if (role) await c.query(`set local role ${pg.escapeIdentifier(role)}`);
       const problem = await checkSql(c, sql, shape);
       return reply.header('Cache-Control', 'no-store').send(problem ? { ok: problem.severity !== 'error', severity: problem.severity, message: problem.message } : { ok: true, message: `No problems found (planned as ${role ?? 'the owner'}).` });

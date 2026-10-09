@@ -16,7 +16,7 @@ create table meta.auth_provider (
   -- confidential clients; NULL for public clients (PKCE only). Readable only by the owner.
   client_secret  text,
   scopes         text not null default 'openid profile email',
-  -- claim that becomes the pgapex username (e.g. preferred_username, email, upn)
+  -- claim that becomes the pgkiln username (e.g. preferred_username, email, upn)
   username_claim text not null default 'preferred_username',
   -- claim with the user's groups (dot path allowed, e.g. realm_access.roles)
   groups_claim   text not null default 'groups',
@@ -63,7 +63,7 @@ create table meta.sso_pending (
   created_at    timestamptz not null default now()
 );
 
--- The runtime role gets nothing here: pgapex handles SSO with the owner
+-- The runtime role gets nothing here: pgkiln handles SSO with the owner
 -- connection (secrets never reach the role that runs application SQL).
 -- It may read group mappings to explain roles, but doesn't need to.
 
@@ -74,7 +74,7 @@ create table meta.sso_pending (
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -108,7 +108,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', p_doc->>'format';
   end if;
 

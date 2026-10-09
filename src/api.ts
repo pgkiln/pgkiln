@@ -22,7 +22,7 @@ export function jwtSecret() {
 export async function apiRoleProblem(role: string) {
   const r = await owner.one(
     `select r.rolsuper, r.rolbypassrls, pg_has_role(r.oid, current_user, 'MEMBER') as owns_meta,
-            r.rolname in ('pgapex_authenticator', 'pgapex_runtime', 'pgapex_anon') as internal
+            r.rolname in ('pgkiln_authenticator', 'pgkiln_runtime', 'pgkiln_anon') as internal
        from pg_roles r where r.rolname = $1`,
     [role],
   );

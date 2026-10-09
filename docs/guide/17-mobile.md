@@ -76,7 +76,7 @@ Push Notification* process. A notification appears on the user's phone or comput
 from an installed app, also when the app is closed, and opens a page of the app when tapped.
 
 **Turning it on.** Settings → Progressive Web App → *Push notifications* (the app must be
-installable, and the server needs `PGAPEX_SECRET_KEY`: the key that signs notifications is stored
+installable, and the server needs `PGKILN_SECRET_KEY`: the key that signs notifications is stored
 encrypted). Each application gets its own key pair (VAPID, RFC 8292) the first time; it is never part
 of an export.
 
@@ -118,7 +118,7 @@ results, and a *Send test* button.
   device whose notifications another user turned on is turned off when the next user opens the app.
 - A **new password**, a **deactivated account** or **removed access** to the app removes the user's
   devices.
-- The server posts only to the browsers' push services (`PGAPEX_PUSH_HOSTS`), over HTTPS, to public
+- The server posts only to the browsers' push services (`PGKILN_PUSH_HOSTS`), over HTTPS, to public
   addresses; a subscription naming another host is refused.
 - *New keys* (Settings → Progressive Web App) replaces the key pair, for example if the server's
   secret key may have leaked; every device then has to turn notifications on again.

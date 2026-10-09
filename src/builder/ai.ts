@@ -46,7 +46,7 @@ function serviceForm(s: Partial<AiService>, action: string, csrfField: ReturnTyp
     <fieldset class="prop-group"><legend>API key</legend>
       ${input('api_key', 'API key', '', { type: 'password', auto: 'new-password', help: source === 'stored' ? 'A key is stored (encrypted). It is never shown; type a new one to replace it.' : `Empty: the server's ${envKeyName((s.provider as 'anthropic') ?? 'anthropic')} is used (when set).` })}
       ${source === 'stored' ? check('remove_key', 'Remove the stored key (use the server default)', false) : ''}
-      ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGAPEX_SECRET_KEY</code>: API keys can't be stored until it is set (the server's environment variables still work).</div>`}
+      ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: API keys can't be stored until it is set (the server's environment variables still work).</div>`}
     </fieldset>
     <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add service' : 'Save'}</button></div>
   </form>`;

@@ -81,7 +81,7 @@ This is the pgkiln counterpart of ORDS RESTful services in APEX; see
 
 1. A client sends `Authorization: Bearer <token>`. The token is a JWT signed with a secret
    (or key) that PostgREST trusts.
-2. PostgREST connects as `pgapex_authenticator`, verifies the token and switches to the database
+2. PostgREST connects as `pgkiln_authenticator`, verifies the token and switches to the database
    role in its `role` claim, e.g. `hr_api`. It puts all claims in the setting `request.jwt.claims`.
 3. PostgREST first calls the pre-request function **`meta.api_check()`**, which rejects the request
    unless the token's application uses that role as its API role and the account is active with
@@ -114,9 +114,9 @@ It uses these settings (set the same in your own deployment):
 
 | PostgREST setting | Value | Why |
 |---|---|---|
-| `db-uri` | `postgres://pgapex_authenticator:…@db/pgapex` | Login role that may only switch to API roles |
+| `db-uri` | `postgres://pgkiln_authenticator:…@db/pgkiln` | Login role that may only switch to API roles |
 | `db-schemas` | `api` | Only the API schema is exposed, never `hr`, `meta` or `public` |
-| `db-anon-role` | `pgapex_anon` | Role for requests without a token; it has no privileges |
+| `db-anon-role` | `pgkiln_anon` | Role for requests without a token; it has no privileges |
 | `db-pre-request` | `meta.api_check` | Rejects tokens of inactive accounts or accounts without access |
 | `jwt-secret` | `API_JWT_SECRET` | Shared with pgkiln, which signs tokens with it |
 | `db-max-rows` | `1000` | Caps the rows per response |
@@ -128,8 +128,8 @@ And in pgkiln's `.env`:
 | `API_URL` | `http://127.0.0.1:3000` | Where PostgREST is reachable (shown in the builder, used for its status check) |
 | `API_JWT_SECRET` | 32+ random characters | Signs the tokens pgkiln issues; must equal PostgREST's `jwt-secret` |
 
-Migration 005 creates `pgapex_authenticator` with the password `pgapex_authenticator`. **Change it**
-outside development: `alter role pgapex_authenticator password '…';`.
+Migration 005 creates `pgkiln_authenticator` with the password `pgkiln_authenticator`. **Change it**
+outside development: `alter role pgkiln_authenticator password '…';`.
 
 ### 2. Create the API role and schema
 
@@ -138,7 +138,7 @@ The HR sample does this in `examples/hr/hr_03_api.sql`. The pattern:
 ```sql
 -- A role for API callers of this application, and permission for PostgREST to use it.
 create role hr_api nologin;
-grant hr_api to pgapex_authenticator;
+grant hr_api to pgkiln_authenticator;
 update meta.app set api_role = 'hr_api' where alias = 'hr';
 
 -- The API is a separate schema of views and functions: a stable contract, never the base tables.
@@ -172,7 +172,7 @@ row level security (superusers, `BYPASSRLS`) and its own roles.
 
 **Builder → App → REST API** shows:
 
-- whether PostgREST answers at `API_URL`, and whether `pgapex_authenticator` may switch to the API role;
+- whether PostgREST answers at `API_URL`, and whether `pgkiln_authenticator` may switch to the API role;
 - the **endpoints**: every view and function in `api` with the HTTP methods the API role may use;
 - a form to **issue a token** for an account, and ready-to-run `curl` examples.
 
@@ -312,4 +312,4 @@ What the HR sample shows:
   `db_role` for the API if the web app needs more than the API should allow.
 - **Use HTTPS** in front of PostgREST, and consider rate limits and CORS rules at the reverse proxy.
 - **Keep `API_JWT_SECRET` secret and long**; everyone who knows it can sign tokens for any account.
-- Change the `pgapex_authenticator` password, and don't grant it roles other than API roles.
+- Change the `pgkiln_authenticator` password, and don't grant it roles other than API roles.

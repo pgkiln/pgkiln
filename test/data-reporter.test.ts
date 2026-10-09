@@ -223,7 +223,7 @@ describe('data reporter settings in the builder', () => {
     assert.equal(removed.config.sharing, false);
   });
 
-  test('pgapex\'s own tables, unknown objects and bad static ids are refused', async () => {
+  test('pgkiln\'s own tables, unknown objects and bad static ids are refused', async () => {
     for (const new_object of ['2', '99', 'hr.emp'])
       assert.equal((await mergeReporterSettings({}, { new_object }, { authz: new Set() }, lookup)).config.sources, undefined);
     const r = await mergeReporterSettings({}, { new_object: '1', new_id: 'Not valid!' }, { authz: new Set() }, lookup);

@@ -81,7 +81,7 @@ export class DebugLog {
 
   /** A NOTICE from the database: meta.debug() messages, other notices and warnings at level 9 / 2. */
   notice(msg: { message?: string; detail?: string; hint?: string; severity?: string }) {
-    if (msg.detail === 'pgapex.debug') {
+    if (msg.detail === 'pgkiln.debug') {
       const level = Number(msg.hint);
       this.add(Number.isInteger(level) ? level : 4, 'meta.debug', msg.message ?? '');
     } else if (msg.severity === 'WARNING') this.add(2, 'sql', `warning: ${msg.message ?? ''}`);

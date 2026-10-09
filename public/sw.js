@@ -1,13 +1,13 @@
-// pgkiln service worker for one application (served as /a/<alias>/sw.js with PGAPEX = {base, offlinePages, offlineSubmit, version}).
+// pgkiln service worker for one application (served as /a/<alias>/sw.js with PGKILN = {base, offlinePages, offlineSubmit, version}).
 //   static files (app.css, app.js, icons) and the offline page: cached at install, served from the cache
 //   pages (navigations): network first; offline, the cached copy (only when the app keeps pages) or the offline page
 //   signing in or out empties the page cache, so the next person on the device doesn't see them
 //   push notifications (migration 074): shown as they arrive, a click opens their page of the app;
 //   signing out turns them off on this device
-/* global PGAPEX */
-const STATIC = `pgapex-static-${PGAPEX.version}`;
-const PAGES = `pgapex-pages-${PGAPEX.base}`;
-const SHELL = ['/static/app.css', '/static/app.js', '/static/icons.svg', `${PGAPEX.base}/offline`];
+/* global PGKILN */
+const STATIC = `pgkiln-static-${PGKILN.version}`;
+const PAGES = `pgkiln-pages-${PGKILN.base}`;
+const SHELL = ['/static/app.css', '/static/app.js', '/static/icons.svg', `${PGKILN.base}/offline`];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(STATIC).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -17,13 +17,13 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('pgapex-static-') && k !== STATIC).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('pgkiln-static-') && k !== STATIC).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
 
 const isPage = (req) => req.mode === 'navigate' && req.method === 'GET';
-const signInOrOut = (url) => url.pathname === `${PGAPEX.base}/login` || url.pathname === `${PGAPEX.base}/logout`;
+const signInOrOut = (url) => url.pathname === `${PGKILN.base}/login` || url.pathname === `${PGKILN.base}/logout`;
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -31,7 +31,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (req.method === 'POST' && signInOrOut(url)) {
-    const signOut = url.pathname === `${PGAPEX.base}/logout`;
+    const signOut = url.pathname === `${PGKILN.base}/logout`;
     const copy = signOut ? req.clone() : null;
     event.respondWith(Promise.all([caches.delete(PAGES), signOut ? endPush(copy) : null]).then(() => fetch(req)));
     return;
@@ -43,22 +43,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (isPage(req) && url.pathname.startsWith(`${PGAPEX.base}/`)) {
+  if (isPage(req) && url.pathname.startsWith(`${PGKILN.base}/`)) {
     event.respondWith(
       fetch(req)
         .then((res) => {
           // keep successful pages of this app (not the sign-in page, not downloads)
-          if (PGAPEX.offlinePages && res.ok && !res.redirected && (res.headers.get('content-type') || '').startsWith('text/html') && !signInOrOut(url)) {
+          if (PGKILN.offlinePages && res.ok && !res.redirected && (res.headers.get('content-type') || '').startsWith('text/html') && !signInOrOut(url)) {
             const copy = res.clone();
             caches.open(PAGES).then((c) => c.put(req, copy));
           }
           return res;
         })
         .catch(async () => {
-          const cached = PGAPEX.offlinePages
+          const cached = PGKILN.offlinePages
             ? (await caches.match(req, { cacheName: PAGES })) || (await caches.match(req, { cacheName: PAGES, ignoreSearch: true }))
             : undefined;
-          return cached || (await caches.match(`${PGAPEX.base}/offline`)) || new Response('Offline', { status: 503, headers: { 'content-type': 'text/plain' } });
+          return cached || (await caches.match(`${PGKILN.base}/offline`)) || new Response('Offline', { status: 503, headers: { 'content-type': 'text/plain' } });
         }),
     );
   }
@@ -66,20 +66,20 @@ self.addEventListener('fetch', (event) => {
 
 // the offline page lists the pages kept on this device
 self.addEventListener('message', (event) => {
-  if (event.data === 'pgapex:pages') {
+  if (event.data === 'pgkiln:pages') {
     caches
       .open(PAGES)
       .then((c) => c.keys())
-      .then((keys) => event.source.postMessage({ type: 'pgapex:pages', pages: keys.map((k) => k.url) }));
+      .then((keys) => event.source.postMessage({ type: 'pgkiln:pages', pages: keys.map((k) => k.url) }));
   }
 });
 
-// ------------------------------------------------------------------ offline form queue (PGAPEX.offlineSubmit)
+// ------------------------------------------------------------------ offline form queue (PGKILN.offlineSubmit)
 // A form posted while the network is down is kept on the device (IndexedDB, files included) and the
 // browser shows the page again with ?queued=1. It is sent later (on "online", when a page of the app
 // opens, or by Background Sync): with a fresh CSRF token, under the same user only. The form's
 // submission id (__submit_id) makes a resend that already reached the server a no-op.
-const QDB = 'pgapex-queue';
+const QDB = 'pgkiln-queue';
 function qdb() {
   return new Promise((resolve, reject) => {
     const r = indexedDB.open(QDB, 1);
@@ -100,12 +100,12 @@ async function qrun(store, mode, fn) {
     t.onerror = () => reject(t.error);
   });
 }
-const queued = () => qrun('forms', 'readonly', (s) => s.getAll()).then((all) => all.filter((f) => f.base === PGAPEX.base));
-const currentUser = () => qrun('meta', 'readonly', (s) => s.get(`user:${PGAPEX.base}`));
+const queued = () => qrun('forms', 'readonly', (s) => s.getAll()).then((all) => all.filter((f) => f.base === PGKILN.base));
+const currentUser = () => qrun('meta', 'readonly', (s) => s.get(`user:${PGKILN.base}`));
 
 async function tellClients() {
   const items = (await queued()).map((f) => ({ id: f.id, url: f.url, title: f.title, at: f.at, user: f.user, status: f.status, error: f.error }));
-  for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ type: 'pgapex:queue', items });
+  for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ type: 'pgkiln:queue', items });
 }
 
 let replaying = false;
@@ -146,9 +146,9 @@ async function replay() {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (!PGAPEX.offlineSubmit || req.method !== 'POST' || req.mode !== 'navigate') return;
+  if (!PGKILN.offlineSubmit || req.method !== 'POST' || req.mode !== 'navigate') return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin || !url.pathname.startsWith(`${PGAPEX.base}/`) || signInOrOut(url)) return;
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(`${PGKILN.base}/`) || signInOrOut(url)) return;
   const copy = req.clone();
   event.respondWith(
     fetch(req).catch(async () => {
@@ -157,8 +157,8 @@ self.addEventListener('fetch', (event) => {
       for (const [k, v] of form.entries()) entries.push([k, v]);
       const user = await currentUser();
       const client = event.clientId ? await self.clients.get(event.clientId) : null;
-      await qrun('forms', 'readwrite', (s) => s.add({ base: PGAPEX.base, url: url.pathname, title: client ? client.url : url.pathname, entries, user, at: Date.now(), status: 'waiting', error: null }));
-      if (self.registration.sync) self.registration.sync.register('pgapex-queue').catch(() => {});
+      await qrun('forms', 'readwrite', (s) => s.add({ base: PGKILN.base, url: url.pathname, title: client ? client.url : url.pathname, entries, user, at: Date.now(), status: 'waiting', error: null }));
+      if (self.registration.sync) self.registration.sync.register('pgkiln-queue').catch(() => {});
       await tellClients();
       return Response.redirect(`${url.pathname}?queued=1`, 303);
     }),
@@ -166,15 +166,15 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('sync', (event) => {
-  if (event.tag === 'pgapex-queue') event.waitUntil(replay());
+  if (event.tag === 'pgkiln-queue') event.waitUntil(replay());
 });
 
 self.addEventListener('message', (event) => {
   const m = event.data || {};
-  if (m.type === 'pgapex:user') event.waitUntil(qrun('meta', 'readwrite', (s) => s.put(m.user, `user:${PGAPEX.base}`)).then(tellClients));
-  if (m.type === 'pgapex:replay') event.waitUntil(replay());
-  if (m.type === 'pgapex:queue') event.waitUntil(tellClients());
-  if (m.type === 'pgapex:discard') event.waitUntil(qrun('forms', 'readwrite', (s) => s.delete(m.id)).then(tellClients));
+  if (m.type === 'pgkiln:user') event.waitUntil(qrun('meta', 'readwrite', (s) => s.put(m.user, `user:${PGKILN.base}`)).then(tellClients));
+  if (m.type === 'pgkiln:replay') event.waitUntil(replay());
+  if (m.type === 'pgkiln:queue') event.waitUntil(tellClients());
+  if (m.type === 'pgkiln:discard') event.waitUntil(qrun('forms', 'readwrite', (s) => s.delete(m.id)).then(tellClients));
 });
 
 // ------------------------------------------------------------------ push notifications (074)
@@ -183,7 +183,7 @@ self.addEventListener('message', (event) => {
 const appUrl = (u) => {
   try {
     const url = new URL(u || '', self.location.origin);
-    return url.origin === self.location.origin && url.pathname.startsWith(`${PGAPEX.base}/`) ? url.href : null;
+    return url.origin === self.location.origin && url.pathname.startsWith(`${PGKILN.base}/`) ? url.href : null;
   } catch {
     return null;
   }
@@ -198,9 +198,9 @@ self.addEventListener('push', (event) => {
   }
   const options = {
     body: typeof m.body === 'string' ? m.body : '',
-    icon: `${PGAPEX.base}/icon-192.png`,
-    badge: `${PGAPEX.base}/icon-192.png`,
-    data: { url: appUrl(m.url) || appUrl(`${PGAPEX.base}/`) },
+    icon: `${PGKILN.base}/icon-192.png`,
+    badge: `${PGKILN.base}/icon-192.png`,
+    data: { url: appUrl(m.url) || appUrl(`${PGKILN.base}/`) },
   };
   if (typeof m.tag === 'string' && m.tag) Object.assign(options, { tag: m.tag, renotify: true });
   event.waitUntil(self.registration.showNotification(typeof m.title === 'string' && m.title ? m.title : 'Notification', options));
@@ -208,7 +208,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = appUrl(event.notification.data && event.notification.data.url) || `${self.location.origin}${PGAPEX.base}/`;
+  const target = appUrl(event.notification.data && event.notification.data.url) || `${self.location.origin}${PGKILN.base}/`;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       const same = wins.find((w) => w.url === target);
@@ -227,7 +227,7 @@ async function endPush(signOutRequest) {
     if (!sub) return;
     const form = await signOutRequest.formData();
     const body = new URLSearchParams({ endpoint: sub.endpoint, __csrf: String(form.get('__csrf') || '') });
-    await fetch(`${PGAPEX.base}/push/unsubscribe`, { method: 'POST', body, headers: { accept: 'application/json' }, credentials: 'same-origin' }).catch(() => {});
+    await fetch(`${PGKILN.base}/push/unsubscribe`, { method: 'POST', body, headers: { accept: 'application/json' }, credentials: 'same-origin' }).catch(() => {});
     await sub.unsubscribe();
   } catch {
     /* the sign-out goes on */

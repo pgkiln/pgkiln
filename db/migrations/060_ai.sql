@@ -5,7 +5,7 @@
 -- meta.ai_service: an instance-level connection to a large language model
 --   provider (APEX: Workspace → Generative AI services). Provider
 --   "anthropic" (Claude) or "openai", a model, an optional API key (stored
---   encrypted by the server with PGAPEX_SECRET_KEY, write-only, never
+--   encrypted by the server with PGKILN_SECRET_KEY, write-only, never
 --   exported; without one the server's ANTHROPIC_API_KEY / OPENAI_API_KEY
 --   is used), an optional base URL (set by administrators only), output
 --   limits and a time limit. Only the owner reads it: the server loads
@@ -131,7 +131,7 @@ create index on meta.ai_request (app_id, id desc);
 create index on meta.ai_request (id) where status = 'queued';
 create index on meta.ai_request (finished_at);
 revoke all on meta.ai_request from public;
-comment on table meta.ai_request is 'AI requests queued from SQL (meta.ai_generate) and their answers, made by the pgapex server; kept 24 hours';
+comment on table meta.ai_request is 'AI requests queued from SQL (meta.ai_generate) and their answers, made by the pgkiln server; kept 24 hours';
 
 -- Queue a request to an AI service the current application may use; returns its id (see meta.ai_result).
 create function meta.ai_generate(p_service text, p_prompt text, p_system text default null, p_schema jsonb default null) returns bigint
@@ -159,7 +159,7 @@ begin
   insert into meta.ai_request (app_id, service, system_prompt, prompt, schema, requested_by)
   values (v_app, upper(p_service), p_system, p_prompt, p_schema, meta.app_user())
   returning id into v_id;
-  perform set_config('pgapex.ai_pending', '1', true);
+  perform set_config('pgkiln.ai_pending', '1', true);
   return v_id;
 end
 $$;
@@ -194,10 +194,10 @@ create function meta.ai_request_take(p_limit int default 3)
 returns table (id bigint, service text, system_prompt text, prompt text, schema jsonb)
 language plpgsql volatile security definer set search_path = meta, pg_catalog as $$
 begin
-  if coalesce(current_setting('pgapex.ai_pending', true), '') <> '1' then
+  if coalesce(current_setting('pgkiln.ai_pending', true), '') <> '1' then
     return;
   end if;
-  perform set_config('pgapex.ai_pending', '', true);
+  perform set_config('pgkiln.ai_pending', '', true);
   return query
     update meta.ai_request l set status = 'running', started_at = now()
      where l.id in (select x.id from meta.ai_request x

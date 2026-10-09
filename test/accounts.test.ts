@@ -121,7 +121,7 @@ describe('expiry and first use', () => {
     assert.equal((await new Browser(app).login(u, 'admin-set-pw-1')).statusCode, 303);
     await owner.query('select meta.expire_password($1)', [u]);
     assert.match((await new Browser(app).login(u, 'admin-set-pw-1')).body, /Change your password/);
-    await assert.rejects(owner.query(`set local role pgapex_runtime; select meta.set_password('king', 'x')`), /permission denied/);
+    await assert.rejects(owner.query(`set local role pgkiln_runtime; select meta.set_password('king', 'x')`), /permission denied/);
   });
 });
 

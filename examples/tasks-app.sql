@@ -38,7 +38,7 @@ $$;
 
 -- 2. The app's database role ("parsing schema") and row level security ---
 create role app_tasks nologin;
-grant app_tasks to pgapex_runtime;
+grant app_tasks to pgkiln_runtime;
 grant usage on schema tasks to app_tasks;
 grant select, insert, update, delete on tasks.task to app_tasks;
 grant execute on all functions in schema tasks to app_tasks;

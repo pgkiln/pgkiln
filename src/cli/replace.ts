@@ -91,7 +91,7 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
   const target = (await db.query<{ id: number }>('select id from meta.app where alias = $1 for update', [alias])).rows[0];
   if (!target) throw new Error(`application ${alias} not found`);
   const old = target.id;
-  const tmpAlias = `pgapex-replace-${randomBytes(6).toString('hex')}`;
+  const tmpAlias = `pgkiln-replace-${randomBytes(6).toString('hex')}`;
   const neu = (await db.query<{ id: number }>('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), tmpAlias])).rows[0].id;
 
   // kept data follows its component

@@ -19,7 +19,7 @@ import { Browser } from './helpers.ts';
 let app: FastifyInstance;
 let appId: number;
 const IDP = 'urn:mock-idp';
-const SP = 'urn:pgapex:test';
+const SP = 'urn:pgkiln:test';
 const ACS = () => `${publicUrl()}/sso/saml/mock-saml`;
 
 function keyPair(cn: string) {

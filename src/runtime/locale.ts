@@ -42,7 +42,7 @@ export interface Locale {
   timeZoneFrom: 'user' | 'browser' | 'app' | 'database';
 }
 
-export const THEME_COOKIE = 'pgapex_theme';
+export const THEME_COOKIE = 'pgkiln_theme';
 const THEMES: ThemeMode[] = ['auto', 'light', 'dark'];
 export const isTheme = (v: unknown): v is ThemeMode => THEMES.includes(v as ThemeMode);
 

@@ -3,9 +3,9 @@
 -- (APEX: region, item, dynamic action and process plug-ins)
 --
 -- A plug-in is a named, typed bundle an application imports as one file
--- (format "pgapex-plugin/2"): custom attributes, static application files
+-- (format "pgkiln-plugin/2"): custom attributes, static application files
 -- (068) whose JavaScript registers the plug-in with
--- pgapex.plugins.register(name, fn), for a region a template component that
+-- pgkiln.plugins.register(name, fn), for a region a template component that
 -- renders it, for a process a PL/pgSQL function schema.fn(jsonb) returning
 -- text (its message), and install SQL that a developer reviews and runs as
 -- the application's role (never on import). Regions, items and processes of
@@ -34,7 +34,7 @@ create table meta.plugin (
   check (type <> 'process' or sql_function is not null),
   unique (app_id, name)
 );
-grant select on meta.plugin to pgapex_runtime;
+grant select on meta.plugin to pgkiln_runtime;
 
 -- an export or plug-in file without files: NULL becomes the empty list
 create function meta.plugin_defaults() returns trigger
@@ -73,7 +73,7 @@ comment on table meta.plugin is 'Plug-ins with their own code (069): region, ite
 
 -- ---------------------------------------------------------------- plug-in files
 -- meta.import_plugin(app, doc, replace) installs a plug-in file (format
--- pgapex-plugin/2): its static files, its template component and the plug-in.
+-- pgkiln-plugin/2): its static files, its template component and the plug-in.
 -- It never runs the install SQL. The builder checks the file (and the
 -- template against the allow-list) before calling it; the tables' checks
 -- apply either way.
@@ -85,7 +85,7 @@ declare
   v_f    jsonb;
   v_id   int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex-plugin/2' then
+  if p_doc->>'format' is distinct from 'pgkiln-plugin/2' then
     raise exception 'unsupported plug-in format %', coalesce(p_doc->>'format', '(none)') using errcode = 'P0001';
   end if;
   if not exists (select 1 from meta.app where id = p_app_id) then
@@ -104,7 +104,7 @@ begin
   end loop;
   if v_tc is not null and jsonb_typeof(v_tc) = 'object' then
     perform meta.import_template_component(p_app_id,
-      jsonb_build_object('format', 'pgapex-plugin/1', 'type', 'template_component') || jsonb_build_object('attributes', coalesce(p_doc->'attributes', '[]')) || v_tc,
+      jsonb_build_object('format', 'pgkiln-plugin/1', 'type', 'template_component') || jsonb_build_object('attributes', coalesce(p_doc->'attributes', '[]')) || v_tc,
       p_replace);
   end if;
   insert into meta.plugin (app_id, name, type, label, version, help, attributes, files, template_component, sql_function, install_sql)
@@ -124,7 +124,7 @@ revoke all on function meta.import_plugin(int, jsonb, boolean) from public;
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -195,7 +195,7 @@ declare
   v_lmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

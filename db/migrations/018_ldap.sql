@@ -1,6 +1,6 @@
 -- LDAP directories (APEX: LDAP Directory authentication). An application's
 -- password form can check passwords against one or more directories as well
--- as against local accounts. pgapex searches the user (as a service account,
+-- as against local accounts. pgkiln searches the user (as a service account,
 -- or anonymously), binds as that user with the password given, and reads the
 -- user's groups, which map to roles like single sign-on groups
 -- (meta.app_group_role). Only the owner reads this table (bind passwords).

@@ -1,5 +1,5 @@
 // The "dir" layout of an application export: one file per component, for
-// git. It is a lossless re-arrangement of the pgapex/2 document that
+// git. It is a lossless re-arrangement of the pgkiln/2 document that
 // meta.export_app() returns (docToFiles), and back (filesToDoc), so
 // meta.import_app() stays the only importer.
 //
@@ -17,7 +17,7 @@
 // - Sections and columns this file does not know travel unchanged
 //   (columns in the component's JSON, unknown sections in extra/).
 // - (0.31) The "text" style (pgkiln export --format text; APEX: APEXlang)
-//   writes every .json file except pgapex.json as .yaml (src/yamltext.ts),
+//   writes every .json file except pgkiln.json as .yaml (src/yamltext.ts),
 //   with code inline as literal blocks instead of sibling files. The reader
 //   takes either, file by file, so a directory may mix them.
 
@@ -29,7 +29,7 @@ export type Doc = Record<string, any>;
 export type FileMap = Map<string, Buffer>;
 
 export const LAYOUT = 1;
-export const MARKER = 'pgapex.json';
+export const MARKER = 'pgkiln.json';
 
 // ------------------------------------------------------------------ helpers
 
@@ -217,7 +217,7 @@ const byColumns = (cols: string[]) => (a: any, b: any) => {
 // ------------------------------------------------------------------ doc → files
 
 export function docToFiles(doc: Doc, style: Style = 'json'): FileMap {
-  if (doc?.format !== 'pgapex/2') throw new Error(`unsupported export format ${doc?.format ?? '(none)'}`);
+  if (doc?.format !== 'pgkiln/2') throw new Error(`unsupported export format ${doc?.format ?? '(none)'}`);
   const w = new Writer(style);
   w.json(MARKER, { format: doc.format, layout: LAYOUT, ...(style === 'text' ? { style } : {}) });
 
@@ -411,7 +411,7 @@ export function filesToDoc(files: FileMap): Doc {
   const marker = files.get(MARKER);
   if (!marker) throw new Error(`${MARKER} not found: not a pgkiln application directory`);
   const m = parseJson(MARKER, marker);
-  if (m.format !== 'pgapex/2') throw new Error(`unsupported export format ${m.format ?? '(none)'}`);
+  if (m.format !== 'pgkiln/2') throw new Error(`unsupported export format ${m.format ?? '(none)'}`);
   if (typeof m.layout === 'number' && m.layout > LAYOUT) throw new Error(`directory layout ${m.layout} is newer than this pgkiln understands (${LAYOUT})`);
   const read = (path: string, dflt: unknown = []) => {
     const f = pick(files, path);
@@ -419,7 +419,7 @@ export function filesToDoc(files: FileMap): Doc {
   };
   const has = (path: string) => !!pick(files, path);
 
-  const doc: Doc = { format: 'pgapex/2' };
+  const doc: Doc = { format: 'pgkiln/2' };
   if (!has('app.json')) throw new Error('app.json not found');
   doc.app = read('app.json');
   for (const [path, buf] of files)

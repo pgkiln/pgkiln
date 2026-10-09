@@ -47,7 +47,7 @@ after(async () => {
 const asTenant = <T>(user: 'king', tenant: string | null, fn: (c: import('pg').PoolClient) => Promise<T>) =>
   owner.tx(async (c) => {
     await c.query(
-      `select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', $3, true), set_config('pgapex.tenant_id', $4, true)`,
+      `select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', $3, true), set_config('pgkiln.tenant_id', $4, true)`,
       [String(appId), user, kingSession, tenant ?? ''],
     );
     return fn(c);

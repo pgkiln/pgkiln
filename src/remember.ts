@@ -11,7 +11,7 @@ import { ssoAccess } from './sso.ts';
 // so a copied cookie works once at most. Access, the account's state and
 // group-mapped roles are checked again on every use.
 
-export const rememberCookie = (appId: number) => `pgapex_remember_${appId}`;
+export const rememberCookie = (appId: number) => `pgkiln_remember_${appId}`;
 const secure = () => process.env.COOKIE_SECURE === 'true';
 
 interface RememberApp {

@@ -698,8 +698,8 @@ large language model services of this installation. A service has:
 - the **maximum output tokens** per request (1–128,000) and a **time limit** (5–600 seconds; pages
   wait for the answer);
 - an optional **base URL** for a gateway or proxy that speaks the provider's API (calls to the AI
-  service don't go through `PGAPEX_REST_ALLOWED_HOSTS`: only administrators set this URL);
-- the **API key**: stored encrypted with `PGAPEX_SECRET_KEY`, write-only (never shown again, never
+  service don't go through `PGKILN_REST_ALLOWED_HOSTS`: only administrators set this URL);
+- the **API key**: stored encrypted with `PGKILN_SECRET_KEY`, write-only (never shown again, never
   exported or logged, not readable by applications). Without one the server's `ANTHROPIC_API_KEY` /
   `OPENAI_API_KEY` is used.
 
@@ -849,7 +849,7 @@ that directory as a zip from `/builder/apps/<id>/export?format=dir`.
 
 ### Export format
 
-The format is `"format": "pgapex/2"`, and it's stable: files exported by pgkiln 0.2.0 and later
+The format is `"format": "pgkiln/2"`, and it's stable: files exported by pgkiln 0.2.0 and later
 import into every later version. New versions only **add** sections, and a missing section
 imports as empty. Import refuses other formats.
 

@@ -100,7 +100,7 @@ const PAGE_LABELS: Record<string, string> = {
 };
 const SINGLE_LABELS: Record<string, string> = {
   app: 'Application settings',
-  pgapex: 'Export format',
+  pgkiln: 'Export format',
   navigation: 'Navigation menu',
   'shared/group-roles': 'Group roles',
   'shared/list-entries': 'List entries',
@@ -172,7 +172,7 @@ export function compareDocs(base: Doc, main: Doc, copy: Doc): Change[] {
 
 /** Application settings first, then shared components, then pages in order. */
 function byComponent(a: string, b: string) {
-  const rank = (id: string) => (id === 'pgapex' ? 0 : id === 'app' ? 1 : id.startsWith('pages/') ? 3 : 2);
+  const rank = (id: string) => (id === 'pgkiln' ? 0 : id === 'app' ? 1 : id.startsWith('pages/') ? 3 : 2);
   const ra = rank(a), rb = rank(b);
   if (ra !== rb) return ra - rb;
   if (ra === 3) {

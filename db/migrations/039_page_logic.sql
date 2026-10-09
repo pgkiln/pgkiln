@@ -102,14 +102,14 @@ begin
     raise exception 'The binds of a background process must be a JSON object (at most 1 MB).';
   end if;
   select s.roles into v_roles from session s
-   where s.id = nullif(current_setting('pgapex.session_id', true), '')::uuid and s.app_id = meta.app_id();
+   where s.id = nullif(current_setting('pgkiln.session_id', true), '')::uuid and s.app_id = meta.app_id();
   select count(*) into v_kids from process c join page g on g.id = c.page_id
    where g.app_id = meta.app_id() and g.page_no = p.page_no and c.parent_process = p.name;
   insert into process_job (app_id, page_no, process_id, name, app_user, session_id, roles, lang, request, binds, steps_total)
-  values (p.app_id, p.page_no, p.id, p.name, meta.app_user(), nullif(current_setting('pgapex.session_id', true), ''),
+  values (p.app_id, p.page_no, p.id, p.name, meta.app_user(), nullif(current_setting('pgkiln.session_id', true), ''),
           coalesce(v_roles, '{}'), left(p_lang, 20), left(p_request, 200), coalesce(p_binds, '{}'), v_kids)
   returning id into v_id;
-  perform pg_notify('pgapex_process_job', v_id::text);
+  perform pg_notify('pgkiln_process_job', v_id::text);
   return v_id;
 end
 $$;
@@ -122,16 +122,16 @@ create view meta.process_jobs with (security_barrier) as
     from meta.process_job j
    where j.app_id = meta.app_id()
      and ((meta.app_user() <> 'nobody' and lower(j.app_user) = lower(meta.app_user()))
-          or (j.session_id is not null and j.session_id = nullif(current_setting('pgapex.session_id', true), '')));
+          or (j.session_id is not null and j.session_id = nullif(current_setting('pgkiln.session_id', true), '')));
 grant select on meta.process_jobs to public;
 
 -- A running background job: its starter's roles (as for automations, 015).
 create or replace function meta.has_role(p_role text) returns boolean
 language plpgsql stable security definer set search_path = meta, pg_catalog as $$
 declare
-  v_session    uuid := nullif(current_setting('pgapex.session_id', true), '')::uuid;
-  v_automation int  := nullif(current_setting('pgapex.automation_id', true), '')::int;
-  v_job        bigint := nullif(current_setting('pgapex.process_job_id', true), '')::bigint;
+  v_session    uuid := nullif(current_setting('pgkiln.session_id', true), '')::uuid;
+  v_automation int  := nullif(current_setting('pgkiln.automation_id', true), '')::int;
+  v_job        bigint := nullif(current_setting('pgkiln.process_job_id', true), '')::bigint;
   v_claims     jsonb;
 begin
   if v_session is not null then
@@ -214,7 +214,7 @@ begin
   values (d.app_id, d.id, d.name, left(v_title, 500), p_detail_pk, v_vars, v_steps, d.admin_role, v_steps->0->>'name', meta.app_user(), v_ver)
   returning id into v_id;
   perform meta.workflow_log(v_id, null, 'started', 'version ' || v_ver);
-  perform pg_notify('pgapex_workflow', v_id::text);
+  perform pg_notify('pgkiln_workflow', v_id::text);
   return v_id;
 end
 $$;

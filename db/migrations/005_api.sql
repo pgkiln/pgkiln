@@ -1,8 +1,8 @@
 -- =====================================================================
--- 005: REST APIs with PostgREST running alongside pgapex
+-- 005: REST APIs with PostgREST running alongside pgkiln
 --
 -- PostgREST serves an application's `api` schema over HTTP. It connects as
--- pgapex_authenticator and switches to the role named in the request's JWT
+-- pgkiln_authenticator and switches to the role named in the request's JWT
 -- (e.g. hr_api). The helpers below make meta.app_user(), meta.app_id() and
 -- meta.has_role() understand PostgREST's verified JWT claims, so the same
 -- row level security policies protect the web app and the API.
@@ -12,7 +12,7 @@
 --   app_user  the application user (falls back to preferred_username, email, sub)
 --   app       the application alias (for roles from meta.app_access)
 --   roles     extra application roles (e.g. from an identity provider);
---             pgapex's own tokens leave it out, so role changes apply at once
+--             pgkiln's own tokens leave it out, so role changes apply at once
 --
 -- meta.api_check() is PostgREST's pre-request function: it rejects tokens of
 -- inactive accounts or accounts without access, at every request.
@@ -20,16 +20,16 @@
 
 do $$
 begin
-  if not exists (select from pg_roles where rolname = 'pgapex_authenticator') then
+  if not exists (select from pg_roles where rolname = 'pgkiln_authenticator') then
     -- CHANGE THE PASSWORD outside development
-    create role pgapex_authenticator login noinherit password 'pgapex_authenticator';
+    create role pgkiln_authenticator login noinherit password 'pgkiln_authenticator';
   end if;
-  if not exists (select from pg_roles where rolname = 'pgapex_anon') then
-    create role pgapex_anon nologin;   -- unauthenticated API requests: no privileges
+  if not exists (select from pg_roles where rolname = 'pgkiln_anon') then
+    create role pgkiln_anon nologin;   -- unauthenticated API requests: no privileges
   end if;
 end
 $$;
-grant pgapex_anon to pgapex_authenticator;
+grant pgkiln_anon to pgkiln_authenticator;
 
 -- The database role API tokens of an application use (e.g. hr_api).
 alter table meta.app add column api_role text;
@@ -43,7 +43,7 @@ $$;
 create or replace function meta.app_user() returns text
 language sql stable as $$
   select coalesce(
-    nullif(current_setting('pgapex.app_user', true), ''),
+    nullif(current_setting('pgkiln.app_user', true), ''),
     (select nullif(coalesce(c->>'app_user', c->>'preferred_username', c->>'email', c->>'sub'), '')
        from meta.jwt_claims() c),
     'nobody')
@@ -52,16 +52,16 @@ $$;
 create or replace function meta.app_id() returns int
 language sql stable security definer set search_path = meta, pg_catalog as $$
   select coalesce(
-    nullif(current_setting('pgapex.app_id', true), '')::int,
+    nullif(current_setting('pgkiln.app_id', true), '')::int,
     (select a.id from meta.app a where a.alias = meta.jwt_claims()->>'app'))
 $$;
 
--- In pgapex: roles of the session (resolved at sign-in).
+-- In pgkiln: roles of the session (resolved at sign-in).
 -- In PostgREST: roles in the token, plus the account's roles in the token's app.
 create or replace function meta.has_role(p_role text) returns boolean
 language plpgsql stable security definer set search_path = meta, pg_catalog as $$
 declare
-  v_session uuid := nullif(current_setting('pgapex.session_id', true), '')::uuid;
+  v_session uuid := nullif(current_setting('pgkiln.session_id', true), '')::uuid;
   v_claims  jsonb;
 begin
   if v_session is not null then
@@ -87,7 +87,7 @@ $$;
 --   * the token must name an application (claim "app") whose api_role is the
 --     role PostgREST switched to;
 --   * the user must be an active account with access to that application.
--- Anonymous requests (no token) pass; pgapex_anon has no privileges.
+-- Anonymous requests (no token) pass; pgkiln_anon has no privileges.
 create function meta.api_check() returns void
 language plpgsql stable security definer set search_path = meta, pg_catalog as $$
 declare
@@ -96,7 +96,7 @@ declare
   v_app    meta.app;
   v_acc    meta.account;
 begin
-  if v_claims is null or v_role is null or v_role in ('none', 'pgapex_anon') then
+  if v_claims is null or v_role is null or v_role in ('none', 'pgkiln_anon') then
     return;
   end if;
   select * into v_app from meta.app a where a.alias = v_claims->>'app';

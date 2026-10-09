@@ -22,7 +22,7 @@ let close: () => Promise<void>;
 const env = { ...process.env };
 
 before(async () => {
-  process.env.PGAPEX_SECRET_KEY ??= 'push-e2e-secret-key-0123456789abcdefghij';
+  process.env.PGKILN_SECRET_KEY ??= 'push-e2e-secret-key-0123456789abcdefghij';
   const app = await buildApp({ logger: false });
   await app.listen({ port: 0, host: '127.0.0.1' });
   base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;

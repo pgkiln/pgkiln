@@ -13,7 +13,7 @@ export async function connect() {
   if (!url) throw new Error('DATABASE_URL is not set (use --db, the environment or .env)');
   // dates as Postgres sends them, like the server (src/db.ts)
   for (const oid of [1082, 1114, 1184, 1083, 1266]) pg.types.setTypeParser(oid, (v: string) => v);
-  const client = new pg.Client({ connectionString: url, application_name: 'pgapex-cli' });
+  const client = new pg.Client({ connectionString: url, application_name: 'pgkiln-cli' });
   await client.connect();
   return client;
 }

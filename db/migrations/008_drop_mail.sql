@@ -3,7 +3,7 @@
 --
 -- Development builds of v0.5.0 shipped a mail queue, e-mail templates, a
 -- "Send e-mail" process type and forgot-password links. They were removed
--- before release (the project owner's decision: pgapex doesn't send mail;
+-- before release (the project owner's decision: pgkiln doesn't send mail;
 -- use a PostgreSQL extension or your own service if you need it). Fresh
 -- installs never create these objects; this migration cleans up databases
 -- that ran the pre-release migrations. Everything here is idempotent.
@@ -51,8 +51,8 @@ alter table meta.app drop column if exists password_reset;
 -- The sample's seed file was renamed from hr_04_i18n_mail.sql to hr_04_i18n.sql.
 do $$
 begin
-  if to_regclass('public.pgapex_seed') is not null then
-    update public.pgapex_seed set name = 'hr_04_i18n.sql' where name = 'hr_04_i18n_mail.sql';
+  if to_regclass('public.pgkiln_seed') is not null then
+    update public.pgkiln_seed set name = 'hr_04_i18n.sql' where name = 'hr_04_i18n_mail.sql';
   end if;
 end
 $$;

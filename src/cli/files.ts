@@ -21,7 +21,7 @@ export function readDir(dir: string): FileMap {
   return files;
 }
 
-/** The application inside a zip file: the folder holding pgapex.json (or the root). */
+/** The application inside a zip file: the folder holding pgkiln.json (or the root). */
 export function readZip(buf: Uint8Array): FileMap {
   const entries = unzipSync(buf);
   const marker = Object.keys(entries).filter((p) => p === MARKER || p.endsWith('/' + MARKER)).sort((a, b) => a.length - b.length)[0];

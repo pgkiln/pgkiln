@@ -51,7 +51,7 @@ describe('installable app', () => {
     assert.deepEqual(m.icons.map((i: any) => `${i.sizes}/${i.purpose}`), ['192x192/any', '512x512/any', '512x512/maskable']);
     const sw = await b.get('/a/hr/sw.js');
     assert.equal(sw.headers['service-worker-allowed'], '/a/hr/');
-    assert.match(sw.body, /^const PGAPEX = \{"base":"\/a\/hr","offlinePages":true,"offlineSubmit":true,"version":"[a-z0-9]+"\};/);
+    assert.match(sw.body, /^const PGKILN = \{"base":"\/a\/hr","offlinePages":true,"offlineSubmit":true,"version":"[a-z0-9]+"\};/);
     const icon = (await b.get('/a/hr/icon-512.png')).rawPayload;
     const [w, h, centre] = decode(icon);
     assert.deepEqual([w, h], [512, 512]);

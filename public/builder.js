@@ -16,15 +16,15 @@
   const store = {
     get(k) {
       try {
-        return window.localStorage.getItem(`pgapex.builder.${k}`);
+        return window.localStorage.getItem(`pgkiln.builder.${k}`);
       } catch {
         return null;
       }
     },
     set(k, v) {
       try {
-        if (v === null) window.localStorage.removeItem(`pgapex.builder.${k}`);
-        else window.localStorage.setItem(`pgapex.builder.${k}`, v);
+        if (v === null) window.localStorage.removeItem(`pgkiln.builder.${k}`);
+        else window.localStorage.setItem(`pgkiln.builder.${k}`, v);
       } catch {}
     },
   };
@@ -60,7 +60,7 @@
         panels[j].hidden = !on;
       });
       if (focus) tabs[i].focus();
-      box.dispatchEvent(new CustomEvent('pgapex:tab', { detail: panels[i], bubbles: true }));
+      box.dispatchEvent(new CustomEvent('pgkiln:tab', { detail: panels[i], bubbles: true }));
     };
     list.addEventListener('click', (e) => {
       const t = e.target.closest('[role=tab]');
@@ -504,8 +504,8 @@
     const picker = box.closest('.icon-picker');
     for (const c of picker.querySelectorAll('.icon-grid .icon-choice')) c.hidden = !!q && !c.textContent.toLowerCase().includes(q);
     // (0.31) and the Lucide icons by name and search words, as more choices of the same radio group
-    clearTimeout(box.pgapexTimer);
-    box.pgapexTimer = setTimeout(() => moreIcons(box, picker, q), 250);
+    clearTimeout(box.pgkilnTimer);
+    box.pgkilnTimer = setTimeout(() => moreIcons(box, picker, q), 250);
   });
   async function moreIcons(box, picker, q) {
     const more = picker.querySelector('[data-icon-more]');

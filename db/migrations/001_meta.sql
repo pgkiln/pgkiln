@@ -1,5 +1,5 @@
 -- =====================================================================
--- pgapex metadata repository
+-- pgkiln metadata repository
 --
 -- Every application is data: an app owns shared components (navigation,
 -- authorization schemes, application items and processes, users) and pages;
@@ -304,24 +304,24 @@ create index on meta.process (page_id, seq);
 -- ---------------------------------------------------------------------
 -- Functions available to application SQL (the equivalents of APEX's
 -- :APP_USER, v('ITEM'), apex_page.get_url and authorization checks).
--- The runtime sets pgapex.* settings at the start of every transaction.
+-- The runtime sets pgkiln.* settings at the start of every transaction.
 -- ---------------------------------------------------------------------
 
 create function meta.app_user() returns text
 language sql stable as $$
-  select coalesce(nullif(current_setting('pgapex.app_user', true), ''), 'nobody')
+  select coalesce(nullif(current_setting('pgkiln.app_user', true), ''), 'nobody')
 $$;
 
 create function meta.app_id() returns int
 language sql stable as $$
-  select nullif(current_setting('pgapex.app_id', true), '')::int
+  select nullif(current_setting('pgkiln.app_id', true), '')::int
 $$;
 
 create function meta.v(p_name text) returns text
 language sql stable security definer set search_path = meta, pg_catalog as $$
   select s.state ->> upper(p_name)
     from meta.session s
-   where s.id = nullif(current_setting('pgapex.session_id', true), '')::uuid
+   where s.id = nullif(current_setting('pgkiln.session_id', true), '')::uuid
 $$;
 
 -- True when the current application user has the role. Use it in RLS
@@ -401,32 +401,32 @@ grant execute on function meta.app_user(), meta.app_id(), meta.v(text), meta.has
 revoke execute on function meta.hash_password(text) from public;
 
 -- ---------------------------------------------------------------------
--- Least-privilege runtime role. The runtime connects as pgapex_runtime:
+-- Least-privilege runtime role. The runtime connects as pgkiln_runtime:
 -- it can read metadata and manage sessions, but cannot read developer
 -- accounts or instance secrets. NOINHERIT: it gets an application's
 -- data privileges only via SET ROLE <app db_role>.
 -- CHANGE THE PASSWORD outside development:
---   alter role pgapex_runtime password '...';
+--   alter role pgkiln_runtime password '...';
 -- ---------------------------------------------------------------------
 
 do $$
 begin
-  if not exists (select from pg_roles where rolname = 'pgapex_runtime') then
-    create role pgapex_runtime login noinherit password 'pgapex_runtime';
+  if not exists (select from pg_roles where rolname = 'pgkiln_runtime') then
+    create role pgkiln_runtime login noinherit password 'pgkiln_runtime';
   end if;
 end
 $$;
 
-grant usage on schema meta to pgapex_runtime;
+grant usage on schema meta to pgkiln_runtime;
 grant select on meta.app, meta.authz_scheme, meta.app_item, meta.app_process, meta.nav_entry,
   meta.page, meta.region, meta.item, meta.button, meta.dynamic_action, meta.validation, meta.process
-  to pgapex_runtime;
+  to pgkiln_runtime;
 -- no access to password hashes: logins go through meta.authenticate()
-grant select (id, app_id, username, roles, active) on meta.app_user to pgapex_runtime;
-grant select, insert, update, delete on meta.session to pgapex_runtime;
-grant select, insert on meta.activity_log to pgapex_runtime;
-grant usage on sequence meta.activity_log_id_seq to pgapex_runtime;
-grant execute on function meta.authenticate(int, text, text) to pgapex_runtime;
+grant select (id, app_id, username, roles, active) on meta.app_user to pgkiln_runtime;
+grant select, insert, update, delete on meta.session to pgkiln_runtime;
+grant select, insert on meta.activity_log to pgkiln_runtime;
+grant usage on sequence meta.activity_log_id_seq to pgkiln_runtime;
+grant execute on function meta.authenticate(int, text, text) to pgkiln_runtime;
 
 -- ---------------------------------------------------------------------
 -- Wizard: report page + modal form page for a table (single-column PK).
@@ -583,7 +583,7 @@ $$;
 create function meta.export_app(p_alias text) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -614,7 +614,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', p_doc->>'format';
   end if;
 

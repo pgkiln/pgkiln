@@ -26,9 +26,9 @@ async function tempFunction(c: Client, body: string, params: string, returns: st
   const code = body.trim();
   const block = /^(declare|begin)\b/i.test(code) ? code : `begin\n${code}\nend`;
   const id = randomBytes(8).toString('hex');
-  const tag = `$pgapex_${id}$`;
+  const tag = `$pgkiln_${id}$`;
   if (block.includes(tag)) throw new Error('The code contains the generated quote tag.');
-  const fn = `pg_temp.pgapex_auth_${id}`;
+  const fn = `pg_temp.pgkiln_auth_${id}`;
   await c.query(`create function ${fn}(${params}) returns ${returns} language plpgsql as ${tag}\n${block}\n${tag}`);
   return fn;
 }
@@ -69,7 +69,7 @@ export async function customAuthenticate(a: CustomAuthApp, username: string, pas
       if (ok !== true) throw new Refused({ ok: false, reason: 'invalid', detail: 'check returned false' });
       if (a.custom_auth_post_code?.trim()) {
         try {
-          await c.query(`select set_config('pgapex.app_user', $1, true)`, [username]);
+          await c.query(`select set_config('pgkiln.app_user', $1, true)`, [username]);
           const fn = await tempFunction(c, a.custom_auth_post_code, 'p_username text', 'void');
           await c.query(`select ${fn}($1)`, [username]);
           await c.query(`drop function ${fn}(text)`);

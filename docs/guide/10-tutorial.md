@@ -12,7 +12,7 @@ In this tutorial you build a personal task list:
 You can follow it in the builder, or run the finished result in one go:
 
 ```bash
-psql "postgres://pgapex:pgapex@localhost:5434/pgapex" -f examples/tasks-app.sql
+psql "postgres://pgkiln:pgkiln@localhost:5434/pgkiln" -f examples/tasks-app.sql
 ```
 
 Then open http://127.0.0.1:3100/a/tasks and sign in as `ann` / `ann-password` or
@@ -69,7 +69,7 @@ and the account `ann` with access to the app. Create `bob` under **Users** and g
 > Have the data in a spreadsheet already? **Create → From a file** makes the application, a table with
 > the rows and its pages in one go ([chapter 3](03-builder.md#creating-an-application-from-a-file)).
 
-> The SQL script creates the role itself instead: `create role app_tasks nologin; grant app_tasks to pgapex_runtime; grant …`.
+> The SQL script creates the role itself instead: `create role app_tasks nologin; grant app_tasks to pgkiln_runtime; grant …`.
 
 ## Step 3: row level security
 

@@ -150,7 +150,7 @@ export async function runSync(sourceId: number, trigger: 'manual' | 'schedule' |
         const { columns, rows, truncated } = toRows(json, s);
         const counts = await runtime.tx(async (c) => {
           await c.query(
-            `select set_config('pgapex.app_user', $1, true), set_config('pgapex.app_id', $2, true), set_config('pgapex.session_id', '', true),
+            `select set_config('pgkiln.app_user', $1, true), set_config('pgkiln.app_id', $2, true), set_config('pgkiln.session_id', '', true),
                     set_config('statement_timeout', '300s', true)`,
             [`rest_sync:${s.name}`, String(s.app_id)],
           );

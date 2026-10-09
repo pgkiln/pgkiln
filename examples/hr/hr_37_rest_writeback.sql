@@ -8,8 +8,8 @@
 -- this is a demonstration on a sample table; a real service would use a web
 -- credential. As for page 23, the server must allow the host, e.g. in .env:
 --
---   PGAPEX_REST_ALLOWED_HOSTS=127.0.0.1
---   PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1
+--   PGKILN_REST_ALLOWED_HOSTS=127.0.0.1
+--   PGKILN_REST_PRIVATE_HOSTS=127.0.0.1
 --
 -- Page 34 "Contacts (REST)" shows:
 --   - an interactive grid on the REST data source CRM_CONTACTS: Add, Save
@@ -88,7 +88,7 @@ insert into meta.region (page_id, seq, title, type, columns, template, source, r
 select p.id, r.seq, r.title, r.type, r.columns, 'standard', r.source, r.rest_source, r.pk_column, r.pk_item, r.config::jsonb
   from meta.page p join meta.app a on a.id = p.app_id, (values
   (10, 'About this page', 'static', 12, null, null, null,
-   '<p>The grid and the form read and write the contacts of a sample CRM through the <b>REST data source</b> CRM_CONTACTS (Shared Components): Add, Save and Delete call the service''s POST, PUT and DELETE. The report at the bottom is a local copy, filled by the source''s <b>synchronisation</b>. Set <code>PGAPEX_REST_ALLOWED_HOSTS</code> and <code>PGAPEX_REST_PRIVATE_HOSTS</code> to <code>127.0.0.1</code> to try it.</p>',
+   '<p>The grid and the form read and write the contacts of a sample CRM through the <b>REST data source</b> CRM_CONTACTS (Shared Components): Add, Save and Delete call the service''s POST, PUT and DELETE. The report at the bottom is a local copy, filled by the source''s <b>synchronisation</b>. Set <code>PGKILN_REST_ALLOWED_HOSTS</code> and <code>PGKILN_REST_PRIVATE_HOSTS</code> to <code>127.0.0.1</code> to try it.</p>',
    '{}'),
   (20, 'Contacts in the CRM', 'grid', 12, 'CRM_CONTACTS', 'id', null,
    'select id, name, company, email, phone from rest order by id',

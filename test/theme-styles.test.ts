@@ -22,7 +22,7 @@ const STYLES = [
   { name: 'Ocean', accent: '#0b7285', header: '#0b3d49', font: 'serif', radius: 'none' },
   { name: 'Big text', font_size: 'large' },
 ];
-const styleTag = (body: string) => /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec(body)?.[1] ?? '';
+const styleTag = (body: string) => /<style nonce="[^"]+" id="pgkiln-css">([\s\S]*?)<\/style>/.exec(body)?.[1] ?? '';
 
 before(async () => {
   app = await buildApp({ logger: false });

@@ -9,9 +9,9 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
-process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
-process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
+process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner, runtime } = await import('../src/db.ts');
@@ -25,14 +25,14 @@ let appId: number;
 let mock: http.Server;
 let mockBase = '';
 const alias = 'wr-s33';
-const ROLE = 'pgapex_wr_s33';
+const ROLE = 'pgkiln_wr_s33';
 const SCHEMA = 'wr_s33';
 const seen: { method: string; url: string; headers: http.IncomingHttpHeaders; body: string }[] = [];
 
 /** SQL as the test app's code: its role, meta.app_id() set. */
 const asApp = <T>(fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>) =>
   runtime.tx(async (c) => {
-    await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'ann', true)`, [String(appId)]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'ann', true)`, [String(appId)]);
     await c.query(`set local role ${ROLE}`);
     return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
   });
@@ -77,7 +77,7 @@ before(async () => {
   await owner.query(`delete from meta.app where alias = $1`, [alias]);
   await owner.query(`drop role if exists ${ROLE}`);
   await owner.query(`create role ${ROLE} nologin`);
-  await owner.query(`grant ${ROLE} to pgapex_runtime`);
+  await owner.query(`grant ${ROLE} to pgkiln_runtime`);
   await owner.query(`create schema ${SCHEMA}`);
   await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
   await owner.query(`create table ${SCHEMA}.log (msg text)`);
@@ -189,13 +189,13 @@ describe('meta.web_request: queued from SQL, made by the server', () => {
       (await q(`select meta.web_request($1) as id`, [`${mockBase}/nothing`]))[0].id,
       (await q(`select meta.web_request($1) as id`, [`${mockBase}/big`]))[0].id,
     ]);
-    const max = process.env.PGAPEX_REST_MAX_BYTES;
-    process.env.PGAPEX_REST_MAX_BYTES = '1000';
+    const max = process.env.PGKILN_REST_MAX_BYTES;
+    process.env.PGKILN_REST_MAX_BYTES = '1000';
     try {
       await wr.webRequestTick();
     } finally {
-      if (max === undefined) delete process.env.PGAPEX_REST_MAX_BYTES;
-      else process.env.PGAPEX_REST_MAX_BYTES = max;
+      if (max === undefined) delete process.env.PGKILN_REST_MAX_BYTES;
+      else process.env.PGKILN_REST_MAX_BYTES = max;
     }
     const ra = await response(a);
     assert.equal(ra.status, 'error');
@@ -339,7 +339,7 @@ describe('meta.parse_data: CSV and JSON in SQL, like the data loader', () => {
     const { createHash } = await import('node:crypto');
     const xlsx = readFileSync(new URL('./fixtures/employees.xlsx', import.meta.url));
     await owner.query('delete from meta.unpacked_file where digest = $1', [createHash('sha256').update(xlsx).digest()]);
-    await assert.rejects(runtime.query('select * from meta.parse_data($1)', [xlsx]), /Excel \(\.xlsx\) file has not been read by pgapex/);
+    await assert.rejects(runtime.query('select * from meta.parse_data($1)', [xlsx]), /Excel \(\.xlsx\) file has not been read by pgkiln/);
     assert.deepEqual((await runtime.query(`select data from meta.parse_data(convert_to('<rows><r><a>1</a></r></rows>', 'UTF8'))`)).rows, [{ data: { a: '1' } }]);
     await assert.rejects(runtime.query(`select * from meta.parse_data('\\x610062'::bytea, p_format => 'csv')`), /not a text/);
   });

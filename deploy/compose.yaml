@@ -1,9 +1,9 @@
-# pgapex with Docker: cp .env.example .env, fill in the secrets, docker compose up -d
+# pgkiln with Docker: cp .env.example .env, fill in the secrets, docker compose up -d
 # (docs/guide/01-installation.md, "Docker").
 #
 # Profiles (COMPOSE_PROFILES in .env): db = the bundled PostgreSQL (leave it
 # out to use your own server: set DATABASE_URL and RUNTIME_DATABASE_URL);
-# https = Caddy in front with a certificate for PGAPEX_DOMAIN.
+# https = Caddy in front with a certificate for PGKILN_DOMAIN.
 
 services:
   db:
@@ -11,20 +11,20 @@ services:
     profiles: [db]
     restart: unless-stopped
     environment:
-      POSTGRES_USER: pgapex
+      POSTGRES_USER: pgkiln
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
-      POSTGRES_DB: pgapex
+      POSTGRES_DB: pgkiln
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "pgapex", "-d", "pgapex"]
+      test: ["CMD", "pg_isready", "-U", "pgkiln", "-d", "pgkiln"]
       interval: 5s
       timeout: 5s
       retries: 20
 
-  pgapex:
-    # a published image is pulled; pgapex:local is built from this checkout
-    image: ${PGAPEX_IMAGE:-pgapex:local}
+  pgkiln:
+    # a published image is pulled; pgkiln:local is built from this checkout
+    image: ${PGKILN_IMAGE:-pgkiln:local}
     build: ..
     restart: unless-stopped
     depends_on:
@@ -37,24 +37,24 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://pgapex:${POSTGRES_PASSWORD:-}@db:5432/pgapex}
-      RUNTIME_DATABASE_URL: ${RUNTIME_DATABASE_URL:-postgres://pgapex_runtime:${RUNTIME_PASSWORD:-}@db:5432/pgapex}
-      # fixed inside the container (ports, Caddy); PGAPEX_PORT sets the published port
+      DATABASE_URL: ${DATABASE_URL:-postgres://pgkiln:${POSTGRES_PASSWORD:-}@db:5432/pgkiln}
+      RUNTIME_DATABASE_URL: ${RUNTIME_DATABASE_URL:-postgres://pgkiln_runtime:${RUNTIME_PASSWORD:-}@db:5432/pgkiln}
+      # fixed inside the container (ports, Caddy); PGKILN_PORT sets the published port
       HOST: 0.0.0.0
       PORT: "3100"
     extra_hosts:
       # a PostgreSQL on the Docker host itself: DATABASE_URL=postgres://…@host.docker.internal:5432/…
       - host.docker.internal:host-gateway
     ports:
-      # only this machine by default; PGAPEX_BIND=0.0.0.0 opens it to the network
-      - "${PGAPEX_BIND:-127.0.0.1}:${PGAPEX_PORT:-3100}:3100"
+      # only this machine by default; PGKILN_BIND=0.0.0.0 opens it to the network
+      - "${PGKILN_BIND:-127.0.0.1}:${PGKILN_PORT:-3100}:3100"
 
   https:
     image: caddy:2
     profiles: [https]
     restart: unless-stopped
-    depends_on: [pgapex]
-    command: caddy reverse-proxy --from ${PGAPEX_DOMAIN:-localhost} --to pgapex:3100
+    depends_on: [pgkiln]
+    command: caddy reverse-proxy --from ${PGKILN_DOMAIN:-localhost} --to pgkiln:3100
     ports:
       - "80:80"
       - "443:443"

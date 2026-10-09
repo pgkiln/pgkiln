@@ -42,7 +42,7 @@ export async function pwaSection(a: { id: number; alias: string; pwa: boolean; p
     </div>
     ${check('pwa_offline_pages', 'Keep visited pages on the device for offline use', a.pwa_offline_pages, 'The pages a user opened are shown when there is no connection. They contain personal data: they are removed when someone signs in or out on the device.')}
     ${check('pwa_offline_submit', 'Keep forms sent without a connection, and send them later', a.pwa_offline_submit, 'For field work: forms (with photos) are kept on the device and sent when the connection is back, under the same user, at most once.')}
-    ${check('pwa_push', 'Push notifications', a.pwa_push, 'Users turn them on per device under My account (or with the dynamic action push_subscribe); application code sends them with meta.send_push(user, title, body, page, items) or a send_push process. On iPhone and iPad only after the app was added to the home screen. Needs PGAPEX_SECRET_KEY: the key that signs them is stored encrypted.')}
+    ${check('pwa_push', 'Push notifications', a.pwa_push, 'Users turn them on per device under My account (or with the dynamic action push_subscribe); application code sends them with meta.send_push(user, title, body, page, items) or a send_push process. On iPhone and iPad only after the app was added to the home screen. Needs PGKILN_SECRET_KEY: the key that signs them is stored encrypted.')}
     <div class="field" data-wide><label class="label" for="f_pwa_icon">Icon (PNG, square, at least 512 × 512)</label>
       <div class="u-row">${a.has_icon || a.pwa ? html`<img class="pwa-icon-preview" src="/a/${a.alias}/icon-192.png" alt="The app's icon" width="48" height="48">` : ''}
         <input type="file" id="f_pwa_icon" name="icon" accept="image/png"></div>
@@ -94,7 +94,7 @@ export async function pwaBuilderRoutes(app: FastifyInstance) {
     }
     const push = b.pwa_push === 'true';
     if (push && !secretKeyConfigured()) {
-      flash(s, 'Push notifications need PGAPEX_SECRET_KEY in the server\'s environment (the key that signs them is stored encrypted).', 'error');
+      flash(s, 'Push notifications need PGKILN_SECRET_KEY in the server\'s environment (the key that signs them is stored encrypted).', 'error');
       return back(reply, s, target);
     }
     await owner.query(
@@ -118,7 +118,7 @@ export async function pwaBuilderRoutes(app: FastifyInstance) {
     try {
       // as application code would: meta.send_push checks everything (the app has notifications on, the user name)
       await owner.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(a.id), s.username ?? 'builder']);
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(a.id), s.username ?? 'builder']);
         await c.query(`select meta.send_push($1, $2, $3)`, [user, `Test notification · ${a.name}`.slice(0, 200), 'Sent from the App Builder.']);
       });
     } catch (e) {

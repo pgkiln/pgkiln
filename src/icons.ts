@@ -59,12 +59,12 @@ const MODIFIERS: Record<string, string> = {
 export const ICON_MODIFIERS = Object.keys(MODIFIERS);
 
 /** An icon value: its name, where it comes from and its modifier classes; null when it names no icon. */
-export function iconParts(value: string | null | undefined): { name: string; set: 'pgapex' | 'lucide'; classes: string[] } | null {
+export function iconParts(value: string | null | undefined): { name: string; set: 'pgkiln' | 'lucide'; classes: string[] } | null {
   if (!value) return null;
   const tokens = String(value).trim().toLowerCase().split(/\s+/).slice(0, 8).map((t) => (t.startsWith('fa-') ? t.slice(3) : t)).filter((t) => t && t !== 'fa');
   const name = tokens.find((t) => !(t in MODIFIERS));
   if (!name) return null;
-  const set = (ICONS as readonly string[]).includes(name) ? 'pgapex' : lucideNames().has(name) ? 'lucide' : null;
+  const set = (ICONS as readonly string[]).includes(name) ? 'pgkiln' : lucideNames().has(name) ? 'lucide' : null;
   if (!set) return null;
   return { name, set, classes: [...new Set(tokens.filter((t) => t !== name && t in MODIFIERS).map((t) => MODIFIERS[t]))] };
 }
@@ -75,7 +75,7 @@ export const isIcon = (value: string | null | undefined) => !!iconParts(value);
 export function icon(name: string | null | undefined, cls = 'icon') {
   const p = iconParts(name);
   if (!p) return '';
-  const href = p.set === 'pgapex' ? `/static/icons.svg#${p.name}` : `/static/icon/${p.name}.svg?v=${LUCIDE_VERSION}#i`;
+  const href = p.set === 'pgkiln' ? `/static/icons.svg#${p.name}` : `/static/icon/${p.name}.svg?v=${LUCIDE_VERSION}#i`;
   return html`<svg class="${[cls, ...p.classes].join(' ')}" aria-hidden="true" focusable="false"><use href="${href}"></use></svg>`;
 }
 

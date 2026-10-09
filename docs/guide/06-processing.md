@@ -269,7 +269,7 @@ pgkiln servers can share the queue: each job is claimed once (`FOR UPDATE SKIP L
 whose server stopped while running it is marked failed after two minutes rather than run twice.
 Servers that should not run background processes set `BACKGROUND_PROCESSES=off`;
 `PROCESS_JOB_INTERVAL_S` (default 10) is how often a server looks for jobs besides being woken
-(`NOTIFY pgapex_process_job`). Finished jobs are kept for 30 days.
+(`NOTIFY pgkiln_process_job`). Finished jobs are kept for 30 days.
 
 ### Workflow processes
 
@@ -757,8 +757,8 @@ the tenant's tables as well: the tenant is a value the application sets, not a d
 An `invoke_api` step (APEX: the *Invoke API* activity) calls a web service: a
 [REST data source](19-rest-data-sources.md) of the application (its URL, method, parameters and web
 credential), or a URL. It is the same code as the [invoke_api page process](19-rest-data-sources.md#the-invoke_api-process),
-with the same protections: only hosts on the server's allow-list (`PGAPEX_REST_ALLOWED_HOSTS`,
-`PGAPEX_REST_PRIVATE_HOSTS`), addresses checked when the connection is made, a credential only sent to
+with the same protections: only hosts on the server's allow-list (`PGKILN_REST_ALLOWED_HOSTS`,
+`PGKILN_REST_PRIVATE_HOSTS`), addresses checked when the connection is made, a credential only sent to
 its *valid for* URLs, a size limit on the response.
 
 ```json

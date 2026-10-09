@@ -20,7 +20,7 @@ create table meta.document_template (
   unique (app_id, name)
 );
 
-grant select on meta.document_template to pgapex_runtime;
+grant select on meta.document_template to pgkiln_runtime;
 
 alter table meta.button add column document text;
 comment on column meta.button.document is 'action = document: the document template the button downloads';
@@ -31,7 +31,7 @@ alter table meta.button add constraint button_action_check check (action in ('su
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -72,7 +72,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

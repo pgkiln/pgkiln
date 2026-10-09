@@ -45,7 +45,7 @@ create table meta.build_option (
   description text,
   unique (app_id, name)
 );
-grant select on meta.build_option to pgapex_runtime;
+grant select on meta.build_option to pgkiln_runtime;
 
 -- Is a component with this build option reference part of the application?
 -- null: always; NAME: while the option is included; !NAME: while it is
@@ -59,7 +59,7 @@ language sql stable set search_path = meta, pg_catalog as $$
                     where o.app_id = p_app_id and o.name = ltrim(p_ref, '!')), false)
   end
 $$;
-grant execute on function meta.build_option_on(int, text) to pgapex_runtime;
+grant execute on function meta.build_option_on(int, text) to pgkiln_runtime;
 
 do $$
 declare
@@ -112,7 +112,7 @@ create table meta.computation (
   check (meta.condition_ok(condition_type, condition_expr, condition_value))
 );
 create index on meta.computation (page_id, seq);
-grant select on meta.computation to pgapex_runtime;
+grant select on meta.computation to pgkiln_runtime;
 
 -- ---------------------------------------------------------------- branches
 
@@ -143,7 +143,7 @@ create table meta.branch (
   check (meta.condition_ok(condition_type, condition_expr, condition_value))
 );
 create index on meta.branch (page_id, seq);
-grant select on meta.branch to pgapex_runtime;
+grant select on meta.branch to pgkiln_runtime;
 
 -- ---------------------------------------------------------------- dynamic actions
 
@@ -189,7 +189,7 @@ alter table meta.button add column badge_query text;
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -238,7 +238,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

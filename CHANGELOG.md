@@ -5,33 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Changed
-- **pgapex is now pgkiln** (website [pgkiln.vargar.eu](https://pgkiln.vargar.eu)): the package, the command
-  (`pgkiln`, with `pgapex` kept as an alias), the MCP server (`pgkiln`, tool `pgkiln_info`), the builder and the
-  docs. Technical names stay, so existing installations, exports and applications need no change: the database
-  roles (`pgapex_runtime`, `pgapex_authenticator`, `pgapex_anon`), the `pgapex.*` settings, the `PGAPEX_*`
-  environment variables, the `pgapex/2` export format and `pgapex.json`, `window.pgapex` and the `pgapex:` browser
-  events. "pgApex" was already the name of another PostgreSQL project, and APEX is Oracle's trademark.
-
 ### Added
 - **Website** at [pgkiln.vargar.eu](https://pgkiln.vargar.eu): a landing page and the user guide with search, built
   with VitePress from `website/` (the guide is synced from `docs/` at build time), published with
   `website/scripts/deploy.sh`.
-- **MCP server for AI coding agents** (`pgapex mcp`, docs/guide/20-ai-agents.md): Claude Code, Cursor and other
+- **MCP server for AI coding agents** (`pgkiln mcp`, docs/guide/20-ai-agents.md): Claude Code, Cursor and other
   agents can list applications, read an application's settings, pages and shared components as YAML, describe
   tables with their RLS policies, run read-only queries, search the user guide and read recent errors; and change an
   application by exporting it to `apps/<alias>`, editing the files, `diff_app`, and `import_app` with `replace`
-  (one transaction, as `pgapex import --replace`). `.mcp.json` starts it for Claude Code in a checkout; `CLAUDE.md`
-  tells agents how to work on applications and on pgapex. `run_query` runs one statement in a read-only
+  (one transaction, as `pgkiln import --replace`). `.mcp.json` starts it for Claude Code in a checkout; `CLAUDE.md`
+  tells agents how to work on applications and on pgkiln. `run_query` runs one statement in a read-only
   transaction and hides password, secret and token columns.
 - **Screenshots** in the README (`docs/images/`, made by `npm run screenshots` from the HR example).
-- **Docker**: a `Dockerfile` and `deploy/compose.yaml` (PostgreSQL 17 + pgapex, optional Caddy for HTTPS):
+- **Docker**: a `Dockerfile` and `deploy/compose.yaml` (PostgreSQL 17 + pgkiln, optional Caddy for HTTPS):
   `cp .env.example .env`, fill in four secrets, `docker compose up -d`. The container (`scripts/docker-start.ts`)
   refuses empty or too short secrets (listing all problems at once), migrates under an advisory lock, sets the
   runtime role's password from `.env` unless it already works, replaces the builder's `admin` / `admin` and gives
-  `pgapex_authenticator` a random password while it has its default (roles it creates get their passwords at once;
+  `pgkiln_authenticator` a random password while it has its default (roles it creates get their passwords at once;
   what it can't check, e.g. under `trust`, it logs); a wrong database password stops it at once, an unreachable
-  host after the 2-minute wait; works with Docker Engine before 25; optional HR example (`PGAPEX_EXAMPLE=hr`). Port bound to 127.0.0.1 by default;
+  host after the 2-minute wait; works with Docker Engine before 25; optional HR example (`PGKILN_EXAMPLE=hr`). Port bound to 127.0.0.1 by default;
   your own PostgreSQL by leaving out the `db` profile. `GET /healthz` for health checks; a CI job starts the
   stack as a user would. `tsx` moved to the runtime dependencies (the server and the CLI run with it).
 - Installation guide: installing into an existing database (the grants an administrator gives).
@@ -40,13 +32,13 @@ All notable changes to this project are documented here. The format follows
   version; every page or one page loads chosen `.js` and `.css` files; exported with the application (as the files
   themselves under `static/` in a directory export).
 - **Execute JavaScript** dynamic action: calls a function a static file registered with
-  `pgapex.actions.register(name, fn)`; the page receives only the name, so the CSP stays `script-src 'self'`.
-  `window.pgapex` also offers `getValue`, `setValue`, `showSuccess`, `showError` and `clearErrors`. HR example:
+  `pgkiln.actions.register(name, fn)`; the page receives only the name, so the CSP stays `script-src 'self'`.
+  `window.pgkiln` also offers `getValue`, `setValue`, `showSuccess`, `showError` and `clearErrors`. HR example:
   the salary per year on the employee form (`hr_46`).
 - **Plug-ins with their own code** (migration 069): region, item, dynamic action and process plug-ins in one
-  `pgapex-plugin/2` file (attributes, JavaScript/CSS as static files registered with `pgapex.plugins.register`, a
+  `pgkiln-plugin/2` file (attributes, JavaScript/CSS as static files registered with `pgkiln.plugins.register`, a
   template component for regions, a PL/pgSQL function for processes, install SQL run only on request as the app's
-  role). Shared Components → Plug-ins; `meta.import_plugin()`; `pgapex plugin build|install`; four examples in
+  role). Shared Components → Plug-ins; `meta.import_plugin()`; `pgkiln plugin build|install`; four examples in
   `examples/plugins/` used on HR page 40 (`hr_47`).
 - **Conditional and dynamic theme styles**: a Theme Roller style may have a SQL condition (the first style whose
   condition holds applies, unless the user chose one) and take any of its colours from an item (`&ITEM.`, used only
@@ -61,7 +53,7 @@ All notable changes to this project are documented here. The format follows
   the app as before.
 - **Map layers for large data sets**: a layer loads only the places in the visible area, again after each move
   (`"visible_area": true`, at most 2,000 with a "zoom in" note), or is served as **Mapbox Vector Tiles**
-  (`"tiles": true`, MVT 2.1 encoded by pgapex without a dependency, at most 10,000 rows per tile), drawn on canvases
+  (`"tiles": true`, MVT 2.1 encoded by pgkiln without a dependency, at most 10,000 rows per tile), drawn on canvases
   with popups. Both filter on the server (PostGIS or latitude/longitude) as the application's role. *Load* in the
   map's settings; HR example page 41, 20,000 weather stations (`hr_48`).
 - **Graphical query builder**: SQL Workshop → Query Builder shows the chosen tables as boxes on a canvas (dragged
@@ -72,13 +64,13 @@ All notable changes to this project are documented here. The format follows
   `APEX_SESSION.SET_TENANT_ID`). Workflows, the tasks they create, tasks and background execution chains carry the
   session's tenant; the task list, the workflow console, `meta.tasks` / `meta.workflows` and every action reach only
   the session's tenant (a session without one: those without one).
-- **Application files as text** (APEX 26.1: APEXlang): `pgapex export --format text` (and the builder's
+- **Application files as text** (APEX 26.1: APEXlang): `pgkiln export --format text` (and the builder's
   `?format=text` zip) writes the directory export as YAML, a strict subset any YAML tool reads, with SQL and templates
   inline as literal blocks; `import`, `diff` and zips read JSON and YAML files alike.
 - **Region Static ID** (migration 073): optional, unique on the page; names the region in exported files (so renaming
   it keeps its file, references and, on `import --replace`, saved reports) and is rendered as `data-static-id`.
 - **Lucide icons and icon modifiers** (APEX: Font APEX): about 1,600 more line icons (the `lucide-static` package,
-  ISC) next to pgapex's 136, each served as its own cached file; modifiers after the name (`lg`, `2x`, `spin`,
+  ISC) next to pgkiln's 136, each served as its own cached file; modifiers after the name (`lg`, `2x`, `spin`,
   `rotate-90`, `flip-h`, `success`, …) and Font APEX names (`fa-users fa-lg`); the builder's icon picker searches
   them and takes any value.
 - **Push notifications for Progressive Web Apps** (migration 074; APEX: APEX_PWA push notifications): Settings →
@@ -86,8 +78,8 @@ All notable changes to this project are documented here. The format follows
   new dynamic action `push_subscribe`); `meta.send_push(user, title, body, page, items, tag, urgency, ttl)`,
   `meta.has_push_subscription(user)` and the new process type `send_push` queue them, and the server sends them
   after the commit (NOTIFY, else the scheduler), encrypted per device (RFC 8291) and signed with the application's
-  own VAPID key (RFC 8292; `meta.push_key`, encrypted with `PGAPEX_SECRET_KEY`, never exported). Links are pages of
-  the app signed for the recipient. Endpoints only at the browsers' push services (`PGAPEX_PUSH_HOSTS`); devices
+  own VAPID key (RFC 8292; `meta.push_key`, encrypted with `PGKILN_SECRET_KEY`, never exported). Links are pages of
+  the app signed for the recipient. Endpoints only at the browsers' push services (`PGKILN_PUSH_HOSTS`); devices
   end at sign-out, a new password, deactivation or removed access, and on 404/410. Builder: devices, results, a
   test notification, new keys. No new dependency. HR example (`hr_49`): a leave request notifies the manager's
   devices, a decision the employee's; the notification opens the request.
@@ -175,7 +167,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 - **Instance settings** (Workspace utilities, administrators): session idle time and length and sign-in throttling
   set in the builder (over the environment variables, picked up by every server within 30 seconds), and an overview
   of the server's configuration with secrets hidden.
-- **Nine more built-in languages** for pgapex's own texts: Italian, Portuguese, Polish, Swedish, Danish, Norwegian,
+- **Nine more built-in languages** for pgkiln's own texts: Italian, Portuguese, Polish, Swedish, Danish, Norwegian,
   Czech, Japanese and Chinese (simplified), with their date formats and currency (fourteen in all).
 
 ## [0.28.0] - 2026-10-06
@@ -266,7 +258,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
   `meta.debug(level, text)` and `meta.debug_enabled(level)` from application SQL; timed entries per
   request (page steps, regions, processes, branches, errors, SQL notices), viewed per page view under
   Activity → Debug messages. With debug off nothing is written. Migration 051.
-- **Installation log**: every migration run is logged in `public.pgapex_install_log`; Workspace
+- **Installation log**: every migration run is logged in `public.pgkiln_install_log`; Workspace
   utilities → Installation (administrators) shows the version, install and upgrade runs, applied
   migrations and mismatches.
 
@@ -286,7 +278,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 
 ### Changed
 - The export leaves out OAuth2 passwords, refresh tokens and a synchronisation's run state; an
-  imported synchronisation starts switched off. `pgapex import --replace` keeps the new secrets.
+  imported synchronisation starts switched off. `pgkiln import --replace` keeps the new secrets.
 
 ### Fixed
 - The Gantt "today" line uses the session's time zone.
@@ -379,7 +371,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 - **Database-account authentication** (APEX: Database Accounts; migration 037): an app type
   `database` where users sign in with a PostgreSQL login role and its password, checked by
   PostgreSQL through a short-lived connection. Only the listed roles or members of a role may sign
-  in; superusers and pgapex's own roles never.
+  in; superusers and pgkiln's own roles never.
 
 ### Changed
 - Report PDFs read their rows from a cursor in batches of 500 and draw them as they arrive
@@ -391,7 +383,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 ### Added
 - **HTTP header authentication** (APEX: HTTP Header Variable; migration 036): an app type `header` for
   apps behind a reverse proxy or SSO gateway that sets the user in a header (`X-Remote-User` by
-  default). The header is trusted only from the proxy addresses in `PGAPEX_AUTH_HEADER_PROXIES`; the
+  default). The header is trusted only from the proxy addresses in `PGKILN_AUTH_HEADER_PROXIES`; the
   session is bound to its value; accounts can be created automatically; an optional sign-out URL.
 
 ## [0.20.0] - 2026-10-04
@@ -426,7 +418,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 
 ### Fixed
 - The App Builder home's table was wider than a tablet screen with some fonts (CI e2e failure).
-- HR page 23's hint now names `PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1:3100`.
+- HR page 23's hint now names `PGKILN_REST_PRIVATE_HOSTS=127.0.0.1:3100`.
 
 ## [0.18.0] - 2026-10-04
 
@@ -452,8 +444,8 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 - **REST data sources and web credentials** (migration 030, new chapter 19): JSON web services as
   rows for reports, cards, charts, calendars, maps, trees, template components and lists of values;
   basic, API-key, bearer and OAuth2 client-credentials sign-in with encrypted, write-only secrets;
-  an **Invoke API** page process. Outgoing calls only to hosts on `PGAPEX_REST_ALLOWED_HOSTS`, with
-  SSRF checks; secrets need `PGAPEX_SECRET_KEY`.
+  an **Invoke API** page process. Outgoing calls only to hosts on `PGKILN_REST_ALLOWED_HOSTS`, with
+  SSRF checks; secrets need `PGKILN_SECRET_KEY`.
 - **New item types** (migration 032): `richtext` (HTML rebuilt from an allow-list on the server
   every time it is saved and shown; pasted HTML is cleaned), `markdown` (rendered on the server),
   `rating` (stars), `combobox` (free text with suggestions, as tags), `daterange` (`from:to`) and
@@ -488,10 +480,10 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 - **Workspace utilities** (`/builder/utilities`): users, identity providers, LDAP directories,
   password policy, developers and the SQL Workshop in one place.
 - A status bar on every builder page: who is signed in, the database, the language and the
-  pgapex version.
+  pgkiln version.
 
 ### Fixed
-- **Map tiles from OpenStreetMap showed "Access blocked" (403)**: pgapex's `Referrer-Policy:
+- **Map tiles from OpenStreetMap showed "Access blocked" (403)**: pgkiln's `Referrer-Policy:
   same-origin` sent tile requests without a `Referer`, which OpenStreetMap's tile policy refuses.
   The tile layer now sends the site's origin (never the page's path or query).
 - The page designer's gallery showed the raw type name of template component regions.
@@ -523,10 +515,10 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 - **Workflow versions** (APEX: development / active / inactive): a new version is edited while
   the active one runs, then activated; running instances keep the version they started with.
   Instance diagrams in the builder show where each branch is.
-- **The `pgapex` command line**: `migrate`, `apps`, `export` (one JSON file or a directory),
+- **The `pgkiln` command line**: `migrate`, `apps`, `export` (one JSON file or a directory),
   `import` (JSON, directory or .zip; `--replace` updates an application in place and keeps its
   access, sessions, saved reports, tasks and workflows), `diff` and `users`.
-- **One file per component** (APEX 26.1: APEXlang-like app files): `pgapex export --format dir`
+- **One file per component** (APEX 26.1: APEXlang-like app files): `pgkiln export --format dir`
   writes sorted JSON per component, SQL and HTML in sibling files, and references by static id
   instead of database ids, for git; the builder downloads the same layout as a .zip.
 - HR example: onboarding version 2 prepares the workplace and access in parallel; page 19 "Team"
@@ -575,7 +567,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 ### Added
 - **Map region** (`map`, migration 025; APEX: Map region): markers from `lat`/`lng` columns or
   `location` text, GeoJSON lines and areas, popups with links, sized small/medium/large. Leaflet
-  1.9 ships with pgapex and loads only on pages with a map; tiles come from OpenStreetMap or the
+  1.9 ships with pgkiln and loads only on pages with a map; tiles come from OpenStreetMap or the
   server in `MAP_TILE_URL`, the only image origin added to the Content-Security-Policy.
 - **Tree region** (`tree`; APEX: Tree): id/parent id/label rows as an expandable tree with icons
   and links, drawn on the server (works without JavaScript).
@@ -587,13 +579,13 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 ### Added
 - **REST modules** (Shared Components → REST modules, migration 024; APEX: RESTful Services):
   handlers with a method, a path with parameters and SQL (a paged collection, one item, or
-  statements), roles and public endpoints, served by pgapex under `/a/<alias>/rest/<module>/` with
+  statements), roles and public endpoints, served by pgkiln under `/a/<alias>/rest/<module>/` with
   bearer tokens, as the application's role (RLS applies), and an OpenAPI description per module.
   The HR example has a `v1` module.
 
 ### Changed
 - Tokens and OAuth clients no longer need an API role: without one they are valid for the REST
-  modules pgapex serves (PostgREST treats them as anonymous).
+  modules pgkiln serves (PostgREST treats them as anonymous).
 - Builder property groups (fieldsets) no longer grow wider than the screen with long content.
 
 ## [0.11.0] - 2026-10-01
@@ -609,7 +601,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
   signed, so a form sent later updates the record it was opened for.
 - **Workflows** (Shared Components → Workflows, migration 022): definitions of task, SQL, switch,
   wait and end steps with variables, started from application SQL with `meta.start_workflow(…)`,
-  run by the pgapex server (on `NOTIFY` and every few seconds; `WORKFLOWS=off` to disable) one step
+  run by the pgkiln server (on `NOTIFY` and every few seconds; `WORKFLOWS=off` to disable) one step
   per transaction as the application's role. A `workflows` region is the console (terminate, retry
   a faulted step); the builder checks the steps and draws them. The HR example starts an onboarding
   workflow from its employee form.
@@ -621,8 +613,8 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 ## [0.10.0] - 2026-10-01
 
 ### Changed
-- **pgapex installs no application.** The HR sample moved from `db/seed/` to `examples/hr/` as an
-  example application built on pgapex: `npm run setup` and `npm run db:reset` install the framework
+- **pgkiln installs no application.** The HR sample moved from `db/seed/` to `examples/hr/` as an
+  example application built on pgkiln: `npm run setup` and `npm run db:reset` install the framework
   only, `npm run example:hr` adds the example, and `npm test` / `npm run test:e2e` install it first
   as their fixture. `npm run db:seed` is gone; `migrate.ts --seed` still reads an older release's
   `db/seed/` (upgrade test). Databases that have the sample carry on: files are recorded by name.
@@ -693,7 +685,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 ### Changed
 - Long help texts (JSON examples) wrap instead of widening the builder on phones.
 - Application export and import are one pair of functions again (migration 013 replaces the
-  wrapped `export_app_base`/`import_app_base` chain). The format stays `pgapex/2` and is now
+  wrapped `export_app_base`/`import_app_base` chain). The format stays `pgkiln/2` and is now
   documented, with a compatibility promise: sections are only added, and missing sections import
   as empty.
 - The builder's route file is split into `routes.ts`, `shared.ts`, `designer.ts`, `sql.ts` and
@@ -709,7 +701,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 - **Automations** (Shared Components → Automations, migration 015): SQL or PL/pgSQL on a cron
   schedule with a time zone, once or for each row of a query, as the application's database role
   with the automation's roles for `meta.has_role()`. Run now, next run and run history in the
-  builder. The pgapex server schedules them (no extension needed); several servers never run
+  builder. The pgkiln server schedules them (no extension needed); several servers never run
   one twice; `AUTOMATIONS=off` switches the scheduler off. Exported with the app; imported
   copies start switched off. HR sample: *Remind managers*.
 - **Report settings** in the page designer: a form for a report region's rows per page,
@@ -779,7 +771,7 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
 - **E-mail and "forgot password"** (they were in the unreleased 0.5.0 development builds): the mail
   queue, `meta.send_mail()`/`send_mail_template()`/`add_attachment()`, e-mail templates, the *Send
   e-mail* process, Builder → Mail, the SMTP settings, the Mailpit container, and the forgot/reset
-  password pages. pgapex doesn't send mail; administrators set temporary passwords (with change on
+  password pages. pgkiln doesn't send mail; administrators set temporary passwords (with change on
   first use) instead. Migration `008_drop_mail.sql` removes the objects from databases that ran the
   development builds; fresh installs never create them.
 
@@ -800,7 +792,7 @@ Not tagged as a release: its development builds included e-mail, which 0.6.0 rem
   - a primary language and translated languages per app, chosen from the browser, the user's preference or `?lang=`;
   - translations of all app texts in the builder, with XLIFF 1.2 and CSV export/import;
   - text messages (`meta.message()`, `&APP_TEXT$NAME.`);
-  - pgapex's own texts in English and Dutch;
+  - pgkiln's own texts in English and Dutch;
   - date and timestamp masks;
   - right-to-left languages.
 - The HR sample in Dutch.
@@ -814,7 +806,7 @@ Not tagged as a release: its development builds included e-mail, which 0.6.0 rem
 ### Added
 - User directory (Builder → Users): one account per person for all applications, with per-application access control ("only listed accounts" or "any active account") and roles per application, like APEX workspace accounts with Application Access Control.
 - Single sign-on with OpenID Connect: identity providers (Builder → Users → Identity providers), sign-in methods per application, identity-provider groups mapped to application roles, account linking by subject, optional automatic account creation. A Keycloak demo is included (`docker compose --profile sso`, `examples/keycloak-sso.sql`).
-- REST APIs with PostgREST running next to pgapex (`docker compose --profile api`): `meta.app_user()`, `meta.app_id()` and `meta.has_role()` understand PostgREST's JWT claims, so the same RLS policies protect the UI and the API; a per-application API role; the pre-request check `meta.api_check()` (inactive accounts and revoked access are refused at once); Builder → App → REST API with endpoints, token issuing and curl examples. The HR sample has an `api` schema (`db/seed/hr_03_api.sql`). New chapter 13.
+- REST APIs with PostgREST running next to pgkiln (`docker compose --profile api`): `meta.app_user()`, `meta.app_id()` and `meta.has_role()` understand PostgREST's JWT claims, so the same RLS policies protect the UI and the API; a per-application API role; the pre-request check `meta.api_check()` (inactive accounts and revoked access are refused at once); Builder → App → REST API with endpoints, token issuing and curl examples. The HR sample has an `api` schema (`db/seed/hr_03_api.sql`). New chapter 13.
 - `PUBLIC_URL`, `API_URL` and `API_JWT_SECRET` settings.
 
 ### Changed

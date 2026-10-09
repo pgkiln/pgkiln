@@ -54,7 +54,7 @@ async function page(s: Session, a: any, query: Record<string, string | undefined
         <div class="form-grid">${input('name', 'File name', editName ?? '', { required: true, placeholder: 'app.js', help: 'Letters, digits, _, - and . (e.g. app.js, styles.css, data.json).' })}</div>
         <div class="field" data-wide><label class="label" for="f_content">Content</label>
           <textarea id="f_content" name="content" class="code" rows="18" spellcheck="false">${content}</textarea>
-          <small class="help">JavaScript registers functions for the dynamic action "Execute JavaScript" with <code>pgapex.actions.register('name', (da) =&gt; { … })</code>; it can also use <code>pgapex.getValue</code>, <code>setValue</code>, <code>showSuccess</code> and <code>showError</code>. No inline scripts: everything runs from these files.</small></div>
+          <small class="help">JavaScript registers functions for the dynamic action "Execute JavaScript" with <code>pgkiln.actions.register('name', (da) =&gt; { … })</code>; it can also use <code>pgkiln.getValue</code>, <code>setValue</code>, <code>showSuccess</code> and <code>showError</code>. No inline scripts: everything runs from these files.</small></div>
         <div class="buttons"><a class="btn" href="${base}">Cancel</a><button class="btn btn-hot">${icon('check')} Save</button></div>
       </form>`)
     : '';

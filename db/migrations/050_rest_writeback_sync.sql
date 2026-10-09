@@ -32,7 +32,7 @@
 --   keeps it when the token endpoint sends a new one (rotation), so it
 --   survives restarts and is shared by several servers.
 -- Secrets stay write-only: not readable by the runtime role, never
--- exported, kept by "pgapex import --replace".
+-- exported, kept by "pgkiln import --replace".
 --
 -- meta.export_app / meta.import_app are redefined from 044: credentials
 -- leave out the new secrets, sources leave out the synchronisation's state,
@@ -52,7 +52,7 @@ comment on column meta.web_credential.oauth_username is 'oauth2 password flow: t
 comment on column meta.web_credential.password_enc is 'oauth2 password flow: the resource owner''s password, encrypted by the server (src/secrets.ts)';
 comment on column meta.web_credential.refresh_token_enc is 'oauth2: the current refresh token, encrypted; replaced when the token endpoint rotates it';
 -- the runtime role still sees everything but the secrets
-grant select (grant_type, oauth_username, token_refreshed_at) on meta.web_credential to pgapex_runtime;
+grant select (grant_type, oauth_username, token_refreshed_at) on meta.web_credential to pgkiln_runtime;
 
 -- ---------------------------------------------------------------- REST data sources
 alter table meta.rest_source
@@ -138,7 +138,7 @@ grant execute on function meta.request_rest_sync(text), meta.rest_sync_status(bi
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -204,7 +204,7 @@ declare
   v_lmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

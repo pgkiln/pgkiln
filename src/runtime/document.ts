@@ -315,7 +315,7 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
   const usable = pageW - 2 * margin;
   const footerHeight = base + 8;
   const bottom = () => pageH - margin - footerHeight;
-  const doc = new PDFDocument({ size: [pw, ph], layout: landscape ? 'landscape' : 'portrait', margin, bufferPages: true, info: { Title: input.title, Author: input.author, Creator: 'pgapex' } });
+  const doc = new PDFDocument({ size: [pw, ph], layout: landscape ? 'landscape' : 'portrait', margin, bufferPages: true, info: { Title: input.title, Author: input.author, Creator: 'pgkiln' } });
   // text that runs past the footer goes onto a new page at the top margin
   doc.page.margins.bottom = margin + footerHeight;
   doc.on('pageAdded', () => (doc.page.margins.bottom = margin + footerHeight));

@@ -1,13 +1,13 @@
 services:
   db:
     image: postgres:17
-    container_name: pgapex-db
+    container_name: pgkiln-db
     # pg_stat_statements feeds App Builder → Top SQL (optional; harmless when unused)
     command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     environment:
-      POSTGRES_USER: pgapex
-      POSTGRES_PASSWORD: pgapex
-      POSTGRES_DB: pgapex
+      POSTGRES_USER: pgkiln
+      POSTGRES_PASSWORD: pgkiln
+      POSTGRES_DB: pgkiln
     ports:
       - "5434:5432"
     volumes:
@@ -18,7 +18,7 @@ services:
   # Keycloak admin console: http://127.0.0.1:8180 (admin / admin)
   keycloak:
     image: quay.io/keycloak/keycloak:26.3
-    container_name: pgapex-keycloak
+    container_name: pgkiln-keycloak
     profiles: [sso]
     command: start-dev --import-realm --http-port 8180
     environment:
@@ -31,10 +31,10 @@ services:
   # Optional LDAP directory for trying LDAP sign-in locally:
   #   docker compose --profile ldap up -d ldap     -> ldap://127.0.0.1:3890
   #   psql "$DATABASE_URL" -f examples/ldap-directory.sql
-  # Admin cn=admin,dc=example,dc=org / admin; users in docker/ldap/50-pgapex.ldif.
+  # Admin cn=admin,dc=example,dc=org / admin; users in docker/ldap/50-pgkiln.ldif.
   ldap:
     image: osixia/openldap:1.5.0
-    container_name: pgapex-ldap
+    container_name: pgkiln-ldap
     profiles: [ldap]
     command: --copy-service
     environment:
@@ -45,18 +45,18 @@ services:
       - "3890:389"
     volumes:
       - ./docker/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
-  # Optional REST API for application schemas (PostgREST alongside pgapex):
+  # Optional REST API for application schemas (PostgREST alongside pgkiln):
   #   docker compose --profile api up -d postgrest     -> http://127.0.0.1:3000
-  # Tokens are signed with API_JWT_SECRET (.env), which pgapex uses to issue them.
+  # Tokens are signed with API_JWT_SECRET (.env), which pgkiln uses to issue them.
   postgrest:
     image: postgrest/postgrest:v12.2.3
-    container_name: pgapex-postgrest
+    container_name: pgkiln-postgrest
     profiles: [api]
     depends_on: [db]
     environment:
-      PGRST_DB_URI: postgres://pgapex_authenticator:pgapex_authenticator@db:5432/pgapex
+      PGRST_DB_URI: postgres://pgkiln_authenticator:pgkiln_authenticator@db:5432/pgkiln
       PGRST_DB_SCHEMAS: api
-      PGRST_DB_ANON_ROLE: pgapex_anon
+      PGRST_DB_ANON_ROLE: pgkiln_anon
       PGRST_DB_PRE_REQUEST: meta.api_check
       PGRST_JWT_SECRET: ${API_JWT_SECRET:-dev-only-api-secret-change-me-0123456789abcdef}
       PGRST_DB_MAX_ROWS: 1000

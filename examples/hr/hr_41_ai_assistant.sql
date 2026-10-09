@@ -7,7 +7,7 @@
 --     (a "Generate text with AI" process, text into P37_SUMMARY);
 --   - "Fill in the request" reads the dates and the reason from the
 --     message into P37_START_DATE, P37_END_DATE and P37_REASON (a
---     structured output: pgapex builds a strict JSON schema from the items);
+--     structured output: pgkiln builds a strict JSON schema from the items);
 --   - "Request leave" then files the leave request with hr.request_leave.
 -- With JavaScript both AI buttons run through a dynamic action (AJAX, no
 -- page submit); without it they submit the page and the processes run.

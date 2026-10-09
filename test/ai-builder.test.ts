@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner } = await import('../src/db.ts');
@@ -126,7 +126,7 @@ describe('describe tables for AI', () => {
     assert.equal((await owner.one(`select count(*)::int as n from meta.ai_table_note where schema_name = 'hr' and table_name = 'dept'`)).n, 1);
   });
 
-  test('pgapex\'s and the system\'s tables are not described', async () => {
+  test('pgkiln\'s and the system\'s tables are not described', async () => {
     assert.equal((await admin.submit('/builder/sql/ai/describe', { schema: 'meta', table: 'app', 'note:': 'x' })).statusCode, 404);
     assert.equal((await admin.submit('/builder/sql/ai/describe/draft', { schema: 'pg_catalog', table: 'pg_authid' })).statusCode, 404);
     assert.doesNotMatch((await admin.get('/builder/sql/ai/describe')).body, /<option value="meta">/);

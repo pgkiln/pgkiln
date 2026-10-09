@@ -12,9 +12,9 @@ import { Browser } from './helpers.ts';
 let app: FastifyInstance;
 let appId: number;
 const alias = 'dbauth-fn30';
-const ANN = 'pgapex_f30_ann';
-const BOB = 'pgapex_f30_bob';
-const GROUP = 'pgapex_f30_group';
+const ANN = 'pgkiln_f30_ann';
+const BOB = 'pgkiln_f30_bob';
+const GROUP = 'pgkiln_f30_group';
 
 before(async () => {
   app = await buildApp({ logger: false });

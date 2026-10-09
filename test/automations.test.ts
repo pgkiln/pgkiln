@@ -20,7 +20,7 @@ before(async () => {
 
 after(async () => {
   await owner.query(`delete from meta.automation where app_id = $1 and name like 'test%'`, [appId]);
-  await owner.query(`drop table if exists public.pgapex_automation_test`);
+  await owner.query(`drop table if exists public.pgkiln_automation_test`);
   await app.close();
   await closePools();
 });
@@ -218,7 +218,7 @@ describe('builder', () => {
 
 // ---------------------------------------------------------------- 044: actions, error handling, runs from SQL
 
-const T = 'public.pgapex_automation_test';
+const T = 'public.pgkiln_automation_test';
 async function scratch() {
   await owner.query(`create table if not exists ${T} (n int, tag text)`);
   await owner.query(`grant select, insert, delete on ${T} to hr_app`);
@@ -350,7 +350,7 @@ describe('runs from SQL: meta.run_automation()', () => {
   /** In a transaction as the HR application's role, signed in as blake. */
   const asApp = <T>(fn: (c: import('pg').PoolClient) => Promise<T>, user = 'blake', app = appId) =>
     runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true)`, [String(app), user]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', '', true)`, [String(app), user]);
       await c.query('set local role hr_app');
       return fn(c);
     });
@@ -362,7 +362,7 @@ describe('runs from SQL: meta.run_automation()', () => {
     const out = await asApp(async (c) => {
       const r = (await c.query(`select meta.run_automation('test sql') as r`)).rows[0].r;
       const seen = (await c.query(`select count(*)::int as n from ${T}`)).rows[0].n;
-      const after = (await c.query(`select meta.app_user() as u, meta.has_role('admin') as admin, current_setting('pgapex.automation_id', true) as a`)).rows[0];
+      const after = (await c.query(`select meta.app_user() as u, meta.has_role('admin') as admin, current_setting('pgkiln.automation_id', true) as a`)).rows[0];
       return { r, seen, after };
     });
     assert.equal(out.r.status, 'ok');
@@ -382,7 +382,7 @@ describe('runs from SQL: meta.run_automation()', () => {
     const c = await runtime.pool.connect();
     try {
       await c.query('begin');
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'blake', true)`, [String(appId)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'blake', true)`, [String(appId)]);
       await c.query('set local role hr_app');
       await c.query(`select meta.run_automation('test sql rollback')`);
       // the scheduler can't run it meanwhile: the caller holds the run's lock until its transaction ends

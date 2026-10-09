@@ -82,7 +82,7 @@ describe('Progressive Web App', () => {
     // signing out empties the page cache
     await page.goto(`${base}/a/hr/1`);
     await Promise.all([page.waitForNavigation(), page.locator('.t-user summary').click().then(() => page.click('text=Sign out'))]);
-    const kept = await page.evaluate(async () => (await (await caches.open('pgapex-pages-/a/hr')).keys()).length);
+    const kept = await page.evaluate(async () => (await (await caches.open('pgkiln-pages-/a/hr')).keys()).length);
     assert.equal(kept, 0);
     await context.close();
   });

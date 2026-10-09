@@ -191,7 +191,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       v.css_classes && !CLASS_LIST.test(String(v.css_classes))
         ? 'CSS classes: up to five names of lower case letters, digits, - and _, separated by spaces.'
         : v.action === 'execute_javascript' && !/^[A-Za-z_$][\w$.-]{0,99}$/.test(String(v.code ?? '').trim())
-          ? 'Execute JavaScript: Code is the name of a function a static file registers with pgapex.actions.register(name, fn), e.g. highlightLate.'
+          ? 'Execute JavaScript: Code is the name of a function a static file registers with pgkiln.actions.register(name, fn), e.g. highlightLate.'
           : null,
     fields: [
       { name: 'name', label: 'Name', kind: 'text', group: 'When' },
@@ -204,7 +204,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
         help: 'show/hide/enable/disable reverse automatically when the condition is false. set_focus: the first affected item (or the region). show_error: on the affected items, or at the top. clear_errors: of the affected items, or all. ai_generate: runs the "Generate text with AI" process named in Code through AJAX, without submitting the page (on a submit button, the button submits instead when JavaScript is off). execute_javascript: calls the function named in Code, registered by a static application file (Shared Components → Static Application Files). push_subscribe: turns on push notifications on the user\'s device (use it on click: browsers ask only after one; the app needs push notifications on in Settings → Progressive Web App); Message is shown when it worked.' },
       { name: 'affected_items', label: 'Affected items', kind: 'upper', group: 'Action' },
       { name: 'affected_region_id', label: 'Affected region', kind: 'region', group: 'Action' },
-      { name: 'code', label: 'SQL', kind: 'code', wide: true, group: 'Action', help: 'set_value: a SELECT whose columns set the affected items · execute_sql: any SQL; returned columns named like items set them · ai_generate: the name of an ai_generate process on this page (its output items are updated; items to submit default to the items its prompts use) · execute_javascript: the name of a function registered with pgapex.actions.register(name, fn) in a static file the page loads.' },
+      { name: 'code', label: 'SQL', kind: 'code', wide: true, group: 'Action', help: 'set_value: a SELECT whose columns set the affected items · execute_sql: any SQL; returned columns named like items set them · ai_generate: the name of an ai_generate process on this page (its output items are updated; items to submit default to the items its prompts use) · execute_javascript: the name of a function registered with pgkiln.actions.register(name, fn) in a static file the page loads.' },
       { name: 'items_to_submit', label: 'Items to submit', kind: 'upper', group: 'Action' },
       { name: 'message', label: 'Message (alert, show_success, show_error)', kind: 'text', group: 'Action' },
       { name: 'config', label: 'Plug-in attributes (JSON)', kind: 'json', group: 'Action', help: 'plugin: {"attributes": {"NAME": "value or &ITEM."}} (Shared Components → Plug-ins lists each plug-in\'s attributes).' },

@@ -1,7 +1,7 @@
 -- HTTP-header authentication (APEX: HTTP Header Variable). An app behind a
 -- reverse proxy or single sign-on gateway trusts a request header with the
 -- user name (for example X-Remote-User), but only from the proxy addresses in
--- PGAPEX_AUTH_HEADER_PROXIES; the session is bound to the header value.
+-- PGKILN_AUTH_HEADER_PROXIES; the session is bound to the header value.
 -- The new columns are nullable so exports from older versions still import.
 
 alter table meta.app drop constraint app_authentication_check;

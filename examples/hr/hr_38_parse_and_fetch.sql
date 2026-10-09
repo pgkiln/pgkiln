@@ -14,8 +14,8 @@
 --     meta.web_response() and the report lists the contacts it returned.
 --     As for page 34 the server must allow the host, e.g. in .env:
 --
---       PGAPEX_REST_ALLOWED_HOSTS=127.0.0.1
---       PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1
+--       PGKILN_REST_ALLOWED_HOSTS=127.0.0.1
+--       PGKILN_REST_PRIVATE_HOSTS=127.0.0.1
 --
 --     Without them the request ends with status "error" and the message
 --     says why (the host is not on the allow-list).
@@ -73,7 +73,7 @@ select p.id, x.seq, x.name, 'sql', x.point, x.code, x.btn
    $c$select coalesce(:P35_TEXT, E'Name;Hire date;Salary;Remote\nAda Byron;2024-02-01;5200.50;yes\n"Hopper; Grace";2023-11-15;6100;no\nAlan Turing;2022-06-23;4800;yes') as p35_text$c$, null),
   -- the server makes the request right after this process (same transaction)
   (20, 'Queue the request', 'submit',
-   $c$select meta.web_request(current_setting('pgapex.public_url') || '/a/hr/rest/crm/contacts', p_timeout_s => 10) as p35_request$c$, 'FETCH'),
+   $c$select meta.web_request(current_setting('pgkiln.public_url') || '/a/hr/rest/crm/contacts', p_timeout_s => 10) as p35_request$c$, 'FETCH'),
   (30, 'Read the response', 'submit',
    $c$select case r ->> 'status' when 'ok' then 'HTTP ' || (r ->> 'status_code') else (r ->> 'status') || ': ' || coalesce(r ->> 'message', '') end as p35_status
   from meta.web_response(:P35_REQUEST::bigint) r$c$, 'FETCH')

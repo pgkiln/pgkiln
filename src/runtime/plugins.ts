@@ -13,7 +13,7 @@
 //
 // JavaScript only ever comes from the plug-in's static files (same origin,
 // so the CSP stays script-src 'self'); it registers with
-// pgapex.plugins.register(name, fn). The page tells it the plug-in's name
+// pgkiln.plugins.register(name, fn). The page tells it the plug-in's name
 // and attribute values in data-plugin / data-plugin-attrs.
 import { html, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
@@ -21,7 +21,7 @@ import type { PageContext } from './context.ts';
 import { attributesProblem, componentProblem, fillAttribute, type TcAttribute, type TemplateComponent } from './template-components.ts';
 import { staticType } from './static-files.ts';
 
-export const PLUGIN_FORMAT_2 = 'pgapex-plugin/2';
+export const PLUGIN_FORMAT_2 = 'pgkiln-plugin/2';
 export const PLUGIN_TYPES = ['region', 'item', 'dynamic_action', 'process'] as const;
 export type PluginType = (typeof PLUGIN_TYPES)[number];
 
@@ -114,7 +114,7 @@ export interface PluginDocument {
   component: TemplateComponent | null;
 }
 
-/** A plug-in file (format pgapex-plugin/2) → what to install, or the reason it can't be. */
+/** A plug-in file (format pgkiln-plugin/2) → what to install, or the reason it can't be. */
 export function parsePluginDocument(doc: unknown): PluginDocument | string {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return 'A plug-in file is a JSON object.';
   const d = doc as Record<string, any>;

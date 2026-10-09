@@ -20,7 +20,7 @@ Both are **Shared Components**. The server only calls hosts its administrator al
 
 Try it with the HR example: page 23 "Web services" reads the HR example's own REST module
 ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)), so no internet is needed. Set
-`PGAPEX_REST_ALLOWED_HOSTS=127.0.0.1` and `PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1` in `.env` and
+`PGKILN_REST_ALLOWED_HOSTS=127.0.0.1` and `PGKILN_REST_PRIVATE_HOSTS=127.0.0.1` in `.env` and
 restart the server.
 
 From application SQL, `meta.web_request()` and `meta.web_request_source()` queue a request that
@@ -30,21 +30,21 @@ the server makes (APEX_WEB_SERVICE; [chapter 9](09-reference.md#web-requests-fro
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PGAPEX_REST_ALLOWED_HOSTS` | *(none: no calls)* | Hosts pgkiln may call, comma separated: `api.example.com`, `*.example.com` (any subdomain), `api.example.com:8443` (only that port), `*` (any **public** host) |
-| `PGAPEX_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (e.g. a service in your own network, or `127.0.0.1`); listing a host here also allows it |
-| `PGAPEX_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials (AES-256-GCM); at least 32 characters, e.g. `openssl rand -base64 32`. Without it, secrets can't be saved or used |
-| `PGAPEX_REST_MAX_BYTES` | `5000000` | Largest response pgkiln reads (also after decompression) |
+| `PGKILN_REST_ALLOWED_HOSTS` | *(none: no calls)* | Hosts pgkiln may call, comma separated: `api.example.com`, `*.example.com` (any subdomain), `api.example.com:8443` (only that port), `*` (any **public** host) |
+| `PGKILN_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (e.g. a service in your own network, or `127.0.0.1`); listing a host here also allows it |
+| `PGKILN_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials (AES-256-GCM); at least 32 characters, e.g. `openssl rand -base64 32`. Without it, secrets can't be saved or used |
+| `PGKILN_REST_MAX_BYTES` | `5000000` | Largest response pgkiln reads (also after decompression) |
 
 The checks on every outgoing request (`src/webclient.ts`), against server-side request forgery:
 
 - only `http` and `https`; no user name or password in the URL (use a web credential);
-- the host must match `PGAPEX_REST_ALLOWED_HOSTS` (or `PGAPEX_REST_PRIVATE_HOSTS`);
+- the host must match `PGKILN_REST_ALLOWED_HOSTS` (or `PGKILN_REST_PRIVATE_HOSTS`);
 - the addresses the host name resolves to are checked **when the connection is made**, and the
   connection goes to the checked address, so DNS rebinding can't swap it. Private (10/8,
   172.16/12, 192.168/16, fc00::/7), loopback, link-local (169.254/16, including cloud metadata
   services, fe80::/10), carrier-grade NAT, multicast, documentation and other special ranges are
   refused, also when written as IPv4-mapped, NAT64 or 6to4 IPv6 addresses, unless the host is in
-  `PGAPEX_REST_PRIVATE_HOSTS`;
+  `PGKILN_REST_PRIVATE_HOSTS`;
 - redirects are followed at most 3 times, only to URLs that pass the same checks; the
   credential's headers are dropped when a redirect leaves the original origin;
 - a time limit for the whole exchange (the source's timeout, at most 60 seconds) and the size
@@ -53,7 +53,7 @@ The checks on every outgoing request (`src/webclient.ts`), against server-side r
 Keep the allow-list as short as you can. `*` lets developers call any public host from the
 server; it never opens private addresses.
 
-**Changing `PGAPEX_SECRET_KEY`** makes the stored secrets unreadable: pgkiln then reports that
+**Changing `PGKILN_SECRET_KEY`** makes the stored secrets unreadable: pgkiln then reports that
 the secret must be entered again. Keep the key with your other server secrets, outside the
 database: a database dump alone does not reveal the secrets.
 
@@ -283,8 +283,8 @@ values, processes and workflow steps refer to sources and credentials by name, s
 
 ## Security notes
 
-- Outgoing calls are off until the administrator sets `PGAPEX_REST_ALLOWED_HOSTS`; private and
-  internal addresses need `PGAPEX_REST_PRIVATE_HOSTS` as well.
+- Outgoing calls are off until the administrator sets `PGKILN_REST_ALLOWED_HOSTS`; private and
+  internal addresses need `PGKILN_REST_PRIVATE_HOSTS` as well.
 - Secrets are encrypted with a key outside the database, write-only in the builder, excluded from
   exports and from the runtime role, and never logged. Use **Valid for URLs** so a credential is
   only ever sent to its own service.

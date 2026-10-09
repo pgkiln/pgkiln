@@ -17,7 +17,7 @@ import { WebError, type WebResponse } from './webclient.ts';
 //
 // Every call goes through src/websources.ts call()/invoke(): the host
 // allow-list, the address checks at connect time, redirects, the time limit,
-// the response size limit (PGAPEX_REST_MAX_BYTES) and the app's web
+// the response size limit (PGKILN_REST_MAX_BYTES) and the app's web
 // credentials, whose secrets are decrypted only for the request and never
 // stored with it. A response with any status code is "ok" (the status code
 // is kept, like apex_web_service.g_status_code); "error" means no response.

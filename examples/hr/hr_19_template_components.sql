@@ -12,7 +12,7 @@
 -- =====================================================================
 
 select meta.import_template_component(a.id, $plugin${
-  "format": "pgapex-plugin/1",
+  "format": "pgkiln-plugin/1",
   "type": "template_component",
   "static_id": "status_badge",
   "name": "Status badge",
@@ -43,7 +43,7 @@ select meta.import_template_component(a.id, $plugin${
   from meta.app a where a.alias = 'hr';
 
 select meta.import_template_component(a.id, $plugin${
-  "format": "pgapex-plugin/1",
+  "format": "pgkiln-plugin/1",
   "type": "template_component",
   "static_id": "contact_card",
   "name": "Contact card",
@@ -99,7 +99,7 @@ select meta.import_template_component(a.id, $plugin${
   from meta.app a where a.alias = 'hr';
 
 select meta.import_template_component(a.id, $plugin${
-  "format": "pgapex-plugin/1",
+  "format": "pgkiln-plugin/1",
   "type": "template_component",
   "static_id": "timeline_item",
   "name": "Timeline item",

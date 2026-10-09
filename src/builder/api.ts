@@ -102,7 +102,7 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
   const [status, problem, granted, eps] = await Promise.all([
     apiStatus(),
     role ? apiRoleProblem(role) : Promise.resolve(null),
-    role ? owner.one(`select pg_has_role('pgapex_authenticator', r.oid, 'MEMBER') as ok from pg_roles r where r.rolname = $1`, [role]) : Promise.resolve(null),
+    role ? owner.one(`select pg_has_role('pgkiln_authenticator', r.oid, 'MEMBER') as ok from pg_roles r where r.rolname = $1`, [role]) : Promise.resolve(null),
     role ? endpoints(role).catch(() => []) : Promise.resolve([]),
   ]);
   const url = apiUrl();
@@ -122,14 +122,14 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
         <p class="muted u-mt0">PostgREST runs next to pgkiln and serves the <code>${API_SCHEMA}</code> schema over HTTP. Requests carry a JWT whose <code>role</code> claim is this application’s API role; row level security uses the same <code>meta.app_user()</code> and <code>meta.has_role()</code> as the web pages.</p>
         <form method="post" action="${BASE}/apps/${a.id}/api">${csrf(s)}
           <div class="form-grid">
-            ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'For PostgREST: grant it only the api schema’s views and functions, and grant it to pgapex_authenticator. Empty: tokens work for the REST modules pgkiln serves (Shared Components → REST modules) only.' })}
+            ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'For PostgREST: grant it only the api schema’s views and functions, and grant it to pgkiln_authenticator. Empty: tokens work for the REST modules pgkiln serves (Shared Components → REST modules) only.' })}
           </div>
           <div class="buttons"><button class="btn btn-hot">Save</button></div>
         </form>
         <ul class="checklist u-mt1">
           ${check(status.ok, html`PostgREST at <code>${url}</code>: ${status.ok ? status.detail : html`<b>not reachable</b> (${status.detail})`}`)}
           ${role ? check(!problem, problem ?? html`<code>${role}</code> is a dedicated role`) : check(false, 'No API role: tokens are for the REST modules pgkiln serves only')}
-          ${role && !problem ? check(!!granted?.ok, granted?.ok ? html`pgapex_authenticator may switch to <code>${role}</code>` : html`<b>run</b> <code>grant ${role} to pgapex_authenticator;</code>`) : ''}
+          ${role && !problem ? check(!!granted?.ok, granted?.ok ? html`pgkiln_authenticator may switch to <code>${role}</code>` : html`<b>run</b> <code>grant ${role} to pgkiln_authenticator;</code>`) : ''}
         </ul>`)}
       ${region('Issue a token', html`
         <p class="muted u-mt0">For development and trusted scripts. The token acts as the account in this application until it expires. Roles are read at each request, and deactivating the account or revoking its access stops the token at once (PostgREST’s pre-request check <code>meta.api_check</code>). To invalidate all tokens, change <code>API_JWT_SECRET</code>.</p>

@@ -2,7 +2,7 @@
 -- Automations (APEX: Shared Components → Automations)
 --
 -- SQL or PL/pgSQL that runs on a schedule, as the application's database
--- role (grants and RLS apply). The pgapex server schedules them (see
+-- role (grants and RLS apply). The pgkiln server schedules them (see
 -- src/automations.ts), so no extension is needed; several servers never
 -- run the same automation twice.
 --
@@ -65,13 +65,13 @@ create table meta.automation_log (
 create index on meta.automation_log (automation_id, started_at desc);
 revoke all on meta.automation_log from public;
 
--- While an automation runs (pgapex.automation_id is set by the runtime),
+-- While an automation runs (pgkiln.automation_id is set by the runtime),
 -- meta.has_role() answers from the automation's roles, read live.
 create or replace function meta.has_role(p_role text) returns boolean
 language plpgsql stable security definer set search_path = meta, pg_catalog as $$
 declare
-  v_session    uuid := nullif(current_setting('pgapex.session_id', true), '')::uuid;
-  v_automation int  := nullif(current_setting('pgapex.automation_id', true), '')::int;
+  v_session    uuid := nullif(current_setting('pgkiln.session_id', true), '')::uuid;
+  v_automation int  := nullif(current_setting('pgkiln.automation_id', true), '')::int;
   v_claims     jsonb;
 begin
   if v_session is not null then
@@ -104,7 +104,7 @@ $$;
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -144,7 +144,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

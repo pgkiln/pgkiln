@@ -13,7 +13,7 @@
 -- An application's workspace is a row in meta.workspace_app; no row means
 -- the Default workspace, so imports, the CLI and older code paths put new
 -- applications there until the builder moves them. Installation data: not
--- exported, kept by an in-place import (pgapex import --replace).
+-- exported, kept by an in-place import (pgkiln import --replace).
 -- =====================================================================
 
 create table meta.workspace (

@@ -140,7 +140,7 @@ describe('text messages', () => {
         const c = await owner.pool.connect();
         try {
           await c.query('begin');
-          await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.lang', $2, true)`, [String(appId), lang]);
+          await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.lang', $2, true)`, [String(appId), lang]);
           return (await c.query(`select meta.message('test_hello', 'Ann', '3') as m, meta.message('NO_SUCH') as n`)).rows[0];
         } finally {
           await c.query('rollback');

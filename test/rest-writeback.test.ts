@@ -9,9 +9,9 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
-process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
-process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
+process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner, runtime } = await import('../src/db.ts');
@@ -344,7 +344,7 @@ describe('synchronisation into a local table', () => {
 
   test('from SQL: meta.request_rest_sync queues a run for the scheduler', async () => {
     const queued = await runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'KING', true)`, [String(appId)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true)`, [String(appId)]);
       await c.query('set local role hr_app');
       const a = (await c.query(`select meta.request_rest_sync('t_sync') as id`)).rows[0].id;
       const b = (await c.query(`select meta.request_rest_sync('T_SYNC') as id`)).rows[0].id;
@@ -359,7 +359,7 @@ describe('synchronisation into a local table', () => {
     // (a dev server sharing the database may take the queued run first)
     assert.ok(r.status === 'ok' || r.status === 'busy', String(r.message));
     const status = await runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true)`, [String(appId)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
       return (await c.query('select meta.rest_sync_status($1) as s', [queued])).rows[0].s;
     });
     assert.equal(status.source, 'T_SYNC');
@@ -367,7 +367,7 @@ describe('synchronisation into a local table', () => {
     assert.equal(status.requested_by, 'KING');
     // another application can't see it
     const other = await runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', '0', true)`);
+      await c.query(`select set_config('pgkiln.app_id', '0', true)`);
       return (await c.query('select meta.rest_sync_status($1) as s', [queued])).rows[0].s;
     });
     assert.equal(other, null);

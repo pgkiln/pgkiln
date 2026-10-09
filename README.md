@@ -9,7 +9,7 @@ dynamic actions, validations and processes are rows in the `meta` schema. A
 runtime turns those rows into web pages, and the builder is an editor for
 them.
 
-> pgkiln (called *pgapex* until 0.31) is an independent open source project and is not affiliated with Oracle. Oracle and APEX are trademarks of Oracle.
+> pgkiln is an independent open source project and is not affiliated with Oracle. Oracle and APEX are trademarks of Oracle.
 > Website: [pgkiln.vargar.eu](https://pgkiln.vargar.eu)
 
 <p align="center">
@@ -175,11 +175,11 @@ Browser ── HTML + /static/app.js (dialogs, dynamic actions; no inline JS)
    │
 Runtime (Fastify, server-rendered)            Builder (/builder)
    │ per request: BEGIN                          │ owner connection
-   │   set pgapex.app_user / app_id / session    │ edits meta.* rows
+   │   set pgkiln.app_user / app_id / session    │ edits meta.* rows
    │   SET LOCAL ROLE <app db_role>              │ SQL Workshop
    │   authorization → visibility → render/process
    │ COMMIT
-   │ connects as pgapex_runtime (least privilege)
+   │ connects as pgkiln_runtime (least privilege)
 Postgres
    meta.*        app definitions, sessions (hashed tokens), activity log
    your schemas  tables, PL/pgSQL, RLS policies

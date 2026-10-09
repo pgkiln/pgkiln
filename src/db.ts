@@ -36,14 +36,14 @@ function makePool(connectionString: string | undefined, name: string) {
   };
 }
 
-export const ownerUrl = process.env.DATABASE_URL ?? 'postgres://pgapex:pgapex@localhost:5434/pgapex';
+export const ownerUrl = process.env.DATABASE_URL ?? 'postgres://pgkiln:pgkiln@localhost:5434/pgkiln';
 if (!process.env.RUNTIME_DATABASE_URL)
   console.warn('RUNTIME_DATABASE_URL is not set: applications run on the owner connection (not least privilege).');
 
 /** Owner connection: builder, SQL Workshop, migrations. */
-export const owner = makePool(ownerUrl, 'pgapex-builder');
-/** Least-privilege connection (pgapex_runtime) that runs applications. */
-export const runtime = makePool(process.env.RUNTIME_DATABASE_URL ?? ownerUrl, 'pgapex-runtime');
+export const owner = makePool(ownerUrl, 'pgkiln-builder');
+/** Least-privilege connection (pgkiln_runtime) that runs applications. */
+export const runtime = makePool(process.env.RUNTIME_DATABASE_URL ?? ownerUrl, 'pgkiln-runtime');
 
 export async function closePools() {
   await Promise.all([owner.pool.end(), runtime.pool.end()]);
@@ -59,7 +59,7 @@ export interface AppContext {
   lang?: string;
   /** time zone of the request (validated against pg_timezone_names); unset: the database's */
   timeZone?: string | null;
-  /** the request's debug log (src/debug.ts): sets pgapex.debug_level and collects NOTICEs (meta.debug) */
+  /** the request's debug log (src/debug.ts): sets pgkiln.debug_level and collects NOTICEs (meta.debug) */
   debug?: { level: number; notice(msg: { message?: string; detail?: string; hint?: string; severity?: string }): void };
   /** run once the transaction committed (e.g. removing replaced files from object storage); errors are logged */
   afterCommit?: (() => Promise<void>)[];
@@ -96,16 +96,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function appTxInner<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): Promise<T> {
   return runtime.tx(async (c) => {
     await c.query(
-      `select set_config('pgapex.app_user', $1, true),
-              set_config('pgapex.session_id', $2, true),
-              set_config('pgapex.app_id', $3, true),
+      `select set_config('pgkiln.app_user', $1, true),
+              set_config('pgkiln.session_id', $2, true),
+              set_config('pgkiln.app_id', $3, true),
               set_config('statement_timeout', $4, true),
-              set_config('pgapex.lang', $5, true),
-              set_config('pgapex.public_url', $6, true),
+              set_config('pgkiln.lang', $5, true),
+              set_config('pgkiln.public_url', $6, true),
               set_config('TimeZone', coalesce($7, current_setting('TimeZone')), true),
-              set_config('pgapex.debug_level', $8, true),
+              set_config('pgkiln.debug_level', $8, true),
               -- (0.31) the session's tenant (meta.set_tenant), read here so a change applies at once
-              set_config('pgapex.tenant_id', coalesce((select tenant_id from meta.session where id = $9::uuid), ''), true)${ctx.debug ? `, set_config('client_min_messages', 'notice', true)` : ''}`,
+              set_config('pgkiln.tenant_id', coalesce((select tenant_id from meta.session where id = $9::uuid), ''), true)${ctx.debug ? `, set_config('client_min_messages', 'notice', true)` : ''}`,
       [ctx.appUser, ctx.sessionId, String(ctx.appId), process.env.STATEMENT_TIMEOUT ?? '30s', ctx.lang ?? '',
        (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, ''), ctx.timeZone ?? null,
        String(ctx.debug?.level ?? 0), UUID.test(ctx.sessionId) ? ctx.sessionId : null],

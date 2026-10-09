@@ -57,11 +57,11 @@ describe('icons', () => {
   test('(0.31) Lucide icons, Font APEX names and modifiers', () => {
     assert.ok(lucideNames().size > 1500, `${lucideNames().size} Lucide icons`);
     // pgkiln's own icon wins for a name both have; Lucide fills in the rest
-    assert.deepEqual(iconParts('users'), { name: 'users', set: 'pgapex', classes: [] });
+    assert.deepEqual(iconParts('users'), { name: 'users', set: 'pgkiln', classes: [] });
     assert.deepEqual(iconParts('car-front'), { name: 'car-front', set: 'lucide', classes: [] });
     assert.deepEqual(iconParts('fa fa-car-front fa-lg fa-spin'), { name: 'car-front', set: 'lucide', classes: ['icon-lg', 'icon-spin'] });
-    assert.deepEqual(iconParts('truck flip-h success nonsense'), { name: 'truck', set: 'pgapex', classes: ['icon-flip-h', 'icon-success'] });
-    assert.deepEqual(iconParts('lg users'), { name: 'users', set: 'pgapex', classes: ['icon-lg'] }, 'modifiers before the name too');
+    assert.deepEqual(iconParts('truck flip-h success nonsense'), { name: 'truck', set: 'pgkiln', classes: ['icon-flip-h', 'icon-success'] });
+    assert.deepEqual(iconParts('lg users'), { name: 'users', set: 'pgkiln', classes: ['icon-lg'] }, 'modifiers before the name too');
     for (const bad of ['no-such-icon', 'lg spin', '../etc/passwd', 'x"><script>', '', null]) assert.equal(isIcon(bad), false, String(bad));
     assert.equal(
       icon('fa-car-front 2x').toString(),

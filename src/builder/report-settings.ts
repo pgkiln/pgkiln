@@ -23,7 +23,7 @@ export async function reportColumns(appId: number, source: string | null): Promi
   try {
     await c.query('begin');
     await c.query(`set local statement_timeout = '5s'`);
-    await c.query(`select set_config('pgapex.app_id', $1, true)`, [String(appId)]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
     const role = (await c.query('select db_role from meta.app where id = $1', [appId])).rows[0]?.db_role;
     if (role) await c.query(`set local role ${pg.escapeIdentifier(role)}`);
     const sql = applyBinds(source.trim().replace(/;+\s*$/, ''), {});

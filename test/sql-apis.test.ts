@@ -107,7 +107,7 @@ describe('meta.parse_data: XML and Excel', () => {
   test('Excel: the sheets the server read; a sheet by name', async () => {
     const book = writeXlsx({ name: 'Staff', headings: ['Name', 'Hired', 'Salary'], rows: [['King', { date: '1981-11-17' }, 5000], ['Blake', { date: '1981-05-01' }, 2850.5]] });
     await forget(book);
-    await assert.rejects(owner.query(`select * from meta.parse_data($1, 'staff.xlsx')`, [book]), /has not been read by pgapex/);
+    await assert.rejects(owner.query(`select * from meta.parse_data($1, 'staff.xlsx')`, [book]), /has not been read by pgkiln/);
     assert.equal(await unpackForSql(book), true);
     const rows = (await owner.query(`select line_number, data from meta.parse_data($1, 'staff.xlsx')`, [book])).rows;
     assert.deepEqual(rows, [
@@ -142,7 +142,7 @@ describe('BOOLEAN session state', () => {
       [JSON.stringify({ P1_ON: 'true', P1_YES: 'Y', P1_ONE: '1', P1_OFF: 'off', P1_NO: 'false', P1_EMPTY: '', P1_TEXT: 'maybe' })]);
     try {
       const r = await owner.tx(async (c) => {
-        await c.query(`select set_config('pgapex.session_id', $1, true)`, [s.id]);
+        await c.query(`select set_config('pgkiln.session_id', $1, true)`, [s.id]);
         return (await c.query(`select meta.v_boolean('p1_on') as a, meta.v_boolean('P1_YES') as b, meta.v_boolean('P1_ONE') as c, meta.v_boolean('P1_OFF') as d,
                                      meta.v_boolean('P1_NO') as e, meta.v_boolean('P1_EMPTY') as f, meta.v_boolean('P1_TEXT') as g, meta.v_boolean('P1_NONE') as h`)).rows[0];
       });

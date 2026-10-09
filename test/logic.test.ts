@@ -26,7 +26,7 @@ const developer = async () => {
   await b.submit('/builder/login', { username: 'admin', password: 'admin' });
   return b;
 };
-const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgapex-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
+const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgkiln-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
 const setOption = (status: 'include' | 'exclude') => owner.query(`update meta.build_option set status = $2 where app_id = $1 and name = 'LEAVE_FORECAST'`, [appId, status]);
 
 before(async () => {

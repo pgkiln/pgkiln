@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline';
 import { root } from '../src/env.ts';
 import { closePools, owner } from '../src/db.ts';
 
-const tmp = mkdtempSync(join(tmpdir(), 'pgapex-mcp-'));
+const tmp = mkdtempSync(join(tmpdir(), 'pgkiln-mcp-'));
 const COPY = 'hr_mcp_copy';
 let server: ChildProcessWithoutNullStreams;
 const waiting = new Map<number, (msg: any) => void>();
@@ -141,7 +141,7 @@ describe('pgkiln mcp: export, edit, diff, import', () => {
   test('a copy goes through the whole round trip', async () => {
     // export the example and import it as a copy
     assert.match(await call('export_app', { alias: 'hr', path: 'hr' }), /Exported hr to/);
-    assert.ok(readdirSync(join(tmp, 'hr')).includes('pgapex.json'));
+    assert.ok(readdirSync(join(tmp, 'hr')).includes('pgkiln.json'));
     assert.match(await call('import_app', { path: 'hr', alias: COPY }), new RegExp(`Imported ${COPY}`));
     await assert.rejects(call('import_app', { path: 'hr', alias: COPY }), /exists: use --replace/);
 

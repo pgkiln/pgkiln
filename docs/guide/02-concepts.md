@@ -46,7 +46,7 @@ Every table and column is described in [the reference](09-reference.md).
                │ HTTP
 ┌──────────────┴───────────────────────────────────────────────┐
 │ pgkiln (Node.js, Fastify)                                    │
-│  /a/<alias>/<page>   runtime: renders and processes pages    │──── runtime pool (pgapex_runtime)
+│  /a/<alias>/<page>   runtime: renders and processes pages    │──── runtime pool (pgkiln_runtime)
 │  /builder/...        builder, SQL Workshop                   │──── owner pool (DATABASE_URL)
 └──────────────────────────────────────────────────────────────┘
                │
@@ -134,8 +134,8 @@ state:
 - is readable in SQL as a bind variable (`:P2_DEPTNO`) or with `meta.v('P2_DEPTNO')`.
 
 Sessions end after `SESSION_IDLE_MINUTES` without requests, `SESSION_MAX_HOURS` after sign-in, or
-on sign-out. Each application has its own session and cookie (`pgapex_app_<id>`); the builder has
-another one (`pgapex_dev`).
+on sign-out. Each application has its own session and cookie (`pgkiln_app_<id>`); the builder has
+another one (`pgkiln_dev`).
 
 ### Page items and application items
 

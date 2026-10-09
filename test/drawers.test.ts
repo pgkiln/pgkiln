@@ -10,7 +10,7 @@ import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
 let hr: number;
-const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgapex-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
+const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgkiln-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
 
 before(async () => {
   app = await buildApp({ logger: false });

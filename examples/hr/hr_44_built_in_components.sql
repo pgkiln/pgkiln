@@ -3,7 +3,7 @@
 -- 04-pages-and-regions.md, "Built-in template components")
 --
 -- Page 39 "Team overview": every region is a Template component region on
--- one of pgapex's built-in components, shown as "multiple" (the group):
+-- one of pgkiln's built-in components, shown as "multiple" (the group):
 --   - Key figures: metric cards (ut_metric_card) with a trend;
 --   - Team: an avatar group (ut_avatar) of the active employees;
 --   - Recent hires: a timeline (ut_timeline);

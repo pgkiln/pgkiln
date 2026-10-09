@@ -14,7 +14,7 @@ let app: FastifyInstance;
 let appId: number;
 let pageId: number;
 const alias = 'parity-f31';
-const ROLE = 'pgapex_f31_parity';
+const ROLE = 'pgkiln_f31_parity';
 const SCHEMA = 'f31_parity';
 const DEV = 'dev_f31';
 const DEV_PW = 'Dev-f31-password!';
@@ -24,7 +24,7 @@ before(async () => {
   await owner.query(`drop schema if exists ${SCHEMA} cascade`);
   await owner.query(`drop role if exists ${ROLE}`);
   await owner.query(`create role ${ROLE} nologin`);
-  await owner.query(`grant ${ROLE} to pgapex_runtime`);
+  await owner.query(`grant ${ROLE} to pgkiln_runtime`);
   await owner.query(`create schema ${SCHEMA}`);
   await owner.query(`grant usage, create on schema ${SCHEMA} to ${ROLE}`);
   await owner.query(`delete from meta.developer where username = $1`, [DEV]);

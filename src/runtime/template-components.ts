@@ -25,7 +25,7 @@ import { builtinComponents } from './builtin-components.ts';
 // attributes. Links to pages of the application use the #LINK# placeholder,
 // which pgkiln fills with a checksummed URL (links.ts).
 
-export const PLUGIN_FORMAT = 'pgapex-plugin/1';
+export const PLUGIN_FORMAT = 'pgkiln-plugin/1';
 /** Layout classes of a component's instances in a region (app.css, "template components"). */
 export const LAYOUT_CLASSES = ['tc-list', 'tc-grid', 'tc-inline', 'tc-divided', 'tc-compact'] as const;
 export const ATTRIBUTE_TYPES = ['text', 'number', 'select', 'checkbox'] as const;

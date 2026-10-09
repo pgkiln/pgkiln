@@ -9,8 +9,8 @@
 --
 -- meta.send_push(user, title, body, page, items, …) queues a notification
 -- for every device of a user of the current application. Like
--- meta.web_request it only queues: the pgapex server sends after the caller
--- commits (woken by NOTIFY pgapex_push, else the scheduler), so a rolled
+-- meta.web_request it only queues: the pgkiln server sends after the caller
+-- commits (woken by NOTIFY pgkiln_push, else the scheduler), so a rolled
 -- back transaction sends nothing. The server encrypts each message for the
 -- device (RFC 8291) and signs the request with the application's VAPID key
 -- (RFC 8292), kept in meta.push_key: one pair per application, the private
@@ -159,7 +159,7 @@ begin
   insert into meta.push_message (app_id, username, title, body, url, tag, urgency, ttl_s, requested_by)
   values (v_app, p_user, p_title, nullif(p_body, ''), v_url, p_tag, coalesce(p_urgency, 'normal'), coalesce(p_ttl_s, 86400), meta.app_user())
   returning id into v_id;
-  perform pg_notify('pgapex_push', '');
+  perform pg_notify('pgkiln_push', '');
   return v_id;
 end
 $$;

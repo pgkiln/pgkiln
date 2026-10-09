@@ -185,7 +185,7 @@ begin
   values (d.app_id, d.id, d.name, left(v_title, 500), p_detail_pk, v_vars, d.steps, d.admin_role, d.steps->0->>'name', meta.app_user(), d.version)
   returning id into v_id;
   perform meta.workflow_log(v_id, null, 'started', 'version ' || d.version);
-  perform pg_notify('pgapex_workflow', v_id::text);
+  perform pg_notify('pgkiln_workflow', v_id::text);
   return v_id;
 end
 $$;
@@ -230,7 +230,7 @@ begin
     update workflow set state = 'active', error = null, updated_at = now() where id = p_id;
     perform meta.workflow_log(p_id, w.current_step, 'retried');
   end if;
-  perform pg_notify('pgapex_workflow', p_id::text);
+  perform pg_notify('pgkiln_workflow', p_id::text);
 end
 $$;
 
@@ -248,7 +248,7 @@ begin
    where b.workflow_id = new.workflow_id and b.state = 'waiting' and b.waiting_task = new.id
      and w.id = b.workflow_id and w.state in ('active', 'waiting', 'faulted');
   if v_woken or found then
-    perform pg_notify('pgapex_workflow', new.workflow_id::text);
+    perform pg_notify('pgkiln_workflow', new.workflow_id::text);
   end if;
   return new;
 end

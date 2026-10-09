@@ -114,7 +114,7 @@ export function templateImport(appId: number, s: Session) {
   <section class="region region-standard u-mt125"><header class="region-header"><h2>Import a plug-in</h2></header><div class="region-body">
     <form method="post" action="${BASE}/apps/${appId}/template-components/import">${csrf(s)}
       <div class="field" data-wide><label class="label" for="f_tc_plugin">Plug-in file (JSON)</label>
-        <textarea id="f_tc_plugin" name="plugin" class="code" rows="7" spellcheck="false" required placeholder='{"format": "pgapex-plugin/1", "type": "template_component", …}'></textarea>
+        <textarea id="f_tc_plugin" name="plugin" class="code" rows="7" spellcheck="false" required placeholder='{"format": "pgkiln-plugin/1", "type": "template_component", …}'></textarea>
         <small class="help">Paste the contents of a .plugin.json file, e.g. one from examples/plugins/. The template is checked before it is saved.</small></div>
       <label class="check"><input type="checkbox" name="replace" value="true"> Replace a component with the same static id</label>
       <div class="buttons"><button class="btn btn-hot">Import plug-in</button></div>

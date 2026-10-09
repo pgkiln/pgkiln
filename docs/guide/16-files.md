@@ -168,8 +168,8 @@ Backblaze B2, OCI's S3 compatibility API, …) with `object_store` in its attrib
 
 - `url`: the bucket's URL, path style (`https://s3.<region>.amazonaws.com/<bucket>`,
   `http://minio:9000/<bucket>`) or virtual-host style (`https://<bucket>.s3.<region>.amazonaws.com`).
-  Its host must be on the server's allow-list (`PGAPEX_REST_ALLOWED_HOSTS`, and
-  `PGAPEX_REST_PRIVATE_HOSTS` for a store on your own network), like every call pgkiln makes
+  Its host must be on the server's allow-list (`PGKILN_REST_ALLOWED_HOSTS`, and
+  `PGKILN_REST_PRIVATE_HOSTS` for a store on your own network), like every call pgkiln makes
   ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)).
 - `credential`: a [web credential](19-rest-data-sources.md#web-credentials) of type `aws_sigv4`
   (access key id, secret access key, region); requests are signed with AWS Signature Version 4.

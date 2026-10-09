@@ -11,7 +11,7 @@ import { resultsHtml, runScripts, type RunResult } from './supporting.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, send, shell, type Body, type Req } from './ui.ts';
 
 // Shared Components → Plug-ins (migration 069; APEX: plug-ins): import a
-// plug-in file (format pgapex-plugin/2), look at what it brings, run its
+// plug-in file (format pgkiln-plugin/2), look at what it brings, run its
 // install SQL (only on request, as the application's role, like supporting
 // objects), download it again and remove it. src/runtime/plugins.ts renders
 // and runs plug-ins; their files are static application files and a region
@@ -88,7 +88,7 @@ async function page(s: Session, a: any, selected: string | undefined, result?: {
     ${result ? region(`Result: install SQL of ${result.name}`, resultsHtml('install', result.run)) : ''}
     ${detail}
     ${region('Plug-ins', html`<p class="muted u-mt0">Region, item, dynamic action and process types that bring their own code: JavaScript and CSS as
-        <a href="${BASE}/apps/${a.id}/static-files">static application files</a> (registered with <code>pgapex.plugins.register</code>), a template component, a PL/pgSQL function.
+        <a href="${BASE}/apps/${a.id}/static-files">static application files</a> (registered with <code>pgkiln.plugins.register</code>), a template component, a PL/pgSQL function.
         A plug-in's code runs with this application's rights: import only plug-ins you trust and read their files.</p>
       ${list.length
         ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">Plug-ins</caption>
@@ -97,13 +97,13 @@ async function page(s: Session, a: any, selected: string | undefined, result?: {
               <td>${TYPE_LABEL[x.type]}</td><td>${x.version ?? ''}</td><td>${(used.get(x.name) ?? []).length || ''}</td></tr>`)}</tbody></table></div>`
         : html`<p class="muted">No plug-ins yet.</p>`}`)}
     ${region('Import a plug-in', html`<form method="post" action="${base}/import" enctype="multipart/form-data">${csrf(s)}
-        <div class="field"><label class="label" for="f_plugin_file">Plug-in file (<code>pgapex-plugin/2</code> JSON)</label>
+        <div class="field"><label class="label" for="f_plugin_file">Plug-in file (<code>pgkiln-plugin/2</code> JSON)</label>
           <input type="file" id="f_plugin_file" name="file" accept=".json,application/json"></div>
         <div class="field" data-wide><label class="label" for="f_plugin_json">…or paste it</label>
-          <textarea id="f_plugin_json" name="plugin" class="code" rows="6" spellcheck="false" placeholder='{"format": "pgapex-plugin/2", "type": "region", "name": …}'></textarea></div>
+          <textarea id="f_plugin_json" name="plugin" class="code" rows="6" spellcheck="false" placeholder='{"format": "pgkiln-plugin/2", "type": "region", "name": …}'></textarea></div>
         <div class="field"><label class="check"><input type="checkbox" name="replace" value="true"> Replace a plug-in, files and template component with the same names</label></div>
         <div class="buttons"><button class="btn btn-hot">${icon('upload')} Import</button></div>
-        <small class="help">Template components for older plug-in files (<code>pgapex-plugin/1</code>) are imported under Template components. <code>examples/plugins/</code> has examples.</small>
+        <small class="help">Template components for older plug-in files (<code>pgkiln-plugin/1</code>) are imported under Template components. <code>examples/plugins/</code> has examples.</small>
       </form>`)}`;
 }
 
@@ -113,7 +113,7 @@ export async function installPlugin(appId: number, doc: unknown, replace: boolea
   if (typeof parsed === 'string') throw new Error(parsed);
   const { plugin: p, files, component } = parsed;
   const clean = {
-    format: 'pgapex-plugin/2', type: p.type, name: p.name, label: p.label, version: p.version, help: p.help, attributes: p.attributes,
+    format: 'pgkiln-plugin/2', type: p.type, name: p.name, label: p.label, version: p.version, help: p.help, attributes: p.attributes,
     files, template_component: component, sql_function: p.sql_function, install_sql: p.install_sql,
   };
   await owner.query('select meta.import_plugin($1, $2::jsonb, $3)', [appId, JSON.stringify(clean), replace]);

@@ -3,9 +3,9 @@
 --
 -- meta.web_request(...)  (APEX_WEB_SERVICE.make_rest_request)
 --   PostgreSQL can't make an HTTP call without an extension, so a request
---   from SQL is QUEUED in meta.web_request_log and made by the pgapex
+--   from SQL is QUEUED in meta.web_request_log and made by the pgkiln
 --   server, through the same code as REST data sources: the host allow-list
---   (PGAPEX_REST_ALLOWED_HOSTS), the address checks at connect time, the
+--   (PGKILN_REST_ALLOWED_HOSTS), the address checks at connect time, the
 --   response size limit and the web credentials of the application (whose
 --   secrets never reach SQL). meta.web_response(id) returns the result.
 --   When it runs:
@@ -60,7 +60,7 @@ create index on meta.web_request_log (id) where status = 'queued';
 create index on meta.web_request_log (finished_at);
 revoke all on meta.web_request_log from public;
 comment on table meta.web_request_log is
-  'web requests queued from SQL (meta.web_request) and their responses, made by the pgapex server; kept 24 hours';
+  'web requests queued from SQL (meta.web_request) and their responses, made by the pgkiln server; kept 24 hours';
 
 -- Checks shared by the two ways to queue a request; returns the app id.
 create function meta.web_request_check() returns int
@@ -134,7 +134,7 @@ begin
   values (v_app, p_url, v_method, coalesce(p_headers, '{}'), p_body, upper(p_credential), coalesce(p_timeout_s, 10), meta.app_user())
   returning id into v_id;
   -- a page process's requests run right after it (src/webrequests.ts)
-  perform set_config('pgapex.web_pending', '1', true);
+  perform set_config('pgkiln.web_pending', '1', true);
   return v_id;
 end
 $$;
@@ -162,7 +162,7 @@ begin
   insert into meta.web_request_log (app_id, source, params, timeout_s, requested_by)
   values (v_app, upper(p_source), coalesce(p_params, '{}'), coalesce(p_timeout_s, least(greatest(v_timeout, 1), 60), 10), meta.app_user())
   returning id into v_id;
-  perform set_config('pgapex.web_pending', '1', true);
+  perform set_config('pgkiln.web_pending', '1', true);
   return v_id;
 end
 $$;
@@ -230,10 +230,10 @@ create function meta.web_request_take(p_limit int default 5)
 returns table (id bigint, source text, params jsonb, url text, method text, headers jsonb, body text, credential text, timeout_s int)
 language plpgsql volatile security definer set search_path = meta, pg_catalog as $$
 begin
-  if coalesce(current_setting('pgapex.web_pending', true), '') <> '1' then
+  if coalesce(current_setting('pgkiln.web_pending', true), '') <> '1' then
     return;
   end if;
-  perform set_config('pgapex.web_pending', '', true);
+  perform set_config('pgkiln.web_pending', '', true);
   return query
     update meta.web_request_log l set status = 'running', started_at = now()
      where l.id in (select x.id from meta.web_request_log x

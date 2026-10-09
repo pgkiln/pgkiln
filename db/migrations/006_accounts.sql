@@ -122,9 +122,9 @@ revoke all on function meta.set_password(text, text, boolean), meta.expire_passw
 -- ---------------------------------------------------------------------
 -- Privileges
 -- ---------------------------------------------------------------------
-grant select on meta.setting to pgapex_runtime;
-grant select (must_change_password, password_changed_at, theme_pref, language) on meta.account to pgapex_runtime;
-grant update (theme_pref, language) on meta.account to pgapex_runtime;
+grant select on meta.setting to pgkiln_runtime;
+grant select (must_change_password, password_changed_at, theme_pref, language) on meta.account to pgkiln_runtime;
+grant update (theme_pref, language) on meta.account to pgkiln_runtime;
 grant execute on function meta.setting(text), meta.password_days_left(text) to public;
 revoke all on function meta.change_password(int, text, text, text, uuid) from public;
-grant execute on function meta.change_password(int, text, text, text, uuid) to pgapex_runtime;
+grant execute on function meta.change_password(int, text, text, text, uuid) to pgkiln_runtime;

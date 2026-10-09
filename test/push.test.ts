@@ -96,10 +96,10 @@ describe('push notifications: subscriptions from browsers', () => {
   });
   test('other hosts, http, credentials and bad keys are refused (SSRF)', (t) => {
     // as in production: no private test host
-    const priv = process.env.PGAPEX_PUSH_PRIVATE_HOSTS;
-    delete process.env.PGAPEX_PUSH_PRIVATE_HOSTS;
+    const priv = process.env.PGKILN_PUSH_PRIVATE_HOSTS;
+    delete process.env.PGKILN_PUSH_PRIVATE_HOSTS;
     t.after(() => {
-      if (priv !== undefined) process.env.PGAPEX_PUSH_PRIVATE_HOSTS = priv;
+      if (priv !== undefined) process.env.PGKILN_PUSH_PRIVATE_HOSTS = priv;
     });
     for (const endpoint of ['https://evil.example.com/x', 'http://fcm.googleapis.com/x', 'https://127.0.0.1/x', 'https://u:p@fcm.googleapis.com/x',
       'https://fcm.googleapis.com.evil.com/x', 'https://notify.windows.com.evil.com/', 'file:///etc/passwd', 'https://x'.padEnd(1100, 'x')])
@@ -108,10 +108,10 @@ describe('push notifications: subscriptions from browsers', () => {
     assert.ok(subscriptionProblem({ ...ok, auth: 'short' }));
     assert.ok(subscriptionProblem({ ...ok, endpoint: 42 }));
     // a private test host allows plain http for that host only
-    process.env.PGAPEX_PUSH_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.PGKILN_PUSH_PRIVATE_HOSTS = '127.0.0.1';
     assert.equal(subscriptionProblem({ ...ok, endpoint: 'http://127.0.0.1:9/x' }), null);
     assert.ok(subscriptionProblem({ ...ok, endpoint: 'http://fcm.googleapis.com/x' }));
-    delete process.env.PGAPEX_PUSH_PRIVATE_HOSTS;
+    delete process.env.PGKILN_PUSH_PRIVATE_HOSTS;
   });
 });
 
@@ -130,8 +130,8 @@ const deviceAuth = Buffer.alloc(16, 3).toString('base64url');
 const env = { ...process.env };
 
 before(async () => {
-  process.env.PGAPEX_PUSH_PRIVATE_HOSTS = '127.0.0.1';
-  process.env.PGAPEX_SECRET_KEY ??= 'push-test-secret-key-0123456789abcdefghij';
+  process.env.PGKILN_PUSH_PRIVATE_HOSTS = '127.0.0.1';
+  process.env.PGKILN_SECRET_KEY ??= 'push-test-secret-key-0123456789abcdefghij';
   server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (c) => chunks.push(c));
@@ -162,7 +162,7 @@ after(async () => {
 /** meta.send_push as application code of HR calls it. */
 async function sendPush(sql: string, params: unknown[] = []) {
   return owner.tx(async (c) => {
-    await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true)`, [String(appId)]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appId)]);
     return (await c.query(sql, params)).rows[0];
   });
 }
@@ -284,7 +284,7 @@ describe('push notifications: sending', () => {
     received.length = 0;
     await assert.rejects(
       owner.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true)`, [String(appId)]);
+        await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
         await c.query(`select meta.send_push('scott', 'Never')`);
         throw new Error('rollback');
       }),

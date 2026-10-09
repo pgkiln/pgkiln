@@ -39,7 +39,7 @@ create function meta.save_temp_file(p_item text, p_filename text, p_mime text, p
 returns uuid
 language plpgsql security definer set search_path = meta, pg_catalog as $$
 declare
-  v_session uuid := nullif(current_setting('pgapex.session_id', true), '')::uuid;
+  v_session uuid := nullif(current_setting('pgkiln.session_id', true), '')::uuid;
   v_id uuid;
 begin
   if v_session is null then
@@ -60,7 +60,7 @@ $$;
 create view meta.temp_files with (security_barrier) as
   select id, item_name, filename, mime_type, size, content, created_at
     from meta.temp_file
-   where session_id = nullif(current_setting('pgapex.session_id', true), '')::uuid;
+   where session_id = nullif(current_setting('pgkiln.session_id', true), '')::uuid;
 
 revoke all on meta.temp_file from public;
 grant execute on function meta.save_temp_file(text, text, text, bytea) to public;
@@ -70,6 +70,6 @@ grant select on meta.temp_files to public;
 create function meta.delete_temp_file(p_id uuid) returns void
 language sql security definer set search_path = meta, pg_catalog as $$
   delete from temp_file
-   where id = p_id and session_id = nullif(current_setting('pgapex.session_id', true), '')::uuid
+   where id = p_id and session_id = nullif(current_setting('pgkiln.session_id', true), '')::uuid
 $$;
 grant execute on function meta.delete_temp_file(uuid) to public;

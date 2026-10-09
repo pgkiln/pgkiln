@@ -182,10 +182,10 @@ export async function runScript(c: Client, statements: ScriptStatement[], opts: 
     const t0 = performance.now();
     const sp = opts.transaction && !stopOnError;
     try {
-      if (sp) await c.query('savepoint pgapex_script');
+      if (sp) await c.query('savepoint pgkiln_script');
       const out = (await c.query({ text: s.sql, rowMode: 'array' })) as pg.QueryResult<unknown[]> | pg.QueryResult<unknown[]>[];
       const res = Array.isArray(out) ? out[out.length - 1] : out;
-      if (sp) await c.query('release savepoint pgapex_script');
+      if (sp) await c.query('release savepoint pgkiln_script');
       r.status = 'ok';
       r.command = res.command ?? undefined;
       r.rows = res.rowCount;
@@ -198,7 +198,7 @@ export async function runScript(c: Client, statements: ScriptStatement[], opts: 
       const err = e as pg.DatabaseError;
       r.error = `${err.message}${err.code ? ` (${err.code})` : ''}`;
       failed++;
-      if (sp) await c.query('rollback to savepoint pgapex_script').catch(() => {});
+      if (sp) await c.query('rollback to savepoint pgkiln_script').catch(() => {});
     }
     r.ms = Math.round(performance.now() - t0);
     if (r.status === 'error' && stopOnError) break;
