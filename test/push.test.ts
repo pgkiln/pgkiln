@@ -145,6 +145,8 @@ before(async () => {
   app = await buildApp({ logger: false });
   appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
   await owner.query('update meta.app set pwa = true, pwa_push = true where id = $1', [appId]);
+  // keys another test file created under its own PGKILN_SECRET_KEY can't be decrypted with this one
+  await owner.query('delete from meta.push_key where app_id = $1', [appId]);
 });
 
 after(async () => {
