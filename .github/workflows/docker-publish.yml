@@ -62,15 +62,4 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      # the Docker Hub page shows the README (its links point to GitHub and the website)
-      - uses: peter-evans/dockerhub-description@v5
-        # needs a token with read, write & delete; a read & write token only skips this step
-        continue-on-error: true
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: pgkiln/pgkiln
-          short-description: Low-code application builder for PostgreSQL, an alternative to Oracle APEX
-          readme-filepath: ./README.md
-          enable-url-completion: true
+      # the Docker Hub page's README: dockerhub-readme.yml
