@@ -91,6 +91,51 @@ jobs:
           name: screenshots
           path: test-results/
 
+  # Install an older release with its sample data, upgrade to this commit,
+  # then run the tests: migrations must work on existing databases too.
+  upgrade:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        from: [v0.31.0]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pgkiln
+          POSTGRES_PASSWORD: pgkiln
+          POSTGRES_DB: pgkiln
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pgkiln"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
+      RUNTIME_DATABASE_URL: postgres://pgkiln_runtime:pgkiln_runtime@localhost:5432/pgkiln
+      API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the release tags
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install ${{ matrix.from }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/old"
+          # the whole release: its migrations and its HR example
+          git archive "${{ matrix.from }}" | tar -x -C "$RUNNER_TEMP/old"
+          npx tsx scripts/migrate.ts --seed --root "$RUNNER_TEMP/old"
+      - name: Upgrade to this commit
+        run: npm run example:hr
+      - run: npm test
+
   docker:
     # what a user runs: deploy/.env.example filled in, docker compose up -d
     runs-on: ubuntu-latest
