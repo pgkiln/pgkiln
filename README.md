@@ -17,7 +17,7 @@ them.
 > pgkiln is an independent open source project and is not affiliated with Oracle. Oracle and APEX are trademarks of Oracle.
 
 <p align="center">
-  <img src="docs/images/builder-page-designer.png" alt="The page designer: component tree, layout and property editor" width="100%">
+  <img src="https://raw.githubusercontent.com/pgkiln/pgkiln/main/docs/images/builder-page-designer.png" alt="The page designer: component tree, layout and property editor" width="100%">
 </p>
 
 ## Screenshots
@@ -37,7 +37,7 @@ screenshots are made by `npm run screenshots`.
 | **App Builder** home | **SQL Workshop**: object browser with RLS and grants |
 
 <p align="center">
-  <img src="docs/images/app-phone.png" alt="The dashboard on a phone" width="260"><br>
+  <img src="https://raw.githubusercontent.com/pgkiln/pgkiln/main/docs/images/app-phone.png" alt="The dashboard on a phone" width="260"><br>
   <em>Responsive on phones and tablets, and installable as a Progressive Web App</em>
 </p>
 
