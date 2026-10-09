@@ -14,6 +14,9 @@ All notable changes to this project are documented here. The format follows
   events. "pgApex" was already the name of another PostgreSQL project, and APEX is Oracle's trademark.
 
 ### Added
+- **Website** at [pgkiln.vargar.eu](https://pgkiln.vargar.eu): a landing page and the user guide with search, built
+  with VitePress from `website/` (the guide is synced from `docs/` at build time), published with
+  `website/scripts/deploy.sh`.
 - **MCP server for AI coding agents** (`pgapex mcp`, docs/guide/20-ai-agents.md): Claude Code, Cursor and other
   agents can list applications, read an application's settings, pages and shared components as YAML, describe
   tables with their RLS policies, run read-only queries, search the user guide and read recent errors; and change an
