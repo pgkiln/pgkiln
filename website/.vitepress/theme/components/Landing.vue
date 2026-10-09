@@ -58,7 +58,9 @@ const faqs = [
             <a class="btn ghost" href="https://github.com/pgkiln/pgkiln">GitHub</a>
           </div>
           <pre class="install"><code><span class="c"># with Docker: PostgreSQL 17 + pgkiln</span>
-cd deploy &amp;&amp; cp .env.example .env   <span class="c"># fill in four secrets</span>
+curl -fsSLO https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/compose.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/.env.example
+<span class="c"># fill in four secrets in .env, then</span>
 docker compose up -d   <span class="c"># → http://127.0.0.1:3100/builder</span></code></pre>
         </div>
         <div class="hero-shot">

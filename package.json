@@ -1,7 +1,6 @@
 {
   "name": "pgkiln",
-  "version": "0.30.0",
-  "private": true,
+  "version": "0.31.0",
   "description": "Open source low-code, SQL-driven application builder for PostgreSQL, inspired by Oracle APEX",
   "keywords": [
     "postgresql",

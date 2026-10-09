@@ -201,16 +201,21 @@ which is read at startup; real environment variables take precedence.
 
 ## Docker
 
-The quickest way to run pgkiln: an image with the server and a compose file with PostgreSQL 17,
-in `deploy/`. Docker is all you need.
+The quickest way to run pgkiln: the image [`pgkiln/pgkiln`](https://hub.docker.com/r/pgkiln/pgkiln)
+(also `ghcr.io/pgkiln/pgkiln`, for amd64 and arm64) and a compose file with PostgreSQL 17. Docker is all
+you need; no checkout of the source:
 
 ```bash
-cd deploy
-cp .env.example .env
+mkdir pgkiln && cd pgkiln
+curl -fsSLO https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/compose.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/.env.example
 # fill in POSTGRES_PASSWORD, RUNTIME_PASSWORD, PGKILN_SECRET_KEY (e.g. `openssl rand -hex 24` each)
-# and PGKILN_ADMIN_PASSWORD (12+ characters)
+# and PGKILN_ADMIN_PASSWORD (12+ characters) in .env
 docker compose up -d
 ```
+
+From a checkout of the source, `cd deploy && cp .env.example .env`, then `docker compose up -d --build`
+builds the image from your copy instead.
 
 Open http://127.0.0.1:3100/builder and sign in as `admin` with `PGKILN_ADMIN_PASSWORD`.
 
@@ -246,11 +251,11 @@ stops the container at once with a message saying so.
 | `PGKILN_PORT`, `PGKILN_BIND` | `3100`, `127.0.0.1` | Only this machine can connect by default; `PGKILN_BIND=0.0.0.0` opens plain HTTP to the network |
 | `PGKILN_DOMAIN` | | With the `https` profile: Caddy gets a certificate for this name (its DNS must point at the machine, ports 80 and 443 open). Set `PUBLIC_URL=https://…`, `COOKIE_SECURE=true` and `TRUST_PROXY=true` with it. Installing apps on phones and push notifications need HTTPS |
 | `PGKILN_EXAMPLE` | | `hr` installs the HR example (its demo users have weak passwords: not on a public server) |
-| `PGKILN_IMAGE` | `pgkiln:local` | Use a published image instead of building one from this checkout |
+| `PGKILN_IMAGE` | `pgkiln/pgkiln:latest` | The image to run, e.g. a fixed version (`pgkiln/pgkiln:0.31.0`) or `ghcr.io/pgkiln/pgkiln` |
 
-**Upgrading:** built from this checkout: `git pull`, then `docker compose up -d --build`. With a
-published image (`PGKILN_IMAGE`): `docker compose pull`, then `docker compose up -d` (`--build`
-would build this checkout under the published name). The new container migrates the database
+**Upgrading:** with the published image: `docker compose pull`, then `docker compose up -d` (with a
+fixed version in `PGKILN_IMAGE`, change it first). Built from a checkout: `git pull`, then
+`docker compose up -d --build`. The new container migrates the database
 before it starts serving. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
 Keep `PGKILN_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys) can't be decrypted.
 

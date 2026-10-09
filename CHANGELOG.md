@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-09
+
+The first public release, on GitHub, Docker Hub (`pgkiln/pgkiln`) and npm (`pgkiln`).
+
 ### Added
 - **Website** at [pgkiln.vargar.eu](https://pgkiln.vargar.eu): a landing page and the user guide with search, built
   with VitePress from `website/` (the guide is synced from `docs/` at build time), published with

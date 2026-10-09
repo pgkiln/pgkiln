@@ -6,8 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.30.0 (see the changelog's *Unreleased* section for what comes next:
-  the rename to pgkiln, the MCP server for AI coding agents, the website, a security review).
+- **Current release:** 0.31.0, the first public release (October 2026).
 - **APEX parity:** 137 features compared: 113 available, 6 partial, 15 not yet, 3 deliberately
   not planned (e-mail sending among them; use an extension or an external service).
 
