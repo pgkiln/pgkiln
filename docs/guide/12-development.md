@@ -318,10 +318,9 @@ CI (`.github/workflows/ci.yml`) runs these jobs against PostgreSQL 17:
   and allows no violation;
 - **docker**: builds the image and starts the compose stack as a user would.
 
-From the second release on, CI should also check upgrades: an **upgrade** job that installs each earlier
-release with its sample data (`git archive <tag> | tar -x`, then `scripts/migrate.ts --seed --root`),
-upgrades to the commit and runs `npm test`. The first release is v0.31.0, so there is nothing to upgrade
-from yet.
+- **upgrade**: installs each earlier release (`v0.31.0` …) with its HR example (`git archive <tag> | tar -x`,
+  then `scripts/migrate.ts --seed --root`), upgrades to the commit and runs `npm test` on the result.
+  Add each new release to its matrix.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the
 PostgREST HTTP tests skip. To reproduce a CI failure, run the tests in a clean checkout
