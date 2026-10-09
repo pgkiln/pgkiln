@@ -11,6 +11,38 @@
 pgkiln does not need any other services; there is no separate web listener (like ORDS for APEX).
 For REST APIs you can run [PostgREST](https://postgrest.org) next to it ([chapter 13](13-rest-api.md)).
 
+### Hardware
+
+pgkiln itself is light: one Node.js process and PostgreSQL. What a server needs depends mostly on
+your own data and queries.
+
+| | CPU | Memory | Disk |
+|---|---|---|---|
+| **Trying it out**, a small team | 1 core | 1 GB | 5 GB |
+| **Production**, up to a few hundred users | 2 cores | 2–4 GB | 20 GB SSD, plus your data |
+| **Larger** | more instances behind a load balancer ([Scaling](#scaling)), PostgreSQL on its own server | | sized by your data |
+
+Memory and disk on the smallest server leave room for the operating system; with Docker the images
+take about 1.2 GB (pgkiln 570 MB, `postgres:17` 640 MB).
+
+**What we measured** (October 2026, with the HR example, the Docker compose stack, on a desktop CPU;
+simulated users who sign in and request pages back to back, without pausing between clicks):
+
+| | Idle | 5 users | 20 users | 50 users |
+|---|---|---|---|---|
+| Pages per second | – | 212 | 247 | 242 |
+| Time per page (median / 99th percentile) | – | 24 / 39 ms | 84 / 116 ms | 214 / 282 ms |
+| pgkiln memory | 140 MB | 390 MB | 440 MB | 610 MB |
+| PostgreSQL memory | 85 MB | 155 MB | 160 MB | 165 MB |
+| pgkiln CPU | ~0 | 1.1 cores | 1.1 cores | 1.2 cores |
+
+- One pgkiln process uses about **one CPU core** at most and served about **240 pages per second**
+  here. People pause between clicks, so that is far more than a team working normally generates;
+  a smaller or shared CPU (a typical cloud server) is slower, so measure with your own pages.
+- The **database** of the example is under 50 MB (pgkiln's own `meta` schema about 6 MB); sessions, the
+  activity log and uploaded files grow with use. Back up and size the disk for your own tables.
+- Each pgkiln instance opens up to 30 database connections with the default pool settings.
+
 ## Quick start (development)
 
 ```bash
@@ -122,6 +154,9 @@ which is read at startup; real environment variables take precedence.
 | `LOGIN_MAX_FAILURES_PER_IP` | `50` | Failed sign-ins per IP address before a lock |
 | `STATEMENT_TIMEOUT` | `30s` | Maximum run time of any application SQL statement |
 | `DB_POOL_SIZE` | `10` | Connections per pool (there are two pools) |
+| `DB_NESTED_POOL_SIZE` | `5` | Connections per pool for queries a request makes while it holds a connection of that pool (opened only when needed) |
+| `DB_ACQUIRE_TIMEOUT_MS` | `30000` | How long a request waits for a free connection before it fails with an error |
+| `DB_IDLE_IN_TRANSACTION_MS` | `300000` | The database ends a transaction left idle this long (milliseconds), so a hung request frees its connection |
 | `MAX_UPLOAD_MB` | `10` | Largest file a file item accepts (an item's `max_mb` can only lower it) |
 | `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data and Create → From a file |
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
@@ -293,8 +328,9 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgkiln (nod
 ### Scaling
 
 pgkiln keeps no state in memory between requests (sessions live in `meta.session`), so you can
-run several instances behind a load balancer. Each instance opens up to `2 × DB_POOL_SIZE`
-database connections.
+run several instances behind a load balancer. Each instance opens up to
+`2 × (DB_POOL_SIZE + DB_NESTED_POOL_SIZE)` database connections (30 with the defaults); keep the sum
+of all instances below PostgreSQL's `max_connections` (100 by default).
 
 ## Backups and moving applications
 
