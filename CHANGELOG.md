@@ -114,6 +114,12 @@ Fixes from the security review of 2026-10-08 (details and severities in SECURITY
   administrator pages are not a boundary while the SQL Workshop runs as the owner.
 
 ### Fixed
+- **The server could freeze under load.** A page request holds a database connection for its transaction, and the
+  navigation lists and map regions asked the same pool for a second one. With as many simultaneous requests as pool
+  connections (10 by default, so about 20 users signing in at once), every connection waited for another and the
+  server stopped answering until it was restarted. Such queries now use a small pool of their own
+  (`DB_NESTED_POOL_SIZE`); waiting for a connection fails after `DB_ACQUIRE_TIMEOUT_MS` instead of forever, and the
+  database ends transactions left idle (`DB_IDLE_IN_TRANSACTION_MS`). Regression test: `test/pool.test.ts`.
 - Query Builder: after *Apply* the tables kept the order of the list instead of the order chosen, so the aliases
   (and the ticked columns and conditions) could point at the other table.
 - The e2e test of the crop dialog failed on CI: it waited with an async predicate, which Playwright treats as true

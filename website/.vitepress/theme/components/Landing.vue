@@ -34,6 +34,7 @@ const faqs = [
   { q: 'Is pgkiln free?', a: 'Yes. pgkiln is open source under the Apache-2.0 license. You host it yourself; there are no paid tiers or usage limits.' },
   { q: 'How does it compare with Oracle APEX?', a: 'pgkiln follows APEX’s model (apps as metadata, pages with regions and items, page processing in SQL) on PostgreSQL. The parity matrix compares 137 APEX features: most are available, and what is partial or missing is listed honestly.' },
   { q: 'What do I need to run it?', a: 'PostgreSQL 15 or newer and Node.js 20 or newer, or just Docker: the compose file starts PostgreSQL 17 and pgkiln together. There is no separate web listener like ORDS.' },
+  { q: 'How big a server do I need?', a: 'Small. To try it out or for a small team: 1 CPU core, 1 GB of memory and 5 GB of disk. In production for up to a few hundred users: 2 cores, 2\u20134 GB and 20 GB plus your data. In our test one pgkiln process served about 240 pages per second on a single core.', link: { href: '/docs/installation#hardware', text: 'Requirements and measurements' } },
   { q: 'Can I keep my applications in git?', a: 'Yes. The command line exports an application as one readable file per component (JSON or YAML with the SQL inline), shows a diff against the database and updates an application in place.' },
   { q: 'Does it lock me in?', a: 'Your data stays in your own PostgreSQL tables with your own constraints and policies. pgkiln only adds its meta schema, and an application is a JSON document you can read.' },
 ];
@@ -225,7 +226,7 @@ docker compose up -d   <span class="c"># → http://127.0.0.1:3100/builder</span
         <h2>Questions</h2>
         <details v-for="f in faqs" :key="f.q" class="faq">
           <summary>{{ f.q }}</summary>
-          <p>{{ f.a }}</p>
+          <p>{{ f.a }} <a v-if="f.link" class="more inline" :href="f.link.href">{{ f.link.text }} →</a></p>
         </details>
       </div>
     </section>
@@ -288,6 +289,7 @@ code { font-size: 0.88em; }
 .card.big { padding: 32px; }
 .card.big h3 { font-size: 1.4rem; }
 .icon { font-size: 1.5rem; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; background: var(--vp-c-brand-soft); margin-bottom: 14px; }
+.more.inline { margin-top: 0; }
 .more { display: inline-block; margin-top: 16px; font-weight: 600; color: var(--vp-c-brand-1); text-decoration: none; }
 
 .tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 24px; }

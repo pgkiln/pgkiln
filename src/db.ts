@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import pg from 'pg';
 
 // Keep dates/timestamps as the strings Postgres sends: no timezone surprises
@@ -6,24 +7,53 @@ for (const oid of [1082, 1114, 1184, 1083, 1266]) pg.types.setTypeParser(oid, (v
 
 export type Client = pg.PoolClient;
 
+/** The pools whose transaction the current async call chain is inside (see makePool). */
+const inTx = new AsyncLocalStorage<ReadonlySet<string>>();
+
+/** Waiting for a free connection fails after this, instead of hanging the request forever. */
+const ACQUIRE_TIMEOUT_MS = Number(process.env.DB_ACQUIRE_TIMEOUT_MS ?? 30_000);
+
 function makePool(connectionString: string | undefined, name: string) {
-  const pool = new pg.Pool({ connectionString, max: Number(process.env.DB_POOL_SIZE ?? 10), application_name: name });
+  const opts = {
+    connectionString,
+    application_name: name,
+    connectionTimeoutMillis: ACQUIRE_TIMEOUT_MS,
+    // a transaction left open (a bug, a hung client) is ended by the database and frees its connection
+    idle_in_transaction_session_timeout: Number(process.env.DB_IDLE_IN_TRANSACTION_MS ?? 300_000),
+  };
+  const pool = new pg.Pool({ ...opts, max: Number(process.env.DB_POOL_SIZE ?? 10) });
+  // A query issued while this async chain already holds a connection of this pool
+  // (in tx()) must not wait for a second one from the same pool: with every
+  // connection held by requests doing that, none would ever be released. Those
+  // queries go to a small pool of their own, whose connections never wait for anything.
+  let nestedPool: pg.Pool | undefined;
+  const forQuery = () => {
+    if (!inTx.getStore()?.has(name)) return pool;
+    if (!nestedPool) {
+      nestedPool = new pg.Pool({ ...opts, application_name: `${name}-nested`, max: Number(process.env.DB_NESTED_POOL_SIZE ?? 5) });
+      nestedPool.on('error', (err) => console.error(`${name}: idle database connection error:`, err.message));
+    }
+    return nestedPool;
+  };
   // An idle connection dying (DB restart, failover) must not crash the server;
   // the pool replaces it on the next checkout.
   pool.on('error', (err) => console.error(`${name}: idle database connection error:`, err.message));
   return {
     pool,
     query<T extends pg.QueryResultRow = any>(sql: string, params: unknown[] = []) {
-      return pool.query<T>(sql, params);
+      return forQuery().query<T>(sql, params);
     },
     async one<T extends pg.QueryResultRow = any>(sql: string, params: unknown[] = []) {
-      return (await pool.query<T>(sql, params)).rows[0] as T | undefined;
+      return (await forQuery().query<T>(sql, params)).rows[0] as T | undefined;
+    },
+    async end() {
+      await Promise.all([pool.end(), nestedPool?.end()]);
     },
     async tx<T>(fn: (c: Client) => Promise<T>): Promise<T> {
-      const c = await pool.connect();
+      const c = await forQuery().connect();
       try {
         await c.query('begin');
-        const result = await fn(c);
+        const result = await inTx.run(new Set([...(inTx.getStore() ?? []), name]), () => fn(c));
         await c.query('commit');
         return result;
       } catch (e) {
@@ -46,7 +76,7 @@ export const owner = makePool(ownerUrl, 'pgkiln-builder');
 export const runtime = makePool(process.env.RUNTIME_DATABASE_URL ?? ownerUrl, 'pgkiln-runtime');
 
 export async function closePools() {
-  await Promise.all([owner.pool.end(), runtime.pool.end()]);
+  await Promise.all([owner.end(), runtime.end()]);
 }
 
 export interface AppContext {
