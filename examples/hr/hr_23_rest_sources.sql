@@ -3,11 +3,11 @@
 -- (docs/guide/19-rest-data-sources.md)
 --
 -- The web service is the HR example's own REST module (part 13), served by
--- the pgapex server on http://127.0.0.1:3100, so no internet is needed.
+-- the pgkiln server on http://127.0.0.1:3100, so no internet is needed.
 -- Outgoing calls are off until the server allows the host, e.g. in .env:
 --
---   PGAPEX_REST_ALLOWED_HOSTS=127.0.0.1
---   PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1     (127.0.0.1 is a loopback address)
+--   PGKILN_REST_ALLOWED_HOSTS=127.0.0.1
+--   PGKILN_REST_PRIVATE_HOSTS=127.0.0.1     (127.0.0.1 is a loopback address)
 --
 -- (another port or host: change the URLs under Shared Components → REST
 -- data sources). Page 23 "Web services" then shows:
@@ -15,7 +15,7 @@
 --   - a select list whose list of values reads the same source,
 --   - "Look up": an invoke_api process that calls GET departments/{deptno}
 --     with the selected department and puts the answer into two items.
--- The web credential HR_API (OAuth2 client credentials against pgapex's own
+-- The web credential HR_API (OAuth2 client credentials against pgkiln's own
 -- /oauth/token) and the source EMPLOYEES_API show a protected endpoint:
 -- create an OAuth client under App → REST API, put its client id in HR_API
 -- and type its secret there (secrets are never part of SQL or exports).
@@ -60,7 +60,7 @@ insert into meta.region (page_id, seq, title, type, columns, template, source, r
 select p.id, r.seq, r.title, r.type, r.columns, 'standard', r.source, r.rest_source, r.config::jsonb
   from meta.page p join meta.app a on a.id = p.app_id, (values
   (10, 'About this page', 'static', 12, null,
-   '<p>The regions below read the HR REST API through <b>REST data sources</b> (Shared Components). The server only calls hosts it allows: set <code>PGAPEX_REST_ALLOWED_HOSTS</code> and <code>PGAPEX_REST_PRIVATE_HOSTS</code> to <code>127.0.0.1</code> to try it.</p>',
+   '<p>The regions below read the HR REST API through <b>REST data sources</b> (Shared Components). The server only calls hosts it allows: set <code>PGKILN_REST_ALLOWED_HOSTS</code> and <code>PGKILN_REST_PRIVATE_HOSTS</code> to <code>127.0.0.1</code> to try it.</p>',
    '{}'),
   (20, 'Departments from the API', 'report', 8, 'DEPARTMENTS',
    'select deptno, dname, location from rest order by dname',

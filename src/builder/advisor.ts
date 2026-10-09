@@ -170,7 +170,7 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
   try {
     await c.query('begin');
     await c.query(`set local statement_timeout = '5s'`);
-    await c.query(`select set_config('pgapex.app_id', $1, true)`, [String(appId)]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
     if (app.db_role) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
     for (const { kind, row } of all) {
       for (const f of sqlFields(kind, row)) {

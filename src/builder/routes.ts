@@ -271,11 +271,11 @@ export async function builderRoutes(app: FastifyInstance) {
     // ?format=dir|text: one file per component, as `pgkiln export --format dir|text` writes it (docs/guide/18-cli.md)
     if (req.query?.format === 'dir' || req.query?.format === 'text')
       return reply
-        .header('content-disposition', `attachment; filename="${a.alias}.pgapex.zip"`)
+        .header('content-disposition', `attachment; filename="${a.alias}.pgkiln.zip"`)
         .type('application/zip')
         .send(Buffer.from(filesToZip(docToFiles(r.doc, req.query.format === 'text' ? 'text' : 'json'), a.alias)));
     return reply
-      .header('content-disposition', `attachment; filename="${a.alias}.pgapex.json"`)
+      .header('content-disposition', `attachment; filename="${a.alias}.pgkiln.json"`)
       .type('application/json')
       .send(JSON.stringify(r.doc, null, 2));
   });
@@ -311,7 +311,7 @@ export async function builderRoutes(app: FastifyInstance) {
                 <small class="help">Records every request's steps with timings and the messages of <code>meta.debug(level, text)</code>, kept ${a.debug_retention_days} days.</small></div>
             </div>
             <h3>HTTP header authentication</h3>
-            <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgkiln trusts it only from the proxy addresses in <code>PGAPEX_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
+            <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgkiln trusts it only from the proxy addresses in <code>PGKILN_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
             <div class="form-grid">
               ${input('header_name', 'User name header', a.header_name ?? '', { placeholder: DEFAULT_HEADER, help: 'The request header with the user name (APEX: HTTP Header Variable). Empty: X-Remote-User. A changed or missing header ends the session.' })}
               ${input('logout_url', 'Sign-out URL', a.logout_url ?? '', { placeholder: 'e.g. https://sso.example.com/logout', help: 'Where "Sign out" goes after the session ends, usually the proxy\'s own sign-out page. Empty: a "signed out" page.' })}
@@ -381,7 +381,7 @@ export async function builderRoutes(app: FastifyInstance) {
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
-          ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGAPEX_AUTH_HEADER_PROXIES' : html`<b>refused: PGAPEX_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
+          ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGKILN_AUTH_HEADER_PROXIES' : html`<b>refused: PGKILN_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
           ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>no roles allowed</b>`})</li>` : ''}
           ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : html`<b>no check configured: nobody can sign in</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
           ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}

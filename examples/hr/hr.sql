@@ -339,7 +339,7 @@ $$;
 -- ---------------------------------------------------------------------
 
 create role hr_app nologin;
-grant hr_app to pgapex_runtime;          -- lets the runtime SET ROLE hr_app
+grant hr_app to pgkiln_runtime;          -- lets the runtime SET ROLE hr_app
 grant usage on schema hr to hr_app;
 grant select, insert, update, delete on hr.emp, hr.dept to hr_app;
 grant select, insert, update on hr.leave_request to hr_app;

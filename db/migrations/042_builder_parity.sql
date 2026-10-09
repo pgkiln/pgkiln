@@ -86,7 +86,7 @@ $$;
 create trigger list_entry_parent_check before insert or update of parent_id, list_name, app_id on meta.list_entry
   for each row execute function meta.list_entry_parent_check();
 
-grant select on meta.list, meta.list_entry to pgapex_runtime;
+grant select on meta.list, meta.list_entry to pgkiln_runtime;
 
 alter table meta.app add column nav_list text check (nav_list ~ '^[A-Z][A-Z0-9_]{0,59}$');
 alter table meta.app add column navbar_list text check (navbar_list ~ '^[A-Z][A-Z0-9_]{0,59}$');
@@ -140,7 +140,7 @@ comment on table meta.supporting_script is 'supporting objects: install, upgrade
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -198,7 +198,7 @@ declare
   v_lmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

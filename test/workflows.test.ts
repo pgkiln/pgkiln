@@ -70,7 +70,7 @@ after(async () => {
 /** Start a workflow as `user` in the HR app (what a page process does). */
 const start = (user: string, name: string, detail: string | null, vars: Record<string, unknown>) =>
   owner.tx(async (c) => {
-    await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appId), user]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(appId), user]);
     return (await c.query('select meta.start_workflow($1, $2, $3) as id', [name, detail, vars])).rows[0].id as string;
   });
 /**
@@ -89,7 +89,7 @@ const wf = (id: string) => owner.one('select state, current_step, waiting_task::
 /** What meta.workflows shows `user` about a workflow. */
 const viewAs = (user: string, id: string) =>
   owner.tx(async (c) => {
-    await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appId), user]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(appId), user]);
     return (await c.query('select version, active_steps from meta.workflows where id = $1', [id])).rows[0];
   });
 const openTasks = async (id: string) =>

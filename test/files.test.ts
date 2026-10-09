@@ -149,7 +149,7 @@ describe('file upload items', () => {
     const [s1, s2] = (await owner.query(`select id from meta.session order by created_at desc limit 2`)).rows.map((r) => r.id);
     await owner.query(`insert into meta.temp_file (session_id, item_name, filename, mime_type, size, content) values ($1, 'X', 'mine.txt', 'text/plain', 1, '\\x41')`, [s1]);
     const seen = await runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.session_id', $1, true)`, [s2]);
+      await c.query(`select set_config('pgkiln.session_id', $1, true)`, [s2]);
       await c.query('set local role hr_app');
       return (await c.query(`select filename from meta.temp_files where filename = 'mine.txt'`)).rows;
     });

@@ -8,10 +8,10 @@
 -- nothing is recorded and meta.debug() returns at once.
 --
 -- meta.debug() does not write to a table: it raises a NOTICE (marked with
--- the detail 'pgapex.debug') that the runtime collects on its connection, so
+-- the detail 'pgkiln.debug') that the runtime collects on its connection, so
 -- messages from a statement that fails or a transaction that rolls back are
 -- kept too. The runtime stores a request's entries after the response with
--- meta.debug_save() (security definer, pgapex_runtime only); application
+-- meta.debug_save() (security definer, pgkiln_runtime only); application
 -- roles can neither read nor write the debug tables.
 
 alter table meta.app
@@ -60,7 +60,7 @@ comment on table meta.debug_message is 'Debug messages: the timed entries of a r
 create function meta.debug_level() returns int
 language sql stable as $$
   select case when s ~ '^[0-9]$' then s::int else 0 end
-    from coalesce(current_setting('pgapex.debug_level', true), '') as s
+    from coalesce(current_setting('pgkiln.debug_level', true), '') as s
 $$;
 
 -- Whether a message of this level would be recorded: to skip building expensive texts.
@@ -77,7 +77,7 @@ begin
   if p_text is null or p_level is null or p_level < 1 or p_level > meta.debug_level() then
     return;
   end if;
-  raise notice using message = left(p_text, 4000), detail = 'pgapex.debug', hint = p_level::text;
+  raise notice using message = left(p_text, 4000), detail = 'pgkiln.debug', hint = p_level::text;
 end
 $$;
 
@@ -138,5 +138,5 @@ $$;
 
 revoke all on function meta.debug_save(int, int, text, uuid, text, text, int, int, timestamptz, numeric, jsonb) from public;
 revoke all on function meta.debug_purge() from public;
-grant execute on function meta.debug_save(int, int, text, uuid, text, text, int, int, timestamptz, numeric, jsonb) to pgapex_runtime;
-grant execute on function meta.debug_purge() to pgapex_runtime;
+grant execute on function meta.debug_save(int, int, text, uuid, text, text, int, int, timestamptz, numeric, jsonb) to pgkiln_runtime;
+grant execute on function meta.debug_purge() to pgkiln_runtime;

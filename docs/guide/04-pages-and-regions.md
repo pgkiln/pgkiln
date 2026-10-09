@@ -1193,7 +1193,7 @@ Column templates apply to the report view (not to downloads, which keep the plai
 
 #### Plug-ins
 
-A component travels as one JSON **plug-in file** (`"format": "pgapex-plugin/1"`, `"type":
+A component travels as one JSON **plug-in file** (`"format": "pgkiln-plugin/1"`, `"type":
 "template_component"`): **Download plug-in file** on its page, and **Import a plug-in** under
 Shared Components → Template components → Add (optionally replacing a component with the same
 static id). The template is checked before anything is saved. In SQL:
@@ -1211,7 +1211,7 @@ status badge. Template components are part of an application export (`template_c
 #### Plug-ins with their own code
 
 APEX's region, item, dynamic action and process plug-ins. A plug-in file (`"format":
-"pgapex-plugin/2"`) brings, by type:
+"pgkiln-plugin/2"`) brings, by type:
 
 | `type` | Brings | Used as |
 |---|---|---|
@@ -1233,7 +1233,7 @@ Values may contain `&ITEM.` substitutions. JavaScript and CSS are
 pages that use it load them. The JavaScript registers the plug-in by name:
 
 ```js
-pgapex.plugins.register('show_more', ({ type, element, item, attributes }) => {
+pgkiln.plugins.register('show_more', ({ type, element, item, attributes }) => {
   // region and item plug-ins: element is the region's (or field's) element; called again after a refresh
   // dynamic action plug-ins: the action's context (items, elements, region, value, message) and attributes
 });
@@ -1261,7 +1261,7 @@ export (`plugins`; `shared/plugins/` in a directory export).
 `examples/plugins/` has four, each as a source directory and a built file: `show-more` (region: the
 first rows and a *Show all* button), `char-counter` (item: a maximum length with a live count),
 `copy-value` (dynamic action: copy an item's value to the clipboard) and `log-event` (process: record
-an event in `pgapex_plugins.event_log`). HR example part 47 installs them and uses all four on page
+an event in `pgkiln_plugins.event_log`). HR example part 47 installs them and uses all four on page
 40 (*Plug-ins*).
 
 ### `static` and `dynamic` content

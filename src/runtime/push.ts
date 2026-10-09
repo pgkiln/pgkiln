@@ -21,7 +21,7 @@ export async function pushBody(a: Pick<App, 'id' | 'pwa' | 'pwa_push'>, username
   try {
     return { 'data-push': await appPublicKey(a.id), 'data-push-user': username.toLowerCase() };
   } catch (e) {
-    // no key yet and no PGAPEX_SECRET_KEY to store one: the page works, without notifications
+    // no key yet and no PGKILN_SECRET_KEY to store one: the page works, without notifications
     console.error('push notifications:', (e as Error).message);
     return {};
   }

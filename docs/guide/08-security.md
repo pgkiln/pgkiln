@@ -247,8 +247,8 @@ In **Settings → Security** choose Authentication **HTTP header (reverse proxy)
   they open signs them in again through the proxy.
 
 Anyone can send a header, so pgkiln trusts it **only from the proxies** listed in the environment
-variable `PGAPEX_AUTH_HEADER_PROXIES` (comma-separated IPs and CIDRs, e.g.
-`PGAPEX_AUTH_HEADER_PROXIES=10.0.0.5, 192.168.10.0/24`). The check uses the address of the TCP
+variable `PGKILN_AUTH_HEADER_PROXIES` (comma-separated IPs and CIDRs, e.g.
+`PGKILN_AUTH_HEADER_PROXIES=10.0.0.5, 192.168.10.0/24`). The check uses the address of the TCP
 connection itself, never `X-Forwarded-For`, so `TRUST_PROXY` doesn't change it. Unset, or a
 request from any other address: the app shows an error page and the activity log records a
 `login_failed` entry (`header: untrusted peer …`). Make sure users can't reach pgkiln directly,

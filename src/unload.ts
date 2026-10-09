@@ -174,7 +174,7 @@ function encoder(o: UnloadOptions, fields: pg.FieldDef[]): Encoder {
  */
 export async function openUnload(c: Client, sql: string, o: UnloadOptions, maxRows = DOWNLOAD_MAX_ROWS) {
   const limit = Math.max(1, Math.min(maxRows, o.format === 'xlsx' ? XLSX_MAX_ROWS : maxRows));
-  const cursor = 'pgapex_unload';
+  const cursor = 'pgkiln_unload';
   await c.query(`declare ${cursor} no scroll cursor for ${sql}`);
   let left = limit;
   const next = async (): Promise<pg.QueryResult<Row>> => {

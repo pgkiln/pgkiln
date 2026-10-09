@@ -210,7 +210,7 @@ describe('a large map: vector tiles and the visible area (page 41)', () => {
     assert.equal(res.statusCode, 200);
     assert.equal(res.headers['content-type'], 'application/vnd.mapbox-vector-tile');
     assert.equal(res.headers['cache-control'], 'private, max-age=60');
-    assert.equal(res.headers['x-pgapex-truncated'], undefined);
+    assert.equal(res.headers['x-pgkiln-truncated'], undefined);
     const [layer] = readTile(res.rawPayload);
     const a = tileArea(4, 8, 5, 1 / 16);
     const { n } = await owner.one('select count(*)::int as n from hr.weather_station where lat between $1 and $2 and lng between $3 and $4', [a.s, a.n, a.w, a.e]);
@@ -233,7 +233,7 @@ describe('a large map: vector tiles and the visible area (page 41)', () => {
   test('a tile with more rows than the limit holds the limit and says so', async () => {
     const res = await king.get(`${base()}/tiles/0/0/0/0.mvt`);
     assert.equal(res.statusCode, 200);
-    assert.equal(res.headers['x-pgapex-truncated'], '1');
+    assert.equal(res.headers['x-pgkiln-truncated'], '1');
     assert.equal(readTile(res.rawPayload)[0].features.length, MAX_TILE_ROWS);
   });
 

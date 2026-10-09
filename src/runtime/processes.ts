@@ -81,7 +81,7 @@ export async function downloadFile(ctx: PageContext, p: Process): Promise<Downlo
   const sql = stripSemicolon(applyBinds(p.code ?? '', bindValues(ctx)));
   if (!sql) throw new Error(`Process "${p.name}" needs a query in its code.`);
   const c = ctx.client!;
-  const cursor = `pgapex_download_${p.id}`;
+  const cursor = `pgkiln_download_${p.id}`;
   const files: { content: Buffer; name: string; type: string }[] = [];
   let bytes = 0;
   await c.query(`declare ${cursor} no scroll cursor for ${sql}`);

@@ -17,7 +17,7 @@ import { ssoAccess } from './sso.ts';
 // group, which also ends the sessions it started (session state __SHARED).
 
 const secure = () => process.env.COOKIE_SECURE === 'true';
-export const shareCookie = (group: string) => `pgapex_share_${group}`;
+export const shareCookie = (group: string) => `pgkiln_share_${group}`;
 const GROUP = /^[a-z][a-z0-9_]{0,29}$/;
 
 interface SharingApp {

@@ -1,5 +1,5 @@
 // Show more list (region plug-in): hides rows after the first VISIBLE behind a button.
-pgapex.plugins.register('show_more', ({ element, attributes }) => {
+pgkiln.plugins.register('show_more', ({ element, attributes }) => {
   const rows = [...element.querySelectorAll('.show-more-item')];
   const visible = Math.max(1, Number(attributes.VISIBLE) || 5);
   if (rows.length <= visible) return;

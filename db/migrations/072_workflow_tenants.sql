@@ -9,7 +9,7 @@
 -- workflow action then only reach the ones of the session's tenant (a
 -- session without a tenant: only those without one). Tasks a workflow
 -- creates get the workflow's tenant (the server runs its steps with it).
--- The runtime sets pgapex.tenant_id from meta.session.tenant_id at the
+-- The runtime sets pgkiln.tenant_id from meta.session.tenant_id at the
 -- start of every transaction (src/db.ts appTx).
 -- =====================================================================
 
@@ -18,7 +18,7 @@ alter table meta.session add column tenant_id text check (length(tenant_id) betw
 /** The current session's tenant, or null. */
 create function meta.tenant_id() returns text
 language sql stable as $$
-  select nullif(current_setting('pgapex.tenant_id', true), '')
+  select nullif(current_setting('pgkiln.tenant_id', true), '')
 $$;
 
 /** Set (or with null clear) the current session's tenant; it applies at once and to the session's next requests. */
@@ -31,9 +31,9 @@ begin
     raise exception 'A tenant id is at most 200 characters.';
   end if;
   update session set tenant_id = v_tenant
-   where id = nullif(current_setting('pgapex.session_id', true), '')::uuid
+   where id = nullif(current_setting('pgkiln.session_id', true), '')::uuid
      and app_id = meta.app_id();
-  perform set_config('pgapex.tenant_id', coalesce(v_tenant, ''), true);
+  perform set_config('pgkiln.tenant_id', coalesce(v_tenant, ''), true);
 end
 $$;
 revoke all on function meta.set_tenant(text) from public;

@@ -5,7 +5,7 @@
 -- export: developers change it in isolation, compare it with the main
 -- application and merge it back component by component. This table links
 -- the copy to its main application and keeps the *base*: the main
--- application's export (format pgapex/2) when the copy was made, last
+-- application's export (format pgkiln/2) when the copy was made, last
 -- refreshed or last merged. Comparing base, main and copy per component
 -- (src/workingcopy.ts) tells which side changed what, and where both did
 -- (a conflict the developer resolves).
@@ -20,7 +20,7 @@ create table meta.working_copy (
   app_id       int primary key references meta.app on delete cascade,
   main_app_id  int not null references meta.app on delete cascade,
   name         text not null check (name ~ '^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$'),
-  base         jsonb not null check (base->>'format' = 'pgapex/2'),
+  base         jsonb not null check (base->>'format' = 'pgkiln/2'),
   created_by   text not null,
   created_at   timestamptz not null default now(),
   refreshed_at timestamptz,

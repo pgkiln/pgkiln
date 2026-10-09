@@ -24,7 +24,7 @@ import { BASE, csrf, developer, input, region, select, send, shell, type Body, t
 //   and an optional dashboard. All in one owner transaction.
 
 /** The mime type of a temporary file holding pasted data. */
-export const PASTED = 'text/x-pgapex-pasted';
+export const PASTED = 'text/x-pgkiln-pasted';
 const MAX_TABLES = 40;
 const MAX_PASTE = 4 * 1024 * 1024;
 

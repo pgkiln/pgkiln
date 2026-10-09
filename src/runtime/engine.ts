@@ -388,7 +388,7 @@ async function dataLoad(ctx: PageContext, p: Process): Promise<string | null> {
   try {
     let r;
     if (conf.definition) {
-      // read as pgapex_runtime (the request's connection has switched to the app's role)
+      // read as pgkiln_runtime (the request's connection has switched to the app's role)
       const def = await runtime.one<DataLoadDefinition>('select * from meta.data_load_def where app_id = $1 and name = upper($2)', [ctx.app.id, conf.definition]);
       if (!def) throw new Error(`Process "${p.name}": data load definition ${conf.definition} not found.`);
       r = await loadWithDefinition(c, def, file, { describe });

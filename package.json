@@ -43,8 +43,7 @@
     "tsconfig.json"
   ],
   "bin": {
-    "pgkiln": "bin/pgkiln.js",
-    "pgapex": "bin/pgapex.js"
+    "pgkiln": "bin/pgkiln.js"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -56,7 +55,6 @@
     "test": "tsx --test --test-concurrency=1 test/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "pgkiln": "tsx src/cli/main.ts",
-    "pgapex": "tsx src/cli/main.ts",
     "example:hr": "tsx scripts/migrate.ts --example hr",
     "screenshots": "tsx scripts/screenshots.ts",
     "setup": "docker compose up -d db && tsx scripts/migrate.ts",

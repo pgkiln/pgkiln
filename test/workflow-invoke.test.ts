@@ -8,9 +8,9 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import '../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
-process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
-process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 
 const { closePools, owner } = await import('../src/db.ts');
 const { encryptSecret } = await import('../src/secrets.ts');
@@ -81,12 +81,12 @@ const define = (name: string, steps: unknown, title = 'Test') =>
   owner.query(`insert into meta.workflow_definition (app_id, name, title, admin_role, steps) values ($1, $2, $3, 'admin', $4)`, [appId, name, title, JSON.stringify(steps)]);
 const start = (name: string, vars: Record<string, unknown>, detail: string | null = null) =>
   owner.tx(async (c) => {
-    await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'blake', true)`, [String(appId)]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'blake', true)`, [String(appId)]);
     return (await c.query('select meta.start_workflow($1, $2, $3) as id', [name, detail, vars])).rows[0].id as string;
   });
 const asAdmin = <T>(fn: (c: import('pg').PoolClient) => Promise<T>) =>
   owner.tx(async (c) => {
-    await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true), set_config('request.jwt.claims', '{"roles": ["admin"]}', true)`, [String(appId)]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true), set_config('request.jwt.claims', '{"roles": ["admin"]}', true)`, [String(appId)]);
     return fn(c);
   });
 /** Run until this workflow stops moving (another server on the same database may take steps too). */

@@ -1,5 +1,5 @@
 -- Database-account authentication (APEX: Database Accounts). Users sign in
--- with a PostgreSQL login role and its password; pgapex checks them by
+-- with a PostgreSQL login role and its password; pgkiln checks them by
 -- opening a short-lived connection as that role to its own database (it never
 -- reads pg_authid). Only the roles listed per app, or the members of one
 -- role, may sign in; nothing listed means nobody. The session's user is the

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner, runtime } = await import('../src/db.ts');
@@ -34,7 +34,7 @@ async function cleanup() {
   await owner.query(`drop schema if exists bp_s36_ai cascade`);
   for (const r of ['app_bp_s36', 'app_bp_s36_ai']) {
     if ((await owner.query('select 1 from pg_roles where rolname = $1', [r])).rowCount) {
-      await owner.query(`revoke ${r} from pgapex_runtime`).catch(() => {});
+      await owner.query(`revoke ${r} from pgkiln_runtime`).catch(() => {});
       await owner.query(`drop owned by ${r}`).catch(() => {});
       await owner.query(`drop role ${r}`);
     }

@@ -2,7 +2,7 @@
 -- HR example, part 13: REST endpoints defined in the builder
 -- (docs/guide/13-rest-api.md → REST modules)
 --
--- /a/hr/rest/v1/… served by pgapex with a token from App → REST API:
+-- /a/hr/rest/v1/… served by pgkiln with a token from App → REST API:
 --   GET  employees            the active employees (paged)
 --   GET  employees/:empno     one employee
 --   GET  my/leave             the caller's own leave requests (row level security)

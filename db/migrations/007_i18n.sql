@@ -6,7 +6,7 @@
 --     (Accept-Language) or the user's preference (then the browser);
 --     ?lang=xx switches for the session (APEX: p_lang / SET_SESSION_LANG)
 --   * text messages (APEX_LANG.MESSAGE, &APP_TEXT$NAME.), also used to
---     override pgapex's own texts
+--     override pgkiln's own texts
 --   * translations of the application's texts (labels, titles, headings,
 --     messages) within one application, like APEX 26.1's text-message-based
 --     translation: no copy of the app per language
@@ -42,7 +42,7 @@ create table meta.translation (
 -- The language of the current request (set by the runtime).
 create function meta.app_language() returns text
 language sql stable as $$
-  select coalesce(nullif(current_setting('pgapex.lang', true), ''),
+  select coalesce(nullif(current_setting('pgkiln.lang', true), ''),
                   (select a.language from meta.app a where a.id = meta.app_id()), 'en')
 $$;
 
@@ -71,13 +71,13 @@ end
 $$;
 
 grant execute on function meta.app_language(), meta.message(text, text[]) to public;
-grant select on meta.text_message, meta.translation to pgapex_runtime;
+grant select on meta.text_message, meta.translation to pgkiln_runtime;
 
 -- Export and import include text messages and translations.
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -113,7 +113,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', p_doc->>'format';
   end if;
 

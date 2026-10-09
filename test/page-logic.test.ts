@@ -32,7 +32,7 @@ const developer = async () => {
   await b.submit('/builder/login', { username: 'admin', password: 'admin' });
   return b;
 };
-const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgapex-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
+const meta = (body: string) => JSON.parse(/<script type="application\/json" id="pgkiln-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
 /** Insert a row for one test; removed again after all tests. */
 const temp = async (sql: string, params: unknown[]) => {
   const row = (await owner.query(sql, params)).rows[0];

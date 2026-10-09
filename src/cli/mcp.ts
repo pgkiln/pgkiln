@@ -182,7 +182,7 @@ export const TOOLS: Tool[] = [
           await db.query(
             `select current_database() as database, current_user as role, split_part(version(), ' ', 2) as postgres,
                     (select count(*)::int from meta.app) as applications,
-                    (select max(name) from public.pgapex_migration) as last_migration`,
+                    (select max(name) from public.pgkiln_migration) as last_migration`,
           )
         ).rows[0];
         return stableJson({
@@ -316,7 +316,7 @@ export const TOOLS: Tool[] = [
       if (!['text', 'dir', 'json'].includes(format)) throw new ToolError('format is text, dir or json');
       const doc = await withDb((db) => exportDoc(db, alias));
       if (format === 'json') {
-        const file = resolve(str(a, 'path') ?? `${alias}.pgapex.json`);
+        const file = resolve(str(a, 'path') ?? `${alias}.pgkiln.json`);
         const { writeFileSync } = await import('node:fs');
         writeFileSync(file, stableJson(doc));
         return `Exported ${alias} to ${file}.\n`;

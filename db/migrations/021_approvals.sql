@@ -35,7 +35,7 @@ create table meta.task_definition (
   action_code            text,
   unique (app_id, name)
 );
-grant select on meta.task_definition to pgapex_runtime;
+grant select on meta.task_definition to pgkiln_runtime;
 
 create table meta.task (
   id                     bigserial primary key,
@@ -250,7 +250,7 @@ end
 $$;
 
 -- Approve, reject (approvals) or complete (action tasks). Returns what the definition's action needs
--- ({"action_code", "detail_pk", "params", "initiator"}): pgapex runs that SQL next, in the same
+-- ({"action_code", "detail_pk", "params", "initiator"}): pgkiln runs that SQL next, in the same
 -- transaction, as the application's role.
 create function meta.complete_task(p_id bigint, p_outcome text, p_comment text default null) returns jsonb
 language plpgsql security definer set search_path = meta, pg_catalog as $$
@@ -305,7 +305,7 @@ grant execute on function meta.create_task(text, text, jsonb, text[], int), meta
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -347,7 +347,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

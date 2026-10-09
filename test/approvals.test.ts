@@ -29,7 +29,7 @@ after(async () => {
 /** Run SQL as if in the HR app, signed in as `user` (the leave request triggers create and close tasks). */
 const asUser = <T>(user: string, fn: (c: any) => Promise<T>) =>
   owner.tx(async (c) => {
-    await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appId), user]);
+    await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(appId), user]);
     return fn(c);
   });
 

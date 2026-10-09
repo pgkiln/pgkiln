@@ -8,9 +8,9 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
-process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
-process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
+process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner } = await import('../src/db.ts');
@@ -32,7 +32,7 @@ let chatRegion: number;
 let reportRegion: number;
 const HR_SERVICE = 'HR_ASSISTANT';
 const alias = 'ai-s36-chat';
-const ROLE = 'pgapex_ai_s36_chat';
+const ROLE = 'pgkiln_ai_s36_chat';
 const OPENAI = 'T_AI2_OPENAI';
 let appId: number;
 let appRegion: number;
@@ -76,7 +76,7 @@ before(async () => {
   await owner.query(`drop schema if exists t_ai2 cascade`);
   await owner.query(`drop role if exists ${ROLE}`);
   await owner.query(`create role ${ROLE} nologin`);
-  await owner.query(`grant ${ROLE} to pgapex_runtime`);
+  await owner.query(`grant ${ROLE} to pgkiln_runtime`);
   await owner.query(`create schema t_ai2; create table t_ai2.note (id serial primary key, body text not null);
     create function t_ai2.add_note(p text) returns int language sql as 'insert into t_ai2.note (body) values (p) returning id';
     grant usage on schema t_ai2 to ${ROLE}; grant select, insert on t_ai2.note to ${ROLE}; grant usage on sequence t_ai2.note_id_seq to ${ROLE};`);

@@ -1,5 +1,5 @@
 {
-  "format": "pgapex-plugin/2",
+  "format": "pgkiln-plugin/2",
   "type": "dynamic_action",
   "name": "copy_value",
   "label": "Copy to clipboard",
@@ -16,7 +16,7 @@
   "files": [
     {
       "name": "copy-value.js",
-      "content": "Ly8gQ29weSB0byBjbGlwYm9hcmQgKGR5bmFtaWMgYWN0aW9uIHBsdWctaW4pLgpwZ2FwZXgucGx1Z2lucy5yZWdpc3RlcignY29weV92YWx1ZScsIGFzeW5jIChkYSkgPT4gewogIGNvbnN0IG5hbWUgPSBkYS5pdGVtc1swXTsKICBpZiAoIW5hbWUpIHJldHVybjsKICBhd2FpdCBuYXZpZ2F0b3IuY2xpcGJvYXJkLndyaXRlVGV4dChTdHJpbmcocGdhcGV4LmdldFZhbHVlKG5hbWUpID8/ICcnKSk7CiAgcGdhcGV4LnNob3dTdWNjZXNzKGRhLmF0dHJpYnV0ZXMuTUVTU0FHRSB8fCAnQ29waWVkLicpOwp9KTsK"
+      "content": "Ly8gQ29weSB0byBjbGlwYm9hcmQgKGR5bmFtaWMgYWN0aW9uIHBsdWctaW4pLgpwZ2tpbG4ucGx1Z2lucy5yZWdpc3RlcignY29weV92YWx1ZScsIGFzeW5jIChkYSkgPT4gewogIGNvbnN0IG5hbWUgPSBkYS5pdGVtc1swXTsKICBpZiAoIW5hbWUpIHJldHVybjsKICBhd2FpdCBuYXZpZ2F0b3IuY2xpcGJvYXJkLndyaXRlVGV4dChTdHJpbmcocGdraWxuLmdldFZhbHVlKG5hbWUpID8/ICcnKSk7CiAgcGdraWxuLnNob3dTdWNjZXNzKGRhLmF0dHJpYnV0ZXMuTUVTU0FHRSB8fCAnQ29waWVkLicpOwp9KTsK"
     }
   ]
 }

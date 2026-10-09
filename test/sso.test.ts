@@ -16,7 +16,7 @@ let app: FastifyInstance;
 let idp: FastifyInstance;
 let issuer = '';
 let appId: number;
-const CLIENT_ID = 'pgapex-test';
+const CLIENT_ID = 'pgkiln-test';
 const SECRET = 'test-secret';
 const keys = await generateKeyPair('RS256');
 const otherKeys = await generateKeyPair('RS256');

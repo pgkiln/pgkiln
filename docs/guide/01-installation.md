@@ -46,7 +46,7 @@ The tests use it as their fixture: `npm test` and `npm run test:e2e` install it 
    create database pgkiln owner pgkiln;
    ```
 2. Point `DATABASE_URL` in `.env` at it, then run `npm run db:migrate` (and `npm run example:hr` for the example application).
-3. Set `RUNTIME_DATABASE_URL` for the `pgapex_runtime` role that the first migration creates (see below).
+3. Set `RUNTIME_DATABASE_URL` for the `pgkiln_runtime` role that the first migration creates (see below).
 
 The owner doesn't have to be a superuser: a role with `CREATEROLE` that owns the database is enough
 (`pgcrypto` is a trusted extension).
@@ -54,8 +54,8 @@ The owner doesn't have to be a superuser: a role with `CREATEROLE` that owns the
 ### Installing into an existing database
 
 pgkiln can live next to your own schemas: it adds the schema `meta`, three bookkeeping tables in
-`public` (`pgapex_migration`, `pgapex_seed`, `pgapex_install_log`) and the login roles
-`pgapex_runtime`, `pgapex_authenticator` and `pgapex_anon` (roles belong to the whole server). It
+`public` (`pgkiln_migration`, `pgkiln_seed`, `pgkiln_install_log`) and the login roles
+`pgkiln_runtime`, `pgkiln_authenticator` and `pgkiln_anon` (roles belong to the whole server). It
 changes nothing else. When the pgkiln owner is not the database's owner, a database administrator
 grants, once:
 
@@ -84,7 +84,7 @@ pgkiln deliberately uses **two** database logins:
 | Connection | Setting | Role | Used for |
 |---|---|---|---|
 | Owner | `DATABASE_URL` | the owner of the `meta` schema (e.g. `pgkiln`) | migrations, the builder, the SQL Workshop |
-| Runtime | `RUNTIME_DATABASE_URL` | `pgapex_runtime` (created by migration 001) | running applications |
+| Runtime | `RUNTIME_DATABASE_URL` | `pgkiln_runtime` (created by migration 001) | running applications |
 
 The runtime role is **least privilege**. It can read application definitions and manage sessions,
 but it cannot read developer accounts, password hashes or instance secrets. It is `NOINHERIT`, so
@@ -92,10 +92,10 @@ it reaches application data only by switching to an application's own database r
 (`SET LOCAL ROLE`) for the duration of a request. If `RUNTIME_DATABASE_URL` is missing, pgkiln
 falls back to the owner connection and prints a warning; don't run like that in production.
 
-The migration creates `pgapex_runtime` with the password `pgapex_runtime`. **Change it**:
+The migration creates `pgkiln_runtime` with the password `pgkiln_runtime`. **Change it**:
 
 ```sql
-alter role pgapex_runtime password 'a-long-random-password';
+alter role pgkiln_runtime password 'a-long-random-password';
 ```
 
 ## Configuration reference
@@ -105,7 +105,7 @@ which is read at startup; real environment variables take precedence.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DATABASE_URL` | `postgres://pgapex:pgapex@localhost:5434/pgapex` | Owner connection (builder, migrations) |
+| `DATABASE_URL` | `postgres://pgkiln:pgkiln@localhost:5434/pgkiln` | Owner connection (builder, migrations) |
 | `RUNTIME_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | Least-privilege connection that runs applications |
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |
@@ -114,7 +114,7 @@ which is read at startup; real environment variables take precedence.
 | `API_JWT_SECRET` | *(none)* | Signs REST API tokens; at least 32 characters, the same as PostgREST's `jwt-secret`. Without it, tokens can't be issued |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |
 | `TRUST_PROXY` | `false` | Behind a reverse proxy, so client IPs (used by login throttling) come from `X-Forwarded-For`: `true` for one proxy, a number for several in a row (e.g. a CDN in front of nginx: `2`), or the proxies' addresses or subnets (`10.0.0.0/8,192.168.1.10`). Only the entries those proxies added are believed, never the ones a client sends along |
-| `PGAPEX_AUTH_HEADER_PROXIES` | *(none)* | Comma-separated IPs and CIDRs (e.g. `10.0.0.5, 192.168.10.0/24`) of the reverse proxies whose user header apps with **HTTP header** authentication trust; checked against the connection's own address, never `X-Forwarded-For`. Unset: header sign-in is refused ([chapter 8](08-security.md#http-header-authentication-reverse-proxy)) |
+| `PGKILN_AUTH_HEADER_PROXIES` | *(none)* | Comma-separated IPs and CIDRs (e.g. `10.0.0.5, 192.168.10.0/24`) of the reverse proxies whose user header apps with **HTTP header** authentication trust; checked against the connection's own address, never `X-Forwarded-For`. Unset: header sign-in is refused ([chapter 8](08-security.md#http-header-authentication-reverse-proxy)) |
 | `SESSION_IDLE_MINUTES` | `60` | A session ends after this long without requests. This and the next four can also be set in the builder (Workspace utilities → **Instance settings**), which wins over the variable |
 | `SESSION_MAX_HOURS` | `8` | A session ends this long after sign-in, whatever the activity |
 | `LOGIN_WINDOW_MINUTES` | `15` | Window for counting failed sign-ins |
@@ -139,13 +139,13 @@ which is read at startup; real environment variables take precedence.
 | `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |
 | `ANTHROPIC_API_KEY` | *(none)* | Default API key of [AI services](03-builder.md#ai-services) with the provider Claude that have no key of their own |
 | `OPENAI_API_KEY` | *(none)* | Default API key of AI services with the provider OpenAI that have no key of their own |
-| `PGAPEX_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials and the API keys of AI services; at least 32 characters (e.g. `openssl rand -base64 32`). Keep it outside the database; changing it means entering the secrets again ([chapter 19](19-rest-data-sources.md)) |
-| `PGAPEX_REST_ALLOWED_HOSTS` | *(none: no outgoing calls)* | Hosts REST data sources and `invoke_api` may call: `api.example.com`, `*.example.com`, `host:8443`, `*` (any public host) ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)) |
-| `PGAPEX_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (also allows them) |
-| `PGAPEX_PUSH_HOSTS` | the browsers' push services | The hosts push notifications may be posted to: `fcm.googleapis.com,updates.push.services.mozilla.com,web.push.apple.com,*.notify.windows.com` when unset ([chapter 17](17-mobile.md#push-notifications)) |
-| `PGAPEX_PUSH_SUBJECT` | `PUBLIC_URL` when it is https | The contact the push services see (`mailto:ops@example.com` or an https URL); Apple refuses notifications without one |
-| `PGAPEX_PUSH_PRIVATE_HOSTS` | *(none)* | For tests only: a push service on a private or loopback address, also over plain http |
-| `PGAPEX_REST_MAX_BYTES` | `5000000` | Largest web service response read (also after decompression) |
+| `PGKILN_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials and the API keys of AI services; at least 32 characters (e.g. `openssl rand -base64 32`). Keep it outside the database; changing it means entering the secrets again ([chapter 19](19-rest-data-sources.md)) |
+| `PGKILN_REST_ALLOWED_HOSTS` | *(none: no outgoing calls)* | Hosts REST data sources and `invoke_api` may call: `api.example.com`, `*.example.com`, `host:8443`, `*` (any public host) ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)) |
+| `PGKILN_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (also allows them) |
+| `PGKILN_PUSH_HOSTS` | the browsers' push services | The hosts push notifications may be posted to: `fcm.googleapis.com,updates.push.services.mozilla.com,web.push.apple.com,*.notify.windows.com` when unset ([chapter 17](17-mobile.md#push-notifications)) |
+| `PGKILN_PUSH_SUBJECT` | `PUBLIC_URL` when it is https | The contact the push services see (`mailto:ops@example.com` or an https URL); Apple refuses notifications without one |
+| `PGKILN_PUSH_PRIVATE_HOSTS` | *(none)* | For tests only: a push service on a private or loopback address, also over plain http |
+| `PGKILN_REST_MAX_BYTES` | `5000000` | Largest web service response read (also after decompression) |
 | `MIGRATE_ON_START` | `false` | `true` applies missing migrations when the server starts. Without it, a server whose database lacks migrations answers every request with 503 and names the missing files until they are applied (`npm run db:migrate` or `pgkiln migrate`; no restart needed) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
@@ -172,19 +172,19 @@ in `deploy/`. Docker is all you need.
 ```bash
 cd deploy
 cp .env.example .env
-# fill in POSTGRES_PASSWORD, RUNTIME_PASSWORD, PGAPEX_SECRET_KEY (e.g. `openssl rand -hex 24` each)
-# and PGAPEX_ADMIN_PASSWORD (12+ characters)
+# fill in POSTGRES_PASSWORD, RUNTIME_PASSWORD, PGKILN_SECRET_KEY (e.g. `openssl rand -hex 24` each)
+# and PGKILN_ADMIN_PASSWORD (12+ characters)
 docker compose up -d
 ```
 
-Open http://127.0.0.1:3100/builder and sign in as `admin` with `PGAPEX_ADMIN_PASSWORD`.
+Open http://127.0.0.1:3100/builder and sign in as `admin` with `PGKILN_ADMIN_PASSWORD`.
 
 **What happens at each start** (`scripts/docker-start.ts`): the container checks the settings and
 lists everything missing at once (it doesn't start on empty or too short secrets), waits for the
 database, applies new migrations (with a lock, so several containers migrate once), and replaces
-the builder's `admin` / `admin` with `PGAPEX_ADMIN_PASSWORD` (a password changed later in the
-builder is kept). `pgapex_runtime` gets the password in `RUNTIME_DATABASE_URL` unless it
-already signs in with it; `pgapex_authenticator` (PostgREST) gets `PGAPEX_AUTHENTICATOR_PASSWORD`,
+the builder's `admin` / `admin` with `PGKILN_ADMIN_PASSWORD` (a password changed later in the
+builder is kept). `pgkiln_runtime` gets the password in `RUNTIME_DATABASE_URL` unless it
+already signs in with it; `pgkiln_authenticator` (PostgREST) gets `PGKILN_AUTHENTICATOR_PASSWORD`,
 or else a random one while it has its well-known default. Roles the start creates get their
 passwords straight away. PostgreSQL roles belong to the whole server, not to one database: other
 pgkiln databases on the same server share them, and with them these passwords. When the server
@@ -192,13 +192,13 @@ doesn't check passwords for the container's connection (`trust` in `pg_hba.conf`
 can't tell whether an older role has the password you configured. The same holds when the check
 fails for another reason, such as a network error. The start then leaves that password alone
 (other databases may use it), says so in the log, and you set it yourself. Without
-`PGAPEX_AUTHENTICATOR_PASSWORD`, checking the authenticator's default costs one failed sign-in in
+`PGKILN_AUTHENTICATOR_PASSWORD`, checking the authenticator's default costs one failed sign-in in
 the server log per start; setting it avoids that. `GET /healthz` answers `ok` when the database is reachable; the image's health
 check uses it.
 
 **`POSTGRES_PASSWORD` counts at the first start only**: the bundled database keeps it in the volume
 `pgdata`. To change it later, change it in the database first
-(`docker compose exec db psql -U pgapex -c "\password pgapex"`), then in `.env`. A wrong password
+(`docker compose exec db psql -U pgkiln -c "\password pgkiln"`), then in `.env`. A wrong password
 stops the container at once with a message saying so.
 
 **Settings** go in `deploy/.env`: the ones in `.env.example`, and any other setting of the
@@ -208,21 +208,21 @@ stops the container at once with a message saying so.
 |---|---|---|
 | `COMPOSE_PROFILES` | `db` | `db`: the bundled PostgreSQL (its data is in the volume `pgdata`). Remove it to use your own server; add `https` for Caddy |
 | `DATABASE_URL`, `RUNTIME_DATABASE_URL` | the bundled database | Your own PostgreSQL ([existing database](#installing-into-an-existing-database)); a server on the Docker host itself is `host.docker.internal` |
-| `PGAPEX_PORT`, `PGAPEX_BIND` | `3100`, `127.0.0.1` | Only this machine can connect by default; `PGAPEX_BIND=0.0.0.0` opens plain HTTP to the network |
-| `PGAPEX_DOMAIN` | | With the `https` profile: Caddy gets a certificate for this name (its DNS must point at the machine, ports 80 and 443 open). Set `PUBLIC_URL=https://…`, `COOKIE_SECURE=true` and `TRUST_PROXY=true` with it. Installing apps on phones and push notifications need HTTPS |
-| `PGAPEX_EXAMPLE` | | `hr` installs the HR example (its demo users have weak passwords: not on a public server) |
-| `PGAPEX_IMAGE` | `pgapex:local` | Use a published image instead of building one from this checkout |
+| `PGKILN_PORT`, `PGKILN_BIND` | `3100`, `127.0.0.1` | Only this machine can connect by default; `PGKILN_BIND=0.0.0.0` opens plain HTTP to the network |
+| `PGKILN_DOMAIN` | | With the `https` profile: Caddy gets a certificate for this name (its DNS must point at the machine, ports 80 and 443 open). Set `PUBLIC_URL=https://…`, `COOKIE_SECURE=true` and `TRUST_PROXY=true` with it. Installing apps on phones and push notifications need HTTPS |
+| `PGKILN_EXAMPLE` | | `hr` installs the HR example (its demo users have weak passwords: not on a public server) |
+| `PGKILN_IMAGE` | `pgkiln:local` | Use a published image instead of building one from this checkout |
 
 **Upgrading:** built from this checkout: `git pull`, then `docker compose up -d --build`. With a
-published image (`PGAPEX_IMAGE`): `docker compose pull`, then `docker compose up -d` (`--build`
+published image (`PGKILN_IMAGE`): `docker compose pull`, then `docker compose up -d` (`--build`
 would build this checkout under the published name). The new container migrates the database
-before it starts serving. Back up first (`docker compose exec db pg_dump -U pgapex pgapex > backup.sql`).
-Keep `PGAPEX_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys) can't be decrypted.
+before it starts serving. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
+Keep `PGKILN_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys) can't be decrypted.
 
 ## Upgrading
 
 Every schema change ships as a new, numbered file in `db/migrations/`. The runner records applied
-files in `public.pgapex_migration` and applies only new ones, each in its own transaction:
+files in `public.pgkiln_migration` and applies only new ones, each in its own transaction:
 
 ```bash
 git pull
@@ -233,7 +233,7 @@ npm run db:migrate
 
 Back up the database before upgrading. Released migrations are never modified.
 
-Each run that applies a file (or fails) is recorded in `public.pgapex_install_log`; administrators
+Each run that applies a file (or fails) is recorded in `public.pgkiln_install_log`; administrators
 see it, with the applied migrations and any the database still misses, under Builder → Workspace
 utilities → [Installation](03-builder.md#installation).
 
@@ -248,7 +248,7 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgkiln (nod
 1. **Database**
    - Use a dedicated owner role (it doesn't need to be a superuser once migrations have run,
      but it must own the `meta` schema and be allowed to create roles if developers create apps in the builder).
-   - Set a strong password for `pgapex_runtime`.
+   - Set a strong password for `pgkiln_runtime`.
    - Enable regular backups (`pg_dump` or your provider's snapshots). Everything, including
      application definitions, lives in the database.
 2. **Environment**
@@ -256,8 +256,8 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgkiln (nod
    NODE_ENV=production
    HOST=0.0.0.0
    PORT=3100
-   DATABASE_URL=postgres://pgapex_owner:...@db:5432/pgapex
-   RUNTIME_DATABASE_URL=postgres://pgapex_runtime:...@db:5432/pgapex
+   DATABASE_URL=postgres://pgkiln_owner:...@db:5432/pgkiln
+   RUNTIME_DATABASE_URL=postgres://pgkiln_runtime:...@db:5432/pgkiln
    COOKIE_SECURE=true
    TRUST_PROXY=true
    PUBLIC_URL=https://apps.example.com
@@ -269,8 +269,8 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgkiln (nod
    Example systemd unit:
    ```ini
    [Service]
-   WorkingDirectory=/opt/pgapex
-   EnvironmentFile=/opt/pgapex/.env
+   WorkingDirectory=/opt/pgkiln
+   EnvironmentFile=/opt/pgkiln/.env
    ExecStart=/usr/bin/npm start
    Restart=always
    User=pgkiln

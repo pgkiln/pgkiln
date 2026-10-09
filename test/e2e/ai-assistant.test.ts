@@ -7,7 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 import '../../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY ??= 'e2e-only-secret-key-0123456789abcdef';
+process.env.PGKILN_SECRET_KEY ??= 'e2e-only-secret-key-0123456789abcdef';
 
 const { buildApp } = await import('../../src/app.ts');
 const { closePools, owner } = await import('../../src/db.ts');

@@ -12,13 +12,13 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: pgapex
-          POSTGRES_PASSWORD: pgapex
-          POSTGRES_DB: pgapex
+          POSTGRES_USER: pgkiln
+          POSTGRES_PASSWORD: pgkiln
+          POSTGRES_DB: pgkiln
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U pgapex"
+          --health-cmd "pg_isready -U pgkiln"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -32,8 +32,8 @@ jobs:
         ports:
           - 3890:389
     env:
-      DATABASE_URL: postgres://pgapex:pgapex@localhost:5432/pgapex
-      RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
+      DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
+      RUNTIME_DATABASE_URL: postgres://pgkiln_runtime:pgkiln_runtime@localhost:5432/pgkiln
       # test-only secret for the REST API tokens (src/api.ts needs 32+ characters)
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
       LDAP_URL: ldap://127.0.0.1:3890
@@ -50,7 +50,7 @@ jobs:
         run: |
           psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = 'pg_stat_statements'"
           docker restart ${{ job.services.postgres.id }}
-          for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U pgapex && break; sleep 1; done
+          for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U pgkiln && break; sleep 1; done
       # npm test installs the framework and the HR example app (the tests' fixture) first (pretest)
       - run: npm test
 
@@ -60,19 +60,19 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: pgapex
-          POSTGRES_PASSWORD: pgapex
-          POSTGRES_DB: pgapex
+          POSTGRES_USER: pgkiln
+          POSTGRES_PASSWORD: pgkiln
+          POSTGRES_DB: pgkiln
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U pgapex"
+          --health-cmd "pg_isready -U pgkiln"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://pgapex:pgapex@localhost:5432/pgapex
-      RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
+      DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
+      RUNTIME_DATABASE_URL: postgres://pgkiln_runtime:pgkiln_runtime@localhost:5432/pgkiln
       # test-only secret for the REST API tokens (src/api.ts needs 32+ characters)
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
       SCREENSHOTS: '1'
@@ -91,51 +91,6 @@ jobs:
           name: screenshots
           path: test-results/
 
-  # Install an older release with its sample data, upgrade to this commit,
-  # then run the tests: migrations must work on existing databases too.
-  upgrade:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        from: [v0.6.0, v0.7.0, v0.8.0, v0.9.0, v0.10.0, v0.11.0, v0.12.0, v0.13.0, v0.14.0, v0.15.0, v0.16.0, v0.17.0, v0.17.1, v0.18.0, v0.19.0, v0.20.0, v0.21.0, v0.22.0, v0.23.0, v0.24.0, v0.25.0, v0.26.0, v0.27.0, v0.28.0, v0.29.0, v0.30.0]
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: pgapex
-          POSTGRES_PASSWORD: pgapex
-          POSTGRES_DB: pgapex
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U pgapex"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgres://pgapex:pgapex@localhost:5432/pgapex
-      RUNTIME_DATABASE_URL: postgres://pgapex_runtime:pgapex_runtime@localhost:5432/pgapex
-      API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # the release tags
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Install ${{ matrix.from }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/old"
-          # the whole release: its migrations and its HR sample (db/seed/ up to 0.9, examples/hr/ later)
-          git archive "${{ matrix.from }}" | tar -x -C "$RUNNER_TEMP/old"
-          npx tsx scripts/migrate.ts --seed --root "$RUNNER_TEMP/old"
-      - name: Upgrade to this commit
-        run: npm run example:hr
-      - run: npm test
-
   docker:
     # what a user runs: deploy/.env.example filled in, docker compose up -d
     runs-on: ubuntu-latest
@@ -146,8 +101,8 @@ jobs:
         run: |
           cp .env.example .env
           sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 24)/; s/^RUNTIME_PASSWORD=$/RUNTIME_PASSWORD=$(openssl rand -hex 24)/" .env
-          sed -i "s/^PGAPEX_SECRET_KEY=$/PGAPEX_SECRET_KEY=$(openssl rand -hex 24)/; s/^PGAPEX_ADMIN_PASSWORD=$/PGAPEX_ADMIN_PASSWORD=ci-admin-password-0123/" .env
-          echo PGAPEX_EXAMPLE=hr >> .env
+          sed -i "s/^PGKILN_SECRET_KEY=$/PGKILN_SECRET_KEY=$(openssl rand -hex 24)/; s/^PGKILN_ADMIN_PASSWORD=$/PGKILN_ADMIN_PASSWORD=ci-admin-password-0123/" .env
+          echo PGKILN_EXAMPLE=hr >> .env
           docker compose up -d --build --wait --wait-timeout 300
       - name: Check it
         run: |

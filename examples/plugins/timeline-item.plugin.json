@@ -1,5 +1,5 @@
 {
-  "format": "pgapex-plugin/1",
+  "format": "pgkiln-plugin/1",
   "type": "template_component",
   "static_id": "timeline_item",
   "name": "Timeline item",

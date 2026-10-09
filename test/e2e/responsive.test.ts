@@ -235,7 +235,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await done;
         await page.waitForTimeout(200);
         const { inline, rules, height } = await page.evaluate((id) => {
-          const el = document.getElementById('pgapex-css') as HTMLStyleElement;
+          const el = document.getElementById('pgkiln-css') as HTMLStyleElement;
           const col = document.querySelector(`#R${id} .col`) as HTMLElement;
           return { inline: el.textContent!.split('\n').filter(Boolean).length, rules: el.sheet!.cssRules.length, height: col.getBoundingClientRect().height };
         }, r.id);
@@ -273,9 +273,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
     });
 
     test('contacts (page 34): a grid and a form on a REST data source read and write the service', async () => {
-      const env = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS };
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
-      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+      const env = { allowed: process.env.PGKILN_REST_ALLOWED_HOSTS, priv: process.env.PGKILN_REST_PRIVATE_HOSTS };
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
       const url = (await owner.one(`select s.url from meta.rest_source s join meta.app a on a.id = s.app_id where a.alias = 'hr' and s.name = 'CRM_CONTACTS'`)).url;
       await owner.query(`update meta.rest_source s set url = $1 from meta.app a where a.id = s.app_id and a.alias = 'hr' and s.name = 'CRM_CONTACTS'`, [`${base}/a/hr/rest/crm/contacts`]);
       const page = await (await newContext({ viewport: size })).newPage();
@@ -297,7 +297,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       } finally {
         await owner.query(`delete from hr.crm_contact where name like 'E2E %'`);
         await owner.query(`update meta.rest_source s set url = $1 from meta.app a where a.id = s.app_id and a.alias = 'hr' and s.name = 'CRM_CONTACTS'`, [url]);
-        for (const [k, v] of [['PGAPEX_REST_ALLOWED_HOSTS', env.allowed], ['PGAPEX_REST_PRIVATE_HOSTS', env.priv]] as const)
+        for (const [k, v] of [['PGKILN_REST_ALLOWED_HOSTS', env.allowed], ['PGKILN_REST_PRIVATE_HOSTS', env.priv]] as const)
           if (v === undefined) delete process.env[k];
           else process.env[k] = v;
         await page.context().close();
@@ -305,9 +305,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
     });
 
     test('parse and fetch (page 35): the parsed file and the response of a web request from SQL', async () => {
-      const env = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS, url: process.env.PUBLIC_URL };
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
-      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+      const env = { allowed: process.env.PGKILN_REST_ALLOWED_HOSTS, priv: process.env.PGKILN_REST_PRIVATE_HOSTS, url: process.env.PUBLIC_URL };
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
       process.env.PUBLIC_URL = base;
       const page = await (await newContext({ viewport: size })).newPage();
       try {
@@ -320,7 +320,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(await page.locator('.alert-error').count(), 0);
         await check(page, 'app-35-fetched', vp);
       } finally {
-        for (const [k, v] of [['PGAPEX_REST_ALLOWED_HOSTS', env.allowed], ['PGAPEX_REST_PRIVATE_HOSTS', env.priv], ['PUBLIC_URL', env.url]] as const)
+        for (const [k, v] of [['PGKILN_REST_ALLOWED_HOSTS', env.allowed], ['PGKILN_REST_PRIVATE_HOSTS', env.priv], ['PUBLIC_URL', env.url]] as const)
           if (v === undefined) delete process.env[k];
           else process.env[k] = v;
         await page.context().close();

@@ -10,15 +10,15 @@ document.documentElement.classList.add('js');
 // subscription is sent to /a/<alias>/push/subscribe. A device keeps one user's
 // notifications: signing out ends them (sw.js), and a device another user turned them
 // on for is turned off here, so nobody sees someone else's notifications.
-const pgapexPush = (() => {
+const pgkilnPush = (() => {
   const body = document.body;
   const key = body.dataset.push;
   const user = body.dataset.pushUser || '';
   const base = body.dataset.base;
-  const metaEl = document.getElementById('pgapex-meta');
+  const metaEl = document.getElementById('pgkiln-meta');
   const meta = (metaEl ? JSON.parse(metaEl.textContent) : null) || {};
   const t = (k) => (meta.texts && meta.texts[k]) || k;
-  const OWNER = `pgapex-push:${base}`;
+  const OWNER = `pgkiln-push:${base}`;
   const store = {
     get: () => {
       try {
@@ -144,7 +144,7 @@ const pgapexPush = (() => {
   const body = document.body;
   const base = body.dataset.base;
   const pageNo = body.dataset.page;
-  const metaEl = document.getElementById('pgapex-meta');
+  const metaEl = document.getElementById('pgkiln-meta');
   const meta = metaEl ? JSON.parse(metaEl.textContent) : { das: [], csrf: '' };
   const form = document.querySelector('form.page-form');
 
@@ -241,7 +241,7 @@ const pgapexPush = (() => {
     const node = tpl.content.firstElementChild;
     if (node) {
       el.replaceWith(node);
-      document.dispatchEvent(new CustomEvent('pgapex:replaced', { detail: node }));
+      document.dispatchEvent(new CustomEvent('pgkiln:replaced', { detail: node }));
     }
     return node;
   }
@@ -355,8 +355,8 @@ const pgapexPush = (() => {
     const els = [...(root.matches && root.matches('[data-plugin]') ? [root] : []), ...root.querySelectorAll('[data-plugin]')];
     for (const el of els) {
       const fn = plugins.get(el.dataset.plugin);
-      if (!fn || el.pgapexPlugin) continue;
-      el.pgapexPlugin = true;
+      if (!fn || el.pgkilnPlugin) continue;
+      el.pgkilnPlugin = true;
       const item = el.dataset.item || null;
       try {
         fn({ type: item ? 'item' : 'region', element: el, item, attributes: pluginAttrs(el) });
@@ -366,18 +366,18 @@ const pgapexPush = (() => {
     }
   }
   scriptsLoaded.then(() => startPlugins(document));
-  document.addEventListener('pgapex:replaced', (e) => scriptsLoaded.then(() => startPlugins(e.detail)));
+  document.addEventListener('pgkiln:replaced', (e) => scriptsLoaded.then(() => startPlugins(e.detail)));
 
-  window.pgapex = Object.freeze({
+  window.pgkiln = Object.freeze({
     actions: Object.freeze({
       register(name, fn) {
-        if (!ACTION_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgapex.actions.register: a name and a function, not ${name}`);
+        if (!ACTION_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgkiln.actions.register: a name and a function, not ${name}`);
         actions.set(String(name), fn);
       },
     }),
     plugins: Object.freeze({
       register(name, fn) {
-        if (!PLUGIN_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgapex.plugins.register: a plug-in name and a function, not ${name}`);
+        if (!PLUGIN_NAME.test(String(name)) || typeof fn !== 'function') throw new TypeError(`pgkiln.plugins.register: a plug-in name and a function, not ${name}`);
         plugins.set(String(name), fn);
         if (document.readyState !== 'loading') startPlugins(document);
       },
@@ -436,7 +436,7 @@ const pgapexPush = (() => {
       case 'plugin': {
         await scriptsLoaded;
         const fn = da.plugin && plugins.get(da.plugin);
-        if (!fn) return console.warn(`pgkiln: the plug-in "${da.plugin}" did not register (pgapex.plugins.register) for dynamic action ${da.id}`);
+        if (!fn) return console.warn(`pgkiln: the plug-in "${da.plugin}" did not register (pgkiln.plugins.register) for dynamic action ${da.id}`);
         try {
           await fn({ type: 'dynamic_action', value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message, attributes: da.attributes || {} });
         } catch (e) {
@@ -448,16 +448,16 @@ const pgapexPush = (() => {
       case 'push_subscribe':
         // turn on notifications on this device (a click: browsers ask only after one)
         try {
-          await pgapexPush.subscribe();
-          showMessage(da.message || pgapexPush.t('push.on'), 'success');
+          await pgkilnPush.subscribe();
+          showMessage(da.message || pgkilnPush.t('push.on'), 'success');
         } catch (e) {
-          showMessage((e && e.message) || pgapexPush.t('push.failed'), 'error');
+          showMessage((e && e.message) || pgkilnPush.t('push.failed'), 'error');
         }
         return;
       case 'execute_javascript': {
         await scriptsLoaded;
         const fn = da.fn && actions.get(da.fn);
-        if (!fn) return console.warn(`pgkiln: no function "${da.fn}" registered (pgapex.actions.register) for dynamic action ${da.id}`);
+        if (!fn) return console.warn(`pgkiln: no function "${da.fn}" registered (pgkiln.actions.register) for dynamic action ${da.id}`);
         try {
           await fn({ value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message });
         } catch (e) {
@@ -479,7 +479,7 @@ const pgapexPush = (() => {
       }
       // a refreshed region's styles (chart geometry) go into the page's own stylesheet:
       // the CSP refuses inline styles, but not rules added through the CSSOM
-      const sheet = document.getElementById('pgapex-css')?.sheet;
+      const sheet = document.getElementById('pgkiln-css')?.sheet;
       if (sheet && res.css) for (const rule of res.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
       for (const [id, markup] of Object.entries(res.regions || {})) {
         const r = document.getElementById(`R${id}`);
@@ -592,14 +592,14 @@ const pgapexPush = (() => {
   };
   if (toggle) {
     let stored = null;
-    try { stored = localStorage.getItem('pgapex.nav'); } catch {}
+    try { stored = localStorage.getItem('pgkiln.nav'); } catch {}
     if (stored === 'closed') body.classList.add('nav-collapsed');
     toggle.setAttribute('aria-expanded', String(navOpen()));
     toggle.addEventListener('click', (e) => {
       e.preventDefault();
       const open = !navOpen();
       setNav(open);
-      if (!drawer.matches) try { localStorage.setItem('pgapex.nav', open ? 'open' : 'closed'); } catch {}
+      if (!drawer.matches) try { localStorage.setItem('pgkiln.nav', open ? 'open' : 'closed'); } catch {}
       if (open && drawer.matches) document.querySelector('#t-nav a, #t-nav summary')?.focus();
     });
     document.querySelector('.t-nav-backdrop')?.addEventListener('click', (e) => {
@@ -621,7 +621,7 @@ const pgapexPush = (() => {
   function dialogShape(url) {
     let shapes = {};
     try {
-      shapes = JSON.parse(document.getElementById('pgapex-meta')?.textContent || '{}').dialogs || {};
+      shapes = JSON.parse(document.getElementById('pgkiln-meta')?.textContent || '{}').dialogs || {};
     } catch {}
     let page = '';
     try {
@@ -653,7 +653,7 @@ const pgapexPush = (() => {
         title.textContent = (doc.title || '').split(' · ')[0];
       } catch {}
     };
-    // (065) drawers from an edge and dialog sizes, per target page (pgapex-meta "dialogs")
+    // (065) drawers from an edge and dialog sizes, per target page (pgkiln-meta "dialogs")
     const [pos, size] = dialogShape(url);
     dlg.className = `t-dialog t-dialog-${pos} t-dialog-${size}${pos === 'center' ? '' : ' t-drawer'}`;
     frame.src = url + (url.includes('?') ? '&' : '?') + 'dialog=1';
@@ -670,7 +670,7 @@ const pgapexPush = (() => {
   // A dialog closed after a submit: the page's "dialog_closed" dynamic actions for
   // that dialog page (trigger: its page numbers, or any) run instead of a reload.
   window.addEventListener('message', (e) => {
-    if (e.origin !== location.origin || !e.data || e.data.type !== 'pgapex:close') return;
+    if (e.origin !== location.origin || !e.data || e.data.type !== 'pgkiln:close') return;
     const dlg = document.getElementById('t-dialog');
     if (dlg) dlg.close();
     if (!e.data.reload) return;
@@ -735,7 +735,7 @@ const pgapexPush = (() => {
     cal.setAttribute('aria-busy', 'true');
     try {
       const res = await post(`/calendar/${cal.dataset.calendar}/move`, { key, to: cell.dataset.drop });
-      const sheet = document.getElementById('pgapex-css')?.sheet;
+      const sheet = document.getElementById('pgkiln-css')?.sheet;
       if (sheet && res.css) for (const rule of res.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
       const node = region ? replaceHtml(region, res.region) : null;
       const status = node?.querySelector('.cal-status');
@@ -761,7 +761,7 @@ const pgapexPush = (() => {
       const res = await fetch(holder.dataset.lazy, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
       const json = await res.json().catch(() => ({ error: res.statusText }));
       if (!res.ok) throw new Error(json.error || res.statusText);
-      const sheet = document.getElementById('pgapex-css')?.sheet;
+      const sheet = document.getElementById('pgkiln-css')?.sheet;
       if (sheet && json.css) for (const rule of json.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
       if (json.detached) {
         const tpl = document.createElement('template');
@@ -785,7 +785,7 @@ const pgapexPush = (() => {
 
   // Inside a dialog: close on success or cancel.
   if (window.parent !== window) {
-    const tell = (reload) => window.parent.postMessage({ type: 'pgapex:close', reload, page: body.dataset.dialogPage || '' }, location.origin);
+    const tell = (reload) => window.parent.postMessage({ type: 'pgkiln:close', reload, page: body.dataset.dialogPage || '' }, location.origin);
     if (body.dataset.dialogClose) tell(true);
     document.addEventListener('click', (e) => {
       if (!e.target.closest('[data-dialog-cancel]')) return;
@@ -835,7 +835,7 @@ const pgapexPush = (() => {
   const body = document.body;
   const base = body.dataset.base;
   const pageNo = body.dataset.page;
-  const metaEl = document.getElementById('pgapex-meta');
+  const metaEl = document.getElementById('pgkiln-meta');
   const csrf = metaEl ? JSON.parse(metaEl.textContent).csrf : '';
   let dirty = false;
 
@@ -978,7 +978,7 @@ const pgapexPush = (() => {
         const res = await fetch(`${base}/${pageNo}/region/${id}?${query}`, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
         const json = await res.json().catch(() => ({ error: res.statusText }));
         if (!res.ok) throw new Error(json.error || res.statusText);
-        const sheet = document.getElementById('pgapex-css')?.sheet;
+        const sheet = document.getElementById('pgkiln-css')?.sheet;
         if (sheet && json.css) for (const rule of json.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
         if (json.detached) {
           const tpl = document.createElement('template');
@@ -995,7 +995,7 @@ const pgapexPush = (() => {
         const node = tpl.content.firstElementChild;
         if (region && node) {
           region.replaceWith(node);
-          document.dispatchEvent(new CustomEvent('pgapex:replaced', { detail: node }));
+          document.dispatchEvent(new CustomEvent('pgkiln:replaced', { detail: node }));
         }
       } catch (err) {
         region?.removeAttribute('aria-busy');
@@ -1104,7 +1104,7 @@ const pgapexPush = (() => {
     }
   }
   arrangeable(document);
-  document.addEventListener('pgapex:replaced', (e) => {
+  document.addEventListener('pgkiln:replaced', (e) => {
     const root = e.detail?.parentElement || document;
     disableTemplates(root);
     arrangeable(root);
@@ -1328,7 +1328,7 @@ document.querySelectorAll('[data-rds]').forEach((nav) => {
   const panelsOf = (tab) => (tab.dataset.rdsTarget || '').split(' ').filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
   const panels = tabs.flatMap(panelsOf);
   if (!panels.length) return;
-  const key = `pgapex.rds.${location.pathname}.${nav.dataset.rds}`;
+  const key = `pgkiln.rds.${location.pathname}.${nav.dataset.rds}`;
   const remember = nav.hasAttribute('data-rds-remember');
   const select = nav.querySelector('.rds-select');
   const list = nav.querySelector('.rds-list');
@@ -1402,13 +1402,13 @@ function enhancePopupLovs(root) {
   const selects = root.matches?.('select[data-popup-lov]') ? [root] : [...(root.querySelectorAll?.('select[data-popup-lov]') ?? [])];
   selects.forEach(popupLov);
 }
-document.addEventListener('pgapex:replaced', (e) => e.detail && enhancePopupLovs(e.detail));
+document.addEventListener('pgkiln:replaced', (e) => e.detail && enhancePopupLovs(e.detail));
 enhancePopupLovs(document);
 function popupLov(sel) {
   if (sel.dataset.enhanced) return;
   sel.dataset.enhanced = '1';
   const d = sel.dataset;
-  const metaEl = document.getElementById('pgapex-meta');
+  const metaEl = document.getElementById('pgkiln-meta');
   const csrf = metaEl ? JSON.parse(metaEl.textContent).csrf : '';
   const label = sel.labels?.[0]?.textContent?.trim() || sel.name;
   const wrap = document.createElement('div');
@@ -1631,7 +1631,7 @@ function recordSelection(table, boxes, checked) {
   if (!region || !base || !page) return;
   let csrf = '';
   try {
-    csrf = JSON.parse(document.getElementById('pgapex-meta')?.textContent || '{}').csrf || '';
+    csrf = JSON.parse(document.getElementById('pgkiln-meta')?.textContent || '{}').csrf || '';
   } catch {}
   const form = new URLSearchParams({ __csrf: csrf, checked: String(checked) });
   for (const b of boxes) form.append('value', b.value);
@@ -1670,7 +1670,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ------------------------------------------------------------------ Progressive Web App and field work
 (() => {
-  const metaEl = document.getElementById('pgapex-meta');
+  const metaEl = document.getElementById('pgkiln-meta');
   const texts = (metaEl ? JSON.parse(metaEl.textContent).texts : null) || {};
   const t = (k, n) => (texts[k] || k).replace('{n}', n === undefined ? '' : String(n));
   const body = document.body;
@@ -1690,12 +1690,12 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register(body.dataset.sw, { scope: `${body.dataset.base}/` }).catch(() => {});
     const post = (msg) => navigator.serviceWorker.ready.then((r) => r.active && r.active.postMessage(msg));
     if (body.dataset.offlineQueue === '1') {
-      post({ type: 'pgapex:user', user: body.dataset.user || 'nobody' });
-      post({ type: 'pgapex:replay' });
-      window.addEventListener('online', () => post({ type: 'pgapex:replay' }));
+      post({ type: 'pgkiln:user', user: body.dataset.user || 'nobody' });
+      post({ type: 'pgkiln:replay' });
+      window.addEventListener('online', () => post({ type: 'pgkiln:replay' }));
     }
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'pgapex:queue') showQueue(e.data.items, post);
+      if (e.data && e.data.type === 'pgkiln:queue') showQueue(e.data.items, post);
     });
     if (new URLSearchParams(location.search).get('queued') === '1') note(t('pwa.queued'));
   }
@@ -1737,7 +1737,7 @@ document.addEventListener('DOMContentLoaded', () => {
       discard.type = 'button';
       discard.className = 'link-button';
       discard.textContent = t('pwa.discard');
-      discard.addEventListener('click', () => post({ type: 'pgapex:discard', id: i.id }));
+      discard.addEventListener('click', () => post({ type: 'pgkiln:discard', id: i.id }));
       li.append(what, ' ', discard);
       list.append(li);
     }
@@ -1745,7 +1745,7 @@ document.addEventListener('DOMContentLoaded', () => {
     send.type = 'button';
     send.className = 'btn btn-hot';
     send.textContent = t('pwa.send_now');
-    send.addEventListener('click', () => post({ type: 'pgapex:replay' }));
+    send.addEventListener('click', () => post({ type: 'pgkiln:replay' }));
     box.append(summary, list, send);
   }
 
@@ -1753,7 +1753,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const pages = document.querySelector('[data-offline-pages]');
   if (pages && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (!e.data || e.data.type !== 'pgapex:pages') return;
+      if (!e.data || e.data.type !== 'pgkiln:pages') return;
       for (const u of e.data.pages) {
         const li = document.createElement('li');
         const a = document.createElement('a');
@@ -1763,7 +1763,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pages.append(li);
       }
     });
-    navigator.serviceWorker.controller.postMessage('pgapex:pages');
+    navigator.serviceWorker.controller.postMessage('pgkiln:pages');
   }
 
   // location items: the device's position as "lat,lng"
@@ -1979,7 +1979,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dt = new DataTransfer();
     dt.items.add(file);
     input.files = dt.files;
-    input.dispatchEvent(new CustomEvent('pgapex:cropped', { bubbles: true }));
+    input.dispatchEvent(new CustomEvent('pgkiln:cropped', { bubbles: true }));
   });
   document.addEventListener('change', async (e) => {
     const input = e.target;
@@ -2019,7 +2019,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (window.DataTransfer) {
     dropZones(document);
-    document.addEventListener('pgapex:replaced', (e) => e.detail && dropZones(e.detail.parentElement || document));
+    document.addEventListener('pgkiln:replaced', (e) => e.detail && dropZones(e.detail.parentElement || document));
     const zoneOf = (e) => (e.target instanceof Element ? e.target.closest('.file-drop') : null);
     const carriesFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
     let over = null;
@@ -2245,11 +2245,11 @@ function vectorTiles(l, popup, several, truncated) {
       fetch(l.tiles.replace('{z}', coords.z).replace('{x}', coords.x).replace('{y}', coords.y), { credentials: 'same-origin' })
         .then(async (res) => {
           if (!res.ok) throw new Error(String(res.status));
-          if (res.headers.get('x-pgapex-truncated')) cut.add(key);
+          if (res.headers.get('x-pgkiln-truncated')) cut.add(key);
           else cut.delete(key);
           truncated(cut.size > 0);
           const layer = readVectorTile(await res.arrayBuffer())[0];
-          tile.pgapexLayer = layer;
+          tile.pgkilnLayer = layer;
           if (layer) drawVectorTile(tile, layer, colour, l.kind === 'heat');
           done(null, tile);
         })
@@ -2258,8 +2258,8 @@ function vectorTiles(l, popup, several, truncated) {
     },
     onAdd(map) {
       // above the base map, below markers and popups; clicks go through to the map (see _click)
-      if (!map.getPane('pgapexTiles')) {
-        const pane = map.createPane('pgapexTiles');
+      if (!map.getPane('pgkilnTiles')) {
+        const pane = map.createPane('pgkilnTiles');
         pane.style.zIndex = '350';
         pane.style.pointerEvents = 'none';
       }
@@ -2280,14 +2280,14 @@ function vectorTiles(l, popup, several, truncated) {
       const at = map.project(e.latlng, z);
       const tx = Math.floor(at.x / size.x);
       const ty = Math.floor(at.y / size.y);
-      const layer = this._tiles[`${tx}:${ty}:${z}`]?.el.pgapexLayer;
+      const layer = this._tiles[`${tx}:${ty}:${z}`]?.el.pgkilnLayer;
       if (!layer) return;
       const scale = layer.extent / size.x;
       const hit = hitVectorTile(layer, (at.x - tx * size.x) * scale, (at.y - ty * size.y) * scale, 8 * scale);
       if (hit) window.L.popup().setLatLng(e.latlng).setContent(popup(hit)).openOn(map);
     },
   });
-  return new Tiles({ maxZoom: 22, pane: 'pgapexTiles' });
+  return new Tiles({ maxZoom: 22, pane: 'pgkilnTiles' });
 }
 
 // A Mapbox Vector Tile (protocol buffers) → its layers: { name, extent, features: [{ type, paths, props }] }.
@@ -2990,7 +2990,7 @@ function areaFilter(map, f) {
     root.querySelectorAll('[data-reveal]').forEach((b) => (b.hidden = false));
   }
   enhance(document);
-  document.addEventListener('pgapex:replaced', (e) => e.detail && enhance(e.detail.parentElement || document));
+  document.addEventListener('pgkiln:replaced', (e) => e.detail && enhance(e.detail.parentElement || document));
 
   // Password reveal: show or hide what was typed; hidden again before the form is sent
   document.addEventListener('click', (e) => {

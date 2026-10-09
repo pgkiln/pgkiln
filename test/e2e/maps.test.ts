@@ -177,15 +177,15 @@ describe('map and tree regions', () => {
     await note.waitFor();
     assert.equal(await note.textContent(), 'Not every place is shown: zoom in to see them all');
     // the tiles: drawn on canvases in their own pane
-    const tiles = page.locator('.leaflet-pgapexTiles-pane canvas');
+    const tiles = page.locator('.leaflet-pgkilnTiles-pane canvas');
     await tiles.first().waitFor();
-    await page.waitForFunction(() => document.querySelectorAll('.leaflet-pgapexTiles-pane canvas.leaflet-tile-loaded').length > 0);
+    await page.waitForFunction(() => document.querySelectorAll('.leaflet-pgkilnTiles-pane canvas.leaflet-tile-loaded').length > 0);
     assert.ok(mvt.length > 0 && mvt.every((m) => m === '200 application/vnd.mapbox-vector-tile'), mvt.join());
     // switch the high stations off, then click a drawn station
     await page.locator('.map-layers label', { hasText: 'High stations' }).locator('input').uncheck();
     assert.equal(await page.locator('.map-cluster').count(), 0);
     const at = await page.evaluate(() => {
-      for (const c of document.querySelectorAll<HTMLCanvasElement>('.leaflet-pgapexTiles-pane canvas.leaflet-tile-loaded')) {
+      for (const c of document.querySelectorAll<HTMLCanvasElement>('.leaflet-pgkilnTiles-pane canvas.leaflet-tile-loaded')) {
         const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
         for (let i = 0; i < d.length; i += 4)
           // the middle of a dot: the layer's blue, nearly opaque

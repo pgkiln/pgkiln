@@ -3,11 +3,11 @@
   "name": "log_event",
   "label": "Log an event",
   "version": "1.0.0",
-  "help": "Records an event (name and detail, with the user and time) in pgapex_plugins.event_log and shows MESSAGE. Run the install SQL once; the application's role needs CREATE on the database for it (or run it in the SQL Workshop and grant the role access).",
+  "help": "Records an event (name and detail, with the user and time) in pgkiln_plugins.event_log and shows MESSAGE. Run the install SQL once; the application's role needs CREATE on the database for it (or run it in the SQL Workshop and grant the role access).",
   "attributes": [
     {"name": "EVENT", "label": "Event", "type": "text", "default": "event"},
     {"name": "DETAIL", "label": "Detail (may use &ITEM.)", "type": "text"},
     {"name": "MESSAGE", "label": "Message", "type": "text"}
   ],
-  "sql_function": "pgapex_plugins.log_event"
+  "sql_function": "pgkiln_plugins.log_event"
 }

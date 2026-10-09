@@ -21,7 +21,7 @@ src/
   env.ts                   .env loader (imported first)
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); logs each run that applies
   instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
-                           or fails a file in public.pgapex_install_log
+                           or fails a file in public.pgkiln_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
@@ -38,7 +38,7 @@ src/
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
-  headerauth.ts            HTTP-header authentication: trusted proxies (PGAPEX_AUTH_HEADER_PROXIES), header checks, accounts
+  headerauth.ts            HTTP-header authentication: trusted proxies (PGKILN_AUTH_HEADER_PROXIES), header checks, accounts
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
@@ -71,7 +71,7 @@ src/
   mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
   yamltext.ts              the text style of the directory export: a strict YAML subset, written and read
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
-  secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGAPEX_SECRET_KEY
+  secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGKILN_SECRET_KEY
   websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
                            tokens) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
                            (callOperation); invoke(): the invoke API call shared by the invoke_api process and workflow step
@@ -310,24 +310,28 @@ npm run test:e2e     # needs `npx playwright install chromium`; SCREENSHOTS=1 sa
 npm run db:reset     # fresh database
 ```
 
-CI (`.github/workflows/ci.yml`) runs three jobs against PostgreSQL 17:
+CI (`.github/workflows/ci.yml`) runs these jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact; `test/e2e/accessibility.test.ts` runs
   axe-core (WCAG 2.1 A and AA rules) on every page of the HR example (light, dark, Iris) and the builder's main pages
   and allows no violation;
-- **upgrade**: installs older releases (`v0.6.0` … `v0.30.0`) with their sample data, upgrades to the
-  commit and runs `npm test` on the result. Add each new release to its matrix.
+- **docker**: builds the image and starts the compose stack as a user would.
+
+From the second release on, CI should also check upgrades: an **upgrade** job that installs each earlier
+release with its sample data (`git archive <tag> | tar -x`, then `scripts/migrate.ts --seed --root`),
+upgrades to the commit and runs `npm test`. The first release is v0.31.0, so there is nothing to upgrade
+from yet.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the
 PostgREST HTTP tests skip. To reproduce a CI failure, run the tests in a clean checkout
 (`git worktree add`) against a throwaway database with only those variables, and
 `API_URL=http://127.0.0.1:1`. A new required environment variable must be added to the workflow.
 
-To try the upgrade locally:
+To try an upgrade locally (once there is an earlier release):
 
 ```bash
-mkdir -p /tmp/old && git archive v0.8.0 | tar -x -C /tmp/old
+mkdir -p /tmp/old && git archive v0.31.0 | tar -x -C /tmp/old
 DATABASE_URL=<empty database> npx tsx scripts/migrate.ts --seed --root /tmp/old
 DATABASE_URL=<same database> npm run example:hr && npm test
 ```
@@ -363,7 +367,7 @@ browser enhancements at the end of `public/app.js` (the item must work without t
   `coalesce(p_doc->'section', '[]')`), or to `NOT_EXPORTED` in `test/export.test.ts` with a reason;
   that test fails until you do. Redefine the functions with `create or replace` in the new
   migration; don't wrap them.
-- Never rename or remove a section of the `pgapex/2` format (see [chapter 3](03-builder.md#export-format)).
+- Never rename or remove a section of the `pgkiln/2` format (see [chapter 3](03-builder.md#export-format)).
 - A new table that belongs to an application or references a component must also be listed in
   `src/cli/replace.ts` (replaced with the application's definition, or kept as installation data);
   `test/cli.test.ts` fails until it is. The directory format ([chapter 18](18-cli.md)) needs no
@@ -372,7 +376,7 @@ browser enhancements at the end of `public/app.js` (the item must work without t
 ## Releasing
 
 1. Update `CHANGELOG.md` and the version in `package.json`.
-2. Merge to `main`; CI must be green (all three jobs). The `main` branch should be protected on
-   GitHub (Settings → Branches → rule for `main`: require the `test`, `e2e` and `upgrade` checks).
+2. Merge to `main`; CI must be green (every job). The `main` branch should be protected on
+   GitHub (Settings → Branches → rule for `main`: require the CI checks).
 3. Tag: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
-4. Add the new tag to the `upgrade` job's matrix in `.github/workflows/ci.yml`.
+4. Add the new tag to the `upgrade` job's matrix in `.github/workflows/ci.yml` (see above).

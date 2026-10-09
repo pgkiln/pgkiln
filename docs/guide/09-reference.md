@@ -37,8 +37,8 @@ triggers, your own functions).
 | `meta.zip_entries(zip)`, `meta.zip_entry(zip, name)` | table / bytea | The files in a zip and one file's content (APEX: `apex_zip.get_files`, `apex_zip.get_file_content`) |
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
-`pgapex.app_user`, `pgapex.app_id`, `pgapex.session_id`, `pgapex.tenant_id`, `pgapex.debug_level`, `pgapex.public_url`
-(the server's `PUBLIC_URL`), `pgapex.web_pending` (set by `meta.web_request`).
+`pgkiln.app_user`, `pgkiln.app_id`, `pgkiln.session_id`, `pgkiln.tenant_id`, `pgkiln.debug_level`, `pgkiln.public_url`
+(the server's `PUBLIC_URL`), `pgkiln.web_pending` (set by `meta.web_request`).
 
 ### Web requests from SQL
 
@@ -73,9 +73,9 @@ select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
 ```
 
 - **The same protections as REST data sources** ([chapter 19](19-rest-data-sources.md)): the host
-  must be on `PGAPEX_REST_ALLOWED_HOSTS` (unset: no calls), private and loopback addresses are refused
-  when the connection is made unless the host is in `PGAPEX_REST_PRIVATE_HOSTS`, redirects (at most 3)
-  go through the same checks, the response is cut off at `PGAPEX_REST_MAX_BYTES` (default 5 MB) and
+  must be on `PGKILN_REST_ALLOWED_HOSTS` (unset: no calls), private and loopback addresses are refused
+  when the connection is made unless the host is in `PGKILN_REST_PRIVATE_HOSTS`, redirects (at most 3)
+  go through the same checks, the response is cut off at `PGKILN_REST_MAX_BYTES` (default 5 MB) and
   the time limit is 1–60 seconds.
 - **Web credentials** are named, never passed: `p_credential => 'NAME'` signs the request with a
   credential of the current application (basic, bearer, header, OAuth2), and only for the URLs it is
@@ -258,7 +258,7 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 | `meta.generate_page(app, kind, table, page, options default '{}')` | The create page wizards: `kind` is `form`, `cards`, `calendar`, `chart`, `map`, `facets`, `master_detail` (or `report_form`, `grid`). Options left out take the defaults of `meta.wizard_defaults`; JSON `null` means none. Returns the new page's id (below) |
 | `meta.wizard_defaults(kind, table)` | The options a wizard proposes for a table, from the catalog |
 | `meta.wizard_catalog(table)` | The columns as the wizards see them: kind (`text`, `number`, `date`, `timestamp`, `boolean`, `point`, `geometry`, `binary`, `other`), key, unique, foreign key and the parent's display column |
-| `meta.export_app(alias)` | The application as JSON (`pgapex/2` format) |
+| `meta.export_app(alias)` | The application as JSON (`pgkiln/2` format) |
 | `meta.import_app(json, alias default null)` | Import an export, optionally under a new alias; returns the new app id |
 | `meta.hash_password(text)` | A bcrypt hash for `meta.app_user.password_hash` / `meta.developer.password_hash` |
 | `meta.authenticate(app_id, username, password)` | Username on success, NULL otherwise, including when the account has no access to the app (used by the login page) |
@@ -436,10 +436,10 @@ navigation entries and application processes have the same `build_option` column
 | `debug_view` | [Debug messages](06-processing.md#debug-messages): one row per recorded request: `app_id`, `page_no`, `username`, `session_id`, `method`, `path` (without the query string), `status`, `level`, `started_at`, `elapsed_ms`, `entries`. Written through `meta.debug_save()` (runtime role only), not exported | no |
 | `debug_message` | The entries of a recorded request: `view_id`, `seq`, `elapsed_ms` (since the start), `duration_ms` (timed steps), `level`, `component`, `message` | no |
 | `web_request_log` | [Web requests from SQL](#web-requests-from-sql): `app_id`, `status`, the request (`url` or `source` + `params`, `method`, `headers`, `body`, `credential` name, `timeout_s`), `requested_by`, times, the response (`status_code`, `response_url`, `response_headers`, `response_body`), `message`. Kept 24 hours, not exported | no (through `meta.web_response`) |
-| `push_key` | The VAPID key pair of an application with [push notifications](17-mobile.md#push-notifications): `public_key`, `private_key` (encrypted with `PGAPEX_SECRET_KEY`). Not exported | no |
+| `push_key` | The VAPID key pair of an application with [push notifications](17-mobile.md#push-notifications): `public_key`, `private_key` (encrypted with `PGKILN_SECRET_KEY`). Not exported | no |
 | `push_subscription` | Devices with notifications on: `app_id`, `username`, `endpoint` (the push service URL), the device's keys `p256dh` and `auth`, `user_agent`, `created_at`, `last_sent_at`, `failures`. Not exported | no (through `meta.has_push_subscription`) |
 | `push_message` | [Push notifications from SQL](#push-notifications-from-sql): `app_id`, `username`, `title`, `body`, `url`, `tag`, `urgency`, `ttl_s`, `status`, `attempts`, `devices`, `delivered`, `message`, `requested_by`, times. Kept 7 days, not exported | no |
-| `ai_service` | [AI services](06-processing.md#generate-text-with-ai) of the installation: `name`, `provider` (`anthropic`, `openai`), `model`, `effort`, `refusal_fallback`, `max_tokens`, `timeout_s`, `base_url`, `api_key_enc` (encrypted with `PGAPEX_SECRET_KEY`, write-only), `enabled`. Not exported | no |
+| `ai_service` | [AI services](06-processing.md#generate-text-with-ai) of the installation: `name`, `provider` (`anthropic`, `openai`), `model`, `effort`, `refusal_fallback`, `max_tokens`, `timeout_s`, `base_url`, `api_key_enc` (encrypted with `PGKILN_SECRET_KEY`, write-only), `enabled`. Not exported | no |
 | `app_ai_service` | Which applications may use which AI service, with daily limits `max_requests` and `max_tokens` (null: no limit). Not exported | no (through `meta.ai_available`) |
 | `ai_usage` | One row per AI request: `at`, `app_id`, `page_no`, `username`, `service`, `provider`, `model`, `source`, `input_tokens`, `output_tokens`, `duration_ms`, `status`, `message` (an error class, never prompt or answer text). Not exported | no |
 | `ai_conversation` | [AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant) conversations: one per session and region (`messages`: the provider's history, `turns`: what the page shows); deleted with the session. Not exported | no |
@@ -472,8 +472,8 @@ navigation entries and application processes have the same `build_option` column
 | `translation` | Per app and language: `source` (primary-language text) → `target` | yes |
 | `temp_file` | Uploaded files per session (deleted with the session; at most 20 per session). Read through the view `meta.temp_files` | no (through the view) |
 
-Outside `meta`: `public.pgapex_migration` (applied migrations), `public.pgapex_seed` (applied example
-scripts) and `public.pgapex_install_log` (each migration run that applied or failed a file: `started_at`,
+Outside `meta`: `public.pgkiln_migration` (applied migrations), `public.pgkiln_seed` (applied example
+scripts) and `public.pgkiln_install_log` (each migration run that applied or failed a file: `started_at`,
 `finished_at`, `version`, `kind` `install`/`upgrade`, `applied` files, `status`, `error`, `db_user`),
 shown under Workspace utilities → **Installation**.
 

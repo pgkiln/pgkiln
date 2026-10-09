@@ -54,7 +54,7 @@ describe('static application files (browser)', () => {
     await page.fill('#P3_SAL', '1000');
     await page.locator('#P3_SAL').dispatchEvent('change');
     await page.waitForFunction(() => document.querySelector('[data-item="P3_SAL"] .hr-annual')?.textContent === 'Per year: 12,000');
-    assert.equal(await page.evaluate(() => typeof (window as any).pgapex.actions.register), 'function');
+    assert.equal(await page.evaluate(() => typeof (window as any).pgkiln.actions.register), 'function');
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     assert.deepEqual(errors, []);
     await context.close();

@@ -28,7 +28,7 @@ import { resolveLocale, translateApp, translatePage } from './runtime/locale.ts'
 //    marked failed rather than run twice.
 //
 // Started with startProcessJobRunner() in server.ts (BACKGROUND_PROCESSES=off
-// on servers that should not run them); NOTIFY pgapex_process_job wakes it,
+// on servers that should not run them); NOTIFY pgkiln_process_job wakes it,
 // and it polls every PROCESS_JOB_INTERVAL_S seconds (default 10).
 
 const WORKER = `${hostname()}:${process.pid}`;
@@ -84,9 +84,9 @@ async function runJob(job: Job) {
   try {
     const messages = await runtime.tx(async (c) => {
       await c.query(
-        `select set_config('pgapex.app_user', $1, true), set_config('pgapex.app_id', $2, true), set_config('pgapex.session_id', '', true),
-                set_config('pgapex.process_job_id', $3, true), set_config('statement_timeout', $4, true), set_config('pgapex.lang', $5, true),
-                set_config('pgapex.tenant_id', $6, true)`,
+        `select set_config('pgkiln.app_user', $1, true), set_config('pgkiln.app_id', $2, true), set_config('pgkiln.session_id', '', true),
+                set_config('pgkiln.process_job_id', $3, true), set_config('statement_timeout', $4, true), set_config('pgkiln.lang', $5, true),
+                set_config('pgkiln.tenant_id', $6, true)`,
         [job.app_user, String(app.id), job.id, job.statement_timeout, locale.lang, job.tenant_id],
       );
       if (app.db_role) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
@@ -168,7 +168,7 @@ export async function startProcessJobRunner() {
     await listener.connect();
     listener.on('notification', () => void run());
     listener.on('error', (e) => console.error('background processes listener:', e.message));
-    await listener.query('listen pgapex_process_job');
+    await listener.query('listen pgkiln_process_job');
   } catch (e) {
     console.error('background processes: no listener, polling only:', (e as Error).message);
   }

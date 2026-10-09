@@ -1,6 +1,6 @@
 -- Workflows (APEX 23.2: Workflow). A workflow definition is a list of named
 -- steps; an instance runs them one after the other, each step in its own
--- transaction as the application's role, driven by the pgapex server
+-- transaction as the application's role, driven by the pgkiln server
 -- (src/workflow.ts). Step types:
 --   task    create a task (meta.task_definition) and wait for its outcome
 --   sql     run SQL; returned columns named like variables update them
@@ -22,7 +22,7 @@ create table meta.workflow_definition (
   steps       jsonb not null default '[]' check (jsonb_typeof(steps) = 'array'),
   unique (app_id, name)
 );
-grant select on meta.workflow_definition to pgapex_runtime;
+grant select on meta.workflow_definition to pgkiln_runtime;
 
 create table meta.workflow (
   id            bigserial primary key,
@@ -126,7 +126,7 @@ begin
   values (d.app_id, d.id, d.name, left(v_title, 500), p_detail_pk, v_vars, d.steps, d.admin_role, d.steps->0->>'name', meta.app_user())
   returning id into v_id;
   perform meta.workflow_log(v_id, null, 'started');
-  perform pg_notify('pgapex_workflow', v_id::text);
+  perform pg_notify('pgkiln_workflow', v_id::text);
   return v_id;
 end
 $$;
@@ -160,7 +160,7 @@ begin
   end if;
   update workflow set state = 'active', error = null, updated_at = now() where id = p_id;
   perform meta.workflow_log(p_id, w.current_step, 'retried');
-  perform pg_notify('pgapex_workflow', p_id::text);
+  perform pg_notify('pgkiln_workflow', p_id::text);
 end
 $$;
 
@@ -173,7 +173,7 @@ begin
   update workflow set state = 'active', updated_at = now()
    where id = new.workflow_id and state = 'waiting' and waiting_task = new.id;
   if found then
-    perform pg_notify('pgapex_workflow', new.workflow_id::text);
+    perform pg_notify('pgkiln_workflow', new.workflow_id::text);
   end if;
   return new;
 end
@@ -186,7 +186,7 @@ create trigger task_wakes_workflow after update of state on meta.task
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -229,7 +229,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

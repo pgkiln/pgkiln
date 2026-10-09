@@ -144,7 +144,7 @@ describe('working copies', () => {
     try {
       await assert.rejects(createCopy(mainId, 'ONE', 'admin'), /already a working copy/);
       await assert.rejects(createCopy(id, 'nested', 'admin'), /is a working copy/);
-      await assert.rejects(owner.query('insert into meta.working_copy (app_id, main_app_id, name, base, created_by) values ($1, $2, $3, $4, $5)', [mainId, id, 'x', '{"format":"pgapex/2"}', 'admin']), /working copy/);
+      await assert.rejects(owner.query('insert into meta.working_copy (app_id, main_app_id, name, base, created_by) values ($1, $2, $3, $4, $5)', [mainId, id, 'x', '{"format":"pgkiln/2"}', 'admin']), /working copy/);
     } finally {
       assert.ok(await deleteCopy(id));
     }

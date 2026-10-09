@@ -3,7 +3,7 @@
 // the user name in a request header (by default X-Remote-User). Anyone can
 // send that header, so it is trusted only when the direct peer of the TCP
 // connection (the socket address, never X-Forwarded-For) is one of the proxy
-// addresses in PGAPEX_AUTH_HEADER_PROXIES (comma separated IPs and CIDRs).
+// addresses in PGKILN_AUTH_HEADER_PROXIES (comma separated IPs and CIDRs).
 // Unset: header authentication is refused.
 
 import { BlockList, isIP } from 'node:net';
@@ -21,9 +21,9 @@ const VALUE = /^[\x21-\x2b\x2d-\x39\x3b-\x7e]{1,100}$/;
 
 let cached: { spec: string; list: BlockList | null } | undefined;
 
-/** The proxies from PGAPEX_AUTH_HEADER_PROXIES; null when unset or empty. Invalid entries are ignored. */
+/** The proxies from PGKILN_AUTH_HEADER_PROXIES; null when unset or empty. Invalid entries are ignored. */
 function proxies(): BlockList | null {
-  const spec = process.env.PGAPEX_AUTH_HEADER_PROXIES ?? '';
+  const spec = process.env.PGKILN_AUTH_HEADER_PROXIES ?? '';
   if (cached?.spec === spec) return cached.list;
   const list = new BlockList();
   let n = 0;

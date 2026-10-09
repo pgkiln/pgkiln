@@ -1,5 +1,5 @@
 // Character counter (item plug-in): limits the field and shows "used / maximum".
-pgapex.plugins.register('char_counter', ({ element, attributes }) => {
+pgkiln.plugins.register('char_counter', ({ element, attributes }) => {
   const input = element.querySelector('input, textarea');
   const max = Number(attributes.MAX) || 0;
   if (!input || max <= 0) return;

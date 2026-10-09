@@ -410,7 +410,7 @@ begin
   if p_kind not in ('report_form', 'grid', 'form', 'cards', 'calendar', 'chart', 'map', 'facets', 'master_detail') then
     raise exception 'unknown page type "%"', p_kind;
   end if;
-  -- the application's own data: not pgapex's or the system's tables
+  -- the application's own data: not pgkiln's or the system's tables
   if (select n.nspname ~ '^pg_' or n.nspname in ('information_schema', 'meta')
         from pg_class rel join pg_namespace n on n.oid = rel.relnamespace where rel.oid = p_table) then
     raise exception 'pages can''t be generated on %', p_table;

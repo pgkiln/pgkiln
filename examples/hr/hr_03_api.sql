@@ -8,7 +8,7 @@
 -- =====================================================================
 
 create role hr_api nologin;
-grant hr_api to pgapex_authenticator;      -- PostgREST may switch to it
+grant hr_api to pgkiln_authenticator;      -- PostgREST may switch to it
 
 update meta.app set api_role = 'hr_api' where alias = 'hr';
 

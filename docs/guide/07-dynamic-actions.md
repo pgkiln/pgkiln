@@ -59,8 +59,8 @@ the action names the function to call:
 
 ```js
 // hr.js, loaded by every page (Static application files → Every page loads)
-pgapex.actions.register('hr.annualSalary', (da) => {
-  const monthly = Number(pgapex.getValue('P3_SAL')) || 0;
+pgkiln.actions.register('hr.annualSalary', (da) => {
+  const monthly = Number(pgkiln.getValue('P3_SAL')) || 0;
   for (const field of da.elements) field.dataset.annual = String(monthly * 12);
 });
 ```
@@ -80,7 +80,7 @@ The function gets one argument with the action's context:
 | `message` | The action's message |
 
 It may return a promise; an exception is shown as an error message. Besides `actions.register`,
-`window.pgapex` offers `getValue(item)`, `setValue(item, value)`, `showSuccess(message)`,
+`window.pgkiln` offers `getValue(item)`, `setValue(item, value)`, `showSuccess(message)`,
 `showError(message, item?)`, `clearErrors(...items)` and `page` (the page number). A function
 registered later than the page loads is still found: the action waits until every deferred script
 has run. The name may contain letters, digits, `_`, `$`, `.` and `-`; the page only ever receives

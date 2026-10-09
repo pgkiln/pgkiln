@@ -113,7 +113,7 @@ revoke all on function meta.oauth_secret(), meta.oauth_hash(text),
 create or replace function meta.has_role(p_role text) returns boolean
 language plpgsql stable security definer set search_path = meta, pg_catalog as $$
 declare
-  v_session uuid := nullif(current_setting('pgapex.session_id', true), '')::uuid;
+  v_session uuid := nullif(current_setting('pgkiln.session_id', true), '')::uuid;
   v_claims  jsonb;
 begin
   if v_session is not null then
@@ -145,7 +145,7 @@ declare
   v_app    meta.app;
   v_acc    meta.account;
 begin
-  if v_claims is null or v_role is null or v_role in ('none', 'pgapex_anon') then
+  if v_claims is null or v_role is null or v_role in ('none', 'pgkiln_anon') then
     return;
   end if;
   select * into v_app from meta.app a where a.alias = v_claims->>'app';

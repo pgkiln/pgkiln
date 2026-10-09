@@ -76,7 +76,7 @@ async function throttled(ip: string) {
 }
 
 const fail = (reply: FastifyReply, e: OAuthError) => {
-  if (e.status === 401) reply.header('www-authenticate', 'Basic realm="pgapex"');
+  if (e.status === 401) reply.header('www-authenticate', 'Basic realm="pgkiln"');
   return reply.code(e.status).header('cache-control', 'no-store').send({ error: e.code, error_description: e.message });
 };
 

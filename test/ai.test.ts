@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
-process.env.PGAPEX_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
+process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner, runtime } = await import('../src/db.ts');
@@ -25,7 +25,7 @@ let appId: number;
 let pageId: number;
 let daId: number;
 const alias = 'ai-s36';
-const ROLE = 'pgapex_ai_s36';
+const ROLE = 'pgkiln_ai_s36';
 const CLAUDE = 'T_AI_CLAUDE';
 const OPENAI = 'T_AI_OPENAI';
 const OTHER = 'T_AI_OTHER';
@@ -46,7 +46,7 @@ before(async () => {
   await owner.query(`delete from meta.ai_service where name like 'T_AI_%'`);
   await owner.query(`drop role if exists ${ROLE}`);
   await owner.query(`create role ${ROLE} nologin`);
-  await owner.query(`grant ${ROLE} to pgapex_runtime`);
+  await owner.query(`grant ${ROLE} to pgkiln_runtime`);
   appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'AI test', 'none', $2) returning id`, [alias, ROLE])).id;
   pageId = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [appId])).id;
   const regionId = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Form', 'static', '<p>AI</p>') returning id`, [pageId])).id;
@@ -256,7 +256,7 @@ describe('Generate text with AI: the dynamic action', () => {
     mock.answer = 'Summary by AJAX.';
     const b = new Browser(app);
     const shown = (await page(b)).body;
-    const meta = JSON.parse(/<script type="application\/json" id="pgapex-meta"[^>]*>([\s\S]*?)<\/script>/.exec(shown)?.[1] ?? 'null');
+    const meta = JSON.parse(/<script type="application\/json" id="pgkiln-meta"[^>]*>([\s\S]*?)<\/script>/.exec(shown)?.[1] ?? 'null');
     const da = meta?.das?.find((d: any) => d.id === daId);
     assert.ok(da, 'the dynamic action is on the page');
     assert.deepEqual(da.items, ['P1_SUMMARY'], 'busy: the process\'s output item');
@@ -299,7 +299,7 @@ describe('AI requests from SQL', () => {
     mock.answer = '{"ok": true}';
     const asApp = <T>(fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>) =>
       runtime.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'ann', true)`, [String(appId)]);
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'ann', true)`, [String(appId)]);
         await c.query(`set local role ${ROLE}`);
         return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
       });

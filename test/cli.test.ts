@@ -16,7 +16,7 @@ import { checkSchema } from '../src/cli/replace.ts';
 import { pendingMigrations } from '../src/migrate.ts';
 import { Browser } from './helpers.ts';
 
-const tmp = mkdtempSync(join(tmpdir(), 'pgapex-cli-'));
+const tmp = mkdtempSync(join(tmpdir(), 'pgkiln-cli-'));
 const COPIES = ['hr_cli_rt', 'hr_cli_rep', 'hr_cli_zip', 'hr_cli_txt'];
 let app: FastifyInstance;
 
@@ -112,7 +112,7 @@ describe('pgkiln command line', () => {
     const r = cli('export', 'hr', '--format', 'dir', '--out', dir);
     assert.equal(r.code, 0, r.err);
     const files = readDir(dir);
-    for (const p of ['pgapex.json', 'app.json', 'navigation.json', 'shared/lovs/departments.json', 'globalization/text-messages.json', 'shared/template-components/status_badge.json'])
+    for (const p of ['pgkiln.json', 'app.json', 'navigation.json', 'shared/lovs/departments.json', 'globalization/text-messages.json', 'shared/template-components/status_badge.json'])
       assert.ok(files.has(p), p);
     const page3 = [...files.keys()].filter((p) => p.startsWith('pages/0003-employees-form/'));
     assert.ok(page3.includes('pages/0003-employees-form/page.json'));
@@ -202,9 +202,9 @@ describe('pgkiln command line', () => {
     const r = cli('export', 'hr', '-f', 'text', '-o', dir);
     assert.equal(r.code, 0, r.err);
     const files = readDir(dir);
-    assert.deepEqual(JSON.parse(files.get('pgapex.json')!.toString()), { format: 'pgapex/2', layout: 1, style: 'text' });
+    assert.deepEqual(JSON.parse(files.get('pgkiln.json')!.toString()), { format: 'pgkiln/2', layout: 1, style: 'text' });
     const paths = [...files.keys()];
-    assert.ok(!paths.some((p) => p.endsWith('.json') && p !== 'pgapex.json' && !p.startsWith('static/')), 'every component is YAML');
+    assert.ok(!paths.some((p) => p.endsWith('.json') && p !== 'pgkiln.json' && !p.startsWith('static/')), 'every component is YAML');
     assert.ok(!paths.some((p) => /\.(sql|html)$/.test(p) && !p.startsWith('static/')), 'code is inline, not in sibling files');
     assert.ok(files.has('app.yaml') && files.has('navigation.yaml'));
     const region = paths.find((p) => p.startsWith('pages/0002-employees/regions/') && files.get(p)!.toString().includes('source: |2'))!;
@@ -227,7 +227,7 @@ describe('pgkiln command line', () => {
   });
 
   test('a directory may mix JSON and YAML files; the same component twice is refused', () => {
-    const doc = { format: 'pgapex/2', app: { alias: 'x', name: 'X' }, lovs: [{ name: 'DEPTS', query: 'select 1' }], pages: [{ page_no: 1, name: 'Home', regions: [{ id: 1, seq: 10, title: 'Main', type: 'static', source: 'x' }] }] };
+    const doc = { format: 'pgkiln/2', app: { alias: 'x', name: 'X' }, lovs: [{ name: 'DEPTS', query: 'select 1' }], pages: [{ page_no: 1, name: 'Home', regions: [{ id: 1, seq: 10, title: 'Main', type: 'static', source: 'x' }] }] };
     const json = docToFiles(doc);
     const text = docToFiles(doc, 'text');
     const mixed = new Map(json);
@@ -252,7 +252,7 @@ describe('pgkiln command line', () => {
       regionKeys([{ title: 'Employees' }, { title: 'Other', static_id: 'employees' }, { title: 'Employees' }, { title: 'X', static_id: 'Bad Id' }]),
       ['employees-2', 'employees', 'employees-3', 'x'],
     );
-    const doc = { format: 'pgapex/2', app: { alias: 'x' }, pages: [{ page_no: 1, name: 'Home',
+    const doc = { format: 'pgkiln/2', app: { alias: 'x' }, pages: [{ page_no: 1, name: 'Home',
       regions: [{ id: 7, seq: 10, title: 'Renamed title', static_id: 'staff', type: 'report', source: 'select 1' }, { id: 8, seq: 20, title: 'Map', type: 'map', config: { report: 7 } }],
       items: [{ name: 'P1_X', region_id: 7 }] }] };
     const files = docToFiles(doc);
@@ -295,7 +295,7 @@ describe('pgkiln command line', () => {
     const after = await owner.one(`select id, name, alias from meta.app where alias = 'hr_cli_rep'`);
     assert.equal(after.id, before.id, 'same application id');
     assert.equal(after.name, 'HR v2');
-    assert.equal((await owner.one(`select count(*)::int as n from meta.app where alias like 'pgapex-replace-%'`)).n, 0, 'no temporary app left');
+    assert.equal((await owner.one(`select count(*)::int as n from meta.app where alias like 'pgkiln-replace-%'`)).n, 0, 'no temporary app left');
     const p2 = await owner.one(
       `select r.id, r.source from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.title = 'Employees'`,
       [after.id],
@@ -321,7 +321,7 @@ describe('pgkiln command line', () => {
   });
 
   test('broken directories are reported', () => {
-    const files = docToFiles({ format: 'pgapex/2', app: { alias: 'x' }, pages: [{ page_no: 1, name: 'P', regions: [{ id: 7, seq: 10, title: 'R', type: 'static' }], items: [{ seq: 1, name: 'P1_X', region_id: 7 }] }] });
+    const files = docToFiles({ format: 'pgkiln/2', app: { alias: 'x' }, pages: [{ page_no: 1, name: 'P', regions: [{ id: 7, seq: 10, title: 'R', type: 'static' }], items: [{ seq: 1, name: 'P1_X', region_id: 7 }] }] });
     assert.ok(files.has('pages/0001-p/regions/0010-r.json'));
     const doc = filesToDoc(files);
     assert.equal(doc.pages[0].items[0].region_id, doc.pages[0].regions[0].id);
@@ -332,13 +332,13 @@ describe('pgkiln command line', () => {
     orphan.set('pages/0001-p/regions/0099-gone.source.sql', Buffer.from('select 1\n'));
     assert.throws(() => filesToDoc(orphan), /not part of a component/);
     const none = new Map(files);
-    none.delete('pgapex.json');
-    assert.throws(() => filesToDoc(none), /pgapex\.json not found/);
+    none.delete('pgkiln.json');
+    assert.throws(() => filesToDoc(none), /pgkiln\.json not found/);
     // keys
     assert.equal(slug("Who's out — été"), 'who-s-out-ete');
     assert.deepEqual(regionKeys([{ title: 'A' }, { title: 'a' }, { title: null, type: 'chart' }]), ['a', 'a-2', 'chart']);
     // code round trip keeps trailing newlines and short values inline
-    const code = docToFiles({ format: 'pgapex/2', app: {}, lovs: [{ name: 'L', query: 'select 1\nfrom t\n' }, { name: 'S', query: 'select 2' }] });
+    const code = docToFiles({ format: 'pgkiln/2', app: {}, lovs: [{ name: 'L', query: 'select 1\nfrom t\n' }, { name: 'S', query: 'select 2' }] });
     assert.equal(code.get('shared/lovs/l.query.sql')!.toString(), 'select 1\nfrom t\n\n');
     assert.equal(JSON.parse(code.get('shared/lovs/s.json')!.toString()).query, 'select 2');
     assert.deepEqual(filesToDoc(code).lovs, [{ name: 'L', query: 'select 1\nfrom t\n' }, { name: 'S', query: 'select 2' }]);
@@ -346,7 +346,7 @@ describe('pgkiln command line', () => {
 
   test('sections and arrays added by later versions travel along', () => {
     const doc = {
-      format: 'pgapex/2', app: { alias: 'x' }, future_things: [{ name: 'a' }],
+      format: 'pgkiln/2', app: { alias: 'x' }, future_things: [{ name: 'a' }],
       pages: [{ page_no: 1, name: 'P', regions: [{ id: 7, seq: 10, title: 'R', type: 'static' }], widgets: [{ region_id: 7, x: 1 }] }],
     };
     const files = docToFiles(doc);
@@ -359,7 +359,7 @@ describe('pgkiln command line', () => {
 
   test('binary values travel as files', () => {
     const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
-    const doc = { format: 'pgapex/2', app: { pwa_icon: '\\x' + png.toString('hex') }, report_layouts: [{ name: 'Letter', logo: png.toString('base64') }] };
+    const doc = { format: 'pgkiln/2', app: { pwa_icon: '\\x' + png.toString('hex') }, report_layouts: [{ name: 'Letter', logo: png.toString('base64') }] };
     const files = docToFiles(doc);
     assert.ok(files.get('app.pwa_icon.png')!.equals(png));
     assert.ok(files.get('shared/report-layouts/letter.logo.png')!.equals(png));
@@ -396,7 +396,7 @@ describe('pgkiln command line', () => {
     const id = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
     const res = await dev.get(`/builder/apps/${id}/export?format=dir`);
     assert.equal(res.statusCode, 200);
-    assert.match(String(res.headers['content-disposition']), /hr\.pgapex\.zip/);
+    assert.match(String(res.headers['content-disposition']), /hr\.pgkiln\.zip/);
     const zip = res.rawPayload;
     const files = readZip(zip);
     assert.deepEqual([...files.keys()].sort(), [...docToFiles(await exportDoc('hr')).keys()].sort());

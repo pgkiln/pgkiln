@@ -2,11 +2,11 @@
 -- REST data sources, web credentials and the "Invoke API" process
 -- (APEX: REST Data Sources, Web Credentials, Invoke API).
 --
--- meta.web_credential: how pgapex signs in to a web service: HTTP basic
+-- meta.web_credential: how pgkiln signs in to a web service: HTTP basic
 -- authentication, an HTTP header (API key), a bearer token, or OAuth2
--- client credentials (pgapex fetches, caches and renews the access token).
+-- client credentials (pgkiln fetches, caches and renews the access token).
 -- The secret (password, header value, token or client secret) is encrypted
--- by the server (AES-256-GCM with the key in PGAPEX_SECRET_KEY) before it
+-- by the server (AES-256-GCM with the key in PGKILN_SECRET_KEY) before it
 -- is stored, is write-only in the builder, is never exported, and is not
 -- readable by the runtime role: the server loads it with the owner pool.
 --
@@ -17,9 +17,9 @@
 -- (meta.lov.rest_source) use it instead of SQL: their SQL, if any, reads
 -- the rows from a CTE named "rest". Responses can be cached for N seconds.
 --
--- Outgoing requests only go to hosts in PGAPEX_REST_ALLOWED_HOSTS, never
+-- Outgoing requests only go to hosts in PGKILN_REST_ALLOWED_HOSTS, never
 -- to private, loopback or link-local addresses (after DNS resolution)
--- unless the host is in PGAPEX_REST_PRIVATE_HOSTS (src/webclient.ts).
+-- unless the host is in PGKILN_REST_PRIVATE_HOSTS (src/webclient.ts).
 --
 -- Components refer to sources and credentials by name, so nothing needs
 -- remapping on import.
@@ -45,7 +45,7 @@ create table meta.web_credential (
   unique (app_id, name)
 );
 -- the runtime role sees everything but the secret
-grant select (id, app_id, name, description, type, username, header_name, token_url, scope, valid_for) on meta.web_credential to pgapex_runtime;
+grant select (id, app_id, name, description, type, username, header_name, token_url, scope, valid_for) on meta.web_credential to pgkiln_runtime;
 
 create table meta.rest_source (
   id            serial primary key,
@@ -71,7 +71,7 @@ create table meta.rest_source (
   max_rows      int  not null default 1000 check (max_rows between 1 and 50000),
   unique (app_id, name)
 );
-grant select on meta.rest_source to pgapex_runtime;
+grant select on meta.rest_source to pgkiln_runtime;
 
 -- regions and shared lists of values may read a REST data source instead of (or through) SQL
 alter table meta.region add column rest_source text;
@@ -96,7 +96,7 @@ $$;
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -145,7 +145,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

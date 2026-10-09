@@ -607,7 +607,7 @@ export async function openDownload(ctx: PageContext, r: Region, format: 'csv' | 
   const st = reportState(ctx, r);
   const c = ctx.client!;
   const query = await buildSql(ctx, r, st, format);
-  const cursor = 'pgapex_download';
+  const cursor = 'pgkiln_download';
   await savepoint(c, () => c.query({ text: `declare ${cursor} no scroll cursor for ${query.text}`, values: query.values }));
   const next = () => savepoint(c, () => c.query({ text: `fetch ${DOWNLOAD_BATCH} from ${cursor}`, rowMode: 'array' }));
   const first = await next();

@@ -1,4 +1,4 @@
-pgapex
+pgkiln
 Copyright 2026 Vargar
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
@@ -7,6 +7,6 @@ Oracle and Oracle APEX are registered trademarks of Oracle and/or its
 affiliates. This project is not affiliated with, endorsed by, or sponsored
 by Oracle.
 
-Third-party components shipped with pgapex keep their own licences: Leaflet
+Third-party components shipped with pgkiln keep their own licences: Leaflet
 (BSD-2-Clause) for map regions and Lucide icons (ISC, https://lucide.dev/license),
 served from their npm packages.

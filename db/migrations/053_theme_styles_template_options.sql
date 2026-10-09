@@ -52,4 +52,4 @@ create table meta.account_style (
   style      text not null check (style = '' or style ~ '^[A-Za-z0-9][A-Za-z0-9 _-]{0,29}$'),
   primary key (account_id, app_id)
 );
-grant select, insert, update, delete on meta.account_style to pgapex_runtime;
+grant select, insert, update, delete on meta.account_style to pgkiln_runtime;

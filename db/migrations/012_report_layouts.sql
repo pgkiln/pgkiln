@@ -46,7 +46,7 @@ create trigger report_layout_one_default before insert or update of is_default o
   for each row when (new.is_default) execute function meta.report_layout_one_default();
 
 revoke all on meta.report_layout from public;
-grant select on meta.report_layout to pgapex_runtime;
+grant select on meta.report_layout to pgkiln_runtime;
 
 -- Export and import include report layouts (the logo as base64).
 alter function meta.export_app(text) rename to export_app_base;

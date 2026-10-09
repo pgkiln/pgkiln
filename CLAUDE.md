@@ -23,5 +23,5 @@ Use the `pgkiln` MCP server (`.mcp.json`; `node bin/pgkiln.js mcp`, see docs/gui
   `db/migrations/` may depend on it; defaults and help texts use neutral names (`sales.orders`, `P3_ID`).
 - Schema changes go in a new `db/migrations/NNN_*.sql`; never edit a released migration.
 - Input or authorization changes need a test in `test/security.test.ts`; UI changes must pass `npm run test:e2e`.
-- `npm test` needs the dev database (Docker container `pgapex-db`, port 5434); the app runs on port 3100.
+- `npm test` needs the dev database (Docker container `pgkiln-db`, port 5434); the app runs on port 3100.
 - Docs are part of done: update the `docs/guide/*` chapter, `CHANGELOG.md` and `docs/apex-feature-parity.md`.

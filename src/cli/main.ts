@@ -136,9 +136,9 @@ const COMMANDS: Record<string, Command> = {
     usage: 'pgkiln export <alias> [--format json|dir|text] [--out <path>]',
     summary: 'export an application as one JSON file or as a directory with a file per component',
     details:
-      'json (default) writes the pgapex/2 document (sorted keys) to --out or standard output.\n' +
+      'json (default) writes the pgkiln/2 document (sorted keys) to --out or standard output.\n' +
       'dir writes a directory (default ./<alias>): files that are no longer part of the application\n' +
-      'are removed, dot files (.git) are left alone; a non-empty directory without pgapex.json is refused.\n' +
+      'are removed, dot files (.git) are left alone; a non-empty directory without pgkiln.json is refused.\n' +
       'text writes the same directory with YAML instead of JSON and the code inline (APEXlang-like).',
     options: { format: { type: 'string', short: 'f', default: 'json' }, out: { type: 'string', short: 'o' } },
     optionHelp: [
@@ -249,7 +249,7 @@ const COMMANDS: Record<string, Command> = {
     usage: 'pgkiln plugin build <dir> [-o <file>] | pgkiln plugin install <file|dir> --app <alias> [--replace]',
     summary: 'build a plug-in file from its sources, or install one into an application',
     details:
-      'A plug-in source directory holds plugin.json (format pgapex-plugin/2 without file contents),\n' +
+      'A plug-in source directory holds plugin.json (format pgkiln-plugin/2 without file contents),\n' +
       'the files it lists (JavaScript, CSS, …), template.html (and wrapper.html) for a region plug-in\'s\n' +
       'template component, and install.sql. build writes <name>.plugin.json (or -o); install adds the\n' +
       'plug-in, its files and template to an application. Install SQL never runs: review it and run\n' +
@@ -451,7 +451,7 @@ export async function main(argv: string[]): Promise<number> {
   } catch (e) {
     const usage = e instanceof UsageError || (e as { code?: string }).code?.startsWith('ERR_PARSE_ARGS');
     err(`pgkiln${cmd ? ' ' + name : ''}: ${(e as Error).message}\n`);
-    if (usage) err(`Run 'pgapex ${cmd ? name + ' ' : ''}--help' for usage.\n`);
+    if (usage) err(`Run 'pgkiln ${cmd ? name + ' ' : ''}--help' for usage.\n`);
     return usage ? EXIT.usage : EXIT.failure;
   }
 }

@@ -9,7 +9,7 @@
 -- Page 23 (Web services) gets a "Check in a workflow" button that starts it.
 --
 -- Like page 23, it needs the server to allow its own host, e.g. in .env
--- PGAPEX_REST_PRIVATE_HOSTS=127.0.0.1:3100; otherwise the step faults with
+-- PGKILN_REST_PRIVATE_HOSTS=127.0.0.1:3100; otherwise the step faults with
 -- the allow-list message, and an administrator (king) can retry it from the
 -- workflow console on page 14 once the setting is there.
 -- =====================================================================

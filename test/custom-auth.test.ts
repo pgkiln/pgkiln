@@ -12,7 +12,7 @@ import { Browser } from './helpers.ts';
 let app: FastifyInstance;
 let appId: number;
 const alias = 'custom-auth-f31';
-const ROLE = 'pgapex_f31_custom';
+const ROLE = 'pgkiln_f31_custom';
 const SCHEMA = 'f31_custom';
 
 before(async () => {
@@ -20,7 +20,7 @@ before(async () => {
   await owner.query(`drop schema if exists ${SCHEMA} cascade`);
   await owner.query(`drop role if exists ${ROLE}`);
   await owner.query(`create role ${ROLE} nologin`);
-  await owner.query(`grant ${ROLE} to pgapex_runtime`);
+  await owner.query(`grant ${ROLE} to pgkiln_runtime`);
   await owner.query(`create schema ${SCHEMA}`);
   await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
   await owner.query(`create table ${SCHEMA}.users (name text primary key, pw_hash text not null, locked boolean not null default false, last_login timestamptz)`);

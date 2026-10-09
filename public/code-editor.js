@@ -20,7 +20,7 @@
 // and highlighted text are built as text nodes, never parsed as HTML.
 (() => {
   'use strict';
-  if (window.pgapexCodeEditor) return;
+  if (window.pgkilnCodeEditor) return;
 
   const INDENT = '  ';
   const words = (s) => s.trim().split(/\s+/);
@@ -1004,10 +1004,10 @@
       editors.set(ta, new Editor(ta));
     }
   }
-  window.pgapexCodeEditor = { enhance, editorOf: (ta) => editors.get(ta) };
+  window.pgkilnCodeEditor = { enhance, editorOf: (ta) => editors.get(ta) };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => enhance());
   else enhance();
-  document.addEventListener('pgapex:replaced', (e) => enhance(e.detail && e.detail.parentElement ? e.detail.parentElement : document));
+  document.addEventListener('pgkiln:replaced', (e) => enhance(e.detail && e.detail.parentElement ? e.detail.parentElement : document));
   // keep the caret position and bracket match current
   document.addEventListener('selectionchange', () => {
     const ta = document.activeElement;

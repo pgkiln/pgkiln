@@ -66,9 +66,9 @@ async function functionBody(ctx: PageContext, body: string): Promise<string | nu
   const code = applyBinds(body, bindValues(ctx)).trim();
   const block = /^(declare|begin)\b/i.test(code) ? code : `begin\n${code}\nend`;
   const id = randomBytes(8).toString('hex');
-  const tag = `$pgapex_${id}$`;
+  const tag = `$pgkiln_${id}$`;
   if (block.includes(tag)) throw new Error('The function body contains the generated quote tag.');
-  const fn = `pg_temp.pgapex_computation_${id}`;
+  const fn = `pg_temp.pgkiln_computation_${id}`;
   await c.query(`create function ${fn}() returns text language plpgsql as ${tag}\n${block}\n${tag}`);
   const res = await c.query(`select ${fn}() as v`);
   await c.query(`drop function ${fn}()`);

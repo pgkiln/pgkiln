@@ -1,5 +1,5 @@
 {
-  "realm": "pgapex",
+  "realm": "pgkiln",
   "enabled": true,
   "displayName": "pgkiln demo",
   "groups": [{ "name": "hr-admins" }, { "name": "hr-managers" }],
@@ -25,11 +25,11 @@
   ],
   "clients": [
     {
-      "clientId": "pgapex",
-      "name": "pgapex (development)",
+      "clientId": "pgkiln",
+      "name": "pgkiln (development)",
       "enabled": true,
       "publicClient": false,
-      "secret": "pgapex-dev-secret",
+      "secret": "pgkiln-dev-secret",
       "redirectUris": ["http://127.0.0.1:3100/sso/callback/keycloak"],
       "webOrigins": ["http://127.0.0.1:3100"],
       "standardFlowEnabled": true,
@@ -52,7 +52,7 @@
     },
     {
       "clientId": "http://127.0.0.1:3100/sso/saml/keycloak-saml/metadata",
-      "name": "pgapex (SAML, development)",
+      "name": "pgkiln (SAML, development)",
       "protocol": "saml",
       "enabled": true,
       "redirectUris": ["http://127.0.0.1:3100/sso/saml/keycloak-saml"],

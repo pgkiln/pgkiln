@@ -720,7 +720,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // the page's tile URLs carry a version (v=), so a minute in the browser's cache is safe
     reply.header('cache-control', 'private, max-age=60');
     reply.header('content-type', 'application/vnd.mapbox-vector-tile');
-    if (out.truncated) reply.header('x-pgapex-truncated', '1');
+    if (out.truncated) reply.header('x-pgkiln-truncated', '1');
     return reply.send(out.tile);
   });
 
@@ -1180,7 +1180,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- single sign-on (OpenID Connect)
-  const SSO_COOKIE = 'pgapex_sso';
+  const SSO_COOKIE = 'pgkiln_sso';
 
   app.get<{ Params: { alias: string; provider: string }; Querystring: { next?: string } }>('/a/:alias/sso/:provider', async (req, reply) => {
     const loaded = await appWithLocale(req, req.params.alias);

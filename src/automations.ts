@@ -228,9 +228,9 @@ export async function runAutomation(id: number, trigger: 'schedule' | 'manual' =
 async function execute(def: Definition): Promise<{ rows: number; failed: number; errors: RowError[] }> {
   return runtime.tx(async (c) => {
     await c.query(
-      `select set_config('pgapex.app_user', $1, true), set_config('pgapex.app_id', $2, true),
-              set_config('pgapex.automation_id', $3, true), set_config('pgapex.session_id', '', true),
-              set_config('pgapex.automation_chain', $4, true), set_config('statement_timeout', $5, true)`,
+      `select set_config('pgkiln.app_user', $1, true), set_config('pgkiln.app_id', $2, true),
+              set_config('pgkiln.automation_id', $3, true), set_config('pgkiln.session_id', '', true),
+              set_config('pgkiln.automation_chain', $4, true), set_config('statement_timeout', $5, true)`,
       [def.binds.APP_USER, String(def.app_id), String(def.id), `,${def.id},`, `${def.timeout_s}s`],
     );
     if (def.db_role) await c.query(`set local role ${pg.escapeIdentifier(def.db_role)}`);

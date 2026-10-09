@@ -28,5 +28,5 @@ alter table meta.account
 
 comment on column meta.account.time_zone is 'the user''s own time zone (applications with an automatic time zone); null: the browser''s';
 
-grant select (time_zone) on meta.account to pgapex_runtime;
-grant update (time_zone) on meta.account to pgapex_runtime;
+grant select (time_zone) on meta.account to pgkiln_runtime;
+grant update (time_zone) on meta.account to pgkiln_runtime;

@@ -46,7 +46,7 @@ export async function documentRoutes(app: FastifyInstance) {
     try {
       await c.query('begin');
       await c.query(`set local statement_timeout = '10s'`);
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(a.id), s.username ?? 'builder']);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(a.id), s.username ?? 'builder']);
       if (a.db_role) await c.query(`set local role ${pg.escapeIdentifier(a.db_role)}`);
       const now = new Date().toISOString();
       const data = await documentData(c, applyBinds(tpl.query.trim().replace(/;+\s*$/, ''), binds), { APP_USER: s.username ?? 'builder', APP_NAME: a.name, TODAY: now.slice(0, 10), NOW: now });

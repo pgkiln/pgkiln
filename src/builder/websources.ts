@@ -89,7 +89,7 @@ export const REST_SOURCE_SPEC: ComponentSpec = {
     { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: 'Regions and lists of values use it by this name, e.g. COUNTRIES.' },
     { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
     { name: 'url', label: 'URL', kind: 'text', wide: true, group: 'Request',
-      help: 'e.g. https://api.example.com/v1/cities/{city}/weather — {name} is a path parameter. The host must be on the server\'s allow-list (PGAPEX_REST_ALLOWED_HOSTS).' },
+      help: 'e.g. https://api.example.com/v1/cities/{city}/weather — {name} is a path parameter. The host must be on the server\'s allow-list (PGKILN_REST_ALLOWED_HOSTS).' },
     { name: 'method', label: 'Method', kind: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], group: 'Request' },
     { name: 'credential', label: 'Web credential', kind: 'upper', group: 'Request', help: 'The name of a web credential, or empty.' },
     { name: 'params', label: 'Parameters (JSON)', kind: 'json', wide: true, group: 'Request',
@@ -157,7 +157,7 @@ export function credentialExtras(
           ? html`<b>A refresh token is stored</b> (encrypted)${row.token_refreshed_at ? html`, received ${new Date(row.token_refreshed_at).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ''}. pgkiln uses it to renew the access token and keeps the newer one the service sends.`
           : grant === 'refresh_token' ? html`<b>No refresh token yet.</b> Enter one above.` : html`No refresh token yet (kept when the token endpoint sends one).`}</p>`
       : ''}
-    ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGAPEX_SECRET_KEY</code>: secrets can't be saved or used until it is set (at least 32 characters).</div>`}
+    ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: secrets can't be saved or used until it is set (at least 32 characters).</div>`}
     <div class="buttons">${row.secret_enc ? clear('secret') : ''}${row.password_enc ? clear('password') : ''}${row.refresh_token_enc ? clear('refresh') : ''}</div>
   </fieldset>`;
 }

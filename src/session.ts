@@ -4,7 +4,7 @@ import { hashToken, loginMaxFailuresPerIp, loginMaxFailuresPerUser, loginWindowM
 import { instanceSetting } from './instance.ts';
 
 export interface Session {
-  id: string; // internal id, exposed to SQL as pgapex.session_id
+  id: string; // internal id, exposed to SQL as pgkiln.session_id
   app_id: number | null;
   username: string | null;
   csrf_token: string;
@@ -22,7 +22,7 @@ const IDLE_MINUTES = () => instanceSetting('session_idle_minutes');
 const MAX_HOURS = () => instanceSetting('session_max_hours');
 const secure = () => process.env.COOKIE_SECURE === 'true';
 
-export const cookieName = (appId: number | null) => (appId === null ? 'pgapex_dev' : `pgapex_app_${appId}`);
+export const cookieName = (appId: number | null) => (appId === null ? 'pgkiln_dev' : `pgkiln_app_${appId}`);
 
 async function find(token: string | undefined, appId: number | null) {
   if (!token || token.length > 100) return undefined;

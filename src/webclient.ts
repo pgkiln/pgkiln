@@ -9,19 +9,19 @@ import zlib from 'node:zlib';
 // forgery protections in one place:
 //
 // - only http and https, no user name or password in the URL;
-// - the host must be on the allow-list PGAPEX_REST_ALLOWED_HOSTS
+// - the host must be on the allow-list PGKILN_REST_ALLOWED_HOSTS
 //   (comma separated: "api.example.com", "*.example.com" for subdomains,
 //   "host:8443" for one port, "*" for any public host); unset = no calls;
 // - the addresses a host name resolves to are checked when the connection
 //   is made (the checked address is the one connected to, so DNS rebinding
 //   can't swap it): private, loopback, link-local, CGNAT, multicast and
 //   other special ranges are refused unless the host is also listed in
-//   PGAPEX_REST_PRIVATE_HOSTS (which implies allowed);
+//   PGKILN_REST_PRIVATE_HOSTS (which implies allowed);
 // - redirects are followed (at most 3) only to URLs that pass the same
 //   checks, and request headers marked secret are dropped when a redirect
 //   leaves the origin;
 // - a time limit for the whole exchange and a size limit for the response
-//   (PGAPEX_REST_MAX_BYTES, default 5 MB, also after decompression).
+//   (PGKILN_REST_MAX_BYTES, default 5 MB, also after decompression).
 //
 // node:http/https rather than fetch(): fetch can't pin the checked address.
 
@@ -41,9 +41,9 @@ export interface WebRequest {
   body?: string | Buffer;
   timeoutMs?: number;
   maxBytes?: number;
-  /** maxBytes may exceed PGAPEX_REST_MAX_BYTES (object storage: files up to MAX_UPLOAD_MB) */
+  /** maxBytes may exceed PGKILN_REST_MAX_BYTES (object storage: files up to MAX_UPLOAD_MB) */
   allowLarge?: boolean;
-  /** an allow-list of its own instead of PGAPEX_REST_ALLOWED_HOSTS / PGAPEX_REST_PRIVATE_HOSTS (push services) */
+  /** an allow-list of its own instead of PGKILN_REST_ALLOWED_HOSTS / PGKILN_REST_PRIVATE_HOSTS (push services) */
   hosts?: HostLists;
 }
 
@@ -63,7 +63,7 @@ export interface WebResponse {
 export const list = (v: string | undefined) => (v ?? '').split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
 
 export const maxResponseBytes = () => {
-  const n = Number(process.env.PGAPEX_REST_MAX_BYTES);
+  const n = Number(process.env.PGKILN_REST_MAX_BYTES);
   return Number.isFinite(n) && n > 0 ? n : 5_000_000;
 };
 
@@ -83,7 +83,7 @@ function matches(entries: string[], url: URL) {
   });
 }
 
-const restHosts = (): HostLists => ({ allowed: list(process.env.PGAPEX_REST_ALLOWED_HOSTS), private: list(process.env.PGAPEX_REST_PRIVATE_HOSTS) });
+const restHosts = (): HostLists => ({ allowed: list(process.env.PGKILN_REST_ALLOWED_HOSTS), private: list(process.env.PGKILN_REST_PRIVATE_HOSTS) });
 
 /** Why the URL may not be called (null: it may, so far as the host name goes). */
 export function urlProblem(raw: string | URL, hosts: HostLists = restHosts()): string | null {
@@ -96,10 +96,10 @@ export function urlProblem(raw: string | URL, hosts: HostLists = restHosts()): s
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'Only http and https URLs can be called.';
   if (url.username || url.password) return 'The URL may not contain a user name or password: use a web credential.';
   const priv = hosts.private;
-  if (!matches([...hosts.allowed, ...priv], url)) return `The host ${url.host} is not on the server's allow-list (PGAPEX_REST_ALLOWED_HOSTS).`;
+  if (!matches([...hosts.allowed, ...priv], url)) return `The host ${url.host} is not on the server's allow-list (PGKILN_REST_ALLOWED_HOSTS).`;
   const host = url.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(host) && isPrivateAddress(host) && !matches(priv, url))
-    return `The address ${host} is private, loopback or link-local (allow it with PGAPEX_REST_PRIVATE_HOSTS).`;
+    return `The address ${host} is private, loopback or link-local (allow it with PGKILN_REST_PRIVATE_HOSTS).`;
   return null;
 }
 
@@ -151,7 +151,7 @@ function guardedLookup(allowPrivate: boolean) {
       if (!list.length) return cb(Object.assign(new Error(`${hostname} has no address`), { code: 'ENOTFOUND' }), '');
       const bad = allowPrivate ? undefined : list.find((a) => isPrivateAddress(a.address));
       if (bad)
-        return cb(Object.assign(new WebError(`The host ${hostname} resolves to a private, loopback or link-local address (allow it with PGAPEX_REST_PRIVATE_HOSTS).`), { code: 'PGXWS' }) as never, '');
+        return cb(Object.assign(new WebError(`The host ${hostname} resolves to a private, loopback or link-local address (allow it with PGKILN_REST_PRIVATE_HOSTS).`), { code: 'PGXWS' }) as never, '');
       if (options.all) cb(null, list);
       else cb(null, list[0].address, list[0].family);
     });
@@ -220,7 +220,7 @@ export async function webRequest(raw: string, req: WebRequest = {}): Promise<Web
   const maxBytes = req.allowLarge && req.maxBytes ? req.maxBytes : Math.min(req.maxBytes ?? maxResponseBytes(), maxResponseBytes());
   const deadline = Date.now() + Math.min(Math.max(req.timeoutMs ?? 10_000, 100), 60_000);
   let url = new URL(raw);
-  let headers: Record<string, string> = { 'user-agent': 'pgapex', 'accept-encoding': 'gzip, deflate', ...req.headers };
+  let headers: Record<string, string> = { 'user-agent': 'pgkiln', 'accept-encoding': 'gzip, deflate', ...req.headers };
   let method = (req.method ?? 'GET').toUpperCase();
   let body = req.body;
   const origin = url.origin;

@@ -13,7 +13,7 @@ import { appHeader, back, BASE, csrf, developer, flash, region, select, send, sh
 // views an application recorded while its debug level was on, and the timed
 // entries of each (src/debug.ts, migration 051). Workspace utilities →
 // Installation (APEX: instance administration, install/upgrade log): the
-// migration runs (src/migrate.ts writes public.pgapex_install_log) and every
+// migration runs (src/migrate.ts writes public.pgkiln_install_log) and every
 // applied migration and example script. Administrators only.
 
 const PAGE_SIZE = 50;
@@ -193,9 +193,9 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
     }
     const has = async (t: string) => !!(await owner.one('select to_regclass($1) is not null as ok', [t]))?.ok;
     const [runs, migrations, examples] = await Promise.all([
-      has('public.pgapex_install_log').then((ok) => (ok ? owner.query('select * from public.pgapex_install_log order by id desc limit 100').then((r) => r.rows) : [])),
-      has('public.pgapex_migration').then((ok) => (ok ? owner.query('select name, applied_at from public.pgapex_migration order by name desc').then((r) => r.rows) : [])),
-      has('public.pgapex_seed').then((ok) => (ok ? owner.query('select name, applied_at from public.pgapex_seed order by applied_at desc, name desc').then((r) => r.rows) : [])),
+      has('public.pgkiln_install_log').then((ok) => (ok ? owner.query('select * from public.pgkiln_install_log order by id desc limit 100').then((r) => r.rows) : [])),
+      has('public.pgkiln_migration').then((ok) => (ok ? owner.query('select name, applied_at from public.pgkiln_migration order by name desc').then((r) => r.rows) : [])),
+      has('public.pgkiln_seed').then((ok) => (ok ? owner.query('select name, applied_at from public.pgkiln_seed order by applied_at desc, name desc').then((r) => r.rows) : [])),
     ]);
     const dir = join(root, 'db/migrations');
     const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.sql')).sort() : [];

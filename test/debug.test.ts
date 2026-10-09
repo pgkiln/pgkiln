@@ -15,7 +15,7 @@ import { Browser } from './helpers.ts';
 let app: FastifyInstance;
 let appId: number;
 const alias = 'dbg-s33';
-const ROLE = 'pgapex_dbg_s33';
+const ROLE = 'pgkiln_dbg_s33';
 const SCHEMA = 'dbg_s33';
 
 /** The debug views of the test app (the log is stored after the response: wait for it). */
@@ -47,7 +47,7 @@ before(async () => {
   await owner.query(`drop schema if exists ${SCHEMA} cascade`);
   await owner.query(`drop role if exists ${ROLE}`);
   await owner.query(`create role ${ROLE} nologin`);
-  await owner.query(`grant ${ROLE} to pgapex_runtime`);
+  await owner.query(`grant ${ROLE} to pgkiln_runtime`);
   await owner.query(`create schema ${SCHEMA}`);
   await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
   await owner.query(`create table ${SCHEMA}.log (msg text)`);
@@ -241,7 +241,7 @@ describe('builder: debug viewer and installation log', () => {
   });
 
   test('migrate() logs a run that applies files, and a failed one with its error', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pgapex-mig-'));
+    const dir = mkdtempSync(join(tmpdir(), 'pgkiln-mig-'));
     const tag = `zz_dbg_s33_${process.pid}`;
     try {
       mkdirSync(join(dir, 'db/migrations'), { recursive: true });
@@ -251,14 +251,14 @@ describe('builder: debug viewer and installation log', () => {
       await migrate({ root: dir, example: tag, log: () => {} });
       writeFileSync(join(dir, `examples/${tag}/${tag}_2.sql`), 'select 1/0;');
       await assert.rejects(migrate({ root: dir, example: tag, log: () => {} }), /division by zero/);
-      const runs = (await owner.query(`select * from public.pgapex_install_log where version = '9.9.9-test' order by id`)).rows;
+      const runs = (await owner.query(`select * from public.pgkiln_install_log where version = '9.9.9-test' order by id`)).rows;
       assert.equal(runs.length, 2);
       assert.deepEqual([runs[0].kind, runs[0].status, runs[0].applied], ['upgrade', 'ok', [`examples/${tag}/${tag}_1.sql`]]);
       assert.equal(runs[1].status, 'failed');
       assert.match(runs[1].error, new RegExp(`${tag}_2\\.sql: division by zero`));
     } finally {
-      await owner.query(`delete from public.pgapex_seed where name like $1`, [`${tag}%`]);
-      await owner.query(`delete from public.pgapex_install_log where version = '9.9.9-test'`);
+      await owner.query(`delete from public.pgkiln_seed where name like $1`, [`${tag}%`]);
+      await owner.query(`delete from public.pgkiln_install_log where version = '9.9.9-test'`);
       rmSync(dir, { recursive: true, force: true });
     }
   });

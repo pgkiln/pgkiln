@@ -3,14 +3,14 @@
 --
 -- Earlier migrations extended export_app/import_app by wrapping them
 -- (export_app_base, import_app_base). This migration replaces the chain
--- with one pair of functions. The document format stays "pgapex/2"
+-- with one pair of functions. The document format stays "pgkiln/2"
 -- (described in docs/guide/03-builder.md#export-format); files exported
 -- by 0.2.0 and later import unchanged.
 --
 -- Rules for future changes (see docs/guide/12-development.md):
 --   * add new sections as new top-level keys, and read them with
 --     coalesce(p_doc->'key', '[]') so older files still import;
---   * never rename or remove a key within pgapex/2;
+--   * never rename or remove a key within pgkiln/2;
 --   * change a meta table → check that export_app/import_app still
 --     round-trip it (test/export.test.ts compares every table).
 --
@@ -25,7 +25,7 @@ drop function if exists meta.import_app_base(jsonb, text);
 create function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -63,7 +63,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 

@@ -118,7 +118,7 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
         ${await pushSection(ctx)}
       </div>
     </div>
-    <script type="application/json" id="pgapex-meta">${raw(JSON.stringify({ csrf: ctx.session.csrf_token, das: [], texts: clientTexts(ctx) }).replace(/</g, '\\u003c'))}</script>`;
+    <script type="application/json" id="pgkiln-meta">${raw(JSON.stringify({ csrf: ctx.session.csrf_token, das: [], texts: clientTexts(ctx) }).replace(/</g, '\\u003c'))}</script>`;
   ctx.vis = { regions: new Set(), items: new Set(), editable: new Set(), buttons: new Map(), dynamicActions: new Set() };
   const body = await appTx(txContext(ctx), async (c) => {
     ctx.client = c;

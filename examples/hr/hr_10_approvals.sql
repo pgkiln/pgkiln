@@ -44,9 +44,9 @@ do $$
 declare
   r record;
 begin
-  perform set_config('pgapex.app_id', (select id::text from meta.app where alias = 'hr'), true);
+  perform set_config('pgkiln.app_id', (select id::text from meta.app where alias = 'hr'), true);
   for r in select l.*, e.username from hr.leave_request l join hr.emp e on e.empno = l.empno where l.status = 'PENDING' and e.username is not null loop
-    perform set_config('pgapex.app_user', r.username, true);
+    perform set_config('pgkiln.app_user', r.username, true);
     perform meta.create_task('LEAVE_APPROVAL', r.id::text,
               jsonb_build_object('ENAME', initcap(e.ename), 'DAYS', r.days, 'START', to_char(r.start_date, 'DD Mon YYYY')),
               array_remove(array[m.username], null))

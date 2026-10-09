@@ -169,7 +169,7 @@ async function resolveConditionalStyle(ctx: PageContext) {
  * refreshed region can add its rules to it (app.js).
  */
 export const pageStyle = (ctx: PageContext) =>
-  html`<style nonce="${ctx.nonce}" id="pgapex-css">${raw([themeStyle(ctx), ctx.css.text].filter(Boolean).join('\n'))}</style>`;
+  html`<style nonce="${ctx.nonce}" id="pgkiln-css">${raw([themeStyle(ctx), ctx.css.text].filter(Boolean).join('\n'))}</style>`;
 
 // ---------------------------------------------------------------- language
 
@@ -352,7 +352,7 @@ export async function renderPage(ctx: PageContext) {
       </form>
       ${ctx.detached}
     </div>
-    <script type="application/json" id="pgapex-meta">${raw(
+    <script type="application/json" id="pgkiln-meta">${raw(
       JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);

@@ -246,7 +246,7 @@ export interface DynamicAction {
   condition_value: string | null;
   action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit'
     | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate'
-    /** (068) code: the name of a function a static file registered (pgapex.actions.register) */
+    /** (068) code: the name of a function a static file registered (pgkiln.actions.register) */
     | 'execute_javascript'
     /** (074) turn on push notifications on this device (app.js) */
     | 'push_subscribe'

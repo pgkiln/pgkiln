@@ -15,8 +15,6 @@ npx tsx src/cli/main.ts apps         # directly
 ./bin/pgkiln.js apps                 # the package's bin entry (also after npm link)
 ```
 
-The command was called `pgapex` until 0.31; `pgapex` still works as another name for it (`bin/pgapex.js`, `npm run pgapex`).
-
 It connects with `DATABASE_URL` (the owner role) from the environment or `.env`, the same as
 the server and `npm run db:migrate`; `--db <url>` overrides it. Every command has `--help`.
 
@@ -36,11 +34,11 @@ any (see [what is not exported](03-builder.md#export-format)).
 |---|---|
 | `pgkiln migrate [--example <name>]` | Applies the migrations that were not applied yet, then optionally `examples/<name>/` (same as `npm run db:migrate` / `npm run example:hr`; `--root` and `--seed` as in `scripts/migrate.ts`) |
 | `pgkiln apps [--json]` | Lists the applications: alias, number of pages, name |
-| `pgkiln export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgapex/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
+| `pgkiln export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgkiln/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
 | `pgkiln import <path> [--alias <alias>] [--replace]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place |
 | `pgkiln diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
 | `pgkiln mcp` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md) |
-| `pgkiln plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgapex-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
+| `pgkiln plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgkiln-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
 | `pgkiln plugin install <file\|dir> --app <alias> [--replace]` | Adds a plug-in (file or source directory) to an application; its install SQL is not run |
 | `pgkiln users list [--developers]` | Accounts with their applications and roles, or builder developers |
 | `pgkiln users add <username> [--developer] [--app <alias> --roles a,b] [--name …] [--email …]` | Adds an account (optionally with access to an application) or a builder developer |
@@ -57,7 +55,7 @@ never an argument, so it doesn't end up in the shell history, and it must meet t
 
 ```
 hr/
-  pgapex.json                       {"format": "pgapex/2", "layout": 1}
+  pgkiln.json                       {"format": "pgkiln/2", "layout": 1}
   app.json                          the application's settings (app.pwa_icon.png next to it)
   navigation.json                   the navigation menu as a tree
   shared/
@@ -144,7 +142,7 @@ plain or double-quoted strings (JSON escapes), numbers, `true`/`false`/`null`, a
 anchors, tags, flow collections (`[a, b]`, `{a: 1}`) and folded blocks are refused with the file
 and line; `#` comment lines are allowed (they are not kept by the next export). Text that could be
 read as something else (`yes`, `10`, `2026-01-01`, `a: b`) is written in double quotes.
-`pgapex.json` stays JSON and says `"style": "text"`.
+`pgkiln.json` stays JSON and says `"style": "text"`.
 
 `import`, `diff` and the builder's zip read JSON and YAML files alike, file by file, so a
 directory may mix them (the same component as both `.json` and `.yaml` is refused). `diff`
@@ -205,7 +203,7 @@ pgkiln import apps/hr --replace                  # deploy
 
 `export --format dir` into an existing directory removes the files of deleted components and
 leaves dot files (`.git`, `.gitattributes`) alone; it refuses a non-empty directory without a
-`pgapex.json`, so a typo can't empty the wrong folder.
+`pgkiln.json`, so a typo can't empty the wrong folder.
 
 ### diff
 
@@ -232,12 +230,12 @@ imported copy differs from its source in `app.json` (the alias) and in automatio
 
 **Export** in the builder downloads the JSON file. `/builder/apps/<id>/export?format=dir`
 (or `?format=text`) downloads the directory format as a `.zip` (one folder named after the alias, fixed timestamps,
-so the same application gives the same zip). `pgkiln import hr.pgapex.zip` and `pgkiln diff` read
+so the same application gives the same zip). `pgkiln import hr.pgkiln.zip` and `pgkiln diff` read
 the zip directly.
 
 ## For pgkiln developers
 
-- `src/appfiles.ts` turns a `pgapex/2` document into files and back (pure functions, used by the
+- `src/appfiles.ts` turns a `pgkiln/2` document into files and back (pure functions, used by the
   CLI and the builder); `meta.export_app()` and `meta.import_app()` stay the only exporter and
   importer. A new section or column needs nothing here: unknown sections go to `extra/`, unknown
   columns stay in the component's JSON, unknown arrays of a page in `page.json`.

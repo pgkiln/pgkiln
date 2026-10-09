@@ -9,7 +9,7 @@ import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
 let appId: number;
-const cookie = () => `pgapex_remember_${appId}`;
+const cookie = () => `pgkiln_remember_${appId}`;
 
 before(async () => {
   app = await buildApp({ logger: false });

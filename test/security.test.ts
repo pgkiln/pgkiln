@@ -100,15 +100,15 @@ describe('authentication', () => {
   test('the session id changes at login (no session fixation)', async () => {
     const b = new Browser();
     await b.get('/a/hr/login');
-    const before = b.cookies.get(`pgapex_app_${appId}`);
+    const before = b.cookies.get(`pgkiln_app_${appId}`);
     await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'demo', password: 'demo' });
-    const afterLogin = b.cookies.get(`pgapex_app_${appId}`);
+    const afterLogin = b.cookies.get(`pgkiln_app_${appId}`);
     assert.ok(before && afterLogin && before !== afterLogin);
   });
 
   test('session tokens are stored hashed', async () => {
     const b = await as('demo');
-    const token = b.cookies.get(`pgapex_app_${appId}`)!;
+    const token = b.cookies.get(`pgkiln_app_${appId}`)!;
     const hit = await owner.one('select count(*)::int as n from meta.session where token_hash = $1', [token]);
     assert.equal(hit.n, 0);
   });
@@ -189,7 +189,7 @@ describe('authorization', () => {
 
   test('checksums from meta.page_url() match the runtime', async () => {
     const url = await runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true)`, [String(appId)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appId)]);
       return (await c.query(`select meta.page_url(3, '{"P3_EMPNO": 7839}') as u`)).rows[0].u;
     });
     const king = await as('king');
@@ -529,7 +529,7 @@ describe('sprint 11: report views and row selection', () => {
       const res = await get(params);
       assert.equal(res.statusCode, 200, JSON.stringify(params));
       assert.doesNotMatch(res.body, /\$2[aby]\$/, 'no password hashes');
-      assert.doesNotMatch(res.body, /pgapex_runtime|syntax error/, JSON.stringify(params));
+      assert.doesNotMatch(res.body, /pgkiln_runtime|syntax error/, JSON.stringify(params));
     }
     assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
   });
@@ -578,7 +578,7 @@ describe('sprint 12: Content-Security-Policy without inline styles', () => {
       assert.doesNotMatch(csp, /unsafe-inline/, url);
       assert.doesNotMatch(res.body, /\sstyle="/, `${url} has a style attribute`);
       const nonce = nonceOf(res)!;
-      for (const m of res.body.matchAll(/<style([^>]*)>/g)) assert.equal(m[1], ` nonce="${nonce}" id="pgapex-css"`, `${url}: <style> without the nonce`);
+      for (const m of res.body.matchAll(/<style([^>]*)>/g)) assert.equal(m[1], ` nonce="${nonce}" id="pgkiln-css"`, `${url}: <style> without the nonce`);
       nonces.add(nonce);
     }
     assert.ok(nonces.size > 5, 'a new nonce for every response');
@@ -600,7 +600,7 @@ describe('sprint 12: Content-Security-Policy without inline styles', () => {
 
   test('chart geometry becomes classes; declarations cannot break out of the rule', async () => {
     const res = await (await as('king')).get('/a/hr/1');
-    const css = /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec(res.body)![1];
+    const css = /<style nonce="[^"]+" id="pgkiln-css">([\s\S]*?)<\/style>/.exec(res.body)![1];
     assert.match(css, /\.x[A-Za-z0-9]{10}\{bottom:[\d.]+%;height:[\d.]+%\}/);
     const cls = /\.(x[A-Za-z0-9]{10})\{bottom:[\d.]+%;height/.exec(css)![1];
     assert.match(res.body, new RegExp(`class="col s\\d+ ${cls}"`), 'a column carries its geometry class');
@@ -660,7 +660,7 @@ describe('sprint 16: approvals', () => {
     if (!t) return;
     const run = (user: string, sql: string, params: unknown[] = []) =>
       owner.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appId), user]);
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(appId), user]);
         await c.query('set local role hr_app');
         return c.query(sql, params);
       });
@@ -670,7 +670,7 @@ describe('sprint 16: approvals', () => {
       await assert.rejects(run('smith', sql, [t.id]), /cannot|not found/, sql);
     // another application's tasks don't exist from here
     await assert.rejects(owner.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', '-1', true), set_config('pgapex.app_user', 'king', true)`);
+      await c.query(`select set_config('pgkiln.app_id', '-1', true), set_config('pgkiln.app_user', 'king', true)`);
       return c.query('select meta.claim_task($1)', [t.id]);
     }), /not found/);
     // the app role can't touch the tables themselves
@@ -681,7 +681,7 @@ describe('sprint 16: approvals', () => {
 describe('sprint 17: workflows', () => {
   const run = (user: string, sql: string, params: unknown[] = [], appIdOverride?: number) =>
     owner.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appIdOverride ?? appId), user]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(appIdOverride ?? appId), user]);
       await c.query('set local role hr_app');
       return c.query(sql, params);
     });
@@ -718,7 +718,7 @@ describe('sprint 18: Progressive Web App', () => {
       assert.equal((await new Browser().get(url)).statusCode, 404, url);
     // the service worker carries settings only, no session or user data
     const settings = (await new Browser().get('/a/hr/sw.js')).body.split('\n')[0];
-    assert.deepEqual(Object.keys(JSON.parse(settings.replace(/^const PGAPEX = |;$/g, ''))), ['base', 'offlinePages', 'offlineSubmit', 'version']);
+    assert.deepEqual(Object.keys(JSON.parse(settings.replace(/^const PGKILN = |;$/g, ''))), ['base', 'offlinePages', 'offlineSubmit', 'version']);
   });
 });
 
@@ -833,7 +833,7 @@ describe('sprint 22: map areas and dropped files', () => {
     for (const bb of ["0,0,1,1) or (1=1", "0,0,1,1'; drop table hr.emp; --", '0,0,1,1 union select password_hash from meta.account', '1e2,0,1,1', 'NaN,0,1,1', 'Infinity,0,1,1']) {
       const res = await king.get(`/a/hr/16?${new URLSearchParams([[`r${id}_bb`, bb]])}`);
       assert.equal(res.statusCode, 200, bb);
-      assert.doesNotMatch(res.body, /Map area|syntax error|pgapex_runtime|\$2[aby]\$/, bb);
+      assert.doesNotMatch(res.body, /Map area|syntax error|pgkiln_runtime|\$2[aby]\$/, bb);
     }
     assert.ok((await owner.one('select count(*)::int as n from hr.emp')).n > 0);
   });
@@ -868,7 +868,7 @@ describe('sprint 23: workflow branches and versions', () => {
 
     const run = (sql: string, params: unknown[] = []) =>
       owner.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true)`, [String(appId)]);
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appId)]);
         await c.query('set local role hr_app');
         return c.query(sql, params);
       });
@@ -910,7 +910,7 @@ describe('sprint 23: template components and plug-ins', () => {
     const evil = ['<script>alert(1)</script>', '<img src="x" onerror="alert(1)">', '<svg onload="alert(1)"></svg>', '<a href="javascript:alert(1)">x</a>',
       '<p style="background:url(x)">x</p>', '<iframe srcdoc="x"></iframe>', '<p>#X!RAW#</p>', '<form action="/x"><button>x</button></form>', '<a href="x" data-dialog>x</a>'];
     for (const template of evil) {
-      const plugin = JSON.stringify({ format: 'pgapex-plugin/1', type: 'template_component', static_id: 'sec_evil', name: 'Evil', template });
+      const plugin = JSON.stringify({ format: 'pgkiln-plugin/1', type: 'template_component', static_id: 'sec_evil', name: 'Evil', template });
       assert.equal((await dev.post(`/builder/apps/${appId}/template-components/import`, { __csrf: dev.lastCsrf, plugin })).statusCode, 303, template);
       assert.equal((await dev.post(`/builder/apps/${appId}/shared/template_component`, { __csrf: dev.lastCsrf, static_id: 'sec_evil', name: 'Evil', template, attributes: '[]' })).statusCode, 303);
       assert.equal((await owner.one(`select count(*)::int as n from meta.template_component where static_id = 'sec_evil'`)).n, 0, template);
@@ -1496,14 +1496,14 @@ describe('sprint 26 logic: computations, branches, menus, badges, dynamic action
     await owner.query(`update meta.item set type = 'text' where page_id = $1 and name = 'P22_DAYS'`, [pid]);
     try {
       const b = await king();
-      const evil = `1'; drop table hr.emp; --$pgapex_x$ $$`;
+      const evil = `1'; drop table hr.emp; --$pgkiln_x$ $$`;
       assert.equal((await b.post('/a/hr/22', { __csrf: b.lastCsrf, P22_EMPNO: '7839', P22_DAYS: evil, __request: 'PLAN' })).statusCode, 303);
       const state = (await owner.one(`select state from meta.session where username = 'king' order by last_seen desc limit 1`)).state;
       assert.equal(state.P22_NAME, `hr_app:${evil}`);
       assert.equal(state.P22_PENDING, 'false', 'not the connection role');
       assert.ok(await owner.one(`select to_regclass('hr.emp') as t`).then((r) => r.t));
       // the temporary function does not outlive the request
-      assert.equal((await owner.one(`select count(*)::int as n from pg_proc where proname like 'pgapex_computation_%'`)).n, 0);
+      assert.equal((await owner.one(`select count(*)::int as n from pg_proc where proname like 'pgkiln_computation_%'`)).n, 0);
     } finally {
       await owner.query('delete from meta.computation where id = any($1)', [ids]);
       await owner.query(`update meta.computation set build_option = null where page_id = $1`, [pid]);
@@ -1652,9 +1652,9 @@ describe('sprint 26 data: REST data sources, web credentials, invoke_api', () =>
   const cleanup: string[] = [];
 
   before(async () => {
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
-    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
-    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
     const http = await import('node:http');
     mock = http.createServer((req, res) => {
       hits.push({ url: req.url!, auth: req.headers.authorization ?? null });
@@ -1673,7 +1673,7 @@ describe('sprint 26 data: REST data sources, web credentials, invoke_api', () =>
     await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC\\_%'`, [appId]);
     for (const sql of cleanup) await owner.query(sql);
     mock.close();
-    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+    for (const k of ['PGKILN_SECRET_KEY', 'PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS'])
       if (env[k] === undefined) delete process.env[k];
       else process.env[k] = env[k];
   });
@@ -2138,7 +2138,7 @@ describe('sprint 29 header authentication', () => {
   const alias = `hdr${Date.now()}`;
   let hdrApp: number;
   const users = ['hdr_alice', 'hdr_bob', 'hdr_off', 'hdr_noaccess'];
-  const envBefore = process.env.PGAPEX_AUTH_HEADER_PROXIES;
+  const envBefore = process.env.PGKILN_AUTH_HEADER_PROXIES;
   const PROXY = '10.1.2.3';
 
   /** a cookie-keeping client that talks to pgkiln from a given socket address */
@@ -2172,7 +2172,7 @@ describe('sprint 29 header authentication', () => {
       `select event, detail, username from meta.activity_log where app_id = $1 and event <> 'page_view' order by id desc limit 1`, [hdrApp]);
 
   before(async () => {
-    process.env.PGAPEX_AUTH_HEADER_PROXIES = `${PROXY}, 192.168.50.0/24, not-an-ip`;
+    process.env.PGKILN_AUTH_HEADER_PROXIES = `${PROXY}, 192.168.50.0/24, not-an-ip`;
     hdrApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Header test', 'header') returning id`, [alias])).id;
     await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [hdrApp]);
     for (const u of users) await owner.query(`insert into meta.account (username, active) values ($1, $2) on conflict do nothing`, [u, u !== 'hdr_off']);
@@ -2182,8 +2182,8 @@ describe('sprint 29 header authentication', () => {
   });
 
   after(async () => {
-    if (envBefore === undefined) delete process.env.PGAPEX_AUTH_HEADER_PROXIES;
-    else process.env.PGAPEX_AUTH_HEADER_PROXIES = envBefore;
+    if (envBefore === undefined) delete process.env.PGKILN_AUTH_HEADER_PROXIES;
+    else process.env.PGKILN_AUTH_HEADER_PROXIES = envBefore;
     await owner.query('delete from meta.app where id = $1', [hdrApp]);
     await owner.query(`delete from meta.account where username like 'hdr\\_%'`);
   });
@@ -2221,10 +2221,10 @@ describe('sprint 29 header authentication', () => {
     assert.equal((await c.get()).statusCode, 403);
   });
 
-  test('without PGAPEX_AUTH_HEADER_PROXIES header authentication is refused', async () => {
-    const saved = process.env.PGAPEX_AUTH_HEADER_PROXIES;
+  test('without PGKILN_AUTH_HEADER_PROXIES header authentication is refused', async () => {
+    const saved = process.env.PGKILN_AUTH_HEADER_PROXIES;
     try {
-      delete process.env.PGAPEX_AUTH_HEADER_PROXIES;
+      delete process.env.PGKILN_AUTH_HEADER_PROXIES;
       for (const addr of ['127.0.0.1', PROXY]) {
         const res = await new Client(addr).get('hdr_alice');
         assert.equal(res.statusCode, 403);
@@ -2232,18 +2232,18 @@ describe('sprint 29 header authentication', () => {
       }
       assert.match((await lastLog())!.detail, /untrusted peer/);
     } finally {
-      process.env.PGAPEX_AUTH_HEADER_PROXIES = saved;
+      process.env.PGKILN_AUTH_HEADER_PROXIES = saved;
     }
   });
 
   test('a changed or missing header ends the session', async () => {
     const c = new Client();
     await c.get('hdr_alice');
-    const first = c.cookies.get(`pgapex_app_${hdrApp}`);
+    const first = c.cookies.get(`pgkiln_app_${hdrApp}`);
     const aliceBefore = await sessions('hdr_alice');
     // another user through the same browser: the old session ends, a new one for bob
     assert.equal((await c.get('hdr_bob')).statusCode, 200);
-    assert.notEqual(c.cookies.get(`pgapex_app_${hdrApp}`), first);
+    assert.notEqual(c.cookies.get(`pgkiln_app_${hdrApp}`), first);
     assert.equal(await sessions('hdr_alice'), aliceBefore - 1);
     // header gone: the session ends
     const bobBefore = await sessions('hdr_bob');
@@ -2436,7 +2436,7 @@ describe('sprint 30', () => {
   describe('database accounts', () => {
     const dbAlias = 'dbauth-sec30';
     let dbApp: number;
-    const R = { ann: 'pgapex_s30_ann', eve: 'pgapex_s30_eve', off: 'pgapex_s30_off', boss: 'pgapex_s30_boss' };
+    const R = { ann: 'pgkiln_s30_ann', eve: 'pgkiln_s30_eve', off: 'pgkiln_s30_off', boss: 'pgkiln_s30_boss' };
     before(async () => {
       for (const r of Object.values(R)) await owner.query(`drop role if exists ${r}`);
       await owner.query(`create role ${R.ann} login password 'Ann-pw-30!'`);
@@ -2444,7 +2444,7 @@ describe('sprint 30', () => {
       await owner.query(`create role ${R.off} nologin password 'Off-pw-30!'`);
       await owner.query(`create role ${R.boss} superuser login password 'Boss-pw-30!'`);
       dbApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_auth_roles) values ($1, 'DB sec', 'database', $2) returning id`,
-        [dbAlias, [R.ann, R.off, R.boss, 'pgapex', 'pgapex_runtime']])).id;
+        [dbAlias, [R.ann, R.off, R.boss, 'pgkiln', 'pgkiln_runtime']])).id;
       await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [dbApp]);
     });
     after(async () => {
@@ -2460,7 +2460,7 @@ describe('sprint 30', () => {
     const failures = async () => (await owner.query(`select username, detail from meta.activity_log where app_id = $1 and event = 'login_failed' order by id`, [dbApp])).rows;
 
     test('wrong passwords, unlisted, NOLOGIN, superuser and pgkiln\'s own roles are refused alike; no password is logged', async () => {
-      for (const [user, pw] of [[R.ann, 'wrong'], [R.eve, 'Eve-pw-30!'], [R.off, 'Off-pw-30!'], [R.boss, 'Boss-pw-30!'], ['pgapex', 'pgapex'], ['no_such_role_s30', 'x'],
+      for (const [user, pw] of [[R.ann, 'wrong'], [R.eve, 'Eve-pw-30!'], [R.off, 'Off-pw-30!'], [R.boss, 'Boss-pw-30!'], ['pgkiln', 'pgkiln'], ['no_such_role_s30', 'x'],
         [`${R.ann}\u0000x`, 'Ann-pw-30!'], ['x'.repeat(64), 'x'], [`${R.ann}' or '1'='1`, "' or '1'='1"], [R.ann, '']] as const) {
         const { b, res } = await attempt(user, pw);
         assert.ok([401, 400].includes(res.statusCode), `${user}: ${res.statusCode}`);
@@ -2470,7 +2470,7 @@ describe('sprint 30', () => {
       const log = await failures();
       assert.ok(log.some((l) => l.username === R.eve && /role not allowed/.test(l.detail)), 'unlisted: refused before connecting');
       assert.ok(log.some((l) => l.username === R.boss && /superuser refused/.test(l.detail)));
-      assert.ok(log.some((l) => l.username === 'pgapex' && /role not allowed/.test(l.detail)));
+      assert.ok(log.some((l) => l.username === 'pgkiln' && /role not allowed/.test(l.detail)));
       assert.ok(log.some((l) => l.username === R.off && /connection refused/.test(l.detail)));
       const all = JSON.stringify((await owner.query(`select * from meta.activity_log where app_id = $1`, [dbApp])).rows);
       for (const pw of ['Ann-pw-30!', 'Eve-pw-30!', 'Off-pw-30!', 'Boss-pw-30!', 'wrong']) assert.ok(!all.includes(pw), 'no password in the log');
@@ -2504,7 +2504,7 @@ describe('sprint 30', () => {
       try {
         assert.equal((await attempt(R.ann, 'Ann-pw-30!')).res.statusCode, 401);
       } finally {
-        await owner.query('update meta.app set db_auth_roles = $2 where id = $1', [dbApp, [R.ann, R.off, R.boss, 'pgapex', 'pgapex_runtime']]);
+        await owner.query('update meta.app set db_auth_roles = $2 where id = $1', [dbApp, [R.ann, R.off, R.boss, 'pgkiln', 'pgkiln_runtime']]);
       }
     });
   });
@@ -2973,7 +2973,7 @@ describe('sprint 31 grid: interactive grid layouts, saved grid reports, master-d
       const as = async (user: string, sql: string, params: unknown[] = []) => {
         await c.query('begin');
         try {
-          await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true)`, [String(appId), user]);
+          await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(appId), user]);
           return await c.query(sql, params);
         } finally {
           await c.query('rollback');
@@ -3077,7 +3077,7 @@ describe('sprint 31 logic', () => {
     const onboard = (await owner.one(`select id from meta.process where page_id = $1 and name = 'Onboard'`, [page28])).id;
     const asApp = async <T>(user: string, fn: (q: (sql: string, p?: unknown[]) => Promise<any>) => Promise<T>) =>
       runtime.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', $2, true), set_config('pgapex.session_id', '', true)`, [String(appId), user]);
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', '', true)`, [String(appId), user]);
         await c.query(`set local role ${hrApp}`);
         return fn((sql, p) => c.query(sql, p));
       });
@@ -3087,7 +3087,7 @@ describe('sprint 31 logic', () => {
     undo.push(`delete from meta.app where id = ${Number(other.id)}`);
     await assert.rejects(
       runtime.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'king', true)`, [String(other.id)]);
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(other.id)]);
         await c.query('select meta.enqueue_process_job($1, $2)', [chain, '{}']);
       }),
       /not a background chain of this application/,
@@ -3099,7 +3099,7 @@ describe('sprint 31 logic', () => {
     // a forged job id does not lend its roles: only the running job of the same user
     await owner.query(`update meta.process_job set roles = '{admin}', state = 'completed' where id = $1`, [id]);
     const forged = await runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'scott', true), set_config('pgapex.process_job_id', $2, true)`, [String(appId), id]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'scott', true), set_config('pgkiln.process_job_id', $2, true)`, [String(appId), id]);
       return (await c.query(`select meta.has_role('admin') as ok`)).rows[0].ok;
     });
     assert.equal(forged, false);
@@ -3112,7 +3112,7 @@ describe('sprint 31 logic', () => {
     const region = (await owner.one(`select id from meta.region where page_id = $1 and title = 'Employee'`, [page28])).id;
     const item = await owner.one(`insert into meta.item (page_id, region_id, seq, name, label, type) values ($1, $2, 99, 'P28_PIN', 'PIN', 'password') returning id`, [page28, region]);
     undo.push(`delete from meta.item where id = ${Number(item.id)}`);
-    await process28({ seq: 59, name: 'sec read pgapex', type: 'sql', parent_process: 'Year-end check', code: 'select count(*) from meta.session' });
+    await process28({ seq: 59, name: 'sec read pgkiln', type: 'sql', parent_process: 'Year-end check', code: 'select count(*) from meta.session' });
     const b = await browser('king');
     assert.equal((await b.submit('/a/hr/28', { P28_EMPNO: '7839', P28_PIN: 'secret-pin', __request: 'RECALC' })).statusCode, 303);
     const job = await owner.one(`select id, binds from meta.process_job where app_id = $1 order by id desc limit 1`, [appId]);
@@ -3156,7 +3156,7 @@ describe('sprint 31 logic', () => {
 
 describe('sprint 31 builder: custom authentication, lists, locks, comments, supporting objects', () => {
   const alias = 'sec31-builder';
-  const ROLE = 'pgapex_s31_builder';
+  const ROLE = 'pgkiln_s31_builder';
   const SCHEMA = 's31_builder';
   const DEV_A = 'dev_s31a';
   const DEV_B = 'dev_s31b';
@@ -3169,7 +3169,7 @@ describe('sprint 31 builder: custom authentication, lists, locks, comments, supp
     await owner.query(`drop schema if exists ${SCHEMA} cascade`);
     await owner.query(`drop role if exists ${ROLE}`);
     await owner.query(`create role ${ROLE} nologin`);
-    await owner.query(`grant ${ROLE} to pgapex_runtime`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
     await owner.query(`create schema ${SCHEMA}`);
     await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
     await owner.query(`create table ${SCHEMA}.users (name text primary key, pw_hash text not null)`);
@@ -3245,10 +3245,10 @@ describe('sprint 31 builder: custom authentication, lists, locks, comments, supp
         await setCode(`return current_user = '${ROLE}' and session_user <> current_user;`);
         assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 303);
         // a body can't escape its function with a guessed dollar-quote tag
-        await setCode(`return true; $pgapex$; create table ${SCHEMA}.pwned(x int); $pgapex$`);
+        await setCode(`return true; $pgkiln$; create table ${SCHEMA}.pwned(x int); $pgkiln$`);
         assert.equal((await attempt('erin', 'Erin-pw-31!')).res.statusCode, 401);
         assert.equal((await owner.one(`select to_regclass('${SCHEMA}.pwned') as t`)).t, null);
-        assert.equal((await owner.one(`select count(*)::int as n from pg_proc where proname like 'pgapex_auth_%'`)).n, 0);
+        assert.equal((await owner.one(`select count(*)::int as n from pg_proc where proname like 'pgkiln_auth_%'`)).n, 0);
       } finally {
         await setCode(CHECK);
         await owner.query(`delete from meta.activity_log where app_id = $1`, [sApp]);
@@ -3513,7 +3513,7 @@ describe('sprint 32 automations: actions, error handling per row, meta.run_autom
   /** In a transaction as the HR application's role (as application code runs). */
   const asHr = <T>(fn: (c: import('pg').PoolClient) => Promise<T>) =>
     runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'allen', true)`, [String(appId)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'allen', true)`, [String(appId)]);
       await c.query('set local role hr_app');
       return fn(c);
     });
@@ -3590,9 +3590,9 @@ describe('sprint 32 item 2: workflow invoke_api steps', () => {
   let runWorkflow: (id: string) => Promise<number>;
 
   before(async () => {
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
-    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
-    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
     ({ runWorkflow } = await import('../src/workflow.ts'));
     const http = await import('node:http');
     mock = http.createServer((req, res) => {
@@ -3619,7 +3619,7 @@ describe('sprint 32 item 2: workflow invoke_api steps', () => {
     await owner.query(`delete from meta.web_credential where app_id = $1 and name like 'SEC32\\_%'`, [appId]);
     await owner.query('delete from meta.app where id = $1', [other]);
     mock.close();
-    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+    for (const k of ['PGKILN_SECRET_KEY', 'PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS'])
       if (env[k] === undefined) delete process.env[k];
       else process.env[k] = env[k];
   });
@@ -3628,7 +3628,7 @@ describe('sprint 32 item 2: workflow invoke_api steps', () => {
   const run = async (name: string, steps: unknown, vars: Record<string, unknown> = {}, detail: string | null = null) => {
     await owner.query(`insert into meta.workflow_definition (app_id, name, title, steps) values ($1, $2, 'x', $3)`, [appId, name, JSON.stringify(steps)]);
     const id = await owner.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'allen', true)`, [String(appId)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'allen', true)`, [String(appId)]);
       return (await c.query('select meta.start_workflow($1, $2, $3) as id', [name, detail, vars])).rows[0].id as string;
     });
     await runWorkflow(id);
@@ -3651,20 +3651,20 @@ describe('sprint 32 item 2: workflow invoke_api steps', () => {
     assert.equal(hits.length, n, 'no request');
   });
 
-  test('the outgoing allow-list and address checks apply; private addresses need PGAPEX_REST_PRIVATE_HOSTS', async () => {
+  test('the outgoing allow-list and address checks apply; private addresses need PGKILN_REST_PRIVATE_HOSTS', async () => {
     const n = hits.length;
     for (const [i, url] of ['http://169.254.169.254/latest/meta-data/', 'http://10.0.0.1/', 'https://example.com/', 'file:///etc/passwd'].entries()) {
       const w = await run(`SEC32_SSRF_${i}`, [{ name: 'CALL', type: 'invoke_api', url }]);
       assert.equal(w.state, 'faulted', url);
       assert.match(w.error, /allow-list|private|http/, url);
     }
-    process.env.PGAPEX_REST_PRIVATE_HOSTS = '';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '';
     try {
       const w = await run('SEC32_LOOPBACK', [{ name: 'CALL', type: 'invoke_api', url: `${mockBase}/x` }]);
       assert.equal(w.state, 'faulted');
       assert.match(w.error, /private, loopback/);
     } finally {
-      process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
     }
     assert.equal(hits.length, n, 'no request');
   });
@@ -3818,7 +3818,7 @@ describe('sprint 32 item 4: create page wizards', () => {
   before(async () => {
     await owner.query(`delete from meta.app where alias = '${alias}'`);
     await owner.query(`drop table if exists public.sec32_wiz; create table public.sec32_wiz (id int primary key, "na""me; drop table x" text, d date, n int);
-      insert into public.sec32_wiz values (1, '<script>alert(1)</script>', current_date, 5); grant select on public.sec32_wiz to pgapex_runtime`);
+      insert into public.sec32_wiz values (1, '<script>alert(1)</script>', current_date, 5); grant select on public.sec32_wiz to pgkiln_runtime`);
     wizApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Wizard security', 'none') returning id`, [alias])).id;
   });
   after(async () => {
@@ -3875,7 +3875,7 @@ describe('sprint 32 item 4: create page wizards', () => {
     assert.equal((await owner.one(`select to_regclass('public.sec32_wiz') is not null as ok`)).ok, true);
   });
 
-  test("pgapex's and the system's tables are refused; the functions are not granted to application roles", async () => {
+  test("pgkiln's and the system's tables are refused; the functions are not granted to application roles", async () => {
     for (const t of ['meta.account', 'pg_catalog.pg_authid', 'information_schema.tables'])
       await assert.rejects(generate(t, 'cards', 30, {}), /can't be generated/, t);
     const dev = await builder();
@@ -3885,7 +3885,7 @@ describe('sprint 32 item 4: create page wizards', () => {
     assert.equal(post.statusCode, 303);
     assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1 and page_no = 30', [wizApp])).n, 0);
     for (const fn of ['meta.generate_page(text, text, regclass, int, jsonb)', 'meta.wizard_defaults(text, regclass)', 'meta.wizard_catalog(regclass)', 'meta.wizard_form(meta.app, regclass, int, text, int, boolean, text[])'])
-      for (const role of ['pgapex_runtime', 'hr_app'])
+      for (const role of ['pgkiln_runtime', 'hr_app'])
         assert.equal((await owner.one('select has_function_privilege($1, $2, \'execute\') as ok', [role, fn])).ok, false, `${role} ${fn}`);
   });
 
@@ -4002,7 +4002,7 @@ describe('sprint 32 item 5: create application from a file', () => {
       `select has_table_privilege('app_sec32_ff', 'sec32_ff.sec', 'select,insert,update,delete') as own,
               has_table_privilege('app_sec32_ff', 'meta.account', 'select') as meta,
               has_schema_privilege('app_sec32_ff', 'hr', 'usage') as other,
-              pg_has_role('pgapex_runtime', 'app_sec32_ff', 'member') as runtime`,
+              pg_has_role('pgkiln_runtime', 'app_sec32_ff', 'member') as runtime`,
     );
     assert.deepEqual(priv, { own: true, meta: false, other: false, runtime: true });
     const dev = await builder();
@@ -4163,9 +4163,9 @@ describe('sprint 33 item 3: REST write-back, synchronisation, OAuth2 password an
   let crmUrl = '';
 
   before(async () => {
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
-    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1';
-    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
     const http = await import('node:http');
     mock = http.createServer((req, res) => {
       let body = '';
@@ -4190,7 +4190,7 @@ describe('sprint 33 item 3: REST write-back, synchronisation, OAuth2 password an
     await owner.query(`delete from meta.rest_source where app_id = $1 and name like 'SEC3\\_%'`, [appId]);
     for (const sql of cleanup) await owner.query(sql);
     mock.close();
-    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+    for (const k of ['PGKILN_SECRET_KEY', 'PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS'])
       if (env[k] === undefined) delete process.env[k];
       else process.env[k] = env[k];
   });
@@ -4273,7 +4273,7 @@ describe('sprint 33 item 3: REST write-back, synchronisation, OAuth2 password an
     // the log and the request function: the current application's sources only
     await assert.rejects(runtime.query('select * from meta.rest_sync_log'), /permission denied/);
     await assert.rejects(runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', '0', true)`);
+      await c.query(`select set_config('pgkiln.app_id', '0', true)`);
       await c.query(`select meta.request_rest_sync('SEC3_SYNC')`);
     }), /does not exist in this application/);
     await assert.rejects(runtime.query(`select meta.request_rest_sync('SEC3_SYNC')`), /no current application/);
@@ -4363,7 +4363,7 @@ describe('sprint 33 item 4: debug messages and the installation log', () => {
   test('application roles can not read or write the debug tables, nor call the save and purge functions', async () => {
     const role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
     for (const t of ['meta.debug_view', 'meta.debug_message'])
-      for (const r of [role, 'pgapex_runtime'])
+      for (const r of [role, 'pgkiln_runtime'])
         assert.equal((await owner.one(`select has_table_privilege($1, $2, 'select,insert,update,delete') as ok`, [r, t])).ok, false, `${r} ${t}`);
     for (const fn of ['meta.debug_save(int, int, text, uuid, text, text, int, int, timestamptz, numeric, jsonb)', 'meta.debug_purge()'])
       assert.equal((await owner.one(`select has_function_privilege($1, $2, 'execute') as ok`, [role, fn])).ok, false, `${role} ${fn}`);
@@ -4456,7 +4456,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
   /** SQL as an application's code (its role, meta.app_id() set). */
   const asApp = <T>(app: number, fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>, dbRole: string | null = role) =>
     runtime.tx(async (c) => {
-      await c.query(`select set_config('pgapex.app_id', $1, true), set_config('pgapex.app_user', 'sec', true)`, [String(app)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'sec', true)`, [String(app)]);
       if (dbRole) await c.query(`set local role ${dbRole}`);
       return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
     });
@@ -4464,9 +4464,9 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     assert.rejects(asApp(app, (q) => q(sql, params), dbRole), re);
 
   before(async () => {
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
-    process.env.PGAPEX_REST_ALLOWED_HOSTS = '127.0.0.1,api.example.com';
-    delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,api.example.com';
+    delete process.env.PGKILN_REST_PRIVATE_HOSTS;
     role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
     other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec33-wr', 'Other', 'none') returning id`)).id;
     const { encryptSecret } = await import('../src/secrets.ts');
@@ -4485,7 +4485,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     await owner.query('delete from meta.web_request_log where app_id = any($1)', [[appId, other]]);
     await owner.query('delete from meta.app where id = $1', [other]);
     mock.close();
-    for (const k of ['PGAPEX_SECRET_KEY', 'PGAPEX_REST_ALLOWED_HOSTS', 'PGAPEX_REST_PRIVATE_HOSTS'])
+    for (const k of ['PGKILN_SECRET_KEY', 'PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS'])
       if (env[k] === undefined) delete process.env[k];
       else process.env[k] = env[k];
   });
@@ -4498,14 +4498,14 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     // a committed request of another application: not taken, not finished, not readable
     const id = (await asApp(other, (q) => q(`select meta.web_request('https://api.example.com/x') as id`), null))[0].id;
     const r = await asApp(appId, async (q) => ({
-      taken: await q(`select set_config('pgapex.web_pending', '1', true)`).then(() => q('select * from meta.web_request_take(20)')),
+      taken: await q(`select set_config('pgkiln.web_pending', '1', true)`).then(() => q('select * from meta.web_request_take(20)')),
       response: (await q('select meta.web_response($1) as r, meta.web_response_blob($1) as b', [id]))[0],
     }));
     assert.deepEqual(r.taken, []);
     assert.deepEqual(r.response, { r: null, b: null });
     // even the same application can't take or finish a committed request from SQL: only the scheduler does
     const own = await asApp(other, async (q) => {
-      await q(`select set_config('pgapex.web_pending', '1', true)`);
+      await q(`select set_config('pgkiln.web_pending', '1', true)`);
       const taken = await q('select * from meta.web_request_take(20)');
       await q(`select meta.web_request_done($1, 'ok', 200, null, '{}', 'forged', null)`, [id]);
       return taken;
@@ -4547,7 +4547,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     const wr = await import('../src/webrequests.ts');
     const at = (url: string, more: Record<string, unknown> = {}) =>
       wr.execute(other, { id: '0', source: null, params: null, url, method: 'GET', headers: {}, body: null, credential: null, timeout_s: 5, ...more });
-    // 127.0.0.1 is allowed but private (PGAPEX_REST_PRIVATE_HOSTS unset): refused before connecting
+    // 127.0.0.1 is allowed but private (PGKILN_REST_PRIVATE_HOSTS unset): refused before connecting
     let r = await at(`${mockBase}/x`);
     assert.equal(r.status, 'error');
     assert.match(r.message!, /private, loopback or link-local/);
@@ -4562,7 +4562,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     assert.match(r.message!, /not valid for this URL/);
     assert.ok(!JSON.stringify(r).includes('other-app-s3cret'));
     // a header that smuggles a line break (edited in the table by the owner) is dropped, not sent
-    process.env.PGAPEX_REST_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
     try {
       r = await at(`${mockBase}/h`, { headers: { 'x-ok': 'fine', 'x-bad': 'a\r\nInjected: 1' } });
       assert.equal(r.status, 'ok');
@@ -4570,7 +4570,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
       assert.equal(hits.at(-1)!.headers['injected'], undefined);
       assert.equal(hits.at(-1)!.headers['x-bad'], undefined);
     } finally {
-      delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+      delete process.env.PGKILN_REST_PRIVATE_HOSTS;
     }
   });
 
@@ -4590,7 +4590,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
 });
 
 describe('sprint 33 item 6: Theme Roller style variants and template options', () => {
-  const styleTag = (body: string) => /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec(body)?.[1] ?? '';
+  const styleTag = (body: string) => /<style nonce="[^"]+" id="pgkiln-css">([\s\S]*?)<\/style>/.exec(body)?.[1] ?? '';
 
   test('stored style values and names cannot inject CSS or HTML', async () => {
     const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
@@ -5224,7 +5224,7 @@ describe('sprint 36 ai foundation', () => {
   let other = 0;
   let role = '';
   before(async () => {
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
     mock = await (await import('./ai-mock.ts')).startAiMock();
     await owner.query(`delete from meta.ai_service where name like 'SEC_AI%'`);
     await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
@@ -5242,7 +5242,7 @@ describe('sprint 36 ai foundation', () => {
     await owner.query('delete from meta.app where id = $1', [other]);
     await owner.query('delete from meta.developer where username = $1', [DEV]);
     await mock.close();
-    for (const k of ['PGAPEX_SECRET_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (env[k] === undefined) delete process.env[k];
+    for (const k of ['PGKILN_SECRET_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (env[k] === undefined) delete process.env[k];
     else process.env[k] = env[k];
   });
 
@@ -5340,7 +5340,7 @@ describe('sprint 36 ai foundation', () => {
   test('SQL requests are confined to the calling application and its own transaction', async () => {
     const asApp = <T>(app: number, fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>) =>
       runtime.tx(async (c) => {
-        await c.query(`select set_config('pgapex.app_id', $1, true)`, [String(app)]);
+        await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(app)]);
         await c.query(`set local role ${role}`);
         return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
       });
@@ -5353,7 +5353,7 @@ describe('sprint 36 ai foundation', () => {
       assert.equal((await asApp(other, (q) => q('select meta.ai_result($1) as r', [id])))[0].r, null, 'another application sees nothing');
       // a later transaction can neither take nor complete it
       const taken = await asApp(appId, async (q) => {
-        await q(`select set_config('pgapex.ai_pending', '1', true)`);
+        await q(`select set_config('pgkiln.ai_pending', '1', true)`);
         return q('select * from meta.ai_request_take(10)');
       });
       assert.equal(taken.length, 0);
@@ -5407,7 +5407,7 @@ describe('sprint 36 ai assistant', () => {
   let pageId = 0;
   const calls = () => mock.seen.length;
   before(async () => {
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
     const { encryptSecret } = await import('../src/secrets.ts');
     mock = await (await import('./ai-script-mock.ts')).startScriptMock();
     await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
@@ -5423,8 +5423,8 @@ describe('sprint 36 ai assistant', () => {
     await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
     await owner.query(`update meta.page set requires_auth = true where id = $1`, [pageId]);
     await mock.close();
-    if (env.PGAPEX_SECRET_KEY === undefined) delete process.env.PGAPEX_SECRET_KEY;
-    else process.env.PGAPEX_SECRET_KEY = env.PGAPEX_SECRET_KEY;
+    if (env.PGKILN_SECRET_KEY === undefined) delete process.env.PGKILN_SECRET_KEY;
+    else process.env.PGKILN_SECRET_KEY = env.PGKILN_SECRET_KEY;
   });
 
   test('forged CSRF tokens are refused before any AI call', async () => {
@@ -5537,7 +5537,7 @@ describe('sprint 36 app builder ai', () => {
     return b;
   };
   before(async () => {
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
     const { encryptSecret } = await import('../src/secrets.ts');
     mock = await (await import('./ai-script-mock.ts')).startScriptMock();
     await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
@@ -5553,8 +5553,8 @@ describe('sprint 36 app builder ai', () => {
     await owner.query(`delete from meta.ai_service where name = $1`, [SVC]);
     await owner.query('delete from meta.developer where username = $1', [DEV]);
     await mock.close();
-    if (env.PGAPEX_SECRET_KEY === undefined) delete process.env.PGAPEX_SECRET_KEY;
-    else process.env.PGAPEX_SECRET_KEY = env.PGAPEX_SECRET_KEY;
+    if (env.PGKILN_SECRET_KEY === undefined) delete process.env.PGKILN_SECRET_KEY;
+    else process.env.PGKILN_SECRET_KEY = env.PGKILN_SECRET_KEY;
   });
 
   test('builder AI pages need a developer session and CSRF; the service is chosen by administrators only', async () => {
@@ -5848,7 +5848,7 @@ describe('sprint 37 instance settings', () => {
     await adm.get('/builder/login');
     await adm.post('/builder/login', { __csrf: adm.lastCsrf, username: 'admin', password: 'admin' });
     const page = (await adm.get('/builder/instance')).body;
-    for (const k of ['PGAPEX_SECRET_KEY', 'API_JWT_SECRET', 'DATABASE_URL', 'RUNTIME_DATABASE_URL']) {
+    for (const k of ['PGKILN_SECRET_KEY', 'API_JWT_SECRET', 'DATABASE_URL', 'RUNTIME_DATABASE_URL']) {
       const v = process.env[k];
       if (v) assert.ok(!page.includes(v), k);
     }
@@ -5957,7 +5957,7 @@ describe('sprint 39 plug-ins', () => {
       await b.get('/a/hr/login');
       await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
       const body = (await b.get('/a/hr/40')).body;
-      const das = JSON.parse(/<script type="application\/json" id="pgapex-meta">([\s\S]*?)<\/script>/.exec(body)![1]).das;
+      const das = JSON.parse(/<script type="application\/json" id="pgkiln-meta">([\s\S]*?)<\/script>/.exec(body)![1]).das;
       const da = das.find((d: { plugin?: string | null; action: string }) => d.action === 'plugin' && d.plugin === null);
       assert.ok(da, 'no plug-in for a name of another type');
       assert.ok(!body.includes('<script>alert(1)'));
@@ -5979,7 +5979,7 @@ describe('sprint 39 conditional and dynamic theme styles', () => {
       await b.get('/a/hr/login');
       await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'king', password: 'king' });
       await runtime.query(`select 1`); // the runtime pool is up
-      const css = /<style nonce="[^"]+" id="pgapex-css">([\s\S]*?)<\/style>/.exec((await b.get('/a/hr/1')).body)![1];
+      const css = /<style nonce="[^"]+" id="pgkiln-css">([\s\S]*?)<\/style>/.exec((await b.get('/a/hr/1')).body)![1];
       assert.doesNotMatch(css, /#444444/, 'meta.developer is not readable by the app role: the condition fails');
       assert.doesNotMatch(css, /KING|--accent:[^#]/i, 'a name is not a colour');
     } finally {
@@ -6005,36 +6005,36 @@ describe('sprint 39 object storage', () => {
   test('the bucket must pass the web client\'s allow-list and address checks; the secret never shows', async (t) => {
     const { putObject } = await import('../src/objectstore.ts');
     const { encryptSecret } = await import('../src/secrets.ts');
-    const savedKey = process.env.PGAPEX_SECRET_KEY;
+    const savedKey = process.env.PGKILN_SECRET_KEY;
     // CI has no .env: a test-only key for the credential's secret
-    process.env.PGAPEX_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
     t.after(() => {
-      if (savedKey === undefined) delete process.env.PGAPEX_SECRET_KEY;
-      else process.env.PGAPEX_SECRET_KEY = savedKey;
+      if (savedKey === undefined) delete process.env.PGKILN_SECRET_KEY;
+      else process.env.PGKILN_SECRET_KEY = savedKey;
     });
     const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
     await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC39_S3'`, [hr]);
     await owner.query(`insert into meta.web_credential (app_id, name, type, username, scope, secret_enc) values ($1, 'SEC39_S3', 'aws_sigv4', 'AKIDSEC39', 'eu-west-1', $2)`, [hr, encryptSecret('sec39-super-secret')]);
-    const saved = { allowed: process.env.PGAPEX_REST_ALLOWED_HOSTS, priv: process.env.PGAPEX_REST_PRIVATE_HOSTS };
+    const saved = { allowed: process.env.PGKILN_REST_ALLOWED_HOSTS, priv: process.env.PGKILN_REST_PRIVATE_HOSTS };
     try {
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = '*';
-      delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+      delete process.env.PGKILN_REST_PRIVATE_HOSTS;
       for (const url of ['http://169.254.169.254/latest', 'http://127.0.0.1:9/bucket', 'http://10.0.0.1/bucket']) {
         const e = await putObject(hr, { url, credential: 'SEC39_S3' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
         assert.ok(e, url);
         assert.doesNotMatch(e!.message, /sec39-super-secret/);
       }
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = 'objects.example.com';
+      process.env.PGKILN_REST_ALLOWED_HOSTS = 'objects.example.com';
       const e = await putObject(hr, { url: 'https://elsewhere.example.org/b', credential: 'SEC39_S3' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
       assert.match(e!.message, /not allowed|allow/i);
       // another type of credential can't sign object storage requests, and an aws_sigv4 one can't be used for REST calls
       const e2 = await putObject(hr, { url: 'https://objects.example.com/b', credential: 'NO_SUCH' }, 'a.txt', Buffer.from('x'), 'text/plain').then(() => null, (x: Error) => x);
       assert.match(e2!.message, /does not exist/);
     } finally {
-      process.env.PGAPEX_REST_ALLOWED_HOSTS = saved.allowed;
-      if (saved.priv === undefined) delete process.env.PGAPEX_REST_PRIVATE_HOSTS;
-      else process.env.PGAPEX_REST_PRIVATE_HOSTS = saved.priv;
-      if (saved.allowed === undefined) delete process.env.PGAPEX_REST_ALLOWED_HOSTS;
+      process.env.PGKILN_REST_ALLOWED_HOSTS = saved.allowed;
+      if (saved.priv === undefined) delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      else process.env.PGKILN_REST_PRIVATE_HOSTS = saved.priv;
+      if (saved.allowed === undefined) delete process.env.PGKILN_REST_ALLOWED_HOSTS;
       await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC39_S3'`, [hr]);
     }
   });

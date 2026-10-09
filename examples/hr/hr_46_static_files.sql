@@ -12,8 +12,8 @@
 
 insert into meta.static_file (app_id, name, mime, content)
 select a.id, 'hr.js', 'text/javascript', convert_to($js$// HR example: functions for "Execute JavaScript" dynamic actions.
-pgapex.actions.register('hr.annualSalary', (da) => {
-  const monthly = Number(String(pgapex.getValue('P3_SAL') || '').replace(/[^0-9.-]/g, ''));
+pgkiln.actions.register('hr.annualSalary', (da) => {
+  const monthly = Number(String(pgkiln.getValue('P3_SAL') || '').replace(/[^0-9.-]/g, ''));
   for (const field of da.elements) {
     let out = field.querySelector('.hr-annual');
     if (!out) {

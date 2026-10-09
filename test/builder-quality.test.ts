@@ -139,7 +139,7 @@ describe('Top SQL', () => {
     if (top.ok) {
       assert.ok(top.rows.some((r) => /from hr\.emp/.test(r.query)), 'the report query is listed');
       assert.ok(top.rows.every((r, i) => i === 0 || r.calls <= top.rows[i - 1].calls), 'sorted by calls');
-      assert.ok(top.rows.every((r) => !/password_hash|pgapex_authenticator/.test(r.query)));
+      assert.ok(top.rows.every((r) => !/password_hash|pgkiln_authenticator/.test(r.query)));
     }
     assert.deepEqual(await topSql(null), { ok: false, reason: 'no_role' });
 

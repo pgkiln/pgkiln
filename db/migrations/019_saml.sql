@@ -3,7 +3,7 @@
 -- shares the per-app sign-in buttons (meta.app.sso_providers), account links
 -- (meta.account_identity, subject = the NameID) and group → role mapping.
 --   issuer         the IdP's entity ID (responses must come from it)
---   client_id      pgapex's entity ID at the IdP (the SP entity ID)
+--   client_id      pgkiln's entity ID at the IdP (the SP entity ID)
 --   idp_sso_url    where to send the AuthnRequest (HTTP-Redirect binding)
 --   idp_cert       the IdP's signing certificate (PEM); assertions must be signed
 --   username_claim an attribute name, or "nameID"

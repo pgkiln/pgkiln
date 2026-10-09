@@ -15,10 +15,10 @@ import { list, webRequest, WebError, type HostLists } from './webclient.ts';
 //
 // The endpoint URL comes from the browser, so it is checked like every
 // outgoing call (src/webclient.ts), against a list of its own: the push
-// services of the browsers (PGAPEX_PUSH_HOSTS replaces it), https only,
-// public addresses only (PGAPEX_PUSH_PRIVATE_HOSTS: tests).
+// services of the browsers (PGKILN_PUSH_HOSTS replaces it), https only,
+// public addresses only (PGKILN_PUSH_PRIVATE_HOSTS: tests).
 //
-// The sender runs when NOTIFY pgapex_push arrives (meta.send_push, after the
+// The sender runs when NOTIFY pgkiln_push arrives (meta.send_push, after the
 // caller commits) and on every scheduler pass; rows are claimed with
 // SKIP LOCKED, so several servers can run it.
 
@@ -105,9 +105,9 @@ export function encryptPayload(payload: Buffer, p256dh: string, auth: string, se
 
 // ---------------------------------------------------------------- RFC 8292: VAPID
 
-/** Contact for the push services (RFC 8292 "sub"): PGAPEX_PUSH_SUBJECT, else PUBLIC_URL when https. */
+/** Contact for the push services (RFC 8292 "sub"): PGKILN_PUSH_SUBJECT, else PUBLIC_URL when https. */
 export function vapidSubject() {
-  const s = process.env.PGAPEX_PUSH_SUBJECT?.trim();
+  const s = process.env.PGKILN_PUSH_SUBJECT?.trim();
   if (s && /^(mailto:|https:\/\/)\S+$/.test(s)) return s;
   const pub = process.env.PUBLIC_URL?.trim();
   if (pub && pub.startsWith('https://')) return pub;
@@ -132,8 +132,8 @@ export async function vapidHeader(endpoint: string, keys: VapidKeys, now = Date.
 export const DEFAULT_PUSH_HOSTS = ['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com', '*.notify.windows.com'];
 
 export const pushHosts = (): HostLists => ({
-  allowed: process.env.PGAPEX_PUSH_HOSTS ? list(process.env.PGAPEX_PUSH_HOSTS) : DEFAULT_PUSH_HOSTS,
-  private: list(process.env.PGAPEX_PUSH_PRIVATE_HOSTS),
+  allowed: process.env.PGKILN_PUSH_HOSTS ? list(process.env.PGKILN_PUSH_HOSTS) : DEFAULT_PUSH_HOSTS,
+  private: list(process.env.PGKILN_PUSH_PRIVATE_HOSTS),
 });
 
 /** Why a subscription from a browser can't be kept (null: it can). */
@@ -148,10 +148,10 @@ export function subscriptionProblem(s: { endpoint?: unknown; p256dh?: unknown; a
   const hosts = pushHosts();
   const host = url.hostname.toLowerCase();
   const on = (entries: string[]) => entries.some((e) => (e.startsWith('*.') ? host.endsWith(e.slice(1)) : host === e.replace(/:\d+$/, '')));
-  // https only; plain http just for a host of PGAPEX_PUSH_PRIVATE_HOSTS (a test push service)
+  // https only; plain http just for a host of PGKILN_PUSH_PRIVATE_HOSTS (a test push service)
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && on(hosts.private))) return 'The endpoint must be an https URL.';
   if (url.username || url.password || url.hash) return 'The endpoint is not a push service URL.';
-  if (!on([...hosts.allowed, ...hosts.private])) return `The push service ${url.host} is not on the server's list (PGAPEX_PUSH_HOSTS).`;
+  if (!on([...hosts.allowed, ...hosts.private])) return `The push service ${url.host} is not on the server's list (PGKILN_PUSH_HOSTS).`;
   if (typeof s.p256dh !== 'string' || !/^[A-Za-z0-9_-]{87}$/.test(s.p256dh) || unb64u(s.p256dh)[0] !== 4) return 'The key p256dh is not valid.';
   if (typeof s.auth !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(s.auth)) return 'The key auth is not valid.';
   return null;
@@ -301,7 +301,7 @@ export async function pushTick(): Promise<string[]> {
 
 let listener: pg.Client | undefined;
 
-/** Send soon after meta.send_push commits (NOTIFY pgapex_push); the scheduler (src/automations.ts) is the fallback. */
+/** Send soon after meta.send_push commits (NOTIFY pgkiln_push); the scheduler (src/automations.ts) is the fallback. */
 export async function startPushListener() {
   if (process.env.AUTOMATIONS === 'off' || listener) return;
   let busy = false;
@@ -325,7 +325,7 @@ export async function startPushListener() {
     await listener.connect();
     listener.on('notification', () => void run());
     listener.on('error', (e) => console.error('push listener:', e.message));
-    await listener.query('listen pgapex_push');
+    await listener.query('listen pgkiln_push');
   } catch (e) {
     console.error('push notifications: no listener, the scheduler sends them:', (e as Error).message);
   }

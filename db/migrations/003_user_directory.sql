@@ -151,16 +151,16 @@ create or replace function meta.has_role(p_role text) returns boolean
 language sql stable security definer set search_path = meta, pg_catalog as $$
   select exists (
     select 1 from meta.session s
-     where s.id = nullif(current_setting('pgapex.session_id', true), '')::uuid
+     where s.id = nullif(current_setting('pgkiln.session_id', true), '')::uuid
        and lower(p_role) = any (select lower(r) from unnest(s.roles) r))
 $$;
 
 -- ---------------------------------------------------------------------
 -- Privileges: the runtime may read accounts without password hashes.
 -- ---------------------------------------------------------------------
-grant select (id, username, display_name, email, active) on meta.account to pgapex_runtime;
-grant select on meta.app_access to pgapex_runtime;
+grant select (id, username, display_name, email, active) on meta.account to pgkiln_runtime;
+grant select on meta.app_access to pgkiln_runtime;
 revoke all on function meta.account_roles(int, text) from public;
-grant execute on function meta.account_roles(int, text) to pgapex_runtime;
+grant execute on function meta.account_roles(int, text) to pgkiln_runtime;
 revoke all on function meta.authenticate(int, text, text) from public;
-grant execute on function meta.authenticate(int, text, text) to pgapex_runtime;
+grant execute on function meta.authenticate(int, text, text) to pgkiln_runtime;

@@ -53,7 +53,7 @@ export async function dbAuthenticate(a: DbAuthApp, role: string, password: strin
   const url = new URL(ownerUrl);
   url.username = encodeURIComponent(role);
   url.password = encodeURIComponent(password);
-  const client = new pg.Client({ connectionString: url.toString(), connectionTimeoutMillis: CONNECT_TIMEOUT_MS, application_name: 'pgapex-sign-in', statement_timeout: CONNECT_TIMEOUT_MS });
+  const client = new pg.Client({ connectionString: url.toString(), connectionTimeoutMillis: CONNECT_TIMEOUT_MS, application_name: 'pgkiln-sign-in', statement_timeout: CONNECT_TIMEOUT_MS });
   client.on('error', () => {});
   try {
     try {

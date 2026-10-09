@@ -51,7 +51,7 @@ describe('session sharing', () => {
     const b = new Browser(app);
     assert.equal(await signedIn(b, 'ss-two'), false);
     await b.login('ss_ann', PW, 'ss-one');
-    assert.ok(b.cookies.has('pgapex_share_ss_group'), 'the group cookie');
+    assert.ok(b.cookies.has('pgkiln_share_ss_group'), 'the group cookie');
     assert.equal(await signedIn(b, 'ss-one'), true);
     assert.equal(await signedIn(b, 'ss-two'), true, 'no new sign-in for the same group');
     assert.equal(await signedIn(b, 'ss-other'), false, 'another group signs in on its own');
@@ -79,7 +79,7 @@ describe('session sharing', () => {
     assert.equal(await signedIn(b, 'ss-one'), false, 'the other application\'s session ended too');
     assert.equal(await signedIn(b, 'ss-two'), false);
     assert.equal(await count(), before - 1, 'this browser\'s shared sign-in is gone');
-    assert.ok(!b.cookies.has('pgapex_share_ss_group'), 'the group cookie is cleared');
+    assert.ok(!b.cookies.has('pgkiln_share_ss_group'), 'the group cookie is cleared');
   });
 
   test('an idle shared sign-in, a deactivated account and a forged cookie are refused', async () => {
@@ -96,12 +96,12 @@ describe('session sharing', () => {
       await owner.query(`update meta.account set active = true where username = 'ss_ann'`);
     }
     const d = new Browser(app);
-    d.cookies.set('pgapex_share_ss_group', 'forged-token');
+    d.cookies.set('pgkiln_share_ss_group', 'forged-token');
     assert.equal(await signedIn(d, 'ss-two'), false, 'forged');
     // a cookie of another group does not open this one
     const e = new Browser(app);
     await e.login('ss_ann', PW, 'ss-other');
-    e.cookies.set('pgapex_share_ss_group', e.cookies.get('pgapex_share_ss_else')!);
+    e.cookies.set('pgkiln_share_ss_group', e.cookies.get('pgkiln_share_ss_else')!);
     assert.equal(await signedIn(e, 'ss-two'), false, 'the token belongs to another group');
   });
 

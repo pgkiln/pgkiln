@@ -12,7 +12,7 @@
 -- Regions and report columns refer to a component by its static id, so
 -- nothing needs remapping on import. A component travels between
 -- applications and installations as a single JSON plug-in file
--- (format "pgapex-plugin/1"): meta.export_template_component() and
+-- (format "pgkiln-plugin/1"): meta.export_template_component() and
 -- meta.import_template_component().
 --
 -- The template language is checked in full by the server (an allow-list of
@@ -39,7 +39,7 @@ create table meta.template_component (
   attributes  jsonb not null default '[]' check (jsonb_typeof(attributes) = 'array'),
   unique (app_id, static_id)
 );
-grant select on meta.template_component to pgapex_runtime;
+grant select on meta.template_component to pgkiln_runtime;
 
 create function meta.template_component_check() returns trigger
 language plpgsql set search_path = meta, pg_catalog as $$
@@ -84,7 +84,7 @@ create trigger template_component_check before insert or update on meta.template
 -- One template component as a plug-in document.
 create function meta.export_template_component(p_app_id int, p_static_id text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
-  select jsonb_build_object('format', 'pgapex-plugin/1', 'type', 'template_component')
+  select jsonb_build_object('format', 'pgkiln-plugin/1', 'type', 'template_component')
          || (to_jsonb(t) - 'id' - 'app_id')
     from meta.template_component t
    where t.app_id = p_app_id and t.static_id = p_static_id
@@ -98,7 +98,7 @@ declare
   v_row meta.template_component;
   v_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex-plugin/1' then
+  if p_doc->>'format' is distinct from 'pgkiln-plugin/1' then
     raise exception 'unsupported plug-in format %', coalesce(p_doc->>'format', '(none)') using errcode = 'P0001';
   end if;
   if p_doc->>'type' is distinct from 'template_component' then
@@ -142,7 +142,7 @@ alter table meta.region add constraint region_type_check
 create or replace function meta.export_app(p_alias text) returns jsonb
 language sql stable set search_path = meta, pg_catalog as $$
   select jsonb_build_object(
-    'format', 'pgapex/2',
+    'format', 'pgkiln/2',
     'app', to_jsonb(a) - 'id' - 'created_at' - 'updated_at',
     'authz_schemes', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.authz_scheme x where x.app_id = a.id), '[]'),
     'app_items', coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' order by x.name) from meta.app_item x where x.app_id = a.id), '[]'),
@@ -188,7 +188,7 @@ declare
   v_nmap    jsonb := '{}';
   v_new_id  int;
 begin
-  if p_doc->>'format' is distinct from 'pgapex/2' then
+  if p_doc->>'format' is distinct from 'pgkiln/2' then
     raise exception 'unsupported export format %', coalesce(p_doc->>'format', '(none)');
   end if;
 
