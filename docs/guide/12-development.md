@@ -377,5 +377,8 @@ browser enhancements at the end of `public/app.js` (the item must work without t
 1. Update `CHANGELOG.md` and the version in `package.json`.
 2. Merge to `main`; CI must be green (every job). The `main` branch should be protected on
    GitHub (Settings → Branches → rule for `main`: require the CI checks).
-3. Tag: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
+3. Tag: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. The tag publishes the Docker image
+   (`docker-publish.yml`: `pgkiln/pgkiln` and `ghcr.io/pgkiln/pgkiln`, amd64 and arm64) and the npm package
+   (`npm-publish.yml`, trusted publishing with provenance; it refuses a tag that doesn't match
+   `package.json`). Then `gh release create vX.Y.Z` with the changelog section as notes.
 4. Add the new tag to the `upgrade` job's matrix in `.github/workflows/ci.yml` (see above).

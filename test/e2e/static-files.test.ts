@@ -47,7 +47,8 @@ describe('static application files (browser)', () => {
     const loaded: string[] = [];
     page.on('response', (r) => r.url().includes('/a/hr/static/') && loaded.push(`${r.status()} ${new URL(r.url()).pathname}`));
     await page.goto(`${base}/a/hr/3`);
-    assert.deepEqual(loaded.sort(), ['200 /a/hr/static/hr.css', '200 /a/hr/static/hr.js']);
+    // unique: late responses of the page after sign-in (it loads the same files) may arrive here too
+    assert.deepEqual([...new Set(loaded)].sort(), ['200 /a/hr/static/hr.css', '200 /a/hr/static/hr.js']);
     const annual = page.locator('[data-item="P3_SAL"] .hr-annual');
     await annual.waitFor({ state: 'attached' });
     assert.equal(await annual.textContent(), '', 'an empty salary: nothing on open');
