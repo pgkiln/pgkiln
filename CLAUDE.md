@@ -17,7 +17,8 @@ Use the `pgkiln` MCP server (`.mcp.json`; `node bin/pgkiln.js mcp`, see docs/gui
 
 ## Developing pgkiln
 
-- Read `docs/development/HANDOFF.md` (current sprint, conventions) and `docs/guide/12-development.md` (code map).
+- Read `docs/guide/12-development.md` (code map) and `ROADMAP.md`. Maintainers keep their sprint notes outside
+  the repository (`../pgkiln-internal/HANDOFF.md`, if present).
 - pgkiln is a framework: the HR application in `examples/hr/` is only an example. Nothing in `src/` or
   `db/migrations/` may depend on it; defaults and help texts use neutral names (`sales.orders`, `P3_ID`).
 - Schema changes go in a new `db/migrations/NNN_*.sql`; never edit a released migration.
