@@ -2,6 +2,11 @@
 
 [![CI](https://github.com/pgkiln/pgkiln/actions/workflows/ci.yml/badge.svg)](https://github.com/pgkiln/pgkiln/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/website-pgkiln.vargar.eu-c2410c.svg)](https://pgkiln.vargar.eu)
+
+**[Website](https://pgkiln.vargar.eu)** · **[Documentation](https://pgkiln.vargar.eu/docs/)** ·
+**[Tutorial](https://pgkiln.vargar.eu/docs/tutorial)** · **[Coming from Oracle APEX](https://pgkiln.vargar.eu/docs/from-apex)** ·
+**[Roadmap](ROADMAP.md)**
 
 A low-code, SQL-driven application builder for PostgreSQL, modeled on
 Oracle APEX. Applications are **data**: pages, regions, items, buttons,
@@ -10,7 +15,6 @@ runtime turns those rows into web pages, and the builder is an editor for
 them.
 
 > pgkiln is an independent open source project and is not affiliated with Oracle. Oracle and APEX are trademarks of Oracle.
-> Website: [pgkiln.vargar.eu](https://pgkiln.vargar.eu)
 
 <p align="center">
   <img src="docs/images/builder-page-designer.png" alt="The page designer: component tree, layout and property editor" width="100%">

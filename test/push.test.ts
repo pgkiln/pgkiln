@@ -167,6 +167,13 @@ async function sendPush(sql: string, params: unknown[] = []) {
   });
 }
 
+/** The message and the user's devices, for a failure message. */
+const pushState = async (id: string) =>
+  JSON.stringify({
+    message: await owner.one(`select status, devices, delivered, message, attempts from meta.push_message where id = $1`, [id]),
+    devices: (await owner.query(`select endpoint, failures from meta.push_subscription where app_id = $1 and username = 'scott'`, [appId])).rows,
+  });
+
 const endpoint = (n: string) => `http://127.0.0.1:${port}/push/${n}`;
 const subscription = (n: string) => ({ endpoint: endpoint(n), p256dh: device.getPublicKey().toString('base64url'), auth: deviceAuth });
 
@@ -258,7 +265,7 @@ describe('push notifications: sending', () => {
     answer = 201;
     const { id } = await sendPush(`select meta.send_push('scott', 'Leave request', 'Blake asks for 3 days', 3, '{"P3_EMPNO": "7788"}', 'leave-12', 'high', 600) as id`);
     await pushTick();
-    assert.equal(received.length, 1);
+    assert.equal(received.length, 1, await pushState(id));
     const r = received[0];
     assert.equal(r.url, '/push/scott-phone');
     assert.equal(r.headers['content-encoding'], 'aes128gcm');
