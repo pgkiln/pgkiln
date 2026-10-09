@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-09 (sprint 43, rename to pgkiln, merged; waiting for the owner: GitHub org, npm login). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–073).
+Last updated: 2026-10-09 (sprint 45: website pgkiln.vargar.eu live; waiting for the owner: npm login, repo visibility/CI billing). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–073).
 
 ## Project in one paragraph
 
@@ -1476,6 +1476,16 @@ installations (databases) for tenants that must not see each other. Parity row �
 **Release 0.29.0 (2026-10-06):** CI-style run on 5446: 1069 pass / 10 skip, e2e 136/136. Parity totals 100/15/0/3
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
+
+## Sprint 45 (DONE, merged, unreleased): the website pgkiln.vargar.eu (owner, 2026-10-09)
+
+Branch `sprint-45`. `website/` (VitePress 1.6.4, own package.json): landing page (`.vitepress/theme/components/Landing.vue`),
+docs synced from `docs/` by `scripts/sync-docs.mjs` (chapters lose their number, links rewritten, pages wrapped in
+`::: v-pre`), images from `docs/images/`. Deployed by `website/scripts/deploy.sh` (ssh `vargar_nas`) to
+`/var/www/html/pgkiln.vargar.eu` (owner asked for html, not static) with `/etc/caddy/sites/pgkiln.caddy`
+(from `website/deploy/pgkiln.caddy`; logs to the shared `/var/log/caddy/caddy.log`: a separate log file made the
+reload fail, Caddy kept the old config). Live with a Let's Encrypt certificate; checked: pages, 404, headers, CSP, search.
+Note: portal.vargar.eu timed out before and after (unrelated to this change, not investigated).
 
 ## Sprint 43 (DONE, merged, unreleased): rename pgapex → pgkiln (owner, 2026-10-09; website pgkiln.vargar.eu)
 

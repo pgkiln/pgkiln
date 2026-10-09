@@ -11,6 +11,8 @@ db/
 examples/                  example applications as SQL (the tutorial)
 examples/plugins/          plug-in files (template components) to import
 scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
+website/                   the website pgkiln.vargar.eu (VitePress): landing page + this guide, synced from docs/ at build time;
+                           cd website && npm install && npm run dev; scripts/deploy.sh publishes it (see website/deploy/)
 scripts/screenshots.ts     the README's screenshots in docs/images/ (npm run screenshots, HR example)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="pgkiln">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#c2410c"/>
+    </linearGradient>
+  </defs>
+  <!-- a kiln: an arched oven with a flame inside -->
+  <path d="M8 56V30C8 16.7 18.7 6 32 6s24 10.7 24 24v26z" fill="url(#g)"/>
+  <path d="M18 56V34c0-7.7 6.3-14 14-14s14 6.3 14 14v22z" fill="#1c1917"/>
+  <path d="M32 52c-5.5 0-9-3.6-9-8.3 0-4.6 3.5-7 5.4-11.2.9 2.6 2.4 4 3.8 4.6-.4-3.6 1.4-6.9 4.3-9.1-.2 4.5 4.5 8.3 4.5 15.1C41 48.4 37.5 52 32 52z" fill="#fdba74"/>
+  <rect x="4" y="54" width="56" height="5" rx="2.5" fill="#78350f"/>
+</svg>
