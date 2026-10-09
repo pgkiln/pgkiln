@@ -4,7 +4,7 @@ This file lets another developer (or another Claude session) continue the curren
 the chat history. Keep it updated when you stop working. Delete it (or empty the sprint section)
 when the sprint is merged.
 
-Last updated: 2026-10-09 (sprint 43 in progress on `sprint-43`: rename to pgkiln). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–073).
+Last updated: 2026-10-09 (sprint 43, rename to pgkiln, merged; waiting for the owner: GitHub org, npm login). Sprints 3–38 are merged into `main` and released as **v0.30.0** (migrations 001–067 are released: add 068+; 033, 035, 045, 046, 048, 049 and 059 were never used). HR example files up to `hr_45` are released (sprint 39 added `hr_46`–`hr_48`; migrations 068–073).
 
 ## Project in one paragraph
 
@@ -1477,7 +1477,7 @@ installations (databases) for tenants that must not see each other. Parity row �
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
 
-## Sprint 43 (IN PROGRESS): rename pgapex → pgkiln (owner, 2026-10-09; website pgkiln.vargar.eu)
+## Sprint 43 (DONE, merged, unreleased): rename pgapex → pgkiln (owner, 2026-10-09; website pgkiln.vargar.eu)
 
 Branch `sprint-43`. Brand renamed (package, `pgkiln` command with `pgapex` alias in `bin/pgapex.js`, CLI texts,
 builder title/status bar, MCP server `pgkiln` + tool `pgkiln_info`, docs, README, screenshots). Kept on purpose:
@@ -1485,8 +1485,8 @@ DB roles, `pgapex.*` settings, `PGAPEX_*` env vars, `pgapex/2` + `pgapex.json`, 
 released migrations and HR SQL, dev DB credentials, CHANGELOG history. `package.json` has a `files` list (1.5 MB
 tarball; `npm pack` installs and runs) but is still `"private": true` until the owner publishes.
 
-- done: rename, `npm test` 1209 pass / 9 skip after two test fixes.
-- todo: e2e; owner creates GitHub org `pgkiln` + transfers the repo (then update remote, badge, repository/bugs
+- done: rename, `npm test` 1209 pass / 9 skip, `npm run test:e2e` 154/154. Merged into main.
+- todo (owner first): owner creates GitHub org `pgkiln` + transfers the repo (then update remote, badge, repository/bugs
   URLs, clone URLs), owner logs in to npm (then drop `private`, `npm publish --dry-run`, owner publishes).
 - pgkiln.vargar.eu: DNS → 46.224.217.153 (Caddy, vargar_nas); no TLS site block yet. Not touched.
 
