@@ -17,10 +17,10 @@
   "author": "Vargar",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NickVrgr/Postgresql_APEX.git"
+    "url": "git+https://github.com/pgkiln/pgkiln.git"
   },
   "bugs": {
-    "url": "https://github.com/NickVrgr/Postgresql_APEX/issues"
+    "url": "https://github.com/pgkiln/pgkiln/issues"
   },
   "homepage": "https://pgkiln.vargar.eu",
   "engines": {

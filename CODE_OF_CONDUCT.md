@@ -10,6 +10,6 @@ focus on what is best for the community. Harassment and exclusionary behaviour a
 ## Reporting
 
 Report unacceptable behaviour privately to the maintainers through a
-[private GitHub security advisory](https://github.com/NickVrgr/Postgresql_APEX/security/advisories/new)
+[private GitHub security advisory](https://github.com/pgkiln/pgkiln/security/advisories/new)
 (select "Code of conduct" in the title). Reports are handled confidentially. Maintainers apply the
 Contributor Covenant's enforcement guidelines (correction, warning, temporary ban, permanent ban).

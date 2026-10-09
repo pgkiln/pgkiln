@@ -61,7 +61,7 @@ const tiles = () => html`<nav class="ab-tiles" aria-label="App Builder">
 function aside(recent: { id: number; name: string }[], about: string, tasks: [string, string][]) {
   return html`<aside class="ab-side" aria-label="About, recent and tasks">
     <section><h2>About</h2><p>${about}</p>
-      <p><a href="https://github.com/NickVrgr/Postgresql_APEX/blob/main/docs/guide/03-builder.md" target="_blank" rel="noopener">Learn more …</a></p></section>
+      <p><a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md" target="_blank" rel="noopener">Learn more …</a></p></section>
     ${recent.length ? html`<section><h2>Recent</h2><ul class="ab-links">${recent.map((a) => html`<li><a href="${BASE}/apps/${a.id}">${a.name} - ${a.id}</a></li>`)}</ul></section>` : ''}
     <section><h2>Tasks</h2><ul class="ab-links ab-tasks">${tasks.map(([label, href]) => html`<li><a href="${href}">${label}${icon('chevron')}</a></li>`)}</ul></section>
   </aside>`;

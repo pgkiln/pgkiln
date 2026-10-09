@@ -113,7 +113,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}
       </ul>
       <ul class="rail-list rail-bottom">
-        ${rail('help', 'https://github.com/NickVrgr/Postgresql_APEX/blob/main/docs/guide/03-builder.md', 'help', 'Help', raw(' target="_blank" rel="noopener"'))}
+        ${rail('help', 'https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md', 'help', 'Help', raw(' target="_blank" rel="noopener"'))}
         <li><details class="menu rail-user">
           <summary class="rail-avatar" title="${s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">Account: ${s.username}</span></summary>
           <div class="menu-panel">
