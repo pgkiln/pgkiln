@@ -14,7 +14,7 @@ For REST APIs you can run [PostgREST](https://postgrest.org) next to it ([chapte
 ## Quick start (development)
 
 ```bash
-git clone git@github.com:pgkiln/pgkiln.git pgkiln
+git clone https://github.com/pgkiln/pgkiln.git
 cd pgkiln
 npm install
 cp .env.example .env
