@@ -23,8 +23,9 @@ services:
       retries: 20
 
   pgkiln:
-    # a published image is pulled; pgkiln:local is built from this checkout
-    image: ${PGKILN_IMAGE:-pgkiln:local}
+    # the published image (Docker Hub); in a checkout, `docker compose up -d --build` builds it from the source
+    image: ${PGKILN_IMAGE:-pgkiln/pgkiln:latest}
+    pull_policy: missing
     build: ..
     restart: unless-stopped
     depends_on:

@@ -46,8 +46,9 @@ screenshots are made by `npm run screenshots`.
 With Docker (no Node.js needed):
 
 ```bash
-cd deploy
-cp .env.example .env   # fill in the four secrets
+mkdir pgkiln && cd pgkiln
+curl -fsSLO https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/compose.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/.env.example   # fill in the four secrets
 docker compose up -d   # http://127.0.0.1:3100/builder (admin / the password from .env)
 ```
 
