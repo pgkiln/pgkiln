@@ -182,7 +182,7 @@ export function pluginFileDocument(p: Plugin, files: { name: string; content: Bu
 
 
 /**
- * A plug-in file from a source directory (pgapex plugin build): plugin.json
+ * A plug-in file from a source directory (pgkiln plugin build): plugin.json
  * (the file without its contents), the files it lists, template.html and
  * wrapper.html for a region's template component, install.sql.
  */

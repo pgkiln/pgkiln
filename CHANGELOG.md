@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **pgapex is now pgkiln** (website [pgkiln.vargar.eu](https://pgkiln.vargar.eu)): the package, the command
+  (`pgkiln`, with `pgapex` kept as an alias), the MCP server (`pgkiln`, tool `pgkiln_info`), the builder and the
+  docs. Technical names stay, so existing installations, exports and applications need no change: the database
+  roles (`pgapex_runtime`, `pgapex_authenticator`, `pgapex_anon`), the `pgapex.*` settings, the `PGAPEX_*`
+  environment variables, the `pgapex/2` export format and `pgapex.json`, `window.pgapex` and the `pgapex:` browser
+  events. "pgApex" was already the name of another PostgreSQL project, and APEX is Oracle's trademark.
+
 ### Added
 - **MCP server for AI coding agents** (`pgapex mcp`, docs/guide/20-ai-agents.md): Claude Code, Cursor and other
   agents can list applications, read an application's settings, pages and shared components as YAML, describe

@@ -1,12 +1,12 @@
 # 13. REST APIs
 
-pgapex offers two ways to expose data securely over REST (mobile apps, integrations, scripts),
+pgkiln offers two ways to expose data securely over REST (mobile apps, integrations, scripts),
 which can be combined:
 
 | | [REST modules](#rest-modules-in-the-builder) | [PostgREST](#how-it-works) |
 |---|---|---|
 | What | Endpoints you define in the builder: a method, a path and the SQL | A separate service that turns a schema of views and functions into an API |
-| Served by | pgapex itself, under `/a/<alias>/rest/<module>/` | PostgREST, next to pgapex |
+| Served by | pgkiln itself, under `/a/<alias>/rest/<module>/` | PostgREST, next to pgkiln |
 | Runs as | the application's database role (like its pages) | a dedicated API role |
 | Good for | a handful of tailored endpoints, field apps, integrations | broad data access with filtering, sorting and embedding |
 
@@ -37,7 +37,7 @@ same row level security, and both publish an OpenAPI description.
 
 **Calling them.** Send `Authorization: Bearer <token>` with a token from **App → REST API**: a token
 issued for an account, or one from `POST /oauth/token` for an OAuth client ([below](#tokens)). An
-application needs no API role for these endpoints. On every request pgapex checks the token's
+application needs no API role for these endpoints. On every request pgkiln checks the token's
 signature and application, and that the account is active with access (or that the client is not
 revoked). The SQL then runs **as the application's database role** with `meta.app_user()` = the
 caller and `meta.has_role()` = the caller's roles, so the same grants and RLS policies as the
@@ -63,18 +63,18 @@ curl -X POST http://127.0.0.1:3100/a/hr/rest/v1/leave -H "Authorization: Bearer 
 
 ## PostgREST
 
-[PostgREST](https://postgrest.org) runs as a separate service **next to** pgapex and turns
+[PostgREST](https://postgrest.org) runs as a separate service **next to** pgkiln and turns
 a PostgreSQL schema into a REST API. Both use the same database, the same accounts and the same
 row level security policies, so a rule like "employees see only their own leave requests" holds in
 the web app and in the API without writing it twice.
 
 ```
-Browser ───> pgapex (pages, builder)      ─┐
+Browser ───> pgkiln (pages, builder)      ─┐
                                            ├──> PostgreSQL (RLS: meta.app_user(), meta.has_role())
 Client ──JWT──> PostgREST (schema "api")  ─┘
 ```
 
-This is the pgapex counterpart of ORDS RESTful services in APEX; see
+This is the pgkiln counterpart of ORDS RESTful services in APEX; see
 [chapter 11](11-from-apex.md#ords-and-postgrest) for the mapping.
 
 ## How it works
@@ -97,7 +97,7 @@ This is the pgapex counterpart of ORDS RESTful services in APEX; see
 | `app_user` | The user. If it's missing, `meta.app_user()` uses `preferred_username`, then `email`, then `sub` |
 | `roles` | Optional extra application roles (useful for identity-provider tokens) |
 
-Inside pgapex nothing changes: the session's user and roles take precedence over JWT claims, and
+Inside pgkiln nothing changes: the session's user and roles take precedence over JWT claims, and
 outside both `meta.app_user()` is `nobody`.
 
 ## Setup
@@ -118,15 +118,15 @@ It uses these settings (set the same in your own deployment):
 | `db-schemas` | `api` | Only the API schema is exposed, never `hr`, `meta` or `public` |
 | `db-anon-role` | `pgapex_anon` | Role for requests without a token; it has no privileges |
 | `db-pre-request` | `meta.api_check` | Rejects tokens of inactive accounts or accounts without access |
-| `jwt-secret` | `API_JWT_SECRET` | Shared with pgapex, which signs tokens with it |
+| `jwt-secret` | `API_JWT_SECRET` | Shared with pgkiln, which signs tokens with it |
 | `db-max-rows` | `1000` | Caps the rows per response |
 
-And in pgapex's `.env`:
+And in pgkiln's `.env`:
 
 | Variable | Example | Meaning |
 |---|---|---|
 | `API_URL` | `http://127.0.0.1:3000` | Where PostgREST is reachable (shown in the builder, used for its status check) |
-| `API_JWT_SECRET` | 32+ random characters | Signs the tokens pgapex issues; must equal PostgREST's `jwt-secret` |
+| `API_JWT_SECRET` | 32+ random characters | Signs the tokens pgkiln issues; must equal PostgREST's `jwt-secret` |
 
 Migration 005 creates `pgapex_authenticator` with the password `pgapex_authenticator`. **Change it**
 outside development: `alter role pgapex_authenticator password '…';`.
@@ -165,7 +165,7 @@ grant execute on function api.decide_leave(int, text, text) to hr_api;
 notify pgrst, 'reload schema';   -- after every change to the api schema
 ```
 
-You can also set the API role under **Builder → App → REST API**. pgapex refuses roles that bypass
+You can also set the API role under **Builder → App → REST API**. pgkiln refuses roles that bypass
 row level security (superusers, `BYPASSRLS`) and its own roles.
 
 ### 3. Check it in the builder
@@ -188,9 +188,9 @@ There are three kinds of token:
 
 ### OAuth clients (client credentials)
 
-This is the pgapex counterpart of ORDS's `oauth.create_client` and `/oauth/token`, and the way
+This is the pgkiln counterpart of ORDS's `oauth.create_client` and `/oauth/token`, and the way
 to connect other systems. A client gets a **client ID and secret** once. With them it asks
-pgapex for a **short-lived access token** whenever it needs one, using the standard OAuth 2.0
+pgkiln for a **short-lived access token** whenever it needs one, using the standard OAuth 2.0
 client credentials grant. Tokens expire on their own, so nobody has to rotate them by hand, and
 every OAuth library handles the renewal.
 
@@ -239,7 +239,7 @@ is shown once and not stored. Issuing is logged in the activity log (`api_token`
 
 Such a token contains `role`, `app` and `app_user`, but **no roles**. `meta.has_role()` reads the
 account's roles in the application at every request, and `meta.api_check()` rejects the token as
-soon as the account is deactivated or loses access. Changing `API_JWT_SECRET` (in pgapex and
+soon as the account is deactivated or loses access. Changing `API_JWT_SECRET` (in pgkiln and
 PostgREST) invalidates all tokens at once.
 
 Use them for development, scripts and trusted integrations. The account needs access to the
@@ -255,10 +255,10 @@ access tokens directly:
 - Set PostgREST's `jwt-secret` to the provider's **JSON Web Key Set** (for Keycloak:
   `<issuer>/protocol/openid-connect/certs`) and `jwt-aud` to the audience of your API. PostgREST
   doesn't refresh the key set itself; update it when the provider rotates keys. To keep accepting
-  pgapex-issued tokens too, add the shared secret to the set as a symmetric (`"kty": "oct"`) key.
+  pgkiln-issued tokens too, add the shared secret to the set as a symmetric (`"kty": "oct"`) key.
 - Add claims at the provider (in Keycloak: *hardcoded claim* and *audience* mappers on a client
   scope): `role` = the API role (e.g. `hr_api`) and `app` = the application alias (`hr`).
-- The username comes from `preferred_username` (or add `app_user`). It must match a pgapex account
+- The username comes from `preferred_username` (or add `app_user`). It must match a pgkiln account
   with access to the app, as `meta.api_check()` requires; roles come from that access, plus an
   optional `roles` claim.
 

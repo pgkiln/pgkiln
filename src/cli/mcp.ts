@@ -1,4 +1,4 @@
-// `pgapex mcp`: a Model Context Protocol server on standard input/output, so
+// `pgkiln mcp`: a Model Context Protocol server on standard input/output, so
 // an AI coding agent (Claude Code, Cursor, …) can find an application, read
 // its pages and shared components, look at the database it runs on, search
 // the user guide, and export, compare and import the application as files.
@@ -20,7 +20,7 @@ const QUERY_TIMEOUT = '10s';
 
 const version = () => JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version as string;
 
-const INSTRUCTIONS = `pgapex is a low-code application builder for PostgreSQL (like Oracle APEX): an application is data,
+const INSTRUCTIONS = `pgkiln is a low-code application builder for PostgreSQL (like Oracle APEX): an application is data,
 rows in the meta schema (pages, regions, items, buttons, dynamic actions, validations, processes, shared components).
 To understand an application: list_apps, then app_overview, then get_page or read_app_files.
 Files are shown in the "text" style: one YAML file per component, SQL and templates inline.
@@ -28,7 +28,7 @@ To change an application: export_app writes it to a directory (default apps/<ali
 diff_app shows what an import would change, and import_app with replace=true applies it in one transaction.
 The application's tables, views and functions are ordinary PostgreSQL objects (describe_schema, run_query);
 schema changes belong in the user's own migration scripts, not in the application files.
-search_docs searches the pgapex user guide; read it before guessing a property name or a region type.`;
+search_docs searches the pgkiln user guide; read it before guessing a property name or a region type.`;
 
 // ------------------------------------------------------------------ helpers
 
@@ -171,9 +171,9 @@ const aliasProp = { alias: { type: 'string', description: 'the application alias
 
 export const TOOLS: Tool[] = [
   {
-    name: 'pgapex_info',
-    title: 'pgapex installation',
-    description: 'The pgapex version, the database, the applied migrations, and where the user guide is. Call this first to check the connection.',
+    name: 'pgkiln_info',
+    title: 'pgkiln installation',
+    description: 'The pgkiln version, the database, the applied migrations, and where the user guide is. Call this first to check the connection.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true },
     run: () =>
@@ -186,7 +186,7 @@ export const TOOLS: Tool[] = [
           )
         ).rows[0];
         return stableJson({
-          pgapex: version(),
+          pgkiln: version(),
           ...r,
           checkout: root,
           user_guide: join(root, 'docs', 'README.md'),
@@ -197,7 +197,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'list_apps',
     title: 'List applications',
-    description: 'The applications in this pgapex database: id, alias, name, number of pages.',
+    description: 'The applications in this pgkiln database: id, alias, name, number of pages.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true },
     run: () =>
@@ -393,7 +393,7 @@ export const TOOLS: Tool[] = [
     name: 'describe_schema',
     title: 'Describe database objects',
     description:
-      'Without a table: the schemas with their tables, views and functions (pgapex\'s own meta schema is left out unless you ask for it). ' +
+      'Without a table: the schemas with their tables, views and functions (pgkiln\'s own meta schema is left out unless you ask for it). ' +
       'With a table or view: its columns, constraints, indexes, row level security policies and triggers.',
     inputSchema: {
       type: 'object',
@@ -450,7 +450,7 @@ export const TOOLS: Tool[] = [
             [schema ?? null],
           )
         ).rows;
-        if (!rows.length) return schema ? `Schema ${schema} has no tables, views or functions.\n` : 'No tables, views or functions outside pgapex.\n';
+        if (!rows.length) return schema ? `Schema ${schema} has no tables, views or functions.\n` : 'No tables, views or functions outside pgkiln.\n';
         const out: string[] = [];
         let last = '';
         for (const r of rows) {
@@ -483,7 +483,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'search_docs',
     title: 'Search the user guide',
-    description: 'Searches the pgapex user guide (docs/guide), the APEX parity matrix and SECURITY.md; returns the best matching sections.',
+    description: 'Searches the pgkiln user guide (docs/guide), the APEX parity matrix and SECURITY.md; returns the best matching sections.',
     inputSchema: {
       type: 'object',
       properties: { query: { type: 'string', description: 'words that must all occur, e.g. "cascading lov"' }, max_results: { type: 'integer', description: 'default 5' } },
@@ -536,7 +536,7 @@ export async function handle(msg: Message): Promise<object | undefined> {
       return reply({
         protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0],
         capabilities: { tools: {} },
-        serverInfo: { name: 'pgapex', title: 'pgapex', version: version() },
+        serverInfo: { name: 'pgkiln', title: 'pgkiln', version: version() },
         instructions: INSTRUCTIONS,
       });
     }
@@ -561,7 +561,7 @@ export async function handle(msg: Message): Promise<object | undefined> {
 }
 
 export async function serve(input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout) {
-  process.stderr.write(`pgapex ${version()} MCP server on standard input/output\n`);
+  process.stderr.write(`pgkiln ${version()} MCP server on standard input/output\n`);
   const lines = createInterface({ input, crlfDelay: Infinity });
   const pending = new Set<Promise<unknown>>();
   for await (const line of lines) {
@@ -578,7 +578,7 @@ export async function serve(input: NodeJS.ReadableStream = process.stdin, output
       .then((r) => {
         if (r) output.write(JSON.stringify(r) + '\n');
       })
-      .catch((e) => process.stderr.write(`pgapex mcp: ${(e as Error).message}\n`))
+      .catch((e) => process.stderr.write(`pgkiln mcp: ${(e as Error).message}\n`))
       .finally(() => pending.delete(p));
     pending.add(p);
   }

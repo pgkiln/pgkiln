@@ -55,7 +55,7 @@ class Browser {
   }
 }
 
-/** Start SSO in pgapex, let the "user" authenticate at the mock IdP, and return the callback URL. */
+/** Start SSO in pgkiln, let the "user" authenticate at the mock IdP, and return the callback URL. */
 async function startLogin(b: Browser) {
   const start = await b.get('/a/hr/sso/mock?next=/a/hr/1');
   assert.equal(start.statusCode, 302, start.body.slice(0, 200));

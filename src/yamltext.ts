@@ -153,7 +153,7 @@ export function fromText(src: string, where = 'text'): unknown {
     }
     const m = /^\|(\d)?([-+]?)$/.exec(t);
     if (m) return readBlock(indent, m[1] ? Number(m[1]) : null, m[2]);
-    if (/^[|>'&*!%@`[{]/.test(t)) fail(`this YAML is outside the subset pgapex reads: ${t.slice(0, 20)}`, no);
+    if (/^[|>'&*!%@`[{]/.test(t)) fail(`this YAML is outside the subset pgkiln reads: ${t.slice(0, 20)}`, no);
     if (!plainSafe(t)) fail(`a text like ${quote(t.slice(0, 40))} must be in double quotes`, no);
     return t;
   }

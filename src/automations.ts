@@ -2,7 +2,7 @@ import pg from 'pg';
 import { owner, runtime } from './db.ts';
 
 // Automations (Shared Components → Automations): SQL or PL/pgSQL on a cron
-// schedule, run by the pgapex server as the application's database role.
+// schedule, run by the pgkiln server as the application's database role.
 // An automation has ordered actions (meta.automation_action), each with an
 // optional condition, run once or once per row of a query. The actions run
 // in PL/pgSQL (meta.automation_execute, migration 044), the same code that

@@ -258,7 +258,7 @@ describe('create an application from existing tables', () => {
     await owner.query(`insert into ${SOURCE}.store (name, region_id) values ('A', 1), ('B', 1), ('C', 2)`);
   });
 
-  test('lists the tables and views of a schema; refuses pgapex and system schemas', async () => {
+  test('lists the tables and views of a schema; refuses pgkiln and system schemas', async () => {
     const b = await builder();
     assert.match((await b.get('/builder/create')).body, /href="\/builder\/create\/tables"/);
     const first = await b.get('/builder/create/tables');

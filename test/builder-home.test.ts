@@ -35,7 +35,7 @@ describe('App Builder home', () => {
     assert.ok(body.includes('href="/a/hr"'), 'run link');
     assert.match(body, /<aside class="ab-side"/);
     assert.match(body, /<h2>Tasks<\/h2>/);
-    assert.match(body, /<footer class="ide-status">[\s\S]*admin[\s\S]*pgapex \d+\.\d+\.\d+/);
+    assert.match(body, /<footer class="ide-status">[\s\S]*admin[\s\S]*pgkiln \d+\.\d+\.\d+/);
   });
 
   test('search on the server (without script), sort and the cards view, remembered for the session', async () => {

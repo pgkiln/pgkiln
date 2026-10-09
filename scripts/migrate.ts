@@ -1,5 +1,5 @@
 // Applies db/migrations/*.sql in order (each once, in a transaction): the
-// framework. Uses DATABASE_URL (the owner role). Same as `pgapex migrate`.
+// framework. Uses DATABASE_URL (the owner role). Same as `pgkiln migrate`.
 //   --example <name>  then installs the example application in examples/<name>/
 //                     (e.g. --example hr: the HR sample the tests use)
 //   --seed            releases up to 0.9 kept the HR sample in db/seed/; with --root

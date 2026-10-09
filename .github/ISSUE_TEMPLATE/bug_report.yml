@@ -24,7 +24,7 @@ body:
     id: version
     attributes:
       label: Versions
-      description: pgapex version or commit, PostgreSQL version, Node.js version, browser
+      description: pgkiln version or commit, PostgreSQL version, Node.js version, browser
   - type: textarea
     id: logs
     attributes:

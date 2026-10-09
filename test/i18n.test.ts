@@ -1,5 +1,5 @@
 // Globalization: language choice, translated app texts, text messages,
-// pgapex's own texts, date formats, XLIFF/CSV import and export.
+// pgkiln's own texts, date formats, XLIFF/CSV import and export.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -84,7 +84,7 @@ describe('translated pages', () => {
     assert.match(emp, /Salaris/, 'column heading');
     assert.match(emp, /In dienst sinds/, 'derived heading "Hiredate"');
     assert.match(emp, /- Alle afdelingen -/, 'null label');
-    assert.match(emp, /Zoek in alle kolommen/, 'pgapex texts');
+    assert.match(emp, /Zoek in alle kolommen/, 'pgkiln texts');
     const english = new Browser(app, { 'accept-language': 'en' });
     await english.login('king');
     assert.match((await english.get('/a/hr/1')).body, /My notifications/);
@@ -156,7 +156,7 @@ describe('text messages', () => {
     }
   });
 
-  test('&APP_TEXT$NAME. substitutions and overriding pgapex’s own texts', async () => {
+  test('&APP_TEXT$NAME. substitutions and overriding pgkiln’s own texts', async () => {
     await owner.query(`insert into meta.text_message (app_id, name, language, text) values ($1, 'login.title', 'nl', 'Inloggen bij HR'), ($1, 'login.submit', 'nl', 'Inloggen')`, [appId]);
     clearLocaleCache(appId);
     try {
@@ -169,7 +169,7 @@ describe('text messages', () => {
     }
   });
 
-  test('pgapex texts: every Dutch text exists and placeholders match', () => {
+  test('pgkiln texts: every Dutch text exists and placeholders match', () => {
     const t = translator('nl');
     assert.equal(t('report.range', { from: 1, to: 15, total: 40 }), '1–15 van 40');
     assert.equal(translator('nl-BE')('login.submit'), 'Aanmelden');

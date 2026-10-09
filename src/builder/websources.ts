@@ -43,11 +43,11 @@ export const WEB_CREDENTIAL_SPEC: ComponentSpec = {
     { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: 'e.g. WEATHER_API; REST data sources and invoke_api processes use it by this name.' },
     { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
     { name: 'type', label: 'Authentication', kind: 'select', options: ['basic', 'header', 'bearer', 'oauth2', 'aws_sigv4'], group: 'Authentication',
-      help: 'basic: HTTP basic (user name + password) · header: an HTTP header with the secret, e.g. an API key · bearer: Authorization: Bearer <secret> · oauth2: OAuth2 (pgapex gets, caches and renews the token) · aws_sigv4: an S3-compatible object store\'s access key (AWS Signature Version 4), for file items that keep files in object storage.' },
+      help: 'basic: HTTP basic (user name + password) · header: an HTTP header with the secret, e.g. an API key · bearer: Authorization: Bearer <secret> · oauth2: OAuth2 (pgkiln gets, caches and renews the token) · aws_sigv4: an S3-compatible object store\'s access key (AWS Signature Version 4), for file items that keep files in object storage.' },
     { name: 'username', label: 'User name / client id / access key id', kind: 'text', group: 'Authentication' },
     { name: 'grant_type', label: 'Grant type (oauth2)', kind: 'select', options: ['client_credentials', 'password', 'refresh_token'], group: 'Authentication',
-      help: 'client_credentials: the client id and secret · password: also a user name and password to sign in with · refresh_token: a refresh token you got elsewhere (e.g. once through the service\'s consent page), entered below; pgapex keeps the newest one.' },
-    { name: 'oauth_username', label: 'OAuth2 user name (password)', kind: 'text', group: 'Authentication', help: 'The password flow: the user pgapex signs in as.' },
+      help: 'client_credentials: the client id and secret · password: also a user name and password to sign in with · refresh_token: a refresh token you got elsewhere (e.g. once through the service\'s consent page), entered below; pgkiln keeps the newest one.' },
+    { name: 'oauth_username', label: 'OAuth2 user name (password)', kind: 'text', group: 'Authentication', help: 'The password flow: the user pgkiln signs in as.' },
     { name: 'header_name', label: 'Header name (header)', kind: 'text', group: 'Authentication', help: 'e.g. X-API-Key' },
     { name: 'token_url', label: 'Token URL (oauth2)', kind: 'text', wide: true, group: 'Authentication', help: 'e.g. https://login.example.com/oauth/token' },
     { name: 'scope', label: 'Scope (oauth2) / region (aws_sigv4)', kind: 'text', group: 'Authentication', help: 'aws_sigv4: the region, e.g. eu-west-1 (MinIO: us-east-1, R2: auto).' },
@@ -154,7 +154,7 @@ export function credentialExtras(
     ${oauth && grant === 'password' ? html`<p>${row.password_enc ? html`<b>A password is stored</b> (encrypted).` : html`<b>No password yet.</b> The password flow fails until one is entered.`}</p>` : ''}
     ${oauth
       ? html`<p>${row.refresh_token_enc
-          ? html`<b>A refresh token is stored</b> (encrypted)${row.token_refreshed_at ? html`, received ${new Date(row.token_refreshed_at).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ''}. pgapex uses it to renew the access token and keeps the newer one the service sends.`
+          ? html`<b>A refresh token is stored</b> (encrypted)${row.token_refreshed_at ? html`, received ${new Date(row.token_refreshed_at).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ''}. pgkiln uses it to renew the access token and keeps the newer one the service sends.`
           : grant === 'refresh_token' ? html`<b>No refresh token yet.</b> Enter one above.` : html`No refresh token yet (kept when the token endpoint sends one).`}</p>`
       : ''}
     ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGAPEX_SECRET_KEY</code>: secrets can't be saved or used until it is set (at least 32 characters).</div>`}

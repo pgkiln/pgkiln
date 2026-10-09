@@ -1,6 +1,6 @@
 // Applies db/migrations/*.sql in order (each once, in a transaction): the
 // framework, then optionally an example application from examples/<name>/.
-// Used by scripts/migrate.ts (npm run db:migrate, …) and `pgapex migrate`.
+// Used by scripts/migrate.ts (npm run db:migrate, …) and `pgkiln migrate`.
 // Examples share one record of applied files (public.pgapex_seed, by file
 // name), so a database installed with db/seed/ carries on with examples/hr/.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -72,7 +72,7 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
   const client = await connectWhenReady(o.databaseUrl ?? process.env.DATABASE_URL, 'pgapex-migrate', o.waitSeconds ?? 30);
   const applied: string[] = [];
   const startedAt = new Date();
-  // an empty database: this run installs pgapex, else it upgrades it
+  // an empty database: this run installs pgkiln, else it upgrades it
   const fresh = !(await client.query(`select to_regclass('public.pgapex_migration') is not null as ok`)).rows[0].ok;
   let failure: string | null = null;
   async function apply(dir: string, table: string) {

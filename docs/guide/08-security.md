@@ -1,6 +1,6 @@
 # 8. Users, authentication and authorization
 
-This chapter is about securing *your applications*. How pgapex itself is protected (and the
+This chapter is about securing *your applications*. How pgkiln itself is protected (and the
 security review) is in [SECURITY.md](../../SECURITY.md).
 
 ## Authentication: who is the user?
@@ -20,7 +20,7 @@ the page (for a public start page, for example).
 
 ### The user directory
 
-Like APEX's workspace accounts, pgapex has **one account per person** for the whole installation
+Like APEX's workspace accounts, pgkiln has **one account per person** for the whole installation
 (**Builder → Users**, table `meta.account`):
 
 | Field | Meaning |
@@ -34,7 +34,7 @@ Like APEX's workspace accounts, pgapex has **one account per person** for the wh
 
 The builder and the runtime cover what APEX offers for its accounts:
 
-| APEX | pgapex |
+| APEX | pgkiln |
 |---|---|
 | `APEX_UTIL.CHANGE_CURRENT_USER_PW` | **My account** (user menu → *My account*, `/a/<alias>/account`): current password, new password twice. Other sessions of the account end |
 | *Require Change of Password on First Use* | Checkbox when creating an account or setting its password in the builder (on by default). The next sign-in asks for a new password before continuing |
@@ -47,7 +47,7 @@ The builder and the runtime cover what APEX offers for its accounts:
 The `meta.set_password`/`expire`/`unexpire` functions are owner-only. Grant them to an app role if
 you want to build user administration pages inside an application.
 
-pgapex doesn't send e-mail, so there is no self-service "forgot password" link (APEX apps don't
+pgkiln doesn't send e-mail, so there is no self-service "forgot password" link (APEX apps don't
 have one out of the box either). A user who forgot their password asks an administrator, who
 sets a temporary one under **Users → account → Set password**, with *Require change of password
 on first use* ticked (the default).
@@ -108,7 +108,7 @@ select id, 'alice', meta.hash_password('a-strong-password'), '{manager}' from me
 Applications can let people sign in with your organisation's identity provider: Microsoft Entra
 ID, Google Workspace, Okta, Keycloak, Auth0 or any other OpenID Connect provider.
 
-**1. Register pgapex at the provider** as a *web application* (confidential client) using the
+**1. Register pgkiln at the provider** as a *web application* (confidential client) using the
 authorization code flow. The redirect URI is `<PUBLIC_URL>/sso/callback/<name>`, for example
 `https://apps.example.com/sso/callback/entra`. Note the client ID and secret, and ask for a
 **groups** claim in the ID token if you want to map groups to roles.
@@ -119,10 +119,10 @@ authorization code flow. The redirect URI is `<PUBLIC_URL>/sso/callback/<name>`,
 |---|---|
 | Name | Used in URLs (`entra`, `google`, `keycloak`) |
 | Button label | "Sign in with …" |
-| Issuer URL | e.g. `https://login.microsoftonline.com/<tenant>/v2.0`, `https://accounts.google.com`, `https://keycloak.example.com/realms/acme`. pgapex reads `<issuer>/.well-known/openid-configuration` |
+| Issuer URL | e.g. `https://login.microsoftonline.com/<tenant>/v2.0`, `https://accounts.google.com`, `https://keycloak.example.com/realms/acme`. pgkiln reads `<issuer>/.well-known/openid-configuration` |
 | Client ID / secret | From the registration. The secret is write-only in the builder and readable only by the owner connection |
 | Scopes | Default `openid profile email` |
-| Username claim | The claim that becomes the pgapex username. Choose one users **cannot change themselves**: `preferred_username` (Keycloak), `upn` or `email` (Entra), `email` (Google) |
+| Username claim | The claim that becomes the pgkiln username. Choose one users **cannot change themselves**: `preferred_username` (Keycloak), `upn` or `email` (Entra), `email` (Google) |
 | Groups claim | Default `groups`; dot paths work (`realm_access.roles`) |
 | Create accounts automatically | Create a directory account on first sign-in; otherwise only people with an account linked to the provider (or linked below) can sign in |
 | Link existing accounts | On the first sign-in, link an existing account with the same username. Turn it on only when users **can't choose** the username claim at the provider, and off again once accounts are linked: otherwise someone could register an existing account's name there and sign in as that account. With the `email` claim only addresses the provider marks verified (`email_verified: true`) link |
@@ -165,7 +165,7 @@ psql "$DATABASE_URL" -f examples/keycloak-sso.sql
 
 The HR sample's login page then shows *Sign in with Keycloak*. Keycloak users: `king` / `king-sso`
 (groups hr-admins and hr-managers), `allen` / `allen-sso`, and `carol` / `carol-sso` (hr-managers;
-she has no pgapex account yet and is created on first sign-in).
+she has no pgkiln account yet and is created on first sign-in).
 
 ### Single sign-on (SAML 2.0)
 
@@ -175,24 +175,24 @@ provider under **Users → Identity providers** with protocol **SAML 2.0**:
 | Field | Meaning |
 |---|---|
 | Issuer | The IdP's **entity ID** (from its metadata). Assertions from any other issuer are refused |
-| Client ID | pgapex's entity ID at the IdP. Empty: `<PUBLIC_URL>/sso/saml/<name>/metadata` |
+| Client ID | pgkiln's entity ID at the IdP. Empty: `<PUBLIC_URL>/sso/saml/<name>/metadata` |
 | IdP sign-in URL | The IdP's `SingleSignOnService` location (HTTP-Redirect binding) |
 | IdP signing certificate | The IdP's certificate (PEM, or the base64 from its metadata). Assertions **must** be signed with it |
 | Username claim | `nameID`, or the name of an attribute (e.g. `uid`, `email`) |
 | Groups claim | The attribute holding the groups (e.g. `groups`, `memberOf`) |
 
-At the IdP, register pgapex with the metadata at `<PUBLIC_URL>/sso/saml/<name>/metadata` (entity
+At the IdP, register pgkiln with the metadata at `<PUBLIC_URL>/sso/saml/<name>/metadata` (entity
 ID and assertion consumer service `<PUBLIC_URL>/sso/saml/<name>`, HTTP-POST binding), sign the
 assertions, and add a group attribute. Enable the provider per application and map its groups to
 roles exactly as for OpenID Connect; accounts are linked by the NameID.
 
-pgapex checks the assertion's signature, issuer, audience, recipient and validity period, and that
+pgkiln checks the assertion's signature, issuer, audience, recipient and validity period, and that
 the response answers an AuthnRequest this browser started, once (`InResponseTo`, a one-time
 `RelayState` and the browser-binding cookie, as for OpenID Connect). Because the IdP posts the
-response from another site, where `SameSite=Lax` cookies aren't sent, pgapex answers with a short
+response from another site, where `SameSite=Lax` cookies aren't sent, pgkiln answers with a short
 page that posts it on to itself (submitted by `app.js`; a *Continue* button without script).
 
-**Try it locally:** the bundled Keycloak realm has a SAML client for pgapex.
+**Try it locally:** the bundled Keycloak realm has a SAML client for pgkiln.
 
 ```bash
 docker compose --profile sso up -d keycloak
@@ -214,7 +214,7 @@ Add a directory under **Users → LDAP directories**:
 | URL | `ldaps://host` (TLS) or `ldap://host:389`; tick **StartTLS** to upgrade `ldap://`. Plain `ldap://` sends passwords unencrypted |
 | Service account DN / password | Searches users and groups. Empty: an anonymous search. The password is write-only |
 | User search base / filter | Where users are and how to find one: `(uid={username})`, Active Directory `(sAMAccountName={username})`. `{username}` is escaped (RFC 4515) |
-| Username attribute | The pgapex username (`uid`, AD `sAMAccountName`) |
+| Username attribute | The pgkiln username (`uid`, AD `sAMAccountName`) |
 | Group attribute | e.g. `memberOf` (group DNs; the first value of each is the group name) |
 | Group search base / filter | Optional: search groups too, e.g. `(member={dn})` |
 | Create accounts automatically | As for single sign-on |
@@ -246,12 +246,12 @@ In **Settings → Security** choose Authentication **HTTP header (reverse proxy)
   page (an `http(s)://` URL or a path). Without it the user sees a "signed out" page; the next page
   they open signs them in again through the proxy.
 
-Anyone can send a header, so pgapex trusts it **only from the proxies** listed in the environment
+Anyone can send a header, so pgkiln trusts it **only from the proxies** listed in the environment
 variable `PGAPEX_AUTH_HEADER_PROXIES` (comma-separated IPs and CIDRs, e.g.
 `PGAPEX_AUTH_HEADER_PROXIES=10.0.0.5, 192.168.10.0/24`). The check uses the address of the TCP
 connection itself, never `X-Forwarded-For`, so `TRUST_PROXY` doesn't change it. Unset, or a
 request from any other address: the app shows an error page and the activity log records a
-`login_failed` entry (`header: untrusted peer …`). Make sure users can't reach pgapex directly,
+`login_failed` entry (`header: untrusted peer …`). Make sure users can't reach pgkiln directly,
 bypassing the proxy, and that the proxy **removes** the header from incoming requests before it
 sets its own.
 
@@ -271,12 +271,12 @@ who may sign in:
 - **Allowed roles**: login role names, comma separated (exact, case-sensitive names); and/or
 - **Or members of role**: every member (direct or inherited) of this role may sign in too.
 
-With neither set nobody can sign in. pgapex never reads `pg_authid`: it checks the password by
+With neither set nobody can sign in. pgkiln never reads `pg_authid`: it checks the password by
 opening a short-lived connection **as that role** to its own database (host, port, database and
 SSL settings of `DATABASE_URL`), asks PostgreSQL whether the role is a superuser and a member of
 the membership role, and closes the connection. So PostgreSQL applies its own rules: the
 password, `NOLOGIN`, `VALID UNTIL`, `CONNECTION LIMIT` and `pg_hba.conf` (which must allow
-password logins for these roles from the pgapex server). Superusers and pgapex's own connection
+password logins for these roles from the pgkiln server). Superusers and pgkiln's own connection
 roles (the users of `DATABASE_URL` and `RUNTIME_DATABASE_URL`) are always refused, even when
 listed. An unlisted name is refused before any connection is made (unless a membership role is
 set).

@@ -84,7 +84,7 @@ Attributes (`config`):
 
 ## Rich text and Markdown
 
-APEX's Rich Text Editor stores HTML; pgapex's `richtext` item does too, but never stores or shows
+APEX's Rich Text Editor stores HTML; pgkiln's `richtext` item does too, but never stores or shows
 HTML it did not rebuild itself. On submit and every time it is displayed, the HTML goes through a
 strict allow-list (`src/richtext.ts`): paragraphs, line breaks, headings, bold/italic/underline/
 strikethrough, sub/superscript, lists, quotes, code, horizontal rules and links. Text is always
@@ -210,7 +210,7 @@ Items get their values from:
 
 - the user (editable items, on submit);
 - the URL: `/a/hr/3?P3_EMPNO=7839&cs=…` sets items of page 3 (after clearing that page's items).
-  Links that pgapex generates (report links, buttons, cards, calendars, `meta.page_url()`) carry
+  Links that pgkiln generates (report links, buttons, cards, calendars, `meta.page_url()`) carry
   the checksum `cs` automatically;
 - **form fetch** (form regions);
 - **processes** and **dynamic actions** whose SQL returns columns named like items:

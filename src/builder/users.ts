@@ -370,7 +370,7 @@ export async function usersRoutes(app: FastifyInstance) {
         ${isNew ? select('protocol', 'Protocol', 'oidc', [['oidc', 'OpenID Connect'], ['saml', 'SAML 2.0']]) : html`<div class="field"><span class="label">Protocol</span><span>${pr.protocol === 'saml' ? 'SAML 2.0' : 'OpenID Connect'}</span></div>`}
         ${input('display_name', 'Button label', pr.display_name, { required: true, help: 'Shown as "Sign in with …"' })}
         ${input('issuer', 'Issuer (OIDC: URL; SAML: the IdP entity ID)', pr.issuer, { required: true, help: 'e.g. https://login.microsoftonline.com/<tenant>/v2.0, https://keycloak.example.com/realms/acme, or for SAML the entityID of the IdP metadata' })}
-        ${input('client_id', 'Client ID (SAML: pgapex\'s entity ID)', pr.client_id, { help: 'OIDC: required. SAML: empty = the metadata URL of this provider.' })}
+        ${input('client_id', 'Client ID (SAML: pgkiln\'s entity ID)', pr.client_id, { help: 'OIDC: required. SAML: empty = the metadata URL of this provider.' })}
         ${input('idp_sso_url', 'SAML: IdP sign-in URL', pr.idp_sso_url, { type: 'url', help: 'The SingleSignOnService location (HTTP-Redirect binding) from the IdP metadata.' })}
         <div class="field" data-wide><label class="label" for="f_idp_cert">SAML: IdP signing certificate (PEM)</label>
           <textarea id="f_idp_cert" name="idp_cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----">${pr.idp_cert ?? ''}</textarea>
@@ -415,7 +415,7 @@ export async function usersRoutes(app: FastifyInstance) {
       from meta.auth_provider p order by display_name`)).rows;
     const main = html`
       <div class="title-row"><h1>Identity providers</h1></div>
-      <p class="muted u-mt0">OpenID Connect providers for single sign-on (Microsoft Entra ID, Google, Okta, Keycloak, Auth0, …). Register pgapex at the provider as a web application with the redirect URI shown, then enable the provider per application under <b>Settings → Sign-in methods</b>.</p>
+      <p class="muted u-mt0">OpenID Connect providers for single sign-on (Microsoft Entra ID, Google, Okta, Keycloak, Auth0, …). Register pgkiln at the provider as a web application with the redirect URI shown, then enable the provider per application under <b>Settings → Sign-in methods</b>.</p>
       <div class="columns wide-left">
         ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow">
           <thead><tr><th>Provider</th><th>Issuer</th><th>Used by</th><th>Linked accounts</th><th>Status</th></tr></thead>

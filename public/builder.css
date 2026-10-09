@@ -1,4 +1,4 @@
-/* pgapex builder: an IDE look (dark chrome, icon rail, dense panes), loaded
+/* pgkiln builder: an IDE look (dark chrome, icon rail, dense panes), loaded
    only by builder pages after app.css; the runtime never loads it.
    Colours are tokens: the light set first, the dark set for data-theme="dark"
    and for "System" when the OS prefers dark. The chrome (rail and toolbar)

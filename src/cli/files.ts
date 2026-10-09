@@ -25,7 +25,7 @@ export function readDir(dir: string): FileMap {
 export function readZip(buf: Uint8Array): FileMap {
   const entries = unzipSync(buf);
   const marker = Object.keys(entries).filter((p) => p === MARKER || p.endsWith('/' + MARKER)).sort((a, b) => a.length - b.length)[0];
-  if (!marker) throw new Error(`no ${MARKER} in the zip file: not a pgapex application directory`);
+  if (!marker) throw new Error(`no ${MARKER} in the zip file: not a pgkiln application directory`);
   const prefix = marker.slice(0, -MARKER.length);
   const files: FileMap = new Map();
   for (const [p, data] of Object.entries(entries))

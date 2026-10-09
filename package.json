@@ -1,5 +1,5 @@
 {
-  "name": "pgapex",
+  "name": "pgkiln",
   "version": "0.30.0",
   "private": true,
   "description": "Open source low-code, SQL-driven application builder for PostgreSQL, inspired by Oracle APEX",
@@ -22,12 +22,28 @@
   "bugs": {
     "url": "https://github.com/NickVrgr/Postgresql_APEX/issues"
   },
-  "homepage": "https://github.com/NickVrgr/Postgresql_APEX#readme",
+  "homepage": "https://pgkiln.vargar.eu",
   "engines": {
     "node": ">=20"
   },
   "type": "module",
+  "files": [
+    "bin/",
+    "src/",
+    "public/",
+    "db/",
+    "examples/",
+    "scripts/migrate.ts",
+    "scripts/docker-start.ts",
+    "docs/README.md",
+    "docs/guide/",
+    "docs/apex-feature-parity.md",
+    "SECURITY.md",
+    "NOTICE",
+    "tsconfig.json"
+  ],
   "bin": {
+    "pgkiln": "bin/pgkiln.js",
     "pgapex": "bin/pgapex.js"
   },
   "scripts": {
@@ -39,6 +55,7 @@
     "pretest": "tsx scripts/migrate.ts --example hr",
     "test": "tsx --test --test-concurrency=1 test/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "pgkiln": "tsx src/cli/main.ts",
     "pgapex": "tsx src/cli/main.ts",
     "example:hr": "tsx scripts/migrate.ts --example hr",
     "screenshots": "tsx scripts/screenshots.ts",

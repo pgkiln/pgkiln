@@ -1,6 +1,6 @@
-# 12. Developing pgapex
+# 12. Developing pgkiln
 
-This chapter is for people who work on pgapex itself. See also [CONTRIBUTING.md](../../CONTRIBUTING.md).
+This chapter is for people who work on pgkiln itself. See also [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Code map
 
@@ -14,10 +14,10 @@ scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 scripts/screenshots.ts     the README's screenshots in docs/images/ (npm run screenshots, HR example)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)
-bin/pgapex.js              the `pgapex` command line (runs src/cli/main.ts with tsx)
+bin/pgkiln.js              the `pgkiln` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)
-  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgapex migrate); logs each run that applies
+  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); logs each run that applies
   instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
                            or fails a file in public.pgapex_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
@@ -28,9 +28,9 @@ src/
                            merge into the main application or refresh the copy, both through cli/replace.ts
   cli/                     the command line: main.ts (commands, help, exit codes), apps.ts (connect, export,
                            read, import), files.ts (directories, zip), diff.ts, replace.ts (import --replace in place),
-                           mcp.ts (`pgapex mcp`: the MCP server for AI coding agents, chapter 20)
+                           mcp.ts (`pgkiln mcp`: the MCP server for AI coding agents, chapter 20)
   app.ts / server.ts       Fastify setup / entry point
-  db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgapex.* settings, NOTICEs to the debug log), savepoints
+  db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
@@ -45,7 +45,7 @@ src/
   process-jobs.ts          background execution chains: the job queue (SKIP LOCKED, NOTIFY + polling), running a job as the app role
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
-  i18n.ts                  pgapex's own texts (en, nl), translator, Accept-Language
+  i18n.ts                  pgkiln's own texts (en, nl), translator, Accept-Language
   i18n/                    de, fr, es, it, pt, pl, sv, da, nb, fi, cs, tr, el, ru, uk, ja, zh, ko, ar, he: the built-in texts of
                            the other languages (English and Dutch are in i18n.ts)
   numformat.ts             number format masks (999G990D00): format, parse, language separators
@@ -278,7 +278,7 @@ test/
 
 ## Principles
 
-- **User-facing texts go through the translator**: `ctx.locale.t('key')` for pgapex's own texts (add the key to `en` and `nl` in `src/i18n.ts` and to `src/i18n/de.ts`, `fr.ts`, `es.ts`; TypeScript checks that every language has every key), `ctx.locale.tr(text)` for texts derived from application metadata.
+- **User-facing texts go through the translator**: `ctx.locale.t('key')` for pgkiln's own texts (add the key to `en` and `nl` in `src/i18n.ts` and to `src/i18n/de.ts`, `fr.ts`, `es.ts`; TypeScript checks that every language has every key), `ctx.locale.tr(text)` for texts derived from application metadata.
 
 1. **Metadata first.** A feature is a column or row in `meta.*`, rendered by the runtime, editable
    in the builder, included in export/import and usable from SQL.

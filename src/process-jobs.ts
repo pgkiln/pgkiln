@@ -134,7 +134,7 @@ export async function runProcessJobs(max = 20): Promise<number> {
     try {
       await runJob(job);
     } catch (e) {
-      // pgapex's own failure (the database went away): record it if possible
+      // pgkiln's own failure (the database went away): record it if possible
       await finish(job.id, 'failed', null, (e as Error).message).catch(() => {});
     }
   }

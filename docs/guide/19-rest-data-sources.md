@@ -3,7 +3,7 @@
 An application can read data from other web services and call them (APEX: REST Data Sources,
 Web Credentials and the Invoke API process):
 
-- a **web credential** says how pgapex signs in to a web service: HTTP basic authentication, an
+- a **web credential** says how pgkiln signs in to a web service: HTTP basic authentication, an
   HTTP header (an API key), a bearer token, or OAuth2 (client credentials, password or refresh
   token). Its secrets are stored encrypted and are never shown again;
 - a **REST data source** is an endpoint (URL with parameters, method, credential, headers) whose
@@ -30,10 +30,10 @@ the server makes (APEX_WEB_SERVICE; [chapter 9](09-reference.md#web-requests-fro
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PGAPEX_REST_ALLOWED_HOSTS` | *(none: no calls)* | Hosts pgapex may call, comma separated: `api.example.com`, `*.example.com` (any subdomain), `api.example.com:8443` (only that port), `*` (any **public** host) |
+| `PGAPEX_REST_ALLOWED_HOSTS` | *(none: no calls)* | Hosts pgkiln may call, comma separated: `api.example.com`, `*.example.com` (any subdomain), `api.example.com:8443` (only that port), `*` (any **public** host) |
 | `PGAPEX_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (e.g. a service in your own network, or `127.0.0.1`); listing a host here also allows it |
 | `PGAPEX_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials (AES-256-GCM); at least 32 characters, e.g. `openssl rand -base64 32`. Without it, secrets can't be saved or used |
-| `PGAPEX_REST_MAX_BYTES` | `5000000` | Largest response pgapex reads (also after decompression) |
+| `PGAPEX_REST_MAX_BYTES` | `5000000` | Largest response pgkiln reads (also after decompression) |
 
 The checks on every outgoing request (`src/webclient.ts`), against server-side request forgery:
 
@@ -53,7 +53,7 @@ The checks on every outgoing request (`src/webclient.ts`), against server-side r
 Keep the allow-list as short as you can. `*` lets developers call any public host from the
 server; it never opens private addresses.
 
-**Changing `PGAPEX_SECRET_KEY`** makes the stored secrets unreadable: pgapex then reports that
+**Changing `PGAPEX_SECRET_KEY`** makes the stored secrets unreadable: pgkiln then reports that
 the secret must be entered again. Keep the key with your other server secrets, outside the
 database: a database dump alone does not reveal the secrets.
 
@@ -67,14 +67,14 @@ Shared Components → **Web credentials** → ＋ Add.
 | Authentication | `basic` (user name + password), `header` (an HTTP header with the secret, e.g. `X-API-Key`), `bearer` (`Authorization: Bearer <secret>`), `oauth2`, `aws_sigv4` (an S3-compatible object store's access key: the access key id as user name, the secret access key as secret, the region as scope; signs the requests of [file items in object storage](16-files.md#object-storage), not of REST data sources) |
 | Grant type | `oauth2`: `client_credentials` (default), `password` or `refresh_token` ([below](#oauth2-grant-types)) |
 | User name / client id | `basic`: the user name; `oauth2`: the client id |
-| OAuth2 user name | `oauth2` with `password`: the user pgapex signs in as |
+| OAuth2 user name | `oauth2` with `password`: the user pgkiln signs in as |
 | Header name | `header`: the header that carries the secret |
 | Token URL, Scope | `oauth2`: the token endpoint and the scope to ask for |
 | Secret | The password, header value, token or client secret. **Write-only**: it is encrypted by the server, never shown again (the form says whether one is stored), never exported. Leave it empty to keep the stored one; **Remove the secret** clears it |
 | OAuth2 password, Refresh token | `oauth2`: the password of the OAuth2 user (`password` grant), or a refresh token obtained elsewhere (`refresh_token` grant). Write-only like the secret, each with its own **Remove** button |
 | Valid for URLs | URL prefixes the credential may be sent to, e.g. `https://api.example.com/v2/`. Recommended: a source or process that points elsewhere fails instead of sending the secret |
 
-For `oauth2`, pgapex asks the token endpoint for an access token, keeps it until 30 seconds before
+For `oauth2`, pgkiln asks the token endpoint for an access token, keeps it until 30 seconds before
 it expires, renews it with the refresh token when the endpoint gave one, and asks for a new one when
 the service answers 401. Access tokens are kept in the server's memory only.
 
@@ -89,7 +89,7 @@ the service answers 401. Access tokens are kept in the server's memory only.
 With `password` and `refresh_token` the client authenticates with HTTP basic when the credential
 has a client secret; without one (a public client) the client id is sent in the form.
 
-When the token endpoint returns a refresh token, pgapex **stores it encrypted** in the credential
+When the token endpoint returns a refresh token, pgkiln **stores it encrypted** in the credential
 (and replaces it when the endpoint rotates it), so it survives a restart and is shared by several
 servers. When a refresh fails, the `password` grant signs in again; the `refresh_token` grant can't,
 and the error says to enter a new refresh token in the builder.
@@ -98,7 +98,7 @@ The runtime database role can read a credential's settings but not its secret co
 loads the secret with the owner connection, decrypts it only for the request, and never puts it
 into an error message or the activity log.
 
-After an **import**, the credentials are there without secrets: enter them again. `pgapex import
+After an **import**, the credentials are there without secrets: enter them again. `pgkiln import
 --replace` keeps the secrets of credentials with the same name ([chapter 18](18-cli.md)).
 
 ## REST data sources

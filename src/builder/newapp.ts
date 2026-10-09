@@ -33,7 +33,7 @@ export interface CheckedApp {
   workspaceId: number;
 }
 
-/** pgapex's and the system's schemas never become an application's parsing schema. */
+/** pgkiln's and the system's schemas never become an application's parsing schema. */
 export const reservedSchema = (schema: string) => /^pg_/i.test(schema) || ['meta', 'information_schema'].includes(schema.toLowerCase());
 
 /** Validate the form (outside the transaction: the password check may look up the account). Throws an Error with a message for the developer. */

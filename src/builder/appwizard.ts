@@ -54,7 +54,7 @@ export async function schemaRelations(schema: string): Promise<Relation[]> {
   ).rows;
 }
 
-/** The schemas an application can be built on: not pgapex's or the system's. */
+/** The schemas an application can be built on: not pgkiln's or the system's. */
 const appSchemas = async () =>
   (await owner.query<{ nspname: string }>(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`)).rows.map(
     (r) => r.nspname,

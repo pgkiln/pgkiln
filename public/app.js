@@ -1,4 +1,4 @@
-// pgapex client runtime. Progressive enhancement only: every page works
+// pgkiln client runtime. Progressive enhancement only: every page works
 // without JavaScript (dialogs become normal pages, dynamic actions do nothing).
 // No inline handlers anywhere, so the Content-Security-Policy can forbid
 // inline scripts.
@@ -436,7 +436,7 @@ const pgapexPush = (() => {
       case 'plugin': {
         await scriptsLoaded;
         const fn = da.plugin && plugins.get(da.plugin);
-        if (!fn) return console.warn(`pgapex: the plug-in "${da.plugin}" did not register (pgapex.plugins.register) for dynamic action ${da.id}`);
+        if (!fn) return console.warn(`pgkiln: the plug-in "${da.plugin}" did not register (pgapex.plugins.register) for dynamic action ${da.id}`);
         try {
           await fn({ type: 'dynamic_action', value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message, attributes: da.attributes || {} });
         } catch (e) {
@@ -457,7 +457,7 @@ const pgapexPush = (() => {
       case 'execute_javascript': {
         await scriptsLoaded;
         const fn = da.fn && actions.get(da.fn);
-        if (!fn) return console.warn(`pgapex: no function "${da.fn}" registered (pgapex.actions.register) for dynamic action ${da.id}`);
+        if (!fn) return console.warn(`pgkiln: no function "${da.fn}" registered (pgapex.actions.register) for dynamic action ${da.id}`);
         try {
           await fn({ value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message });
         } catch (e) {
@@ -1662,7 +1662,7 @@ document.addEventListener('change', (e) => {
   recordSelection(box.closest('table'), [box], box.checked);
 });
 
-// SAML: post the identity provider's response on to pgapex itself (same-site, so the
+// SAML: post the identity provider's response on to pgkiln itself (same-site, so the
 // sign-in's browser cookie comes along). The button is there for browsers without script.
 document.addEventListener('DOMContentLoaded', () => {
   for (const form of document.querySelectorAll('form[data-autosubmit]')) form.submit();
@@ -2085,7 +2085,7 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const el of document.querySelectorAll('[data-map]')) {
     const data = JSON.parse(el.nextElementSibling.textContent);
     const map = window.L.map(el, { scrollWheelZoom: false, tap: true });
-    // pgapex sends Referrer-Policy: same-origin, but OpenStreetMap blocks browser tile requests
+    // pgkiln sends Referrer-Policy: same-origin, but OpenStreetMap blocks browser tile requests
     // without a Referer: the tiles get the site's origin only (no paths or item values)
     window.L.tileLayer(data.tiles, { attribution: data.attribution, maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(map);
     const popup = (p) => {

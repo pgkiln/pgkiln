@@ -1,4 +1,4 @@
-// REST API tests (PostgREST alongside pgapex, see docs/guide/13-rest-api.md).
+// REST API tests (PostgREST alongside pgkiln, see docs/guide/13-rest-api.md).
 //
 // The SQL tests always run: they act like PostgREST (SET ROLE to the API
 // role, request.jwt.claims set) and check that the HR policies hold for API
@@ -88,7 +88,7 @@ describe('REST API: database', () => {
     }
   });
 
-  test('a pgapex session wins over JWT claims', async () => {
+  test('a pgkiln session wins over JWT claims', async () => {
     await asApi(claims('king'), async (q) => {
       await q(`select set_config('pgapex.app_user', 'allen', true), set_config('pgapex.session_id', gen_random_uuid()::text, true)`);
       const [r] = await q(`select meta.app_user() as u, meta.has_role('admin') as a`);

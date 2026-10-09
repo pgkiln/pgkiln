@@ -1,14 +1,14 @@
 # 11. Coming from Oracle APEX
 
-pgapex borrows APEX's model on purpose, so most of what you know carries over. This chapter
+pgkiln borrows APEX's model on purpose, so most of what you know carries over. This chapter
 maps the concepts, explains the differences that matter, and gives tips for porting PL/SQL.
 What's missing is listed in the [feature parity matrix](../apex-feature-parity.md).
 
 ## Concept map
 
-| Oracle APEX | pgapex |
+| Oracle APEX | pgkiln |
 |---|---|
-| Instance / workspace | One pgapex installation; workspaces group applications and developers in the builder (Workspace utilities → Workspaces; not a security boundary: tenants who must not see each other get separate installations, [chapter 3](03-builder.md#workspaces)) |
+| Instance / workspace | One pgkiln installation; workspaces group applications and developers in the builder (Workspace utilities → Workspaces; not a security boundary: tenants who must not see each other get separate installations, [chapter 3](03-builder.md#workspaces)) |
 | Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
 | Application, page, region, item, button | The same, stored in `meta.*` |
 | Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |
@@ -52,7 +52,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Pagination *Row Ranges X to Y*, *Maximum Row Count*, region *Lazy Loading*, *Server Cache* | `"pagination": "range"`, `max_rows`, `"lazy": true`, `"cache": {"scope", "seconds"}` ([large tables](04-pages-and-regions.md#large-tables)) |
 | `APEX_UTIL.CHANGE_CURRENT_USER_PW`, `RESET_PASSWORD`, `EXPIRE_END_USER_ACCOUNT` | My account page; `meta.set_password()`, `meta.expire_password()` ([chapter 8](08-security.md#passwords-and-my-account)) |
 | Progressive Web App push notifications: `APEX_PWA.SEND_PUSH_NOTIFICATION`, `HAS_PUSH_SUBSCRIPTION`, *Send Push Notification* process, the subscription settings page | `meta.send_push(user, title, body, page, items)`, `meta.has_push_subscription(user)`, process type `send_push`, *My account → Notifications* and the dynamic action `push_subscribe` ([chapter 17](17-mobile.md#push-notifications)) |
-| `APEX_MAIL`, Send E-Mail process, e-mail templates | Not included: pgapex doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` ([chapter 15](15-extensions.md)) |
+| `APEX_MAIL`, Send E-Mail process, e-mail templates | Not included: pgkiln doesn't send mail. Queue mail in a table and deliver it with your own service, or use an extension such as `pg_smtp_client` ([chapter 15](15-extensions.md)) |
 | Translated applications (XLIFF), `APEX_LANG.MESSAGE`, `&APP_TEXT$NAME.` | Translations in the app (XLIFF/CSV import and export), `meta.message()`, `&APP_TEXT$NAME.` ([chapter 14](14-globalization.md)) |
 | Application date format mask | Settings → Globalization → Date format (Oracle-style masks) |
 | Number format masks (`FML999G999G990D00`) on columns and items | `{"formats": {...}}` on report, grid and cards columns, `{"format_mask": "..."}` on charts and number/display items ([chapter 14](14-globalization.md#number-formats)) |
@@ -81,7 +81,7 @@ Many organisations don't use APEX accounts at all. They choose another authentic
 the identity provider's groups to APEX roles. Applications in the same workspace can also share
 a session, so signing in to one signs you in to the others.
 
-**How pgapex does it.** The same model: a **user directory** with one account per person
+**How pgkiln does it.** The same model: a **user directory** with one account per person
 (**Builder → Users**), and per application an **Access control** setting (only listed accounts, or
 any active account) plus role assignments per account. Roles feed authorization schemes and
 `meta.has_role()`. See [chapter 8](08-security.md#the-user-directory).
@@ -103,24 +103,24 @@ In the Oracle world, ORDS (Oracle REST Data Services) plays two roles:
 2. **REST APIs**: RESTful services defined in APEX/ORDS, AutoREST for tables and views, and
    REST-enabled SQL.
 
-In pgapex, **role 1 doesn't exist**. The pgapex server *is* the web tier, talking to PostgreSQL
+In pgkiln, **role 1 doesn't exist**. The pgkiln server *is* the web tier, talking to PostgreSQL
 directly. You don't need ORDS or any replacement to run applications.
 
 For **role 2**, REST APIs, [PostgREST](https://postgrest.org) is the natural choice. It turns a
 PostgreSQL schema into a REST API: tables and views become resources, functions become RPC
 endpoints, and it authenticates with JWTs whose `role` claim selects the database role, so
-grants and row level security apply, just as in pgapex. That makes it a good partner rather than
+grants and row level security apply, just as in pgkiln. That makes it a good partner rather than
 a replacement:
 
 | ORDS feature | PostgreSQL option |
 |---|---|
 | AutoREST for tables and views | PostgREST (automatic for an exposed schema) |
-| Hand-written handlers (GET/POST with SQL or PL/SQL) | **REST modules** in the builder: method, path with parameters and SQL, served by pgapex ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)); or PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
-| OAuth2 client credentials (`oauth.create_client`, `/oauth/token`) | OAuth clients: `meta.oauth_create_client()` or Builder → REST API → OAuth clients, and `POST /oauth/token` on pgapex ([chapter 13](13-rest-api.md#oauth-clients-client-credentials)). Or tokens from your identity provider |
+| Hand-written handlers (GET/POST with SQL or PL/SQL) | **REST modules** in the builder: method, path with parameters and SQL, served by pgkiln ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)); or PostgREST RPC: `create function api.do_something(...)` → `POST /rpc/do_something` |
+| OAuth2 client credentials (`oauth.create_client`, `/oauth/token`) | OAuth clients: `meta.oauth_create_client()` or Builder → REST API → OAuth clients, and `POST /oauth/token` on pgkiln ([chapter 13](13-rest-api.md#oauth-clients-client-credentials)). Or tokens from your identity provider |
 | REST-enabled SQL | Not provided by PostgREST (and rarely desirable) |
 | OpenAPI/Swagger | Generated for every REST module (`…/openapi.json`) and built into PostgREST |
 
-pgapex integrates with it: `meta.app_user()` and `meta.has_role()` understand PostgREST's JWT
+pgkiln integrates with it: `meta.app_user()` and `meta.has_role()` understand PostgREST's JWT
 claims, so **one set of RLS policies** protects the UI and the API, and each app has an API role,
 tokens and an endpoint overview under **Builder → REST API**. The recommended setup is a dedicated
 `api` schema with **views and functions** (not your base tables). See
@@ -142,7 +142,7 @@ tokens and an endpoint overview under **Builder → REST API**. The recommended 
 | packages | schemas + functions (package state → tables or session settings) |
 | autonomous transactions | not supported; use a separate connection or `dblink` if you really need it |
 | `v('APP_USER')`, `:APP_USER` | `meta.app_user()`, `:APP_USER` |
-| empty string is NULL | Postgres distinguishes them, but pgapex stores empty items as NULL, as APEX does |
+| empty string is NULL | Postgres distinguishes them, but pgkiln stores empty items as NULL, as APEX does |
 | `'a' \|\| null` is `'a'` | `'a' \|\| null` is **NULL**: use `concat(a, b)` or `concat_ws(sep, …)`, which skip NULLs, or `coalesce(b, '')` |
 
 Tips:

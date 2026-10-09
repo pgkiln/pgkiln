@@ -129,7 +129,7 @@ and a **process**:
 | When button | `COMPLETE` |
 | Success message | `Nice work!` |
 
-The button only appears for existing, open tasks, and pgapex re-checks that condition when it's
+The button only appears for existing, open tasks, and pgkiln re-checks that condition when it's
 pressed. The function checks again in the database, and its `raise exception` message would be
 shown to the user.
 

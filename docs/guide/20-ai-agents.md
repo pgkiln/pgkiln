@@ -1,18 +1,18 @@
 # 20. AI coding agents (MCP)
 
-`pgapex mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server. With it an AI
+`pgkiln mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server. With it an AI
 coding agent (Claude Code, Cursor, VS Code Copilot, Codex, …) can find an application, read and
 understand its pages and shared components and the tables they run on, and change the application:
 it exports the application as files, edits them with its own file tools, shows the difference,
 and imports them again. Laravel developers know the idea from Laravel Boost.
 
 This is separate from the AI features *inside* applications and the builder (AI assistant regions,
-*Generate with AI*): those call a model from pgapex; here an agent on the developer's machine calls
-pgapex.
+*Generate with AI*): those call a model from pgkiln; here an agent on the developer's machine calls
+pgkiln.
 
 ## Setting it up
 
-**Claude Code, in a pgapex checkout**: nothing to do. The repository's `.mcp.json` starts the server;
+**Claude Code, in a pgkiln checkout**: nothing to do. The repository's `.mcp.json` starts the server;
 Claude Code asks once whether to trust it. Then ask, for example:
 
 > Which applications are there? Explain page 3 of hr: what happens when I press Save?
@@ -22,16 +22,16 @@ Claude Code asks once whether to trust it. Then ask, for example:
 **Claude Code, in your own project** (where you keep your application files and migrations):
 
 ```sh
-claude mcp add pgapex -- /path/to/pgapex/bin/pgapex.js mcp
+claude mcp add pgkiln -- /path/to/pgkiln/bin/pgkiln.js mcp
 # another database than the checkout's .env:
-claude mcp add pgapex -e DATABASE_URL=postgres://owner@host/db -- /path/to/pgapex/bin/pgapex.js mcp
+claude mcp add pgkiln -e DATABASE_URL=postgres://owner@host/db -- /path/to/pgkiln/bin/pgkiln.js mcp
 ```
 
 **Other agents** take the same command in their MCP configuration, e.g. for Cursor
 (`.cursor/mcp.json`) or VS Code (`.vscode/mcp.json`, key `servers`):
 
 ```json
-{ "mcpServers": { "pgapex": { "command": "node", "args": ["/path/to/pgapex/bin/pgapex.js", "mcp"] } } }
+{ "mcpServers": { "pgkiln": { "command": "node", "args": ["/path/to/pgkiln/bin/pgkiln.js", "mcp"] } } }
 ```
 
 The server connects with `DATABASE_URL` (the owner role) from the environment or the checkout's
@@ -42,7 +42,7 @@ directory the agent started the server in (the project).
 
 | Tool | What it does | Changes anything |
 |---|---|---|
-| `pgapex_info` | version, database, last migration, where the guide is | no |
+| `pgkiln_info` | version, database, last migration, where the guide is | no |
 | `list_apps` | the applications: id, alias, name, pages | no |
 | `app_overview` | an application's settings, its pages (mode, authorization, number of regions, items, processes) and the paths of all its component files | no |
 | `get_page` | every component of one page as YAML, SQL inline | no |
@@ -80,7 +80,7 @@ migration scripts, not in the application files (`run_query` can't change them a
   columns whose names contain *password*, *secret*, *token*, *hash* or *api_key* are shown as
   `(hidden)`. That keeps credentials out of the agent's context by accident; it is not an access
   control: the server runs as the owner role, like the command line, and is meant for a
-  developer's own machine. Don't point it at production; deploy with `pgapex import --replace`
+  developer's own machine. Don't point it at production; deploy with `pgkiln import --replace`
   from git instead.
 - **Writes** are only `export_app` (files; it refuses a non-empty directory that isn't an export,
   so it can't overwrite your project) and `import_app` (the database, in one transaction). Both are
@@ -96,15 +96,15 @@ migration scripts, not in the application files (`run_query` can't change them a
 Agents read `CLAUDE.md` (Claude Code) or `AGENTS.md` (most others). A few lines are enough:
 
 ```markdown
-## pgapex applications
-- The applications live in pgapex (the `pgapex` MCP server); their files are in `apps/<alias>/`.
+## pgkiln applications
+- The applications live in pgkiln (the `pgkiln` MCP server); their files are in `apps/<alias>/`.
 - Read before changing: `app_overview`, `get_page`, `describe_schema`, `search_docs`.
 - Change an application by editing `apps/<alias>/` (export_app first if it is missing or stale),
   then `diff_app`, then `import_app` with replace=true. Never edit the meta tables with SQL.
 - Database objects (tables, views, functions, RLS) change in `db/` migrations, not in the app files.
 ```
 
-## For pgapex developers
+## For pgkiln developers
 
 `src/cli/mcp.ts` holds the tools and the JSON-RPC loop (no SDK: newline-delimited JSON-RPC 2.0 on
 stdio, protocol versions 2025-06-18, 2025-03-26 and 2024-11-05). The tools reuse `src/cli/apps.ts`

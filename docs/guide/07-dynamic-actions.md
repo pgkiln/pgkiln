@@ -1,7 +1,7 @@
 # 7. Dynamic actions
 
 Dynamic actions add behaviour in the browser without writing JavaScript: showing and hiding
-fields, filling in values computed by SQL, refreshing a region. They are the one part of pgapex
+fields, filling in values computed by SQL, refreshing a region. They are the one part of pgkiln
 that needs JavaScript; without it, pages still work, just without these conveniences. When the
 built-in actions are not enough, [Execute JavaScript](#execute-javascript) calls a function of
 your own from a static application file.
@@ -52,7 +52,7 @@ The SQL itself never reaches the browser.
 
 ## Execute JavaScript
 
-APEX's *Execute JavaScript Code* runs code typed into the action. pgapex's Content-Security-Policy
+APEX's *Execute JavaScript Code* runs code typed into the action. pgkiln's Content-Security-Policy
 allows no inline scripts, so the code lives in a **static application file** instead (Shared
 Components → Static application files, [chapter 3](03-builder.md#static-application-files)) and
 the action names the function to call:

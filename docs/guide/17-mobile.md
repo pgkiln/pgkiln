@@ -1,7 +1,7 @@
 # 17. Mobile and field work: Progressive Web Apps
 
 Field crews, drivers and warehouse staff work on phones, often with a bad connection or none.
-Any pgapex application can become a **Progressive Web App** (APEX: Progressive Web App): installed on
+Any pgkiln application can become a **Progressive Web App** (APEX: Progressive Web App): installed on
 the home screen with its own icon, full screen, and working on when the network drops.
 
 ## Turning it on
@@ -17,7 +17,7 @@ the home screen with its own icon, full screen, and working on when the network 
 | Push notifications | Users may turn on notifications per device; application code sends them ([below](#push-notifications)) |
 | Icon | A square PNG of at least 512 × 512 pixels. Without one, the app gets a tile with its initial in the theme's accent colour |
 
-Installing needs HTTPS in production (any address except `localhost` / `127.0.0.1`); pgapex behind
+Installing needs HTTPS in production (any address except `localhost` / `127.0.0.1`); pgkiln behind
 a TLS proxy ([chapter 1](01-installation.md)) is enough.
 
 Everything is per application, under its own address: `/a/<alias>/manifest.webmanifest`,
@@ -26,7 +26,7 @@ Everything is per application, under its own address: `/a/<alias>/manifest.webma
 
 ## Offline
 
-- **The app shell** (pgapex's CSS, script and icons) and an offline page are stored when the app is
+- **The app shell** (pgkiln's CSS, script and icons) and an offline page are stored when the app is
   installed, so the app always opens.
 - **Pages** are fetched from the network first. Without a connection, a page the user opened before
   comes from the device (when *Keep visited pages* is on); otherwise the offline page appears,
@@ -103,7 +103,7 @@ notification goes to every device on which that user turned notifications on
 **recipient** (session state protection), not for the sender, and is always a page of the
 application: a notification can't point elsewhere.
 
-**When it is sent.** `meta.send_push` only queues the message (`meta.push_message`): the pgapex server
+**When it is sent.** `meta.send_push` only queues the message (`meta.push_message`): the pgkiln server
 sends it right after the transaction commits, so a submit that fails sends nothing. Each message
 is encrypted for the device (RFC 8291) and posted to the browser's push service (Google, Mozilla,
 Apple or Microsoft), which delivers it when the device is online, for up to `p_ttl_s` seconds

@@ -27,9 +27,9 @@ However the language is derived, users can switch:
 The page is served with `<html lang="…">`, and `dir="rtl"` for Arabic, Hebrew, Persian and Urdu.
 SQL sees the language as `meta.app_language()` and the bind variable `:APP_LANGUAGE`.
 
-### pgapex's own texts
+### pgkiln's own texts
 
-The texts pgapex itself shows (sign-in, My account, report toolbars, paging, grid buttons,
+The texts pgkiln itself shows (sign-in, My account, report toolbars, paging, grid buttons,
 calendar, validation and error messages) come in twenty-two languages (like APEX's translated runtime messages):
 **English**, **Dutch**, **German**, **French**, **Spanish**, **Italian**, **Portuguese**, **Polish**, **Swedish**,
 **Danish**, **Norwegian** (`nb`, also chosen for `no`), **Finnish**, **Czech**, **Turkish**, **Greek**, **Russian**,
@@ -49,7 +49,7 @@ in the euro countries, `USD` in English and Arabic, `PLN`, `SEK`, `DKK`, `NOK`, 
 ## Translating an application
 
 APEX makes a copy of the application per language (seed, export XLIFF, translate, publish). APEX
-26.1 added translation through text messages in the application itself. pgapex works like the
+26.1 added translation through text messages in the application itself. pgkiln works like the
 latter: **one application, with a translation table**.
 
 **Builder → App → Shared Components → Globalization** lists every text of the application in the
@@ -66,7 +66,7 @@ Type the translation next to each text and save. A text used in several places i
 once. An empty translation shows the primary-language text. The coverage (`85 of 92 texts
 translated`) is shown above the table.
 
-Column headings that pgapex derives from column names (`hiredate` → "Hiredate") aren't in the
+Column headings that pgkiln derives from column names (`hiredate` → "Hiredate") aren't in the
 list, because they only exist once the query runs. Add them with **Add a text**.
 
 ### XLIFF and CSV
@@ -114,7 +114,7 @@ The mask comes from, in order:
 
 1. a text message `format.date` / `format.timestamp` for the language;
 2. the application's date formats (Settings);
-3. pgapex's default for the language. English shows dates as PostgreSQL sends them (`2026-09-29`); Dutch uses `DD-MM-YYYY` and `DD-MM-YYYY HH24:MI`.
+3. pgkiln's default for the language. English shows dates as PostgreSQL sends them (`2026-09-29`); Dutch uses `DD-MM-YYYY` and `DD-MM-YYYY HH24:MI`.
 
 Form items keep ISO dates (`<input type="date">` shows them in the browser's own format). CSV
 downloads keep ISO dates too. Chart and calendar labels use the page's language.
@@ -167,7 +167,7 @@ The currency is, in order: a text message `FORMAT.CURRENCY` for the language, th
 ## Time zones
 
 PostgreSQL shows `timestamp with time zone` values (and `now()`) in the session's `TimeZone`.
-pgapex sets it per request (`SET LOCAL timezone`, so pooled connections are not affected) to:
+pgkiln sets it per request (`SET LOCAL timezone`, so pooled connections are not affected) to:
 
 1. with **Automatic time zone** on (APEX: *Automatic Time Zone*):
    1. the user's own choice on **My account** (*Time zone*, saved on the account and applied at
@@ -206,7 +206,7 @@ shadows of the whole application:
 | Base style | Look |
 |---|---|
 | **Iris** (the default for new applications) | Indigo accent (`#5146d8`, `#a59cff` in dark mode), a deep indigo header, cool light greys, larger corners (12 px), softer shadows, rounded navigation items and pill-shaped primary buttons |
-| **Standard** | pgapex's look until 0.28: blue accent, navy header, 8 px corners. Applications created before 0.29 keep it until you change it |
+| **Standard** | pgkiln's look until 0.28: blue accent, navy header, 8 px corners. Applications created before 0.29 keep it until you change it |
 
 The accent and header colours under Settings → Theme, and the style variants below, change the base style's
 colours (in the light theme). Choosing a colour equal to a base style's own stores nothing, so switching the base
@@ -214,7 +214,7 @@ style later changes it too. All text colours of both base styles meet WCAG AA co
 
 ## Style variants (Theme Roller)
 
-APEX lets an application keep several *theme styles* and lets users pick one. In pgapex:
+APEX lets an application keep several *theme styles* and lets users pick one. In pgkiln:
 **Settings → Theme → Theme Roller** (`/builder/apps/:id/theme`) keeps up to 10 named **styles** per
 application. The base style and colours under Settings → Theme are the *Standard* choice; each style can change:
 
@@ -239,7 +239,7 @@ application offers it: a deleted style falls back to the default, and a renamed 
 
 The styles are part of the application's definition: they are stored in `meta.app.theme`
 (`"styles"`, `"style"`, `"style_choice"`) and travel with export and import; users' choices
-don't (they belong to the installation, and `pgapex import --replace` keeps them). Only values from
+don't (they belong to the installation, and `pgkiln import --replace` keeps them). Only values from
 the fixed lists become CSS, in the page's one nonce'd `<style>`; a style's name is shown as text and
 never reaches the CSS. Regions and buttons can add [template options](04-pages-and-regions.md#template-options).
 

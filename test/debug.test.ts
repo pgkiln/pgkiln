@@ -236,7 +236,7 @@ describe('builder: debug viewer and installation log', () => {
     const res = await b.get('/builder/installation');
     assert.equal(res.statusCode, 200);
     assert.match(res.body, /051_debug_messages\.sql/);
-    assert.match(res.body, /pgapex version of this server/);
+    assert.match(res.body, /pgkiln version of this server/);
     assert.match((await b.get('/builder/utilities')).body, /\/builder\/installation/);
   });
 

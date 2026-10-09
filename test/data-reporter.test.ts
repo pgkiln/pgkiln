@@ -88,7 +88,7 @@ describe('data reporter definitions', () => {
     assert.match(g.text, /^select "__q"\."job", round\(avg\("__q"\."sal"\)::numeric, 2\) from .* group by 1 order by 2 desc nulls last limit 1001$/);
   });
 
-  test('sources from the settings leave out malformed entries and pgapex\'s own schemas', () => {
+  test('sources from the settings leave out malformed entries and pgkiln\'s own schemas', () => {
     const s = sourcesOf({ config: { sources: [
       { id: 'ok', schema: 'hr', table: 'emp', columns: [{ name: 'ename' }, { nope: 1 }] },
       { id: 'ok', schema: 'hr', table: 'dept', columns: [] },

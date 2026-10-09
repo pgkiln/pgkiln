@@ -32,11 +32,11 @@ department. Every installation has the **Default** workspace, which holds the ap
   account menu (the circle with your initials); opening one of their applications from another workspace switches too.
 - **New applications** (Create, from a file, pasted data, existing tables, a blueprint) and **imports** go into the
   current workspace; a working copy stays in its main application's workspace. Imports made with the command line
-  (`pgapex import`) go into Default. Exports don't carry the workspace.
+  (`pgkiln import`) go into Default. Exports don't carry the workspace.
 - Workspace utilities → **Workspaces** (administrators): add a workspace (you become its first developer), rename it,
   choose its developers, move applications to another workspace and delete an empty workspace.
 
-**Workspaces are not a security boundary between developers who write SQL.** The SQL Workshop runs as pgapex's owner,
+**Workspaces are not a security boundary between developers who write SQL.** The SQL Workshop runs as pgkiln's owner,
 and application code (processes, regions, validations) runs on the runtime connection, from which a developer's SQL
 can reach other applications' data and metadata. User accounts, identity providers, LDAP directories and AI services
 also stay installation-wide. Use workspaces to keep teams' applications apart in the builder; give tenants who must
@@ -57,7 +57,7 @@ Every builder page has the same frame, modelled on an IDE:
   API, Settings, Search and Advisor, with Export and Run on the right.
 
 - **The status bar** at the bottom: who is signed in, the current [workspace](#workspaces), the database, the
-  builder's language and the pgapex version.
+  builder's language and the pgkiln version.
 
 On phones the rail gets narrower and the breadcrumb shows only the current page.
 
@@ -168,7 +168,7 @@ most 4 MB of text; upload larger data as a file.
 
 ### Creating an application from existing tables
 
-**Create → From existing tables** (`/builder/create/tables`): choose a schema (pgapex's `meta`,
+**Create → From existing tables** (`/builder/create/tables`): choose a schema (pgkiln's `meta`,
 `information_schema` and the `pg_*` schemas aren't offered), then tick its tables and views (tables
 are ticked by default). The application gets that schema as its parsing schema and a role
 `app_<alias>` with the grants of a blank application on the schema (so **all** tables of the schema,
@@ -226,7 +226,7 @@ keeps a blueprint in the list (`meta.blueprint`, with the application last creat
 ### Importing
 
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new
-alias. A directory export (one file per component) is imported with `pgapex import`
+alias. A directory export (one file per component) is imported with `pgkiln import`
 ([chapter 18](18-cli.md)). Imported apps keep the database role
 of the export; check it under **Settings**, and create users under **Shared Components**. An
 application with [supporting objects](#supporting-objects) opens on their page after the import:
@@ -430,7 +430,7 @@ Page properties:
 | Breadcrumb parent | Builds the breadcrumb trail (and the highlighted menu entry) |
 | Requires authentication | Uncheck for public pages in an app with a login |
 | Authorization scheme | Who may open the page |
-| Page access protection | *Arguments must have checksum* (default): item values in the URL are only accepted from links pgapex generated. *Unrestricted*: anyone may set this page's items through the URL |
+| Page access protection | *Arguments must have checksum* (default): item values in the URL are only accepted from links pgkiln generated. *Unrestricted*: anyone may set this page's items through the URL |
 
 Chapters 4–7 describe every component type and property.
 
@@ -462,7 +462,7 @@ was made* (or last refreshed or merged), so the page tells which side changed wh
 - **Refresh the copy** writes it into the copy only, bringing the main application's changes in
   (conflicts are chosen the same way).
 
-Both keep what belongs to the installation, like `pgapex import --replace`: users and access,
+Both keep what belongs to the installation, like `pgkiln import --replace`: users and access,
 sessions, saved reports, running tasks and workflows, secrets of web credentials, and the main
 application's automation and synchronisation switches (a new automation arrives switched off). A
 merge is refused while another developer has locked the main application or a page the merge
@@ -487,7 +487,7 @@ Components used by the whole application:
 | **Lists of values** | Reusable queries for select lists, referenced as `LOV:NAME` |
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
-| **REST modules** | REST endpoints (method, path, SQL) served by pgapex, with an OpenAPI description ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)) |
+| **REST modules** | REST endpoints (method, path, SQL) served by pgkiln, with an OpenAPI description ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)) |
 | **Workflows** | Multi-step processes of tasks, SQL, web service calls (invoke API), decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
@@ -533,7 +533,7 @@ Supporting objects** with a name, a kind (*install*, *upgrade* or *deinstall*) a
 are part of the export (section `supporting_scripts`, and `shared/supporting-objects/` in a
 directory export), so an application can be moved with its database objects.
 
-They **never run by themselves**, also not on import (the builder and `pgapex import` say how many
+They **never run by themselves**, also not on import (the builder and `pgkiln import` say how many
 came along). **Review and run…** opens the *Supporting objects* page: it shows every script and
 runs the scripts of one kind on request, in sequence, **as the application's database role**
 (so they can only do what that role may: give it `CREATE` on its schema for an install script),
@@ -558,7 +558,7 @@ themselves under `static/`).
 - **Loading them**: *Every page loads* lists the `.js` and `.css` files every page of the
   application includes, in order; a page adds its own under **Page → Appearance → JavaScript and
   CSS files** (APEX's *JavaScript File URLs* and *CSS File URLs*). Scripts load with
-  `<script src defer>` after pgapex's own, stylesheets with `<link>`; a name that is not uploaded
+  `<script src defer>` after pgkiln's own, stylesheets with `<link>`; a name that is not uploaded
   yet is left out until it is. Renaming a file updates both lists.
 - **Caching**: pages link to `…/static/<name>?v=<version>`, which browsers keep for a year; a
   change gives a new version. A link without `?v=` is checked again every time (with an ETag).
@@ -598,7 +598,7 @@ register at the provider, and has a *Test discovery* button. See
   with a link to set their level. **Custom authentication**: the function name, or the function body, and the
   post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)).
 - **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
-- **Theme**: the **base style** (*Iris*, the default for applications created from 0.29 on, or *Standard*, pgapex's
+- **Theme**: the **base style** (*Iris*, the default for applications created from 0.29 on, or *Standard*, pgkiln's
   look until 0.28; see [chapter 14](14-globalization.md#base-styles-iris-and-standard)), accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu
   (instead of the navigation entries) and as the navigation bar (links in the header), the theme style (automatic, light or dark) and whether users may choose light or dark.
@@ -690,7 +690,7 @@ large language model services of this installation. A service has:
 - a **name** (upper case, e.g. `CLAUDE`) by which processes, dynamic actions and SQL refer to it;
 - a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs;
 - a **model**, exactly as the provider names it (new Claude services start with `claude-opus-5-5`);
-  pgapex never changes or downgrades it;
+  pgkiln never changes or downgrades it;
 - for Claude, the **effort** (how deeply the model thinks; current Claude models always think, lower
   effort is faster and cheaper, new services start at `medium`) and **refusal fallbacks** (when Claude
   declines a request for safety reasons, Anthropic re-runs it on its recommended fallback model; on by
@@ -751,13 +751,13 @@ Workspace utilities → **Instance settings** (administrators; APEX: instance ad
 ## Installation
 
 Workspace utilities → **Installation** (administrators only; APEX: the install/upgrade logs of
-instance administration) shows the pgapex version of the running server, the number of applied
+instance administration) shows the pgkiln version of the running server, the number of applied
 migrations and the database, and warns when the database misses migrations of this server (run
 `npm run db:migrate`) or has migrations the server does not know (an older server). A server started on a
 database that misses migrations answers every request with *503* and names them, unless it was started with
 `MIGRATE_ON_START=true` ([chapter 1](01-installation.md)), which applies them first. Below it:
 
-- **Install and upgrade runs**: every run of `npm run db:migrate` / `pgapex migrate` that applied a
+- **Install and upgrade runs**: every run of `npm run db:migrate` / `pgkiln migrate` that applied a
   file or failed: when, *install* (an empty database) or *upgrade*, the version, the files and, for a
   failed run, the file and the error (that file was rolled back). Runs are recorded from 0.25 on.
 - **Applied migrations** with the time each was applied, and the **example and seed scripts**.
@@ -843,13 +843,13 @@ settings. Since it's plain JSON you can commit it to git and review changes in p
 In SQL: `select meta.export_app('hr')` and `select meta.import_app(<json>, 'new_alias')`.
 
 For git, the [command line](18-cli.md) exports an application as a directory with one file per
-component (`pgapex export hr --format dir`), shows what differs (`pgapex diff`) and imports it
-again, also over the existing application (`pgapex import hr/ --replace`). The builder downloads
+component (`pgkiln export hr --format dir`), shows what differs (`pgkiln diff`) and imports it
+again, also over the existing application (`pgkiln import hr/ --replace`). The builder downloads
 that directory as a zip from `/builder/apps/<id>/export?format=dir`.
 
 ### Export format
 
-The format is `"format": "pgapex/2"`, and it's stable: files exported by pgapex 0.2.0 and later
+The format is `"format": "pgapex/2"`, and it's stable: files exported by pgkiln 0.2.0 and later
 import into every later version. New versions only **add** sections, and a missing section
 imports as empty. Import refuses other formats.
 

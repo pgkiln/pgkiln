@@ -1,6 +1,6 @@
 // Plug-ins with their own code (069): plug-in files and their checks, the
 // builder page (import, download, install SQL, remove), the four plug-in
-// types at runtime, export/import, the directory layout, `pgapex plugin
+// types at runtime, export/import, the directory layout, `pgkiln plugin
 // build|install`, and the examples (sources, built files and HR part 47 agree).
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -84,7 +84,7 @@ describe('plug-ins', () => {
 
   test('the examples: sources, built files and HR part 47 agree', async () => {
     for (const n of EXAMPLES) {
-      assert.deepEqual(built(n), example(n), `examples/plugins/${n}.plugin.json is built from examples/plugins/${n}/ (pgapex plugin build)`);
+      assert.deepEqual(built(n), example(n), `examples/plugins/${n}.plugin.json is built from examples/plugins/${n}/ (pgkiln plugin build)`);
       const doc = example(n);
       const installed = await exportPlugin(hr, doc.name);
       assert.ok(installed, `${doc.name} is installed by examples/hr/hr_47_plugins.sql`);
@@ -209,10 +209,10 @@ describe('plug-ins', () => {
     assert.equal((await owner.one('select count(*)::int as n from meta.plugin where app_id = $1', [id2])).n, 0);
   });
 
-  test('pgapex plugin build and install', async () => {
+  test('pgkiln plugin build and install', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'pgapex-plugin-'));
     try {
-      const run = (...args: string[]) => spawnSync(process.execPath, [join(root, 'bin/pgapex.js'), ...args], { cwd: tmp, encoding: 'utf8' });
+      const run = (...args: string[]) => spawnSync(process.execPath, [join(root, 'bin/pgkiln.js'), ...args], { cwd: tmp, encoding: 'utf8' });
       let r = run('plugin', 'build', join(root, 'examples/plugins/show-more'));
       assert.equal(r.status, 0, r.stderr);
       assert.deepEqual(JSON.parse(readFileSync(join(tmp, 'show_more.plugin.json'), 'utf8')), example('show-more'));

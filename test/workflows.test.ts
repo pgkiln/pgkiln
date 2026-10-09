@@ -74,7 +74,7 @@ const start = (user: string, name: string, detail: string | null, vars: Record<s
     return (await c.query('select meta.start_workflow($1, $2, $3) as id', [name, detail, vars])).rows[0].id as string;
   });
 /**
- * Run workflows until this one stops moving. Another pgapex server on the same database (e.g. a
+ * Run workflows until this one stops moving. Another pgkiln server on the same database (e.g. a
  * running `npm run dev`) may take steps too: the engine locks each instance, so wait for the state.
  */
 async function settle(id: string) {

@@ -8,7 +8,7 @@ This chapter covers three things that deal with files:
 - **downloads and printing**: reports as CSV, Excel and PDF (with adjustable report layouts),
   and printing any page from the browser.
 
-| APEX | pgapex |
+| APEX | pgkiln |
 |---|---|
 | File Browse item, storage "BLOB column specified in item source" | Item type `file` with a bytea `source_column` in a form region |
 | File Browse item, storage "Table APEX_APPLICATION_TEMP_FILES" | Item type `file` without a source column; read the file from `meta.temp_files` |
@@ -157,7 +157,7 @@ it at 10) and save the files before users upload many more.
 
 ### Object storage
 
-APEX 26.1 stores File Browse items in object storage as well. In pgapex a single or multiple file
+APEX 26.1 stores File Browse items in object storage as well. In pgkiln a single or multiple file
 item keeps its files in an **S3-compatible bucket** (Amazon S3, MinIO, Cloudflare R2, Wasabi,
 Backblaze B2, OCI's S3 compatibility API, …) with `object_store` in its attributes:
 
@@ -169,7 +169,7 @@ Backblaze B2, OCI's S3 compatibility API, …) with `object_store` in its attrib
 - `url`: the bucket's URL, path style (`https://s3.<region>.amazonaws.com/<bucket>`,
   `http://minio:9000/<bucket>`) or virtual-host style (`https://<bucket>.s3.<region>.amazonaws.com`).
   Its host must be on the server's allow-list (`PGAPEX_REST_ALLOWED_HOSTS`, and
-  `PGAPEX_REST_PRIVATE_HOSTS` for a store on your own network), like every call pgapex makes
+  `PGAPEX_REST_PRIVATE_HOSTS` for a store on your own network), like every call pgkiln makes
   ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)).
 - `credential`: a [web credential](19-rest-data-sources.md#web-credentials) of type `aws_sigv4`
   (access key id, secret access key, region); requests are signed with AWS Signature Version 4.
@@ -182,7 +182,7 @@ Backblaze B2, OCI's S3 compatibility API, …) with `object_store` in its attrib
 Uploads stay temporary files of the session until the form is saved; then the file goes to the
 bucket and its key into the row. A file that is replaced or removed, or whose record is deleted, is
 deleted from the bucket **after the save committed**; when the save fails, the file just stored is
-deleted again, so the bucket follows the table. Downloads go through pgapex as before: the row is
+deleted again, so the bucket follows the table. Downloads go through pgkiln as before: the row is
 read as the application's role (RLS applies), the link carries the user's checksum, and the
 content is fetched from the bucket and sent with the same headers. Users never see the bucket's
 address or the credential. Downloads are limited to `MAX_UPLOAD_MB`.
@@ -218,14 +218,14 @@ Both ways of loading accept:
   columns, in the order they first appear; nested objects and arrays load as JSON text, so they
   fit `json`/`jsonb` columns.
 - XML: one row per **repeating element**. Name it (`employee`, or a path such as
-  `employees/employee`), or leave it empty and pgapex takes the element that occurs most often
+  `employees/employee`), or leave it empty and pgkiln takes the element that occurs most often
   among the elements with children or attributes. The columns are the row element's attributes
   (`@empno`), its child elements (`ename`) and deeper elements by path (`address/city`,
   `address/@type`); a row element holding only text is one column. Namespace prefixes are
   dropped. CDATA, character references and the five predefined entities are read. **Document
   type declarations (`<!DOCTYPE …>`) and entity declarations are refused**, so no external
   entities are fetched and no entity expansion ("billion laughs") is possible; nesting is limited
-  to 100 levels. The reader is pgapex's own (`src/xml.ts`), not a library.
+  to 100 levels. The reader is pgkiln's own (`src/xml.ts`), not a library.
 
 For CSV and Excel, the first row holds the column names (untick it when it doesn't). The format
 is detected from the file name and its first bytes. Empty cells become NULL. Rows are inserted in batches; if
@@ -248,7 +248,7 @@ parsing, type inference and limits.)
    definition](#data-load-definitions), choose it here: the next step previews the file after its
    mapping and transformations and loads it into the definition's table with its mode.
 2. Check the preview, then choose where the data goes:
-   - **New table:** pgapex suggests column names (`Hire Date` → `hire_date`) and types from the
+   - **New table:** pgkiln suggests column names (`Hire Date` → `hire_date`) and types from the
      data: `integer`, `bigint`, `numeric`, `boolean`, `date` or `timestamp` (ISO dates only), or
      otherwise `text`. You can change them, or empty a name to skip a column. The table gets an
      identity primary key `id`.

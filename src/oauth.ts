@@ -33,7 +33,7 @@ export async function clientToken(clientId: string, clientSecret: string) {
   const hash = sha256(clientSecret);
   const valid = !!c && c.active && (same(c.secret_hash, hash) || (c.previous_valid && same(c.previous_secret_hash, hash)));
   if (!valid) throw new OAuthError('invalid_client', 'Unknown client, wrong secret, or the client was revoked.', 401);
-  // without an API role the token is for pgapex's own REST modules only
+  // without an API role the token is for pgkiln's own REST modules only
   const problem = c.api_role ? await apiRoleProblem(c.api_role) : null;
   if (problem) throw new OAuthError('invalid_client', problem, 401);
   await owner.query('update meta.api_client set last_used_at = now() where id = $1', [c.id]);

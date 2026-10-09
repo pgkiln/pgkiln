@@ -8,18 +8,18 @@
 | Node.js | 20 or newer | `.nvmrc` pins the version used in development |
 | Docker (optional) | any recent | For the bundled development database |
 
-pgapex does not need any other services; there is no separate web listener (like ORDS for APEX).
+pgkiln does not need any other services; there is no separate web listener (like ORDS for APEX).
 For REST APIs you can run [PostgREST](https://postgrest.org) next to it ([chapter 13](13-rest-api.md)).
 
 ## Quick start (development)
 
 ```bash
-git clone git@github.com:NickVrgr/Postgresql_APEX.git pgapex
-cd pgapex
+git clone git@github.com:NickVrgr/Postgresql_APEX.git pgkiln
+cd pgkiln
 npm install
 cp .env.example .env
-npm run setup        # starts PostgreSQL 17 in Docker on port 5434 and installs pgapex (the migrations)
-npm run dev          # starts pgapex on http://127.0.0.1:3100 and restarts on code changes
+npm run setup        # starts PostgreSQL 17 in Docker on port 5434 and installs pgkiln (the migrations)
+npm run dev          # starts pgkiln on http://127.0.0.1:3100 and restarts on code changes
 ```
 
 Open the **builder** at http://127.0.0.1:3100/builder, sign in as `admin` / `admin` (change the
@@ -28,9 +28,9 @@ password on the Developers page straight away) and create your first application
 
 ### The example application (optional)
 
-pgapex comes with an example application, **HR**: employees, departments, leave requests with an
+pgkiln comes with an example application, **HR**: employees, departments, leave requests with an
 approval task, a dashboard, a REST API, translations, documents and more, built the way you would
-build your own (`examples/hr/`). It is not part of pgapex; install it to see the features at work:
+build your own (`examples/hr/`). It is not part of pgkiln; install it to see the features at work:
 
 ```bash
 npm run example:hr   # http://127.0.0.1:3100/a/hr: king, blake, allen or demo (password = username)
@@ -42,8 +42,8 @@ The tests use it as their fixture: `npm test` and `npm run test:e2e` install it 
 
 1. Create a database and an owner login (a superuser is simplest for development):
    ```sql
-   create role pgapex login password 'choose-a-password' superuser;
-   create database pgapex owner pgapex;
+   create role pgkiln login password 'choose-a-password' superuser;
+   create database pgkiln owner pgkiln;
    ```
 2. Point `DATABASE_URL` in `.env` at it, then run `npm run db:migrate` (and `npm run example:hr` for the example application).
 3. Set `RUNTIME_DATABASE_URL` for the `pgapex_runtime` role that the first migration creates (see below).
@@ -53,43 +53,43 @@ The owner doesn't have to be a superuser: a role with `CREATEROLE` that owns the
 
 ### Installing into an existing database
 
-pgapex can live next to your own schemas: it adds the schema `meta`, three bookkeeping tables in
+pgkiln can live next to your own schemas: it adds the schema `meta`, three bookkeeping tables in
 `public` (`pgapex_migration`, `pgapex_seed`, `pgapex_install_log`) and the login roles
 `pgapex_runtime`, `pgapex_authenticator` and `pgapex_anon` (roles belong to the whole server). It
-changes nothing else. When the pgapex owner is not the database's owner, a database administrator
+changes nothing else. When the pgkiln owner is not the database's owner, a database administrator
 grants, once:
 
 ```sql
-create role pgapex login createrole password 'choose-a-password';
-grant connect, create on database shop to pgapex;
-grant create on schema public to pgapex;   -- since PostgreSQL 15 only the database owner may by default
+create role pgkiln login createrole password 'choose-a-password';
+grant connect, create on database shop to pgkiln;
+grant create on schema public to pgkiln;   -- since PostgreSQL 15 only the database owner may by default
 ```
 
 Applications run as a role of their own, which the builder grants rights on its parsing schema. For
-a schema the pgapex owner doesn't own, its owner passes those rights on first:
+a schema the pgkiln owner doesn't own, its owner passes those rights on first:
 
 ```sql
 -- as the owner of the schema sales
-grant usage on schema sales to pgapex with grant option;
-grant select, insert, update, delete on all tables in schema sales to pgapex with grant option;
-grant usage, select on all sequences in schema sales to pgapex with grant option;
+grant usage on schema sales to pgkiln with grant option;
+grant select, insert, update, delete on all tables in schema sales to pgkiln with grant option;
+grant usage, select on all sequences in schema sales to pgkiln with grant option;
 ```
 
 (or the administrator grants them to the application's role, `app_<alias>`, directly).
 
 ## The two database connections
 
-pgapex deliberately uses **two** database logins:
+pgkiln deliberately uses **two** database logins:
 
 | Connection | Setting | Role | Used for |
 |---|---|---|---|
-| Owner | `DATABASE_URL` | the owner of the `meta` schema (e.g. `pgapex`) | migrations, the builder, the SQL Workshop |
+| Owner | `DATABASE_URL` | the owner of the `meta` schema (e.g. `pgkiln`) | migrations, the builder, the SQL Workshop |
 | Runtime | `RUNTIME_DATABASE_URL` | `pgapex_runtime` (created by migration 001) | running applications |
 
 The runtime role is **least privilege**. It can read application definitions and manage sessions,
 but it cannot read developer accounts, password hashes or instance secrets. It is `NOINHERIT`, so
 it reaches application data only by switching to an application's own database role
-(`SET LOCAL ROLE`) for the duration of a request. If `RUNTIME_DATABASE_URL` is missing, pgapex
+(`SET LOCAL ROLE`) for the duration of a request. If `RUNTIME_DATABASE_URL` is missing, pgkiln
 falls back to the owner connection and prints a warning; don't run like that in production.
 
 The migration creates `pgapex_runtime` with the password `pgapex_runtime`. **Change it**:
@@ -109,7 +109,7 @@ which is read at startup; real environment variables take precedence.
 | `RUNTIME_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | Least-privilege connection that runs applications |
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |
-| `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgapex at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it |
+| `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgkiln at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it |
 | `API_URL` | `http://127.0.0.1:3000` | Where PostgREST serves the REST API ([chapter 13](13-rest-api.md)) |
 | `API_JWT_SECRET` | *(none)* | Signs REST API tokens; at least 32 characters, the same as PostgREST's `jwt-secret`. Without it, tokens can't be issued |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |
@@ -146,7 +146,7 @@ which is read at startup; real environment variables take precedence.
 | `PGAPEX_PUSH_SUBJECT` | `PUBLIC_URL` when it is https | The contact the push services see (`mailto:ops@example.com` or an https URL); Apple refuses notifications without one |
 | `PGAPEX_PUSH_PRIVATE_HOSTS` | *(none)* | For tests only: a push service on a private or loopback address, also over plain http |
 | `PGAPEX_REST_MAX_BYTES` | `5000000` | Largest web service response read (also after decompression) |
-| `MIGRATE_ON_START` | `false` | `true` applies missing migrations when the server starts. Without it, a server whose database lacks migrations answers every request with 503 and names the missing files until they are applied (`npm run db:migrate` or `pgapex migrate`; no restart needed) |
+| `MIGRATE_ON_START` | `false` | `true` applies missing migrations when the server starts. Without it, a server whose database lacks migrations answers every request with 503 and names the missing files until they are applied (`npm run db:migrate` or `pgkiln migrate`; no restart needed) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
 ## npm scripts
@@ -166,7 +166,7 @@ which is read at startup; real environment variables take precedence.
 
 ## Docker
 
-The quickest way to run pgapex: an image with the server and a compose file with PostgreSQL 17,
+The quickest way to run pgkiln: an image with the server and a compose file with PostgreSQL 17,
 in `deploy/`. Docker is all you need.
 
 ```bash
@@ -187,7 +187,7 @@ builder is kept). `pgapex_runtime` gets the password in `RUNTIME_DATABASE_URL` u
 already signs in with it; `pgapex_authenticator` (PostgREST) gets `PGAPEX_AUTHENTICATOR_PASSWORD`,
 or else a random one while it has its well-known default. Roles the start creates get their
 passwords straight away. PostgreSQL roles belong to the whole server, not to one database: other
-pgapex databases on the same server share them, and with them these passwords. When the server
+pgkiln databases on the same server share them, and with them these passwords. When the server
 doesn't check passwords for the container's connection (`trust` in `pg_hba.conf`), the start
 can't tell whether an older role has the password you configured. The same holds when the check
 fails for another reason, such as a network error. The start then leaves that password alone
@@ -239,10 +239,10 @@ utilities → [Installation](03-builder.md#installation).
 
 ## Production deployment
 
-A typical setup: pgapex runs as a service behind a reverse proxy that terminates HTTPS.
+A typical setup: pgkiln runs as a service behind a reverse proxy that terminates HTTPS.
 
 ```
-Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgapex (node) ──> PostgreSQL
+Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgkiln (node) ──> PostgreSQL
 ```
 
 1. **Database**
@@ -273,7 +273,7 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgapex (nod
    EnvironmentFile=/opt/pgapex/.env
    ExecStart=/usr/bin/npm start
    Restart=always
-   User=pgapex
+   User=pgkiln
    ```
 4. **Reverse proxy** (nginx example):
    ```nginx
@@ -287,12 +287,12 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgapex (nod
 5. **Restrict the builder.** `/builder` is for developers. Consider allowing it only from your
    office network or VPN at the proxy (for example an nginx `location /builder { allow …; deny all; }`).
 6. **Change default passwords**: `admin` in the builder (Developers page), and the demo users if the sample is installed.
-   Don't install the example application in production: `npm run db:migrate` installs pgapex only.
+   Don't install the example application in production: `npm run db:migrate` installs pgkiln only.
 7. Walk through the checklist at the end of [SECURITY.md](../../SECURITY.md).
 
 ### Scaling
 
-pgapex keeps no state in memory between requests (sessions live in `meta.session`), so you can
+pgkiln keeps no state in memory between requests (sessions live in `meta.session`), so you can
 run several instances behind a load balancer. Each instance opens up to `2 × DB_POOL_SIZE`
 database connections.
 

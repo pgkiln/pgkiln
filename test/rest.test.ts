@@ -1,4 +1,4 @@
-// REST modules served by pgapex (the HR example's /a/hr/rest/v1).
+// REST modules served by pgkiln (the HR example's /a/hr/rest/v1).
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';

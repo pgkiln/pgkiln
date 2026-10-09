@@ -1,10 +1,10 @@
 // Database-account authentication (APEX: Database Accounts). The user signs
-// in with a PostgreSQL login role and its password. pgapex never reads
+// in with a PostgreSQL login role and its password. pgkiln never reads
 // pg_authid: it opens a short-lived connection as that role to its own
 // database (host, port and database of DATABASE_URL) and closes it again, so
 // PostgreSQL itself checks the password (and pg_hba.conf, VALID UNTIL,
 // CONNECTION LIMIT, NOLOGIN). Only the roles listed for the app, or members
-// of the app's membership role, may sign in; superusers and pgapex's own
+// of the app's membership role, may sign in; superusers and pgkiln's own
 // connection roles never. The password is only ever passed to that one
 // connection attempt: it is not stored and never logged.
 
@@ -21,7 +21,7 @@ export const parseRoleList = (text: string | undefined) =>
   [...new Set((text ?? '').split(/[,\n]/).map((r) => r.trim()).filter(roleNameOk))].slice(0, 200);
 export const validRoleName = (s: string | undefined) => (s && roleNameOk(s.trim()) ? s.trim() : null);
 
-/** pgapex's own login roles (owner and runtime connections): never a sign-in. */
+/** pgkiln's own login roles (owner and runtime connections): never a sign-in. */
 function serviceRoles() {
   const names = new Set<string>();
   for (const url of [ownerUrl, process.env.RUNTIME_DATABASE_URL]) {

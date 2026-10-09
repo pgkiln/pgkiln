@@ -1,5 +1,5 @@
 // Zip archives and Excel files for SQL (migration 070). PostgreSQL can't
-// decompress, so when pgapex receives a .zip or .xlsx file (a file item's
+// decompress, so when pgkiln receives a .zip or .xlsx file (a file item's
 // upload, a meta.web_request() response) it unpacks it into
 // meta.unpacked_file / meta.unpacked_entry, keyed by the SHA-256 of the
 // file, for 24 hours. meta.zip_entries / meta.zip_entry and meta.parse_data

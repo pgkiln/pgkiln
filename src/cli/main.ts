@@ -1,7 +1,7 @@
-// pgapex command line: migrations, application export/import (JSON or one
+// pgkiln command line: migrations, application export/import (JSON or one
 // file per component), diff, and a few account helpers. See docs/guide/18-cli.md.
 //
-//   npx tsx src/cli/main.ts <command> …   or   npm run pgapex -- <command> …
+//   npx tsx src/cli/main.ts <command> …   or   npm run pgkiln -- <command> …
 //
 // Exit codes: 0 ok, 1 differences found (diff), 2 usage error, 3 failure.
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -87,7 +87,7 @@ async function checkPassword(password: string, username: string) {
 
 const COMMANDS: Record<string, Command> = {
   migrate: {
-    usage: 'pgapex migrate [--example <name>]',
+    usage: 'pgkiln migrate [--example <name>]',
     summary: 'apply the database migrations (and install an example application)',
     details: 'Applies db/migrations/*.sql that were not applied yet, each in its own transaction (like npm run db:migrate).',
     options: { example: { type: 'string' }, seed: { type: 'boolean' }, root: { type: 'string' } },
@@ -106,7 +106,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   apps: {
-    usage: 'pgapex apps [--json]',
+    usage: 'pgkiln apps [--json]',
     summary: 'list the applications',
     options: { json: { type: 'boolean' } },
     optionHelp: [['--json', 'as JSON']],
@@ -133,7 +133,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   export: {
-    usage: 'pgapex export <alias> [--format json|dir|text] [--out <path>]',
+    usage: 'pgkiln export <alias> [--format json|dir|text] [--out <path>]',
     summary: 'export an application as one JSON file or as a directory with a file per component',
     details:
       'json (default) writes the pgapex/2 document (sorted keys) to --out or standard output.\n' +
@@ -166,7 +166,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   import: {
-    usage: 'pgapex import <path> [--alias <alias>] [--replace]',
+    usage: 'pgkiln import <path> [--alias <alias>] [--replace]',
     summary: 'import a JSON export, an application directory or a .zip of one',
     details:
       'Without --replace the alias must be free. With --replace an existing application with that\n' +
@@ -195,7 +195,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   diff: {
-    usage: 'pgapex diff <alias> <path> [--name-only | --quiet]',
+    usage: 'pgkiln diff <alias> <path> [--name-only | --quiet]',
     summary: 'show how a directory export (or JSON file) differs from the application in the database',
     details:
       'Compares the files the application would export now with the files at <path>.\n' +
@@ -227,13 +227,13 @@ const COMMANDS: Record<string, Command> = {
   },
 
   mcp: {
-    usage: 'pgapex mcp',
+    usage: 'pgkiln mcp',
     summary: 'run an MCP server on standard input/output for AI coding agents (Claude Code, Cursor, …)',
     details:
       'Lets an agent list applications, read pages and shared components, describe tables, run read-only\n' +
       'queries, search the user guide, and export, diff and import applications as files.\n' +
       'The repository\'s .mcp.json starts it for Claude Code; elsewhere:\n' +
-      '  claude mcp add pgapex -- /path/to/pgapex/bin/pgapex.js mcp\n' +
+      '  claude mcp add pgkiln -- /path/to/pgkiln/bin/pgkiln.js mcp\n' +
       'See docs/guide/20-ai-agents.md.',
     options: {},
     optionHelp: [],
@@ -246,7 +246,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   plugin: {
-    usage: 'pgapex plugin build <dir> [-o <file>] | pgapex plugin install <file|dir> --app <alias> [--replace]',
+    usage: 'pgkiln plugin build <dir> [-o <file>] | pgkiln plugin install <file|dir> --app <alias> [--replace]',
     summary: 'build a plug-in file from its sources, or install one into an application',
     details:
       'A plug-in source directory holds plugin.json (format pgapex-plugin/2 without file contents),\n' +
@@ -284,23 +284,23 @@ const COMMANDS: Record<string, Command> = {
         if (typeof parsed === 'string') throw new Error(parsed);
         await withDb(async (db) => {
           const a = await db.query('select id from meta.app where alias = $1', [v.app]);
-          if (!a.rows[0]) throw new Error(`application ${v.app} not found (pgapex apps lists them)`);
+          if (!a.rows[0]) throw new Error(`application ${v.app} not found (pgkiln apps lists them)`);
           await db.query('select meta.import_plugin($1, $2::jsonb, $3)', [a.rows[0].id, JSON.stringify({ ...doc, files: parsed.files }), !!v.replace]);
         });
         out(`Installed ${parsed.plugin.type} plug-in ${parsed.plugin.name} into ${v.app}.${parsed.plugin.install_sql ? ' It has install SQL: review and run it in the builder.' : ''}\n`);
         return EXIT.ok;
       }
-      throw new UsageError('pgapex plugin build <dir> | pgapex plugin install <file|dir> --app <alias>');
+      throw new UsageError('pgkiln plugin build <dir> | pgkiln plugin install <file|dir> --app <alias>');
     },
   },
 
   users: {
-    usage: 'pgapex users list|add|password [<username>] [options]',
+    usage: 'pgkiln users list|add|password [<username>] [options]',
     summary: 'list accounts and builder developers, add one, set a password',
     details:
-      'pgapex users list [--developers]\n' +
-      'pgapex users add <username> [--developer] [--app <alias> --roles a,b] [--name <display name>] [--email <address>]\n' +
-      'pgapex users password <username> [--developer]\n\n' +
+      'pgkiln users list [--developers]\n' +
+      'pgkiln users add <username> [--developer] [--app <alias> --roles a,b] [--name <display name>] [--email <address>]\n' +
+      'pgkiln users password <username> [--developer]\n\n' +
       'Passwords are read from standard input (first line) or asked for on a terminal, never\n' +
       'taken from the command line, and must meet the password policy. Setting a password ends\n' +
       "the user's sessions.",
@@ -393,7 +393,7 @@ const COMMANDS: Record<string, Command> = {
 const GLOBAL_HELP = [
   ['--db <url>', 'database connection of the owner role (default: DATABASE_URL, from the environment or .env)'],
   ['-h, --help', 'help (also after a command)'],
-  ['-v, --version', 'the pgapex version'],
+  ['-v, --version', 'the pgkiln version'],
 ];
 
 const table = (rows: string[][]) => {
@@ -403,13 +403,13 @@ const table = (rows: string[][]) => {
 
 function mainHelp() {
   return (
-    'pgapex: command line for pgapex, a low-code application builder for PostgreSQL\n\n' +
-    'Usage: pgapex <command> [options]\n\nCommands:\n' +
+    'pgkiln: command line for pgkiln, a low-code application builder for PostgreSQL\n\n' +
+    'Usage: pgkiln <command> [options]\n\nCommands:\n' +
     table(Object.entries(COMMANDS).map(([name, c]) => [name, c.summary])) +
     '\nOptions:\n' +
     table(GLOBAL_HELP) +
     '\nExit codes: 0 ok, 1 differences found (diff), 2 usage error, 3 failure.\n' +
-    "Run 'pgapex <command> --help' for a command's options.\n"
+    "Run 'pgkiln <command> --help' for a command's options.\n"
   );
 }
 
@@ -428,7 +428,7 @@ export async function main(argv: string[]): Promise<number> {
     return name ? EXIT.ok : EXIT.usage;
   }
   if (name === '-v' || name === '--version') {
-    out(`pgapex ${version()}\n`);
+    out(`pgkiln ${version()}\n`);
     return EXIT.ok;
   }
   const cmd = COMMANDS[name];
@@ -450,7 +450,7 @@ export async function main(argv: string[]): Promise<number> {
     return await cmd.run(values as Values, positionals);
   } catch (e) {
     const usage = e instanceof UsageError || (e as { code?: string }).code?.startsWith('ERR_PARSE_ARGS');
-    err(`pgapex${cmd ? ' ' + name : ''}: ${(e as Error).message}\n`);
+    err(`pgkiln${cmd ? ' ' + name : ''}: ${(e as Error).message}\n`);
     if (usage) err(`Run 'pgapex ${cmd ? name + ' ' : ''}--help' for usage.\n`);
     return usage ? EXIT.usage : EXIT.failure;
   }

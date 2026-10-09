@@ -205,13 +205,13 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
     const db = await owner.one(`select current_database() as name, split_part(version(), ' on ', 1) as version, pg_size_pretty(pg_database_size(current_database())) as size`);
     const main = html`<h1 class="u-mb1">Installation</h1>
       <div class="stat-grid">
-        <div class="stat"><b>${VERSION}</b><span>pgapex version of this server</span></div>
+        <div class="stat"><b>${VERSION}</b><span>pgkiln version of this server</span></div>
         <div class="stat"><b>${migrations.length}</b><span>migrations applied${migrations[0] ? html`, the latest ${migrations[0].name.replace(/\.sql$/, '')}` : ''}</span></div>
         <div class="stat"><b>${pending.length}</b><span>migrations not applied</span></div>
         <div class="stat"><b>${db.size}</b><span>${db.name} · ${db.version}</span></div>
       </div>
       ${pending.length
-        ? html`<div class="alert alert-error" role="alert">This database misses ${pending.length} migration${pending.length === 1 ? '' : 's'} of this server (${pending.join(', ')}). Run <code>npm run db:migrate</code> or <code>pgapex migrate</code>.</div>`
+        ? html`<div class="alert alert-error" role="alert">This database misses ${pending.length} migration${pending.length === 1 ? '' : 's'} of this server (${pending.join(', ')}). Run <code>npm run db:migrate</code> or <code>pgkiln migrate</code>.</div>`
         : ''}
       ${unknown.length ? html`<div class="alert alert-error" role="alert">The database has migrations this server does not know (${unknown.map((m) => m.name).join(', ')}): the server is older than the database.</div>` : ''}
       <div class="columns">
@@ -222,7 +222,7 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
               <td data-label="Status">${r.status === 'ok' ? html`<span class="ev ev-login">ok</span>` : html`<span class="ev ev-error">failed</span>`}${r.error ? html`<div class="small">${r.error}</div>` : ''}</td>
               <td class="num" data-label="Files">${r.applied.length}</td>
               <td data-label="Applied" class="debug-text">${r.applied.join(', ')}</td><td data-label="By">${r.db_user}</td></tr>`)}</tbody></table></div>`
-          : html`<p class="muted u-mt0">No runs recorded yet: runs are logged from version 0.25 on (each <code>db:migrate</code> or <code>pgapex migrate</code> that applies or fails a file). The applied migrations below show when each file was applied.</p>`)}
+          : html`<p class="muted u-mt0">No runs recorded yet: runs are logged from version 0.25 on (each <code>db:migrate</code> or <code>pgkiln migrate</code> that applies or fails a file). The applied migrations below show when each file was applied.</p>`)}
         ${region('Applied migrations', html`<div class="table-wrap"><table class="report"><thead><tr><th>File</th><th>Applied</th></tr></thead>
           <tbody>${migrations.map((m) => html`<tr><td><code>${m.name}</code></td><td>${String(m.applied_at).slice(0, 19)}</td></tr>`)}</tbody></table></div>`)}
         ${examples.length

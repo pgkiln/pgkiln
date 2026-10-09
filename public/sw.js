@@ -1,4 +1,4 @@
-// pgapex service worker for one application (served as /a/<alias>/sw.js with PGAPEX = {base, offlinePages, offlineSubmit, version}).
+// pgkiln service worker for one application (served as /a/<alias>/sw.js with PGAPEX = {base, offlinePages, offlineSubmit, version}).
 //   static files (app.css, app.js, icons) and the offline page: cached at install, served from the cache
 //   pages (navigations): network first; offline, the cached copy (only when the app keeps pages) or the offline page
 //   signing in or out empties the page cache, so the next person on the device doesn't see them

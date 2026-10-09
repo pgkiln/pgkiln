@@ -126,7 +126,7 @@ describe('expiry and first use', () => {
 });
 
 describe('no e-mail features', () => {
-  // pgapex doesn't send mail (owner decision, sprint 6): there is no
+  // pgkiln doesn't send mail (owner decision, sprint 6): there is no
   // "forgot password" link or page, and no mail tables.
   test('the login page has no forgot-password link and the old pages are gone', async () => {
     const b = new Browser(app);

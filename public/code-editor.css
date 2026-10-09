@@ -1,4 +1,4 @@
-/* pgapex builder: code editor (public/code-editor.js). The textarea's text is
+/* pgkiln builder: code editor (public/code-editor.js). The textarea's text is
    transparent and lies exactly over the highlighted copy (.ce-code), so both
    must share font, size, line height, padding and tab size. */
 :root {

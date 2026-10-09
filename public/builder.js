@@ -1,4 +1,4 @@
-// pgapex builder: behaviour on top of the server-rendered builder pages,
+// pgkiln builder: behaviour on top of the server-rendered builder pages,
 // loaded only by builder pages after app.js (the runtime never loads it).
 // Everything here is an enhancement: without script the panes are stacked
 // sections, every component is a link and the Arrange buttons are plain forms.

@@ -149,7 +149,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
             <li>Primary language: <b>${langName(a.language)}</b></li>
             <li>Translated into: ${langs.length ? langs.map((l, i) => html`${i ? ', ' : ''}<b>${langName(l)}</b>`) : html`<span class="muted">none yet</span>`}</li>
             <li>Language derived from: <b>${{ browser: 'the browser', user: 'the user’s preference, then the browser', primary: 'always the primary language' }[a.language_from as string]}</b></li>
-            <li>pgapex’s own texts (sign-in, reports, messages) exist in ${BUILTIN_LANGUAGES.slice(0, -1).map(([, n]) => n).join(', ')} and ${BUILTIN_LANGUAGES.at(-1)?.[1]}; override any of them with a text message of the same name.</li>
+            <li>pgkiln’s own texts (sign-in, reports, messages) exist in ${BUILTIN_LANGUAGES.slice(0, -1).map(([, n]) => n).join(', ')} and ${BUILTIN_LANGUAGES.at(-1)?.[1]}; override any of them with a text message of the same name.</li>
           </ul>
           <p><a class="btn" href="${BASE}/apps/${a.id}/settings">Change languages in Settings</a></p>`)}
         ${lang ? region('Export and import', html`
@@ -183,7 +183,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
               <div class="buttons"><button class="btn btn-hot">Save translations</button></div>
             </form>
             <h3>Add a text</h3>
-            <p class="muted">For texts pgapex derives itself, such as column headings made from column names (<code>hiredate</code> → “Hiredate”).</p>
+            <p class="muted">For texts pgkiln derives itself, such as column headings made from column names (<code>hiredate</code> → “Hiredate”).</p>
             <form method="post" action="${BASE}/apps/${a.id}/globalization/save" class="form-grid">${csrf(s)}
               <input type="hidden" name="lang" value="${lang}">
               ${input('s0', `Text (${a.language})`, '', { required: true })}
@@ -192,7 +192,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
             </form>`)
         : region('Translate', html`<p>Add a translated language under <a href="${BASE}/apps/${a.id}/settings">Settings → Globalization</a> first (for example <code>nl</code>).</p>`)}
       ${region('Text messages', html`
-        <p class="muted u-mt0">Use them in SQL with <code>meta.message('NAME', param0, …)</code> (placeholders <code>%0</code>…<code>%9</code>) and in texts as <code>&amp;APP_TEXT$NAME.</code>, like APEX_LANG.MESSAGE. A message named like a pgapex text (e.g. <code>login.title</code>, <code>report.no_data</code>) replaces it. Missing languages fall back to the primary language.</p>
+        <p class="muted u-mt0">Use them in SQL with <code>meta.message('NAME', param0, …)</code> (placeholders <code>%0</code>…<code>%9</code>) and in texts as <code>&amp;APP_TEXT$NAME.</code>, like APEX_LANG.MESSAGE. A message named like a pgkiln text (e.g. <code>login.title</code>, <code>report.no_data</code>) replaces it. Missing languages fall back to the primary language.</p>
         <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Name</th><th>Language</th><th>Text</th><th></th></tr></thead><tbody>
           ${messages.rows.length
             ? messages.rows.map((m) => html`<tr>

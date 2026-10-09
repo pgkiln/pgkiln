@@ -1,4 +1,4 @@
-// The provider interface of pgapex's AI features (src/ai/): one request in,
+// The provider interface of pgkiln's AI features (src/ai/): one request in,
 // one answer out, whatever the provider. Providers live in anthropic.ts
 // (Claude, with the official @anthropic-ai/sdk) and openai.ts (the official
 // openai SDK); service.ts picks one for an AI service and adds the checks,

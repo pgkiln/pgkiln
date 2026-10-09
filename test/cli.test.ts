@@ -1,4 +1,4 @@
-// The pgapex command line (src/cli) and the directory export (src/appfiles.ts):
+// The pgkiln command line (src/cli) and the directory export (src/appfiles.ts):
 // help and exit codes, dir → import → export round trip, diff, import --replace.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,12 +33,12 @@ after(async () => {
   await closePools();
 });
 
-/** Run the CLI as a user would (bin/pgapex.js). */
+/** Run the CLI as a user would (bin/pgkiln.js). */
 function cli(...args: string[]) {
   return cliInput('', ...args);
 }
 function cliInput(input: string, ...args: string[]) {
-  const r = spawnSync(process.execPath, [join(root, 'bin/pgapex.js'), ...args], { cwd: tmp, encoding: 'utf8', input });
+  const r = spawnSync(process.execPath, [join(root, 'bin/pgkiln.js'), ...args], { cwd: tmp, encoding: 'utf8', input });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
@@ -71,7 +71,7 @@ function normalise(doc: any) {
 
 const exportDoc = async (alias: string) => (await owner.one('select meta.export_app($1) as d', [alias])).d;
 
-describe('pgapex command line', () => {
+describe('pgkiln command line', () => {
   test('the server knows when the database lacks migrations', async () => {
     assert.deepEqual(await pendingMigrations(root), []);
     const fake = join(tmp, 'newer');
@@ -89,9 +89,9 @@ describe('pgapex command line', () => {
     for (const c of ['migrate', 'apps', 'export', 'import', 'diff', 'users']) {
       const r = cli(c, '--help');
       assert.equal(r.code, 0, `${c} --help`);
-      assert.match(r.out, new RegExp(`^Usage: pgapex ${c}`));
+      assert.match(r.out, new RegExp(`^Usage: pgkiln ${c}`));
     }
-    assert.match(cli('--version').out, /^pgapex \d+\.\d+\.\d+\n$/);
+    assert.match(cli('--version').out, /^pgkiln \d+\.\d+\.\d+\n$/);
     const unknown = cli('frobnicate');
     assert.equal(unknown.code, 2);
     assert.match(unknown.err, /unknown command frobnicate/);

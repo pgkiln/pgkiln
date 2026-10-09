@@ -212,7 +212,7 @@ async function branchFunction(ctx: PageContext, b: Branch): Promise<string | nul
 async function otherApp(ctx: PageContext, b: Branch): Promise<string | null> {
   const alias = b.target_app ?? '';
   const page = b.target_page;
-  // pgapex's runtime connection reads the metadata (the app's role may not)
+  // pgkiln's runtime connection reads the metadata (the app's role may not)
   const row = page
     ? await runtime.one<{ id: number; alias: string }>(
         `select a.id, a.alias from meta.app a join meta.page p on p.app_id = a.id

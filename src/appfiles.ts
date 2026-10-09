@@ -16,7 +16,7 @@
 //   static application files as themselves under static/ (with static/files.json).
 // - Sections and columns this file does not know travel unchanged
 //   (columns in the component's JSON, unknown sections in extra/).
-// - (0.31) The "text" style (pgapex export --format text; APEX: APEXlang)
+// - (0.31) The "text" style (pgkiln export --format text; APEX: APEXlang)
 //   writes every .json file except pgapex.json as .yaml (src/yamltext.ts),
 //   with code inline as literal blocks instead of sibling files. The reader
 //   takes either, file by file, so a directory may mix them.
@@ -409,10 +409,10 @@ const keyFromBase = (base: string) => base.slice(base.indexOf('-') + 1);
 
 export function filesToDoc(files: FileMap): Doc {
   const marker = files.get(MARKER);
-  if (!marker) throw new Error(`${MARKER} not found: not a pgapex application directory`);
+  if (!marker) throw new Error(`${MARKER} not found: not a pgkiln application directory`);
   const m = parseJson(MARKER, marker);
   if (m.format !== 'pgapex/2') throw new Error(`unsupported export format ${m.format ?? '(none)'}`);
-  if (typeof m.layout === 'number' && m.layout > LAYOUT) throw new Error(`directory layout ${m.layout} is newer than this pgapex understands (${LAYOUT})`);
+  if (typeof m.layout === 'number' && m.layout > LAYOUT) throw new Error(`directory layout ${m.layout} is newer than this pgkiln understands (${LAYOUT})`);
   const read = (path: string, dflt: unknown = []) => {
     const f = pick(files, path);
     return f ? parseJson(f[0], f[1]) : dflt;
