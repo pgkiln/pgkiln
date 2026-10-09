@@ -37,6 +37,7 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgapex export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgapex/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
 | `pgapex import <path> [--alias <alias>] [--replace]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place |
 | `pgapex diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
+| `pgapex mcp` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md) |
 | `pgapex plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgapex-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
 | `pgapex plugin install <file\|dir> --app <alias> [--replace]` | Adds a plug-in (file or source directory) to an application; its install SQL is not run |
 | `pgapex users list [--developers]` | Accounts with their applications and roles, or builder developers |

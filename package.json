@@ -41,6 +41,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "pgapex": "tsx src/cli/main.ts",
     "example:hr": "tsx scripts/migrate.ts --example hr",
+    "screenshots": "tsx scripts/screenshots.ts",
     "setup": "docker compose up -d db && tsx scripts/migrate.ts",
     "pretest:e2e": "tsx scripts/migrate.ts --example hr",
     "test:e2e": "tsx --test --test-concurrency=1 test/e2e/*.test.ts"

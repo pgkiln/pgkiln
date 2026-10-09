@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **MCP server for AI coding agents** (`pgapex mcp`, docs/guide/20-ai-agents.md): Claude Code, Cursor and other
+  agents can list applications, read an application's settings, pages and shared components as YAML, describe
+  tables with their RLS policies, run read-only queries, search the user guide and read recent errors; and change an
+  application by exporting it to `apps/<alias>`, editing the files, `diff_app`, and `import_app` with `replace`
+  (one transaction, as `pgapex import --replace`). `.mcp.json` starts it for Claude Code in a checkout; `CLAUDE.md`
+  tells agents how to work on applications and on pgapex. `run_query` runs one statement in a read-only
+  transaction and hides password, secret and token columns.
+- **Screenshots** in the README (`docs/images/`, made by `npm run screenshots` from the HR example).
 - **Docker**: a `Dockerfile` and `deploy/compose.yaml` (PostgreSQL 17 + pgapex, optional Caddy for HTTPS):
   `cp .env.example .env`, fill in four secrets, `docker compose up -d`. The container (`scripts/docker-start.ts`)
   refuses empty or too short secrets (listing all problems at once), migrates under an advisory lock, sets the

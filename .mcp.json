@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pgapex": {
+      "command": "node",
+      "args": ["bin/pgapex.js", "mcp"]
+    }
+  }
+}
