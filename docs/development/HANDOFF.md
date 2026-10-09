@@ -1477,7 +1477,7 @@ installations (databases) for tenants that must not see each other. Parity row �
 (85% available). Also fixed on the way: temporary files of one upload are stored in the order chosen (a flaky
 files test); a server waiting for migrations recovers by itself once they are applied.
 
-## Sprint 42 (IN PROGRESS): MCP server for AI agents, README screenshots (owner, 2026-10-09: "add screenshots to the readme … is there something like laravel boost … can we also import / export apps")
+## Sprint 42 (DONE, merged, unreleased): MCP server for AI agents, README screenshots (owner, 2026-10-09: "add screenshots to the readme … is there something like laravel boost … can we also import / export apps")
 
 Branch `sprint-42` from `main`. One agent, main checkout. No migration.
 
@@ -1490,7 +1490,7 @@ Branch `sprint-42` from `main`. One agent, main checkout. No migration.
   leave_request, emp_document, review. Fixed (`queryMode: 'extended'` + a snapshot before the statement; regression
   test). Restored emp + leave_request from hr.audit_log, review from a fresh install; emp_document rows and emp
   photos (if the dev DB had any) are lost; the audit log keeps the delete and the restore.
-- todo: full `npm test` + e2e, merge.
+- verified: `npm test` 1209 pass / 9 skip / 0 fail; no UI change, so e2e not rerun. Merged into main.
 
 ## Sprint 41 (DONE, merged, unreleased): fixes from the security review of 2026-10-08 (owner: "please work on all the found issues")
 
