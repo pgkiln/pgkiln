@@ -216,7 +216,8 @@ describe('builder: globalization', () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     assert.ok(doc.translations.length > 50);
     assert.ok(doc.text_messages.some((m: { name: string }) => m.name === 'KPI_PAYROLL'));
-    assert.equal(doc.email_templates, undefined, 'no e-mail templates in exports');
+    // (081) e-mail templates travel with the application (the HR example has one)
+    assert.ok(doc.email_templates.some((t: { name: string }) => t.name === 'LEAVE_DECIDED'), 'e-mail templates in exports');
     const id = (await owner.one(`select meta.import_app($1::jsonb, 'hr_copy_i18n') as id`, [JSON.stringify(doc)])).id;
     try {
       const n = await owner.one(
