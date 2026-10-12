@@ -132,6 +132,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
+| [`search`](#search-search-region) | One search field over several sources (search configurations), results grouped per source |
 | [`url`](#url-url-region) | Another site's page (or a page of this server) in a sandboxed frame |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
@@ -1295,6 +1296,55 @@ first rows and a *Show all* button), `char-counter` (item: a maximum length with
 `copy-value` (dynamic action: copy an item's value to the clipboard) and `log-event` (process: record
 an event in `pgkiln_plugins.event_log`). HR example part 47 installs them and uses all four on page
 40 (*Plug-ins*).
+
+### `search` (search region)
+
+One search field over several sources, with the results grouped per source (APEX 22.2: the Search
+region and search configurations). Each source is a **search configuration** (Shared Components →
+Search configurations):
+
+| Property | Meaning |
+|---|---|
+| Name | The static ID the region names, e.g. `CUSTOMERS` |
+| Label | The heading of its results (translated like the page's texts) |
+| Sequence | The order of the groups |
+| Source type, source | `table`: a table or view (`sales.customers`) · `sql`: a SELECT, `:ITEM` binds allowed · `list`: the entries of a [list](#list-lists) the user may see (their label and description are searched, they link where the entry links) |
+| Searchable columns | The columns the search text is looked for in. Empty: the title, subtitle and description columns |
+| Title, subtitle, description, badge column | What each result shows. The title is required (table, sql), and results are ordered by it |
+| Icon | An [icon name](09-reference.md#icons), or `#COLUMN#` for a column that holds icon names |
+| Link | Where a result goes: `{"page": 3, "items": {"P3_ID": "#ID#"}}` (`#COLUMN#` is the row's value; the link gets a checksum, a modal page opens as a dialog) |
+| Maximum results | Per configuration, 1–100 (default 10); "Showing the first *n* rows." when there are more |
+
+**How it searches.** Each word of the search text must be found (case-insensitively, anywhere in
+the value) in one of the searchable columns, so `clerk mil` finds MILLER the clerk. `%` and `_` are
+plain characters. The text is a query parameter, never SQL; the queries run as the application's
+role (its grants and row level security apply), each on its own, so a configuration that fails
+shows its error and the others still answer. The found words are marked in the results.
+
+```sql
+-- a configuration on a query: employees with their department
+select e.empno, initcap(e.ename) as name, initcap(e.job) as job, d.dname as department
+  from hr.emp e left join hr.dept d on d.deptno = e.deptno
+```
+
+with searchable columns `name, job, department`, title `name`, subtitle `job`, badge `department`
+and link `{"page": 3, "items": {"P3_EMPNO": "#EMPNO#"}}`.
+
+**The region**: attributes
+
+| Key | Meaning |
+|---|---|
+| `configs` | The configurations it searches, e.g. `["CUSTOMERS", "ORDERS"]`; empty or left out: all of the application's |
+| `item` | Search with this page item's value (`"P1_SEARCH"`) instead of a field of the region's own; refresh the region from a dynamic action, or let the item submit the page |
+| `placeholder` | The field's placeholder |
+| `min_length` | Search only from this many characters (default 1) |
+| `empty` | The text when nothing is found (default "Nothing found.") |
+
+The region's own field is a GET form (`?s<region id>=text`, so a search can be bookmarked) and works
+without JavaScript; with JavaScript it searches while the user types and replaces only the results.
+The Advisor plans every configuration with the columns it names and reports names a region uses
+that don't exist. Search configurations are exported with the application. The HR example's page 42
+searches employees, departments and the shortcuts list.
 
 ### `url` (URL region)
 

@@ -9,6 +9,7 @@ import { invokeStepReferences, stepProblems, stepWarnings } from '../workflow.ts
 import { handlerProblems } from '../runtime/rest.ts';
 import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
+import { configColumns, searchConfigProblems } from '../runtime/search.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
@@ -193,6 +194,26 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
         const problem = await checkSql(c, l.source, 'select');
         if (problem) findings.push({ ...problem, entry, field: `Layer "${typeof l.name === 'string' ? l.name : ''}" query` });
       }
+    }
+    // (080) search configurations: their source with the columns they name
+    for (const { kind, row } of all.filter((x) => x.kind === 'search_config' && x.row.source_type !== 'list')) {
+      const entry = byKey.get(`${kind}-${row.id}`) ?? null;
+      const problems = searchConfigProblems(row);
+      if (problems.length) {
+        findings.push({ severity: 'error', entry, field: 'Source', message: problems.join(' ') });
+        continue;
+      }
+      const cols = configColumns(row).map((x) => `t.${pg.escapeIdentifier(x)}`).join(', ') || '*';
+      checked++;
+      const problem = await checkSql(c, `select ${cols} from ${row.source_type === 'table' ? row.source.trim() : `(${row.source})`} t`, 'select');
+      if (problem) findings.push({ ...problem, entry, field: 'Source' });
+    }
+    // the search regions name existing configurations
+    for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'search')) {
+      const names: unknown[] = Array.isArray(row.config?.configs) ? row.config.configs : [];
+      for (const n of names)
+        if (!all.some((x) => x.kind === 'search_config' && x.row.name === String(n).toUpperCase()))
+          findings.push({ severity: 'error', entry: byKey.get(`${kind}-${row.id}`) ?? null, field: 'Attributes', message: `Search configuration ${String(n)} doesn't exist.` });
     }
     // REST handlers
     for (const { kind, row } of all.filter((x) => x.kind === 'rest_module')) {

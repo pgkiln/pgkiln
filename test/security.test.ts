@@ -6508,3 +6508,39 @@ describe('sprint 50 developer toolbar', () => {
     }
   });
 });
+
+describe('sprint 50 search', () => {
+  test('the search text is a value, the search runs as the application role, and only this application\'s configurations count', async () => {
+    const page = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 1`, [appId])).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-search-other', 'Other', 'pgkiln_runtime') returning id`)).id;
+    await owner.query(
+      `insert into meta.search_config (app_id, name, label, source_type, source, title_column) values
+         ($1, 'SEC_EMP', 'Employees', 'table', 'hr.emp', 'ename'),
+         ($1, 'SEC_ACCOUNTS', 'Accounts', 'table', 'meta.account', 'password_hash'),
+         ($2, 'SEC_FOREIGN', 'Foreign', 'sql', 'select ename from hr.emp', 'ename')`,
+      [appId, other],
+    );
+    const region = (await owner.one(
+      `insert into meta.region (page_id, seq, title, type, config) values ($1, 999, 'Find', 'search', '{"configs": ["SEC_EMP", "SEC_ACCOUNTS", "SEC_FOREIGN"]}') returning id`, [page])).id;
+    try {
+      const king = await as('king');
+      for (const evil of [`' or 1=1 --`, `%' or ''='`, `\\' ; select 1 --`, `a) or (1=1`]) {
+        const res = await king.get(`/a/hr/1?s${region}=${encodeURIComponent(evil)}`);
+        assert.equal(res.statusCode, 200, evil);
+        assert.doesNotMatch(res.body, /class="search-title"/, evil);
+      }
+      const res = await king.get(`/a/hr/1?s${region}=${encodeURIComponent('$2')}`);
+      assert.doesNotMatch(res.body, /\$2[ab]\$/, 'no password hash');
+      const any = await king.get(`/a/hr/1?s${region}=a`);
+      assert.match(any.body, /<h3>Accounts<\/h3><div class="alert alert-error"/, 'the application role can\'t read meta.account');
+      assert.doesNotMatch(any.body, /Foreign/, 'another application\'s configuration');
+      // a region the user can't see answers 403 on the endpoint
+      await owner.query(`update meta.region set condition = '1 = 0' where id = $1`, [region]);
+      assert.equal((await king.get(`/a/hr/1/region/${region}?s${region}=a`)).statusCode, 403);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [region]);
+      await owner.query(`delete from meta.search_config where name like 'SEC_%'`);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+});

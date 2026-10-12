@@ -518,6 +518,7 @@ Components used by the whole application:
 | **Data load definitions** | A target table, file format (CSV, Excel, JSON, XML with its row element) and column mapping with transformations, for SQL Workshop → Load Data and the `data_load` process ([chapter 16](16-files.md#data-load-definitions)) |
 | **Lists** | Named sets of links (static entries with nesting, badges, conditions and authorization, or a query) for list regions, the navigation menu and the navigation bar ([chapter 4](04-pages-and-regions.md#list-lists)) |
 | **Supporting objects** | Install, upgrade and deinstall scripts that travel with the export ([below](#supporting-objects)) |
+| **Search configurations** | What a search region searches: a table, a query or a list, the columns searched, and the title, subtitle, description, badge, icon and link of each result ([chapter 4](04-pages-and-regions.md#search-search-region)) |
 
 ### Application types and subscriptions
 

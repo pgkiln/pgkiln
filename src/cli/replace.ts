@@ -22,6 +22,8 @@ export const REPLACED = [
   'list', 'list_entry', 'supporting_script',
   // (068) static application files, (069) plug-ins
   'static_file', 'plugin',
+  // (080) search configurations
+  'search_config',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',

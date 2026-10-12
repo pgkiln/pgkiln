@@ -1573,3 +1573,21 @@ dialog.crop-dialog::backdrop { background: rgb(15 20 30 / 55%); }
 .devbar-facts dd { margin: 0; overflow-wrap: anywhere; }
 .devbar-session code { overflow-wrap: anywhere; }
 @media print { .devbar { display: none; } }
+
+/* (080) Search region: one field, results grouped per search configuration */
+.search-form { margin-bottom: 1rem; }
+.search-group + .search-group { margin-top: 1rem; }
+.search-group h3 { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 0.4rem; }
+.search-hits { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); }
+.search-hits li + li { border-top: 1px solid var(--border); }
+.search-hit { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.6rem 0.8rem; color: inherit; text-decoration: none; }
+a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft); }
+.search-icon { flex: none; color: var(--accent); }
+.search-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.search-title { font-weight: 600; }
+.search-subtitle, .search-description { color: var(--muted); font-size: 0.875rem; }
+.search-hit mark { background: #fff3a3; color: inherit; border-radius: 2px; padding: 0 1px; }
+:root[data-theme="dark"] .search-hit mark { background: #6b5a00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .search-hit mark { background: #6b5a00; } }
+.search-hit .badge-pill { flex: none; }
+.search-more, .search-empty { margin: 0.4rem 0 0; }

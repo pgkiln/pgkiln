@@ -3114,3 +3114,40 @@ function areaFilter(map, f) {
     }
   });
 })();
+
+// Search region (migration 080): search as the user types. The field is a GET form that works
+// without JavaScript; here a pause in typing fetches the region (GET …/region/<id>) and swaps in
+// its results only, so the field keeps its focus and cursor. Answers that arrive late are dropped.
+(() => {
+  const base = document.body.dataset.base;
+  const page = document.body.dataset.page;
+  if (!base || !page) return;
+  const timers = new WeakMap();
+  const latest = new WeakMap();
+  async function search(field) {
+    const id = field.dataset.searchRegion;
+    if (!/^\d+$/.test(id || '') || !field.form) return;
+    // (the form keeps the page's own parameters, dialog=1 among them)
+    const params = new URLSearchParams(new FormData(field.form));
+    const n = (latest.get(field) || 0) + 1;
+    latest.set(field, n);
+    try {
+      const res = await fetch(`${base}/${page}/region/${id}?${params}`, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      if (!res.ok || latest.get(field) !== n) return;
+      const json = await res.json();
+      const fresh = new DOMParser().parseFromString(json.html || '', 'text/html').getElementById(`R${id}_results`);
+      const results = document.getElementById(`R${id}_results`);
+      if (!fresh || !results) return;
+      results.replaceChildren(...[...fresh.childNodes].map((node) => document.importNode(node, true)));
+      history.replaceState(history.state, '', `${location.pathname}?${params}${location.hash}`);
+    } catch {
+      // offline or the session ended: Enter still submits the form
+    }
+  }
+  document.addEventListener('input', (e) => {
+    const field = e.target.closest?.('input[data-search-region]');
+    if (!field) return;
+    clearTimeout(timers.get(field));
+    timers.set(field, setTimeout(() => search(field), 250));
+  });
+})();

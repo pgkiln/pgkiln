@@ -33,9 +33,10 @@ function listExtras(appId: number, list: any, entries: any[]): Raw {
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config'];
 
   const ORDER: Record<string, string> = {
+    search_config: 'seq, name',
     nav_entry: 'parent_id nulls first, seq, id', app_process: 'seq, id', list_entry: 'list_name, parent_id nulls first, seq, id', automation_action: 'automation_name, seq, name', supporting_script: 'kind, seq, name',
   };
 
@@ -143,7 +144,7 @@ export async function sharedRoutes(app: FastifyInstance) {
         const spec = COMPONENTS[kind];
         return html`<li class="group">${spec.plural}<a href="?new=${kind}" aria-label="Add ${spec.label}">＋ Add</a></li>
           ${rows[kind].map((r) => html`<li><a href="?c=${kind}-${r.id}"${selKind === kind && selId === String(r.id) ? raw(' aria-current="page"') : ''}>${icon(kind === 'nav_entry' ? (r.icon ?? 'chevron') : spec.icon)}<span>${r.parent_id ? '↳ ' : ''}${spec.summary(r)}</span>${
-            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : kind === 'automation' ? html`<span class="kind">${r.enabled ? (r.last_status === 'error' || r.last_status === 'warning' ? r.last_status : r.schedule) : 'off'}</span>` : kind === 'web_credential' ? html`<span class="kind">${r.type}${r.secret_enc || !needsSecret(r) ? '' : ' · no secret'}</span>` : kind === 'rest_source' ? html`<span class="kind">${r.method}${r.sync_table ? ' · sync' : ''}</span>` : kind === 'list' ? html`<span class="kind">${r.type}</span>` : kind === 'supporting_script' ? html`<span class="kind">${r.kind}</span>` : ''
+            kind === 'nav_entry' && r.target_page ? html`<span class="kind">p${r.target_page}</span>` : kind === 'authz_scheme' ? html`<span class="kind">${r.type}</span>` : kind === 'app_process' ? html`<span class="kind">${r.point}</span>` : kind === 'report_layout' ? html`<span class="kind">${r.paper}${r.is_default ? ' · default' : ''}</span>` : kind === 'automation' ? html`<span class="kind">${r.enabled ? (r.last_status === 'error' || r.last_status === 'warning' ? r.last_status : r.schedule) : 'off'}</span>` : kind === 'web_credential' ? html`<span class="kind">${r.type}${r.secret_enc || !needsSecret(r) ? '' : ' · no secret'}</span>` : kind === 'rest_source' ? html`<span class="kind">${r.method}${r.sync_table ? ' · sync' : ''}</span>` : kind === 'list' ? html`<span class="kind">${r.type}</span>` : kind === 'supporting_script' ? html`<span class="kind">${r.kind}</span>` : kind === 'search_config' ? html`<span class="kind">${r.source_type}</span>` : ''
           }</a></li>`)}${kind === 'supporting_script' ? html`<li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('play')}<span>Review and run…</span></a></li>` : ''}`;
       })}
     </ul>`;

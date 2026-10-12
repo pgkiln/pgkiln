@@ -64,6 +64,7 @@ const SECTIONS: Record<string, string> = {
   supporting_script: 'supporting_scripts',
   static_file: 'static_files',
   plugin: 'plugins',
+  search_config: 'search_configs',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

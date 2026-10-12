@@ -127,7 +127,7 @@ export interface Region {
   title: string | null;
   /** (0.31, 073) optional, unique on the page */
   static_id?: string | null;
-  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url';
+  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;

@@ -759,7 +759,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (masters.length) selected = applyRowSelection(ctx);
         const vis = await computeVisibility(ctx);
         const detail = masters.some((m) => vis.regions.has(m.id));
-        if (!r || !(lazyOf(r) || detail) || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        // (080) a search region: its results for the text typed so far
+        if (!r || !(lazyOf(r) || detail || r.type === 'search') || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
         ctx.loadNow = r.id;
         const markup = (await renderRegion(ctx, r)).toString();
         return { html: markup, css: ctx.css.text, detached: ctx.detached.map(String).join('') };

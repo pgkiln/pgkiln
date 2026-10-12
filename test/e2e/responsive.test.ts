@@ -159,6 +159,18 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query('update meta.region set config = $2 where id = $1', [rid, JSON.stringify(before)]);
         await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_SELECTED'`, [pageId]);
       }
+      // (sprint 50) page 42: the search region with results of three configurations
+      const search = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 42 and r.type = 'search'`)).id;
+      await page.goto(`${base}/a/hr/42?s${search}=a`);
+      assert.ok((await page.locator('.search-hit').count()) > 3);
+      await check(page, 'app-42-results', vp);
+      // (sprint 50) the developer toolbar and the session state viewer, with a builder session in the same browser
+      await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
+      await page.goto(`${base}/a/hr/2`);
+      assert.equal(await page.locator('details.devbar').count(), 1);
+      await check(page, 'app-2-devbar', vp);
+      await page.goto(`${base}/a/hr/2/devbar/session`);
+      await check(page, 'app-2-session-state', vp);
       await page.context().close();
     });
 
