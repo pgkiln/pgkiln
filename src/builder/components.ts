@@ -3,6 +3,7 @@
 // from this spec, and SQL column names only ever come from here (never from
 // the request).
 
+import { ALL_REGION_CONFIG_HELP, regionConfigHelp } from './region-help.ts';
 import { searchConfigProblems } from '../runtime/search.ts';
 import { objectStoreProblem } from '../objectstore.ts';
 import { formatSettingsProblem } from '../runtime/format.ts';
@@ -50,6 +51,8 @@ export interface Field {
   group?: string;
   /** shown, not editable (the form still posts it) */
   readonly?: boolean;
+  /** (sprint 51) help that depends on the component being edited (wins over `help` when it gives some) */
+  helpBy?: (row: any) => { text: string; url: string | null } | null;
 }
 
 export interface ComponentSpec {
@@ -118,7 +121,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
-        help: 'report: {"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts) · report, grid, cards: {"formats":{"sal":"FML999G990D00","hiredate":"DD-MON-YYYY"}} (number or date format masks per column) · chart: {"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000,"format_mask":"FML999G990"} · cards: {"style":"metric","link":{...},"max_rows":500} · dynamic: {"max_rows":1000} · grid: {"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}},"aggregates":{"sal":["sum","avg"]},"layout":{"order":["col"],"hidden":["col"],"widths":{"col":160},"frozen":1},"row_actions":{"edit":{"page":3,"items":{"P3_ID":"#id#"}},"duplicate":true,"delete":true,"links":[{"label":"…","page":4,"items":{}}]},"select_row":{"column":"id","item":"P1_ID"} (a master),"master":{"item":"P1_ID","column":"parent_id"} (a detail; any region type),"actions":true,"saved_reports":true,"public_reports":"SCHEME"} · calendar: {"link":{...}} · facets: {"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]} · smart_filters: {"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]} · display_selector: {"style":"tabs"|"select","show_all":true,"remember":true} · list: {"list":"NAME","template":"links"|"badges"|"cards"|"tabs"} (lists under Shared Components → Lists); any region: {"display_selector":true} puts it in the page\'s display selector; report, chart, cards, dynamic, tree and template component regions: {"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it) · data_reporter: {"sources":[{"id":"orders","label":"Orders","description":"…","schema":"sales","table":"order_v","columns":[{"name":"total","label":"Total","format":"FML999G990D00"}]}],"sharing":true,"share_authz":"SCHEME","page_size":25} (the Data Reporter settings below edit it) · ai_assistant: {"service":"NAME","system":"…","welcome":"…","context":[{"name":"policy","sql":"select … :AI_PROMPT …"}],"tools":[{"name":"my_leave","description":"…","sql":"select … where status = :STATUS","parameters":{"STATUS":{"type":"string","enum":["PENDING"]}}},{"name":"dept","type":"rest","source":"DEPARTMENT","description":"…"}],"max_rounds":5,"max_turns":20} (the AI assistant settings below edit it) · report: {"ai_filter":{"service":"NAME"}} adds an "Ask in your own words" box (natural-language filters) · plugin: {"plugin":"name","attributes":{"NAME":"value"}} (a region plug-in; a Source SELECT feeds its template) · form: {"lost_update":false} saves without checking that the row is unchanged since it was shown · url: {"height":480,"sandbox":["allow-scripts","allow-forms","allow-popups","allow-same-origin"] (the default; false: no sandbox),"fullscreen":true} · search: {"configs":["CUSTOMERS","ORDERS"] (Shared Components → Search configurations; empty: all),"item":"P1_SEARCH" (search with this item\'s value instead of a field of its own),"placeholder":"…","min_length":2,"empty":"No results"}' },
+        help: ALL_REGION_CONFIG_HELP, helpBy: (row: any) => regionConfigHelp(row?.type) },
     ],
   },
   item: {

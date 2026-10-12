@@ -74,7 +74,10 @@ export function iconPicker(id: string, name: string, label: string, current: str
 export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups, action: string, s: Session, submit: string, opts: { id?: string } = {}) {
   const field = (f: Field) => {
     const v = row?.[f.name];
-    const help = f.help ? html`<small class="help">${f.help}</small>` : '';
+    const own = row?.id ? f.helpBy?.(row) : null;
+    const help = own
+      ? html`<small class="help">${own.text}${own.url ? html` <a href="${own.url}" target="_blank" rel="noopener">Guide ▸</a>` : ''}</small>`
+      : f.help ? html`<small class="help">${f.help}</small>` : '';
     const id = `f_${kind}_${f.name}`;
     let control: Raw;
     const opts = (list: [string, string][]) =>
