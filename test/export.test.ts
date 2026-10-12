@@ -38,6 +38,7 @@ const NOT_EXPORTED = new Set([
   'workspace_app', // the workspace of an application: installation data (an import goes into the importer's workspace)
   'app_mail_service', // (081) the mail service an application sends through: installation data (services and secrets are never exported)
   'mail_queue', // (081) mail queued with meta.send_mail and its outcome (kept 30 days)
+  'user_preference', // (086) users' preferences: user data of this installation, like saved reports
   'app_backup', // (082) backups of the application kept by this installation
   'feedback', // (084) users' feedback and the developers' answers: data of this installation
 ]);
@@ -70,6 +71,8 @@ const SECTIONS: Record<string, string> = {
   plugin: 'plugins',
   search_config: 'search_configs',
   email_template: 'email_templates',
+  app_setting: 'app_settings',
+  dynamic_translation: 'dynamic_translations',
   nav_entry: 'nav',
   page: 'pages',
   region: 'pages[].regions',

@@ -309,7 +309,7 @@ function formKeys(ctx: PageContext) {
 
 /** Texts app.js shows (offline banner and queue, location and scan buttons), in the page's language. */
 const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
-  'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close', 'common.dismiss',
+  'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.address_none', 'item.address_error', 'item.scan_close', 'common.dismiss',
   'crop.title', 'crop.apply', 'crop.skip', 'crop.help',
   'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed', 'page.unsaved_changes', 'page.link_copied',
   'session.warning', 'session.stay', 'session.max', 'session.ended', 'login.sign_in_link'] as const;

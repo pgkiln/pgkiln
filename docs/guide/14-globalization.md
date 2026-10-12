@@ -98,6 +98,21 @@ raise exception '%', meta.message('LEAVE_OVERLAP', to_char(p_start, 'DD-MM-YYYY'
 
 The HR sample's dashboard uses them for its key figures (`examples/hr/hr_04_i18n.sql`).
 
+### Dynamic translations
+
+For **values from tables** (department names, statuses, list of values entries), use dynamic
+translations (APEX: *Dynamic Translations*, `APEX_LANG.LANG`): **Shared Components → Dynamic
+translations** holds a language, the text as stored and its translation, and `meta.lang` returns
+the text in the session's language:
+
+```sql
+select meta.lang(dname) as d, deptno as r from hr.dept order by 1   -- a list of values
+```
+
+An exact language match wins, then the base language (`nl-BE` → `nl`), else the text as it is.
+`meta.lang(text, 'de')` asks for another language. Dynamic translations are exported with the
+application (`globalization/dynamic-translations.yaml` in an application's files).
+
 ### Date formats
 
 Dates and timestamps in reports, grids and display items are formatted with a **mask**:

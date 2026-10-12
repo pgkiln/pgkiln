@@ -6823,3 +6823,97 @@ describe('sprint 52 page behaviour', () => {
     assert.equal((await king.post('/a/hr/session/extend', { __csrf: king.lastCsrf })).statusCode, 200);
   });
 });
+
+describe('sprint 53 data and settings', () => {
+  const inject = (b: Browser, url: string, form: Record<string, string>) =>
+    app.inject({ method: 'POST', url, payload: new URLSearchParams(form).toString(),
+      headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' } });
+  /** SQL as a role, for an application and user (rolled back). */
+  const asRole = async (roleName: string | null, app: number, sql: string, params: unknown[] = [], user = 'king') => {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(app), user]);
+      if (roleName) await c.query(`set local role ${roleName}`);
+      return (await c.query(sql, params)).rows;
+    } finally {
+      await c.query('rollback');
+      c.release();
+    }
+  };
+
+  test('settings and preferences belong to the calling application, called as its own role', async () => {
+    const hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec53-other', 'Other') returning id`)).id;
+    try {
+      await owner.query(`insert into meta.app_setting (app_id, name, value) values ($1, 'SECRET_THING', 'other''s')`, [other]);
+      await owner.query(`insert into meta.user_preference (app_id, username, name, value) values ($1, 'king', 'P1_X', 'other''s')`, [other]);
+      assert.equal((await asRole(hrRole, appId, `select meta.get_app_setting('SUPPORT_EMAIL') as v`))[0].v, 'hr-support@example.com');
+      // the HR role claiming the other application (which has no role of its own)
+      for (const sql of [`select meta.get_app_setting('SECRET_THING')`, `select meta.set_app_setting('SECRET_THING', 'x')`,
+                         `select meta.get_preference('P1_X')`, `select meta.set_preference('P1_X', 'x')`, `select meta.remove_preference('P1_X')`])
+        await assert.rejects(asRole(hrRole, other, sql), /outside the application's own database role/, sql);
+      // the runtime's role claiming HR
+      await assert.rejects(asRole('pgkiln_runtime', appId, `select meta.get_app_setting('SUPPORT_EMAIL')`), /outside the application's own database role/);
+      // no direct access to the tables, nor to the internal functions
+      for (const r of ['pgkiln_runtime', hrRole]) {
+        for (const t of ['app_setting', 'user_preference', 'dynamic_translation'])
+          await assert.rejects(asRole(r, appId, `select * from meta.${t} limit 1`), /permission denied/, `${r} ${t}`);
+        for (const fn of ['meta.caller_app(text)', 'meta.preference_user(text, text)'])
+          assert.equal((await owner.one(`select has_function_privilege($1, $2, 'execute') as ok`, [r, fn])).ok, false, `${r} ${fn}`);
+      }
+      // meta.lang reads only the current application's translations
+      await owner.query(`insert into meta.dynamic_translation (app_id, language, source, target) values ($1, 'nl', 'SEC53', 'other''s')`, [other]);
+      assert.equal((await asRole(hrRole, appId, `select meta.lang('SEC53', 'nl') as v`))[0].v, 'SEC53');
+      // meta.data_export runs with the caller's rights
+      await assert.rejects(asRole(hrRole, appId, `select meta.data_export('select * from meta.app_setting')`), /permission denied/);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('image items serve only their own query\'s picture; address items need the token and an editable address item', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 43', [appId])).id;
+    const hidden = (await owner.one(`insert into meta.item (page_id, seq, name, type, authz, config) values ($1, 990, 'P43_SEC_IMG', 'image', 'NO_SUCH_SCHEME',
+      '{"sql": "select convert_to(''secret'', ''UTF8''), ''image/png''"}') returning id`, [page])).id;
+    const ro = (await owner.one(`insert into meta.item (page_id, seq, name, type, readonly_condition) values ($1, 991, 'P43_SEC_ADDR', 'address', 'true') returning id`, [page])).id;
+    process.env.GEOCODER_URL = 'http://127.0.0.1:1/search';
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/43');
+      // an item the user may not see
+      assert.equal((await king.get('/a/hr/43/image/P43_SEC_IMG')).statusCode, 404);
+      // a public visitor: the page needs a sign-in
+      const anon = new Browser();
+      assert.notEqual((await anon.get('/a/hr/43/image/P43_PHOTO')).statusCode, 200);
+      // the geocoder: a forged token, a read-only address item, another item type
+      assert.equal((await inject(king, '/a/hr/43/geocode/P43_ADDRESS', { __csrf: 'forged', q: 'Markt 1' })).statusCode, 403);
+      assert.equal((await inject(king, '/a/hr/43/geocode/P43_SEC_ADDR', { __csrf: king.lastCsrf, q: 'Markt 1' })).statusCode, 403);
+      assert.equal((await inject(king, '/a/hr/43/geocode/P43_PHOTO', { __csrf: king.lastCsrf, q: 'Markt 1' })).statusCode, 403);
+      // a geocoder that can't be reached: an error, not a crash
+      assert.equal((await inject(king, '/a/hr/43/geocode/P43_ADDRESS', { __csrf: king.lastCsrf, q: 'Markt 1' })).statusCode, 502);
+    } finally {
+      delete process.env.GEOCODER_URL;
+      await owner.query('delete from meta.item where id = any($1)', [[hidden, ro]]);
+    }
+  });
+
+  test('a display image URL is never a script, and only https origins reach the CSP', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 43', [appId])).id;
+    const ids: number[] = [];
+    for (const [n, v] of [['A', 'http://plain.example.com/x.png'], ['B', 'javascript:alert(1)'], ['C', '//evil.example.com/x.png'], ['D', 'https://u:p@creds.example.com/x.png'],
+                          ['E', 'data:text/html;base64,PHNjcmlwdD4='], ['F', 'https://ok.example.com/x.png" onerror="alert(1)']])
+      ids.push((await owner.one(`insert into meta.item (page_id, seq, name, type, default_value) values ($1, 990, $2, 'image', $3) returning id`, [page, `P43_SEC_${n}`, v])).id);
+    try {
+      const king = await as('king');
+      const res = await king.get('/a/hr/43');
+      const csp = String(res.headers['content-security-policy']);
+      for (const bad of ['plain.example.com', 'evil.example.com', 'creds.example.com', 'javascript:', 'data:text/html', 'onerror="alert'])
+        assert.ok(!res.body.includes(bad), bad);
+      assert.doesNotMatch(csp, /plain\.example|evil\.example|creds\.example/);
+      assert.match(csp, /img-src 'self' data:[^;]* https:\/\/ok\.example\.com/);
+    } finally {
+      await owner.query('delete from meta.item where id = any($1)', [ids]);
+    }
+  });
+});

@@ -46,6 +46,7 @@ import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 import { availabilityRefusal } from './availability.ts';
 import { feedbackRoutes } from './feedback.ts';
+import { dataItemRoutes, loadPreferences, savePreferences } from './data-items.ts';
 import { ajaxRoutes } from './ajax.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -300,6 +301,7 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
     css: new PageCss(),
     nonce: req.cspNonce,
     frameSrc: req.frameSrc,
+    imgSrc: req.imgSrc,
     locale,
   };
 }
@@ -422,6 +424,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         ctx.client = c;
         await timed(ctx, 4, 'page', 'page authorization', () => checkPageAccess(ctx));
         await timed(ctx, 4, 'page', 'application processes (before page)', () => runAppProcesses(ctx, 'before_page'));
+        // (086) items kept per user: their values from the user's preferences
+        await loadPreferences(ctx);
         // before header (as in APEX): branches, then computations and processes
         if (!docName && !downloadKey) {
           const to = await branchTarget(ctx, 'before_header');
@@ -541,7 +545,10 @@ export async function runtimeRoutes(app: FastifyInstance) {
         applyPostedItems(ctx, body);
         await applyUploads(ctx, files, body, txContext);
         if (Object.keys(ctx.errors.items).length) throw new ValidationFailed(ctx.errors);
-        if (!pressed) return undefined;
+        if (!pressed) {
+          await savePreferences(ctx);
+          return undefined;
+        }
         ctx.request = pressed.name;
         snapshot = { ...ctx.session.state };
         try {
@@ -556,6 +563,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         // after processing: the first branch that applies; else the button's target page
         branchTo = await branchTarget(ctx, 'after_processing');
         if (branchTo) dbg(ctx, 4, 'branch', `after processing: ${branchTo.split('?')[0]}`);
+        // (086) items kept per user: saved with the page's changes
+        await savePreferences(ctx);
         return pressed;
       });
     } catch (e) {
@@ -598,6 +607,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
   devbarRoutes(app, loadContext);
   // (084) users' feedback
   feedbackRoutes(app, loadContext, txContext);
+  // (086) display image items' pictures, address items' geocoder
+  dataItemRoutes(app, loadContext, txContext);
   // (085) Ajax callbacks and the dynamic action "download"
   ajaxRoutes(app, loadContext, txContext, applyPostedItems);
   // (085) "Stay signed in" of the session timeout warning: the session's last activity is now

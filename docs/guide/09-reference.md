@@ -13,6 +13,11 @@ triggers, your own functions).
 | `meta.jwt_claims()` | jsonb | The verified JWT claims of a PostgREST request, or NULL |
 | `meta.app_language()` | text | The language of the request (`nl`, `en-GB`, …) |
 | `meta.message(name, variadic params)` | text | A text message in the current language, `%0`…`%9` replaced; falls back to the base and primary language |
+| `meta.lang(text, language default null)` | text | A [dynamic translation](14-globalization.md#dynamic-translations) of a value from a table in the session's (or the given) language, else the text (APEX: `APEX_LANG.LANG`) |
+| `meta.get_app_setting(name)`, `meta.set_app_setting(name, value)` | text / void | An [application setting](06-processing.md#application-settings) of the current application (APEX: `APEX_APP_SETTING`); application code only |
+| `meta.get_preference(name, user default null)`, `meta.set_preference(name, value, user default null)`, `meta.remove_preference(name, user default null)` | text / void | A [user preference](06-processing.md#user-preferences) of the signed-in (or the given) user in the current application (APEX: `APEX_UTIL.*_PREFERENCE`) |
+| `meta.data_export(query, format default 'csv', options jsonb default '{}')` | bytea | A query's rows as a CSV, JSON, XML or HTML file, run with the caller's privileges ([data export](06-processing.md#data-export-from-sql); APEX: `APEX_DATA_EXPORT`) |
+| `meta.csv_field(value, separator default ',', is_text default true)` | text | One CSV field: quoted when needed, a formula neutralised |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
 | `meta.set_tenant(tenant)` | void | Sets (or with NULL or `''` clears) the current session's tenant (APEX: `apex_session.set_tenant_id`): at once and for the session's next requests. Workflows and tasks then carry it and show only to that tenant ([chapter 6](06-processing.md#tenants)) |

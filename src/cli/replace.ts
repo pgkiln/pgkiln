@@ -24,6 +24,8 @@ export const REPLACED = [
   'static_file', 'plugin',
   // (080) search configurations, (081) e-mail templates
   'search_config', 'email_template',
+  // (086) application settings (installed values kept, see below), dynamic translations
+  'app_setting', 'dynamic_translation',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',
@@ -54,7 +56,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (082) the application's backups, (084) users' feedback
   'app_backup', 'feedback',
   // (081) the mail service an application sends through, and its queued and sent mail
-  'app_mail_service', 'mail_queue'];
+  'app_mail_service', 'mail_queue',
+  // (086) users' preferences
+  'user_preference'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
@@ -146,6 +150,15 @@ export async function replaceApp(db: Db, doc: unknown, alias: string, opts: Repl
   await db.query(
     `update meta.automation n set enabled = o.enabled, next_run_at = o.next_run_at, last_run_at = o.last_run_at, last_status = o.last_status
        from meta.automation o where o.app_id = $1 and n.app_id = $2 and n.name = o.name`,
+    [old, neu],
+  );
+  // (086) application settings keep the installed value (keep_on_upgrade), when it is still valid
+  await db.query(
+    `update meta.app_setting n set value = o.value
+       from meta.app_setting o
+      where o.app_id = $1 and n.app_id = $2 and n.name = o.name and n.keep_on_upgrade
+        and (o.value is null or n.valid_values is null or o.value = any(n.valid_values))
+        and (not n.required or coalesce(o.value, '') <> '')`,
     [old, neu],
   );
   const regions = async (appId: number) => {

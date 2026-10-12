@@ -2011,6 +2011,58 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   });
 
+  // (086) address items: the geocoder's addresses for the text; the one chosen replaces it, its position goes into the coordinates item
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('[data-geocode]');
+    if (!btn) return;
+    const input = document.getElementById(btn.dataset.geocode);
+    const list = document.getElementById(`${btn.dataset.geocode}_places`);
+    if (!input || !list) return;
+    const csrf = (metaEl ? JSON.parse(metaEl.textContent).csrf : '') || '';
+    btn.setAttribute('aria-busy', 'true');
+    let places = null;
+    try {
+      const res = await fetch(btn.dataset.url, { method: 'POST', body: new URLSearchParams({ q: input.value, __csrf: csrf }), headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) note(data.error || t('item.address_error'), 'error');
+      else places = data.places || [];
+    } catch {
+      note(t('item.address_error'), 'error');
+    }
+    btn.removeAttribute('aria-busy');
+    list.replaceChildren();
+    if (!places) return;
+    if (!places.length) {
+      list.hidden = true;
+      note(t('item.address_none'), 'error');
+      return;
+    }
+    for (const p of places) {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'link-button';
+      b.textContent = p.label;
+      b.addEventListener('click', () => {
+        input.value = p.label;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        const target = btn.dataset.coords && document.getElementById(btn.dataset.coords);
+        if (target) {
+          target.value = `${Number(p.lat).toFixed(5)},${Number(p.lon).toFixed(5)}`;
+          target.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        list.hidden = true;
+        list.replaceChildren();
+        input.focus();
+      });
+      li.append(b);
+      list.append(li);
+    }
+    list.hidden = false;
+    list.querySelector('button').focus();
+  });
+
   // scan buttons: only where the browser reads barcodes (BarcodeDetector, e.g. Chrome on Android)
   if ('BarcodeDetector' in window && navigator.mediaDevices) {
     for (const b of document.querySelectorAll('[data-scan]')) b.hidden = false;

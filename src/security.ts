@@ -71,6 +71,8 @@ declare module 'fastify' {
     cspNonce: string;
     /** (078) origins this page frames (URL regions): the CSP's frame-src */
     frameSrc: Set<string> | null;
+    /** (086) https origins of the page's display image items: added to the CSP's img-src */
+    imgSrc: Set<string> | null;
   }
 }
 
@@ -81,9 +83,11 @@ const MAP_TILES = tileOrigin();
 export function securityHeaders(app: FastifyInstance) {
   app.decorateRequest('cspNonce', '');
   app.decorateRequest('frameSrc', null);
+  app.decorateRequest('imgSrc', null);
   app.addHook('onRequest', async (req) => {
     req.cspNonce = randomBytes(18).toString('base64');
     req.frameSrc = new Set();
+    req.imgSrc = new Set();
   });
   app.addHook('onSend', async (req, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
@@ -98,7 +102,7 @@ export function securityHeaders(app: FastifyInstance) {
       // chart geometry) carries this response's nonce; style="" attributes are refused.
       reply.header(
         'Content-Security-Policy',
-        `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:${MAP_TILES ? ` ${MAP_TILES}` : ''}; ` +
+        `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:${MAP_TILES ? ` ${MAP_TILES}` : ''}${req.imgSrc?.size ? ` ${[...req.imgSrc].join(' ')}` : ''}; ` +
           // (078) a page with URL regions may frame exactly their origins (literal https origins, see url-region.ts)
           (req.frameSrc?.size ? `frame-src 'self' ${[...req.frameSrc].join(' ')}; ` : '') +
           "frame-ancestors 'self'; form-action 'self'; base-uri 'none'; object-src 'none'",

@@ -35,7 +35,8 @@ export const appLocks = async (appId: number) =>
 /** Builder POSTs that are allowed on a locked page or application (locking, unlocking, comments). */
 const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+)$/;
 /** (083) Builder POSTs allowed on a Run only application: its availability and build status, a backup, locks and comments. */
-const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+)$/;
+// (086) an existing application setting stays editable: settings are what an administrator changes after deployment
+const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+|shared\/app_setting\/\d+)$/;
 
 /** The application (and page) a builder URL under /apps/:id or /pages/:pid is about, or null. */
 export async function appOfPath(path: string): Promise<{ appId: number; pageNo: number | null; pageId: number | null } | null> {

@@ -37,7 +37,7 @@ export const ITEM_LABELS: Record<string, [string, string]> = {
   checkbox: ['Checkbox', 'check'], switch: ['Switch', 'check'], checkbox_group: ['Checkbox group', 'check'], multiselect: ['Multi select', 'list'],
   email: ['E-mail', 'inbox'], tel: ['Phone number', 'item'], url: ['URL', 'item'], color: ['Color picker', 'item'], file: ['File upload', 'upload'],
   location: ['Location', 'map'], richtext: ['Rich text editor', 'edit'], markdown: ['Markdown editor', 'code'], rating: ['Star rating', 'check'],
-  combobox: ['Combobox (tags)', 'list'], daterange: ['Date range', 'calendar'], qrcode: ['QR code', 'scan'], hidden: ['Hidden', 'item'], display: ['Display only', 'file'], password: ['Password', 'key'],
+  combobox: ['Combobox (tags)', 'list'], daterange: ['Date range', 'calendar'], qrcode: ['QR code', 'scan'], image: ['Display image', 'file'], address: ['Geocoded address', 'map'], hidden: ['Hidden', 'item'], display: ['Display only', 'file'], password: ['Password', 'key'],
 };
 export const BUTTON_LABELS: Record<string, [string, string]> = {
   submit: ['Submit page', 'button'], redirect: ['Redirect to page', 'button'], da: ['Dynamic action', 'bolt'], document: ['Download document', 'download'],
