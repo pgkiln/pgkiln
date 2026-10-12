@@ -389,6 +389,14 @@ export async function builderRoutes(app: FastifyInstance) {
           <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete application ${a.name} and all its pages?">Delete application</button>
           </form>`)}
+        ${region('Errors and sessions', html`<form method="post" action="${BASE}/apps/${a.id}/settings/behaviour">${csrf(s)}
+          <div class="form-grid">
+            ${input('error_function', 'Error handling function', a.error_function ?? '', { placeholder: 'e.g. sales.error_message',
+              help: 'schema.function(jsonb) returns jsonb, run as the application\'s role: it receives the message and what is known of an error (code, constraint, table, column, component, page, user, internal, reference) and may return {"message": "…"} to show instead. Empty: none.' })}
+            ${input('session_warning_seconds', 'Session timeout warning (seconds)', a.session_warning_seconds ?? 120, { type: 'number',
+              help: 'Signed-in users are warned this long before their session ends and can stay signed in (0: no warning).' })}
+          </div>
+          <div class="buttons"><button class="btn">Save</button></div></form>`)}
         ${region('Progressive Web App', await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}
         ${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
@@ -404,6 +412,27 @@ export async function builderRoutes(app: FastifyInstance) {
         </ul>`)}
       </div>`;
     return send(reply, s, shell(s, `${a.name} settings`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Settings']], main));
+  });
+
+  // (085) error handling function and session timeout warning
+  app.post(`${BASE}/apps/:id/settings/behaviour`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = req.body ?? {};
+    const fn = String(b.error_function ?? '').trim();
+    const seconds = Number(b.session_warning_seconds ?? 120);
+    try {
+      if (fn && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}\.[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(fn)) throw new Error('The error handling function is schema.function, e.g. sales.error_message.');
+      if (fn && !(await owner.one(`select 1 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                                    where n.nspname = $1 and p.proname = $2 and p.pronargs = 1 and p.proargtypes[0] = 'jsonb'::regtype and p.prorettype = 'jsonb'::regtype`, fn.split('.'))))
+        throw new Error(`There is no function ${fn}(jsonb) returning jsonb.`);
+      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 3600) throw new Error('The session timeout warning is 0 to 3600 seconds.');
+      await owner.query('update meta.app set error_function = $2, session_warning_seconds = $3, updated_at = now() where id = $1', [req.params.id, fn || null, seconds]);
+      flash(s, 'Saved.');
+    } catch (e) {
+      flash(s, (e as Error).message, 'error');
+    }
+    return back(reply, s, `${BASE}/apps/${req.params.id}/settings`);
   });
 
   app.post(`${BASE}/apps/:id/settings`, async (req: Req, reply) => {

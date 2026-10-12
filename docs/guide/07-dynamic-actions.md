@@ -10,8 +10,8 @@ your own from a static application file.
 
 | Property | Meaning |
 |---|---|
-| `event` | `change` (an item's value changed), `click` (a button was clicked), `load` (the page loaded) or `dialog_closed` (a modal dialog opened from the page was submitted and closed) |
-| `trigger_element` | For `change`: one or more item names, comma separated. For `click`: a button name. For `dialog_closed`: the dialog page numbers, comma separated (empty: any dialog) |
+| `event` | When it runs, see [Events](#events) |
+| `trigger_element` | What it listens to: item names (`change`, `focus`, `blur`, `key_release`), a button name (`click`), region ids or static ids (`after_refresh`, `selection_change`), dialog page numbers (`dialog_closed`; empty: any dialog) or event names (`custom`), comma separated. Empty for `load` and `before_submit` |
 | `condition_type`, `condition_value` | Optional client-side condition on the (first) trigger item's value (for `dialog_closed`: on the dialog's page number): `equals`, `not_equals`, `in_list` (comma-separated values), `is_null`, `is_not_null` |
 | `action` | What to do, see below |
 | `affected_items`, `affected_region_id` | What it acts on |
@@ -22,6 +22,31 @@ your own from a static application file.
 | `config` | A `plugin` action's attribute values: `{"attributes": {"MESSAGE": "Copied."}}` |
 | `authz` | Only for authorized users |
 | `build_option` | Only while the [build option](06-processing.md#build-options) is included |
+
+## Events
+
+| Event | Runs when | Trigger |
+|---|---|---|
+| `change` | An item's value changed | Item names |
+| `click` | A button was clicked | A button name |
+| `load` | The page has loaded | – |
+| `dialog_closed` | A modal dialog opened from the page was submitted and closed ([below](#dialog-closed)) | Dialog page numbers (empty: any) |
+| `focus` / `blur` | An item gets / loses the focus (APEX: Get Focus, Lose Focus) | Item names |
+| `key_release` | A key is released in an item | Item names |
+| `after_refresh` | A region was refreshed (`refresh_region`), loaded lazily or shown for another master row | Region ids or static ids |
+| `selection_change` | Rows are selected in a report with [row selection](04-pages-and-regions.md#row-selection), or another master row in a grid; the condition sees the selected values, colon separated | Region ids or static ids |
+| `before_submit` | The page is about to be submitted; a declined `confirm` keeps the page | – |
+| `custom` | JavaScript raised the event: `pgkiln.trigger('ORDER_SAVED', value)` (APEX: custom events, `apex.event.trigger`) | Event names (case-insensitive) |
+
+**The actions of one event and trigger run one after the other, in sequence order** (APEX: the true
+actions of a dynamic action), each waiting for the one before (a server action for its answer). A
+`confirm` that is declined stops the actions after it, and for `before_submit` the submit too:
+
+| Sequence | Event | Action | Message / items |
+|---|---|---|---|
+| 10 | `click` on `DELETE_ALL` | `confirm` | *Delete every selected row?* |
+| 20 | `click` on `DELETE_ALL` | `execute_sql` | `delete from sales.order_line where id = any(string_to_array(:P5_SELECTED, ':')::int[])` |
+| 30 | `click` on `DELETE_ALL` | `refresh_region` | the order lines |
 
 ## Actions
 
@@ -45,10 +70,43 @@ your own from a static application file.
 | `plugin` | browser | Runs the [dynamic action plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code) named in `code`, with `config` `{"attributes": {…}}` (`&ITEM.` filled in); the function gets the same context as *Execute JavaScript* plus `attributes` |
 | `execute_javascript` | browser | Calls the function named in `code`, which a [static application file](03-builder.md#static-application-files) registered; see [below](#execute-javascript) |
 | `push_subscribe` | browser | Turns on [push notifications](17-mobile.md#push-notifications) on the user's device: the browser asks for permission, then the device is registered. Use it with `click` (browsers ask only after one). `message` is shown when it worked, the browser's reason when not. The app needs push notifications on |
+| `confirm` | browser | Asks `message`; **No stops the actions after it** (and the submit, for `before_submit`) |
+| `close_dialog` | browser | In a modal page: closes it; the page below refreshes, or runs its `dialog_closed` actions (APEX: Close Dialog) |
+| `cancel_dialog` | browser | In a modal page: closes it without refreshing the page below |
+| `clear` | browser | Empties the affected items |
+| `open_region` / `close_region` | browser | Opens or closes a *collapsible* region; another region is shown or hidden |
+| `download` | server | Downloads the file of the [download process](06-processing.md#download) named in `code` (a process of the page, with its authorization and condition), after sending `items_to_submit`; the page stays as it is |
+| `print` | browser | The browser's print dialog |
+| `current_position` | browser | The device's position as `latitude,longitude` (5 decimals) into the first affected item |
+| `share` | browser | The device's share sheet with the page's title, `message` and address; where there is none, the address is copied |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's
 database role like everything else, and check the page's and the dynamic action's authorization.
 The SQL itself never reaches the browser.
+
+## Ajax callbacks
+
+A page process with point **ajax** (APEX: an On Demand process) runs only when JavaScript calls it by
+name, and answers JSON; an application process with point *ajax* can be called from every page (a
+page's own process of that name wins). Only processes of type `sql` answer.
+
+```js
+// in a static application file
+const r = await pgkiln.server.process('ORDER_TOTAL', { items: ['P5_ORDER_ID'], x01: 'EUR' });
+r.data.total;   // the first row of the process's last statement
+r.rows;         // its rows (at most 1000)
+r.items;        // the page and application items it set (also set on the page)
+```
+
+```sql
+-- the process ORDER_TOTAL (point ajax): :X01 … :X10 are the x01 … x10 sent
+select sum(qty * price) as total, :X01 as currency from sales.order_line where order_id = :P5_ORDER_ID::int
+```
+
+`items` is a list of item names (their current values are sent) or `{"P5_ID": "7"}`; only items the
+user may change are set, as on a submit. The process runs as the application's role with its
+authorization, condition and build option; errors come back as `{ "error": "…" }` (the promise
+rejects). The request carries the page's CSRF token and needs page access.
 
 ## Execute JavaScript
 

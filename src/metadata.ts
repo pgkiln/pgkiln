@@ -40,7 +40,7 @@ export interface StaticInclude {
 export interface AppProcess {
   id: number;
   name: string;
-  point: 'after_login' | 'before_page';
+  point: 'after_login' | 'before_page' | 'ajax';
   code: string;
   authz: string | null;
 }
@@ -94,6 +94,9 @@ export interface App {
   availability_users: string[];
   /** (084) users can send feedback from the navigation bar */
   feedback: boolean;
+  /** (085) schema.function(jsonb) returns jsonb that rewrites error messages; seconds of the session timeout warning */
+  error_function: string | null;
+  session_warning_seconds: number;
   pages: PageSummary[];
   nav: NavEntry[];
   authz_schemes: AuthzScheme[];
@@ -246,7 +249,9 @@ export interface DynamicAction {
   id: number;
   seq: number;
   name: string;
-  event: 'change' | 'click' | 'load' | 'dialog_closed';
+  event: 'change' | 'click' | 'load' | 'dialog_closed'
+    /** (085) */
+    | 'after_refresh' | 'selection_change' | 'focus' | 'blur' | 'key_release' | 'before_submit' | 'custom';
   trigger_element: string | null;
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
   condition_value: string | null;
@@ -257,7 +262,9 @@ export interface DynamicAction {
     /** (074) turn on push notifications on this device (app.js) */
     | 'push_subscribe'
     /** (069) code: the name of a dynamic action plug-in; config.attributes its attribute values */
-    | 'plugin';
+    | 'plugin'
+    /** (085) */
+    | 'confirm' | 'close_dialog' | 'cancel_dialog' | 'clear' | 'open_region' | 'close_region' | 'download' | 'print' | 'current_position' | 'share';
   affected_items: string | null;
   affected_region_id: number | null;
   code: string | null;
@@ -287,7 +294,7 @@ export interface Process {
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;
-  point: 'submit' | 'load';
+  point: 'submit' | 'load' | 'ajax';
   when_button: string | null;
   authz: string | null;
   success_message: string | null;
@@ -330,7 +337,7 @@ const agg = (table: string, fk: string, parent: string, appId: string) =>
 export async function loadApp(alias: string) {
   return runtime.one<App>(
     `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.session_group, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
-            a.availability, a.availability_message, a.availability_users, a.feedback,
+            a.availability, a.availability_message, a.availability_users, a.feedback, a.error_function, a.session_warning_seconds,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format, a.time_zone, a.time_zone_auto, a.currency,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,

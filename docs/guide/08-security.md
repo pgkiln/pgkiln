@@ -328,6 +328,16 @@ like for other users (an account of the same name, if there is one), or from the
 in authorization schemes. The login page has the user name and password form only: *Keep me signed
 in*, LDAP, single sign-on and the password-change form are not used by these apps.
 
+### Session timeout warning
+
+Sessions end after the idle time (`SESSION_IDLE_MINUTES`, or Instance settings) and at their maximum
+length (`SESSION_MAX_HOURS`). Signed-in users are warned before (Settings → *Errors and sessions* →
+*Session timeout warning*, default 120 seconds; 0: no warning; APEX: Session Timeout Warning): a
+dialog says when the session ends and offers **Stay signed in**, which marks the session active
+(POST `/a/<alias>/session/extend`, with the session's CSRF token). At the maximum length the user can
+only save their work; when the session has ended the dialog offers to sign in again and comes back
+to the page.
+
 ### Keep me signed in
 
 Under **Settings → Sign-in methods**, *"Keep me signed in" for (days)* (1–365) adds a checkbox to the

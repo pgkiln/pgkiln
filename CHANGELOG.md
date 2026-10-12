@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 52: page behaviour.
+
+### Added
+- **Dynamic actions**: the events Get/Lose Focus, Key Release, After Refresh, Selection Change, Before Page Submit and
+  custom events (`pgkiln.trigger`); the actions Confirm, Close Dialog, Cancel Dialog, Clear, Open/Close Region,
+  Download, Print, Get Current Position and Share. The actions of one event now run one after the other in sequence
+  order, and a declined Confirm stops the ones after it (migration 085).
+- **Ajax callbacks** (APEX: On Demand processes): page and application processes with point *ajax*, called from
+  JavaScript with `pgkiln.server.process(name, {items, x01 … x10})`, answer JSON.
+- **Error handling function** (APEX): an application's `schema.function(jsonb) returns jsonb` rewrites the error
+  messages users see.
+- **Session timeout warning**: a dialog before the session ends, with *Stay signed in*.
+
+### Changed
+- APEX parity: 140 features compared, 126 available, 5 partial, 6 not yet, 3 not planned.
+
 ## [0.33.2] - 2026-10-12
 
 ### Added
