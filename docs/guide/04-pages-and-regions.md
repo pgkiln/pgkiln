@@ -13,6 +13,25 @@ A page has a number (unique in the app), a name, a title, and these behaviours:
 | `requires_auth` | boolean | `false` makes the page public in an app with a login |
 | `authz` | scheme name | Who may open it (403 otherwise) |
 | `protection` | `checksum`, `unrestricted` | Whether URL item values need a checksum |
+| `warn_unsaved` | boolean | Ask before the user leaves the page with unsaved changes, see [below](#warn-on-unsaved-changes) |
+
+### Warn on unsaved changes
+
+With **Warn on unsaved changes** (Page Designer → Page → Appearance; APEX: the page attribute of the
+same name), the browser asks *"You have unsaved changes. Leave this page anyway?"* when the user
+leaves the page while an item has a value other than the one the page was shown with: a link, a
+redirect button (such as *Cancel*), the navigation menu, closing a dialog (its × or Escape),
+reloading or closing the tab. Submitting the page with a button doesn't ask (that saves). After a
+submit that failed (a validation error), the values on the page are not saved yet, so leaving asks
+even without a further change. The check is in the browser (`pgkiln.isChanged()` tells your own
+JavaScript, like APEX's `apex.page.isChanged()`); without JavaScript there is none.
+
+- **Leave an item out** with `{"warn_unsaved": false}` in its attributes (APEX: the item's *Warn on
+  Unsaved Changes: Ignore*), for example a search field.
+- The interactive grid has its own check of unsaved rows, which is always on.
+- A value a dynamic action changes on page load counts as a change.
+- The create page wizards switch it on for the form pages they make; existing pages have it off
+  until you switch it on.
 
 ### Dialogs and drawers
 

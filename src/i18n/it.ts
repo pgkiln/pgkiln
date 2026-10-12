@@ -491,6 +491,7 @@ export const it: Record<MessageKey, string> = {
   'form.saved': "Modifiche salvate.",
   'form.no_record': "Nessun record selezionato.",
   'form.changed': "Record non trovato; potrebbe essere stato modificato o eliminato da qualcun altro.",
+  'page.unsaved_changes': 'Ci sono modifiche non salvate. Lasciare comunque questa pagina?',
   'form.lost_update': 'Qualcun altro ha modificato questo record dopo che lo hai aperto. Ricarica la pagina per vedere i valori attuali, poi ripeti le modifiche.',
   'form.deleted': "Record eliminato.",
   'error.duplicate': "Esiste già un record con questi valori{detail}.",

@@ -11,7 +11,7 @@ import { Browser, formFields } from './helpers.ts';
 
 let app: FastifyInstance;
 let formRegion: number;
-let saved: Record<string, unknown>;
+let saved: any;
 const EMPNO = 7844; // TURNER
 
 before(async () => {

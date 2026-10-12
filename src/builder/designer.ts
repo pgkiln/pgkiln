@@ -301,6 +301,8 @@ export async function designerRoutes(app: FastifyInstance) {
             ${select('dialog_position', 'Dialog position', p.dialog_position ?? 'center', [['center', 'Centred dialog'], ['right', 'Drawer from the right'], ['left', 'Drawer from the left'], ['top', 'Drawer from the top'], ['bottom', 'Drawer from the bottom']], 'Modal pages only. On phones dialogs and side drawers fill the screen.')}
             ${select('dialog_size', 'Dialog size', p.dialog_size ?? 'medium', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], 'The width (the height of top and bottom drawers).')}
             ${input('static_includes', 'JavaScript and CSS files', (p.static_includes ?? []).join(', '), { placeholder: 'e.g. page-3.js, page-3.css', help: 'Static application files (.js, .css) this page loads after the application\'s own, in this order.' })}
+            <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="warn_unsaved" value="true"${p.warn_unsaved ? raw(' checked') : ''}> Warn on unsaved changes</label>
+              <small class="help">Ask before the user leaves the page (a link, a redirect button, closing the tab) while an item has a changed value. Submitting doesn't ask. Leave an item out with {"warn_unsaved": false} in its attributes.</small></div>
             ${select('parent_page', 'Breadcrumb parent', p.parent_page ?? '', [['', '- none -'], ...lk.pages.filter((x) => x.page_no !== p.page_no).map((x): [string, string] => [String(x.page_no), `${x.page_no}. ${x.name}`])])}
           </div></fieldset>
           <fieldset class="prop-group"><legend>Security</legend><div class="form-grid">
@@ -383,9 +385,9 @@ export async function designerRoutes(app: FastifyInstance) {
       const before = await owner.one('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
       await owner.query(
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
-                dialog_position = $11, dialog_size = $12, static_includes = $13 where id = $1`,
+                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
-         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes)],
+         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true'],
       );
       // the page's lock and comments follow a new page number
       if (before && before.page_no !== Number(b.page_no))

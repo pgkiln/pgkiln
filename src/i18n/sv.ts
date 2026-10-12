@@ -491,6 +491,7 @@ export const sv: Record<MessageKey, string> = {
   'form.saved': "Ändringarna har sparats.",
   'form.no_record': "Ingen post är vald.",
   'form.changed': "Posten hittades inte; den kan ha ändrats eller tagits bort av någon annan.",
+  'page.unsaved_changes': 'Du har ändringar som inte har sparats. Lämna sidan ändå?',
   'form.lost_update': 'Någon annan har ändrat posten efter att du öppnade den. Läs in sidan igen för att se de aktuella värdena och gör sedan dina ändringar på nytt.',
   'form.deleted': "Posten har tagits bort.",
   'error.duplicate': "Det finns redan en post med dessa värden{detail}.",

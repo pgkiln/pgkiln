@@ -303,7 +303,7 @@ function formKeys(ctx: PageContext) {
 const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
   'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close', 'common.dismiss',
   'crop.title', 'crop.apply', 'crop.skip', 'crop.help',
-  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed'] as const;
+  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed', 'page.unsaved_changes'] as const;
 export const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
 
 /** The current page's URL (for returning after a preference change). */
@@ -342,7 +342,9 @@ export async function renderPage(ctx: PageContext) {
           ? html`<div class="alert alert-error" role="alert">${t('error.correct_below')}</div>`
           : ''}
       </div>
-      <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}"${ctx.page.items.some((i) => i.type === 'file') ? raw(' enctype="multipart/form-data"') : ''} novalidate>
+      <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}"${ctx.page.items.some((i) => i.type === 'file') ? raw(' enctype="multipart/form-data"') : ''}${
+        // (077) shown again after a failed submit: the values on the page are not saved yet
+        ctx.page.warn_unsaved ? raw(` data-warn-unsaved="${ctx.body ? 'changed' : 'on'}"`) : ''} novalidate>
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
         <input type="hidden" name="__submit_id" value="${randomUUID()}">
         ${formKeys(ctx)}

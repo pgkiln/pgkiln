@@ -306,6 +306,8 @@ export interface Page extends PageSummary {
   branches: Branch[];
   /** (068) static files (.js, .css) this page loads after the application's */
   static_includes: StaticInclude[];
+  /** (077) ask before leaving the page with unsaved changes */
+  warn_unsaved: boolean;
 }
 
 /** The static files a list of names refers to, in that order, with their version. */
@@ -346,7 +348,7 @@ export async function loadApp(alias: string) {
 export async function loadPage(appId: number, pageNo: number) {
   return runtime.one<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
-            p.protection, p.authz,
+            p.protection, p.authz, p.warn_unsaved,
             ${agg('meta.region', 'page_id', 'p', 'p.app_id')} as regions,
             ${agg('meta.item', 'page_id', 'p', 'p.app_id')} as items,
             ${agg('meta.button', 'page_id', 'p', 'p.app_id')} as buttons,
