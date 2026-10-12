@@ -151,6 +151,9 @@ src/
                            sources as the app role in savepoints, marked results, configColumns/searchConfigProblems for the Advisor
     url-region.ts          URL region (migration 078): literal origins only (urlTarget), &ITEM. URL-encoded, sandbox and height,
                            frameOrigins() for the CSP's frame-src (security.ts)
+    availability.ts        availabilityRefusal(): who may use an application (migration 083); loadContext, the login page
+                           and REST modules ask it (PostgREST: meta.api_check)
+    feedback.ts            users' feedback page and the navigation bar entry (migration 084)
     devbar.ts              developer toolbar and session state viewer (migration 079): the pgkiln_devbar token of a builder
                            session (ensureDevbar/devbarOf), the toolbar markup, the viewer, clear and per-session debug routes
   builder/
@@ -169,6 +172,12 @@ src/
     appwizard.ts           Create → From pasted data (kept as a temp file, then the From a file steps) and From existing tables
                            (a schema's tables/views → report+form or report pages, navigation, dashboard)
     forms.ts               generic component property form (lookups, render, save)
+    backups.ts             Application → Backups (migration 082): list, back up now, download, restore (replaceApp), keep N;
+                           backupTick() for the scheduler's daily backups of changed applications
+    availability.ts        Application → Availability (migration 083): status, message, users, build status (Run only is
+                           enforced by locks.ts blockingLock); availabilityBadge() in the application header
+    feedback.ts            Application → Feedback (migration 084): the setting, the list with filters, status and answers
+    region-help.ts         the Attributes (JSON) help per region type, with links to the guide
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
                            applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel)
     shared.ts              Shared Components and access control
