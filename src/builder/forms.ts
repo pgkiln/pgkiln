@@ -86,7 +86,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       html`<select id="${id}" name="${f.name}">${list.map(([val, label]) => html`<option value="${val}"${String(v ?? '') === val ? raw(' selected') : ''}>${label}</option>`)}</select>`;
     switch (f.kind) {
       case 'bool':
-        return html`<div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="${f.name}" value="true"${v ? raw(' checked') : ''}> ${f.label}</label>${help}</div>`;
+        return html`<div class="field" data-prop="${f.name}"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="${f.name}" value="true"${v ? raw(' checked') : ''}> ${f.label}</label>${help}</div>`;
       case 'options': {
         const chosen: unknown[] = Array.isArray(v) ? v : [];
         return html`<fieldset class="field options-field"${f.wide ? raw(' data-wide') : ''}><legend class="label">${f.label}</legend>
@@ -161,7 +161,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       default:
         control = html`<input id="${id}" name="${f.name}" type="${f.kind === 'int' ? 'number' : 'text'}" value="${v ?? ''}">`;
     }
-    return html`<div class="field"${f.wide ? raw(' data-wide') : ''}><label class="label" for="${id}">${f.label}</label>${control}${help}</div>`;
+    return html`<div class="field" data-prop="${f.name}"${f.wide ? raw(' data-wide') : ''}><label class="label" for="${id}">${f.label}</label>${control}${help}</div>`;
   };
   const groups = [...new Set(spec.fields.map((f) => f.group ?? ''))];
   return html`<form method="post" action="${action}" class="component-form"${opts.id ? html` id="${opts.id}"` : ''}>

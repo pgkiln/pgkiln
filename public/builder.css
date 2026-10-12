@@ -775,3 +775,9 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .provider-switch .field { margin: 0; min-width: min(100%, 280px); }
 .mail-check-buttons { margin: 4px 0 14px; }
 .mail-check-result:not(:empty) { margin-top: 8px; }
+/* (sprint 59) Page Designer: the help pane under the properties */
+.pe-help { border-top: 1px solid var(--border); margin-top: 0.75rem; padding: 0.5rem 0.75rem; }
+.pe-help summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.35rem; }
+.pe-help-body { padding-top: 0.4rem; overflow-wrap: anywhere; }
+.pe-help-body h3 { font-size: 0.95rem; margin: 0 0 0.3rem; }
+.pe-help-body p { margin: 0 0 0.4rem; }

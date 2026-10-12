@@ -326,7 +326,9 @@ choosing a component opens the Properties tab.
 - **Right: the property editor** for the selected component, grouped (Identification, Source,
   Layout, Security, …) with help text for each property. Type in **Filter** to show only the
   properties whose name contains the text (Escape clears it); click a group's name to fold it
-  (remembered on this device).
+  (remembered on this device). Under the properties, the **Help** pane (APEX: the Help tab) shows the
+  property that has the focus (or the pointer): its help, the name it is stored under in exports and
+  application files, and a link to the guide section of the component's type.
 
 The toolbar has the page switcher (previous, a list of all pages, next), **Undo** / **Redo** of
 layout changes, the **Create** menu (region, item, button, dynamic action, computation, validation,
@@ -457,6 +459,7 @@ Toolbar). It isn't shown to anyone else, nor inside dialogs, and it can be folde
 | **App Builder** | Back to the builder |
 | **Application *n*** | The application's page in the builder |
 | **Edit page *n*** | This page in the Page Designer |
+| **Quick edit** | (with JavaScript) Point at a region, item or button of the page (it is outlined) and click it: it opens selected in the Page Designer, in the builder's tab (APEX: Quick Edit). Click the button again or press Esc to stop |
 | **Session** | The **session state viewer**: the user, roles, session id, language, time zone and debug level; the values of this page's items, the application items and the items of other pages in the session. A password item's value is never shown. *Clear the items of page n* empties this page's items in the session (APEX: Clear Cache) |
 | **Debug** | Records [debug messages](06-processing.md#debug-messages) for **this session only**, at the chosen level, while the application itself stays out of debug (*Application (n)* when the application has a level of its own). *View debug* opens the recorded requests |
 

@@ -10,7 +10,8 @@
 // builder session's token, and every builder request still needs that one.
 //
 // The toolbar links to the App Builder, the application and the page in the
-// Page Designer, shows the session state (GET /a/:alias/:page/devbar/session),
+// Page Designer, (sprint 59) Quick edit: click a region, item or button of the
+// page to open it in the Page Designer (app.js; GET /builder/pages/:id/quick), shows the session state (GET /a/:alias/:page/devbar/session),
 // clears the page's items, and switches debug messages on for this session
 // only (POST …/devbar/debug; meta.session.state.__DEBUG_LEVEL, read by
 // loadContext).
@@ -84,6 +85,7 @@ export function devbarHtml(ctx: PageContext): Raw | '' {
       <li><a href="${BUILDER}">App Builder</a></li>
       <li><a href="${BUILDER}/apps/${ctx.app.id}">Application ${ctx.app.id}</a></li>
       <li><a href="${BUILDER}/pages/${ctx.page.id}">Edit page ${page}</a></li>
+      <li><button type="button" class="devbar-quick" data-quick-edit="${BUILDER}/pages/${ctx.page.id}" aria-pressed="false" hidden>Quick edit</button></li>
       <li><a href="${ctx.base}/${page}/devbar/session">Session</a></li>
       <li><form method="post" action="${ctx.base}/${page}/devbar/debug" class="devbar-debug">
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
