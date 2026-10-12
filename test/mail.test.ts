@@ -209,7 +209,8 @@ describe('mail: providers (mock servers)', () => {
     assert.deepEqual(body.Destination.BccAddresses, ['b@example.com']);
     const raw = Buffer.from(body.Content.Raw.Data, 'base64').toString();
     assert.match(raw, /Subject: T ses/);
-    assert.doesNotMatch(raw, /b@example\.com/);
+    // the Bcc address never in the headers (a random Message-ID may end in …b@example.com: match whole addresses)
+    assert.doesNotMatch(raw, /(^|[\s<,:])b@example\.com/m);
   });
 
   test('Resend, Postmark, SendGrid and Mailgun', async () => {
