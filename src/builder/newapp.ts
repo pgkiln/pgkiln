@@ -106,7 +106,7 @@ export async function startFromBoilerplate(c: Client, appId: number, a: CheckedA
   const bp = (await c.query<{ alias: string }>(`select alias from meta.app where id = $1 and app_type = 'boilerplate'`, [boilerplateId])).rows[0];
   if (!bp) throw new Error('Choose a boilerplate application (an application of type Boilerplate).');
   const doc = (await c.query('select meta.export_app($1) as d', [bp.alias])).rows[0].d;
-  await replaceApp(c, doc, a.alias);
+  await replaceApp(c, doc, a.alias, { backup: null });
   await c.query(`update meta.app set name = $2, db_role = $3, authentication = $4, app_type = 'standard', api_role = null, updated_at = now() where id = $1`, [
     appId, a.name, a.role, a.authentication,
   ]);

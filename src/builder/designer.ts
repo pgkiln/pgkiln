@@ -227,7 +227,10 @@ export async function designerRoutes(app: FastifyInstance) {
       </form>`;
     // a lock of another developer (on this page or the whole application) makes the page read-only
     const locks = (await appLocks(p.app_id)).filter((l) => l.page_no === 0 || l.page_no === p.page_no);
-    const blocking = locks.find((l) => l.locked_by !== s.username);
+    // (083) a Run only application refuses every change, like a lock
+    const runOnly = (await owner.one(`select build_status = 'run_only' as ok from meta.app where id = $1`, [p.app_id]))?.ok
+      ? { app_id: p.app_id, page_no: 0, locked_by: '', locked_at: '', note: null, run_only: true } : undefined;
+    const blocking = runOnly ?? locks.find((l) => l.locked_by !== s.username);
     const mine = locks.find((l) => l.locked_by === s.username);
     const commentCount = (await owner.one('select count(*)::int as n from meta.dev_comment where app_id = $1 and page_no = $2', [p.app_id, p.page_no])).n;
     const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} Your changes will be refused.</div>` : ''}

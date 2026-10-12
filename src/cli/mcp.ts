@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { root } from '../env.ts';
 import { docToFiles, stableJson, type FileMap } from '../appfiles.ts';
-import { exportDoc, importDoc, readSource, withDb, type Db } from './apps.ts';
+import { exportDoc, formatFindings, importDoc, readSource, withDb, type Db } from './apps.ts';
 
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 /** Cap on the text one tool call returns, so a large application does not flood the agent's context. */
@@ -364,13 +364,19 @@ export const TOOLS: Tool[] = [
       'Imports an export directory, zip or JSON file. Without replace the alias must be free (a new application). ' +
       'With replace=true the application with that alias is updated in place in one transaction: its pages, shared components and settings ' +
       'become those of the files; its id, users and access, sessions, saved reports and running workflows are kept. ' +
-      'Supporting object scripts and plug-in install SQL are never run. Run diff_app first.',
+      'Supporting object scripts and plug-in install SQL are never run. Run diff_app first. ' +
+      'Before it commits, the Advisor checks the imported application (every SQL fragment planned as the application\'s role: ' +
+      'unknown tables, columns, functions, types, grants; references to pages, items, lists of values): errors refuse the import ' +
+      'and nothing changes. Fix the files (or the database objects, in a migration) and import again; force=true imports anyway, dry_run=true only checks.',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'the export directory, .zip or .json; default apps/<alias>' },
         alias: { type: 'string', description: 'the alias to import as (default: the one in the files)' },
         replace: { type: 'boolean', description: 'update the existing application with this alias' },
+        check: { type: 'boolean', description: 'check the application before committing (default true)' },
+        force: { type: 'boolean', description: 'import even when the check finds errors' },
+        dry_run: { type: 'boolean', description: 'only check: import, report and roll back' },
       },
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
@@ -382,8 +388,14 @@ export const TOOLS: Tool[] = [
       const { doc } = await readSource(path);
       const alias = aliasArg ?? doc?.app?.alias;
       if (!alias) throw new ToolError('the export has no alias: give one');
-      const r = await withDb((db) => importDoc(db, doc, { alias, replace: a.replace === true }));
-      return (
+      const check = a.dry_run === true ? 'dry-run' : a.check === false ? 'off' : a.force === true ? 'force' : 'check';
+      const r = await withDb((db) => importDoc(db, doc, { alias, replace: a.replace === true, check, by: 'MCP import_app' }));
+      const report = check === 'off' ? '' : formatFindings(r.findings);
+      if (!r.committed)
+        return report + (check === 'dry-run'
+          ? 'Dry run: nothing was imported.\n'
+          : 'Not imported: fix the errors above (or import with force=true). Nothing changed.\n');
+      return report + (
         (r.replaced ? `Replaced ${alias} (application ${r.id}).\n` : `Imported ${alias} (application ${r.id}). Its database role and who may sign in are set in the builder.\n`) +
         (r.scripts ? `It has ${r.scripts} supporting object script(s); they were not run.\n` : '')
       );

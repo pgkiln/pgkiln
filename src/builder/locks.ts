@@ -21,6 +21,8 @@ export interface Lock {
   locked_by: string;
   locked_at: string;
   note: string | null;
+  /** (083) not a developer's lock: the application's build status is Run only */
+  run_only?: boolean;
 }
 
 export const isAdmin = async (username: string | null | undefined) =>
@@ -32,6 +34,8 @@ export const appLocks = async (appId: number) =>
 
 /** Builder POSTs that are allowed on a locked page or application (locking, unlocking, comments). */
 const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?)$/;
+/** (083) Builder POSTs allowed on a Run only application: its availability and build status, a backup, locks and comments. */
+const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|lock|unlock|comments(\/\d+\/delete)?)$/;
 
 /** The application (and page) a builder URL under /apps/:id or /pages/:pid is about, or null. */
 export async function appOfPath(path: string): Promise<{ appId: number; pageNo: number | null; pageId: number | null } | null> {
@@ -50,10 +54,13 @@ export async function appOfPath(path: string): Promise<{ appId: number; pageNo: 
  */
 export async function blockingLock(username: string, path: string): Promise<{ lock: Lock; appId: number; pageId: number | null } | null> {
   const rel = path.split('?')[0].slice(BASE.length);
-  if (EXEMPT.test(rel)) return null;
   const target = await appOfPath(path);
   if (!target) return null;
   const { appId, pageNo, pageId } = target;
+  // (083) a Run only application refuses changes, whoever asks
+  if (!RUN_ONLY_EXEMPT.test(rel) && (await owner.one<{ ok: boolean }>(`select build_status = 'run_only' as ok from meta.app where id = $1`, [appId]))?.ok)
+    return { lock: { app_id: appId, page_no: 0, locked_by: '', locked_at: '', note: null, run_only: true }, appId, pageId };
+  if (EXEMPT.test(rel)) return null;
   const lock = await owner.one<Lock>(
     `select app_id, page_no, locked_by, locked_at::text, note from meta.builder_lock
       where app_id = $1 and (page_no = 0 or page_no = $2) and locked_by <> $3 order by page_no limit 1`,
@@ -62,12 +69,14 @@ export async function blockingLock(username: string, path: string): Promise<{ lo
   return lock ? { lock, appId, pageId } : null;
 }
 
-export const lockText = (l: Pick<Lock, 'page_no' | 'locked_by' | 'locked_at' | 'note'>) =>
-  `${l.page_no ? `Page ${l.page_no}` : 'The application'} is locked by ${l.locked_by} since ${l.locked_at.slice(0, 16)}${l.note ? ` (${l.note})` : ''}.`;
+export const lockText = (l: Pick<Lock, 'page_no' | 'locked_by' | 'locked_at' | 'note' | 'run_only'>) =>
+  l.run_only
+    ? 'The application is Run only (Availability → Build status).'
+    : `${l.page_no ? `Page ${l.page_no}` : 'The application'} is locked by ${l.locked_by} since ${l.locked_at.slice(0, 16)}${l.note ? ` (${l.note})` : ''}.`;
 
 /** Refuse a change to a locked page or application: a JSON error or a message on the page it came from. */
 export async function refuseLocked(req: Req, reply: FastifyReply, s: Session, hit: NonNullable<Awaited<ReturnType<typeof blockingLock>>>) {
-  const message = `${lockText(hit.lock)} Changes are refused until it is unlocked.`;
+  const message = hit.lock.run_only ? `${lockText(hit.lock)} Set it back to Run and build to change it.` : `${lockText(hit.lock)} Changes are refused until it is unlocked.`;
   if (String(req.headers.accept ?? '').includes('application/json')) return reply.code(423).send({ ok: false, error: message });
   flash(s, message, 'error');
   return back(reply, s, hit.pageId ? `${BASE}/pages/${hit.pageId}` : `${BASE}/apps/${hit.appId}`);

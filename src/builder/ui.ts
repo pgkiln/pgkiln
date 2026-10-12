@@ -1,3 +1,4 @@
+import { availabilityBadge } from './availability.ts';
 import { appOfPath, blockingLock, isAdmin, refuseLocked } from './locks.ts';
 import { appAllowed, loadWorkspaces, workspaceMenu } from './workspaces.ts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -187,9 +188,11 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
   return html`
     <div class="ide-head">
       <div class="ide-head-title"><span class="ide-app-icon" aria-hidden="true">${String(a.name ?? '?').slice(0, 1).toUpperCase()}</span>
-        <div><h1>${a.name}</h1><span class="muted small">Application ${a.id} · /a/${a.alias}</span></div>
+        <div><h1>${a.name}</h1><span class="muted small">Application ${a.id} · /a/${a.alias}</span> ${availabilityBadge(a)}</div>
         <div class="buttons ide-head-actions">
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/working-copies">${icon('layers')} Working copies</a>
+          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups">${icon('history')} Backups</a>
+          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/availability">${icon('power')} Availability</a>
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a>
           <a class="btn btn-sm btn-run" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
         </div></div>

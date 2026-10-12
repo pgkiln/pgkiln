@@ -38,6 +38,7 @@ const NOT_EXPORTED = new Set([
   'workspace_app', // the workspace of an application: installation data (an import goes into the importer's workspace)
   'app_mail_service', // (081) the mail service an application sends through: installation data (services and secrets are never exported)
   'mail_queue', // (081) mail queued with meta.send_mail and its outcome (kept 30 days)
+  'app_backup', // (082) backups of the application kept by this installation
 ]);
 
 /** Where each exported table appears in the document. */

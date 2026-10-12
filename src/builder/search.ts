@@ -41,8 +41,8 @@ const PAGE_FIELDS = [
 const asText = (v: unknown) => (v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
 /** Every component of an application with its searchable fields. */
-export async function appEntries(appId: number): Promise<Entry[]> {
-  const pages = (await owner.query('select * from meta.page where app_id = $1 order by page_no', [appId])).rows;
+export async function appEntries(appId: number, query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> = (sql, params) => owner.query(sql, params)): Promise<Entry[]> {
+  const pages = (await query('select * from meta.page where app_id = $1 order by page_no', [appId])).rows;
   const pageById = new Map(pages.map((p) => [p.id, p]));
   const out: Entry[] = pages.map((p) => ({
     kind: 'page', id: p.id, label: `Page ${p.page_no}: ${p.name}`, kindLabel: 'Page', icon: 'file', pageNo: p.page_no,
@@ -51,8 +51,8 @@ export async function appEntries(appId: number): Promise<Entry[]> {
   }));
   for (const [kind, spec] of Object.entries(COMPONENTS)) {
     const rows = spec.scope === 'page'
-      ? (await owner.query(`select t.* from ${spec.table} t join meta.page p on p.id = t.page_id where p.app_id = $1 order by p.page_no, t.seq, t.id`, [appId])).rows
-      : (await owner.query(`select * from ${spec.table} where app_id = $1 order by id`, [appId])).rows;
+      ? (await query(`select t.* from ${spec.table} t join meta.page p on p.id = t.page_id where p.app_id = $1 order by p.page_no, t.seq, t.id`, [appId])).rows
+      : (await query(`select * from ${spec.table} where app_id = $1 order by id`, [appId])).rows;
     for (const row of rows) {
       const page = spec.scope === 'page' ? pageById.get(row.page_id) : null;
       out.push({

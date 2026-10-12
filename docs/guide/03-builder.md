@@ -226,8 +226,10 @@ keeps a blueprint in the list (`meta.blueprint`, with the application last creat
 ### Importing
 
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new
-alias. A directory export (one file per component) is imported with `pgkiln import`
-([chapter 18](18-cli.md)). Imported apps keep the database role
+alias. **Check the application before importing** (ticked) runs the [Advisor](#advisor) on the
+imported application before anything is saved: errors (a missing table, column or function, a wrong
+type, a missing grant) refuse the import and are listed. A directory export (one file per component)
+is imported with `pgkiln import` ([chapter 18](18-cli.md#checking-before-an-import)). Imported apps keep the database role
 of the export; check it under **Settings**, and create users under **Shared Components**. An
 application with [supporting objects](#supporting-objects) opens on their page after the import:
 they are **not** run until you choose to.
@@ -453,6 +455,55 @@ the applications' pages (the cookie `pgkiln_devbar`, path `/a`, HttpOnly). A pag
 when that token belongs to a live builder session of a developer who may open the application (an
 administrator, or a member of its workspace). The token does nothing else; signing out of the
 builder ends it.
+
+## Backups
+
+**Backups** (in an application's header; APEX: Application Backups) are exports of the application
+that this installation keeps:
+
+- one **before every import that replaces it** (`pgkiln import --replace`, the MCP server, a working
+  copy's merge, a restore), with who did it;
+- one **a day** when the application changed since its newest backup (the scheduler);
+- the ones made with **Back up now** (with a note).
+
+The newest *Backups to keep* (default 25; 0: none at all) are kept. Each can be **downloaded** (the
+JSON export, to import elsewhere or keep in git) and **restored**: a restore is an import over the
+application, so the version it replaces becomes the newest backup and the restore can be undone the
+same way. Backups belong to the installation: they are not exported, and an import over the
+application keeps them. Restores are logged in the activity log (`backup_restored`).
+
+## Availability and build status
+
+**Availability** (in an application's header; APEX: Application Availability and Build Status) says
+who may use the running application:
+
+| Status | Who |
+|---|---|
+| Available | Everyone who may sign in (the default) |
+| Available to developers only | Developers signed in to the builder in the same browser (they see the [developer toolbar](#developer-toolbar)); others see the message |
+| Restricted | The users named (case-insensitive) and developers; others sign in and are told the application is not available to their account |
+| Unavailable | Nobody: every page, and the sign-in page, shows the message (HTTP 503) |
+
+The **message** (for example *"We are upgrading; back at 14:00."*) replaces a standard text in the
+user's language. Pages, file downloads, REST modules and the PostgREST API follow the status;
+automations, workflows, background jobs and queued mail keep running.
+
+**Build status** *Run only* makes the builder refuse every change to the application (pages, shared
+components, settings, restores) as if it were locked, until it is set back to *Run and build* here.
+`pgkiln import --replace` still deploys it, so production can be Run only while releases come from
+git. Availability and build status belong to the installation: exports leave them out, a new import
+is *Available* and *Run and build*, and an import over the application keeps them. Changes are
+logged in the activity log (`availability`). A badge in the application's header shows a status
+other than *Available* and *Run and build*.
+
+A deployment with a maintenance window:
+
+```sh
+# Availability: Unavailable, "Back at 14:00"   (the builder, or SQL on meta.app)
+psql -f migrations/042_orders.sql                 # the database changes
+pgkiln import apps/sales --replace --check        # the application, checked
+# Availability: Available
+```
 
 ## Working copies
 

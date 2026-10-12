@@ -55,12 +55,30 @@ export async function readSource(path: string): Promise<{ doc: Doc; files?: File
   }
 }
 
+/** One problem the Advisor found in an import (see src/builder/advisor.ts). */
+export interface ImportFinding {
+  severity: 'error' | 'warning' | 'info';
+  where: string;
+  field: string;
+  message: string;
+}
+
+/**
+ * How an import checks the application before it commits (sprint 51):
+ *  - off:     no check;
+ *  - check:   the Advisor runs in the import's transaction; errors refuse the import (nothing changes);
+ *  - force:   the Advisor runs and reports, the import commits anyway;
+ *  - dry-run: the Advisor runs and reports, the import is always rolled back.
+ */
+export type ImportCheck = 'off' | 'check' | 'force' | 'dry-run';
+
 /**
  * Imports doc as alias in one transaction: a new application, or with replace
  * the existing one updated in place (see replace.ts). Returns its id, whether
- * it replaced one, and its number of supporting object scripts (never run).
+ * it replaced one, its number of supporting object scripts (never run), the
+ * Advisor's findings (with a check) and whether it was committed.
  */
-export async function importDoc(db: Db, doc: Doc, { alias, replace }: { alias: string; replace: boolean }) {
+export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off', by = null }: { alias: string; replace: boolean; check?: ImportCheck; by?: string | null }) {
   await db.query('begin');
   try {
     const exists = (await db.query('select id from meta.app where alias = $1', [alias])).rows[0];
@@ -68,13 +86,36 @@ export async function importDoc(db: Db, doc: Doc, { alias, replace }: { alias: s
     if (exists && !replace) throw new UsageError(`application ${alias} exists: use --replace to update it, or --alias for a copy`);
     if (exists) {
       const { replaceApp } = await import('./replace.ts');
-      id = await replaceApp(db, doc, alias);
+      id = await replaceApp(db, doc, alias, { backup: { reason: 'import', user: by } });
     } else id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), alias])).rows[0].id;
-    await db.query('commit');
     const scripts: number = (await db.query('select count(*)::int as n from meta.supporting_script where app_id = $1', [id])).rows[0].n;
-    return { id, replaced: !!exists, scripts };
+    let findings: ImportFinding[] = [];
+    if (check !== 'off') {
+      // the application as imported, before anything is committed: SQL planned as its role, references
+      const { advise } = await import('../builder/advisor.ts');
+      findings = (await advise(id, db)).findings.map((f) => ({
+        severity: f.severity,
+        where: f.entry ? `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.kindLabel.toLowerCase()} ${f.entry.label}` : 'database',
+        field: f.field,
+        message: f.message,
+      }));
+      if (check === 'dry-run' || (check === 'check' && findings.some((f) => f.severity === 'error'))) {
+        await db.query('rollback');
+        return { id, replaced: !!exists, scripts, findings, committed: false };
+      }
+    }
+    await db.query('commit');
+    return { id, replaced: !!exists, scripts, findings, committed: true };
   } catch (e) {
     await db.query('rollback').catch(() => {});
     throw e;
   }
+}
+
+/** The Advisor's findings of an import, one per line, errors first. */
+export function formatFindings(findings: ImportFinding[]) {
+  if (!findings.length) return 'Check: no problems found.\n';
+  const count = (sev: ImportFinding['severity']) => findings.filter((f) => f.severity === sev).length;
+  return findings.map((f) => `${f.severity.toUpperCase()}  ${f.where}${f.field ? ` (${f.field})` : ''}: ${f.message}\n`).join('') +
+    `Check: ${count('error')} error(s), ${count('warning')} warning(s), ${count('info')} note(s).\n`;
 }

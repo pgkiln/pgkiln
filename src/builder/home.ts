@@ -219,6 +219,8 @@ export async function homeRoutes(app: FastifyInstance) {
       ${region('Export file', html`<form method="post" action="${BASE}/import">${csrf(s)}
         <div class="field" data-wide><label class="label" for="f_doc">Export JSON</label><textarea id="f_doc" name="doc" class="code" rows="14" required data-code="json"></textarea></div>
         ${input('alias', 'New alias (optional)', '', { help: 'Leave empty to keep the alias in the export.' })}
+        <div class="field"><label class="check"><input type="checkbox" name="check" value="true" checked> Check the application before importing</label>
+          <small class="help">The Advisor plans its SQL as the application's database role and checks its references before anything is saved: errors (a missing table, column or function, a wrong type, a missing grant) refuse the import.</small></div>
         <div class="buttons"><a class="btn" href="${BASE}">Cancel</a><button class="btn btn-hot">Import</button></div>
       </form>`)}
     </div>`;

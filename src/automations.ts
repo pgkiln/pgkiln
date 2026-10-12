@@ -306,6 +306,12 @@ export function startScheduler() {
       console.error('push notifications:', (e as Error).message);
     }
     try {
+      // (082) a daily backup of every application that changed (src/builder/backups.ts)
+      await (await import('./builder/backups.ts')).backupTick();
+    } catch (e) {
+      console.error('backups:', (e as Error).message);
+    }
+    try {
       // mail queued from SQL (meta.send_mail; src/mail/mail.ts), when the listener missed it, and retries
       await (await import('./mail/mail.ts')).mailTick();
     } catch (e) {
