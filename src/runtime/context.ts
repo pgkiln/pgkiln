@@ -1,9 +1,9 @@
 import type { Download } from './processes.ts';
 import type { PassThrough } from 'node:stream';
 import type { PageCss } from '../css.ts';
-import type pg from 'pg';
+import pg from 'pg';
 import type { BindValues } from '../binds.ts';
-import type { Client } from '../db.ts';
+import { runtime, type Client } from '../db.ts';
 import type { Raw } from '../html.ts';
 import type { App, Button, Page } from '../metadata.ts';
 import type { Locale } from './locale.ts';
@@ -72,6 +72,8 @@ export interface PageContext {
   background?: boolean;
   /** debug messages of this request, when the app's debug level is on (src/debug.ts) */
   debug?: DebugLog;
+  /** (085) values of an Ajax callback's x01 … x10 parameters, as binds X01 … X10 */
+  extraBinds?: Record<string, string | null>;
   /** (079) the developer whose builder session is open in this browser (the developer toolbar), if any */
   devbar?: import('./devbar.ts').Devbar | null;
   /** (078) the origins the response may frame (the request's set; security.ts adds them to the CSP) */
@@ -95,6 +97,8 @@ export function timed<T>(ctx: { debug?: DebugLog }, level: number, component: st
 export function bindValues(ctx: PageContext): BindValues {
   return {
     ...ctx.session.state,
+    // (085) :X01 … :X10 of an Ajax callback (never the built-in names below)
+    ...ctx.extraBinds,
     APP_USER: ctx.user,
     APP_ID: String(ctx.app.id),
     APP_ALIAS: ctx.app.alias,
@@ -158,11 +162,13 @@ export async function publicError(ctx: Pick<PageContext, 'app' | 'page' | 'user'
   const t = ctx.locale?.t ?? english;
   const err = e as pg.DatabaseError;
   dbg(ctx, 1, 'error', () => `${where}: ${err.code ? `[${err.code}] ` : ''}${err.message}${err.where ? ` (${err.where.split('\n')[0]})` : ''}`);
-  if (!err.code) return err.message;
-  if (err.code === 'P0001') return err.message;
+  const handled = (message: string, internal: boolean, reference: string | null = null) =>
+    errorFunction(ctx, { message, original_message: err.message ?? String(e), code: err.code ?? null, constraint: err.constraint ?? null, table: err.table ?? null,
+      column: err.column ?? null, detail: err.detail ?? null, hint: err.hint ?? null, component: where, page: ctx.page?.page_no ?? null, user: ctx.user, internal, reference });
+  if (!err.code || err.code === 'P0001') return handled(err.message, false);
   const friendly = FRIENDLY[err.code]?.(err, t);
   if (ctx.app.debug) return `${where}: ${err.message}`;
-  if (friendly) return friendly;
+  if (friendly) return handled(friendly, false);
   const ref = await logActivity({
     appId: ctx.app.id,
     pageNo: ctx.page?.page_no,
@@ -171,7 +177,33 @@ export async function publicError(ctx: Pick<PageContext, 'app' | 'page' | 'user'
     ip: ctx.ip,
     detail: `${where}: [${err.code}] ${err.message}`,
   });
-  return ref ? t('error.reference', { ref }) : t('error.unexpected');
+  return handled(ref ? t('error.reference', { ref }) : t('error.unexpected'), true, ref ?? null);
+}
+
+const ERROR_FUNCTION = /^([A-Za-z_][A-Za-z0-9_$]{0,62})\.([A-Za-z_][A-Za-z0-9_$]{0,62})$/;
+
+/**
+ * (085) The application's error handling function (APEX: Error Handling Function):
+ * schema.function(jsonb) returns jsonb, called as the application's role in a
+ * transaction of its own (2 s), with the message pgkiln would show and what it
+ * knows of the error. When it returns {"message": "…"}, that is shown instead;
+ * when it returns null or fails, the message stays.
+ */
+async function errorFunction(ctx: Pick<PageContext, 'app' | 'user'> & { debug?: DebugLog }, info: { message: string } & Record<string, unknown>) {
+  const fn = ERROR_FUNCTION.exec(ctx.app.error_function ?? '');
+  if (!fn) return info.message;
+  try {
+    const r = await runtime.tx(async (c) => {
+      await c.query(`set local statement_timeout = '2s'`);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(ctx.app.id), ctx.user]);
+      if (ctx.app.db_role) await c.query(`set local role ${pg.escapeIdentifier(ctx.app.db_role)}`);
+      return (await c.query(`select ${pg.escapeIdentifier(fn[1])}.${pg.escapeIdentifier(fn[2])}($1::jsonb) as r`, [JSON.stringify(info)])).rows[0]?.r;
+    });
+    if (r && typeof r === 'object' && typeof r.message === 'string' && r.message.trim()) return r.message.trim().slice(0, 2000);
+  } catch (e) {
+    dbg(ctx, 1, 'error', () => `error handling function ${ctx.app.error_function}: ${(e as Error).message}`);
+  }
+  return info.message;
 }
 
 /** Write to a streamed response, waiting while the client is slow; fails once the client is gone. */

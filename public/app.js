@@ -445,6 +445,24 @@ const pgkilnUnsaved = (() => {
       },
     }),
     getValue: (name) => itemValue(name),
+    // (085) raise a custom event: dynamic actions with event "custom" and this name run
+    trigger: (name, value) => runChain(das.filter((da) => da.event === 'custom' && da.trigger.some((t) => String(t).toLowerCase() === String(name).toLowerCase())), value),
+    // (085) APEX: apex.server.process. An Ajax callback (a process with point "ajax") by name: posts the items given
+    // (a list of names, or {name: value}) and x01 … x10; answers { data, rows, items } and sets the items it changed.
+    server: Object.freeze({
+      async process(name, opts = {}) {
+        const data = {};
+        if (Array.isArray(opts.items)) for (const n of opts.items) data[n] = itemValue(n);
+        else if (opts.items && typeof opts.items === 'object') Object.assign(data, opts.items);
+        for (let i = 1; i <= 10; i++) {
+          const k = `x${String(i).padStart(2, '0')}`;
+          if (opts[k] !== undefined && opts[k] !== null) data[k] = String(opts[k]);
+        }
+        const res = await post(`/ajax/${encodeURIComponent(name)}`, data);
+        for (const [n, v] of Object.entries(res.items || {})) setItemValue(n, v);
+        return res;
+      },
+    }),
     // (077) APEX: apex.page.isChanged()
     isChanged: () => pgkilnUnsaved.changed(),
     setValue: (name, value) => setItemValue(name, value),
@@ -453,6 +471,38 @@ const pgkilnUnsaved = (() => {
     clearErrors: (...items) => clearErrors(items),
     page: pageNo,
   });
+
+  /** (085) what runDa returns to stop the actions after it (a declined confirm) */
+  const STOP = Symbol('stop');
+  const text = (k) => (meta.texts && meta.texts[k]) || k;
+
+  /** The actions of one event and trigger, one after the other in sequence order; false when one stopped them. */
+  async function runChain(list, value, extra) {
+    for (const da of list) if ((await runDa(da, false, value, extra)) === STOP) return false;
+    return true;
+  }
+
+  /** (085) The download dynamic action: the file of the download process it names, saved by the browser. */
+  async function download(da) {
+    const params = new URLSearchParams();
+    for (const n of da.submit) params.set(n, itemValue(n));
+    params.set('__csrf', meta.csrf);
+    try {
+      const res = await fetch(`${base}/${pageNo}/da/${da.id}/download`, { method: 'POST', body: params, credentials: 'same-origin' });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+      const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(res.headers.get('content-disposition') || '')?.[1];
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name ? decodeURIComponent(name) : 'download';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      showError(e.message);
+    }
+  }
 
   async function runDa(da, initial, value, extra) {
     const holds = conditionHolds(da, value);
@@ -475,6 +525,54 @@ const pgkilnUnsaved = (() => {
       case 'alert':
         window.alert(da.message || '');
         return;
+      // (085) a question: No stops the actions after it (and a page submit for before_submit)
+      case 'confirm':
+        return window.confirm(da.message || '') ? undefined : STOP;
+      case 'close_dialog':
+      case 'cancel_dialog':
+        if (window.parent !== window) window.parent.postMessage({ type: 'pgkiln:close', reload: da.action === 'close_dialog', page: body.dataset.dialogPage || String(pageNo) }, location.origin);
+        return;
+      case 'clear':
+        for (const n of da.items) setItemValue(n, '');
+        return;
+      case 'open_region':
+      case 'close_region':
+        for (const el of targets(da)) {
+          const details = el.querySelector(':scope > details');
+          if (details) details.open = da.action === 'open_region';
+          else el.hidden = da.action === 'close_region';
+        }
+        return;
+      case 'print':
+        window.print();
+        return;
+      case 'current_position':
+        return new Promise((resolve) => {
+          if (!navigator.geolocation) return showError(text('item.locate_error')), resolve();
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (da.items[0]) setItemValue(da.items[0], `${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`);
+              resolve();
+            },
+            () => (showError(text('item.locate_error')), resolve()),
+            { enableHighAccuracy: true, timeout: 15000 },
+          );
+        });
+      case 'share': {
+        const data = { title: document.title, text: da.message || undefined, url: location.href };
+        try {
+          if (navigator.share) await navigator.share(data);
+          else {
+            await navigator.clipboard.writeText(location.href);
+            showMessage(text('page.link_copied'), 'success');
+          }
+        } catch {
+          // the user closed the share sheet
+        }
+        return;
+      }
+      case 'download':
+        return download(da);
       case 'set_focus':
         focusTarget(targets(da)[0]);
         return;
@@ -563,7 +661,7 @@ const pgkilnUnsaved = (() => {
   document.addEventListener('change', (e) => {
     const name = e.target.name;
     if (!name) return;
-    for (const da of das) if (da.event === 'change' && da.trigger.includes(name)) runDa(da, false);
+    runChain(das.filter((da) => da.event === 'change' && da.trigger.includes(name)));
     cascade(name);
     if (e.target.closest('[data-submit-on-change]') && e.target.form === form && depth === 0) form.requestSubmit();
   });
@@ -575,21 +673,69 @@ const pgkilnUnsaved = (() => {
     // (without JavaScript the button submits and the page process runs instead)
     const ai = run.some((da) => da.action === 'ai_generate');
     if (ai && btn.type === 'submit') e.preventDefault();
-    const pending = run.map((da) => runDa(da, false));
+    const pending = runChain(run);
     if (ai && btn.tagName === 'BUTTON') {
       // one request at a time: the button waits for the answer
       btn.disabled = true;
       btn.setAttribute('aria-busy', 'true');
-      Promise.allSettled(pending).then(() => {
+      Promise.allSettled([pending]).then(() => {
         btn.disabled = false;
         btn.removeAttribute('aria-busy');
       });
     }
   });
-  for (const da of das) {
-    if (da.event !== 'dialog_closed' && ['show', 'hide', 'enable', 'disable'].includes(da.action)) runDa(da, true);
-    if (da.event === 'load') runDa(da, false);
-  }
+  for (const da of das) if (da.event !== 'dialog_closed' && ['show', 'hide', 'enable', 'disable'].includes(da.action)) runDa(da, true);
+  runChain(das.filter((da) => da.event === 'load'));
+
+  // (085) more events. Item events: focus, blur, key_release (trigger: item names).
+  const itemEvent = (event) => (e) => {
+    const name = e.target && e.target.name;
+    if (!name) return;
+    const run = das.filter((da) => da.event === event && da.trigger.includes(name));
+    if (run.length) runChain(run);
+  };
+  document.addEventListener('focusin', itemEvent('focus'));
+  document.addEventListener('focusout', itemEvent('blur'));
+  document.addEventListener('keyup', itemEvent('key_release'));
+  // region events (trigger: region ids or static ids, case-insensitive)
+  const regionRun = (event, region) => {
+    if (!region || !/^R\d+$/.test(region.id || '')) return [];
+    const keys = [region.id.slice(1), (region.dataset.staticId || '').toLowerCase()].filter(Boolean);
+    return das.filter((da) => da.event === event && da.trigger.some((t) => keys.includes(String(t).toLowerCase())));
+  };
+  // after_refresh: a region replaced by a refresh, a lazy load or a master row
+  document.addEventListener('pgkiln:replaced', (e) => {
+    const run = regionRun('after_refresh', e.detail);
+    if (run.length) runChain(run);
+  });
+  // selection_change: the row checkboxes of a report (and a grid's selected master row, see selectMaster)
+  const selectionChanged = (region) => {
+    const run = regionRun('selection_change', region);
+    if (!run.length) return;
+    const boxes = region.querySelectorAll('td.row-select input[type=checkbox]:checked');
+    runChain(run, [...boxes].map((b) => b.value).join(':'));
+  };
+  document.addEventListener('change', (e) => {
+    if (e.target.closest?.('.row-select')) selectionChanged(e.target.closest('section[id^="R"]'));
+  });
+  document.addEventListener('pgkiln:selection', (e) => selectionChanged(e.detail));
+  // before_submit: the page's form; a declined confirm keeps the page
+  let submitting = false;
+  document.addEventListener('submit', async (e) => {
+    if (e.target !== form || submitting) return;
+    const run = das.filter((da) => da.event === 'before_submit');
+    if (!run.length) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const submitter = e.submitter;
+    if (!(await runChain(run))) return;
+    submitting = true;
+    try {
+      form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+    } finally {
+      submitting = false;
+    }
+  }, true);
 
   // ------------------------------------------------------------ cascading lists of values
   async function cascade(parent) {
@@ -1079,6 +1225,8 @@ const pgkilnUnsaved = (() => {
         return;
       }
     }
+    // (085) the dynamic actions on the master's "selection change"
+    document.dispatchEvent(new CustomEvent('pgkiln:selection', { detail: master.closest('section[id^="R"]') }));
     // mark the row, and make the page's other links and forms carry the new selection
     for (const a of master.querySelectorAll('a[data-grid-select]')) {
       const on = a === link;
@@ -3150,4 +3298,86 @@ function areaFilter(map, f) {
     clearTimeout(timers.get(field));
     timers.set(field, setTimeout(() => search(field), 250));
   });
+})();
+
+// Session timeout warning (migration 085; APEX: Session timeout warning). The page knows when its
+// session ends: after the idle time since the page was loaded (or since "Stay signed in"), and at
+// the session's maximum length. A dialog warns `warn` seconds before; "Stay signed in" marks the
+// session active on the server. At the maximum length the user can only save their work.
+(() => {
+  const metaEl = document.getElementById('pgkiln-meta');
+  if (!metaEl) return;
+  const meta = JSON.parse(metaEl.textContent);
+  const s = meta.session;
+  if (!s || !s.idle || !s.warn) return;
+  const t = (k) => (meta.texts && meta.texts[k]) || k;
+  let last = Date.now();
+  let timer;
+  let dlg;
+  let shown = '';
+  let dismissed = false;
+  const end = () => Math.min(last + s.idle * 1000, s.maxEnd || Infinity);
+  const atMax = () => s.maxEnd && end() === s.maxEnd;
+  function schedule(ms) {
+    clearTimeout(timer);
+    timer = setTimeout(check, Math.max(500, Math.min(ms, 2 ** 31 - 1)));
+  }
+  function check() {
+    const left = end() - Date.now();
+    if (left <= 0) return show('ended');
+    if (left > s.warn * 1000) return schedule(left - s.warn * 1000);
+    // the idle warning counts down until it is dismissed; the maximum length is said once
+    if (atMax() ? shown !== 'max' : !dismissed) show(atMax() ? 'max' : 'idle', left);
+    schedule(Math.min(left, 30000));
+  }
+  function button(label, cls, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `btn ${cls}`;
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function show(kind, left) {
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.className = 'session-dialog';
+      dlg.setAttribute('aria-labelledby', 'session-dialog-text');
+      dlg.innerHTML = '<p id="session-dialog-text"></p><div class="buttons"></div>';
+      document.body.appendChild(dlg);
+      // Escape dismisses the warning like the button
+      dlg.addEventListener('cancel', () => (dismissed = true));
+    }
+    if (kind === 'max' && shown === 'max' && dlg.open) return;
+    shown = kind;
+    const p = dlg.querySelector('p');
+    const buttons = dlg.querySelector('.buttons');
+    buttons.replaceChildren();
+    if (kind === 'ended') {
+      clearTimeout(timer);
+      p.textContent = t('session.ended');
+      buttons.append(button(t('login.sign_in_link'), 'btn-hot', () => (location.href = `${document.body.dataset.base}/login?next=${encodeURIComponent(location.pathname + location.search)}`)));
+    } else if (kind === 'max') {
+      p.textContent = t('session.max').replace('{time}', new Date(s.maxEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      buttons.append(button('OK', 'btn-hot', () => dlg.close()));
+    } else {
+      p.textContent = t('session.warning').replace('{minutes}', String(Math.max(1, Math.ceil(left / 60000))));
+      buttons.append(button(t('session.stay'), 'btn-hot', stay), button(t('common.dismiss'), '', () => ((dismissed = true), dlg.close())));
+    }
+    if (!dlg.open) dlg.showModal();
+  }
+  async function stay() {
+    try {
+      const res = await fetch(s.extend, { method: 'POST', body: new URLSearchParams({ __csrf: meta.csrf }), headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      if (!res.ok) return show('ended');
+      last = Date.now();
+      shown = '';
+      dismissed = false;
+      dlg.close();
+      check();
+    } catch {
+      // offline: try again with the next click
+    }
+  }
+  check();
 })();

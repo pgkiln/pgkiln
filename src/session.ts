@@ -17,6 +17,8 @@ export interface Session {
   workspace?: { id: number; name: string } | null;
   /** Builder only (079): sha256 of the developer toolbar token (src/runtime/devbar.ts). */
   devbar_hash?: string | null;
+  /** (085) when the session started, in ms since the epoch (its maximum length counts from here) */
+  created_ms?: number;
 }
 
 // instance settings (src/instance.ts): the builder's value, else SESSION_* environment variables, else 60 minutes / 8 hours
@@ -35,7 +37,7 @@ async function find(token: string | undefined, appId: number | null) {
       where token_hash = $1 and app_id is not distinct from $2
         and last_seen > now() - make_interval(mins => $3)
         and created_at > now() - make_interval(hours => $4)
-     returning id, app_id, username, csrf_token, state, roles, devbar_hash`,
+     returning id, app_id, username, csrf_token, state, roles, devbar_hash, (extract(epoch from created_at) * 1000)::float8 as created_ms`,
     [hashToken(token), appId, IDLE_MINUTES(), MAX_HOURS()],
   );
 }
@@ -48,7 +50,7 @@ export async function createSession(reply: FastifyReply, appId: number | null, p
   const token = newToken();
   const s = (await runtime.one<Session>(
     `insert into meta.session (token_hash, app_id, username, roles) values ($1, $2, $3, $4)
-     returning id, app_id, username, csrf_token, state, roles`,
+     returning id, app_id, username, csrf_token, state, roles, (extract(epoch from created_at) * 1000)::float8 as created_ms`,
     [hashToken(token), appId, username, roles.map((r) => r.toLowerCase())],
   ))!;
   if (Math.random() < 0.05)

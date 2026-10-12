@@ -22,6 +22,7 @@ import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
 import { frameOrigins } from './url-region.ts';
 import { devbarHtml } from './devbar.ts';
 import { feedbackNode } from './feedback.ts';
+import { sessionLimits } from '../session.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -310,8 +311,20 @@ function formKeys(ctx: PageContext) {
 const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
   'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close', 'common.dismiss',
   'crop.title', 'crop.apply', 'crop.skip', 'crop.help',
-  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed', 'page.unsaved_changes'] as const;
+  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed', 'page.unsaved_changes', 'page.link_copied',
+  'session.warning', 'session.stay', 'session.max', 'session.ended', 'login.sign_in_link'] as const;
 export const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
+
+/**
+ * (085) The session timeout warning: when a signed-in session ends (idle time from now, or its
+ * maximum length) and how long before that the page warns. Null: no warning.
+ */
+function sessionMeta(ctx: PageContext) {
+  const warn = Number(ctx.app.session_warning_seconds ?? 120);
+  if (!warn || ctx.dialog || !ctx.session.username || ctx.app.authentication === 'none' || ctx.app.authentication === 'header') return null;
+  const { idleMinutes, maxHours } = sessionLimits();
+  return { idle: idleMinutes * 60, maxEnd: ctx.session.created_ms ? Math.round(ctx.session.created_ms + maxHours * 3600_000) : null, warn, extend: `${ctx.base}/session/extend` };
+}
 
 /** The current page's URL (for returning after a preference change). */
 const here = (ctx: PageContext) => `${ctx.base}/${ctx.page.page_no}`;
@@ -366,7 +379,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}
     </div>
     <script type="application/json" id="pgkiln-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx) }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }

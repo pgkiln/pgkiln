@@ -1601,3 +1601,8 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .feedback-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.4rem 0; }
 .feedback-response { background: var(--surface-2); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 .feedback-response p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.25rem 0 0; }
+
+/* (085) Session timeout warning */
+.session-dialog { max-width: min(28rem, calc(100vw - 2rem)); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 1.25rem; }
+.session-dialog::backdrop { background: rgb(0 0 0 / 40%); }
+.session-dialog p { margin: 0 0 1rem; }

@@ -16,7 +16,7 @@ import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
 import { checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
 import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type SsoResult } from '../sso.ts';
-import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
+import { sessionLimits, clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
 import { startDebug } from '../debug.ts';
@@ -46,6 +46,7 @@ import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 import { availabilityRefusal } from './availability.ts';
 import { feedbackRoutes } from './feedback.ts';
+import { ajaxRoutes } from './ajax.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -597,6 +598,16 @@ export async function runtimeRoutes(app: FastifyInstance) {
   devbarRoutes(app, loadContext);
   // (084) users' feedback
   feedbackRoutes(app, loadContext, txContext);
+  // (085) Ajax callbacks and the dynamic action "download"
+  ajaxRoutes(app, loadContext, txContext, applyPostedItems);
+  // (085) "Stay signed in" of the session timeout warning: the session's last activity is now
+  app.post('/a/:alias/session/extend', async (req: Req, reply) => {
+    const a = await loadApp(req.params.alias);
+    if (!a) return reply.code(404).send({ ok: false });
+    const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
+    if (!session.username || req.body?.__csrf !== session.csrf_token) return reply.code(401).send({ ok: false });
+    return reply.header('cache-control', 'no-store').send({ ok: true, idle: sessionLimits().idleMinutes * 60 });
+  });
 
   // ---------------------------------------------------------------- dynamic actions (AJAX)
   app.post('/a/:alias/:page/da/:id', async (req: Req, reply) => {

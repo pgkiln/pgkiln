@@ -167,6 +167,36 @@ end if;
 All changes of the submit are rolled back, and the page is shown again with the entered
 values so the user can correct them.
 
+**Error handling function** (Settings → *Errors and sessions*; APEX: Error Handling Function). A
+function of your own rewrites every error message users see: those raised in PL/pgSQL, the friendly
+constraint messages and the "reference" messages of unexpected errors.
+
+```sql
+create function sales.error_message(e jsonb) returns jsonb language plpgsql as $$
+begin
+  if e->>'constraint' = 'order_customer_fk' then
+    return jsonb_build_object('message', 'Choose an existing customer.');
+  end if;
+  if (e->>'internal')::boolean then
+    return jsonb_build_object('message', 'Something went wrong. Quote ' || (e->>'reference') || ' to the help desk.');
+  end if;
+  return null;   -- keep the message
+end $$;
+```
+
+It gets `message` (what pgkiln would show), `original_message`, `code` (SQLSTATE), `constraint`,
+`table`, `column`, `detail`, `hint`, `component` (where it happened, e.g. `process "Save order"`),
+`page`, `user`, `internal` (true for an unexpected error) and `reference` (its activity log id), and
+returns `{"message": "…"}` or null. It runs as the application's role, in a transaction of its own,
+with a 2-second limit; when it fails or returns null the message stays as it was. Debug mode shows
+the real error and doesn't call it.
+
+### Ajax callbacks
+
+A process with point **ajax** runs when JavaScript calls it by name, `pgkiln.server.process('NAME')`
+(APEX: On Demand processes, `apex.server.process`), and answers JSON; see
+[chapter 7](07-dynamic-actions.md#ajax-callbacks).
+
 ### Debug messages
 
 Like APEX's debug, pgkiln can record what each request of an application did and how long every

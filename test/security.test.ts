@@ -6755,3 +6755,71 @@ describe('sprint 51 safe deployments and feedback', () => {
     await owner.query('rollback').catch(() => {});
   });
 });
+
+describe('sprint 52 page behaviour', () => {
+  const inject = (b: Browser, url: string, form: Record<string, string>) =>
+    app.inject({ method: 'POST', url, payload: new URLSearchParams(form).toString(),
+      headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' } });
+
+  test('an Ajax callback sets only items the user may change, and only runs its own application\'s processes', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    const ro = (await owner.one(`insert into meta.item (page_id, seq, name, type, readonly_condition) values ($1, 990, 'P1_SEC_RO', 'text', 'true') returning id`, [page])).id;
+    const hid = (await owner.one(`insert into meta.item (page_id, seq, name, type) values ($1, 991, 'P1_SEC_HID', 'hidden') returning id`, [page])).id;
+    const proc = (await owner.one(`insert into meta.process (page_id, seq, name, type, point, code) values ($1, 990, 'SEC_ECHO', 'sql', 'ajax',
+      'select :P1_SEC_RO as ro, :P1_SEC_HID as hid, :APP_ID as app') returning id`, [page])).id;
+    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec52-other', 'Other') returning id`)).id;
+    await owner.query(`insert into meta.app_process (app_id, seq, name, point, code) values ($1, 10, 'SEC_OTHER', 'ajax', 'select 1 as x')`, [other]);
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/1');
+      const r = await inject(king, '/a/hr/1/ajax/SEC_ECHO', { __csrf: king.lastCsrf, P1_SEC_RO: 'forced', P1_SEC_HID: 'forced', X01: 'x', APP_ID: '999' });
+      assert.equal(r.statusCode, 200, r.body);
+      const d = JSON.parse(r.body).data;
+      assert.equal(d.ro, null, 'a read-only item is not set by the post');
+      assert.equal(d.hid, null, 'a hidden item is not set by the post');
+      assert.equal(String(d.app), String(appId));
+      assert.equal((await inject(king, '/a/hr/1/ajax/SEC_OTHER', { __csrf: king.lastCsrf })).statusCode, 403);
+    } finally {
+      await owner.query('delete from meta.process where id = $1', [proc]);
+      await owner.query('delete from meta.item where id = any($1)', [[ro, hid]]);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('a download dynamic action of another page, and the error function\'s rights', async () => {
+    const page2 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 2', [appId])).id;
+    const da = (await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, action, code) values ($1, 990, 'sec dl', 'click', 'download', 'X') returning id`, [page2])).id;
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/1');
+      assert.equal((await inject(king, `/a/hr/1/da/${da}/download`, { __csrf: king.lastCsrf })).statusCode, 403);
+    } finally {
+      await owner.query('delete from meta.dynamic_action where id = $1', [da]);
+    }
+    // the error function runs as the application's role: pgkiln's tables are out of its reach
+    await owner.query(`create or replace function public.sec52_err(e jsonb) returns jsonb language sql as $$ select jsonb_build_object('message', (select count(*)::text from meta.account)) $$`);
+    await owner.query('grant execute on function public.sec52_err(jsonb) to public');
+    await owner.query(`update meta.app set error_function = 'public.sec52_err' where id = $1`, [appId]);
+    const page1 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    const proc = (await owner.one(`insert into meta.process (page_id, seq, name, type, point, code) values ($1, 991, 'SEC_FAIL', 'sql', 'ajax', 'do $$ begin raise exception ''kept''; end $$') returning id`, [page1])).id;
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/1');
+      assert.equal(JSON.parse((await inject(king, '/a/hr/1/ajax/SEC_FAIL', { __csrf: king.lastCsrf })).body).error, 'kept');
+    } finally {
+      await owner.query('delete from meta.process where id = $1', [proc]);
+      await owner.query(`update meta.app set error_function = null where id = $1`, [appId]);
+      await owner.query('drop function public.sec52_err(jsonb)');
+    }
+  });
+
+  test('Stay signed in works only with that application\'s own signed-in session', async () => {
+    const anon = new Browser();
+    await anon.get('/a/hr/login');
+    assert.equal((await anon.post('/a/hr/session/extend', { __csrf: anon.lastCsrf })).statusCode, 401);
+    const king = await as('king');
+    await king.get('/a/hr/1');
+    assert.equal((await king.post('/a/no-such-app/session/extend', { __csrf: king.lastCsrf })).statusCode, 404);
+    assert.equal((await king.post('/a/hr/session/extend', { __csrf: king.lastCsrf })).statusCode, 200);
+  });
+});

@@ -151,6 +151,8 @@ src/
                            sources as the app role in savepoints, marked results, configColumns/searchConfigProblems for the Advisor
     url-region.ts          URL region (migration 078): literal origins only (urlTarget), &ITEM. URL-encoded, sandbox and height,
                            frameOrigins() for the CSP's frame-src (security.ts)
+    ajax.ts                Ajax callbacks (migration 085: POST …/ajax/:name, point "ajax" processes, x01 … x10 binds) and the
+                           download dynamic action (POST …/da/:id/download)
     availability.ts        availabilityRefusal(): who may use an application (migration 083); loadContext, the login page
                            and REST modules ask it (PostgREST: meta.api_check)
     feedback.ts            users' feedback page and the navigation bar entry (migration 084)
