@@ -31,48 +31,84 @@ const SECRET_LABEL: Record<Provider, string> = {
   postmark: 'Server token', sendgrid: 'API key', mailgun: 'API key', log: 'Secret (not used)',
 };
 
-function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) {
-  const s: ServiceSettings = x.settings ?? {};
-  const provider = (x.provider ?? 'smtp') as Provider;
-  return html`<form method="post" action="${action}">${csrfField}
-    <fieldset class="prop-group"><legend>Service</legend><div class="form-grid">
+/** What each provider is, for the choice of a new service. */
+const PROVIDER_TEXT: Record<Provider, [icon: string, text: string]> = {
+  smtp: ['send', 'Any SMTP server or relay. Sign in with a password, or with OAuth2 (Exchange Online, Google Workspace).'],
+  graph: ['building', 'Microsoft 365 through the Graph API, as an Entra application with Mail.Send.'],
+  ses: ['database', 'Amazon Simple Email Service (API v2), with an IAM access key.'],
+  resend: ['send', 'Resend\'s HTTP API, with an API key.'],
+  postmark: ['send', 'Postmark\'s HTTP API, with a server token.'],
+  sendgrid: ['send', 'SendGrid\'s HTTP API, with an API key.'],
+  mailgun: ['send', 'Mailgun\'s HTTP API, with an API key and a sending domain.'],
+  log: ['list', 'For development and demos: the server writes each mail to its log and sends nothing.'],
+};
+
+/** Step 1 of a new service: choose the provider. */
+function providerChoice() {
+  return html`<div class="ab-tiles ab-tiles-wrap">${PROVIDERS.map((p) =>
+    html`<a class="ab-tile" href="${BASE}/mail/new?provider=${p}"><span class="ab-tile-icon">${icon(PROVIDER_TEXT[p][0])}</span><strong>${PROVIDER_LABELS[p]}</strong><span>${PROVIDER_TEXT[p][1]}</span></a>`)}</div>`;
+}
+
+/** The settings of one provider only, in groups (a new service, or an existing one switching provider). */
+function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provider: Provider, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) {
+  const s: ServiceSettings = x.provider === provider ? x.settings ?? {} : { default_from: x.settings?.default_from };
+  const group = (legend: string, body: unknown, help?: string) =>
+    html`<fieldset class="prop-group"><legend>${legend}</legend>${help ? html`<p class="muted u-mt0">${help}</p>` : ''}${body}</fieldset>`;
+  const oauth = (scope: string) => html`<div class="form-grid">
+      ${input('tenant_id', 'Tenant ID (Microsoft Entra)', s.tenant_id, { placeholder: 'contoso.onmicrosoft.com or its GUID' })}
+      ${input('client_id', 'Client (application) ID', s.client_id)}
+      ${input('token_url', 'Token URL', s.token_url, { placeholder: 'empty: Microsoft Entra of the tenant', help: 'Another identity provider\'s token endpoint (client credentials grant), e.g. Google\'s.' })}
+      ${input('scope', 'Scope', s.scope, { placeholder: `empty: ${scope}` })}
+    </div>`;
+  const settings =
+    provider === 'smtp'
+      ? html`${group('SMTP server', html`<div class="form-grid">
+          ${input('host', 'Host', s.host, { required: true, placeholder: 'smtp.office365.com' })}
+          ${input('port', 'Port', s.port ?? '', { type: 'number', placeholder: '587', help: 'Empty: 587 (STARTTLS) or 465 (TLS).' })}
+          ${select('security', 'Security', s.security ?? 'starttls', [['starttls', 'STARTTLS (required)'], ['tls', 'TLS from the start (port 465)'], ['none', 'None (a local relay only)']])}
+          ${select('auth', 'Sign-in', s.auth ?? 'password', [['password', 'User name and password'], ['oauth2', 'OAuth2 (XOAUTH2, client credentials)'], ['none', 'None']],
+            'Microsoft 365 no longer takes passwords for SMTP: choose OAuth2 with an Entra application (SMTP.SendAsApp), or the Microsoft 365 (Graph) provider.')}
+          ${input('username', 'User name', s.username, { placeholder: 'the mailbox, e.g. noreply@example.com' })}
+        </div>${check('tls_verify', 'Check the server\'s certificate', s.tls_verify !== false, 'Switch off only for a relay with a self-signed certificate on your own network.')}`)}
+        <details class="prop-group prop-group-more"${s.auth === 'oauth2' ? raw(' open') : ''}><summary>OAuth2 sign-in <span class="muted">(only with Sign-in: OAuth2)</span></summary>${oauth('https://outlook.office365.com/.default')}</details>`
+      : provider === 'graph'
+        ? group('Microsoft Entra application', html`${oauth('https://graph.microsoft.com/.default')}
+            ${check('save_to_sent_items', 'Keep a copy in the mailbox\'s Sent Items', s.save_to_sent_items === true)}`,
+          'An application in Microsoft Entra with a client secret and the application permission Mail.Send, limited to the sending mailboxes.')
+        : provider === 'ses'
+          ? group('Amazon SES', html`<div class="form-grid">
+              ${input('region', 'AWS region', s.region, { required: true, placeholder: 'eu-west-1' })}
+              ${input('access_key_id', 'Access key ID', s.access_key_id, { required: true })}</div>`,
+            'An IAM user allowed ses:SendEmail; the From addresses must be verified identities in SES.')
+          : provider === 'mailgun'
+            ? group('Mailgun', html`<div class="form-grid">
+                ${input('domain', 'Sending domain', s.domain, { required: true, placeholder: 'mg.example.com' })}
+                ${select('mailgun_region', 'Region', s.mailgun_region ?? 'us', [['us', 'US'], ['eu', 'EU']])}</div>`)
+            : provider === 'postmark'
+              ? group('Postmark', html`<div class="form-grid">${input('message_stream', 'Message stream', s.message_stream, { placeholder: 'outbound' })}</div>`)
+              : '';
+  const secret = provider === 'log' ? '' : group(SECRET_LABEL[provider], html`
+      ${input('secret', SECRET_LABEL[provider], '', { type: 'password', auto: 'new-password',
+        help: x.has_secret && x.provider === provider ? 'A secret is stored (encrypted). It is never shown; type a new one to replace it.' : 'Stored encrypted; never shown again.' })}
+      ${x.has_secret ? check('remove_secret', 'Remove the stored secret', false) : ''}
+      ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: secrets can't be stored until it is set.</div>`}`);
+  const viaHttp = provider !== 'smtp' && provider !== 'log';
+  return html`<form method="post" action="${action}" class="mail-service-form">${csrfField}
+    <input type="hidden" name="provider" value="${provider}">
+    ${group('Service', html`<div class="form-grid">
       ${isNew ? input('name', 'Name', '', { required: true, placeholder: 'e.g. OFFICE365', help: 'Upper case letters, digits and _.' }) : ''}
       ${input('description', 'Description', x.description)}
-      ${select('provider', 'Provider', provider, PROVIDERS.map((p): [string, string] => [p, PROVIDER_LABELS[p]]),
-        'Which fields apply depends on the provider (see the help under each). Mail, with its recipients and contents, is handed to this provider.')}
+    </div>${check('enabled', 'Enabled', x.enabled !== false, 'A disabled service sends nothing: mail stays queued until it is enabled, or fails after its retries.')}`)}
+    ${group('Senders', html`<div class="form-grid">
       ${input('senders', 'Allowed senders', (x.senders ?? []).join(', '), { required: true, placeholder: 'noreply@example.com, @example.com',
         help: 'The From addresses this service may send as: an address, or @domain for every address of a domain (the provider must accept them too).' })}
       ${input('default_from', 'Default From address', s.default_from, { placeholder: 'noreply@example.com', help: 'For applications that set none.' })}
-    </div>${check('enabled', 'Enabled', x.enabled !== false, 'A disabled service sends nothing: mail stays queued until it is enabled, or fails after its retries.')}</fieldset>
-    <fieldset class="prop-group"><legend>SMTP</legend><div class="form-grid">
-      ${input('host', 'Host', s.host, { placeholder: 'smtp.office365.com' })}
-      ${input('port', 'Port', s.port ?? '', { type: 'number', placeholder: '587', help: 'Empty: 587 (STARTTLS) or 465 (TLS).' })}
-      ${select('security', 'Security', s.security ?? 'starttls', [['starttls', 'STARTTLS (required)'], ['tls', 'TLS from the start (port 465)'], ['none', 'None (a local relay only)']])}
-      ${select('auth', 'Sign-in', s.auth ?? 'password', [['password', 'User name and password'], ['oauth2', 'OAuth2 (XOAUTH2, client credentials)'], ['none', 'None']],
-        'Microsoft 365 no longer takes passwords for SMTP: choose OAuth2 with an Entra application (SMTP.SendAsApp), or the Graph provider.')}
-      ${input('username', 'User name', s.username, { placeholder: 'the mailbox, e.g. noreply@example.com' })}
-    </div>${check('tls_verify', 'Check the server\'s certificate', s.tls_verify !== false, 'Switch off only for a relay with a self-signed certificate on your own network.')}</fieldset>
-    <fieldset class="prop-group"><legend>OAuth2 and Microsoft Graph</legend><div class="form-grid">
-      ${input('tenant_id', 'Tenant ID (Microsoft Entra)', s.tenant_id)}
-      ${input('client_id', 'Client (application) ID', s.client_id)}
-      ${input('token_url', 'Token URL', s.token_url, { placeholder: 'empty: Microsoft Entra of the tenant', help: 'Another identity provider\'s token endpoint (client credentials grant), e.g. Google\'s.' })}
-      ${input('scope', 'Scope', s.scope, { placeholder: 'empty: Exchange Online (SMTP) or Microsoft Graph' })}
-    </div>${check('save_to_sent_items', 'Graph: keep a copy in the mailbox\'s Sent Items', s.save_to_sent_items === true)}</fieldset>
-    <fieldset class="prop-group"><legend>Amazon SES, Mailgun, Postmark</legend><div class="form-grid">
-      ${input('region', 'AWS region (SES)', s.region, { placeholder: 'eu-west-1' })}
-      ${input('access_key_id', 'Access key ID (SES)', s.access_key_id)}
-      ${input('domain', 'Sending domain (Mailgun)', s.domain, { placeholder: 'mg.example.com' })}
-      ${select('mailgun_region', 'Region (Mailgun)', s.mailgun_region ?? 'us', [['us', 'US'], ['eu', 'EU']])}
-      ${input('message_stream', 'Message stream (Postmark)', s.message_stream, { placeholder: 'outbound' })}
-      ${input('base_url', 'API base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: 'A gateway or proxy that speaks the provider\'s API. Administrators only.' })}
-    </div></fieldset>
-    <fieldset class="prop-group"><legend>Secret</legend>
-      ${input('secret', SECRET_LABEL[provider], '', { type: 'password', auto: 'new-password',
-        help: x.has_secret ? 'A secret is stored (encrypted). It is never shown; type a new one to replace it.' : 'Password, client secret, API key or secret access key, by provider. Stored encrypted; never shown again.' })}
-      ${x.has_secret ? check('remove_secret', 'Remove the stored secret', false) : ''}
-      ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: secrets can't be stored until it is set.</div>`}
-    </fieldset>
-    <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add service' : 'Save'}</button></div>
+    </div>`)}
+    ${settings}
+    ${secret}
+    ${viaHttp ? html`<details class="prop-group prop-group-more"${s.base_url ? raw(' open') : ''}><summary>Advanced</summary><div class="form-grid">
+      ${input('base_url', 'API base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: 'A gateway or proxy that speaks the provider\'s API. Administrators only.' })}</div></details>` : ''}
+    <div class="buttons">${isNew ? html`<a class="btn" href="${BASE}/mail/new">Choose another provider</a>` : ''}<button class="btn btn-hot">${isNew ? 'Add service' : 'Save'}</button></div>
   </form>`;
 }
 
@@ -138,8 +174,7 @@ export async function mailRoutes(app: FastifyInstance) {
     const main = html`
       <div class="title-row"><h1>Mail services</h1></div>
       <p class="muted u-mt0">How the applications of this installation send e-mail (<code>meta.send_mail()</code> from SQL, the <b>Send e-mail</b> process, e-mail templates). Mail is queued in the application's transaction and sent by the server after it commits. Choose the service of each application on the service's page.</p>
-      <div class="columns wide-left">
-        ${region('Services', html`<div class="table-wrap"><table class="report report-reflow">
+      ${region('Services', html`<div class="table-wrap"><table class="report report-reflow">
           <thead><tr><th>Service</th><th>Provider</th><th>Senders</th><th>Secret</th><th>Applications</th><th>Status</th></tr></thead>
           <tbody>${services.length ? services.map((x) => html`<tr>
             <td data-label="Service"><a href="${BASE}/mail/${x.id}">${x.name}</a>${x.description ? html` <span class="muted">${x.description}</span>` : ''}</td>
@@ -148,11 +183,23 @@ export async function mailRoutes(app: FastifyInstance) {
             <td data-label="Secret">${x.has_secret ? 'stored (encrypted)' : x.provider === 'log' ? '–' : html`<b>missing</b>`}</td>
             <td data-label="Applications">${x.apps ?? html`<span class="muted">none</span>`}</td>
             <td data-label="Status">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
-            : html`<tr><td colspan="6" class="empty">No mail services yet.</td></tr>`}</tbody></table></div>`)}
-        ${region('Add service', serviceForm({}, `${BASE}/mail`, csrf(s), true))}
-      </div>
+            : html`<tr><td colspan="6" class="empty">No mail services yet.</td></tr>`}</tbody></table></div>`,
+        html`<a class="btn btn-sm btn-hot" href="${BASE}/mail/new">${icon('plus')} Add service</a>`)}
       ${region('Recent mail', mailTable(recent, true))}`;
     return send(reply, s, shell(s, 'Mail services', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Mail services']], main));
+  });
+
+  // a new service: choose the provider, then its settings only
+  app.get(`${BASE}/mail/new`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await adminOnly(s, reply, 'Mail services'))) return;
+    const provider = (PROVIDERS as readonly string[]).includes(String(req.query.provider)) ? (req.query.provider as Provider) : null;
+    const main = html`<div class="title-row"><h1>Add a mail service</h1></div>
+      ${provider
+        ? html`<p class="muted u-mt0">Step 2 of 2: <b>${PROVIDER_LABELS[provider]}</b>. ${PROVIDER_TEXT[provider][1]}</p>
+            <div class="mail-form-page">${region('Settings', serviceForm({}, provider, `${BASE}/mail`, csrf(s), true))}</div>`
+        : html`<p class="muted u-mt0">Step 1 of 2: how should the applications send mail?</p>${providerChoice()}`}`;
+    return send(reply, s, shell(s, 'Add a mail service', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Mail services', `${BASE}/mail`], ['Add']], main));
   });
 
   app.post(`${BASE}/mail`, async (req: Req, reply) => {
@@ -171,7 +218,7 @@ export async function mailRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/mail/${r.id}`);
     } catch (e) {
       flash(s, (e as Error).message.includes('mail_service_name_key') ? 'A service with this name exists already.' : (e as Error).message, 'error');
-      return back(reply, s, `${BASE}/mail`);
+      return back(reply, s, `${BASE}/mail/new?provider=${encodeURIComponent(String(b.provider ?? ''))}`);
     }
   });
 
@@ -181,6 +228,7 @@ export async function mailRoutes(app: FastifyInstance) {
     const x = await owner.one<MailService & { has_secret: boolean }>(
       'select id, name, description, provider, settings, senders, enabled, secret_enc is not null as has_secret from meta.mail_service where id = $1', [req.params.id]);
     if (!x) return reply.code(404).send('Not found');
+    const provider = (PROVIDERS as readonly string[]).includes(String(req.query.provider)) ? (req.query.provider as Provider) : x.provider;
     const apps = (await owner.query(`select a.id, a.alias, a.name, x.service_id, x.from_address, x.max_per_day, o.name as other
       from meta.app a left join meta.app_mail_service x on x.app_id = a.id left join meta.mail_service o on o.id = x.service_id and o.id <> $1
       order by a.alias`, [x.id])).rows;
@@ -197,7 +245,10 @@ export async function mailRoutes(app: FastifyInstance) {
     const main = html`
       <div class="title-row"><h1 class="mail-name">${x.name}</h1></div>
       <div class="columns wide-left">
-        ${region('Settings', html`${serviceForm(x, `${BASE}/mail/${x.id}`, csrf(s), false)}
+        ${region('Settings', html`
+          <form method="get" class="provider-switch">${select('provider', 'Provider', provider, PROVIDERS.map((p): [string, string] => [p, PROVIDER_LABELS[p]]),
+            provider !== x.provider ? 'Not saved yet: fill in the settings below and save to switch.' : undefined)}<button class="btn btn-sm">Change</button></form>
+          ${serviceForm(x, provider, `${BASE}/mail/${x.id}`, csrf(s), false)}
           <form method="post" action="${BASE}/mail/${x.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete mail service ${x.name}? Its applications can't send mail until they get another one.">Delete service</button></form>`)}
         ${region('Test', html`

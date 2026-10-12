@@ -300,6 +300,12 @@ describe('mail: the send_email process and the builder', () => {
     await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
     let res = await dev.get('/builder/mail');
     assert.equal(res.statusCode, 200);
+    // adding a service: first the provider, then only its settings
+    assert.match((await dev.get('/builder/mail/new')).body, /href="\/builder\/mail\/new\?provider=graph"/);
+    const graphForm = (await dev.get('/builder/mail/new?provider=graph')).body;
+    assert.match(graphForm, /name="tenant_id"/);
+    assert.doesNotMatch(graphForm, /name="host"|name="region"|name="domain"/, 'no other provider\'s fields');
+    assert.doesNotMatch((await dev.get('/builder/mail/new?provider=log')).body, /name="secret"/, 'log only needs no secret');
     await owner.query('delete from meta.mail_service where name = $1', [SERVICE]);
     res = await dev.submit('/builder/mail', { name: SERVICE.toLowerCase(), provider: 'resend', senders: '@example.com, hr@other.example', default_from: 'hr@example.com', secret: 'resend-key-secret', enabled: 'true', base_url: mock.httpUrl });
     assert.equal(res.statusCode, 303);

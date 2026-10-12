@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.33.0 (October 2026): checked imports, application backups, availability and Run only, feedback; 0.32.0: e-mail, the search and URL regions, the developer toolbar.
+- **Current release:** 0.33.1 (October 2026): a friendlier Mail services screen; 0.33.0: checked imports, application backups, availability and Run only, feedback; 0.32.0: e-mail, the search and URL regions, the developer toolbar.
 - **APEX parity:** 140 features compared: 121 available, 6 partial, 10 not yet, 3 deliberately
   not planned (collections, JSON duality views and database links: PostgreSQL covers them).
 

@@ -719,6 +719,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 42 and r.type = 'search'`, [appId]);
           return {
             mail_services: '/builder/mail', mail_service: `/builder/mail/${svc}`, app_mail: `/builder/apps/${appId}/mail`,
+            mail_new: '/builder/mail/new', mail_new_smtp: '/builder/mail/new?provider=smtp', mail_new_graph: '/builder/mail/new?provider=graph',
             search_config: `/builder/apps/${appId}/shared?c=search_config-${search}`, email_template: `/builder/apps/${appId}/shared?c=email_template-${template}`,
             search_region: `/builder/pages/${r.page_id}?c=region-${r.id}`,
             // (sprint 51) backups, availability and feedback
