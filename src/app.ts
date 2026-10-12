@@ -26,6 +26,7 @@ import { aiRoutes } from './builder/ai.ts';
 import { mailRoutes } from './builder/mail.ts';
 import { backupRoutes } from './builder/backups.ts';
 import { availabilityRoutes } from './builder/availability.ts';
+import { feedbackRoutes as builderFeedbackRoutes } from './builder/feedback.ts';
 import { documentRoutes } from './builder/documents.ts';
 import { pwaBuilderRoutes } from './builder/pwa.ts';
 import { themeRollerRoutes } from './builder/themeroller.ts';
@@ -176,6 +177,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(mailRoutes);
   await app.register(backupRoutes);
   await app.register(availabilityRoutes);
+  await app.register(builderFeedbackRoutes);
   await app.register(documentRoutes);
   await app.register(pwaBuilderRoutes);
   await app.register(themeRollerRoutes);

@@ -1591,3 +1591,13 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .search-hit mark { background: #6b5a00; } }
 .search-hit .badge-pill { flex: none; }
 .search-more, .search-empty { margin: 0.4rem 0 0; }
+
+/* (084) Feedback: the users' page and the builder's list */
+.feedback-form .choices { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.feedback-list, .feedback-admin { list-style: none; margin: 0; padding: 0; }
+.feedback-list > li, .feedback-admin > li { border-top: 1px solid var(--border); padding: 0.75rem 0; }
+.feedback-list > li:first-child, .feedback-admin > li:first-child { border-top: 0; }
+.feedback-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; overflow-wrap: anywhere; }
+.feedback-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.4rem 0; }
+.feedback-response { background: var(--surface-2); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
+.feedback-response p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.25rem 0 0; }

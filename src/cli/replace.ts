@@ -51,8 +51,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'workspace_app',
   // (074) push notifications: the app's VAPID keys, users' devices, queued notifications
   'push_key', 'push_subscription', 'push_message',
-  // (082) the application's backups
-  'app_backup',
+  // (082) the application's backups, (084) users' feedback
+  'app_backup', 'feedback',
   // (081) the mail service an application sends through, and its queued and sent mail
   'app_mail_service', 'mail_queue'];
 /** Children of pages (replaced with their page). */

@@ -33,9 +33,9 @@ export const appLocks = async (appId: number) =>
   (await owner.query<Lock>('select app_id, page_no, locked_by, locked_at::text, note from meta.builder_lock where app_id = $1 order by page_no', [appId])).rows;
 
 /** Builder POSTs that are allowed on a locked page or application (locking, unlocking, comments). */
-const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?)$/;
+const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+)$/;
 /** (083) Builder POSTs allowed on a Run only application: its availability and build status, a backup, locks and comments. */
-const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|lock|unlock|comments(\/\d+\/delete)?)$/;
+const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+)$/;
 
 /** The application (and page) a builder URL under /apps/:id or /pages/:pid is about, or null. */
 export async function appOfPath(path: string): Promise<{ appId: number; pageNo: number | null; pageId: number | null } | null> {

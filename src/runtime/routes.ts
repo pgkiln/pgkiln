@@ -45,6 +45,7 @@ import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 import { availabilityRefusal } from './availability.ts';
+import { feedbackRoutes } from './feedback.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -594,6 +595,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
   fileRoutes(app, loadContext, txContext, forbidden);
   // (079) the developer toolbar's session state viewer and actions
   devbarRoutes(app, loadContext);
+  // (084) users' feedback
+  feedbackRoutes(app, loadContext, txContext);
 
   // ---------------------------------------------------------------- dynamic actions (AJAX)
   app.post('/a/:alias/:page/da/:id', async (req: Req, reply) => {

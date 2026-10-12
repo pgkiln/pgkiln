@@ -505,6 +505,20 @@ pgkiln import apps/sales --replace --check        # the application, checked
 # Availability: Available
 ```
 
+## Feedback
+
+Users tell the developers what they think, from the running application (APEX: Feedback). Switch it
+on under Application → Activity → **Feedback** (*Users can send feedback*): the navigation bar gets a
+**Feedback** link that opens a page about the page the user was on. They choose *Comment*, *Idea* or
+*Problem*, an optional rating (1–5 stars) and write up to 4000 characters; below the form they see
+their earlier feedback with its status and your answer. The page's own access rules apply, and a
+session sends at most 10 a hour.
+
+On the builder's **Feedback** page you read it (newest first, filtered by status and kind; with the
+user, page, rating and browser), set its status (*Open*, *In progress*, *Done*, *Declined*) and write
+an answer the user sees. Answering is allowed while the application is locked or Run only. The
+setting travels with the export; the feedback itself belongs to the installation.
+
 ## Working copies
 
 APEX's working copies: a second application to change in isolation, then merge back. On an
