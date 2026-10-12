@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-10-12
+
+### Changed
+- **Mail services**: *Add service* first asks for the provider (tiles with a description each), then shows only that
+  provider's settings in groups, with OAuth2 and the API base URL folded away; a service's page switches provider with
+  *Provider → Change*. The services list is full width.
+
 ## [0.33.0] - 2026-10-12
 
 Sprint 51: safe deployments and feedback.
