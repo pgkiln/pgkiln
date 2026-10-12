@@ -5,6 +5,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-12
+
+Sprint 50: six APEX parity items, e-mail among them.
+
+### Added
+- **E-mail** (APEX: `APEX_MAIL`, the Send E-Mail process, Email Templates): `meta.send_mail`,
+  `meta.send_mail_template`, `meta.add_mail_attachment` and `meta.mail_status` queue mail in the caller's
+  transaction; the server sends it after the commit, with retries, and keeps a 30-day log (Applications → Activity →
+  Mail, with retry and cancel). **Mail services** (Workspace utilities, administrators) go further than APEX's SMTP:
+  SMTP with a password or **OAuth2** (XOAUTH2, e.g. Exchange Online), **Microsoft 365 through Graph**, **Amazon
+  SES**, **Resend**, **Postmark**, **SendGrid**, **Mailgun**, or log only; secrets encrypted and write-only; allowed
+  senders; a service, From address and daily limit per application. A `send_email` process and Shared Components →
+  **E-mail templates** (exported). Only the current application, called as its own database role, can send.
+  Migration 081; new dependency `nodemailer`. The HR example mails a decided leave request (through a log-only
+  service). This reverses the earlier "no e-mail" decision (migration 008).
+- **Search configurations and the search region** (APEX 22.2): one search field over tables, queries and lists, the
+  results grouped, the words marked, searching as you type (migration 080; HR page 42).
+- **URL region**: another site's page in a sandboxed frame; the origin is literal and the page's CSP gets
+  `frame-src` for exactly that origin (migration 078).
+- **Developer toolbar** (APEX: Runtime Developer Toolbar) on the pages of a developer's applications: App Builder,
+  Edit page, the **session state viewer** and debug messages for one session (migration 079).
+- **Warn on unsaved changes** (APEX: the page attribute of the same name): the browser asks before leaving a page
+  with changed items; `pgkiln.isChanged()` (migration 077).
+- **Lost update detection** for forms (APEX: Prevent Lost Updates, Lock Row): a checksum of the row as shown,
+  checked with the row locked on Save and Delete; `meta.row_version()` (migration 076).
+
+### Changed
+- **APEX parity matrix** reviewed: what an import checks (the export, not the application's tables, columns and
+  functions) and that an import with `--replace` is live at its commit; new rows for property help in the Page
+  Designer (partial), application availability (not yet) and e-mail. 140 features compared: 119 available,
+  5 partial, 13 not yet, 3 not planned.
+- The interactive grid's "unsaved changes" question is translated.
+- Dependencies: `xml-crypto` 6.3.3 (SAML signature checks), `@fastify/multipart` 10.1.3, `@fastify/static` 10.1.6,
+  `@fastify/cookie` 11.1.3, `pg` 8.23.1 and other patch releases; new: `nodemailer` 10 (SMTP).
+
 ## [0.31.0] - 2026-10-09
 
 The first public release, on GitHub, Docker Hub (`pgkiln/pgkiln`) and npm (`pgkiln`).

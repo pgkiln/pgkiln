@@ -19,6 +19,8 @@ import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
 import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
+import { frameOrigins } from './url-region.ts';
+import { devbarHtml } from './devbar.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -276,7 +278,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
       <a href="#" class="t-nav-backdrop" tabindex="-1" aria-hidden="true"></a>
       <main class="t-main" id="main">${main}</main>
-    </div>`,
+    </div>
+    ${devbarHtml(ctx)}`,
     `t-app${topNav ? ' nav-top' : ''}`,
     { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)) },
     html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
@@ -293,7 +296,9 @@ function formKeys(ctx: PageContext) {
     .filter((r) => r.type === 'form' && r.pk_item && ctx.vis!.regions.has(r.id))
     .map((r) => {
       const pk = ctx.session.state[r.pk_item!] ?? '';
-      return html`<input type="hidden" name="__pk_${r.id}" value="${pk}"><input type="hidden" name="__pkcs_${r.id}" value="${urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { [`F${r.id}`]: pk })}">`;
+      const version = pk === '' ? undefined : ctx.rowVersions?.get(r.id);
+      return html`<input type="hidden" name="__pk_${r.id}" value="${pk}"><input type="hidden" name="__pkcs_${r.id}" value="${urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { [`F${r.id}`]: pk })}">${
+        version ? html`<input type="hidden" name="__rv_${r.id}" value="${version}">` : ''}`;
     });
 }
 
@@ -301,7 +306,7 @@ function formKeys(ctx: PageContext) {
 const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', 'pwa.send_now', 'pwa.discard', 'pwa.status.waiting',
   'pwa.status.signin', 'pwa.status.invalid', 'pwa.status.error', 'item.locate_error', 'item.scan_close', 'common.dismiss',
   'crop.title', 'crop.apply', 'crop.skip', 'crop.help',
-  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed'] as const;
+  'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed', 'page.unsaved_changes'] as const;
 export const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
 
 /** The current page's URL (for returning after a preference change). */
@@ -321,6 +326,8 @@ export async function renderPage(ctx: PageContext) {
   const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);
   const regions = [];
   for (const r of ctx.page.regions) regions.push(await renderRegion(ctx, r, hidden));
+  // (078) the origins of the page's URL regions (also those a refresh or lazy load shows later)
+  for (const o of frameOrigins(ctx.page.regions.filter((r) => ctx.vis!.regions.has(r.id)))) ctx.frameSrc?.add(o);
   const title = substitute(ctx.page.title ?? ctx.page.name, ctx, (v) => v);
   const crumbs = ctx.dialog ? [] : await breadcrumb(ctx);
   const das = dynamicActionsJson(ctx);
@@ -340,7 +347,9 @@ export async function renderPage(ctx: PageContext) {
           ? html`<div class="alert alert-error" role="alert">${t('error.correct_below')}</div>`
           : ''}
       </div>
-      <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}"${ctx.page.items.some((i) => i.type === 'file') ? raw(' enctype="multipart/form-data"') : ''} novalidate>
+      <form method="post" class="page-form" action="${ctx.base}/${ctx.page.page_no}"${ctx.page.items.some((i) => i.type === 'file') ? raw(' enctype="multipart/form-data"') : ''}${
+        // (077) shown again after a failed submit: the values on the page are not saved yet
+        ctx.page.warn_unsaved ? raw(` data-warn-unsaved="${ctx.body ? 'changed' : 'on'}"`) : ''} novalidate>
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
         <input type="hidden" name="__submit_id" value="${randomUUID()}">
         ${formKeys(ctx)}

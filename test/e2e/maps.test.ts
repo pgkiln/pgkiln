@@ -193,7 +193,10 @@ describe('map and tree regions', () => {
             const box = c.getBoundingClientRect();
             const px = (i / 4) % c.width;
             const py = Math.floor(i / 4 / c.width);
-            return { x: box.left + (px * box.width) / c.width, y: box.top + (py * box.height) / c.height };
+            const x = box.left + (px * box.width) / c.width;
+            const y = box.top + (py * box.height) / c.height;
+            // a dot the mouse can reach: in the viewport, not under the header (the page may have scrolled to show the layer switch)
+            if (document.elementFromPoint(x, y)?.closest('.leaflet-container')) return { x, y };
           }
       }
       return null;

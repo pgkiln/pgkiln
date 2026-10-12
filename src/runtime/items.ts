@@ -412,6 +412,8 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   const attrs = raw(
     [
       item.config?.submit_on_change ? 'data-submit-on-change' : '',
+      // (077) left out of "warn on unsaved changes"
+      item.config?.warn_unsaved === false ? 'data-no-warn' : '',
       item.config?.cascade_parents ? `data-cascade="${String(item.config.cascade_parents).replace(/[^A-Z0-9_,]/gi, '')}"` : '',
       hiddenByDa ? 'hidden' : '',
       item.config?.wide || item.type === 'textarea' || item.type === 'richtext' || item.type === 'markdown' || templateClasses('item', item.template_options).includes(' to-stretch') ? 'data-wide' : '',

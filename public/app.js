@@ -140,6 +140,68 @@ const pgkilnPush = (() => {
   return { supported, subscribe, unsubscribe, isOn, t };
 })();
 
+// Warn on unsaved changes (migration 077): a page form with data-warn-unsaved asks
+// before the user leaves the page (a link, a redirect button, another form, closing
+// or reloading the tab, closing a dialog) while one of its items differs from the
+// value the server rendered. Submitting the page doesn't ask. Items inside an
+// element with data-no-warn, and the interactive grid (it has its own check), are
+// left out. data-warn-unsaved="changed": the page came back from a failed submit,
+// so its values are not saved yet.
+const pgkilnUnsaved = (() => {
+  const form = document.querySelector('form.page-form[data-warn-unsaved]');
+  const metaEl = document.getElementById('pgkiln-meta');
+  const meta = (metaEl ? JSON.parse(metaEl.textContent) : null) || {};
+  const text = (meta.texts && meta.texts['page.unsaved_changes']) || 'You have unsaved changes. Leave this page anyway?';
+  let leaving = false;
+  const tracked = (el) =>
+    el.name && !el.name.startsWith('__') && (el.type !== 'hidden' || 'initial' in el.dataset) && el.type !== 'submit' && el.type !== 'button' && !el.disabled &&
+    !el.closest('[data-no-warn], [data-grid], .grid-template');
+  function differs(el) {
+    if (el.type === 'hidden') return el.value !== el.dataset.initial;
+    if (el.type === 'checkbox' || el.type === 'radio') return el.checked !== el.defaultChecked;
+    if (el.type === 'file') return !!(el.files && el.files.length);
+    if (el.tagName === 'SELECT') {
+      const opts = [...el.options];
+      if (el.multiple) return opts.some((o) => o.selected !== o.defaultSelected);
+      const def = opts.findIndex((o) => o.defaultSelected);
+      return el.selectedIndex !== (def >= 0 ? def : el.size > 1 ? -1 : 0);
+    }
+    return 'defaultValue' in el && el.value !== el.defaultValue;
+  }
+  const changed = () => !!form && (form.dataset.warnUnsaved === 'changed' || [...form.elements].some((el) => tracked(el) && differs(el)));
+  /** True when the user may leave: nothing changed, or they said so. */
+  function mayLeave() {
+    if (leaving || !changed()) return true;
+    if (!window.confirm(text)) return false;
+    leaving = true;
+    return true;
+  }
+  if (form) {
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest?.('a[href]');
+      if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+      const href = a.getAttribute('href') || '';
+      // a dialog, a new tab, a download or a place on this page doesn't leave it
+      if (href.startsWith('#') || /^javascript:/i.test(href) || a.hasAttribute('download') || a.target === '_blank' || a.hasAttribute('data-dialog') || a.hasAttribute('data-dialog-cancel')) return;
+      if (!mayLeave()) e.preventDefault();
+    });
+    // submitting the page saves; another form (a menu, a switch) leaves it
+    document.addEventListener('submit', (e) => {
+      if (e.target === form) leaving = true;
+      else if (!e.defaultPrevented && (e.target.method || '').toLowerCase() === 'post' && !mayLeave()) e.preventDefault();
+    }, true);
+    window.addEventListener('beforeunload', (e) => {
+      if (leaving || !changed()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+    // a navigation that was answered "leave" and then cancelled (download, same page) arms the check again
+    window.addEventListener('pageshow', () => (leaving = false));
+  }
+  return { changed, mayLeave, text };
+})();
+
+
 (() => {
   const body = document.body;
   const base = body.dataset.base;
@@ -383,6 +445,8 @@ const pgkilnPush = (() => {
       },
     }),
     getValue: (name) => itemValue(name),
+    // (077) APEX: apex.page.isChanged()
+    isChanged: () => pgkilnUnsaved.changed(),
     setValue: (name, value) => setItemValue(name, value),
     showSuccess: (message) => showMessage(String(message), 'success'),
     showError: (message, item) => (item ? itemError(item, String(message)) : showMessage(String(message), 'error')),
@@ -641,7 +705,19 @@ const pgkilnPush = (() => {
       dlg.setAttribute('aria-labelledby', 't-dialog-title');
       dlg.innerHTML = '<div class="t-dialog-head"><h2 id="t-dialog-title"></h2><button type="button" class="icon-button t-dialog-x" aria-label="Close">×</button></div><iframe title="Dialog"></iframe>';
       document.body.appendChild(dlg);
-      dlg.querySelector('.t-dialog-x').addEventListener('click', () => dlg.close());
+      // (077) the page in the dialog decides whether its unsaved changes may go
+      const mayClose = () => {
+        try {
+          const w = dlg.querySelector('iframe').contentWindow;
+          return !w.pgkiln?.isChanged?.() || window.confirm(pgkilnUnsaved.text);
+        } catch {
+          return true;
+        }
+      };
+      dlg.querySelector('.t-dialog-x').addEventListener('click', () => mayClose() && dlg.close());
+      dlg.addEventListener('cancel', (e) => {
+        if (!mayClose()) e.preventDefault();
+      });
       dlg.addEventListener('close', () => (dlg.querySelector('iframe').src = 'about:blank'));
     }
     const frame = dlg.querySelector('iframe');
@@ -790,7 +866,7 @@ const pgkilnPush = (() => {
     document.addEventListener('click', (e) => {
       if (!e.target.closest('[data-dialog-cancel]')) return;
       e.preventDefault();
-      tell(false);
+      if (pgkilnUnsaved.mayLeave()) tell(false);
     });
   }
 })();
@@ -932,7 +1008,7 @@ const pgkilnPush = (() => {
       return;
     }
     const leave = e.target.closest('[data-grid-leave]');
-    if (leave && dirty && !window.confirm('You have unsaved changes in the grid. Leave anyway?')) e.preventDefault();
+    if (leave && dirty && !window.confirm(pgkilnUnsaved.text)) e.preventDefault();
   });
   document.addEventListener('input', (e) => {
     const row = e.target.closest?.('[data-grid] table.grid-table > tbody > tr');
@@ -969,7 +1045,7 @@ const pgkilnPush = (() => {
     const master = link.closest('[data-grid]');
     const ids = link.dataset.gridSelect.split(',').filter(Boolean);
     const dirtyDetail = ids.some((id) => document.querySelector(`#R${id} [data-grid] tr.dirty, #R${id} [data-grid] tbody:not(.grid-template) tr.grid-new`));
-    if (dirtyDetail && !window.confirm('You have unsaved changes in the grid. Leave anyway?')) return;
+    if (dirtyDetail && !window.confirm(pgkilnUnsaved.text)) return;
     const query = new URL(link.href, location.href).search.slice(1);
     for (const id of ids) {
       const region = document.getElementById(`R${id}`);
@@ -2908,6 +2984,8 @@ function areaFilter(map, f) {
     hidden.type = 'hidden';
     hidden.name = input.name;
     hidden.value = input.value;
+    // (077) a hidden input's value is its default too: the value to compare with for "unsaved changes"
+    hidden.dataset.initial = input.value;
     input.removeAttribute('name');
     input.value = '';
     const list = document.createElement('ul');
@@ -3034,5 +3112,42 @@ function areaFilter(map, f) {
       e.preventDefault();
       f.requestSubmit();
     }
+  });
+})();
+
+// Search region (migration 080): search as the user types. The field is a GET form that works
+// without JavaScript; here a pause in typing fetches the region (GET …/region/<id>) and swaps in
+// its results only, so the field keeps its focus and cursor. Answers that arrive late are dropped.
+(() => {
+  const base = document.body.dataset.base;
+  const page = document.body.dataset.page;
+  if (!base || !page) return;
+  const timers = new WeakMap();
+  const latest = new WeakMap();
+  async function search(field) {
+    const id = field.dataset.searchRegion;
+    if (!/^\d+$/.test(id || '') || !field.form) return;
+    // (the form keeps the page's own parameters, dialog=1 among them)
+    const params = new URLSearchParams(new FormData(field.form));
+    const n = (latest.get(field) || 0) + 1;
+    latest.set(field, n);
+    try {
+      const res = await fetch(`${base}/${page}/region/${id}?${params}`, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
+      if (!res.ok || latest.get(field) !== n) return;
+      const json = await res.json();
+      const fresh = new DOMParser().parseFromString(json.html || '', 'text/html').getElementById(`R${id}_results`);
+      const results = document.getElementById(`R${id}_results`);
+      if (!fresh || !results) return;
+      results.replaceChildren(...[...fresh.childNodes].map((node) => document.importNode(node, true)));
+      history.replaceState(history.state, '', `${location.pathname}?${params}${location.hash}`);
+    } catch {
+      // offline or the session ended: Enter still submits the form
+    }
+  }
+  document.addEventListener('input', (e) => {
+    const field = e.target.closest?.('input[data-search-region]');
+    if (!field) return;
+    clearTimeout(timers.get(field));
+    timers.set(field, setTimeout(() => search(field), 250));
   });
 })();

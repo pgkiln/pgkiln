@@ -265,6 +265,9 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .region-toolbar { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
 .region-static p:first-child { margin-top: 0; }
 .region-static p:last-child { margin-bottom: 0; }
+/* (078) URL region: the framed page fills the region's width; its height is a class per region (PageCss) */
+.url-frame { display: block; width: 100%; border: 1px solid var(--border, #d0d7de); border-radius: 6px; background: var(--surface, #fff); }
+.url-open { margin: 0.5rem 0 0; font-size: 0.875rem; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 1rem; margin-top: 1rem; }
 .columns .region { margin: 0; }
 
@@ -1550,3 +1553,41 @@ dialog.crop-dialog::backdrop { background: rgb(15 20 30 / 55%); }
 .crop-handle { position: absolute; right: -8px; bottom: -8px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: nwse-resize; }
 .crop-stage { overflow: hidden; }
 .crop-dialog .buttons { display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+/* (079) Developer toolbar: shown to developers with a builder session in the same browser.
+   Fixed at the bottom left, collapsible (a <details>, so it works without JavaScript). */
+.devbar { position: fixed; left: 0.75rem; bottom: 0.75rem; z-index: 900; max-width: calc(100vw - 1.5rem);
+  background: #1b2330; color: #fff; border-radius: var(--radius); box-shadow: 0 4px 16px rgb(0 0 0 / 25%); font-size: 0.8125rem; }
+.devbar summary { cursor: pointer; padding: 0.4rem 0.75rem; font-weight: 600; list-style: none; }
+.devbar summary::-webkit-details-marker { display: none; }
+.devbar summary::before { content: '▸ '; }
+.devbar[open] summary::before { content: '▾ '; }
+.devbar ul { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; list-style: none; margin: 0; padding: 0 0.75rem 0.5rem; }
+.devbar a { color: #9cc8ff; }
+.devbar a:focus-visible, .devbar button:focus-visible, .devbar select:focus-visible { outline: 2px solid #9cc8ff; outline-offset: 2px; }
+.devbar-debug { display: flex; align-items: center; gap: 0.35rem; margin: 0; }
+.devbar-debug select, .devbar-debug button { font: inherit; font-size: 0.8125rem; padding: 0.1rem 0.3rem; border-radius: 4px; border: 1px solid #5e6a7a; background: #2b3340; color: #fff; }
+.devbar-debug button { cursor: pointer; }
+.devbar-page .t-main { max-width: 72rem; margin: 0 auto; padding: 1rem; }
+.devbar-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+.devbar-facts dd { margin: 0; overflow-wrap: anywhere; }
+.devbar-session code { overflow-wrap: anywhere; }
+@media print { .devbar { display: none; } }
+
+/* (080) Search region: one field, results grouped per search configuration */
+.search-form { margin-bottom: 1rem; }
+.search-group + .search-group { margin-top: 1rem; }
+.search-group h3 { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 0.4rem; }
+.search-hits { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); }
+.search-hits li + li { border-top: 1px solid var(--border); }
+.search-hit { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.6rem 0.8rem; color: inherit; text-decoration: none; }
+a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft); }
+.search-icon { flex: none; color: var(--accent); }
+.search-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.search-title { font-weight: 600; }
+.search-subtitle, .search-description { color: var(--muted); font-size: 0.875rem; }
+.search-hit mark { background: #fff3a3; color: inherit; border-radius: 2px; padding: 0 1px; }
+:root[data-theme="dark"] .search-hit mark { background: #6b5a00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .search-hit mark { background: #6b5a00; } }
+.search-hit .badge-pill { flex: none; }
+.search-more, .search-empty { margin: 0.4rem 0 0; }

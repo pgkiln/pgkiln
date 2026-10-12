@@ -434,6 +434,26 @@ Page properties:
 
 Chapters 4–7 describe every component type and property.
 
+## Developer toolbar
+
+While you are signed in to the builder, the pages of your applications show the **developer
+toolbar** at the bottom left when you run them in the same browser (APEX: the Runtime Developer
+Toolbar). It isn't shown to anyone else, nor inside dialogs, and it can be folded away. It has:
+
+| Entry | Does |
+|---|---|
+| **App Builder** | Back to the builder |
+| **Application *n*** | The application's page in the builder |
+| **Edit page *n*** | This page in the Page Designer |
+| **Session** | The **session state viewer**: the user, roles, session id, language, time zone and debug level; the values of this page's items, the application items and the items of other pages in the session. A password item's value is never shown. *Clear the items of page n* empties this page's items in the session (APEX: Clear Cache) |
+| **Debug** | Records [debug messages](06-processing.md#debug-messages) for **this session only**, at the chosen level, while the application itself stays out of debug (*Application (n)* when the application has a level of its own). *View debug* opens the recorded requests |
+
+How it knows you: signing in to the builder gives the browser a second, separate random token for
+the applications' pages (the cookie `pgkiln_devbar`, path `/a`, HttpOnly). A page shows the toolbar
+when that token belongs to a live builder session of a developer who may open the application (an
+administrator, or a member of its workspace). The token does nothing else; signing out of the
+builder ends it.
+
 ## Working copies
 
 APEX's working copies: a second application to change in isolation, then merge back. On an
@@ -498,6 +518,8 @@ Components used by the whole application:
 | **Data load definitions** | A target table, file format (CSV, Excel, JSON, XML with its row element) and column mapping with transformations, for SQL Workshop → Load Data and the `data_load` process ([chapter 16](16-files.md#data-load-definitions)) |
 | **Lists** | Named sets of links (static entries with nesting, badges, conditions and authorization, or a query) for list regions, the navigation menu and the navigation bar ([chapter 4](04-pages-and-regions.md#list-lists)) |
 | **Supporting objects** | Install, upgrade and deinstall scripts that travel with the export ([below](#supporting-objects)) |
+| **E-mail templates** | Subject, HTML and plain text with `#PLACEHOLDERS#` for `meta.send_mail_template` and the Send e-mail process ([chapter 6](06-processing.md#e-mail-templates)) |
+| **Search configurations** | What a search region searches: a table, a query or a list, the columns searched, and the title, subtitle, description, badge, icon and link of each result ([chapter 4](04-pages-and-regions.md#search-search-region)) |
 
 ### Application types and subscriptions
 
@@ -681,6 +703,29 @@ texts needs `pg_read_all_stats` for the owner role, and resetting needs execute 
 **AI usage** shows the [AI services](#ai-services) the application may use, today's requests and
 tokens against their daily limits, and the last 100 AI requests (time, page, user, service, model,
 source, tokens, duration, status). Prompts and answers are not logged.
+
+## Mail services
+
+Workspace utilities → **Mail services** (administrators): how the applications of this
+installation send [e-mail](06-processing.md#sending-e-mail). A service has a provider (SMTP with a
+password or OAuth2, Microsoft 365 through Graph, Amazon SES, Resend, Postmark, SendGrid, Mailgun, or
+*log only*), the provider's settings, a secret (password, client secret, API key or secret access
+key: stored encrypted with `PGKILN_SECRET_KEY`, never shown again, never exported), the **allowed
+senders** (addresses, or `@domain`) and a default From address. On a service's page:
+
+- **Applications**: which applications send through it (one service per application), each with
+  its From address (one of the allowed senders) and an optional limit per day;
+- **Test**: sends a short message now, outside the queue, and shows the provider's answer;
+- **Recent mail** of its applications.
+
+Applications → Activity → **Mail** (developers) shows an application's service, today's count
+against its limit and the mail of the last 30 days with its status and the provider's answer;
+**Send again** queues a failed or cancelled mail again, **Cancel** stops a queued one.
+
+**Microsoft 365.** Register an application in Microsoft Entra with a client secret. For the Graph
+provider grant it the application permission *Mail.Send*; for SMTP with OAuth2 the permission
+*SMTP.SendAsApp* and register its service principal in Exchange Online. In both cases limit it to the
+sending mailboxes (an application access policy or RBAC for Applications).
 
 ## AI services
 

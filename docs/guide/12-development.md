@@ -80,6 +80,11 @@ src/
   webrequests.ts           web requests from SQL (meta.web_request, migration 052): runPending() after each sql page process
                            (same transaction), webRequestTick() for committed ones (automations scheduler), retention purge;
                            calls go through websources.ts call()/invoke() (allow-list, SSRF checks, credentials)
+  mail/                    e-mail (migration 081): providers.ts (one deliver() per provider: SMTP through nodemailer with a password
+                           or XOAUTH2, Microsoft Graph sendMail, Amazon SES v2 raw MIME with signV4, Resend, Postmark, SendGrid,
+                           Mailgun, log; MailError says whether a retry may help; client-credentials token cache; settingsProblems),
+                           mail.ts (sendWith(): service enabled, allowed sender, secret decrypted; mailTick(): claim with SKIP LOCKED,
+                           send, retry after 1/4/16/64 minutes, purge after 30 days; the NOTIFY pgkiln_mail listener)
   ai/                      AI services (migration 060): types.ts (the provider interface, AiError kinds),
                            anthropic.ts (Claude through @anthropic-ai/sdk: streamed, effort, structured outputs via
                            output_config.format, refusal fallbacks, stop_reason checks, typed SDK errors), openai.ts (the openai
@@ -142,6 +147,12 @@ src/
                            session, formatAnswer (escaped), send/clear routes
     ai-filter.ts           natural-language filters on a report ("ai_filter"): columns → structured output → checked → r<id>_f/q/s/d
     pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
+    search.ts              search region and search configurations (migration 080): words as ILIKE parameters, table/sql/list
+                           sources as the app role in savepoints, marked results, configColumns/searchConfigProblems for the Advisor
+    url-region.ts          URL region (migration 078): literal origins only (urlTarget), &ITEM. URL-encoded, sandbox and height,
+                           frameOrigins() for the CSP's frame-src (security.ts)
+    devbar.ts              developer toolbar and session state viewer (migration 079): the pgkiln_devbar token of a builder
+                           session (ensureDevbar/devbarOf), the toolbar markup, the viewer, clear and per-session debug routes
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
@@ -158,6 +169,8 @@ src/
     appwizard.ts           Create → From pasted data (kept as a temp file, then the From a file steps) and From existing tables
                            (a schema's tables/views → report+form or report pages, navigation, dashboard)
     forms.ts               generic component property form (lookups, render, save)
+    mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
+                           applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel)
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo

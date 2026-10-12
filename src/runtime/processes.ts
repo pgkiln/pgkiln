@@ -1,5 +1,6 @@
 import { zipSync, type Zippable } from 'fflate';
 import { applyBinds } from '../binds.ts';
+import { esc } from '../html.ts';
 import type { Process } from '../metadata.ts';
 import { bindValues, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
 
@@ -169,7 +170,7 @@ export function chainProblems(conf: unknown): string[] {
 }
 
 /** Process types a background chain can run (nothing that needs the request: forms, grids, uploads, files). */
-export const BACKGROUND_TYPES = new Set<Process['type']>(['sql', 'invoke_api', 'workflow', 'chain', 'send_push']);
+export const BACKGROUND_TYPES = new Set<Process['type']>(['sql', 'invoke_api', 'workflow', 'chain', 'send_push', 'send_email']);
 
 // ---------------------------------------------------------------- workflows
 
@@ -241,6 +242,7 @@ export function processProblems(type: string, conf: unknown): string[] {
   if (type === 'chain') return chainProblems(conf);
   if (type === 'workflow') return workflowProblems(conf);
   if (type === 'send_push') return sendPushProblems(conf);
+  if (type === 'send_email') return sendEmailProblems(conf);
   return [];
 }
 
@@ -286,5 +288,79 @@ export async function sendPushProcess(ctx: PageContext, p: Process): Promise<str
   await ctx.client!.query('select meta.send_push($1, $2, $3, $4, $5::jsonb, $6, $7)', [
     (value(conf.to) ?? '').trim(), value(conf.title), value(conf.body) || null, conf.page ?? null, JSON.stringify(items), tag, conf.urgency ?? 'normal',
   ]);
+  return p.success_message ?? null;
+}
+
+// ---------------------------------------------------------------- send_email (081)
+
+interface SendEmailConfig {
+  to: string;
+  cc?: string;
+  bcc?: string;
+  from?: string;
+  reply_to?: string;
+  subject?: string;
+  body?: string;
+  body_html?: string;
+  template?: string;
+  placeholders?: Record<string, string>;
+  attachments?: string;
+}
+
+const PLACEHOLDER = /^[A-Za-z][A-Za-z0-9_]{0,59}$/;
+
+export function sendEmailProblems(conf: unknown): string[] {
+  const c = (conf ?? {}) as Record<string, any>;
+  const out: string[] = [];
+  const text = (k: string) => c[k] !== undefined && typeof c[k] !== 'string' && out.push(`"${k}" is text.`);
+  if (typeof c.to !== 'string' || !c.to.trim()) out.push('"to" is the recipients, e.g. "&P5_EMAIL." (several: separated by commas).');
+  for (const k of ['cc', 'bcc', 'from', 'reply_to', 'subject', 'body', 'body_html', 'template', 'attachments']) text(k);
+  if (c.template !== undefined) {
+    if (typeof c.template === 'string' && !/^[A-Za-z][A-Za-z0-9_]{0,59}$/.test(c.template)) out.push('"template" is the name of an e-mail template (Shared Components → E-mail templates).');
+    if (c.subject !== undefined || c.body !== undefined || c.body_html !== undefined) out.push('With a "template", the subject and bodies come from it: leave out "subject", "body" and "body_html".');
+  } else {
+    if (typeof c.subject !== 'string' || !c.subject.trim()) out.push('"subject" is required (or a "template").');
+    if (c.body === undefined && c.body_html === undefined) out.push('"body" (plain text) or "body_html" is required (or a "template").');
+  }
+  if (c.placeholders !== undefined && (typeof c.placeholders !== 'object' || Array.isArray(c.placeholders) || c.placeholders === null
+      || Object.entries(c.placeholders).some(([k, v]) => !PLACEHOLDER.test(k) || typeof v !== 'string')))
+    out.push('"placeholders" maps the template\'s #NAMES# to values, e.g. {"NAME": "&P5_NAME."}.');
+  if (typeof c.attachments === 'string' && !/^\s*(select|with)\b/i.test(c.attachments)) out.push('"attachments" is a SELECT of content (bytea), filename and mime.');
+  return out;
+}
+
+/**
+ * send_email (APEX: Send E-Mail): queues a mail with meta.send_mail or
+ * meta.send_mail_template in the page's transaction, so it is sent only when
+ * the submit commits. Values take &ITEM. substitutions (escaped in the HTML
+ * body); "attachments" is a SELECT (binds allowed) of content, filename and
+ * mime, one attachment per row.
+ */
+export async function sendEmailProcess(ctx: PageContext, p: Process): Promise<string | null> {
+  const conf = (p.config ?? {}) as unknown as SendEmailConfig;
+  const problems = sendEmailProblems(conf);
+  if (problems.length) throw new Error(`Process "${p.name}": ${problems.join(' ')}`);
+  const value = (s: string | undefined) => (s === undefined ? null : substitute(s, ctx, (x) => x));
+  const c = ctx.client!;
+  let id: string;
+  if (conf.template) {
+    const placeholders = Object.fromEntries(Object.entries(conf.placeholders ?? {}).map(([k, v]) => [k.toUpperCase(), value(v) ?? '']));
+    id = (await c.query('select meta.send_mail_template($1, $2::jsonb, $3, $4, $5, $6, $7)::text as id', [
+      conf.template, JSON.stringify(placeholders), value(conf.to), value(conf.cc), value(conf.bcc), value(conf.from), value(conf.reply_to),
+    ])).rows[0].id;
+  } else {
+    id = (await c.query('select meta.send_mail($1, $2, $3, $4, $5, $6, $7, $8)::text as id', [
+      value(conf.to), value(conf.subject), value(conf.body),
+      conf.body_html === undefined ? null : substitute(conf.body_html, ctx, esc),
+      value(conf.from), value(conf.cc), value(conf.bcc), value(conf.reply_to),
+    ])).rows[0].id;
+  }
+  if (conf.attachments) {
+    const rows = (await c.query(stripSemicolon(applyBinds(conf.attachments, bindValues(ctx))))).rows as Record<string, unknown>[];
+    for (const row of rows) {
+      const get = (name: string) => Object.entries(row).find(([k]) => k.toLowerCase() === name)?.[1];
+      await c.query('select meta.add_mail_attachment($1, $2, $3, $4)', [id, get('content'), get('filename') ?? 'attachment', get('mime') ?? 'application/octet-stream']);
+    }
+  }
   return p.success_message ?? null;
 }

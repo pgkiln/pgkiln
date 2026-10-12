@@ -15,6 +15,8 @@ export interface Session {
   /** Builder only: the developer's workspaces and the current one (src/builder/workspaces.ts). */
   workspaces?: { id: number; name: string }[];
   workspace?: { id: number; name: string } | null;
+  /** Builder only (079): sha256 of the developer toolbar token (src/runtime/devbar.ts). */
+  devbar_hash?: string | null;
 }
 
 // instance settings (src/instance.ts): the builder's value, else SESSION_* environment variables, else 60 minutes / 8 hours
@@ -23,6 +25,8 @@ const MAX_HOURS = () => instanceSetting('session_max_hours');
 const secure = () => process.env.COOKIE_SECURE === 'true';
 
 export const cookieName = (appId: number | null) => (appId === null ? 'pgkiln_dev' : `pgkiln_app_${appId}`);
+/** The idle and maximum session length (minutes, hours), for lookups outside this file. */
+export const sessionLimits = () => ({ idleMinutes: IDLE_MINUTES(), maxHours: MAX_HOURS() });
 
 async function find(token: string | undefined, appId: number | null) {
   if (!token || token.length > 100) return undefined;
@@ -31,7 +35,7 @@ async function find(token: string | undefined, appId: number | null) {
       where token_hash = $1 and app_id is not distinct from $2
         and last_seen > now() - make_interval(mins => $3)
         and created_at > now() - make_interval(hours => $4)
-     returning id, app_id, username, csrf_token, state, roles`,
+     returning id, app_id, username, csrf_token, state, roles, devbar_hash`,
     [hashToken(token), appId, IDLE_MINUTES(), MAX_HOURS()],
   );
 }

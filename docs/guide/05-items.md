@@ -70,6 +70,7 @@ Attributes (`config`):
 | Key | Meaning |
 |---|---|
 | `submit_on_change` | `true`: submit the page when the value changes (typical for report filters) |
+| `warn_unsaved` | `false`: a change of this item doesn't count for the page's [warn on unsaved changes](04-pages-and-regions.md#warn-on-unsaved-changes) |
 | `null_label` | Text of the empty option in select lists (default `- Select -`); `false` removes the empty option |
 | `cascade_parents` | Comma-separated items this list depends on, see [cascading lists](#cascading-lists-of-values) |
 | `wide` | `true`: take the full width of the form |

@@ -306,6 +306,12 @@ export function startScheduler() {
       console.error('push notifications:', (e as Error).message);
     }
     try {
+      // mail queued from SQL (meta.send_mail; src/mail/mail.ts), when the listener missed it, and retries
+      await (await import('./mail/mail.ts')).mailTick();
+    } catch (e) {
+      console.error('mail:', (e as Error).message);
+    }
+    try {
       // AI requests queued from SQL (meta.ai_generate; src/ai/requests.ts)
       await (await import('./ai/requests.ts')).aiRequestTick();
     } catch (e) {

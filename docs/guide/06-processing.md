@@ -182,6 +182,10 @@ application's settings):
 | 6 trace | Also each region, process, application process and computation with its duration, and the session (page, user, language, time zone) |
 | 9 everything | Also the posted item values, computed values, skipped processes, hidden regions and other SQL notices |
 
+A developer can also switch debug on for **their own session** only, from the
+[developer toolbar](03-builder.md#developer-toolbar) on the running application: the application
+stays out of debug for everyone else.
+
 Each recorded request lists its entries with the time since the start of the request and, for
 timed steps, their duration. Add your own from any application SQL (processes, region sources,
 conditions, your PL/pgSQL functions), as with `apex_debug.message`:
@@ -294,6 +298,30 @@ the workflow's administrator for terminate, the administrator for retry). From S
 looks up the employee (a `sql` child) and then starts the ONBOARDING workflow (a `workflow` child);
 *Stop onboarding* terminates it; *Year-end check* is a background chain whose jobs the region
 "My background jobs" lists from `meta.process_jobs`.
+
+### Send e-mail
+
+A `send_email` process (APEX: *Send E-Mail*) queues a mail through the application's [mail
+service](#sending-e-mail), without SQL:
+
+```json
+{"to": "&P5_EMAIL.", "cc": "&P5_MANAGER_EMAIL.", "subject": "Order &P5_ID. shipped",
+ "body": "Dear &P5_NAME., your order is on its way.",
+ "body_html": "<p>Dear &P5_NAME.,</p><p>your order is on its way.</p>",
+ "attachments": "select content, filename, mime from sales.invoice where order_id = :P5_ID"}
+```
+
+or with an [e-mail template](#e-mail-templates):
+
+```json
+{"to": "&P5_EMAIL.", "template": "ORDER_SHIPPED", "placeholders": {"NAME": "&P5_NAME.", "ORDER_ID": "&P5_ID."}}
+```
+
+`to`, `cc`, `bcc` (several addresses separated by commas), `from`, `reply_to`, `subject` and `body`
+take `&ITEM.` substitutions as they are; in `body_html` the item values are HTML-escaped.
+`attachments` is a SELECT (binds allowed) with the columns `content` (bytea), `filename` and `mime`,
+one attachment per row. The mail is queued in the page's transaction: when a later process fails,
+nothing is sent. It can run in a background chain too.
 
 ### Send push notification
 
@@ -604,6 +632,79 @@ creates or replaces the single action (the column itself stays empty).
 
 If you prefer the database to schedule work, [pg_cron](15-extensions.md) still works next to this.
 
+## Sending e-mail
+
+Like APEX's `APEX_MAIL`, applications send e-mail from SQL, from a *Send e-mail* process and from
+e-mail templates. Where APEX sends only through an SMTP server with a user name and password,
+pgkiln sends through any of these **mail services** (Workspace utilities → [Mail
+services](03-builder.md#mail-services), administrators):
+
+| Provider | How pgkiln hands mail over | Credentials |
+|---|---|---|
+| SMTP | Any SMTP server or relay, STARTTLS or TLS | User name and password, or **OAuth2** (SASL XOAUTH2 with a token from the client credentials grant: Microsoft Entra for Exchange Online, or another identity provider's token URL) |
+| Microsoft 365 (Graph) | Microsoft Graph `sendMail` as the From mailbox | An Entra application (tenant, client ID, client secret) with the application permission **Mail.Send**; restrict it to the sending mailboxes with an application access policy |
+| Amazon SES | SES API v2, the raw MIME message, Signature Version 4 | Region, access key ID and secret access key (an IAM user allowed `ses:SendEmail`) |
+| Resend, Postmark, SendGrid, Mailgun | Their HTTP APIs | An API key (Postmark: a server token; Mailgun: also the sending domain and region) |
+| Log only | Nothing is sent: the server's log shows each mail | – (development and demos) |
+
+Microsoft retires basic authentication (a password) for SMTP in Exchange Online: use SMTP with OAuth2
+or the Graph provider. Secrets are stored encrypted with `PGKILN_SECRET_KEY`, are write-only in the
+builder, never exported and never readable by applications. Each service lists the **From
+addresses** it may send as (an address, or `@example.com` for a whole domain); an administrator
+chooses each application's service, its From address and an optional **limit per day**.
+
+**How mail is sent.** `meta.send_mail` and the others only *queue* the mail, in the caller's
+transaction: a transaction that rolls back sends nothing. After the commit, the server sends it at
+once (`NOTIFY`), or on the scheduler's next pass. A failure that may pass (a network problem, HTTP
+429 or 5xx, an SMTP 4xx answer) is tried again after 1, 4, 16 and 64 minutes; the fifth failure, or a
+refusal (an unknown recipient, a sender the provider doesn't accept), marks the mail *error*.
+Applications → Activity → **Mail** shows each mail with its outcome, and sends a failed one again or
+cancels a queued one. Mail is kept 30 days.
+
+### From SQL
+
+```sql
+-- APEX_MAIL.SEND
+select meta.send_mail(
+  p_to        => 'jane@example.com, john@example.com',
+  p_subject   => 'Your leave was approved',
+  p_body      => 'Enjoy your holiday!',                   -- plain text
+  p_body_html => '<p>Enjoy your <b>holiday</b>!</p>',     -- HTML (optional)
+  p_cc        => null, p_bcc => null, p_reply_to => 'hr@example.com',
+  p_from      => null);                                   -- null: the application's From address
+
+-- APEX_MAIL.ADD_ATTACHMENT, in the same transaction
+with m as (select meta.send_mail('jane@example.com', 'Invoice 42', 'Attached.') as id)
+select meta.add_mail_attachment(m.id, i.pdf, 'invoice-42.pdf', 'application/pdf')
+  from m, sales.invoice i where i.id = 42;
+```
+
+See [chapter 9](09-reference.md#e-mail-from-sql) for every function and its limits. The functions
+work for the **current application** only when the caller runs as that application's database role
+(pages, processes, automations, workflows and background chains do); the SQL Workshop is not an
+application.
+
+### E-mail templates
+
+Shared Components → **E-mail templates** (APEX: Email Templates): a name, a subject, an HTML body
+and a plain text body with `#PLACEHOLDERS#`. In the HTML body `#NAME#` is the value HTML-escaped and
+`#NAME!RAW#` the value as it is (trusted HTML only); in the subject and the plain text the value is
+as it is. Names are case-insensitive; a placeholder without a value stays as written.
+
+```sql
+select meta.send_mail_template('LEAVE_DECIDED',
+         jsonb_build_object('NAME', 'Jane', 'STATUS', 'approved', 'START', '1 Aug 2026'),
+         'jane@example.com');
+```
+
+Templates are exported with the application; mail services, the application's service and the
+mail log belong to the installation and are not.
+
+**HR example.** The template `LEAVE_DECIDED` tells an employee that a leave request was approved or
+rejected: a trigger on `hr.leave_request` queues it when the status changes. The example's mail
+service `DEVELOPMENT_LOG` is of provider *log only*, so nothing leaves the server until an
+administrator gives HR a real service.
+
 ## Approvals and the task list
 
 Approvals (APEX: Task Definitions, the Approvals component and the Unified Task List) let an
@@ -676,8 +777,9 @@ open tasks so they don't linger: `select meta.close_tasks('EXPENSE_APPROVAL', :P
 | `meta.task_events` | View: the history and comments of those tasks |
 
 The task tables themselves are closed to the application's role: rights are checked by these
-functions and views, for every call. pgkiln sends no e-mail; put a task list on the home page, or
-use an automation to remind owners of overdue tasks.
+functions and views, for every call. To tell owners by e-mail, call
+[`meta.send_mail`](#sending-e-mail) from the task definition's SQL or from an automation that
+reminds owners of overdue tasks; or put a task list on the home page.
 
 **Example:** in the HR sample application, a leave request creates a `LEAVE_APPROVAL` task for the
 employee's manager; *My tasks* (page 14) approves or rejects it through `hr.decide_leave`, the same

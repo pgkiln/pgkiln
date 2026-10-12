@@ -21,6 +21,7 @@ import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
+import { clearDevbar } from '../runtime/devbar.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -96,7 +97,10 @@ export async function builderRoutes(app: FastifyInstance) {
 
   app.post(`${BASE}/logout`, async (req: Req, reply) => {
     const s = await getSession(req, reply, null, BASE);
-    if (req.body?.__csrf === s.csrf_token) await destroySession(reply, s, BASE);
+    if (req.body?.__csrf === s.csrf_token) {
+      await destroySession(reply, s, BASE);
+      clearDevbar(reply);
+    }
     return reply.redirect(`${BASE}/login`, 303);
   });
 
@@ -498,6 +502,7 @@ export async function builderRoutes(app: FastifyInstance) {
       <div class="columns">
         <p><a class="btn" href="${BASE}/apps/${a.id}/top-sql">${icon('database')} Top SQL</a> <span class="muted">the slowest statements of this application's database role</span></p>
         <p><a class="btn" href="${BASE}/apps/${a.id}/ai">${icon('bolt')} AI usage</a> <span class="muted">the AI services this application may use, and its requests</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/mail">${icon('send')} Mail</a> <span class="muted">the mail this application queued and sent, with retry and cancel</span></p>
         <p><a class="btn" href="${BASE}/apps/${a.id}/debug">${icon('list')} Debug messages</a> <span class="muted">${a.debug_level ? `on (level ${a.debug_level}): ` : 'off: '}timed steps of each request and messages from <code>meta.debug()</code></span></p>
         ${region('Page views by page (7 days)', html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Page</th><th>Name</th><th class="num">Views</th><th class="num">Avg ms</th><th class="num">Max ms</th></tr></thead>
           <tbody>${byPage.rows.map((r) => html`<tr><td class="num">${r.page_no}</td><td>${r.name}</td><td class="num">${r.views}</td><td class="num">${r.avg_ms}</td><td class="num">${r.max_ms}</td></tr>`)}</tbody></table></div>`)}

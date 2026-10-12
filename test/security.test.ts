@@ -6380,3 +6380,268 @@ describe('sprint 42 MCP server for AI agents', () => {
     assert.deepEqual(r.rows[0], { password_hash: '(hidden)', client_secret: '(hidden)', token: '(hidden)', api_key: '(hidden)', name: 'ok' });
   });
 });
+
+describe('sprint 50 forms lost update', () => {
+  test('meta.row_version runs with the caller\'s rights and takes the key as a value', async () => {
+    await assert.rejects(
+      owner.query(`begin; set local role pgkiln_runtime; select meta.row_version('meta.account', 'id', '1', array['password_hash']); rollback`),
+      /permission denied/,
+    );
+    await owner.query('rollback').catch(() => {});
+    // a key with SQL in it is only a (bad) value of the key's type
+    await assert.rejects(owner.query(`select meta.row_version('hr.emp', 'empno', $1, array['ename'])`, [`1 or 1=1`]), /invalid input syntax/);
+    assert.equal((await owner.one(`select meta.row_version('hr.emp', 'ename', $1, array['ename']) as v`, [`x' or '1'='1`])).v, null);
+    // column names are identifiers, never SQL
+    await assert.rejects(owner.query(`select meta.row_version('hr.emp', 'empno', '7839', array['ename) from hr.emp --'])`), /does not exist/);
+  });
+
+  test('a posted row version that is not a checksum is ignored', async () => {
+    const king = await as('king');
+    await king.get(link('king', 3, { P3_EMPNO: '7839' }));
+    const region = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                                      where a.alias = 'hr' and p.page_no = 3 and r.type = 'form'`)).id;
+    const page = (await king.get(link('king', 3, { P3_EMPNO: '7839' }))).body;
+    const fields: Record<string, string> = {};
+    for (const [, name, value] of page.matchAll(/<input type="hidden" name="(__[a-z_0-9]+)" value="([^"]*)"/g)) fields[name] = value;
+    assert.match(fields[`__rv_${region}`] ?? '', /^[0-9a-f]{32}$/);
+    const res = await king.post('/a/hr/3', { ...fields, __csrf: king.lastCsrf, [`__rv_${region}`]: `' or 1=1 --`, __request: 'NOTHING' });
+    assert.notEqual(res.statusCode, 500);
+  });
+});
+
+describe('sprint 50 url region', () => {
+  test('an item value is URL-encoded: it can\'t change the framed host, break out of the attribute or reach the CSP', async () => {
+    const page = (await owner.one(`select p.id from meta.page p where p.app_id = $1 and p.page_no = 1`, [appId])).id;
+    const item = (await owner.one(`insert into meta.item (page_id, seq, name, type) values ($1, 999, 'P1_URLTEST', 'hidden') returning id`, [page])).id;
+    const region = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 999, 'Embedded', 'url', 'https://example.org/&P1_URLTEST.') returning id`, [page])).id;
+    try {
+      const king = await as('king');
+      for (const evil of ['@evil.example/x', '../../\\evil.example', '"><script>alert(1)</script>', `x" onload="alert(1)`, '//evil.example', `x'; frame-src *`]) {
+        const res = await king.get(link('king', 1, { P1_URLTEST: evil }));
+        assert.equal(res.statusCode, 200, evil);
+        const src = new RegExp(`id="R${region}"[\\s\\S]*?<iframe class="url-frame [^"]+" src="([^"]*)"`).exec(res.body)?.[1] ?? '';
+        assert.equal(src, `https://example.org/${encodeURIComponent(evil).replace(/'/g, '&#39;')}`, evil);
+        assert.equal(new URL(src.replace(/&#39;/g, "'")).origin, 'https://example.org');
+        assert.doesNotMatch(res.body, /<script>alert/);
+        assert.match(String(res.headers['content-security-policy']), /frame-src 'self' https:\/\/example\.org; frame-ancestors/);
+      }
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [region]);
+      await owner.query('delete from meta.item where id = $1', [item]);
+    }
+  });
+});
+
+describe('sprint 50 developer toolbar', () => {
+  const devBrowser = async () => {
+    const b = await as('king');
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal(res.statusCode, 303);
+    const builder = await b.get('/builder');
+    const cookie = (builder.cookies as { name: string; path?: string; httpOnly?: boolean }[]).find((c) => c.name === 'pgkiln_devbar');
+    assert.ok(cookie, 'the toolbar cookie is set by the builder');
+    assert.equal(cookie.path, '/a');
+    assert.equal(cookie.httpOnly, true);
+    return b;
+  };
+
+  test('an application user can\'t reach the viewer or switch debug on for their session', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/1');
+    assert.equal((await king.get('/a/hr/1/devbar/session')).statusCode, 404);
+    assert.equal((await king.post('/a/hr/1/devbar/debug', { __csrf: king.lastCsrf, level: '9' })).statusCode, 404);
+    assert.equal((await king.post('/a/hr/1/devbar/clear', { __csrf: king.lastCsrf })).statusCode, 404);
+    const state = (await owner.one(`select state from meta.session where app_id = $1 and username = 'king' order by last_seen desc limit 1`, [appId])).state;
+    assert.equal(state.__DEBUG_LEVEL, undefined);
+    // an item can't be named like the session's debug level: posted and URL values only reach real items
+    await king.post('/a/hr/1', { __csrf: king.lastCsrf, __DEBUG_LEVEL: '9' });
+    const after = (await owner.one(`select state from meta.session where app_id = $1 and username = 'king' order by last_seen desc limit 1`, [appId])).state;
+    assert.equal(after.__DEBUG_LEVEL, undefined);
+  });
+
+  test('the toolbar token is not the builder token, and the builder token doesn\'t show the toolbar', async () => {
+    const b = await devBrowser();
+    const dev = b.cookies.get('pgkiln_dev')!;
+    const bar = b.cookies.get('pgkiln_devbar')!;
+    assert.notEqual(dev, bar);
+    // the toolbar token doesn't open the builder
+    const other = new Browser();
+    other.cookies.set('pgkiln_dev', bar);
+    assert.equal((await other.get('/builder')).statusCode, 302);
+    // the builder token in the toolbar cookie shows nothing
+    const user = await as('king');
+    user.cookies.set('pgkiln_devbar', dev);
+    assert.doesNotMatch((await user.get('/a/hr/1')).body, /class="devbar"/);
+    user.cookies.set('pgkiln_devbar', bar);
+    assert.match((await user.get('/a/hr/1')).body, /class="devbar"/);
+  });
+
+  test('an expired builder session shows no toolbar', async () => {
+    const b = await devBrowser();
+    assert.match((await b.get('/a/hr/1')).body, /class="devbar"/);
+    const sid = (await owner.one(`select id from meta.session where app_id is null and devbar_hash is not null order by last_seen desc limit 1`)).id;
+    await owner.query(`update meta.session set last_seen = now() - interval '1 day' where id = $1`, [sid]);
+    assert.doesNotMatch((await b.get('/a/hr/1')).body, /class="devbar"/);
+    assert.equal((await b.get('/a/hr/1/devbar/session')).statusCode, 404);
+  });
+
+  test('meta.debug_save stores a session\'s log only for a session the toolbar put in debug', async () => {
+    const level = (await owner.one('select debug_level from meta.app where id = $1', [appId])).debug_level;
+    await owner.query('update meta.app set debug_level = 0 where id = $1', [appId]);
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/1');
+      const s = await owner.one(`select id from meta.session where app_id = $1 and username = 'king' order by last_seen desc limit 1`, [appId]);
+      const save = (sid: string) =>
+        owner.one(`select meta.debug_save($1, 1, 'king', $2, 'GET', '/a/hr/1', 200, 9, now(), 1, '[]'::jsonb) as id`, [appId, sid]);
+      assert.equal((await save(s.id)).id, null, 'not in debug: nothing stored');
+      await owner.query(`update meta.session set state = state || '{"__DEBUG_LEVEL": "nine"}' where id = $1`, [s.id]);
+      assert.equal((await save(s.id)).id, null, 'only a known level counts');
+      await owner.query(`update meta.session set state = state || '{"__DEBUG_LEVEL": "6"}' where id = $1`, [s.id]);
+      assert.notEqual((await save(s.id)).id, null);
+      // another application's session doesn't count for this application
+      const other = (await owner.one(`select id from meta.app where id <> $1 limit 1`, [appId]))?.id;
+      if (other) assert.equal((await owner.one(`select meta.debug_save($1, 1, 'king', $2, 'GET', '/', 200, 9, now(), 1, '[]'::jsonb) as id`, [other, s.id])).id, null);
+    } finally {
+      await owner.query('update meta.app set debug_level = $2 where id = $1', [appId, level]);
+    }
+  });
+});
+
+describe('sprint 50 search', () => {
+  test('the search text is a value, the search runs as the application role, and only this application\'s configurations count', async () => {
+    const page = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 1`, [appId])).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-search-other', 'Other', 'pgkiln_runtime') returning id`)).id;
+    await owner.query(
+      `insert into meta.search_config (app_id, name, label, source_type, source, title_column) values
+         ($1, 'SEC_EMP', 'Employees', 'table', 'hr.emp', 'ename'),
+         ($1, 'SEC_ACCOUNTS', 'Accounts', 'table', 'meta.account', 'password_hash'),
+         ($2, 'SEC_FOREIGN', 'Foreign', 'sql', 'select ename from hr.emp', 'ename')`,
+      [appId, other],
+    );
+    const region = (await owner.one(
+      `insert into meta.region (page_id, seq, title, type, config) values ($1, 999, 'Find', 'search', '{"configs": ["SEC_EMP", "SEC_ACCOUNTS", "SEC_FOREIGN"]}') returning id`, [page])).id;
+    try {
+      const king = await as('king');
+      for (const evil of [`' or 1=1 --`, `%' or ''='`, `\\' ; select 1 --`, `a) or (1=1`]) {
+        const res = await king.get(`/a/hr/1?s${region}=${encodeURIComponent(evil)}`);
+        assert.equal(res.statusCode, 200, evil);
+        assert.doesNotMatch(res.body, /class="search-title"/, evil);
+      }
+      const res = await king.get(`/a/hr/1?s${region}=${encodeURIComponent('$2')}`);
+      assert.doesNotMatch(res.body, /\$2[ab]\$/, 'no password hash');
+      const any = await king.get(`/a/hr/1?s${region}=a`);
+      assert.match(any.body, /<h3>Accounts<\/h3><div class="alert alert-error"/, 'the application role can\'t read meta.account');
+      assert.doesNotMatch(any.body, /Foreign/, 'another application\'s configuration');
+      // a region the user can't see answers 403 on the endpoint
+      await owner.query(`update meta.region set condition = '1 = 0' where id = $1`, [region]);
+      assert.equal((await king.get(`/a/hr/1/region/${region}?s${region}=a`)).statusCode, 403);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [region]);
+      await owner.query(`delete from meta.search_config where name like 'SEC_%'`);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+});
+
+describe('sprint 50 mail', () => {
+  const SVC = 'SEC_MAIL';
+  const setup = async () => {
+    await owner.query('delete from meta.mail_service where name = $1', [SVC]);
+    const id = (await owner.one(`insert into meta.mail_service (name, provider, senders, secret_enc) values ($1, 'log', '{@example.com}', 'v1:not-a-real-secret') returning id`, [SVC])).id;
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
+                       on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = null`, [appId, id]);
+    return id;
+  };
+  const asRole = async (roleName: string, app: number, sql: string, params: unknown[] = []) => {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(app)]);
+      await c.query(`set local role ${roleName}`);
+      return (await c.query(sql, params)).rows;
+    } finally {
+      await c.query('rollback');
+      c.release();
+    }
+  };
+
+  test('application code can\'t send in another application\'s name, nor with the runtime\'s role', async () => {
+    await setup();
+    const hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-mail-other', 'Other', 'pgkiln_runtime') returning id`)).id;
+    try {
+      assert.ok((await asRole(hrRole, appId, `select meta.send_mail('a@example.com', 'x', 'y') as id`))[0].id);
+      // the HR role claiming the other application (which has a mail service too)
+      await owner.query(`insert into meta.app_mail_service (app_id, service_id) select $1, service_id from meta.app_mail_service where app_id = $2`, [other, appId]);
+      await assert.rejects(asRole(hrRole, other, `select meta.send_mail('a@example.com', 'x', 'y')`), /outside the application's own database role/);
+      // resetting the role inside application code
+      await assert.rejects(asRole(hrRole, appId, `reset role; select meta.send_mail('a@example.com', 'x', 'y')`), /outside the application's own database role/);
+      // no current application at all
+      await assert.rejects(owner.query(`select meta.send_mail('a@example.com', 'x', 'y')`), /no current application/);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('applications can\'t read services, secrets, the queue or templates, nor call the internal functions', async () => {
+    await setup();
+    const hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    for (const r of ['pgkiln_runtime', hrRole]) {
+      for (const t of ['mail_service', 'app_mail_service', 'mail_queue', 'mail_attachment', 'email_template'])
+        await assert.rejects(asRole(r, appId, `select * from meta.${t} limit 1`), /permission denied/, `${r} ${t}`);
+      for (const fn of ['meta.mail_caller()', 'meta.mail_enqueue(text, text, text, text, text, text, text, text, text)'])
+        assert.equal((await owner.one(`select has_function_privilege($1, $2, 'execute') as ok`, [r, fn])).ok, false, `${r} ${fn}`);
+    }
+    // meta.mail_status only answers for the application's own mail
+    const id = (await asRole(hrRole, appId, `select meta.send_mail('a@example.com', 'x', 'y') as id`))[0].id;
+    void id;
+    const real = (await owner.one(`insert into meta.mail_queue (app_id, from_address, to_addresses, subject, body_text) values ($1, 'hr@example.com', '{a@example.com}', 'SEC status', 'x') returning id`, [appId])).id;
+    assert.equal((await asRole(hrRole, appId, 'select meta.mail_status($1) as s', [real]))[0].s, 'queued');
+    assert.equal((await asRole('pgkiln_runtime', appId + 100000, 'select meta.mail_status($1) as s', [real]))[0].s, null);
+    await owner.query('delete from meta.mail_queue where id = $1', [real]);
+  });
+
+  test('a placeholder value is never searched for placeholders (no RAW injection)', async () => {
+    const r = await owner.one(`select meta.mail_fill('<p>#NAME#</p>#SIG!RAW#', $1::jsonb, true) as html`,
+      [JSON.stringify({ NAME: '#SIG!RAW#<script>', SIG: '<b>HR</b>' })]);
+    assert.equal(r.html, '<p>#SIG!RAW#&lt;script&gt;</p><b>HR</b>');
+  });
+
+  test('only administrators reach mail services; the secret never reaches the page; mail of another application is not reachable', async () => {
+    const id = await setup();
+    const DEV = 'sec_mail_dev';
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password('Sec-mail-dev-password!'), false) on conflict do nothing`, [DEV]);
+    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec-mail-x', 'X') returning id`)).id;
+    try {
+      const dev = new Browser();
+      await dev.get('/builder/login');
+      await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: DEV, password: 'Sec-mail-dev-password!' });
+      assert.equal((await dev.get('/builder/mail')).statusCode, 403);
+      assert.equal((await dev.get(`/builder/mail/${id}`)).statusCode, 403);
+      await dev.get('/builder');
+      assert.equal((await dev.post(`/builder/mail/${id}`, { __csrf: dev.lastCsrf, provider: 'smtp', senders: '@evil.example', host: 'evil.example' })).statusCode, 403);
+      assert.deepEqual((await owner.one('select senders from meta.mail_service where id = $1', [id])).senders, ['@example.com']);
+
+      const admin = new Browser();
+      await admin.get('/builder/login');
+      await admin.post('/builder/login', { __csrf: admin.lastCsrf, username: 'admin', password: 'admin' });
+      const page = (await admin.get(`/builder/mail/${id}`)).body;
+      assert.doesNotMatch(page, /not-a-real-secret/);
+      // a mail of another application through this application's URL
+      const foreign = (await owner.one(`insert into meta.mail_queue (app_id, from_address, to_addresses, subject, body_text, status) values ($1, 'x@example.com', '{a@example.com}', 'SEC foreign', 'x', 'error') returning id`, [other])).id;
+      await admin.get(`/builder/apps/${appId}/mail`);
+      await admin.post(`/builder/apps/${appId}/mail/${foreign}/retry`, { __csrf: admin.lastCsrf });
+      assert.equal((await owner.one('select status from meta.mail_queue where id = $1', [foreign])).status, 'error');
+      // a sender outside the service's list is refused for an application
+      await admin.get(`/builder/mail/${id}`);
+      await admin.post(`/builder/mail/${id}/apps`, { __csrf: admin.lastCsrf, allow: String(appId), [`from_${appId}`]: 'ceo@other.example' });
+      assert.equal((await owner.one('select from_address from meta.app_mail_service where app_id = $1', [appId])).from_address, 'hr@example.com');
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+      await owner.query('delete from meta.developer where username = $1', [DEV]);
+      await owner.query('delete from meta.mail_service where name = $1', [SVC]);
+    }
+  });
+});
