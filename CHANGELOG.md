@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-12
+
+Sprint 50: six APEX parity items, e-mail among them.
+
 ### Added
 - **E-mail** (APEX: `APEX_MAIL`, the Send E-Mail process, Email Templates): `meta.send_mail`,
   `meta.send_mail_template`, `meta.add_mail_attachment` and `meta.mail_status` queue mail in the caller's
@@ -33,6 +37,8 @@ All notable changes to this project are documented here. The format follows
   Designer (partial), application availability (not yet) and e-mail. 140 features compared: 119 available,
   5 partial, 13 not yet, 3 not planned.
 - The interactive grid's "unsaved changes" question is translated.
+- Dependencies: `xml-crypto` 6.3.3 (SAML signature checks), `@fastify/multipart` 10.1.3, `@fastify/static` 10.1.6,
+  `@fastify/cookie` 11.1.3, `pg` 8.23.1 and other patch releases; new: `nodemailer` 10 (SMTP).
 
 ## [0.31.0] - 2026-10-09
 

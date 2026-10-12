@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.31.0, the first public release (October 2026).
+- **Current release:** 0.32.0 (October 2026): e-mail, the search and URL regions, the developer toolbar, lost update detection and warn on unsaved changes.
 - **APEX parity:** 140 features compared: 119 available, 5 partial, 13 not yet, 3 deliberately
   not planned (collections, JSON duality views and database links: PostgreSQL covers them).
 
