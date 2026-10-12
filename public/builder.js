@@ -782,3 +782,30 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+
+// Mail services: Test connection and Send test mail answer in place, so the form keeps what was typed
+// (the secret too). Without JavaScript the buttons post the form and the page comes back with the result.
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest?.('button[name="check"][formaction$="/mail/check"]');
+  if (!btn || !btn.form) return;
+  e.preventDefault();
+  const form = btn.form;
+  const out = form.querySelector('.mail-check-result');
+  const data = new FormData(form);
+  data.set('check', btn.value);
+  const buttons = form.querySelectorAll('button[name="check"]');
+  buttons.forEach((b) => (b.disabled = true));
+  if (out) out.textContent = btn.value === 'send' ? 'Sending…' : 'Checking…';
+  try {
+    const res = await fetch(btn.formAction, { method: 'POST', body: new URLSearchParams(data), headers: { accept: 'application/json' }, credentials: 'same-origin' });
+    const json = await res.json();
+    const div = document.createElement('div');
+    div.className = `alert ${json.ok ? 'alert-success' : 'alert-error'}`;
+    div.textContent = json.text || (json.ok ? 'OK' : 'The check failed.');
+    out?.replaceChildren(div);
+  } catch {
+    if (out) out.textContent = 'The check could not be made (the session may have ended: reload the page).';
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+});

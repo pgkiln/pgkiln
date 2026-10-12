@@ -269,6 +269,78 @@ describe('mail: providers (mock servers)', () => {
   });
 });
 
+describe('mail: checks before saving', () => {
+  const dev = async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.get('/builder/mail/new?provider=smtp');
+    return b;
+  };
+  /** POST /builder/mail/check as builder.js does (JSON). */
+  const check = async (b: Browser, form: Record<string, string>) => {
+    const res = await app.inject({ method: 'POST', url: '/builder/mail/check', payload: new URLSearchParams({ __csrf: b.lastCsrf, ...form }).toString(),
+      headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' } });
+    assert.equal(res.statusCode, 200);
+    return JSON.parse(res.body) as { ok: boolean; text: string };
+  };
+
+  test('Test connection signs in or makes a read-only call, per provider; nothing is saved or sent', async () => {
+    const services = (await owner.one('select count(*)::int as n from meta.mail_service')).n;
+    const b = await dev();
+    const smtp = { provider: 'smtp', host: '127.0.0.1', port: String(mock.smtpPort), security: 'none', auth: 'password', username: 'mailer@example.com', tls_verify: 'true', check: 'connection' };
+    let r = await check(b, { ...smtp, secret: 'the-password' });
+    assert.deepEqual(r, { ok: true, text: `Connected to 127.0.0.1:${mock.smtpPort} and signed in as mailer@example.com.` });
+    r = await check(b, { ...smtp, secret: 'wrong' });
+    assert.equal(r.ok, false);
+    assert.match(r.text, /535 5\.7\.8 Authentication failed/);
+    assert.equal(mock.smtpHits.length, 0, 'nothing was sent');
+    r = await check(b, { provider: 'graph', tenant_id: 't', client_id: 'c', token_url: `${mock.httpUrl}/t/token`, secret: 'the-client-secret', check: 'connection' });
+    assert.match(r.text, /Microsoft Entra issued an access token/);
+    r = await check(b, { provider: 'ses', region: 'eu-west-1', access_key_id: 'AKIDEXAMPLE', base_url: mock.httpUrl, secret: 'x', check: 'connection' });
+    assert.equal(r.text, 'Signed in to Amazon SES in eu-west-1: sending is enabled, sandbox (only to verified addresses). 3 of 200 mails sent in the last 24 hours.');
+    assert.match((await check(b, { provider: 'resend', base_url: mock.httpUrl, secret: 'key-1', check: 'connection' })).text, /1 domain\(s\): example\.com \(verified\)/);
+    assert.match((await check(b, { provider: 'resend', base_url: mock.httpUrl, secret: 'send-only', check: 'connection' })).text, /valid \(it may only send mail\)/);
+    assert.equal((await check(b, { provider: 'resend', base_url: mock.httpUrl, secret: 'bad', check: 'connection' })).ok, false);
+    assert.match((await check(b, { provider: 'postmark', base_url: mock.httpUrl, secret: 'key-1', check: 'connection' })).text, /Postmark server "pgkiln test"/);
+    assert.match((await check(b, { provider: 'sendgrid', base_url: mock.httpUrl, secret: 'key-1', check: 'connection' })).text, /may send mail/);
+    assert.match((await check(b, { provider: 'sendgrid', base_url: mock.httpUrl, secret: 'other', check: 'connection' })).text, /lacks the mail\.send scope/);
+    assert.match((await check(b, { provider: 'mailgun', domain: 'mg.example.com', base_url: mock.httpUrl, secret: 'key-1', check: 'connection' })).text, /domain mg\.example\.com is active/);
+    assert.match((await check(b, { provider: 'log', check: 'connection' })).text, /nothing to connect to/);
+    // a missing setting is named before anything is tried
+    assert.match((await check(b, { provider: 'smtp', check: 'connection' })).text, /The SMTP host is required/);
+    assert.equal((await owner.one('select count(*)::int as n from meta.mail_service')).n, services, 'nothing saved');
+  });
+
+  test('Send test mail sends one message with the settings as typed; From must be an allowed sender', async () => {
+    const b = await dev();
+    const smtp = { provider: 'smtp', host: '127.0.0.1', port: String(mock.smtpPort), security: 'none', auth: 'password', username: 'mailer@example.com', secret: 'the-password', check: 'send', test_to: 'king@example.com' };
+    let r = await check(b, { ...smtp, senders: '@example.com', test_from: 'boss@other.example' });
+    assert.match(r.text, /must be one of the allowed senders/);
+    r = await check(b, { ...smtp, senders: '', test_from: 'hr@example.com' });
+    assert.match(r.text, /at least one allowed sender/);
+    r = await check(b, { ...smtp, senders: '@example.com', test_from: 'hr@example.com' });
+    assert.equal(r.ok, true, r.text);
+    assert.equal(mock.smtpHits.length, 1);
+    assert.deepEqual(mock.smtpHits[0].to, ['king@example.com']);
+    assert.match(mock.smtpHits[0].data, /Subject: pgkiln: test of a mail service/);
+  });
+
+  test('without JavaScript the form comes back with the result and the values, never the secret', async () => {
+    const b = await dev();
+    const res = await b.submit('/builder/mail/check', { provider: 'resend', name: 'T_NOT_SAVED', senders: '@example.com', base_url: mock.httpUrl, secret: 'key-1', check: 'connection' });
+    assert.equal(res.statusCode, 200);
+    assert.match(res.body, /class="alert alert-success">The API key is valid/);
+    assert.match(res.body, new RegExp(`value="${mock.httpUrl.replace(/[.:/]/g, '\\$&')}"`), 'the typed values stay');
+    assert.doesNotMatch(res.body, /value="key-1"/);
+    // only administrators
+    const user = new Browser(app);
+    await user.login('king');
+    const denied = await app.inject({ method: 'POST', url: '/builder/mail/check', payload: 'check=connection&provider=log', headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    assert.equal(denied.statusCode, 302);
+  });
+});
+
 describe('mail: the send_email process and the builder', () => {
   test('the process queues in the page\'s transaction, item values escaped in HTML, attachments from a query', async () => {
     await useService('log', {});
@@ -315,10 +387,12 @@ describe('mail: the send_email process and the builder', () => {
     const pageHtml = (await dev.get(`/builder/mail/${x.id}`)).body;
     assert.doesNotMatch(pageHtml, /resend-key-secret|v1:/);
     assert.match(pageHtml, /A secret is stored \(encrypted\)/);
-    // a test through the mock
-    res = await dev.submit(`/builder/mail/${x.id}/test`, { to: 'king@example.com', from: 'hr@example.com' });
-    assert.match((await dev.get(`/builder/mail/${x.id}`)).body, /Sent \(the provider&#39;s id: resend-1\)/);
-    assert.equal(mock.httpHits[0].headers.authorization, 'Bearer resend-key-secret');
+    // a test mail with the stored secret (the secret field left empty), through the mock
+    await dev.get(`/builder/mail/${x.id}`);
+    res = await dev.submit('/builder/mail/check', { service_id: String(x.id), provider: 'resend', senders: '@example.com', base_url: mock.httpUrl, check: 'send', test_to: 'king@example.com', test_from: 'hr@example.com' });
+    assert.match(res.body, /The test mail was handed to Resend \(its id: resend-1\)/);
+    assert.equal(mock.httpHits.find((h) => h.method === 'POST')!.headers.authorization, 'Bearer resend-key-secret');
+    assert.doesNotMatch(res.body, /resend-key-secret/, 'the stored secret never reaches the page');
     // the application, its From address and limit
     res = await dev.submit(`/builder/mail/${x.id}/apps`, { allow: String(appId), [`from_${appId}`]: 'hr@example.com', [`max_${appId}`]: '100' });
     assert.equal((await owner.one('select service_id, max_per_day from meta.app_mail_service where app_id = $1', [appId])).max_per_day, 100);

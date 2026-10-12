@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-10-12
+
+### Added
+- **Mail services: check before saving.** *Test connection* checks the settings as filled in without sending
+  (SMTP sign-in, an Entra token, the SES account, or a read-only call with the API key), and *Send test mail*
+  sends one message; both while adding a service too, the answer shown in place.
+
 ## [0.33.1] - 2026-10-12
 
 ### Changed

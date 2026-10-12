@@ -768,3 +768,5 @@ details.prop-group-more > summary { cursor: pointer; font-weight: 600; }
 details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .provider-switch { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-bottom: 16px; }
 .provider-switch .field { margin: 0; min-width: min(100%, 280px); }
+.mail-check-buttons { margin: 4px 0 14px; }
+.mail-check-result:not(:empty) { margin-top: 8px; }

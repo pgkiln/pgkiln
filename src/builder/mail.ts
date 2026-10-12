@@ -3,9 +3,9 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { senderAllowed, sendWith, type MailService } from '../mail/mail.ts';
-import { MailError, PROVIDER_LABELS, PROVIDERS, settingsProblems, type Provider, type ServiceSettings } from '../mail/providers.ts';
-import { encryptSecret, secretKeyConfigured } from '../secrets.ts';
-import type { Session } from '../session.ts';
+import { deliver, MailError, PROVIDER_LABELS, PROVIDERS, settingsProblems, verifyConnection, type Provider, type ServiceSettings } from '../mail/providers.ts';
+import { decryptSecret, encryptSecret, secretKeyConfigured } from '../secrets.ts';
+import { clientIp, logActivity, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
@@ -18,7 +18,6 @@ import { back, BASE, csrf, developer, flash, input, region, select, send, shell,
 // cancel. Secrets are encrypted (src/secrets.ts) and never sent back to the
 // browser.
 
-const TEST_RESULT = '__MAILTEST';
 const ADDRESS = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const SENDER = /^(@|[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
@@ -50,7 +49,8 @@ function providerChoice() {
 }
 
 /** The settings of one provider only, in groups (a new service, or an existing one switching provider). */
-function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provider: Provider, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) {
+function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provider: Provider, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean,
+  tried: { ok: boolean; text: string; to?: string; from?: string } | null = null) {
   const s: ServiceSettings = x.provider === provider ? x.settings ?? {} : { default_from: x.settings?.default_from };
   const group = (legend: string, body: unknown, help?: string) =>
     html`<fieldset class="prop-group"><legend>${legend}</legend>${help ? html`<p class="muted u-mt0">${help}</p>` : ''}${body}</fieldset>`;
@@ -108,20 +108,26 @@ function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provide
     ${secret}
     ${viaHttp ? html`<details class="prop-group prop-group-more"${s.base_url ? raw(' open') : ''}><summary>Advanced</summary><div class="form-grid">
       ${input('base_url', 'API base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: 'A gateway or proxy that speaks the provider\'s API. Administrators only.' })}</div></details>` : ''}
+    ${group('Check before saving', html`
+      ${x.id ? html`<input type="hidden" name="service_id" value="${x.id}">` : ''}
+      <div class="buttons mail-check-buttons"><button class="btn" formaction="${BASE}/mail/check" formnovalidate name="check" value="connection">${icon('play')} Test connection</button></div>
+      <div class="form-grid">
+        ${input('test_to', 'Send a test mail to', tried?.to ?? '', { type: 'email', placeholder: 'you@example.com' })}
+        ${input('test_from', 'From', tried?.from ?? s.default_from ?? (x.senders ?? []).find((a) => !a.startsWith('@')) ?? '', { type: 'email', help: 'One of the allowed senders.' })}
+      </div>
+      <div class="buttons mail-check-buttons"><button class="btn" formaction="${BASE}/mail/check" formnovalidate name="check" value="send">${icon('send')} Send test mail</button></div>
+      <div class="mail-check-result" role="status" aria-live="polite">${tried ? html`<div class="alert ${tried.ok ? 'alert-success' : 'alert-error'}">${tried.text}</div>` : ''}</div>`,
+      `Uses the settings above as they are filled in, without saving them.${x.has_secret ? ' An empty secret field uses the stored secret.' : ''} Test connection signs in (SMTP) or makes a read-only call with the key; a test mail is really sent.`)}
     <div class="buttons">${isNew ? html`<a class="btn" href="${BASE}/mail/new">Choose another provider</a>` : ''}<button class="btn btn-hot">${isNew ? 'Add service' : 'Save'}</button></div>
   </form>`;
 }
 
-/** The form's settings for the chosen provider, checked; throws with a message. */
-function formValues(b: Record<string, string | undefined>, hasSecret: boolean) {
+/** The form's values for the chosen provider, as typed (not checked). */
+function parseForm(b: Record<string, string | undefined>) {
   const provider = (PROVIDERS as readonly string[]).includes(b.provider ?? '') ? (b.provider as Provider) : 'smtp';
   const t = (k: string) => (b[k] ?? '').trim() || undefined;
   const senders = [...new Set((b.senders ?? '').split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
-  if (!senders.length) throw new Error('Name at least one allowed sender (an address, or @domain).');
-  const bad = senders.find((x) => !SENDER.test(x));
-  if (bad) throw new Error(`"${bad}" is not an address or @domain.`);
   const defaultFrom = t('default_from');
-  if (defaultFrom && (!ADDRESS.test(defaultFrom) || !senderAllowed(senders, defaultFrom))) throw new Error('The default From address must be an address the service may send as.');
   const port = t('port') ? Number(t('port')) : undefined;
   const s: ServiceSettings = { default_from: defaultFrom, base_url: t('base_url') };
   if (provider === 'smtp')
@@ -135,9 +141,25 @@ function formValues(b: Record<string, string | undefined>, hasSecret: boolean) {
   if (provider === 'mailgun') Object.assign(s, { domain: t('domain'), mailgun_region: b.mailgun_region === 'eu' ? 'eu' : 'us' });
   if (provider === 'postmark') Object.assign(s, { message_stream: t('message_stream') });
   for (const k of Object.keys(s) as (keyof ServiceSettings)[]) if (s[k] === undefined) delete s[k];
-  const problems = settingsProblems(provider, s, hasSecret || !!b.secret);
-  if (problems.length) throw new Error(problems.join(' '));
   return { provider, settings: s, senders, description: t('description') ?? null, enabled: b.enabled === 'true' };
+}
+
+/**
+ * The form's values, checked; throws with a message. A check of the connection
+ * (opts.connection) needs the provider's settings only, not yet the senders.
+ */
+function formValues(b: Record<string, string | undefined>, hasSecret: boolean, opts: { connection?: boolean } = {}) {
+  const v = parseForm(b);
+  if (!opts.connection || v.senders.length) {
+    if (!v.senders.length) throw new Error('Name at least one allowed sender (an address, or @domain).');
+    const bad = v.senders.find((x) => !SENDER.test(x));
+    if (bad) throw new Error(`"${bad}" is not an address or @domain.`);
+    const from = v.settings.default_from;
+    if (from && (!ADDRESS.test(from) || !senderAllowed(v.senders, from))) throw new Error('The default From address must be an address the service may send as.');
+  }
+  const problems = settingsProblems(v.provider, v.settings, hasSecret || !!b.secret);
+  if (problems.length) throw new Error(problems.join(' '));
+  return v;
 }
 
 const STATUS_CLASS: Record<string, string> = { sent: ' tag-ok', queued: '', sending: '', error: ' tag-error', cancelled: '' };
@@ -232,32 +254,17 @@ export async function mailRoutes(app: FastifyInstance) {
     const apps = (await owner.query(`select a.id, a.alias, a.name, x.service_id, x.from_address, x.max_per_day, o.name as other
       from meta.app a left join meta.app_mail_service x on x.app_id = a.id left join meta.mail_service o on o.id = x.service_id and o.id <> $1
       order by a.alias`, [x.id])).rows;
-    let test: { ok: boolean; text: string } | null = null;
-    try {
-      const t = JSON.parse(s.state[TEST_RESULT] ?? 'null');
-      if (t?.id === x.id) test = t;
-    } catch {
-      // ignored
-    }
-    delete s.state[TEST_RESULT];
     const recent = (await owner.query(`select ${MAIL_COLUMNS}, a.alias as app from meta.mail_queue q left join meta.app a on a.id = q.app_id
        where q.service = $1 or q.app_id in (select app_id from meta.app_mail_service where service_id = $2) order by q.id desc limit 50`, [x.name, x.id])).rows;
     const main = html`
       <div class="title-row"><h1 class="mail-name">${x.name}</h1></div>
-      <div class="columns wide-left">
+      <div class="mail-form-page">
         ${region('Settings', html`
           <form method="get" class="provider-switch">${select('provider', 'Provider', provider, PROVIDERS.map((p): [string, string] => [p, PROVIDER_LABELS[p]]),
             provider !== x.provider ? 'Not saved yet: fill in the settings below and save to switch.' : undefined)}<button class="btn btn-sm">Change</button></form>
           ${serviceForm(x, provider, `${BASE}/mail/${x.id}`, csrf(s), false)}
           <form method="post" action="${BASE}/mail/${x.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete mail service ${x.name}? Its applications can't send mail until they get another one.">Delete service</button></form>`)}
-        ${region('Test', html`
-          <p class="muted u-mt0">Sends a short message now, through this service (not through the queue).</p>
-          <form method="post" action="${BASE}/mail/${x.id}/test">${csrf(s)}<div class="form-grid">
-            ${input('to', 'To', '', { type: 'email', required: true })}
-            ${input('from', 'From', x.settings?.default_from ?? x.senders.find((a) => !a.startsWith('@')) ?? '', { type: 'email', required: true })}
-            </div><div class="buttons"><button class="btn">${icon('send')} Send test</button></div></form>
-          ${test ? html`<div class="alert ${test.ok ? 'alert-success' : 'alert-error'}" role="status">${test.text}</div>` : ''}`)}
       </div>
       ${region('Applications', html`<p class="muted u-mt0">The applications that send through this service (each application has one), their From address (empty: the service's default) and a limit per day (UTC; empty: none). An application with another service shows it.</p>
         <form method="post" action="${BASE}/mail/${x.id}/apps">${csrf(s)}
@@ -323,27 +330,49 @@ export async function mailRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/mail/${req.params.id}`);
   });
 
-  app.post(`${BASE}/mail/:id(^\\d+$)/test`, async (req: Req, reply) => {
+  // Test connection / Send test mail: the settings as filled in, not saved (the stored secret when none is typed).
+  // JSON for builder.js; without JavaScript the form comes back with its values (the secret must be typed again).
+  app.post(`${BASE}/mail/check`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply, 'Mail services'))) return;
-    const x = await owner.one<MailService>('select * from meta.mail_service where id = $1', [req.params.id]);
-    if (!x) return reply.code(404).send('Not found');
-    const to = String(req.body?.to ?? '').trim();
-    const from = String(req.body?.from ?? '').trim();
-    let result: { id: number; ok: boolean; text: string };
+    const b = (req.body ?? {}) as Record<string, string | undefined>;
+    const id = /^\d{1,9}$/.test(b.service_id ?? '') ? Number(b.service_id) : null;
+    const stored = id ? await owner.one<MailService>('select * from meta.mail_service where id = $1', [id]) : null;
+    if (id && !stored) return reply.code(404).send('Not found');
+    const typed = parseForm(b);
+    const to = String(b.test_to ?? '').trim();
+    const from = String(b.test_from ?? '').trim();
+    let result: { ok: boolean; text: string };
     try {
-      if (!ADDRESS.test(to) || !ADDRESS.test(from)) throw new MailError('Give a To and a From address.', false);
-      const id = await sendWith({ ...x, enabled: true }, {
-        from, to: [to], cc: [], bcc: [], replyTo: null, subject: `pgkiln: test of mail service ${x.name}`,
-        text: `This is a test of the mail service ${x.name}, sent from the App Builder by ${s.username}.`,
-        html: null, attachments: [],
-      });
-      result = { id: x.id, ok: true, text: `Sent${id ? ` (the provider's id: ${id})` : ''}. Check the mailbox of ${to}.` };
+      const sameProvider = stored?.provider === typed.provider;
+      const v = formValues(b, !!(sameProvider && stored?.secret_enc), { connection: b.check !== 'send' });
+      let secret: string | null = b.secret || null;
+      if (!secret && sameProvider && stored?.secret_enc) {
+        try {
+          secret = decryptSecret(stored.secret_enc);
+        } catch (e) {
+          throw new MailError(`The stored secret can't be read: ${(e as Error).message}`, false);
+        }
+      }
+      if (b.check === 'send') {
+        if (!ADDRESS.test(to)) throw new MailError('Give the address to send the test mail to.', false);
+        if (!ADDRESS.test(from) || !senderAllowed(v.senders, from)) throw new MailError('The From address must be one of the allowed senders.', false);
+        const pid = await deliver(v.provider, v.settings, secret, {
+          from, to: [to], cc: [], bcc: [], replyTo: null, subject: `pgkiln: test of a mail service (${PROVIDER_LABELS[v.provider]})`,
+          text: `This is a test of a pgkiln mail service${stored ? ` (${stored.name})` : ''}, sent from the App Builder by ${s.username}.`, html: null, attachments: [],
+        });
+        result = { ok: true, text: `The test mail was handed to ${PROVIDER_LABELS[v.provider]}${pid ? ` (its id: ${pid})` : ''}. Check the mailbox of ${to}.` };
+      } else result = { ok: true, text: await verifyConnection(v.provider, v.settings, secret) };
     } catch (e) {
-      result = { id: x.id, ok: false, text: e instanceof MailError ? e.message : 'The test failed.' };
+      result = { ok: false, text: e instanceof MailError || !(e instanceof TypeError) ? (e as Error).message : 'The check failed.' };
     }
-    s.state[TEST_RESULT] = JSON.stringify(result);
-    return back(reply, s, `${BASE}/mail/${x.id}`);
+    await logActivity({ username: s.username, event: 'mail_check', ip: clientIp(req), detail: `${b.check === 'send' ? 'send' : 'connection'} ${typed.provider}${stored ? ` ${stored.name}` : ''}: ${result.ok ? 'ok' : 'failed'}` });
+    if (String(req.headers.accept ?? '').includes('application/json')) return reply.header('cache-control', 'no-store').send(result);
+    const x = { id: stored?.id, name: stored?.name, description: typed.description, provider: typed.provider, settings: typed.settings, senders: typed.senders, enabled: typed.enabled,
+      has_secret: !!(stored?.secret_enc && stored.provider === typed.provider) };
+    const main = html`<div class="title-row"><h1>${stored ? stored.name : 'Add a mail service'}</h1></div>
+      <div class="mail-form-page">${region('Settings', serviceForm(x, typed.provider, stored ? `${BASE}/mail/${stored.id}` : `${BASE}/mail`, csrf(s), !stored, { ...result, to, from }))}</div>`;
+    return send(reply, s, shell(s, 'Mail service', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Mail services', `${BASE}/mail`], [stored?.name ?? 'Add']], main));
   });
 
   app.post(`${BASE}/mail/:id(^\\d+$)/delete`, async (req: Req, reply) => {

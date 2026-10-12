@@ -130,7 +130,7 @@ export function settingsProblems(provider: Provider, s: ServiceSettings, hasSecr
 
 // ---------------------------------------------------------------- HTTP
 
-async function http(url: string, init: { method?: string; headers: Record<string, string>; body: string | FormData }) {
+async function http(url: string, init: { method?: string; headers: Record<string, string>; body?: string | FormData }) {
   let res: Response;
   try {
     res = await fetch(url, { method: init.method ?? 'POST', headers: init.headers, body: init.body, redirect: 'error', signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -357,5 +357,88 @@ export async function deliver(provider: Provider, settings: ServiceSettings, sec
     case 'log':
       console.log(`mail (log only): from ${m.from} to ${[...m.to, ...m.cc, ...m.bcc].join(', ')}: ${m.subject} (${m.attachments.length} attachment(s))`);
       return null;
+  }
+}
+
+// ---------------------------------------------------------------- connection checks
+
+/** A signed GET to the SES API (the account, to check a key without sending). */
+async function sesGet(s: ServiceSettings, secret: string | null, path: string) {
+  const region = s.region ?? '';
+  const url = new URL(`${base(s, `https://email.${region}.amazonaws.com`)}${path}`);
+  const amzDate = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const headers: Record<string, string> = { host: url.host, 'x-amz-date': amzDate };
+  headers.authorization = signV4({
+    method: 'GET', url, headers, payloadHash: createHash('sha256').update('').digest('hex'),
+    accessKey: s.access_key_id ?? '', secretKey: secret ?? '', region, service: 'ses', amzDate,
+  });
+  delete headers.host;
+  return http(url.toString(), { method: 'GET', headers });
+}
+
+/**
+ * Check a service's settings without sending: connect and sign in (SMTP), get a
+ * token (Graph), or make a read-only call that needs the key (the HTTP APIs).
+ * Returns what was checked; throws a MailError with the reason.
+ */
+export async function verifyConnection(provider: Provider, s: ServiceSettings, secret: string | null): Promise<string> {
+  switch (provider) {
+    case 'smtp': {
+      const security = s.security ?? 'starttls';
+      const auth = s.auth ?? 'password';
+      const transport = nodemailer.createTransport({
+        host: s.host, port: s.port ?? (security === 'tls' ? 465 : 587), secure: security === 'tls', requireTLS: security === 'starttls', ignoreTLS: security === 'none',
+        auth: (auth === 'password' ? { user: s.username, pass: secret ?? '' }
+          : auth === 'oauth2' ? { type: 'OAuth2', user: s.username, accessToken: await clientCredentialsToken(entraTokenUrl(s), s.client_id ?? '', secret ?? '', s.scope || 'https://outlook.office365.com/.default') }
+          : undefined) as never,
+        tls: { rejectUnauthorized: s.tls_verify !== false }, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: TIMEOUT_MS,
+      } as never);
+      try {
+        await transport.verify();
+      } catch (e) {
+        const err = e as { response?: string; message: string; code?: string };
+        throw new MailError(`The SMTP server ${s.host}: ${(err.response ?? err.message).slice(0, 500)}`, false);
+      } finally {
+        transport.close();
+      }
+      return `Connected to ${s.host}:${s.port ?? (security === 'tls' ? 465 : 587)}${security === 'none' ? '' : ` with ${security === 'tls' ? 'TLS' : 'STARTTLS'}`}${
+        auth === 'none' ? '' : ` and signed in as ${s.username}${auth === 'oauth2' ? ' with OAuth2' : ''}`}.`;
+    }
+    case 'graph':
+      await clientCredentialsToken(entraTokenUrl(s), s.client_id ?? '', secret ?? '', s.scope || 'https://graph.microsoft.com/.default');
+      return 'Microsoft Entra issued an access token for Microsoft Graph. Whether the application may send as a mailbox (Mail.Send) shows when you send a test mail.';
+    case 'ses': {
+      const j = json((await sesGet(s, secret, '/v2/email/account')).text);
+      const quota = j.SendQuota ? ` ${j.SendQuota.SentLast24Hours ?? 0} of ${j.SendQuota.Max24HourSend ?? '?'} mails sent in the last 24 hours.` : '';
+      return `Signed in to Amazon SES in ${s.region}: sending is ${j.SendingEnabled === false ? 'DISABLED' : 'enabled'}, ${
+        j.ProductionAccessEnabled ? 'production access' : 'sandbox (only to verified addresses)'}.${quota}`;
+    }
+    case 'resend': {
+      try {
+        const j = json((await http(`${base(s, 'https://api.resend.com')}/domains`, { method: 'GET', headers: { authorization: `Bearer ${secret ?? ''}` } })).text);
+        return `The API key is valid; ${Array.isArray(j.data) ? `${j.data.length} domain(s): ${j.data.map((d: { name: string; status: string }) => `${d.name} (${d.status})`).join(', ')}` : 'its domains could not be listed'}.`;
+      } catch (e) {
+        // a key that may only send can't list domains: it is valid all the same
+        if (/restricted/i.test((e as Error).message)) return 'The API key is valid (it may only send mail).';
+        throw e;
+      }
+    }
+    case 'postmark': {
+      const j = json((await http(`${base(s, 'https://api.postmarkapp.com')}/server`, { method: 'GET', headers: { 'x-postmark-server-token': secret ?? '', accept: 'application/json' } })).text);
+      return `The server token is valid: Postmark server "${j.Name ?? '?'}".`;
+    }
+    case 'sendgrid': {
+      const j = json((await http(`${base(s, 'https://api.sendgrid.com')}/v3/scopes`, { method: 'GET', headers: { authorization: `Bearer ${secret ?? ''}` } })).text);
+      if (Array.isArray(j.scopes) && !j.scopes.includes('mail.send')) throw new MailError('The API key is valid but may not send mail (it lacks the mail.send scope).', false);
+      return 'The API key is valid and may send mail.';
+    }
+    case 'mailgun': {
+      const own = s.mailgun_region === 'eu' ? 'https://api.eu.mailgun.net' : 'https://api.mailgun.net';
+      const j = json((await http(`${base(s, own)}/v3/domains/${encodeURIComponent(s.domain ?? '')}`, {
+        method: 'GET', headers: { authorization: `Basic ${Buffer.from(`api:${secret ?? ''}`).toString('base64')}` } })).text);
+      return `The API key is valid: domain ${s.domain} is ${j.domain?.state ?? 'known'}.`;
+    }
+    case 'log':
+      return 'Log only: there is nothing to connect to; mail goes to the server\'s log.';
   }
 }

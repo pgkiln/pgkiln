@@ -51,6 +51,19 @@ export class MailMock {
           if (form.get('client_secret') !== 'the-client-secret') return send(401, { error: 'invalid_client', error_description: 'bad secret' });
           return send(200, { access_token: TOKEN, token_type: 'Bearer', expires_in: 3600 });
         }
+        // read-only calls of the connection checks
+        if (req.method === 'GET') {
+          const auth = String(req.headers.authorization ?? '');
+          if (path === '/v2/email/account')
+            return auth.startsWith('AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/') ? send(200, { SendingEnabled: true, ProductionAccessEnabled: false, SendQuota: { Max24HourSend: 200, SentLast24Hours: 3 } }) : send(403, { message: 'The security token included in the request is invalid.' });
+          if (path === '/domains')
+            return auth === 'Bearer key-1' ? send(200, { data: [{ name: 'example.com', status: 'verified' }] })
+              : auth === 'Bearer send-only' ? send(401, { name: 'restricted_api_key', message: 'This API key is restricted to only send emails' }) : send(401, { message: 'API key is invalid' });
+          if (path === '/server') return req.headers['x-postmark-server-token'] === 'key-1' ? send(200, { Name: 'pgkiln test' }) : send(401, { Message: 'Request does not contain a valid Server token.' });
+          if (path === '/v3/scopes') return send(auth.startsWith('Bearer ') ? 200 : 401, { scopes: auth === 'Bearer key-1' ? ['mail.send', 'stats.read'] : ['stats.read'] });
+          if (/^\/v3\/domains\/[^/]+$/.test(path)) return auth === `Basic ${Buffer.from('api:key-1').toString('base64')}` ? send(200, { domain: { name: decodeURIComponent(path.split('/').pop()!), state: 'active' } }) : send(401, { message: 'Invalid private key' });
+          return send(404, { message: 'unknown path' });
+        }
         const fail = this.failWith.shift();
         if (fail) return send(fail, { message: `mock failure ${fail}` });
         if (path.includes('/sendMail')) return req.headers.authorization === `Bearer ${TOKEN}` ? send(202, null) : send(401, { error: { message: 'no token' } });
