@@ -703,6 +703,22 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         // (sprint 36) blueprints: the list and the editor with the example
         blueprints: '/builder/blueprints',
         blueprint_new: '/builder/blueprints/new',
+        // (sprint 50) mail services, one service (the HR example's), an application's mail (with a long row);
+        // a search configuration and an e-mail template in Shared Components
+        ...(await (async () => {
+          const svc = (await owner.one(`select id from meta.mail_service where name = 'DEVELOPMENT_LOG'`)).id;
+          await owner.query(`insert into meta.mail_queue (app_id, from_address, to_addresses, cc_addresses, subject, body_text, status, attempts, message)
+            values ($1, 'hr@example.com', $2, '{c@example.com}', $3, 'x', 'error', 5, $4)`,
+            [appId, ['a.very.long.address.without.spaces.for.the.responsive.test@example.com', 'b@example.com'], 'E2E a subject that is rather long ' + 'y'.repeat(80), 'The mail service refused the message (HTTP 422): ' + 'z'.repeat(120)]);
+          const search = (await owner.one(`select id from meta.search_config where app_id = $1 and name = 'EMPLOYEES'`, [appId])).id;
+          const template = (await owner.one(`select id from meta.email_template where app_id = $1 and name = 'LEAVE_DECIDED'`, [appId])).id;
+          const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 42 and r.type = 'search'`, [appId]);
+          return {
+            mail_services: '/builder/mail', mail_service: `/builder/mail/${svc}`, app_mail: `/builder/apps/${appId}/mail`,
+            search_config: `/builder/apps/${appId}/shared?c=search_config-${search}`, email_template: `/builder/apps/${appId}/shared?c=email_template-${template}`,
+            search_region: `/builder/pages/${r.page_id}?c=region-${r.id}`,
+          };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -719,6 +735,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
         await owner.query(`delete from meta.ai_usage where service = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.ai_service where name = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
+        await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like 'E2E %'`, [appId]);
       }
       // (sprint 35) Sample Data: a preview (inserted and rolled back) of the HR example's saved generator
       {

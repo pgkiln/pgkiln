@@ -161,13 +161,14 @@ describe('REST API: tokens', () => {
   });
 
   test('the builder issues tokens only to developers, with CSRF, and does not cache them', async () => {
-    let cookie = '';
+    // every cookie by name, like a browser (the builder also sets the developer toolbar's cookie)
+    const cookies = new Map<string, string>();
     const req = async (method: 'GET' | 'POST', url: string, form?: Record<string, string>) => {
       const r = await app.inject({
         method, url, payload: form ? new URLSearchParams(form).toString() : undefined,
-        headers: { cookie, ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+        headers: { cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join('; '), ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
       });
-      for (const c of r.cookies as { name: string; value: string }[]) cookie = `${c.name}=${c.value}`;
+      for (const c of r.cookies as { name: string; value: string }[]) cookies.set(c.name, c.value);
       return r;
     };
     const csrf = (body: string) => /name="__csrf" value="([^"]+)"/.exec(body)![1];

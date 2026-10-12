@@ -109,7 +109,7 @@ Audit triggers record such changes as made by `nobody`, which is what you want f
 | **[pgmq](https://github.com/pgmq/pgmq)** | A message queue in Postgres for background work handled by a worker service | Like AWS SQS, transactional |
 | **pg_partman** | Partition big append-only tables such as `meta.activity_log` by month | Only needed at high volume |
 | **[plv8](https://github.com/plv8/plv8)** | Server-side JavaScript functions | Like APEX's MLE JavaScript. Maintained upstream, but some hosts (e.g. Supabase on PostgreSQL 17) no longer offer it, so check before depending on it |
-| **[pg_smtp_client](https://github.com/brianpursley/pg_smtp_client)** | Sending e-mail from SQL, if your team needs it | pgkiln deliberately doesn't send mail ([chapter 11](11-from-apex.md)). This keeps mail out of pgkiln and in your own schema |
+| **[pg_smtp_client](https://github.com/brianpursley/pg_smtp_client)** | Sending e-mail synchronously from SQL, outside an application | pgkiln itself sends mail queued with `meta.send_mail` after the commit, through SMTP, Microsoft Graph, Amazon SES or an HTTP API ([chapter 6](06-processing.md#sending-e-mail)); this extension talks SMTP from the database itself |
 
 ## Security notes
 

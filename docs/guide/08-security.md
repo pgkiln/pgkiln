@@ -47,8 +47,9 @@ The builder and the runtime cover what APEX offers for its accounts:
 The `meta.set_password`/`expire`/`unexpire` functions are owner-only. Grant them to an app role if
 you want to build user administration pages inside an application.
 
-pgkiln doesn't send e-mail, so there is no self-service "forgot password" link (APEX apps don't
-have one out of the box either). A user who forgot their password asks an administrator, who
+There is no self-service "forgot password" link (APEX apps don't have one out of the box either;
+an application can build one with [e-mail](06-processing.md#sending-e-mail) and its own token
+table). A user who forgot their password asks an administrator, who
 sets a temporary one under **Users → account → Set password**, with *Require change of password
 on first use* ticked (the default).
 

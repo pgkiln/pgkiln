@@ -4,6 +4,7 @@ import { startScheduler } from './automations.ts';
 import { startWorkflowRunner } from './workflow.ts';
 import { startProcessJobRunner } from './process-jobs.ts';
 import { startPushListener } from './push.ts';
+import { startMailListener } from './mail/mail.ts';
 
 const app = await buildApp();
 await app.listen({ port: Number(process.env.PORT ?? 3100), host: process.env.HOST ?? '127.0.0.1' });
@@ -12,3 +13,4 @@ startScheduler();
 await startWorkflowRunner();
 await startProcessJobRunner();
 await startPushListener();
+await startMailListener();

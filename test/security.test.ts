@@ -6544,3 +6544,104 @@ describe('sprint 50 search', () => {
     }
   });
 });
+
+describe('sprint 50 mail', () => {
+  const SVC = 'SEC_MAIL';
+  const setup = async () => {
+    await owner.query('delete from meta.mail_service where name = $1', [SVC]);
+    const id = (await owner.one(`insert into meta.mail_service (name, provider, senders, secret_enc) values ($1, 'log', '{@example.com}', 'v1:not-a-real-secret') returning id`, [SVC])).id;
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
+                       on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = null`, [appId, id]);
+    return id;
+  };
+  const asRole = async (roleName: string, app: number, sql: string, params: unknown[] = []) => {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(app)]);
+      await c.query(`set local role ${roleName}`);
+      return (await c.query(sql, params)).rows;
+    } finally {
+      await c.query('rollback');
+      c.release();
+    }
+  };
+
+  test('application code can\'t send in another application\'s name, nor with the runtime\'s role', async () => {
+    await setup();
+    const hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-mail-other', 'Other', 'pgkiln_runtime') returning id`)).id;
+    try {
+      assert.ok((await asRole(hrRole, appId, `select meta.send_mail('a@example.com', 'x', 'y') as id`))[0].id);
+      // the HR role claiming the other application (which has a mail service too)
+      await owner.query(`insert into meta.app_mail_service (app_id, service_id) select $1, service_id from meta.app_mail_service where app_id = $2`, [other, appId]);
+      await assert.rejects(asRole(hrRole, other, `select meta.send_mail('a@example.com', 'x', 'y')`), /outside the application's own database role/);
+      // resetting the role inside application code
+      await assert.rejects(asRole(hrRole, appId, `reset role; select meta.send_mail('a@example.com', 'x', 'y')`), /outside the application's own database role/);
+      // no current application at all
+      await assert.rejects(owner.query(`select meta.send_mail('a@example.com', 'x', 'y')`), /no current application/);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('applications can\'t read services, secrets, the queue or templates, nor call the internal functions', async () => {
+    await setup();
+    const hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    for (const r of ['pgkiln_runtime', hrRole]) {
+      for (const t of ['mail_service', 'app_mail_service', 'mail_queue', 'mail_attachment', 'email_template'])
+        await assert.rejects(asRole(r, appId, `select * from meta.${t} limit 1`), /permission denied/, `${r} ${t}`);
+      for (const fn of ['meta.mail_caller()', 'meta.mail_enqueue(text, text, text, text, text, text, text, text, text)'])
+        assert.equal((await owner.one(`select has_function_privilege($1, $2, 'execute') as ok`, [r, fn])).ok, false, `${r} ${fn}`);
+    }
+    // meta.mail_status only answers for the application's own mail
+    const id = (await asRole(hrRole, appId, `select meta.send_mail('a@example.com', 'x', 'y') as id`))[0].id;
+    void id;
+    const real = (await owner.one(`insert into meta.mail_queue (app_id, from_address, to_addresses, subject, body_text) values ($1, 'hr@example.com', '{a@example.com}', 'SEC status', 'x') returning id`, [appId])).id;
+    assert.equal((await asRole(hrRole, appId, 'select meta.mail_status($1) as s', [real]))[0].s, 'queued');
+    assert.equal((await asRole('pgkiln_runtime', appId + 100000, 'select meta.mail_status($1) as s', [real]))[0].s, null);
+    await owner.query('delete from meta.mail_queue where id = $1', [real]);
+  });
+
+  test('a placeholder value is never searched for placeholders (no RAW injection)', async () => {
+    const r = await owner.one(`select meta.mail_fill('<p>#NAME#</p>#SIG!RAW#', $1::jsonb, true) as html`,
+      [JSON.stringify({ NAME: '#SIG!RAW#<script>', SIG: '<b>HR</b>' })]);
+    assert.equal(r.html, '<p>#SIG!RAW#&lt;script&gt;</p><b>HR</b>');
+  });
+
+  test('only administrators reach mail services; the secret never reaches the page; mail of another application is not reachable', async () => {
+    const id = await setup();
+    const DEV = 'sec_mail_dev';
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password('Sec-mail-dev-password!'), false) on conflict do nothing`, [DEV]);
+    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec-mail-x', 'X') returning id`)).id;
+    try {
+      const dev = new Browser();
+      await dev.get('/builder/login');
+      await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: DEV, password: 'Sec-mail-dev-password!' });
+      assert.equal((await dev.get('/builder/mail')).statusCode, 403);
+      assert.equal((await dev.get(`/builder/mail/${id}`)).statusCode, 403);
+      await dev.get('/builder');
+      assert.equal((await dev.post(`/builder/mail/${id}`, { __csrf: dev.lastCsrf, provider: 'smtp', senders: '@evil.example', host: 'evil.example' })).statusCode, 403);
+      assert.deepEqual((await owner.one('select senders from meta.mail_service where id = $1', [id])).senders, ['@example.com']);
+
+      const admin = new Browser();
+      await admin.get('/builder/login');
+      await admin.post('/builder/login', { __csrf: admin.lastCsrf, username: 'admin', password: 'admin' });
+      const page = (await admin.get(`/builder/mail/${id}`)).body;
+      assert.doesNotMatch(page, /not-a-real-secret/);
+      // a mail of another application through this application's URL
+      const foreign = (await owner.one(`insert into meta.mail_queue (app_id, from_address, to_addresses, subject, body_text, status) values ($1, 'x@example.com', '{a@example.com}', 'SEC foreign', 'x', 'error') returning id`, [other])).id;
+      await admin.get(`/builder/apps/${appId}/mail`);
+      await admin.post(`/builder/apps/${appId}/mail/${foreign}/retry`, { __csrf: admin.lastCsrf });
+      assert.equal((await owner.one('select status from meta.mail_queue where id = $1', [foreign])).status, 'error');
+      // a sender outside the service's list is refused for an application
+      await admin.get(`/builder/mail/${id}`);
+      await admin.post(`/builder/mail/${id}/apps`, { __csrf: admin.lastCsrf, allow: String(appId), [`from_${appId}`]: 'ceo@other.example' });
+      assert.equal((await owner.one('select from_address from meta.app_mail_service where app_id = $1', [appId])).from_address, 'hr@example.com');
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+      await owner.query('delete from meta.developer where username = $1', [DEV]);
+      await owner.query('delete from meta.mail_service where name = $1', [SVC]);
+    }
+  });
+});

@@ -129,6 +129,8 @@ const CODE: Record<string, Record<string, string>> = {
   plugin: { install_sql: 'sql' },
   // (080) a search configuration on a SELECT
   search_config: { source: 'sql' },
+  // (081) an e-mail template's bodies
+  email_template: { html_body: 'html', text_body: 'txt' },
 };
 const isLong = (v: unknown): v is string => typeof v === 'string' && (v.includes('\n') || v.length > 60);
 const codeExt = (table: string, column: string, row: any) =>
@@ -184,6 +186,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['plugins', 'shared/plugins', 'plugin'],
   // (080) search configurations
   ['search_configs', 'shared/search-configurations', 'search_config'],
+  // (081) e-mail templates
+  ['email_templates', 'shared/email-templates', 'email_template'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */

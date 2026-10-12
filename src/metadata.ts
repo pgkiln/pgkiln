@@ -277,7 +277,7 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push' | 'send_email';
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;

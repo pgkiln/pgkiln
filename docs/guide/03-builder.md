@@ -518,6 +518,7 @@ Components used by the whole application:
 | **Data load definitions** | A target table, file format (CSV, Excel, JSON, XML with its row element) and column mapping with transformations, for SQL Workshop → Load Data and the `data_load` process ([chapter 16](16-files.md#data-load-definitions)) |
 | **Lists** | Named sets of links (static entries with nesting, badges, conditions and authorization, or a query) for list regions, the navigation menu and the navigation bar ([chapter 4](04-pages-and-regions.md#list-lists)) |
 | **Supporting objects** | Install, upgrade and deinstall scripts that travel with the export ([below](#supporting-objects)) |
+| **E-mail templates** | Subject, HTML and plain text with `#PLACEHOLDERS#` for `meta.send_mail_template` and the Send e-mail process ([chapter 6](06-processing.md#e-mail-templates)) |
 | **Search configurations** | What a search region searches: a table, a query or a list, the columns searched, and the title, subtitle, description, badge, icon and link of each result ([chapter 4](04-pages-and-regions.md#search-search-region)) |
 
 ### Application types and subscriptions
@@ -702,6 +703,29 @@ texts needs `pg_read_all_stats` for the owner role, and resetting needs execute 
 **AI usage** shows the [AI services](#ai-services) the application may use, today's requests and
 tokens against their daily limits, and the last 100 AI requests (time, page, user, service, model,
 source, tokens, duration, status). Prompts and answers are not logged.
+
+## Mail services
+
+Workspace utilities → **Mail services** (administrators): how the applications of this
+installation send [e-mail](06-processing.md#sending-e-mail). A service has a provider (SMTP with a
+password or OAuth2, Microsoft 365 through Graph, Amazon SES, Resend, Postmark, SendGrid, Mailgun, or
+*log only*), the provider's settings, a secret (password, client secret, API key or secret access
+key: stored encrypted with `PGKILN_SECRET_KEY`, never shown again, never exported), the **allowed
+senders** (addresses, or `@domain`) and a default From address. On a service's page:
+
+- **Applications**: which applications send through it (one service per application), each with
+  its From address (one of the allowed senders) and an optional limit per day;
+- **Test**: sends a short message now, outside the queue, and shows the provider's answer;
+- **Recent mail** of its applications.
+
+Applications → Activity → **Mail** (developers) shows an application's service, today's count
+against its limit and the mail of the last 30 days with its status and the provider's answer;
+**Send again** queues a failed or cancelled mail again, **Cancel** stops a queued one.
+
+**Microsoft 365.** Register an application in Microsoft Entra with a client secret. For the Graph
+provider grant it the application permission *Mail.Send*; for SMTP with OAuth2 the permission
+*SMTP.SendAsApp* and register its service principal in Exchange Online. In both cases limit it to the
+sending mailboxes (an application access policy or RBAC for Applications).
 
 ## AI services
 

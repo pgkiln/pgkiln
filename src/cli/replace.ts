@@ -22,8 +22,8 @@ export const REPLACED = [
   'list', 'list_entry', 'supporting_script',
   // (068) static application files, (069) plug-ins
   'static_file', 'plugin',
-  // (080) search configurations
-  'search_config',
+  // (080) search configurations, (081) e-mail templates
+  'search_config', 'email_template',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',
@@ -50,7 +50,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (064) the workspace of the application
   'workspace_app',
   // (074) push notifications: the app's VAPID keys, users' devices, queued notifications
-  'push_key', 'push_subscription', 'push_message'];
+  'push_key', 'push_subscription', 'push_message',
+  // (081) the mail service an application sends through, and its queued and sent mail
+  'app_mail_service', 'mail_queue'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */

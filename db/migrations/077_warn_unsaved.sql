@@ -37,3 +37,5 @@ begin
   return v_page;
 end
 $$;
+-- like the original (047): for the builder only, not for applications
+revoke all on function meta.wizard_form(meta.app, regclass, int, text, int, boolean, text[]) from public;
