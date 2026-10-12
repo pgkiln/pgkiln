@@ -5,6 +5,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-12
+
+Sprint 51: safe deployments and feedback.
+
+### Added
+- **Checked imports**: `pgkiln import --check` runs the Advisor on the imported application inside the import's
+  transaction (every SQL fragment planned as the application's role, references checked) and refuses on errors,
+  so nothing changes; `--dry-run` only checks, `--force` imports anyway. The MCP server's `import_app` checks by
+  default (`force`, `dry_run`), and the builder's Import has the check ticked.
+- **Application backups** (APEX: Application Backups): before every import that replaces an application (CLI,
+  MCP, working copy merge, restore), daily when it changed, and by hand; download, restore, keep the newest N
+  (Application → Backups; migration 082).
+- **Application availability and build status** (APEX: Availability, Build Status): available, developers only,
+  restricted to named users or unavailable with a message, for pages, downloads, REST modules and PostgREST;
+  *Run only* refuses builder changes as if the application were locked. Not exported, kept by an import
+  (migration 083).
+- **Feedback** (APEX: Feedback): users send a comment, idea or problem from the navigation bar and see the
+  developers' answers; developers answer under Application → Feedback (migration 084).
+- A region's *Attributes (JSON)* help in the Page Designer shows its own type's keys with a link to the guide.
+
+### Changed
+- APEX parity: 140 features compared, 121 available, 6 partial, 10 not yet, 3 not planned.
+
 ## [0.32.0] - 2026-10-12
 
 Sprint 50: six APEX parity items, e-mail among them.

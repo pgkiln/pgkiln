@@ -1,3 +1,4 @@
+import { availabilityRefusal } from './availability.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { jwtVerify } from 'jose';
 import pg from 'pg';
@@ -147,6 +148,9 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
   const query = req.query as Record<string, string | string[]>;
   try {
     const who = await caller(req, a, h.auth === 'public');
+    // (083) the application's availability (no builder session here: developers only means nobody)
+    const refusal = availabilityRefusal(a, { username: who.user === 'nobody' ? null : who.user, developer: false });
+    if (refusal) throw new RestError(refusal.status, refusal.message ?? english(refusal.key));
     const binds: BindValues = {};
     for (const [k, v] of Object.entries(query)) binds[k.toUpperCase()] = Array.isArray(v) ? v[0] : v;
     const body = req.body;

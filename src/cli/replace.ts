@@ -51,6 +51,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'workspace_app',
   // (074) push notifications: the app's VAPID keys, users' devices, queued notifications
   'push_key', 'push_subscription', 'push_message',
+  // (082) the application's backups, (084) users' feedback
+  'app_backup', 'feedback',
   // (081) the mail service an application sends through, and its queued and sent mail
   'app_mail_service', 'mail_queue'];
 /** Children of pages (replaced with their page). */
@@ -89,12 +91,23 @@ export async function checkSchema(db: Db) {
   if (problems.length) throw new Error(`replace does not know these tables yet; update src/cli/replace.ts: ${problems.join(', ')}`);
 }
 
-/** Replace the components of application `alias` with those of doc. Returns the application id. */
-export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<number> {
+/** Why the replaced version is backed up (082); null: no backup (a new application). */
+export interface ReplaceOptions {
+  backup?: { reason: 'import' | 'merge' | 'restore'; user?: string | null; note?: string | null } | null;
+}
+
+/**
+ * Replace the components of application `alias` with those of doc. Returns the
+ * application id. The version it replaces is backed up first (meta.backup_app,
+ * migration 082) unless opts.backup is null.
+ */
+export async function replaceApp(db: Db, doc: unknown, alias: string, opts: ReplaceOptions = {}): Promise<number> {
   await checkSchema(db);
   const target = (await db.query<{ id: number }>('select id from meta.app where alias = $1 for update', [alias])).rows[0];
   if (!target) throw new Error(`application ${alias} not found`);
   const old = target.id;
+  const backup = opts.backup === undefined ? { reason: 'import' as const } : opts.backup;
+  if (backup) await db.query('select meta.backup_app($1, $2, $3, $4)', [old, backup.reason, backup.user ?? null, backup.note ?? null]);
   const tmpAlias = `pgkiln-replace-${randomBytes(6).toString('hex')}`;
   const neu = (await db.query<{ id: number }>('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), tmpAlias])).rows[0].id;
 
@@ -178,7 +191,9 @@ export async function replaceApp(db: Db, doc: unknown, alias: string): Promise<n
   const cols = (
     await db.query<{ c: string }>(
       `select quote_ident(column_name) as c from information_schema.columns
-        where table_schema = 'meta' and table_name = 'app' and column_name not in ('id', 'alias', 'created_at', 'updated_at')
+        where table_schema = 'meta' and table_name = 'app'
+          -- (083) availability and build status belong to this installation
+          and column_name not in ('id', 'alias', 'created_at', 'updated_at', 'availability', 'availability_message', 'availability_users', 'build_status')
         order by ordinal_position`,
     )
   ).rows.map((r) => r.c);

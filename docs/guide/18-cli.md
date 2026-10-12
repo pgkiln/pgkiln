@@ -35,7 +35,7 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgkiln migrate [--example <name>]` | Applies the migrations that were not applied yet, then optionally `examples/<name>/` (same as `npm run db:migrate` / `npm run example:hr`; `--root` and `--seed` as in `scripts/migrate.ts`) |
 | `pgkiln apps [--json]` | Lists the applications: alias, number of pages, name |
 | `pgkiln export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgkiln/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
-| `pgkiln import <path> [--alias <alias>] [--replace]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place |
+| `pgkiln import <path> [--alias <alias>] [--replace] [--check [--force] \| --dry-run]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place (after a [backup](03-builder.md#backups)). `--check` checks the application before it commits, `--dry-run` only checks ([below](#checking-before-an-import)) |
 | `pgkiln diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
 | `pgkiln mcp` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md) |
 | `pgkiln plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgkiln-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
@@ -187,6 +187,9 @@ the files any more are removed. What belongs to this installation stays:
   [chapter 19](19-rest-data-sources.md#web-credentials)).
 - the **style variant each user chose** ([chapter 14](14-globalization.md#style-variants-theme-roller));
   a style that the file no longer has falls back to the default.
+- its **availability and build status** ([chapter 3](03-builder.md#availability-and-build-status)): exports
+  leave them out, so a deployment doesn't open an application you closed, or close one;
+- its **backups**: the version the import replaces is the newest one ([chapter 3](03-builder.md#backups)).
 
 It all happens in one transaction; any error leaves the application unchanged. Without an
 application with that alias, `--replace` simply imports, so the same command deploys the first
@@ -200,6 +203,32 @@ git diff apps/hr                                 # review, commit, open a pull r
 pgkiln diff hr apps/hr                           # on the target: what would change (exit code 1)
 pgkiln import apps/hr --replace                  # deploy
 ```
+
+### Checking before an import
+
+An import doesn't need the application's tables, columns and functions to exist (neither does APEX's):
+a page whose SQL names a missing table imports fine and fails when it runs. `--check` asks the
+[Advisor](03-builder.md#advisor) first, inside the import's transaction, before anything is committed:
+every SQL fragment is planned as the application's database role (unknown tables, columns,
+functions and types, missing grants), PL/pgSQL blocks are compiled, and references to pages,
+items, lists of values, schemes and search configurations are checked.
+
+```sh
+pgkiln import apps/hr --replace --check      # errors: nothing changes, exit code 1
+pgkiln import apps/hr --replace --dry-run    # only check (exit code 0 without errors)
+pgkiln import apps/hr --replace --check --force   # report, import anyway
+```
+
+```text
+ERROR  page 2, region Employees (Source): relation "hr.employee" does not exist
+WARNING  page 3, item P3_SAL (Default value): …
+Check: 1 error(s), 1 warning(s), 0 note(s).
+Not imported: the check found 1 error(s). Fix them, or use --force.
+```
+
+Deploy the database changes (your migration scripts) before the application, so the check sees
+the tables the new version needs. The MCP server's `import_app` checks by default; the builder's
+Import page has the check ticked.
 
 `export --format dir` into an existing directory removes the files of deleted components and
 leaves dot files (`.git`, `.gitattributes`) alone; it refuses a non-empty directory without a

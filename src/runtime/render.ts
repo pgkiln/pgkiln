@@ -21,6 +21,7 @@ import { listTree, navbarMarkup, navMarkup } from './lists.ts';
 import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
 import { frameOrigins } from './url-region.ts';
 import { devbarHtml } from './devbar.ts';
+import { feedbackNode } from './feedback.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -243,7 +244,10 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
   const nav = await navTree(ctx, topNav);
-  const navbarNodes = ctx.app.navbar_list ? await listTree(ctx, ctx.app.navbar_list) : null;
+  const listNodes = ctx.app.navbar_list ? await listTree(ctx, ctx.app.navbar_list) : null;
+  // (084) the Feedback entry, after the application's own navigation bar list
+  const feedback = feedbackNode(ctx);
+  const navbarNodes = listNodes || feedback ? [...(listNodes ?? []), ...(feedback ? [feedback] : [])] : null;
   const navbar = navbarNodes ? navbarMarkup(navbarNodes, t('list.navbar')) : '';
   return documentShell(
     `${title} · ${ctx.app.name}`,

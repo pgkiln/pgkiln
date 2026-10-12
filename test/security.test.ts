@@ -6645,3 +6645,113 @@ describe('sprint 50 mail', () => {
     }
   });
 });
+
+describe('sprint 51 safe deployments and feedback', () => {
+  test('the import check plans the SQL and runs none of it', async () => {
+    const { advise } = await import('../src/builder/advisor.ts');
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    await owner.query('create table if not exists public.sec51_probe (n int)');
+    await owner.query('grant select, insert, delete on public.sec51_probe to hr_app');
+    await owner.query('insert into public.sec51_probe values (1)');
+    const proc = (await owner.one(`insert into meta.process (page_id, seq, name, type, point, code) values ($1, 999, 'sec51', 'sql', 'submit',
+      'delete from public.sec51_probe; insert into public.sec51_probe values (2)') returning id`, [page])).id;
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      const r = await advise(appId, c);
+      assert.ok(r.checked > 0);
+      assert.deepEqual((await c.query('select n from public.sec51_probe')).rows, [{ n: 1 }], 'nothing ran in the transaction');
+      // the role the check took is gone again after it
+      assert.equal((await c.query(`select current_setting('role') as r`)).rows[0].r, 'none');
+      await c.query('rollback');
+    } finally {
+      c.release();
+      await owner.query('delete from meta.process where id = $1', [proc]);
+      await owner.query('drop table public.sec51_probe');
+    }
+  });
+
+  test('backups are closed to applications; one is reachable only under its own application', async () => {
+    for (const r of ['pgkiln_runtime', 'hr_app']) {
+      await assert.rejects(owner.query(`begin; set local role ${r}; select * from meta.app_backup limit 1; rollback`), /permission denied/, r);
+      await owner.query('rollback').catch(() => {});
+      assert.equal((await owner.one(`select has_function_privilege($1, 'meta.backup_app(int, text, text, text)', 'execute') as ok`, [r])).ok, false, r);
+    }
+    const b = (await owner.one(`select meta.backup_app($1, 'manual', 'sec51') as id`, [appId])).id;
+    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec51-other', 'Other') returning id`)).id;
+    try {
+      const dev = new Browser();
+      await dev.get('/builder/login');
+      await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+      assert.equal((await dev.get(`/builder/apps/${other}/backups/${b}/download`)).statusCode, 404);
+      await dev.get(`/builder/apps/${other}/backups`);
+      await dev.post(`/builder/apps/${other}/backups/${b}/delete`, { __csrf: dev.lastCsrf });
+      assert.equal((await owner.one('select count(*)::int as n from meta.app_backup where id = $1', [b])).n, 1);
+      // an application user can't download it
+      const king = await as('king');
+      assert.equal((await king.get(`/builder/apps/${appId}/backups/${b}/download`)).statusCode, 302);
+    } finally {
+      await owner.query('delete from meta.app_backup where id = $1', [b]);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('availability closes the REST API (PostgREST) and REST modules too', async () => {
+    const asApi = async (user: string, sql: string) => {
+      const c = await owner.pool.connect();
+      try {
+        await c.query('begin');
+        await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ role: 'hr_api', app_user: user, app: 'hr' })]);
+        await c.query('set local role hr_api');
+        return (await c.query(sql)).rows;
+      } finally {
+        await c.query('rollback').catch(() => {});
+        c.release();
+      }
+    };
+    const { issueApiToken } = await import('../src/api.ts');
+    const token = (await issueApiToken(appId, 'king', 1)).token;
+    const rest = () => app.inject({ method: 'GET', url: '/a/hr/rest/v1/employees', headers: { authorization: `Bearer ${token}` } });
+    assert.equal((await rest()).statusCode, 200);
+    try {
+      await owner.query(`update meta.app set availability = 'unavailable', availability_message = 'Maintenance' where id = $1`, [appId]);
+      await assert.rejects(asApi('king', 'select meta.api_check()'), /Maintenance/);
+      const r = await rest();
+      assert.equal(r.statusCode, 503);
+      assert.match(r.body, /Maintenance/);
+      await owner.query(`update meta.app set availability = 'restricted', availability_users = '{scott}' where id = $1`, [appId]);
+      await assert.rejects(asApi('king', 'select meta.api_check()'), /not available to this account/);
+      assert.equal((await rest()).statusCode, 403);
+      await owner.query(`update meta.app set availability_users = '{KING}' where id = $1`, [appId]);
+      await asApi('king', 'select meta.api_check()');
+      assert.equal((await rest()).statusCode, 200);
+      // developers only: an API token is never a builder session
+      await owner.query(`update meta.app set availability = 'developers' where id = $1`, [appId]);
+      assert.equal((await rest()).statusCode, 503);
+    } finally {
+      await owner.query(`update meta.app set availability = 'available', availability_users = '{}', availability_message = null where id = $1`, [appId]);
+    }
+  });
+
+  test('Run only refuses the Page Designer\'s JSON saves too; feedback rows can only be added and read by the runtime', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    await owner.query(`update meta.app set build_status = 'run_only' where id = $1`, [appId]);
+    try {
+      const dev = new Browser();
+      await dev.get('/builder/login');
+      await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+      await dev.get(`/builder/pages/${page}`);
+      const res = await app.inject({ method: 'POST', url: `/builder/pages/${page}`, payload: new URLSearchParams({ __csrf: dev.lastCsrf, page_no: '1', name: 'X' }).toString(),
+        headers: { cookie: [...dev.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' } });
+      assert.equal(res.statusCode, 423);
+      assert.match(res.body, /Run only/);
+    } finally {
+      await owner.query(`update meta.app set build_status = 'run_and_build' where id = $1`, [appId]);
+    }
+    for (const sql of ['update meta.feedback set status = \'done\'', 'delete from meta.feedback'])
+      await assert.rejects(owner.query(`begin; set local role pgkiln_runtime; ${sql}; rollback`), /permission denied/, sql);
+    await owner.query('rollback').catch(() => {});
+    await assert.rejects(owner.query(`begin; set local role hr_app; select * from meta.feedback; rollback`), /permission denied/);
+    await owner.query('rollback').catch(() => {});
+  });
+});

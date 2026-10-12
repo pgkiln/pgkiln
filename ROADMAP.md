@@ -6,8 +6,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.32.0 (October 2026): e-mail, the search and URL regions, the developer toolbar, lost update detection and warn on unsaved changes.
-- **APEX parity:** 140 features compared: 119 available, 5 partial, 13 not yet, 3 deliberately
+- **Current release:** 0.33.0 (October 2026): checked imports, application backups, availability and Run only, feedback; 0.32.0: e-mail, the search and URL regions, the developer toolbar.
+- **APEX parity:** 140 features compared: 121 available, 6 partial, 10 not yet, 3 deliberately
   not planned (collections, JSON duality views and database links: PostgreSQL covers them).
 
 ## Next
@@ -22,10 +22,9 @@ Partial features first, then the missing ones, roughly in this order:
 3. **Reports and data:** interactive grid views (single row, chart, group by), display image and
    geocoded address items, data export from SQL (CSV, XLSX, PDF, JSON).
 4. **Users and apps:** user preferences and application settings, dynamic translations of data
-   values, feedback from users, automatic application backups and page groups.
-5. **Developer tools:** Quick Edit from the developer toolbar; schema comparison and DDL generation
-   in the SQL Workshop; safer imports (a check of the application's SQL before an import commits, a
-   backup of the replaced version, application availability).
+   values, page groups.
+5. **Developer tools:** Quick Edit from the developer toolbar, the Page Designer's help pane for the
+   selected property; schema comparison and DDL generation in the SQL Workshop.
 6. **Languages:** more built-in runtime languages (22 today), once the rows above are done.
 
 Priorities can change with what users need: open an

@@ -1,3 +1,4 @@
+import { advise } from './advisor.ts';
 import { appLocks, isAdmin, lockPanel, lockText } from './locks.ts';
 import { parseRoleList, validRoleName } from '../dbauth.ts';
 import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
@@ -166,6 +167,13 @@ export async function builderRoutes(app: FastifyInstance) {
       const r = await owner.tx(async (c) => {
         const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null])).rows[0];
         await placeApp(c, made.id, ws);
+        // (sprint 51) the Advisor on the imported application, before the commit: errors refuse it
+        if (req.body?.check === 'true') {
+          const errors = (await advise(made.id, c)).findings.filter((f) => f.severity === 'error');
+          if (errors.length)
+            throw new Error(`the check found ${errors.length} error(s), nothing was imported: ${errors.slice(0, 5).map((f) =>
+              `${f.entry ? `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.label}` : 'database'} (${f.field}): ${f.message}`).join('; ')}${errors.length > 5 ? '; …' : ''}. Fix them, or import without the check.`);
+        }
         return made;
       });
       // supporting objects are never run on import: the developer reviews them and chooses
@@ -502,6 +510,7 @@ export async function builderRoutes(app: FastifyInstance) {
       <div class="columns">
         <p><a class="btn" href="${BASE}/apps/${a.id}/top-sql">${icon('database')} Top SQL</a> <span class="muted">the slowest statements of this application's database role</span></p>
         <p><a class="btn" href="${BASE}/apps/${a.id}/ai">${icon('bolt')} AI usage</a> <span class="muted">the AI services this application may use, and its requests</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/feedback">${icon('chat')} Feedback</a> <span class="muted">what users sent from the application's Feedback link, and your answers</span></p>
         <p><a class="btn" href="${BASE}/apps/${a.id}/mail">${icon('send')} Mail</a> <span class="muted">the mail this application queued and sent, with retry and cancel</span></p>
         <p><a class="btn" href="${BASE}/apps/${a.id}/debug">${icon('list')} Debug messages</a> <span class="muted">${a.debug_level ? `on (level ${a.debug_level}): ` : 'off: '}timed steps of each request and messages from <code>meta.debug()</code></span></p>
         ${region('Page views by page (7 days)', html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Page</th><th>Name</th><th class="num">Views</th><th class="num">Avg ms</th><th class="num">Max ms</th></tr></thead>

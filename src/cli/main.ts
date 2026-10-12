@@ -6,10 +6,11 @@
 // Exit codes: 0 ok, 1 differences found (diff), 2 usage error, 3 failure.
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { userInfo } from 'node:os';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import { root } from '../env.ts';
 import { docToFiles, stableJson } from '../appfiles.ts';
-import { exportDoc, importDoc, readSource, UsageError, withDb } from './apps.ts';
+import { exportDoc, formatFindings, importDoc, readSource, UsageError, withDb } from './apps.ts';
 
 export const EXIT = { ok: 0, differences: 1, usage: 2, failure: 3 } as const;
 
@@ -166,25 +167,40 @@ const COMMANDS: Record<string, Command> = {
   },
 
   import: {
-    usage: 'pgkiln import <path> [--alias <alias>] [--replace]',
+    usage: 'pgkiln import <path> [--alias <alias>] [--replace] [--check [--force] | --dry-run]',
     summary: 'import a JSON export, an application directory or a .zip of one',
     details:
       'Without --replace the alias must be free. With --replace an existing application with that\n' +
       'alias is updated in place: it keeps its id, users and access, API clients, sessions, saved\n' +
       'reports, running tasks and workflows, and the on/off switch of its automations; its pages,\n' +
       'shared components and settings become those of the file. Without an existing application\n' +
-      '--replace simply imports.',
-    options: { alias: { type: 'string', short: 'a' }, replace: { type: 'boolean' } },
+      '--replace simply imports.\n\n' +
+      'With --check the Advisor checks the imported application before anything is committed: every\n' +
+      'SQL fragment is planned as the application\'s role (unknown tables, columns, functions, types and\n' +
+      'grants), and references to pages, items, lists of values and schemes are checked. Errors refuse\n' +
+      'the import (exit code 1, nothing changes); --force imports anyway. --dry-run checks and never commits.',
+    options: { alias: { type: 'string', short: 'a' }, replace: { type: 'boolean' }, check: { type: 'boolean' }, force: { type: 'boolean' }, 'dry-run': { type: 'boolean' } },
     optionHelp: [
       ['-a, --alias <alias>', 'alias of the application (default: the one in the export)'],
       ['--replace', 'update the application with that alias in place'],
+      ['--check', 'check the application\'s SQL and references first; errors refuse the import'],
+      ['--force', 'with --check: import even when the check finds errors'],
+      ['--dry-run', 'import, check and roll back: nothing changes'],
     ],
     positionals: [1, 1],
     async run(v, [path]) {
       const { doc } = await readSource(path);
       const alias = (v.alias as string) ?? doc?.app?.alias;
       if (!alias) throw new Error('the export has no alias: use --alias');
-      const r = await withDb((db) => importDoc(db, doc, { alias, replace: !!v.replace }));
+      const check = v['dry-run'] ? 'dry-run' : v.check ? (v.force ? 'force' : 'check') : 'off';
+      const r = await withDb((db) => importDoc(db, doc, { alias, replace: !!v.replace, check, by: `pgkiln import (${userInfo().username})` }));
+      if (check !== 'off') out(formatFindings(r.findings));
+      if (!r.committed) {
+        out(check === 'dry-run'
+          ? `Dry run: nothing was imported.\n`
+          : `Not imported: the check found ${r.findings.filter((f) => f.severity === 'error').length} error(s). Fix them, or use --force.\n`);
+        return check === 'dry-run' && !r.findings.some((f) => f.severity === 'error') ? EXIT.ok : EXIT.differences;
+      }
       out(r.replaced
         ? `Replaced ${alias} (application ${r.id}).\n`
         : `Imported ${alias} (application ${r.id}). Check its database role and grant access in the builder.\n`);

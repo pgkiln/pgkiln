@@ -151,10 +151,16 @@ export async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): 
 const ITEM_REF = /(?<![A-Za-z0-9_$&:])(?::|&)(P\d+_[A-Z0-9_]+)\b/gi;
 const BUILT_IN = new Set(['MUST_NOT_BE_PUBLIC_USER']);
 
-/** Run every check of an application. */
-export async function advise(appId: number): Promise<{ findings: Finding[]; checked: number; plpgsqlCheck: boolean }> {
-  const app = await owner.one('select * from meta.app where id = $1', [appId]);
-  const entries = await appEntries(appId);
+/**
+ * Run every check of an application. With `tx` (a client in a transaction,
+ * e.g. an import that hasn't committed yet) everything is read and checked
+ * on that client, inside a savepoint that is rolled back.
+ */
+export async function advise(appId: number, tx?: pg.ClientBase): Promise<{ findings: Finding[]; checked: number; plpgsqlCheck: boolean }> {
+  const query = (sql: string, params: unknown[] = []) => (tx ? tx.query(sql, params) : owner.query(sql, params));
+  const one = async (sql: string, params: unknown[] = []) => (await query(sql, params)).rows[0];
+  const app = await one('select * from meta.app where id = $1', [appId]);
+  const entries = await appEntries(appId, query);
   const byKey = new Map(entries.map((e) => [`${e.kind}-${e.id}`, e]));
   const findings: Finding[] = [];
   let checked = 0;
@@ -162,15 +168,15 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
   // rows with every column (the entries only carry the searchable fields)
   const rowsOf = async (kind: string, table: string, scope: 'page' | 'app') =>
     (scope === 'page'
-      ? await owner.query(`select t.*, p.page_no from ${table} t join meta.page p on p.id = t.page_id where p.app_id = $1`, [appId])
-      : await owner.query(`select * from ${table} where app_id = $1`, [appId])
+      ? await query(`select t.*, p.page_no from ${table} t join meta.page p on p.id = t.page_id where p.app_id = $1`, [appId])
+      : await query(`select * from ${table} where app_id = $1`, [appId])
     ).rows.map((row) => ({ kind, row }));
   const all = (await Promise.all(Object.entries(COMPONENTS).map(([kind, spec]) => rowsOf(kind, spec.table, spec.scope)))).flat();
 
-  // ---- SQL, as the application's role, rolled back
-  const c = await owner.pool.connect();
+  // ---- SQL, as the application's role, rolled back (a savepoint in the caller's transaction)
+  const c = (tx ?? (await owner.pool.connect())) as pg.PoolClient;
   try {
-    await c.query('begin');
+    await c.query(tx ? 'savepoint advisor_all' : 'begin');
     await c.query(`set local statement_timeout = '5s'`);
     await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
     if (app.db_role) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
@@ -243,8 +249,13 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
       }
     }
   } finally {
-    await c.query('rollback').catch(() => {});
-    c.release();
+    if (tx) {
+      await c.query('rollback to savepoint advisor_all');
+      await c.query('release savepoint advisor_all');
+    } else {
+      await c.query('rollback').catch(() => {});
+      c.release();
+    }
   }
 
   // ---- references
@@ -319,7 +330,7 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     }
     if (kind === 'branch' && row.target_type === 'page' && row.target_page && !pageNos.has(Number(row.target_page))) missing(e, 'Page', `Page ${row.target_page} doesn't exist.`);
     if (kind === 'branch' && row.target_type === 'app'
-        && !(await owner.one('select 1 as ok from meta.app a join meta.page p on p.app_id = a.id where a.alias = $1 and p.page_no = $2', [row.target_app, row.target_page])))
+        && !(await one('select 1 as ok from meta.app a join meta.page p on p.app_id = a.id where a.alias = $1 and p.page_no = $2', [row.target_app, row.target_page])))
       missing(e, 'Application (app)', `Application ${row.target_app} has no page ${row.target_page}.`);
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');
@@ -353,9 +364,9 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
   }
 
   // ---- PL/pgSQL functions of the app's schemas, with plpgsql_check when installed
-  const plpgsqlCheck = !!(await owner.one(`select 1 as ok from pg_extension where extname = 'plpgsql_check'`));
+  const plpgsqlCheck = !!(await one(`select 1 as ok from pg_extension where extname = 'plpgsql_check'`));
   if (plpgsqlCheck && app.db_role) {
-    const res = await owner.query(
+    const res = await query(
       `select p.oid::regprocedure::text as fn, r.level, r.message, r.lineno
          from pg_proc p
          join pg_namespace n on n.oid = p.pronamespace

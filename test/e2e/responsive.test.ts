@@ -159,6 +159,10 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query('update meta.region set config = $2 where id = $1', [rid, JSON.stringify(before)]);
         await owner.query(`delete from meta.item where page_id = $1 and name = 'P2_SELECTED'`, [pageId]);
       }
+      // (sprint 51) the feedback page (the HR example has it on, with one answered idea of king's)
+      await page.goto(`${base}/a/hr/2/feedback`);
+      assert.equal(await page.locator('.feedback-response').count() > 0, true);
+      await check(page, 'app-2-feedback', vp);
       // (sprint 50) page 42: the search region with results of three configurations
       const search = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 42 and r.type = 'search'`)).id;
       await page.goto(`${base}/a/hr/42?s${search}=a`);
@@ -717,6 +721,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
             mail_services: '/builder/mail', mail_service: `/builder/mail/${svc}`, app_mail: `/builder/apps/${appId}/mail`,
             search_config: `/builder/apps/${appId}/shared?c=search_config-${search}`, email_template: `/builder/apps/${appId}/shared?c=email_template-${template}`,
             search_region: `/builder/pages/${r.page_id}?c=region-${r.id}`,
+            // (sprint 51) backups, availability and feedback
+            backups: `/builder/apps/${appId}/backups`, availability: `/builder/apps/${appId}/availability`, feedback: `/builder/apps/${appId}/feedback`,
           };
         })()),
       };

@@ -53,7 +53,7 @@ directory the agent started the server in (the project).
 | `recent_errors` | the latest errors and refused requests from the activity log | no |
 | `export_app` | writes an application to a directory (default `apps/<alias>`, format `text`) | files on disk |
 | `diff_app` | what an import of a directory would change (A/D/M with unified diffs); also reports files it can't read | no |
-| `import_app` | imports a directory, zip or JSON file; `replace: true` updates the application in place | the database |
+| `import_app` | imports a directory, zip or JSON file; `replace: true` updates the application in place. It checks the application first (the Advisor, in the import's transaction): errors refuse the import and are listed; `force: true` imports anyway, `dry_run: true` only checks | the database |
 
 The files are the [directory format](18-cli.md#the-directory-format) of the command line, in the
 [text style](18-cli.md#text-files-apexlang): one YAML file per component, with SQL, PL/pgSQL and
@@ -67,7 +67,8 @@ users, sessions and saved reports kept, supporting objects and plug-in install S
    `describe_schema` for the tables; `search_docs` before guessing a property or region type.
 2. `export_app` to `apps/<alias>`, then edit the YAML files there.
 3. `diff_app`, so you (and it) see exactly what will change.
-4. `import_app` with `replace: true`. Open the page in the browser to check.
+4. `import_app` with `replace: true`. When it names errors (a missing column, a typo in SQL), the agent fixes
+   the files and imports again; nothing was changed. Open the page in the browser to check.
 
 Tables, views and functions are ordinary PostgreSQL objects: an agent changes them in your
 migration scripts, not in the application files (`run_query` can't change them anyway).

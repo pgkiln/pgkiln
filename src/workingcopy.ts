@@ -341,8 +341,8 @@ export async function mergeCopy(copyId: number, o: MergeOptions) {
     } catch (e) {
       throw new WorkingCopyError(`The merged application is not consistent: ${(e as Error).message}. Resolve it in the working copy (or the main application) first.`);
     }
-    if (o.direction === 'merge') await replaceApp(c, doc, l.mainAlias);
-    await replaceApp(c, doc, l.copy.alias);
+    if (o.direction === 'merge') await replaceApp(c, doc, l.mainAlias, { backup: { reason: 'merge', user: o.username, note: `merge of working copy ${l.copy.alias}` } });
+    await replaceApp(c, doc, l.copy.alias, { backup: { reason: 'merge', user: o.username } });
     // the copy keeps running nothing on its own
     await c.query('update meta.automation set enabled = false where app_id = $1', [copyId]);
     await c.query('update meta.rest_source set sync_enabled = false where app_id = $1', [copyId]);

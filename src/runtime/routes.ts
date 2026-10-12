@@ -44,6 +44,8 @@ import { pwaHead } from './pwa.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
+import { availabilityRefusal } from './availability.ts';
+import { feedbackRoutes } from './feedback.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -258,6 +260,19 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   const debug = startDebug(req, { id: app.id, debug_level: Math.max(Number(app.debug_level ?? 0), sessionDebugLevel(session)) });
   // (079) the developer toolbar: a builder session of a developer of this application in the same browser
   const devbar = await devbarOf(req, app.id);
+  // (083) the application's availability: unavailable, developers only, or restricted to named users
+  const refusal = availabilityRefusal(app, { username: session.username, developer: !!devbar });
+  if (refusal) {
+    if (refusal.signIn) {
+      if (json) reply.code(401).send({ error: locale.t('error.session_ended') });
+      else reply.redirect(`${base}/login?next=${encodeURIComponent(req.url)}`);
+      return null;
+    }
+    const text = refusal.message ?? locale.t(refusal.key);
+    if (json) reply.code(refusal.status).send({ error: text });
+    else simplePage(reply, refusal.status, locale.t('app.unavailable_title'), text, undefined, locale);
+    return null;
+  }
   if (debug) {
     debug.pageNo = page.page_no;
     debug.username = user;
@@ -580,6 +595,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
   fileRoutes(app, loadContext, txContext, forbidden);
   // (079) the developer toolbar's session state viewer and actions
   devbarRoutes(app, loadContext);
+  // (084) users' feedback
+  feedbackRoutes(app, loadContext, txContext);
 
   // ---------------------------------------------------------------- dynamic actions (AJAX)
   app.post('/a/:alias/:page/da/:id', async (req: Req, reply) => {
@@ -1091,6 +1108,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const a0 = await loadApp(req.params.alias);
     if (!a0) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
     if (a0.authentication === 'none') return reply.redirect(`/a/${a0.alias}`);
+    // (083) unavailable or for developers only: no sign-in form either (restricted: users sign in, then are checked)
+    const closed = availabilityRefusal(a0, { username: 'x', developer: !!(await devbarOf(req, a0.id)) });
+    if (closed && closed.status === 503) return simplePage(reply, 503, english('app.unavailable_title'), closed.message ?? english(closed.key));
     // header authentication has no sign-in form: the proxy signs the user in on any page
     if (a0.authentication === 'header') return reply.redirect(safeNext(a0, req.query.next));
     const session = await getSession(req, reply, a0.id, `/a/${a0.alias}`);
