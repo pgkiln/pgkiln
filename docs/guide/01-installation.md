@@ -171,6 +171,7 @@ which is read at startup; real environment variables take precedence.
 | `SCHEDULER_INTERVAL_S` | `30` | How often the automation scheduler looks for due runs |
 | `BACKGROUND_PROCESSES` | on | `off` stops this server from running [background execution chains](06-processing.md#execution-chains) (another server runs them) |
 | `PROCESS_JOB_INTERVAL_S` | `10` | How often a server looks for queued background chains (besides being woken by `NOTIFY`) |
+| `GEOCODER_URL`, `GEOCODER_KEY` | *(none)* | A Nominatim-compatible search API for [geocoded address items](05-items.md#display-image-and-geocoded-address), e.g. your own Nominatim; `GEOCODER_KEY` is sent as `key` (LocationIQ). Without it address items are plain text items |
 | `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |
 | `ANTHROPIC_API_KEY` | *(none)* | Default API key of [AI services](03-builder.md#ai-services) with the provider Claude that have no key of their own |
 | `OPENAI_API_KEY` | *(none)* | Default API key of AI services with the provider OpenAI that have no key of their own |

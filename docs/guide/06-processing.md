@@ -274,6 +274,27 @@ a MIME type that doesn't look like one becomes `application/octet-stream`; the r
 sniffed (`nosniff`), is sandboxed by its Content-Security-Policy and isn't cached. At most 1000
 files and 100 MB per download.
 
+#### Data export
+
+With `{"export": "<format>"}` the query returns **rows**, and the download is those rows as one
+file (APEX: `APEX_DATA_EXPORT`): `csv`, `json`, `xml`, `html`, `xlsx` (Excel) or `pdf`.
+
+```json
+{"export": "xlsx", "file_name": "employees-&P43_DEPTNO.", "title": "Employees"}
+```
+
+| Key | Meaning |
+|---|---|
+| `export` | The format |
+| `file_name` | The name without extension, `&ITEM.` substitutions allowed (default: the process name) |
+| `title` | The title of an HTML or PDF file |
+| `layout` | A [report layout](16-files.md#report-layouts) for the PDF (paper, margins, logo) |
+| `separator` | CSV: one character instead of `,` |
+
+Column names are the headings (`hire_date` → *Hire Date*, translated like report headings in Excel
+and PDF). Excel keeps numbers and dates as numbers and dates; Excel and PDF hold at most 100,000
+rows. From SQL, `meta.data_export` makes the same CSV, JSON, XML and HTML ([below](#data-export-from-sql)).
+
 ### Execution chains
 
 A `chain` process runs its **children**: the processes of the page whose `parent_process` is the
@@ -571,6 +592,61 @@ select (select empno from hr.emp where lower(username) = lower(:APP_USER)) as ai
 ```
 
 `&AI_ENAME.` then greets the user on the dashboard.
+
+## Application settings
+
+**Shared Components → Application settings** (APEX: *Application Settings*, `APEX_APP_SETTING`)
+are named values an administrator changes after deployment: a support address, a limit, a switch.
+Each has a name (`SUPPORT_EMAIL`), a value, a description, optionally a list of **valid values**,
+and *Value required*. Application code reads and changes them:
+
+```sql
+select meta.get_app_setting('SUPPORT_EMAIL');
+select meta.set_app_setting('LEAVE_APPROVAL', 'hr');   -- one of its valid values
+```
+
+Both work for the current application only, called as its own database role (application code),
+and raise an error for an unknown name, a value outside the valid values or an empty required one.
+Settings are exported with the application, values included. An import over an installed
+application (CLI, MCP, a working copy merge) keeps the **installed** value of every setting marked
+*Keep the installed value on upgrade* (the default); with the mark off, the file's value wins. When
+the application's build status is *Run only*, its existing settings can still be edited.
+
+## User preferences
+
+Values kept per user and application across sessions (APEX: `APEX_UTIL.GET_PREFERENCE`,
+`SET_PREFERENCE`, `REMOVE_PREFERENCE`):
+
+```sql
+select meta.set_preference('report.rows', '50');        -- the signed-in user
+select meta.get_preference('report.rows');              -- null when there is none
+select meta.remove_preference('report.rows');
+select meta.get_preference('report.rows', 'blake');     -- another user of the application
+```
+
+Names are letters, digits, `_`, `.` and `-` (at most 100); values at most 32,000 bytes; at most 500
+preferences per user. Setting one needs a signed-in user. Items with `{"persist": "user"}` keep their
+values this way ([Keeping values per user](05-items.md#keeping-values-per-user)). Preferences are data of
+the installation: not exported, kept by an import over the application, deleted with it.
+
+## Data export from SQL
+
+`meta.data_export(query, format, options)` (APEX: `APEX_DATA_EXPORT.EXPORT`) returns a query's
+rows as a file (`bytea`): `csv`, `json` (an array of objects), `xml` (`query_to_xml`) or `html` (a
+table). It runs with the **caller's** privileges, so grants and row level security apply as to the
+query itself. Attach the file to a mail, store it, or send it with a download process:
+
+```sql
+select meta.add_mail_attachment(
+         meta.send_mail('boss@example.com', 'Staff', 'Attached.'),
+         meta.data_export('select empno, ename, sal from hr.emp order by ename', 'csv', '{"separator": ";"}'),
+         'staff.csv', 'text/csv');
+```
+
+Options: `separator` (CSV, one character), `header` (`false`: no heading line), `bom` (`false`: no
+UTF-8 byte order mark, which Excel needs to read UTF-8), `title` (HTML). CSV fields are quoted when
+needed, and text that a spreadsheet would run as a formula (`=`, `+`, `-`, `@`) gets a leading
+apostrophe, as in report downloads. Excel and PDF come from the [download process](#data-export).
 
 ## Automations
 

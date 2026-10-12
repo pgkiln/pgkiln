@@ -188,6 +188,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['search_configs', 'shared/search-configurations', 'search_config'],
   // (081) e-mail templates
   ['email_templates', 'shared/email-templates', 'email_template'],
+  // (086) application settings
+  ['app_settings', 'shared/app-settings', 'app_setting'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
@@ -206,6 +208,8 @@ const PAGE_PARTS: [section: string, dir: string, table: string, key: (r: any) =>
 const SINGLE: [section: string, path: string, sort: string[]][] = [
   ['group_roles', 'shared/group-roles.json', ['group_name', 'role']],
   ['text_messages', 'globalization/text-messages.json', ['name', 'language']],
+  // (086) dynamic translations (meta.lang)
+  ['dynamic_translations', 'globalization/dynamic-translations.json', ['language', 'source']],
 ];
 
 const ACTIONS_DIR = 'shared/automation-actions';

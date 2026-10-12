@@ -11,6 +11,7 @@ import { restSql } from './rest-sources.ts';
 import { markdownHtml, sanitizeHtml } from '../richtext.ts';
 import { qrSvg, type Ecc } from '../qrcode.ts';
 import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
+import { addressControl, imageControl } from './data-items.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -230,6 +231,8 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     control = await fileControl(ctx, item, editable, aria);
   } else if (item.type === 'qrcode') {
     control = qrControl(ctx, item, value);
+  } else if (item.type === 'image') {
+    control = imageControl(ctx, item, value);
   } else if (!editable && (item.type === 'richtext' || item.type === 'markdown')) {
     // rebuilt from the allow-list every time: the value may come from the table, not from this form
     control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value)) || ' ')}</div>`;
@@ -372,6 +375,9 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         </div>`;
         break;
       }
+      case 'address':
+        control = addressControl(ctx, item, value, aria);
+        break;
       case 'location':
         // "lat,lng"; app.js fills it from the device (geolocation) with the button
         control = html`<div class="input-with-button"><input type="text" id="${id}" name="${id}" value="${value}" inputmode="decimal" placeholder="52.01160,4.35710"${aria}>

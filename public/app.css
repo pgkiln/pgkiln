@@ -1419,6 +1419,12 @@ td.tc-cell { overflow-wrap: anywhere; }
 
 .qr { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding: 0.3rem 0; }
 .qr-code { max-width: 100%; height: auto; border-radius: 4px; }
+/* (086) display image and address items */
+.display-image { padding: 0.3rem 0; }
+.display-image img { max-width: 100%; height: auto; border-radius: 4px; }
+.geocode-places { list-style: none; margin: 0.3rem 0 0; padding: 0.3rem 0; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.geocode-places li { padding: 0.15rem 0.6rem; }
+.geocode-places .link-button { text-align: start; }
 
 /* ---------- lists (list regions, navigation bar) ---------- */
 .list-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.1rem; }

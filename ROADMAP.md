@@ -6,8 +6,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.34.0 (October 2026): every dynamic action event and action, Ajax callbacks, an error handling function, a session timeout warning; 0.33.2: test a mail service before saving it; 0.33.1: a friendlier Mail services screen; 0.33.0: checked imports, application backups, availability and Run only, feedback; 0.32.0: e-mail, the search and URL regions, the developer toolbar.
-- **APEX parity:** 140 features compared: 126 available, 5 partial, 6 not yet, 3 deliberately
+- **Current release:** 0.35.0 (October 2026): application settings, user preferences, dynamic translations, data export from SQL, display image and geocoded address items; 0.34.0: every dynamic action event and action, Ajax callbacks, an error handling function, a session timeout warning; 0.33.2: test a mail service before saving it; 0.33.1: a friendlier Mail services screen; 0.33.0: checked imports, application backups, availability and Run only, feedback; 0.32.0: e-mail, the search and URL regions, the developer toolbar.
+- **APEX parity:** 140 features compared: 130 available, 5 partial, 2 not yet, 3 deliberately
   not planned (collections, JSON duality views and database links: PostgreSQL covers them).
 
 ## Next
@@ -18,10 +18,10 @@ Partial features first, then the missing ones, roughly in this order:
    wizard, …), and multi-tenant workspaces.
 2. ~~**Page behaviour**~~: done in sprint 52 (every dynamic action event and action, Ajax callbacks,
    an error handling function, the session timeout warning).
-3. **Reports and data:** interactive grid views (single row, chart, group by), display image and
-   geocoded address items, data export from SQL (CSV, XLSX, PDF, JSON).
-4. **Users and apps:** user preferences and application settings, dynamic translations of data
-   values, page groups.
+3. **Reports and data:** interactive grid views (single row, chart, group by); ~~display image and
+   geocoded address items, data export from SQL~~ (done in sprint 53).
+4. **Users and apps:** page groups; ~~user preferences and application settings, dynamic
+   translations of data values~~ (done in sprint 53).
 5. **Developer tools:** Quick Edit from the developer toolbar, the Page Designer's help pane for the
    selected property; schema comparison and DDL generation in the SQL Workshop.
 6. **Languages:** more built-in runtime languages (22 today), once the rows above are done.

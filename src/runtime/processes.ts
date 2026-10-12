@@ -3,6 +3,7 @@ import { applyBinds } from '../binds.ts';
 import { esc } from '../html.ts';
 import type { Process } from '../metadata.ts';
 import { bindValues, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
+import { exportDownload, exportProblems, type ExportConfig } from './data-export.ts';
 
 // Declarative page processes of migration 039: download (a file from a
 // query), workflow (start / terminate / retry) and the configuration checks
@@ -19,7 +20,7 @@ export interface Download {
   inline: boolean;
 }
 
-interface DownloadConfig {
+interface DownloadConfig extends ExportConfig {
   content_column?: string;
   filename_column?: string;
   mime_column?: string;
@@ -61,6 +62,8 @@ export function downloadProblems(conf: unknown): string[] {
     if (c[k] !== undefined && !(typeof c[k] === 'string' && COLUMN.test(c[k] as string))) out.push(`"${k}" is a column name of the query.`);
   if (c.zip_name !== undefined && typeof c.zip_name !== 'string') out.push('"zip_name" is a file name.');
   if (c.disposition !== undefined && !['attachment', 'inline'].includes(c.disposition as string)) out.push('"disposition" is attachment or inline.');
+  // (086) the rows as a file
+  out.push(...exportProblems(c));
   return out;
 }
 
@@ -79,6 +82,8 @@ export async function downloadFile(ctx: PageContext, p: Process): Promise<Downlo
   const conf = (p.config ?? {}) as DownloadConfig;
   const problems = downloadProblems(conf);
   if (problems.length) throw new Error(`Process "${p.name}": ${problems.join(' ')}`);
+  // (086) {"export": "xlsx"}: the query's rows as a file, not a file from the query
+  if (conf.export) return exportDownload(ctx, p, conf);
   const sql = stripSemicolon(applyBinds(p.code ?? '', bindValues(ctx)));
   if (!sql) throw new Error(`Process "${p.name}" needs a query in its code.`);
   const c = ctx.client!;

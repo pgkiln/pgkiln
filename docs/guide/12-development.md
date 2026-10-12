@@ -68,6 +68,7 @@ src/
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here)
   maptiles.ts              map tile server URL, attribution and CSP origin
+  geocode.ts               the installation's geocoder for address items (GEOCODER_URL, Nominatim search API)
   mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
   yamltext.ts              the text style of the directory export: a strict YAML subset, written and read
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
@@ -156,6 +157,10 @@ src/
     availability.ts        availabilityRefusal(): who may use an application (migration 083); loadContext, the login page
                            and REST modules ask it (PostgREST: meta.api_check)
     feedback.ts            users' feedback page and the navigation bar entry (migration 084)
+    data-items.ts          display image and address items (migration 086): imageUrl (https origins into the CSP's img-src),
+                           GET …/image/:item (a BLOB from the item's query), POST …/geocode/:item, and items kept per user
+                           (loadPreferences / savePreferences through meta.get_preference / set_preference)
+    data-export.ts         the download process's {"export": …}: meta.data_export for csv/json/xml/html, Excel and PDF here
     devbar.ts              developer toolbar and session state viewer (migration 079): the pgkiln_devbar token of a builder
                            session (ensureDevbar/devbarOf), the toolbar markup, the viewer, clear and per-session debug routes
   builder/

@@ -5,6 +5,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-12
+
+Sprint 53: data and settings.
+
+### Added
+- **Application settings** (APEX: `APEX_APP_SETTING`): Shared Components → Application settings, with valid values
+  and *required*; `meta.get_app_setting` and `meta.set_app_setting` from application code. Exported with the
+  application; an import over it keeps the installed values (migration 086).
+- **User preferences** (APEX: `APEX_UTIL.GET/SET/REMOVE_PREFERENCE`): `meta.get_preference`, `meta.set_preference`,
+  `meta.remove_preference`; items with `{"persist": "user"}` keep their value per user across sessions.
+- **Dynamic translations** (APEX: `APEX_LANG.LANG`): Shared Components → Dynamic translations and `meta.lang(text)`
+  for values from tables, e.g. in a list of values.
+- **Data export** (APEX: `APEX_DATA_EXPORT`): `meta.data_export(query, format, options)` returns a query's rows as
+  CSV, JSON, XML or HTML with the caller's privileges; the download process's `{"export": …}` sends them as CSV,
+  JSON, XML, HTML, Excel or PDF.
+- **Display image** items: a picture from an https URL, a path, or a BLOB from a query.
+- **Geocoded address** items: *Check address* asks the installation's geocoder (`GEOCODER_URL`, Nominatim-compatible)
+  and puts the chosen address's position into another item.
+- HR example page 43 *Data and settings*.
+
+### Changed
+- APEX parity: 140 features compared, 130 available, 5 partial, 2 not yet, 3 not planned.
+
 ## [0.34.0] - 2026-10-12
 
 Sprint 52: page behaviour.

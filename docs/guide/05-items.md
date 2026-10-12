@@ -33,6 +33,8 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `combobox` | free text with suggestions from the list of values; several values become tags | **colon-separated** values, e.g. `SQL:Sales` |
 | `daterange` | two date pickers, *From* and *To* | `from:to`, e.g. `2026-01-01:2026-06-30` |
 | `qrcode` | display only: the value as a QR code (SVG drawn on the server) | whatever was set |
+| `image` | display only: a picture from a URL in the value, or a BLOB from a query ([Display image](#display-image-and-geocoded-address)) | a URL, or nothing |
+| `address` | a text field with *Check address*: the installation's geocoder offers matching addresses ([Geocoded address](#display-image-and-geocoded-address)) | the address as text |
 | `plugin` | an [item plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code): a text field its JavaScript enhances; `config`: `{"plugin": "char_counter", "attributes": {"MAX": "140"}}` | text |
 
 Use multi-value items in SQL with `string_to_array`:
@@ -129,6 +131,50 @@ the Markdown is shown as text, and the result passes through the same allow-list
   shows a message instead.
 
 The HR example's page 20 *Reviews* (`examples/hr/hr_20_items.sql`) uses all of them.
+
+## Display image and geocoded address
+
+**Display image** (`image`, APEX: *Display Image*) shows a picture and can't be submitted. Two
+sources:
+
+- **A URL in the item's value** (a computation, a process or a form fetch sets it): an `https://`
+  URL, a path on this server (`/a/hr/static/logo.png`) or a `data:image/png;base64,…` URL. Other
+  schemes (`http:`, `javascript:`, URLs with a user name) show nothing. The page's
+  Content-Security-Policy allows pictures from exactly the `https` origins its image items show
+  when it is rendered.
+- **A BLOB from a query**: `{"sql": "select photo, photo_mime from hr.emp where empno = :P43_EMPNO::int"}`.
+  The first column of the first row is the picture (`bytea`), the second its MIME type (else it is
+  recognised from the bytes: PNG, JPEG, GIF, WebP). The browser loads it from
+  `/a/<alias>/<page>/image/<item>`, which runs the query as the application's role with the
+  session's item values, after the page's authorization and the item's own; it is never cached,
+  sandboxed and at most 20 MB.
+
+`config`: `{"alt": "Photo of &P43_ENAME.", "width": 160, "height": 160}` (the alternative text,
+`&ITEM.` substitutions allowed; it defaults to the label).
+
+**Geocoded address** (`address`, APEX: *Geocoded Address*) is a text field with a *Check address*
+button. The server asks the installation's geocoder for the typed text and shows up to five
+matching addresses; the one chosen replaces the text, and with
+`{"coordinates_item": "P43_LOCATION"}` its position goes into that item as `latitude,longitude`
+(the format of a `location` item, so a map region can show it). `{"country": "nl"}` (or `"nl,be"`)
+limits the search to those countries. The answers come in the user's language.
+
+The geocoder is set per installation with **`GEOCODER_URL`**, any API that speaks Nominatim's
+search (`?q=…&format=jsonv2`): your own [Nominatim](https://nominatim.org), LocationIQ
+(`https://eu1.locationiq.com/v1/search` with `GEOCODER_KEY`) or, within its usage policy (an
+absolute maximum of one request per second, no heavy use), `https://nominatim.openstreetmap.org/search`.
+Each session may ask once a second. Without `GEOCODER_URL` an address item is a plain text item.
+
+The HR example's page 43 *Data and settings* (`examples/hr/hr_53_data_settings.sql`) has both.
+
+## Keeping values per user
+
+`{"persist": "user"}` on any item (APEX: *Maintain session state: Per User*) keeps its value for
+the signed-in user across sessions: when a page shows the item and the session has no value for it
+yet, the user's last value comes back; a submit of the page (also a plain submit, e.g. *submit on
+change*) saves the value the user could change, in the same transaction as the page's processes.
+The value is a [user preference](06-processing.md#user-preferences) named like the item. Public
+pages and applications without sign-in keep nothing.
 
 ## Lists of values
 
