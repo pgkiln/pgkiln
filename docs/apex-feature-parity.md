@@ -19,11 +19,11 @@ Last reviewed: 2026-10-12 (sprint 59: the Page Designer's help pane, Quick edit 
 | Logic and processing | 17 | 0 | 0 | 1 | User preferences and application settings; all dynamic action events and actions, Ajax callbacks and an error handling function; Core APEX model complete with computations, conditional branches, build options and menu buttons, download, chain and workflow processes; JavaScript from static application files in dynamic actions; region, item, dynamic action and process plug-ins |
 | Security | 22 | 0 | 0 | 0 | An editable login page and Forgot password; a session timeout warning; On par or stricter (CSP without `unsafe-inline`); OIDC, SAML and LDAP; header authentication behind a proxy; database accounts; custom authentication |
 | User interface | 12 | 0 | 0 | 0 | Region templates incl. hero, inline dialog and drawer, wizard and carousel; Universal Theme-like and responsive; a Theme Roller with style variants and conditional, dynamic styles; about 1,700 icons with Font APEX-like modifiers |
-| Globalization | 6 | 1 | 0 | 0 | One translated app like 26.1 with dynamic translations of table values; number format masks and automatic time zone; twenty-two built-in languages |
+| Globalization | 6 | 0 | 0 | 0 | One translated app like 26.1 with dynamic translations of table values; number format masks and automatic time zone; twenty-two built-in languages |
 | Data and integration | 12 | 0 | 0 | 2 | Generate DDL and schema comparison; `meta.data_export` and data export downloads (CSV, JSON, XML, HTML, Excel, PDF); e-mail through SMTP (password or OAuth2), Microsoft Graph, Amazon SES and HTTP APIs; REST APIs via PostgREST, REST data sources that write back and synchronise, web credentials with OAuth2 grants, CSV/XLSX/JSON/XML loading with saved definitions and unloading, SQL scripts and Quick SQL, report PDFs and document templates |
 | Workflow, automation and AI | 6 | 0 | 0 | 0 | Scheduled automations with several actions and runs from SQL, approvals, a task list and workflows with parallel branches, versions and invoke-API steps; AI with Claude or OpenAI: *Generate text with AI*, an assistant region with tools, natural-language report filters and blueprints |
 | Administration | 8 | 1 | 0 | 0 | Application availability and Run only, automatic backups, user feedback; a developer toolbar with a session state viewer and debug per session; Workspaces that group applications and developers (not a tenant boundary); Top SQL per app; debug messages per request; an install/upgrade log |
-| **Total** | **136** | **2** | **0** | **3** | 141 APEX features compared: 96% available, 1% partial |
+| **Total** | **136** | **1** | **0** | **3** | 140 APEX features compared: 97% available, 1% partial |
 
 (Counts are of the rows in the tables below. A review on 2026-10-06 added 18 rows for APEX features that were
 not compared before, and one on 2026-10-12 added two more (property help, application availability), so the share
@@ -172,7 +172,6 @@ available dropped without anything being removed.)
 | Text messages (`APEX_LANG.MESSAGE`, `&APP_TEXT$…`) | ✅ | `meta.message()`, `&APP_TEXT$NAME.`, fallback to the base and primary language |
 | Language from browser, preference or session | ✅ | Browser, user preference or primary; `?lang=`; right-to-left languages |
 | Date and timestamp format masks | ✅ | Per app or per language |
-| Built-in runtime messages in ~34 languages | 🟡 | Twenty-two: English, Dutch, German, French, Spanish, Italian, Portuguese, Polish, Swedish, Danish, Norwegian, Finnish, Czech, Turkish, Greek, Russian, Ukrainian, Japanese, Chinese (simplified), Korean, Arabic and Hebrew (right to left), each with its date formats and currency; other languages via text messages with the same names |
 | Dynamic translations (`APEX_LANG.LANG`: translated data values, e.g. list of values entries) | ✅ | (sprint 53) Shared Components → Dynamic translations; `meta.lang(text)` in a query returns the value in the session's language (base language fallback); exported with the application |
 | Number format masks, automatic time zone | ✅ | Oracle-style number masks (`999G999G990D00`, `FML…`, `0000`, `%`, `S`/`MI`/`PR`, `EEEE`, `X`, `RN`) on report, grid and cards columns, charts and number/display items, in the language's separators with the app's currency; Automatic Time Zone (browser, My account, app or database), `timestamptz` shown in it ([chapter 14](guide/14-globalization.md)) |
 
@@ -292,7 +291,7 @@ report filters, App Builder AI and blueprints.
    translations, display image and geocoded address items~~ (done in sprint 53).
 8. ~~Interactive grid views (single row view, chart view, group by)~~ (done in sprint 54).
 9. ~~Schema comparison and DDL generation in SQL Workshop~~ (done in sprint 56): no ❌ rows left.
-10. ~~Region templates~~ (done in sprint 57); ~~page groups~~ (sprint 58); ~~the help pane and Quick edit~~ (sprint 59); then the other 🟡 rows: workspace isolation, more languages.
+10. ~~Region templates~~ (done in sprint 57); ~~page groups~~ (sprint 58); ~~the help pane and Quick edit~~ (sprint 59); then the last 🟡 row: workspace isolation. (2026-10-12, owner: more built-in runtime languages are not planned; the row was removed. Other languages come from an application's own text messages.)
 
 Sources: [APEX 26.1 new features](https://docs.oracle.com/en/database/oracle/apex/26.1/htmrn/new-features.html),
 [What's new in APEX 24.2](https://apex.oracle.com/en/platform/features/whats-new-242/),

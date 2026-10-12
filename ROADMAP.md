@@ -6,8 +6,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.35.0 (October 2026): application settings, user preferences, dynamic translations, data export from SQL, display image and geocoded address items; 0.34.0: every dynamic action event and action, Ajax callbacks, an error handling function, a session timeout warning; 0.33.2: test a mail service before saving it; 0.33.1: a friendlier Mail services screen; 0.33.0: checked imports, application backups, availability and Run only, feedback; 0.32.0: e-mail, the search and URL regions, the developer toolbar.
-- **APEX parity:** 141 features compared: 136 available, 2 partial, none missing, 3 deliberately
+- **Current release:** 0.36.0 (October 2026): interactive grid views (single row, group by, chart), an editable login page and Forgot password, Generate DDL and Schema Comparison, more region templates (hero, inline dialog and drawer, wizard, carousel), page groups, Quick edit and the Page Designer's help pane; 0.35.0: application settings, user preferences, dynamic translations, data export from SQL, display image and geocoded address items; 0.34.0: every dynamic action event and action, Ajax callbacks, an error handling function, a session timeout warning; 0.33.2: test a mail service before saving it; 0.33.1: a friendlier Mail services screen; 0.33.0: checked imports, application backups, availability and Run only, feedback; 0.32.0: e-mail, the search and URL regions, the developer toolbar.
+- **APEX parity:** 140 features compared: 136 available, 1 partial, none missing, 3 deliberately
   not planned (collections, JSON duality views and database links: PostgreSQL covers them).
 
 ## Next
@@ -23,7 +23,6 @@ Partial features first, then the missing ones, roughly in this order:
    translations of data values~~ (done in sprint 53).
 5. **Developer tools:** ~~Quick Edit from the developer toolbar, the Page Designer's help pane for the
    selected property~~ (done in sprint 59); ~~schema comparison and DDL generation in the SQL Workshop~~ (done in sprint 56).
-6. **Languages:** more built-in runtime languages (22 today), once the rows above are done.
 
 Priorities can change with what users need: open an
 [issue](https://github.com/pgkiln/pgkiln/issues) for a feature you miss, or see
