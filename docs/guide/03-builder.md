@@ -772,9 +772,10 @@ source, tokens, duration, status). Prompts and answers are not logged.
 ## Mail services
 
 Workspace utilities → **Mail services** (administrators): how the applications of this
-installation send [e-mail](06-processing.md#sending-e-mail). A service has a provider (SMTP with a
-password or OAuth2, Microsoft 365 through Graph, Amazon SES, Resend, Postmark, SendGrid, Mailgun, or
-*log only*), the provider's settings, a secret (password, client secret, API key or secret access
+installation send [e-mail](06-processing.md#sending-e-mail). **Add service** first asks for the
+provider (SMTP with a password or OAuth2, Microsoft 365 through Graph, Amazon SES, Resend, Postmark,
+SendGrid, Mailgun, or *log only*), then shows that provider's settings only; on a service's page,
+*Provider → Change* switches it. A service has the provider's settings, a secret (password, client secret, API key or secret access
 key: stored encrypted with `PGKILN_SECRET_KEY`, never shown again, never exported), the **allowed
 senders** (addresses, or `@domain`) and a default From address. On a service's page:
 

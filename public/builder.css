@@ -759,3 +759,12 @@ button.is-busy { opacity: 0.7; cursor: progress; }
 .icon-choice .icon { width: 20px; height: 20px; }
 .icon-none { font-size: 18px; line-height: 20px; color: var(--muted); }
 .icon-name { font-size: 10.5px; color: var(--muted); overflow-wrap: anywhere; line-height: 1.2; }
+
+/* Mail services: one provider's settings in groups, at a readable width */
+.mail-form-page { max-width: 960px; }
+.mail-service-form .prop-group { margin: 0 0 16px; }
+details.prop-group-more { border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; margin: 0 0 16px; }
+details.prop-group-more > summary { cursor: pointer; font-weight: 600; }
+details.prop-group-more[open] > summary { margin-bottom: 8px; }
+.provider-switch { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-bottom: 16px; }
+.provider-switch .field { margin: 0; min-width: min(100%, 280px); }
