@@ -7102,3 +7102,26 @@ describe('sprint 55 login page and forgot password', () => {
     }
   });
 });
+
+describe('sprint 56 generate DDL and schema comparison', () => {
+  test('only developers; only schemas from the list (not meta, not a made-up name); nothing is run', async () => {
+    // an application user can't open the builder pages
+    const king = await as('king');
+    for (const url of ['/builder/sql/ddl?schema=hr', '/builder/sql/compare?source=hr&target=public'])
+      assert.notEqual((await king.get(url)).statusCode, 200, url);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const before = (await owner.one(`select count(*)::int as n from pg_namespace`)).n;
+    for (const bad of ['meta', 'pg_catalog', 'hr; drop schema hr cascade', 'hr"; select 1; --', 'nope']) {
+      const r = await dev.get(`/builder/sql/ddl?schema=${encodeURIComponent(bad)}`);
+      assert.equal(r.statusCode, 200, bad);
+      assert.doesNotMatch(r.body, /<textarea[^>]*aria-label="DDL of/, `${bad}: not generated`);
+      const c = await dev.get(`/builder/sql/compare?source=hr&target=${encodeURIComponent(bad)}`);
+      assert.doesNotMatch(c.body, /Change script/, `${bad}: not compared`);
+    }
+    assert.equal((await owner.one(`select count(*)::int as n from pg_namespace`)).n, before);
+    // the meta schema (pgkiln's own, with password hashes) is never read
+    assert.doesNotMatch((await dev.get('/builder/sql/ddl')).body, /<option value="meta">/);
+  });
+});

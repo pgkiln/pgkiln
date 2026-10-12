@@ -676,6 +676,11 @@ details.support-script pre.source { margin-top: 0.4rem; white-space: pre-wrap; o
 
 /* (sprint 34) working copies: differences and conflicts */
 pre.diff { max-height: 32rem; overflow: auto; background: var(--code-bg); padding: 0.6rem; font-size: 0.82rem; white-space: pre; }
+pre.diff .diff-add { color: var(--success, #1a7f37); }
+pre.diff .diff-del { color: var(--danger, #cf222e); }
+/* (sprint 56) SQL Workshop → Schema Comparison */
+.compare-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.35rem; }
+.compare-list summary { cursor: pointer; overflow-wrap: anywhere; }
 tr.row-conflict > td:first-child { border-left: 3px solid var(--warn); }
 .badge.badge-warn { background: var(--warning-soft); color: var(--text); }
 .publish-buttons .btn { white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: left; }

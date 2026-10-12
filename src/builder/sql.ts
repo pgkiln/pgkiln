@@ -10,6 +10,7 @@ import { scriptRoutes } from './scripts.ts';
 import { quickSqlRoutes } from './quicksql.ts';
 import { queryBuilderRoutes } from './querybuilder.ts';
 import { unloadRoutes } from './unload.ts';
+import { ddlToolRoutes } from './ddl-tools.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection).
 
@@ -20,6 +21,8 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(queryBuilderRoutes);
   // Unload Data (sprint 32)
   await app.register(unloadRoutes);
+  // Generate DDL and Schema Comparison (sprint 56)
+  await app.register(ddlToolRoutes);
   // ---------------------------------------------------------------- SQL workshop
   const resultTable = (res: pg.QueryResult<any[]>, limit = 500) => {
     const rows = (res.rows ?? []).slice(0, limit);

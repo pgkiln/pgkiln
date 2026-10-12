@@ -73,7 +73,7 @@ describe('pgkiln mcp: protocol', () => {
   test('tools/list: every tool has a schema, and only export and import may write', async () => {
     const { tools } = (await rpc('tools/list')).result;
     const names = tools.map((t: any) => t.name);
-    for (const n of ['list_apps', 'app_overview', 'get_page', 'read_app_files', 'export_app', 'diff_app', 'import_app', 'describe_schema', 'run_query', 'search_docs', 'recent_errors'])
+    for (const n of ['list_apps', 'app_overview', 'get_page', 'read_app_files', 'export_app', 'diff_app', 'import_app', 'describe_schema', 'generate_ddl', 'compare_schemas', 'run_query', 'search_docs', 'recent_errors'])
       assert.ok(names.includes(n), n);
     for (const t of tools) {
       assert.equal(t.inputSchema.type, 'object', t.name);
@@ -110,6 +110,11 @@ describe('pgkiln mcp: reading an application', () => {
     assert.match(await call('read_app_files', { alias: 'hr', prefix: 'shared/lovs/' }), /=== shared\/lovs\//);
     assert.match(await call('read_app_files', { alias: 'hr', paths: ['navigation.yaml'] }), /=== navigation\.yaml/);
     await assert.rejects(call('read_app_files', { alias: 'hr', paths: ['nope.yaml'] }), /no such file/);
+  });
+
+  test('generate_ddl and compare_schemas read the catalog only', async () => {
+    assert.match(await call('generate_ddl', { schema: 'hr' }), /create table emp \(/);
+    assert.match(await call('compare_schemas', { source: 'hr', target: 'hr' }), /The schemas are the same/);
   });
 
   test('describe_schema lists objects and describes a table with its policies', async () => {

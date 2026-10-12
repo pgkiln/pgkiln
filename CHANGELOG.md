@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprints 54 and 55: interactive grid views; the login page and "Forgot password?".
+Sprints 54 to 56: interactive grid views; the login page and "Forgot password?"; Generate DDL and Schema Comparison.
 
 ### Added
 - **Interactive grid views** (APEX: Single Row View, Group By, Chart): the **single row view** shows one row of the
@@ -21,6 +21,12 @@ Sprints 54 and 55: interactive grid views; the login page and "Forgot password?"
   link valid for 30 minutes, mailed in the user's language; the answer is the same whether or not an account
   exists; limited per address and account; setting the new password ends the account's sessions.
 - The Advisor reports a login page that is missing, requires authentication or has no Login region.
+- **Generate DDL** and **Schema Comparison** (APEX: SQL Workshop → Utilities): SQL Workshop → *DDL* writes a schema's
+  objects from the catalog in an order that runs (types, sequences, tables, functions, views, constraints, indexes,
+  triggers, row level security, comments, grants), unqualified so the script also creates them in another schema;
+  *Compare* lists the differences between two schemas with a diff and writes a change script that makes the target
+  like the source (drops commented out for review). Also `pgkiln ddl`, `pgkiln compare` and the MCP tools
+  `generate_ddl` and `compare_schemas`.
 
 ### Fixed
 - Pages could keep an old `app.css`, `app.js` or icon sprite from a PWA's service worker cache after pgkiln's
@@ -30,8 +36,9 @@ Sprints 54 and 55: interactive grid views; the login page and "Forgot password?"
   the handler no longer returns before the sign-in page is sent.
 
 ### Changed
+- The code editor's line numbers have enough contrast (WCAG AA) in light and dark mode.
 - After **Save**, a grid comes back with its search, page, sort and view instead of the page's defaults.
-- APEX parity: 141 features compared, 132 available, 5 partial, 1 not yet, 3 not planned.
+- APEX parity: 141 features compared, 133 available, 5 partial, none missing, 3 not planned.
 
 ## [0.35.0] - 2026-10-12
 
