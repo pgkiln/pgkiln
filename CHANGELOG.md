@@ -5,6 +5,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 55: the login page and "Forgot password?".
+
+### Added
+- **An editable login page** (APEX: the login page): *Application settings → Sign-in methods → Create a login page*
+  adds page 9999 with the new **Login** region (the sign-in form) and makes it the application's login page;
+  `/a/<alias>/login` sends visitors there and failed sign-ins come back to it with their message. Add any regions
+  around the form in the Page Designer (migration 087).
+- **Page template *Minimal (no navigation)***: a page without the header and navigation menu.
+- **Forgot password?** for user directory passwords, when the application has an enabled mail service: a single-use
+  link valid for 30 minutes, mailed in the user's language; the answer is the same whether or not an account
+  exists; limited per address and account; setting the new password ends the account's sessions.
+- The Advisor reports a login page that is missing, requires authentication or has no Login region.
+
+### Fixed
+- A refused sign-in (throttled, an expired form, a sign-in method that is off) could answer with an empty page:
+  the handler no longer returns before the sign-in page is sent.
+
+### Changed
+- APEX parity: 141 features compared, 131 available, 5 partial, 2 not yet, 3 not planned.
+
 ## [0.35.0] - 2026-10-12
 
 Sprint 53: data and settings.

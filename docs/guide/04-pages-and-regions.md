@@ -33,6 +33,13 @@ JavaScript, like APEX's `apex.page.isChanged()`); without JavaScript there is no
 - The create page wizards switch it on for the form pages they make; existing pages have it off
   until you switch it on.
 
+### Minimal pages
+
+Page template **Minimal (no navigation)** (Page Designer → Page → Appearance; APEX: the page
+template of the same name) shows the page without the header, the navigation menu and the
+navigation bar: the title and the regions only, centred. The application's
+[login page](08-security.md#the-login-page) uses it and gets the sign-in page's backdrop.
+
 ### Dialogs and drawers
 
 A modal page (Page Designer → Page → Appearance: *Page mode* Modal dialog) opens over the page that linked to it.
@@ -134,6 +141,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
 | [`search`](#search-search-region) | One search field over several sources (search configurations), results grouped per source |
 | [`url`](#url-url-region) | Another site's page (or a page of this server) in a sandboxed frame |
+| `login` | The sign-in form of the application's own login page (no attributes): identity providers, user name and password, *Keep me signed in*, *Forgot password?*; see [chapter 8](08-security.md#the-login-page) |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
 

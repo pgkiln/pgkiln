@@ -97,7 +97,9 @@ in to a second app is then silent via the identity provider's session. See
 Active Directory** passwords work the same way (groups → roles), and *Keep me signed in* matches
 APEX's persistent authentication. **Database accounts** sign in with PostgreSQL login roles, and
 **custom authentication** calls your own PL/pgSQL function (APEX: a custom PL/SQL scheme), see
-[chapter 8](08-security.md#custom-authentication-a-plpgsql-function).
+[chapter 8](08-security.md#custom-authentication-a-plpgsql-function). The **login page** (APEX: page 9999 with
+the Login region template) is a page you design in the Page Designer around a **Login** region, and
+**Forgot password?** is built in (APEX apps build their own), see [chapter 8](08-security.md#the-login-page).
 
 ## ORDS and PostgREST
 

@@ -43,6 +43,8 @@ import { renderDocument } from './documents.ts';
 import { pwaHead } from './pwa.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
+import { LOGIN_ERROR, LOGIN_USER, safeNext, signInForm } from './signin.ts';
+import { passwordResetRoutes } from './password-reset.ts';
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 import { availabilityRefusal } from './availability.ts';
 import { feedbackRoutes } from './feedback.ts';
@@ -85,8 +87,7 @@ export async function appWithLocale(req: FastifyRequest, alias: string, session?
   return { app, locale };
 }
 
-export const safeNext = (app: App, next: string | undefined) =>
-  next && next.startsWith(`/a/${app.alias}/`) && !/[\\\r\n]/.test(next) && !next.includes('//') ? next : `/a/${app.alias}/${app.home_page}`;
+export { safeNext };
 
 /**
  * Finish a successful sign-in (password or SSO): replace the session (no
@@ -603,6 +604,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- file downloads
   fileRoutes(app, loadContext, txContext, forbidden);
+  // (087) "Forgot password?"
+  passwordResetRoutes(app);
   // (079) the developer toolbar's session state viewer and actions
   devbarRoutes(app, loadContext);
   // (084) users' feedback
@@ -1035,34 +1038,13 @@ export async function runtimeRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- login / logout
   const loginPage = async (app: App, locale: Locale, session: Session, next: string, error?: string) => {
     const t = locale.t;
-    // database accounts and custom authentication: the user name and password form only
-    const dbAuth = app.authentication === 'database' || app.authentication === 'custom';
-    if (dbAuth) app = { ...app, local_login: true, remember_me_days: null };
-    const providers = dbAuth ? [] : await enabledProviders(app.sso_providers ?? []);
     const nextQs = next ? `?next=${encodeURIComponent(next)}` : '';
     return documentShell(
       `${t('login.title')} · ${app.name}`,
       html`<main class="login">
         <div class="card login-card">
           <h1>${app.name}</h1>
-          ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
-          ${((f) => (f ? html`<div class="alert alert-success" role="status">${f}</div>` : ''))(takeFlash(session))}
-          ${providers.length
-            ? html`<div class="sso-buttons">${providers.map(
-                (pr) => html`<a class="btn${app.local_login ? '' : ' btn-hot'}" href="/a/${app.alias}/sso/${pr.name}${nextQs}">${t('login.with', { provider: pr.display_name })}</a>`,
-              )}</div>${app.local_login ? html`<div class="or" role="separator"><span>${t('login.or')}</span></div>` : ''}`
-            : ''}
-          ${app.local_login
-            ? html`<form method="post" class="login-form">
-                <input type="hidden" name="__csrf" value="${session.csrf_token}">
-                <input type="hidden" name="next" value="${next}">
-                ${app.time_zone_auto ? html`<input type="hidden" name="__tz" value="">` : ''}
-                <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" autocomplete="username" autofocus required maxlength="100"></div>
-                <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"></div>
-                ${app.remember_me_days ? html`<label class="check"><input type="checkbox" name="remember" value="true"> ${t('login.remember', { days: app.remember_me_days })}</label>` : ''}
-                <button class="btn btn-hot">${t('login.submit')}</button>
-              </form>`
-            : providers.length ? '' : html`<p>${t('login.none')}</p>`}
+          ${await signInForm(app, locale, session, next, { error })}
           ${languagePicker(app, locale, `/a/${app.alias}/login${nextQs}`)}
         </div>
       </main>`,
@@ -1100,6 +1082,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
     );
   };
 
+  /** (087) The application's own login page: a page that exists and needs no sign-in, else null (the built-in page). */
+  const ownLoginPage = (a: App) => {
+    const p = a.login_page ? a.pages.find((x) => x.page_no === a.login_page) : undefined;
+    return p && !p.requires_auth && a.authentication !== 'header' ? p.page_no : null;
+  };
+
   /** Common start of the sign-in POST handlers: app, session, CSRF, throttling. */
   const loginRequest = async (req: Req, reply: FastifyReply) => {
     const loaded = await appWithLocale(req, req.params.alias);
@@ -1108,20 +1096,30 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
     const { username = '', next } = req.body ?? {};
     const ip = clientIp(req);
-    const fail = async (msg: string, code = 401) => reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
-    if (req.body?.__csrf !== session.csrf_token) return fail(locale.t('login.expired_session'), 403), null;
+    const fail = async (msg: string, code = 401) => {
+      // (087) the application's own login page: back there with the message and user name, shown once
+      const own = ownLoginPage(a);
+      if (own) {
+        session.state[LOGIN_ERROR] = msg;
+        session.state[LOGIN_USER] = username.slice(0, 100);
+        await saveState(session);
+        return reply.redirect(`/a/${a.alias}/${own}${next ? `?next=${encodeURIComponent(safeNext(a, next))}` : ''}`, 303);
+      }
+      return reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
+    };
+    if (req.body?.__csrf !== session.csrf_token) return (await fail(locale.t('login.expired_session'), 403), null);
     // automatic time zone: app.js filled in the browser's (signIn() keeps it for the new session)
     if (a.time_zone_auto) {
       const zone = await validTimeZone(req.body?.__tz);
       if (zone) session.state.__TZ = zone;
     }
-    if (a.authentication === 'header') return fail(locale.t('login.method_unavailable'), 403), null;
-    if (!a.local_login && a.authentication !== 'database' && a.authentication !== 'custom') return fail(locale.t('login.password_disabled'), 403), null;
+    if (a.authentication === 'header') return (await fail(locale.t('login.method_unavailable'), 403), null);
+    if (!a.local_login && a.authentication !== 'database' && a.authentication !== 'custom') return (await fail(locale.t('login.password_disabled'), 403), null);
     // a NUL byte can't be a user name (and PostgreSQL text refuses it)
-    if (username.includes('\0')) return fail(locale.t('login.invalid'), 400), null;
+    if (username.includes('\0')) return (await fail(locale.t('login.invalid'), 400), null);
     if (await loginThrottled(a.id, username, ip)) {
       logActivity({ appId: a.id, username, event: 'login_locked', ip });
-      return fail(locale.t('login.throttled', { minutes: loginWindowMinutes() }), 429), null;
+      return (await fail(locale.t('login.throttled', { minutes: loginWindowMinutes() }), 429), null);
     }
     return { a, locale, session, username: username.slice(0, 100), next, ip, fail };
   };
@@ -1135,6 +1133,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (closed && closed.status === 503) return simplePage(reply, 503, english('app.unavailable_title'), closed.message ?? english(closed.key));
     // header authentication has no sign-in form: the proxy signs the user in on any page
     if (a0.authentication === 'header') return reply.redirect(safeNext(a0, req.query.next));
+    // (087) the application's own login page
+    const own = ownLoginPage(a0);
+    if (own) return reply.redirect(`/a/${a0.alias}/${own}${req.query.next ? `?next=${encodeURIComponent(safeNext(a0, req.query.next))}` : ''}`);
     const session = await getSession(req, reply, a0.id, `/a/${a0.alias}`);
     const { app: a, locale } = (await appWithLocale(req, req.params.alias, session))!;
     const body = await loginPage(a, locale, session, safeNext(a, req.query.next));

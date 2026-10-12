@@ -12,6 +12,7 @@ import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
+import { loginSettingsFields, saveLoginSettings } from './login-page.ts';
 import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
@@ -354,6 +355,7 @@ export async function builderRoutes(app: FastifyInstance) {
               : html`<p class="muted">No LDAP directories configured. <a href="${BASE}/users/directories">Add one</a> to check passwords against LDAP or Active Directory.</p>`}
             <small class="help">LDAP passwords are checked by the username and password form, after local accounts, so keep that method on.</small>
             <div class="form-grid">${input('session_group', 'Session sharing group', a.session_group ?? '', { placeholder: 'empty: not shared', help: 'Applications with the same group (and the user directory as authentication) share a sign-in: after signing in to one, the others open without a new sign-in, each with its own access check and roles; signing out of one signs out of all (APEX: session sharing). Lower case letters, digits and _.' })}</div>
+            ${await loginSettingsFields(a)}
             <div class="form-grid">${input('remember_me_days', '"Keep me signed in" for (days)', a.remember_me_days ?? '', { type: 'number', placeholder: 'empty: not offered', help: 'Offers a checkbox on the sign-in form (APEX: persistent authentication). The browser stays signed in for this many days after the sign-in, also when the session ends; signing out, a new password, deactivation or removed access ends it. 1 to 365.' })}</div>
             ${providers.length
               ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
@@ -484,6 +486,7 @@ export async function builderRoutes(app: FastifyInstance) {
          /^[a-z][a-z0-9_]{0,29}$/.test(b.session_group?.trim().toLowerCase() ?? '') ? b.session_group!.trim().toLowerCase() : null],
       );
       await saveTimeZoneSettings(req.params.id, b);
+      await saveLoginSettings(req.params.id, b);
       flash(s, 'Settings saved.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');

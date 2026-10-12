@@ -99,6 +99,8 @@ src/
   icons.ts                 icon helper (sprite in public/icons.svg)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
+    signin.ts              the sign-in form (built-in page and the login region of an application's own login page), safeNext, passwordResetAvailable
+    password-reset.ts      Forgot password: request (same answer either way), the link (token into the session), the new password
     context.ts             PageContext, dbg()/timed() debug helpers, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it), application processes
@@ -206,6 +208,7 @@ src/
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
+    login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
     top-sql.ts             Top SQL per app role from pg_stat_statements
     diagnostics.ts         Activity → Debug messages (level, list, one request's entries, purge); Workspace utilities →
                            Installation (version, install/upgrade runs, applied and missing migrations; administrators)

@@ -214,6 +214,15 @@ export async function advise(appId: number, tx?: pg.ClientBase): Promise<{ findi
       const problem = await checkSql(c, `select ${cols} from ${row.source_type === 'table' ? row.source.trim() : `(${row.source})`} t`, 'select');
       if (problem) findings.push({ ...problem, entry, field: 'Source' });
     }
+    // (087) the application's login page: a page that needs no sign-in, with a login region
+    if (app.login_page) {
+      const page = await one('select id, requires_auth from meta.page where app_id = $1 and page_no = $2', [appId, app.login_page]);
+      const field = 'Application settings → Login page';
+      if (!page) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} doesn't exist: the built-in sign-in page is shown instead.` });
+      else if (page.requires_auth) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} requires authentication: the built-in sign-in page is shown instead.` });
+      else if (!all.some((x) => x.kind === 'region' && x.row.type === 'login' && Number(x.row.page_no) === Number(app.login_page)))
+        findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} has no Login region: nobody can sign in.` });
+    }
     // the search regions name existing configurations
     for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'search')) {
       const names: unknown[] = Array.isArray(row.config?.configs) ? row.config.configs : [];

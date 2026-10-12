@@ -1006,9 +1006,19 @@ input[type=color] { width: 4rem; min-height: 2.4rem; padding: 0.15rem; }
 /* single sign-on buttons on the login page */
 .sso-buttons { display: flex; flex-direction: column; gap: 0.5rem; }
 .sso-buttons .btn { padding: 0.6rem; }
-.login-card .or { display: flex; align-items: center; gap: 0.75rem; color: var(--muted); font-size: 0.85rem; }
-.login-card .or::before, .login-card .or::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+.login-card .or, .login-region .or { display: flex; align-items: center; gap: 0.75rem; color: var(--muted); font-size: 0.85rem; }
+.login-card .or::before, .login-card .or::after, .login-region .or::before, .login-region .or::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 .login-form { display: flex; flex-direction: column; gap: 1rem; }
+.login-forgot { align-self: center; font-size: 0.9rem; }
+/* (087) minimal pages (no header and navigation) and an application's own login page */
+.t-minimal-main { width: 100%; max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem; }
+.login-body .t-minimal-main { max-width: 420px; padding: 1rem; }
+.login-region { display: flex; flex-direction: column; gap: 1rem; }
+.login-region .btn { padding: 0.6rem; }
+.t-minimal .t-titlebar { background: none; border: 0; padding: 0 0 1rem; }
+.t-minimal .t-content { padding: 0; max-width: none; }
+/* on the sign-in backdrop the title sits on the header colour, like the built-in page's card title */
+.login-body .t-titlebar h1 { color: var(--header-text); text-align: center; }
 
 /* ---------- preferences: theme switch, language picker ---------- */
 .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin-top: 0.35rem; }

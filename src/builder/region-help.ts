@@ -25,6 +25,7 @@ export const REGION_CONFIG_HELP: [string[], string][] = [
   [['report'], '{"ai_filter":{"service":"NAME"}} adds an "Ask in your own words" box (natural-language filters)'],
   [['plugin'], '{"plugin":"name","attributes":{"NAME":"value"}} (a region plug-in; a Source SELECT feeds its template)'],
   [['form'], '{"lost_update":false} saves without checking that the row is unchanged since it was shown'],
+  [['login'], '(no attributes) the sign-in form of the application\'s login page (Application settings → Login page): providers, user name and password, "Keep me signed in", "Forgot password?"'],
   [['url'], '{"height":480,"sandbox":["allow-scripts","allow-forms","allow-popups","allow-same-origin"] (the default; false: no sandbox),"fullscreen":true}'],
   [['search'], '{"configs":["CUSTOMERS","ORDERS"] (Shared Components → Search configurations; empty: all),"item":"P1_SEARCH" (search with this item\'s value instead of a field of its own),"placeholder":"…","min_length":2,"empty":"No results"}'],
 ];
@@ -53,6 +54,7 @@ const ANCHORS: Record<string, string> = {
   plugin: 'plug-ins-with-their-own-code',
   tasks: 'approvals-and-the-task-list',
   workflows: 'workflows',
+  login: 'the-login-page',
 };
 
 /** The help of every type (a region whose type isn't known yet). */
@@ -63,7 +65,7 @@ export function regionConfigHelp(type: string | null | undefined): { text: strin
   if (!type) return { text: ALL_REGION_CONFIG_HELP, url: null };
   const own = REGION_CONFIG_HELP.filter(([types]) => types.includes(type)).map(([, text]) => text);
   const any = REGION_CONFIG_HELP.filter(([types]) => types.includes('*')).map(([, text]) => `any region: ${text}`);
-  const chapter = type === 'tasks' || type === 'workflows' ? 'processing' : 'pages-and-regions';
+  const chapter = type === 'tasks' || type === 'workflows' ? 'processing' : type === 'login' ? 'security' : 'pages-and-regions';
   return {
     text: [...own, ...any].join(' · ') || 'No attributes of its own.',
     url: ANCHORS[type] ? `${GUIDE}/${chapter}#${ANCHORS[type]}` : null,
