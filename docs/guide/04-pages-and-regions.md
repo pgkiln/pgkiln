@@ -69,6 +69,18 @@ Region **templates**:
 | `standard` | A card with a header (title and buttons) and a body |
 | `plain` | No frame and no header: content only (good for KPI cards and intro text) |
 | `collapsible` | A standard card whose body can be collapsed by clicking the header |
+| `hero` | A large banner: an icon (`{"icon": "users"}` in the attributes), the title, the text and the buttons (APEX: Hero) |
+| `title_bar` | The title and buttons on one line over the content, without a card (APEX: Title Bar) |
+| `buttons_container` | The buttons only (after any text), without a header (APEX: Buttons Container) |
+| `inline_dialog` | Hidden until opened, then a dialog over the page with a close button; Esc and a click beside it close it too (APEX: Inline Dialog) |
+| `inline_drawer` | The same, as a panel docked to the right edge (APEX: Inline Drawer) |
+| `wizard` | A narrow, centred card for one step of a wizard; a [list](#list-lists) region with template `wizard_progress` above it shows the steps (APEX: Wizard Container) |
+
+An inline dialog or drawer opens with the dynamic action **Open region** (and closes with **Close
+region**), e.g. on the click of a button with action *Defined by dynamic action*, or with a link to
+`#R<id>` (which also works without JavaScript). Items in it are part of the page: a submit sends
+them along. The carousel is a style of the [display selector](#display_selector-region-display-selector)
+region (`{"style": "carousel"}`). The HR example's page 44 (*Region templates*) shows them all.
 
 Every region also has `seq` (order), `condition` (a SQL boolean expression; the region renders
 only when true) and `authz` (an authorization scheme).
@@ -805,7 +817,8 @@ region display selector. Regions take part through their own attributes:
 
 | Key | Meaning |
 |---|---|
-| `style` | `tabs` (default) or `select` |
+| `style` | `tabs` (default), `select`, or `carousel`: one region at a time with *Previous* and *Next* and a dot per region, without *Show all* (APEX: the Carousel template) |
+| `interval` | A carousel turns to the next region every so many seconds (1 to 120); not while the pointer or the focus is in it, nor for users who prefer reduced motion |
 | `show_all` | `false` hides the *Show all* tab (default: shown) |
 | `remember` | `false`: don't remember the chosen tab for the browser session (default: remembered per page) |
 
@@ -1005,7 +1018,7 @@ Attributes (the region's **Settings** in the page designer):
 | Key | Meaning |
 |---|---|
 | `list` | The list's name (upper case) |
-| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description) or `tabs` (the top-level entries as tabs) |
+| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description), `tabs` (the top-level entries as tabs) or `wizard_progress` (numbered steps: the entry of the current page is the current step, the ones before it are done and link back; APEX: Wizard Progress) |
 
 The HR example's page 31 (Shortcuts) shows a static list with each template (with a badge from an
 item, child entries, a manager-only entry and one of an excluded build option) and a department

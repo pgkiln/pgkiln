@@ -539,7 +539,11 @@ const pgkilnUnsaved = (() => {
       case 'close_region':
         for (const el of targets(da)) {
           const details = el.querySelector(':scope > details');
-          if (details) details.open = da.action === 'open_region';
+          // (088) an inline dialog or drawer region
+          if (el.matches('dialog[data-inline-region]')) {
+            if (da.action === 'open_region' && !el.open) el.showModal();
+            else if (da.action === 'close_region' && el.open) el.close();
+          } else if (details) details.open = da.action === 'open_region';
           else el.hidden = da.action === 'close_region';
         }
         return;
@@ -1545,6 +1549,30 @@ document.addEventListener('input', (e) => {
   if (custom) custom.checked = true;
 });
 
+// (088) Inline dialog and drawer regions: a link to #R<id> opens one as a modal dialog (without
+// JavaScript CSS shows it as the :target), its close button and Esc close it, a click on the
+// backdrop too.
+document.addEventListener('click', (e) => {
+  const close = e.target.closest?.('[data-region-close]');
+  if (close) {
+    e.preventDefault();
+    close.closest('dialog')?.close();
+    return;
+  }
+  const a = e.target.closest?.('a[href^="#R"]');
+  const d = a && document.getElementById(a.getAttribute('href').slice(1));
+  if (d?.matches('dialog[data-inline-region]')) {
+    e.preventDefault();
+    if (!d.open) d.showModal();
+    return;
+  }
+  if (e.target.matches?.('dialog[data-inline-region]')) e.target.close();
+});
+if (location.hash) {
+  const d = document.getElementById(location.hash.slice(1));
+  if (d?.matches('dialog[data-inline-region]')) d.showModal();
+}
+
 // Region display selector: the links to the regions become ARIA tabs (or a
 // select list) that show one tab's regions at a time; "Show all" shows them
 // all. The choice follows #R<id> in the URL and is remembered for the session.
@@ -1618,6 +1646,23 @@ document.querySelectorAll('[data-rds]').forEach((nav) => {
     const tab = byHash(location.hash.slice(1));
     if (tab) show(tab, false);
   });
+  // (088) carousel: Previous and Next, and turning by itself every data-rds-interval seconds
+  if (nav.classList.contains('rds-carousel')) {
+    const step = (n) => {
+      const i = tabs.findIndex((t) => t.classList.contains('is-current'));
+      show(tabs[(i + n + tabs.length) % tabs.length], false);
+    };
+    nav.querySelectorAll('[data-rds-step]').forEach((b) => {
+      b.hidden = false;
+      b.addEventListener('click', () => step(Number(b.dataset.rdsStep)));
+    });
+    const seconds = Number(nav.dataset.rdsInterval) || 0;
+    if (seconds && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const area = [nav, ...panels];
+      const busy = () => area.some((el) => el.matches(':hover') || el.contains(document.activeElement));
+      setInterval(() => { if (!busy() && !document.hidden) step(1); }, seconds * 1000);
+    }
+  }
 });
 
 // Popup list of values: the select (which works without JavaScript) is hidden
