@@ -190,6 +190,7 @@ const NAMED: [section: string, dir: string, table: string][] = [
   ['email_templates', 'shared/email-templates', 'email_template'],
   // (086) application settings
   ['app_settings', 'shared/app-settings', 'app_setting'],
+  ['page_groups', 'shared/page-groups', 'page_group'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */

@@ -448,6 +448,19 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       buildOption(),
     ],
   },
+  page_group: {
+    table: 'meta.page_group',
+    scope: 'app',
+    label: 'Page group',
+    plural: 'Page groups',
+    icon: 'layers',
+    summary: (o) => o.name,
+    defaults: {},
+    fields: [
+      { name: 'name', label: 'Name', kind: 'text', help: 'e.g. Administration. Pages join it in their Page group property; renaming the group renames it on its pages.' },
+      { name: 'description', label: 'Description', kind: 'text', wide: true },
+    ],
+  },
   build_option: {
     table: 'meta.build_option',
     scope: 'app',

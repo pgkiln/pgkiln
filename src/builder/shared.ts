@@ -33,7 +33,7 @@ function listExtras(appId: number, list: any, entries: any[]): Raw {
 
 export async function sharedRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'lov', 'app_item', 'app_process', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config', 'email_template', 'app_setting', 'dynamic_translation'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'page_group', 'lov', 'app_item', 'app_process', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config', 'email_template', 'app_setting', 'dynamic_translation'];
 
   const ORDER: Record<string, string> = {
     search_config: 'seq, name', dynamic_translation: 'language, source',
