@@ -21,6 +21,10 @@ before(async () => {
   base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
   browser = await chromium.launch();
   saved = (await owner.query('select id, starts_at, ends_at from hr.meeting')).rows;
+  // the HR sample's meetings are around the week it was installed: move them to this week (restored afterwards)
+  await owner.query(`update hr.meeting set starts_at = starts_at + x.d, ends_at = ends_at + x.d
+                       from (select date_trunc('week', current_date)::timestamp - date_trunc('week', (select starts_at from hr.meeting where title = 'Team stand-up')) as d) x
+                      where x.d <> interval '0'`);
   close = async () => {
     for (const m of saved) await owner.query('update hr.meeting set starts_at = $2, ends_at = $3 where id = $1', [m.id, m.starts_at, m.ends_at]);
     await owner.query(`delete from hr.meeting where title = 'E2E meeting'`);

@@ -146,7 +146,7 @@ export interface Region {
   pk_column: string | null;
   pk_item: string | null;
   columns: number;
-  template: 'standard' | 'plain' | 'collapsible';
+  template: 'standard' | 'plain' | 'collapsible' | 'hero' | 'title_bar' | 'buttons_container' | 'inline_dialog' | 'inline_drawer' | 'wizard';
   condition: string | null;
   authz: string | null;
   config: Record<string, any>;

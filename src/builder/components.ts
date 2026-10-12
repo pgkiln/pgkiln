@@ -114,7 +114,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'pk_item', label: 'Primary key item (form)', kind: 'upper', group: 'Source' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Layout' },
       { name: 'columns', label: 'Column span (1-12)', kind: 'int', group: 'Layout' },
-      { name: 'template', label: 'Template', kind: 'select', options: ['standard', 'plain', 'collapsible'], group: 'Layout' },
+      { name: 'template', label: 'Template', kind: 'select', options: ['standard', 'plain', 'collapsible', 'hero', 'title_bar', 'buttons_container', 'inline_dialog', 'inline_drawer', 'wizard'], group: 'Layout', help: 'hero: a large banner (title, text, {"icon":"…"} in the attributes, buttons). title_bar: title and buttons on one line. buttons_container: the buttons only. inline_dialog, inline_drawer: hidden until a dynamic action Open region (or a link to #R<id>) opens it over the page. wizard: a narrow card for one step (a list region with template wizard_progress shows the steps).' },
       { name: 'template_options', label: 'Template options', kind: 'options', choices: REGION_OPTIONS, group: 'Appearance',
         help: 'CSS classes from a fixed list, added to the region (APEX: Template Options). "Hide the header" applies to the standard template.' },
       { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'Boolean expression; the region renders only when true.' },

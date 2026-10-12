@@ -36,7 +36,7 @@ export interface ListNode {
   children: ListNode[];
 }
 
-export const LIST_TEMPLATES = ['links', 'badges', 'cards', 'tabs'] as const;
+export const LIST_TEMPLATES = ['links', 'badges', 'cards', 'tabs', 'wizard_progress'] as const;
 export type ListTemplate = (typeof LIST_TEMPLATES)[number];
 /** Most rows a list query may give. */
 export const LIST_MAX_ROWS = 500;
@@ -228,6 +228,16 @@ export async function renderListRegion(ctx: PageContext, r: Region): Promise<Raw
       return html`<ul class="cards list-cards">${flat(nodes).map((n) => html`<li><a ${linkAttrs(n, 'card list-card')}><span class="list-card-head">${icon(n.icon ?? 'chevron')}<h3>${n.label}</h3>${badge(n)}</span>${n.description ? html`<p class="muted">${n.description}</p>` : ''}</a></li>`)}</ul>`;
     case 'tabs':
       return html`<nav class="list-tabs" aria-label="${label}"><ul class="rds-list">${nodes.filter((n) => n.href).map((n) => html`<li><a ${linkAttrs(n, `rds-tab${n.inTrail ? ' is-current' : ''}`)}>${icon(n.icon)}<span>${n.label}</span>${badge(n)}</a></li>`)}</ul></nav>`;
+    case 'wizard_progress': {
+      // (088) the steps of a wizard (APEX: Wizard Progress): the current one (the page in the trail), the ones before it done
+      const steps = flat(nodes);
+      const at = steps.findIndex((n) => n.inTrail);
+      return html`<nav class="wizard-progress" aria-label="${label}"><ol>${steps.map((n, i) => {
+        const state = i === at ? 'current' : at >= 0 && i < at ? 'done' : 'todo';
+        const text = html`<span class="wizard-step-no" aria-hidden="true">${state === 'done' ? icon('check') : i + 1}</span><span class="wizard-step-label">${n.label}</span>`;
+        return html`<li class="wizard-step is-${state}"${state === 'current' ? html` aria-current="step"` : ''}>${state === 'done' && n.href ? html`<a ${linkAttrs(n, '')}>${text}</a>` : text}</li>`;
+      })}</ol></nav>`;
+    }
     default:
       return html`<nav aria-label="${label}">${linksMarkup(nodes)}</nav>`;
   }

@@ -399,6 +399,35 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
       ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
     </section>`;
 
+  // (088) a large banner: an icon, the title, the text and the buttons
+  if (r.template === 'hero') {
+    const heroIcon = typeof r.config?.icon === 'string' ? icon(r.config.icon) : '';
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+      ${heroIcon ? html`<span class="region-hero-icon">${heroIcon}</span>` : ''}
+      <div class="region-hero-text"><h2 id="${titleId}">${r.title}</h2>${body}</div>
+      ${buttons ? html`<div class="region-hero-buttons">${buttons}</div>` : ''}
+    </section>`;
+  }
+  // (088) the title and buttons on one line, without a card
+  if (r.template === 'title_bar')
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+      <div class="region-title-bar"><h2 id="${titleId}">${r.title}</h2>${buttons ? html`<div class="region-title-buttons">${buttons}</div>` : ''}</div>
+      ${body}
+    </section>`;
+  // (088) the buttons (and any text) only
+  if (r.template === 'buttons_container')
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
+      ${body}${buttons ? html`<div class="region-buttons">${buttons}</div>` : ''}
+    </section>`;
+  // (088) hidden until opened: a dynamic action "Open region", or a link to #R<id> (CSS :target without JavaScript)
+  if (r.template === 'inline_dialog' || r.template === 'inline_drawer')
+    return html`<dialog class="${cls}" id="R${r.id}"${staticAttr} aria-labelledby="${titleId}" data-inline-region>
+      <header class="region-header"><h2 id="${titleId}">${r.title}</h2>
+        <a class="region-dialog-close icon-button" href="#" role="button" data-region-close aria-label="${ctx.locale.t('common.dismiss')}">${icon('close')}</a></header>
+      <div class="region-body">${body}</div>
+      ${buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
+    </dialog>`;
+
   const header = html`<h2 id="${titleId}">${r.title}</h2>${buttonsOnTop ? buttons : ''}`;
   if (r.template === 'collapsible')
     return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">

@@ -346,8 +346,10 @@ export function mergeSmartFiltersSettings(config: Config, b: Body, a: Allowed): 
 export function mergeDisplaySelectorSettings(config: Config, b: Body): Config {
   const out = { ...config };
   const set = setter(out);
-  set('style', b.style === 'select' ? 'select' : undefined);
+  set('style', b.style === 'select' || b.style === 'carousel' ? b.style : undefined);
   set('show_all', b.show_all === 'true' ? undefined : false);
+  const interval = Number(b.interval);
+  set('interval', b.style === 'carousel' && Number.isInteger(interval) && interval >= 1 && interval <= 120 ? interval : undefined);
   set('remember', b.remember === 'true' ? undefined : false);
   return out;
 }
@@ -687,7 +689,10 @@ async function displaySelectorFields(r: RegionRow, pageId: number, id: (n: strin
                                      where page_id = $1 and id <> $2 and type <> 'display_selector' order by seq, id`, [pageId, r.id])).rows;
   return html`<fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
       <div class="field"><label class="label" for="${id('style')}">Show as</label>
-        <select id="${id('style')}" name="style">${opt('', 'Tabs', cfg.style)}${opt('select', 'Select list', cfg.style)}</select></div>
+        <select id="${id('style')}" name="style">${opt('', 'Tabs', cfg.style)}${opt('select', 'Select list', cfg.style)}${opt('carousel', 'Carousel (one at a time, Previous and Next)', cfg.style)}</select></div>
+      <div class="field"><label class="label" for="${id('interval')}">Carousel: next region every (seconds)</label>
+        <input id="${id('interval')}" name="interval" type="number" min="1" max="120" value="${cfg.interval ?? ''}" placeholder="empty: only by hand">
+        <small class="help">Not while the pointer or the focus is in the carousel, nor for users who prefer reduced motion. A carousel has no "Show all".</small></div>
     </div>
     ${check('show_all', '"Show all" choice (shows every region)', cfg.show_all !== false)}
     ${check('remember', 'Remember the choice during the session', cfg.remember !== false)}</fieldset>
@@ -776,7 +781,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
           <div class="field"><label class="label" for="${id('list')}">List</label>
             <select id="${id('list')}" name="list">${opt('', '- choose -', cfg.list)}${lists.map((l) => opt(l.name, `${l.name} (${l.type})`, cfg.list))}${cfg.list && !lists.some((l) => l.name === cfg.list) ? opt(cfg.list, `${cfg.list} (missing!)`, cfg.list) : ''}</select></div>
           <div class="field"><label class="label" for="${id('template')}">Template</label>
-            <select id="${id('template')}" name="template">${opt('', 'Links (nested)', cfg.template)}${opt('badges', 'Badge list', cfg.template)}${opt('cards', 'Cards (menu)', cfg.template)}${opt('tabs', 'Tabs', cfg.template)}</select></div>
+            <select id="${id('template')}" name="template">${opt('', 'Links (nested)', cfg.template)}${opt('badges', 'Badge list', cfg.template)}${opt('cards', 'Cards (menu)', cfg.template)}${opt('tabs', 'Tabs', cfg.template)}${opt('wizard_progress', 'Wizard progress (numbered steps)', cfg.template)}</select></div>
         </div></fieldset>`;
       break;
     }

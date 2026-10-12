@@ -28,6 +28,10 @@ before(async () => {
   rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 24 and r.type = 'calendar'`, [appId])).id;
   monday = (await owner.one(`select to_char(date_trunc('week', current_date), 'YYYY-MM-DD') as d`)).d;
   saved = (await owner.query('select id, starts_at, ends_at from hr.meeting')).rows;
+  // the HR sample's meetings are around the week it was installed: move them to this week (restored afterwards)
+  await owner.query(`update hr.meeting set starts_at = starts_at + x.d, ends_at = ends_at + x.d
+                       from (select date_trunc('week', current_date)::timestamp - date_trunc('week', (select starts_at from hr.meeting where title = 'Team stand-up')) as d) x
+                      where x.d <> interval '0'`);
 });
 
 after(async () => {

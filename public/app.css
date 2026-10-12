@@ -254,7 +254,43 @@ details.menu > summary::-webkit-details-marker { display: none; }
 
 /* ---------- regions ---------- */
 .region { min-width: 0; }
-.region-standard, .region-collapsible { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.region-standard, .region-collapsible, .region-wizard, .region-inline_dialog, .region-inline_drawer { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+/* (088) more region templates */
+.region-hero { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem 1.5rem; padding: 2rem 1.75rem; border-radius: var(--radius);
+  background: var(--accent-soft); color: var(--text); }
+.region-hero-icon .icon { width: 3rem; height: 3rem; color: var(--accent); }
+.region-hero-text h2 { font-size: 1.75rem; margin: 0 0 0.35rem; }
+.region-hero-buttons, .region-title-buttons, .region-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (max-width: 640px) { .region-hero { grid-template-columns: 1fr; padding: 1.25rem 1rem; } }
+.region-title-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }
+.region-title-bar h2 { margin: 0; font-size: 1.15rem; }
+.region-buttons_container .region-buttons { justify-content: flex-end; }
+.region-wizard { max-width: 640px; width: 100%; margin-left: auto; margin-right: auto; }
+dialog[data-inline-region] { padding: 0; max-width: min(640px, calc(100vw - 2rem)); width: 100%; color: var(--text); }
+dialog[data-inline-region]::backdrop { background: rgb(0 0 0 / 45%); }
+dialog[data-inline-region] .region-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+dialog.region-inline_drawer { margin: 0 0 0 auto; height: 100vh; max-height: 100vh; max-width: min(480px, 100vw); border-radius: 0; }
+/* without JavaScript: a link to #R<id> shows it */
+dialog[data-inline-region]:target { display: block; position: fixed; inset: 2rem 0 auto; margin: 0 auto; z-index: 1000; }
+dialog.region-inline_drawer:target { inset: 0 0 0 auto; }
+/* (088) carousel (display selector style) and wizard progress (list template) */
+.rds-carousel { display: flex; align-items: center; justify-content: center; gap: 0.75rem; }
+.rds-carousel .rds-list { gap: 0.4rem; }
+.rds-carousel .rds-tab { font-size: 0; width: 0.75rem; height: 0.75rem; padding: 0; border-radius: 50%; background: var(--border); min-height: 0; }
+.rds-carousel .rds-tab.is-current { background: var(--accent); }
+.rds-carousel .rds-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wizard-progress ol { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 0; counter-reset: none; }
+.wizard-step { flex: 1 1 0; min-width: 6rem; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.3rem; position: relative; color: var(--muted); font-size: 0.85rem; }
+.wizard-step::before { content: ""; position: absolute; top: 0.95rem; left: -50%; right: 50%; border-top: 2px solid var(--border); z-index: 0; }
+.wizard-step:first-child::before { display: none; }
+.wizard-step a { color: inherit; text-decoration: none; display: contents; }
+.wizard-step-no { position: relative; z-index: 1; display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); font-weight: 600; }
+.wizard-step-no .icon { width: 1rem; height: 1rem; }
+.wizard-step.is-done, .wizard-step.is-current { color: var(--text); }
+.wizard-step.is-done .wizard-step-no { border-color: var(--accent); color: var(--accent); }
+.wizard-step.is-done::before, .wizard-step.is-current::before { border-top-color: var(--accent); }
+.wizard-step.is-current .wizard-step-no { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
+.wizard-step.is-current .wizard-step-label { font-weight: 600; }
 .region-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 50px; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
 .region-collapsible summary.region-header { cursor: pointer; list-style: none; }
 .region-collapsible summary.region-header::-webkit-details-marker { display: none; }
