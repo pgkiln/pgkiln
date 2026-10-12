@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- APEX parity: the row for built-in runtime messages in ~34 languages is removed (more built-in languages are not
+  planned; the 22 stay, and an application's own text messages cover others): 140 features compared, 136 available,
+  1 partial, none missing, 3 not planned.
+
 Sprints 54 to 59: interactive grid views; the login page and "Forgot password?"; Generate DDL and Schema Comparison; region templates; page groups; Quick edit and the help pane.
 
 ### Added
