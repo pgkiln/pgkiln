@@ -491,6 +491,8 @@ export const tr: Record<MessageKey, string> = {
   'form.saved': "Değişiklikler kaydedildi.",
   'form.no_record': "Kayıt seçilmedi.",
   'form.changed': "Kayıt bulunamadı; başka biri tarafından değiştirilmiş veya silinmiş olabilir.",
+  'region.url_frame': 'Gömülü sayfa',
+  'region.url_open': 'Yeni sekmede aç',
   'page.unsaved_changes': 'Kaydedilmemiş değişiklikleriniz var. Yine de bu sayfadan çıkılsın mı?',
   'form.lost_update': 'Bu kaydı siz açtıktan sonra başka biri değiştirdi. Güncel değerleri görmek için sayfayı yeniden yükleyin ve değişikliklerinizi tekrar yapın.',
   'form.deleted': "Kayıt silindi.",

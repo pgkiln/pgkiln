@@ -469,6 +469,8 @@ export const es: Record<MessageKey, string> = {
   'form.saved': 'Cambios guardados.',
   'form.no_record': 'No hay ningún registro seleccionado.',
   'form.changed': 'Registro no encontrado; es posible que otra persona lo haya modificado o suprimido.',
+  'region.url_frame': 'Página incrustada',
+  'region.url_open': 'Abrir en una pestaña nueva',
   'page.unsaved_changes': 'Tiene cambios sin guardar. ¿Salir de esta página de todos modos?',
   'form.lost_update': 'Otra persona ha modificado este registro después de que usted lo abriera. Vuelva a cargar la página para ver los valores actuales y repita sus cambios.',
   'form.deleted': 'Registro suprimido.',

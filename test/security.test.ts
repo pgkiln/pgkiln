@@ -6408,3 +6408,26 @@ describe('sprint 50 forms lost update', () => {
     assert.notEqual(res.statusCode, 500);
   });
 });
+
+describe('sprint 50 url region', () => {
+  test('an item value is URL-encoded: it can\'t change the framed host, break out of the attribute or reach the CSP', async () => {
+    const page = (await owner.one(`select p.id from meta.page p where p.app_id = $1 and p.page_no = 1`, [appId])).id;
+    const item = (await owner.one(`insert into meta.item (page_id, seq, name, type) values ($1, 999, 'P1_URLTEST', 'hidden') returning id`, [page])).id;
+    const region = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 999, 'Embedded', 'url', 'https://example.org/&P1_URLTEST.') returning id`, [page])).id;
+    try {
+      const king = await as('king');
+      for (const evil of ['@evil.example/x', '../../\\evil.example', '"><script>alert(1)</script>', `x" onload="alert(1)`, '//evil.example', `x'; frame-src *`]) {
+        const res = await king.get(link('king', 1, { P1_URLTEST: evil }));
+        assert.equal(res.statusCode, 200, evil);
+        const src = new RegExp(`id="R${region}"[\\s\\S]*?<iframe class="url-frame [^"]+" src="([^"]*)"`).exec(res.body)?.[1] ?? '';
+        assert.equal(src, `https://example.org/${encodeURIComponent(evil).replace(/'/g, '&#39;')}`, evil);
+        assert.equal(new URL(src.replace(/&#39;/g, "'")).origin, 'https://example.org');
+        assert.doesNotMatch(res.body, /<script>alert/);
+        assert.match(String(res.headers['content-security-policy']), /frame-src 'self' https:\/\/example\.org; frame-ancestors/);
+      }
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [region]);
+      await owner.query('delete from meta.item where id = $1', [item]);
+    }
+  });
+});

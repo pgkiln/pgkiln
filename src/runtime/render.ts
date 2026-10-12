@@ -19,6 +19,7 @@ import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
 import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
+import { frameOrigins } from './url-region.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -323,6 +324,8 @@ export async function renderPage(ctx: PageContext) {
   const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);
   const regions = [];
   for (const r of ctx.page.regions) regions.push(await renderRegion(ctx, r, hidden));
+  // (078) the origins of the page's URL regions (also those a refresh or lazy load shows later)
+  for (const o of frameOrigins(ctx.page.regions.filter((r) => ctx.vis!.regions.has(r.id)))) ctx.frameSrc?.add(o);
   const title = substitute(ctx.page.title ?? ctx.page.name, ctx, (v) => v);
   const crumbs = ctx.dialog ? [] : await breadcrumb(ctx);
   const das = dynamicActionsJson(ctx);

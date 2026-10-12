@@ -491,6 +491,8 @@ export const pt: Record<MessageKey, string> = {
   'form.saved': "Alterações guardadas.",
   'form.no_record': "Nenhum registo selecionado.",
   'form.changed': "Registo não encontrado; pode ter sido alterado ou eliminado por outra pessoa.",
+  'region.url_frame': 'Página incorporada',
+  'region.url_open': 'Abrir num novo separador',
   'page.unsaved_changes': 'Tem alterações não guardadas. Sair desta página mesmo assim?',
   'form.lost_update': 'Outra pessoa alterou este registo depois de o ter aberto. Recarregue a página para ver os valores atuais e volte a fazer as suas alterações.',
   'form.deleted': "Registo eliminado.",

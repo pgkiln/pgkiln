@@ -72,6 +72,8 @@ export interface PageContext {
   background?: boolean;
   /** debug messages of this request, when the app's debug level is on (src/debug.ts) */
   debug?: DebugLog;
+  /** (078) the origins the response may frame (the request's set; security.ts adds them to the CSP) */
+  frameSrc?: Set<string> | null;
   /** (076) per form region: the checksum of its row when it was fetched (lost update detection) */
   rowVersions?: Map<number, string>;
 }

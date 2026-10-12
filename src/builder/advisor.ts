@@ -8,6 +8,7 @@ import { templateProblem } from '../runtime/document.ts';
 import { invokeStepReferences, stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 import { processProblems } from '../runtime/processes.ts';
+import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
@@ -277,6 +278,13 @@ export async function advise(appId: number): Promise<{ findings: Finding[]; chec
     if (kind === 'region' && row.type === 'grid' && !all.some((x) => x.kind === 'process' && x.row.type === 'grid_dml' && x.row.region_id === row.id))
       missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
     if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);
+    // (078) a URL region: a literal origin, valid attributes
+    if (kind === 'region' && row.type === 'url') {
+      const target = urlTarget(row.source);
+      if ('error' in target) missing(e, 'Source', target.error);
+      const problem = urlConfigProblem(row.config);
+      if (problem) missing(e, 'Attributes', problem);
+    }
     if (kind === 'computation' && !items.has(String(row.item_name).toUpperCase())) missing(e, 'Item', `Item ${row.item_name} doesn't exist (the computation sets nothing).`);
     if (kind === 'computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
     if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);

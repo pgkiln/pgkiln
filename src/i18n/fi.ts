@@ -491,6 +491,8 @@ export const fi: Record<MessageKey, string> = {
   'form.saved': "Muutokset tallennettu.",
   'form.no_record': "Tietuetta ei ole valittu.",
   'form.changed': "Tietuetta ei löytynyt; joku muu on voinut muuttaa tai poistaa sen.",
+  'region.url_frame': 'Upotettu sivu',
+  'region.url_open': 'Avaa uudessa välilehdessä',
   'page.unsaved_changes': 'Sinulla on tallentamattomia muutoksia. Poistutaanko sivulta silti?',
   'form.lost_update': 'Joku muu on muuttanut tietuetta sen jälkeen, kun avasit sen. Lataa sivu uudelleen nähdäksesi nykyiset arvot ja tee muutoksesi sitten uudelleen.',
   'form.deleted': "Tietue poistettu.",

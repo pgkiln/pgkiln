@@ -491,6 +491,8 @@ export const zh: Record<MessageKey, string> = {
   'form.saved': "更改已保存。",
   'form.no_record': "未选择记录。",
   'form.changed': "未找到记录；它可能已被他人更改或删除。",
+  'region.url_frame': '嵌入的页面',
+  'region.url_open': '在新标签页中打开',
   'page.unsaved_changes': '您有未保存的更改。仍要离开此页面吗？',
   'form.lost_update': '在您打开此记录后，其他人修改了它。请重新加载页面查看当前值，然后重新进行修改。',
   'form.deleted': "记录已删除。",

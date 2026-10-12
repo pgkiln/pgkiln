@@ -132,6 +132,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
+| [`url`](#url-url-region) | Another site's page (or a page of this server) in a sandboxed frame |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
 
@@ -1294,6 +1295,39 @@ first rows and a *Show all* button), `char-counter` (item: a maximum length with
 `copy-value` (dynamic action: copy an item's value to the clipboard) and `log-event` (process: record
 an event in `pgkiln_plugins.event_log`). HR example part 47 installs them and uses all four on page
 40 (*Plug-ins*).
+
+### `url` (URL region)
+
+Shows another site's page in the region, in a sandboxed `<iframe>` (APEX: URL region).
+
+**Source**: the URL. Its scheme and host are written out, so an item can never choose which site is
+shown; `&ITEM.` substitutions are allowed after the host and are URL-encoded:
+
+```text
+https://reports.example.com/dashboard?customer=&P3_CUSTOMER_ID.&lang=&APP_LANGUAGE.
+```
+
+- `https://` only (`http://` for `localhost` during development), no user name or password in the
+  URL. A path that starts with `/` shows a page of this server, such as another pgkiln application
+  (`/a/portal/1`).
+- The page's Content-Security-Policy gets `frame-src` for exactly the origins of its visible URL
+  regions; other pages frame nothing. The Advisor reports a URL that isn't allowed.
+- The other site decides whether it may be framed: many sites forbid it (`X-Frame-Options` or
+  `frame-ancestors`), and the browser then shows an empty frame. Under the frame, *Open in a new tab*
+  opens the page itself.
+- The region's title is the frame's accessible name.
+
+Attributes:
+
+| Key | Meaning |
+|---|---|
+| `height` | The frame's height in pixels, 100–4000 (default 480); the width is the region's |
+| `sandbox` | The frame's sandbox flags, from `allow-scripts`, `allow-forms`, `allow-popups`, `allow-same-origin`, `allow-downloads`, `allow-modals` and `allow-popups-to-escape-sandbox`. Default: the first four (most sites need them to work). `false`: no sandbox. Navigating the whole window (`allow-top-navigation`) is never allowed |
+| `fullscreen` | `true`: the framed page may go full screen (videos, maps) |
+
+```json
+{"height": 640, "sandbox": ["allow-scripts", "allow-same-origin"], "fullscreen": true}
+```
 
 ### `static` and `dynamic` content
 

@@ -469,6 +469,8 @@ export const fr: Record<MessageKey, string> = {
   'form.saved': 'Modifications enregistrées.',
   'form.no_record': 'Aucun enregistrement sélectionné.',
   'form.changed': 'Enregistrement introuvable ; il a peut-être été modifié ou supprimé par quelqu’un d’autre.',
+  'region.url_frame': 'Page intégrée',
+  'region.url_open': 'Ouvrir dans un nouvel onglet',
   'page.unsaved_changes': 'Vous avez des modifications non enregistrées. Quitter cette page quand même ?',
   'form.lost_update': 'Quelqu\'un d\'autre a modifié cet enregistrement après que vous l\'avez ouvert. Rechargez la page pour voir les valeurs actuelles, puis refaites vos modifications.',
   'form.deleted': 'Enregistrement supprimé.',

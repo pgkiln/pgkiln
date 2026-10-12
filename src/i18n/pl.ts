@@ -491,6 +491,8 @@ export const pl: Record<MessageKey, string> = {
   'form.saved': "Zmiany zapisane.",
   'form.no_record': "Nie wybrano rekordu.",
   'form.changed': "Nie znaleziono rekordu; mógł zostać zmieniony lub usunięty przez kogoś innego.",
+  'region.url_frame': 'Osadzona strona',
+  'region.url_open': 'Otwórz w nowej karcie',
   'page.unsaved_changes': 'Masz niezapisane zmiany. Czy mimo to opuścić tę stronę?',
   'form.lost_update': 'Ktoś inny zmienił ten rekord po jego otwarciu. Odśwież stronę, aby zobaczyć bieżące wartości, a następnie wprowadź zmiany ponownie.',
   'form.deleted': "Rekord usunięty.",

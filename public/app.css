@@ -265,6 +265,9 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .region-toolbar { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
 .region-static p:first-child { margin-top: 0; }
 .region-static p:last-child { margin-bottom: 0; }
+/* (078) URL region: the framed page fills the region's width; its height is a class per region (PageCss) */
+.url-frame { display: block; width: 100%; border: 1px solid var(--border, #d0d7de); border-radius: 6px; background: var(--surface, #fff); }
+.url-open { margin: 0.5rem 0 0; font-size: 0.875rem; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 1rem; margin-top: 1rem; }
 .columns .region { margin: 0; }
 

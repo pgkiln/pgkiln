@@ -491,6 +491,8 @@ export const da: Record<MessageKey, string> = {
   'form.saved': "Ændringerne er gemt.",
   'form.no_record': "Ingen post er valgt.",
   'form.changed': "Posten blev ikke fundet; den kan være ændret eller slettet af en anden.",
+  'region.url_frame': 'Indlejret side',
+  'region.url_open': 'Åbn i en ny fane',
   'page.unsaved_changes': 'Du har ændringer, der ikke er gemt. Vil du forlade siden alligevel?',
   'form.lost_update': 'En anden har ændret posten, efter du åbnede den. Genindlæs siden for at se de aktuelle værdier, og foretag derefter dine ændringer igen.',
   'form.deleted': "Posten er slettet.",

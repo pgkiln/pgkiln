@@ -469,6 +469,8 @@ export const de: Record<MessageKey, string> = {
   'form.saved': 'Änderungen gespeichert.',
   'form.no_record': 'Kein Datensatz ausgewählt.',
   'form.changed': 'Datensatz nicht gefunden; er wurde möglicherweise von jemand anderem geändert oder gelöscht.',
+  'region.url_frame': 'Eingebettete Seite',
+  'region.url_open': 'In neuem Tab öffnen',
   'page.unsaved_changes': 'Sie haben nicht gespeicherte Änderungen. Diese Seite trotzdem verlassen?',
   'form.lost_update': 'Jemand anderes hat diesen Datensatz geändert, nachdem Sie ihn geöffnet haben. Laden Sie die Seite neu, um die aktuellen Werte zu sehen, und nehmen Sie Ihre Änderungen dann erneut vor.',
   'form.deleted': 'Datensatz gelöscht.',

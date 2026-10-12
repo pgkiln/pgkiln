@@ -278,6 +278,7 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
     detached: [],
     css: new PageCss(),
     nonce: req.cspNonce,
+    frameSrc: req.frameSrc,
     locale,
   };
 }
