@@ -11,10 +11,12 @@ import { aggregateFormat, AGGREGATES, cell, columnFormats, filtered, headingOf, 
 // chosen with ?r<id>_v=group|pivot|chart. Each runs one aggregate query
 // over all filtered rows (search, filters, facets and computed columns
 // included). Column names come from the result of the report's own query;
-// functions from the AGGREGATES whitelist.
+// functions from the AGGREGATES whitelist. An interactive grid has the
+// group by and chart views too, and its own single row view (grid.ts).
 
-export type View = 'report' | 'group' | 'pivot' | 'chart';
+export type View = 'report' | 'group' | 'pivot' | 'chart' | 'row';
 export const VIEWS: View[] = ['report', 'group', 'pivot', 'chart'];
+export const GRID_VIEWS: View[] = ['report', 'row', 'group', 'chart'];
 
 const MAX_GROUPS = 1000;
 const MAX_PIVOT_VALUES = 30;

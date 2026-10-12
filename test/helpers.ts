@@ -113,3 +113,15 @@ export function formFields(page: string): Record<string, string> {
   return out;
 }
 
+const unescapeAttr = (s: string) => s.replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+/** The posted fields of a grid as a browser would send them. */
+export function gridForm(body: string, g: string) {
+  const form: Record<string, string> = {};
+  for (const m of body.matchAll(new RegExp(`<input([^>]*)name="(${g}_\\d+_[a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>`, 'g'))) {
+    if (/type="checkbox"/.test(m[0]) && !/ checked/.test(m[0])) continue;
+    form[m[2]] = unescapeAttr(m[3]);
+  }
+  for (const m of body.matchAll(new RegExp(`<select name="(${g}_\\d+_c\\d+)"[^>]*>([\\s\\S]*?)</select>`, 'g')))
+    form[m[1]] = unescapeAttr(/<option value="([^"]*)" selected>/.exec(m[2])?.[1] ?? '');
+  return form;
+}

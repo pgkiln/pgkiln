@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 54: interactive grid views.
+
+### Added
+- **Interactive grid views** (APEX: Single Row View, Group By, Chart): the **single row view** shows one row of the
+  search as a form, with First/Previous/Next/Last and *Add row*, opened from Actions or a row's menu and saved by the
+  grid's `grid_dml` process with the same checks; **group by** and **chart** are set up in the Actions menu, as for an
+  interactive report. The region attribute `views` (builder: *Views*) limits them.
+
+### Changed
+- After **Save**, a grid comes back with its search, page, sort and view instead of the page's defaults.
+- APEX parity: 140 features compared, 131 available, 5 partial, 1 not yet, 3 not planned.
+
 ## [0.35.0] - 2026-10-12
 
 Sprint 53: data and settings.
