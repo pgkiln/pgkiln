@@ -6380,3 +6380,31 @@ describe('sprint 42 MCP server for AI agents', () => {
     assert.deepEqual(r.rows[0], { password_hash: '(hidden)', client_secret: '(hidden)', token: '(hidden)', api_key: '(hidden)', name: 'ok' });
   });
 });
+
+describe('sprint 50 forms lost update', () => {
+  test('meta.row_version runs with the caller\'s rights and takes the key as a value', async () => {
+    await assert.rejects(
+      owner.query(`begin; set local role pgkiln_runtime; select meta.row_version('meta.account', 'id', '1', array['password_hash']); rollback`),
+      /permission denied/,
+    );
+    await owner.query('rollback').catch(() => {});
+    // a key with SQL in it is only a (bad) value of the key's type
+    await assert.rejects(owner.query(`select meta.row_version('hr.emp', 'empno', $1, array['ename'])`, [`1 or 1=1`]), /invalid input syntax/);
+    assert.equal((await owner.one(`select meta.row_version('hr.emp', 'ename', $1, array['ename']) as v`, [`x' or '1'='1`])).v, null);
+    // column names are identifiers, never SQL
+    await assert.rejects(owner.query(`select meta.row_version('hr.emp', 'empno', '7839', array['ename) from hr.emp --'])`), /does not exist/);
+  });
+
+  test('a posted row version that is not a checksum is ignored', async () => {
+    const king = await as('king');
+    await king.get(link('king', 3, { P3_EMPNO: '7839' }));
+    const region = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                                      where a.alias = 'hr' and p.page_no = 3 and r.type = 'form'`)).id;
+    const page = (await king.get(link('king', 3, { P3_EMPNO: '7839' }))).body;
+    const fields: Record<string, string> = {};
+    for (const [, name, value] of page.matchAll(/<input type="hidden" name="(__[a-z_0-9]+)" value="([^"]*)"/g)) fields[name] = value;
+    assert.match(fields[`__rv_${region}`] ?? '', /^[0-9a-f]{32}$/);
+    const res = await king.post('/a/hr/3', { ...fields, __csrf: king.lastCsrf, [`__rv_${region}`]: `' or 1=1 --`, __request: 'NOTHING' });
+    assert.notEqual(res.statusCode, 500);
+  });
+});

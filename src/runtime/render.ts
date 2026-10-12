@@ -293,7 +293,9 @@ function formKeys(ctx: PageContext) {
     .filter((r) => r.type === 'form' && r.pk_item && ctx.vis!.regions.has(r.id))
     .map((r) => {
       const pk = ctx.session.state[r.pk_item!] ?? '';
-      return html`<input type="hidden" name="__pk_${r.id}" value="${pk}"><input type="hidden" name="__pkcs_${r.id}" value="${urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { [`F${r.id}`]: pk })}">`;
+      const version = pk === '' ? undefined : ctx.rowVersions?.get(r.id);
+      return html`<input type="hidden" name="__pk_${r.id}" value="${pk}"><input type="hidden" name="__pkcs_${r.id}" value="${urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { [`F${r.id}`]: pk })}">${
+        version ? html`<input type="hidden" name="__rv_${r.id}" value="${version}">` : ''}`;
     });
 }
 

@@ -491,6 +491,7 @@ export const nb: Record<MessageKey, string> = {
   'form.saved': "Endringene er lagret.",
   'form.no_record': "Ingen post er valgt.",
   'form.changed': "Fant ikke posten; den kan være endret eller slettet av noen andre.",
+  'form.lost_update': 'Noen andre har endret posten etter at du åpnet den. Last inn siden på nytt for å se de gjeldende verdiene, og gjør deretter endringene dine igjen.',
   'form.deleted': "Posten er slettet.",
   'error.duplicate': "Det finnes allerede en post med disse verdiene{detail}.",
   'error.referenced': "Andre poster viser fortsatt til denne posten{detail}.",

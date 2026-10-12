@@ -495,6 +495,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
       const cs = body[`__pkcs_${r.id}`];
       if (typeof pk === 'string' && typeof cs === 'string' && checksumValid(urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, { [`F${r.id}`]: pk }), cs))
         ctx.session.state[r.pk_item] = pk === '' ? null : pk;
+      // (076) the checksum of the row as it was shown (lost update detection in form_dml)
+      const rv = body[`__rv_${r.id}`];
+      if (typeof rv === 'string' && /^[0-9a-f]{32}$/.test(rv)) (ctx.rowVersions ??= new Map()).set(r.id, rv);
     }
 
     let messages: string[] = [];

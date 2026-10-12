@@ -72,6 +72,8 @@ export interface PageContext {
   background?: boolean;
   /** debug messages of this request, when the app's debug level is on (src/debug.ts) */
   debug?: DebugLog;
+  /** (076) per form region: the checksum of its row when it was fetched (lost update detection) */
+  rowVersions?: Map<number, string>;
 }
 
 /** Write a debug message when this request records them (no-op otherwise). */

@@ -491,6 +491,7 @@ export const ko: Record<MessageKey, string> = {
   'form.saved': "변경 사항을 저장했습니다.",
   'form.no_record': "선택한 레코드가 없습니다.",
   'form.changed': "레코드를 찾을 수 없습니다. 다른 사람이 변경했거나 삭제했을 수 있습니다.",
+  'form.lost_update': '이 레코드를 연 후 다른 사람이 변경했습니다. 페이지를 새로 고쳐 현재 값을 확인한 후 다시 변경하십시오.',
   'form.deleted': "레코드를 삭제했습니다.",
   'error.duplicate': "같은 값의 레코드가 이미 있습니다{detail}.",
   'error.referenced': "다른 레코드가 아직 이 레코드를 참조합니다{detail}.",

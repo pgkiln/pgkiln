@@ -491,6 +491,7 @@ export const cs: Record<MessageKey, string> = {
   'form.saved': "Změny byly uloženy.",
   'form.no_record': "Není vybrán žádný záznam.",
   'form.changed': "Záznam nenalezen; mohl ho změnit nebo smazat někdo jiný.",
+  'form.lost_update': 'Někdo jiný tento záznam změnil poté, co jste jej otevřeli. Načtěte stránku znovu, abyste viděli aktuální hodnoty, a pak proveďte změny znovu.',
   'form.deleted': "Záznam byl smazán.",
   'error.duplicate': "Záznam s těmito hodnotami už existuje{detail}.",
   'error.referenced': "Na tento záznam stále odkazují jiné záznamy{detail}.",

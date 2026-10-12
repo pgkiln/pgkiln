@@ -491,6 +491,7 @@ export const fi: Record<MessageKey, string> = {
   'form.saved': "Muutokset tallennettu.",
   'form.no_record': "Tietuetta ei ole valittu.",
   'form.changed': "Tietuetta ei löytynyt; joku muu on voinut muuttaa tai poistaa sen.",
+  'form.lost_update': 'Joku muu on muuttanut tietuetta sen jälkeen, kun avasit sen. Lataa sivu uudelleen nähdäksesi nykyiset arvot ja tee muutoksesi sitten uudelleen.',
   'form.deleted': "Tietue poistettu.",
   'error.duplicate': "Tietue näillä arvoilla on jo olemassa{detail}.",
   'error.referenced': "Muut tietueet viittaavat yhä tähän tietueeseen{detail}.",

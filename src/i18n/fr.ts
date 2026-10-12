@@ -469,6 +469,7 @@ export const fr: Record<MessageKey, string> = {
   'form.saved': 'Modifications enregistrées.',
   'form.no_record': 'Aucun enregistrement sélectionné.',
   'form.changed': 'Enregistrement introuvable ; il a peut-être été modifié ou supprimé par quelqu’un d’autre.',
+  'form.lost_update': 'Quelqu\'un d\'autre a modifié cet enregistrement après que vous l\'avez ouvert. Rechargez la page pour voir les valeurs actuelles, puis refaites vos modifications.',
   'form.deleted': 'Enregistrement supprimé.',
   'error.duplicate': 'Un enregistrement avec ces valeurs existe déjà{detail}.',
   'error.referenced': 'Cet enregistrement est encore référencé par d’autres enregistrements{detail}.',

@@ -35,6 +35,16 @@ export async function resolveTable(c: Client, name: string) {
 
 const formItems = (ctx: PageContext, r: Region) => ctx.page.items.filter((i) => i.region_id === r.id && i.source_column);
 
+/**
+ * (076) Lost update detection: on unless the form's attributes say
+ * {"lost_update": false}. The checksum covers the form's columns except files.
+ */
+const detectsLostUpdates = (r: Region) => (r.config as { lost_update?: unknown } | null)?.lost_update !== false;
+const versionColumns = (ctx: PageContext, r: Region) =>
+  [...new Set(formItems(ctx, r).filter((i) => i.type !== 'file').map((i) => i.source_column!))].sort();
+const rowVersion = async (c: Client, table: string, r: Region, columns: string[], pk: string, lock: boolean) =>
+  ((await c.query('select meta.row_version($1::regclass, $2, $3, $4, $5) as v', [table, r.pk_column, String(pk), columns, lock])).rows[0]?.v as string | null) ?? null;
+
 export function clearPageItems(ctx: PageContext) {
   for (const i of ctx.page.items) delete ctx.session.state[i.name];
 }
@@ -90,6 +100,10 @@ export async function fetchForms(ctx: PageContext) {
         continue;
       }
       items.forEach((item, idx) => (ctx.session.state[item.name] = toState(res.rows[0][idx])));
+      if (detectsLostUpdates(r)) {
+        const v = await savepoint(c, () => rowVersion(c, table, r, versionColumns(ctx, r), pk, false));
+        if (v) (ctx.rowVersions ??= new Map()).set(r.id, v);
+      }
     } catch (e) {
       ctx.errors.page.push(await publicError(ctx, e, `fetch of ${r.title ?? 'form'}`));
     }
@@ -305,6 +319,16 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
   }
 
   if (pk === null) throw new Error(ctx.locale.t('form.no_record'));
+  // (076) the row is locked, and refused when someone changed it since the page was shown
+  const shown = ctx.rowVersions?.get(r.id);
+  if (shown && detectsLostUpdates(r)) {
+    const now = await rowVersion(c, table, r, versionColumns(ctx, r), pk, true);
+    if (now === null) throw new ProcessFailed(ctx.locale.t('form.changed'), null);
+    if (now !== shown) {
+      dbg(ctx, 2, 'process', `lost update prevented: the row of "${r.title ?? 'form'}" changed since the page was shown`);
+      throw new ProcessFailed(ctx.locale.t('form.lost_update'), null);
+    }
+  }
   if (op === 'update') {
     if (assignments.length) {
       const res = await c.query(`update ${table} set ${assignments.map(([col, v]) => `${col} = ${v}`).join(', ')} where ${pkCol} = ${literal(pk)}`);

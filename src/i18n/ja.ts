@@ -491,6 +491,7 @@ export const ja: Record<MessageKey, string> = {
   'form.saved': "変更を保存しました。",
   'form.no_record': "レコードが選択されていません。",
   'form.changed': "レコードが見つかりません。他のユーザーが変更または削除した可能性があります。",
+  'form.lost_update': 'このレコードは開いた後に別のユーザーによって変更されました。ページを再読み込みして現在の値を確認し、もう一度変更してください。',
   'form.deleted': "レコードを削除しました。",
   'error.duplicate': "同じ値のレコードがすでに存在します{detail}。",
   'error.referenced': "このレコードはまだ他のレコードから参照されています{detail}。",

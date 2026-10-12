@@ -469,6 +469,7 @@ export const de: Record<MessageKey, string> = {
   'form.saved': 'Änderungen gespeichert.',
   'form.no_record': 'Kein Datensatz ausgewählt.',
   'form.changed': 'Datensatz nicht gefunden; er wurde möglicherweise von jemand anderem geändert oder gelöscht.',
+  'form.lost_update': 'Jemand anderes hat diesen Datensatz geändert, nachdem Sie ihn geöffnet haben. Laden Sie die Seite neu, um die aktuellen Werte zu sehen, und nehmen Sie Ihre Änderungen dann erneut vor.',
   'form.deleted': 'Datensatz gelöscht.',
   'error.duplicate': 'Ein Datensatz mit diesen Werten existiert bereits{detail}.',
   'error.referenced': 'Auf diesen Datensatz wird noch von anderen Datensätzen verwiesen{detail}.',

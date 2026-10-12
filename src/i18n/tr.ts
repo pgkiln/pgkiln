@@ -491,6 +491,7 @@ export const tr: Record<MessageKey, string> = {
   'form.saved': "Değişiklikler kaydedildi.",
   'form.no_record': "Kayıt seçilmedi.",
   'form.changed': "Kayıt bulunamadı; başka biri tarafından değiştirilmiş veya silinmiş olabilir.",
+  'form.lost_update': 'Bu kaydı siz açtıktan sonra başka biri değiştirdi. Güncel değerleri görmek için sayfayı yeniden yükleyin ve değişikliklerinizi tekrar yapın.',
   'form.deleted': "Kayıt silindi.",
   'error.duplicate': "Bu değerlere sahip bir kayıt zaten var{detail}.",
   'error.referenced': "Bu kayda hâlâ başka kayıtlar başvuruyor{detail}.",
