@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { html } from './html.ts';
+import { staticUrl } from './static-version.ts';
 
 // Names available in public/icons.svg (for navigation entries, cards, builder).
 export const ICONS = [
@@ -75,7 +76,7 @@ export const isIcon = (value: string | null | undefined) => !!iconParts(value);
 export function icon(name: string | null | undefined, cls = 'icon') {
   const p = iconParts(name);
   if (!p) return '';
-  const href = p.set === 'pgkiln' ? `/static/icons.svg#${p.name}` : `/static/icon/${p.name}.svg?v=${LUCIDE_VERSION}#i`;
+  const href = p.set === 'pgkiln' ? `${staticUrl('icons.svg')}#${p.name}` : `/static/icon/${p.name}.svg?v=${LUCIDE_VERSION}#i`;
   return html`<svg class="${[cls, ...p.classes].join(' ')}" aria-hidden="true" focusable="false"><use href="${href}"></use></svg>`;
 }
 

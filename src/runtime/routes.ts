@@ -36,7 +36,7 @@ import { applyRowSelection, mastersOf } from './master-detail.ts';
 import { layerInArea, layerTile, parseTile, servedLayer } from './maps.ts';
 import { parseArea } from './spatial.ts';
 import { currentLayout, layoutJson, layoutParam, parseLayout, storeLayout } from './grid-layout.ts';
-import { layoutFromForm, statePart } from './grid.ts';
+import { gridReturn, layoutFromForm, statePart } from './grid.ts';
 import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
@@ -599,7 +599,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     await saveState(ctx.session);
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx));
-    return reply.redirect(branchTo ?? (button.target_page ? `${ctx.base}/${button.target_page}` : self), 303);
+    // (sprint 54) a grid's Save comes back to the grid's search, page, sort and view
+    const back = branchTo || button.target_page ? '' : gridReturn(ctx, button.name);
+    return reply.redirect(branchTo ?? (button.target_page ? `${ctx.base}/${button.target_page}` : back ? `${self}${self.includes('?') ? '&' : '?'}${back}` : self), 303);
   });
 
   // ---------------------------------------------------------------- file downloads

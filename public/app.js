@@ -1157,14 +1157,15 @@ const pgkilnUnsaved = (() => {
     if (leave && dirty && !window.confirm(pgkilnUnsaved.text)) e.preventDefault();
   });
   document.addEventListener('input', (e) => {
-    const row = e.target.closest?.('[data-grid] table.grid-table > tbody > tr');
+    // a grid row, or the single row view's form
+    const row = e.target.closest?.('[data-grid] table.grid-table > tbody > tr, [data-grid] .grid-record');
     if (!row) return;
     row.classList.add('dirty');
     dirty = true;
   });
   document.addEventListener('change', (e) => {
     const del = e.target.closest?.('[data-grid] .grid-sel input');
-    if (del) del.closest('tr').classList.toggle('deleted', del.checked);
+    if (del) del.closest('tr, .grid-record').classList.toggle('deleted', del.checked);
   });
   document.addEventListener('submit', () => (dirty = false));
   window.addEventListener('beforeunload', (e) => {

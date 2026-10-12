@@ -4,6 +4,7 @@
 // cell ranges; and the same page without JavaScript.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 import '../../src/env.ts';
@@ -79,7 +80,7 @@ describe('interactive grid (HR page 27)', () => {
     assert.equal(await page.locator(`${staff()} table.grid-table > tbody:not(.grid-template) tr[data-row]`).count(), Number((await owner.one(`select count(*) from hr.emp where deptno = 30`)).count));
     // the selection stays after a reload
     await page.reload();
-    assert.equal(await page.locator(`#R${R.Departments} tr.is-selected a[href*="_sel=30&"]`).count(), 1);
+    assert.equal(await page.locator(`#R${R.Departments} tr.is-selected a.grid-pick-link[href*="_sel=30&"]`).count(), 1);
     assert.deepEqual(await violations(page), []);
     await page.context().close();
   });
@@ -141,6 +142,41 @@ describe('interactive grid (HR page 27)', () => {
     assert.match((await row.getAttribute('class')) ?? '', /deleted/);
     assert.deepEqual(await violations(page), []);
     await page.context().close();
+  });
+
+  test('the single row view: a change asks before leaving, Save stores it; group by; no CSP or axe violations', async () => {
+    const page = await open();
+    await pick(page, 20);
+    const S = R.Staff;
+    const first = (await owner.one(`select empno, sal::text from hr.emp where deptno = 20 order by empno limit 1`)) as { empno: number; sal: string };
+    await page.goto(`${base}/a/hr/27?r${S}_s=1&r${S}_v=row&r${S}_row=1`);
+    const record = page.locator(`${staff()} .grid-record`);
+    assert.equal(await record.count(), 1);
+    await record.locator(`input[name="g${S}_0_c5"]`).fill('2468');
+    assert.match((await record.getAttribute('class')) ?? '', /dirty/);
+    let asked = '';
+    page.once('dialog', (d) => ((asked = d.message()), d.dismiss()));
+    await page.locator(`${staff()} a[rel="next"]`).click();
+    assert.ok(asked, 'Next asks first');
+    assert.match(page.url(), new RegExp(`r${S}_row=1`));
+    try {
+      await Promise.all([page.waitForNavigation(), page.locator(`${staff()} button[value="GRID_SAVE_${S}"]`).click()]);
+      assert.equal((await owner.one('select sal::text from hr.emp where empno = $1', [first.empno])).sal, '2468.00');
+      assert.match(await page.locator(`${staff()} .grid-record-nav`).innerText(), /Row 1 of \d+/);
+      // axe on the single row view
+      await page.evaluate(readFileSync(new URL('../../node_modules/axe-core/axe.min.js', import.meta.url), 'utf8'));
+      const axe = await page.evaluate(() => (window as any).axe.run(document.querySelector('.grid-view'), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }));
+      assert.deepEqual(axe.violations.map((v: { id: string }) => v.id), []);
+      // group by through the Actions menu
+      await page.locator(`${staff()} .grid-actions-menu > summary`).click();
+      await page.locator(`${staff()} select[name="r${S}_gb1"]`).selectOption('job');
+      await Promise.all([page.waitForNavigation(), page.locator(`${staff()} button[form="rg${S}"]`).click()]);
+      assert.equal(await page.locator(`${staff()} table.report-group`).count(), 1);
+      assert.deepEqual(await violations(page), []);
+    } finally {
+      await owner.query('update hr.emp set sal = $2 where empno = $1', [first.empno, first.sal]);
+      await page.context().close();
+    }
   });
 
   test('copy a range of cells and paste it into other rows; the grid save stores it', async () => {

@@ -5,9 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprint 55: the login page and "Forgot password?".
+Sprints 54 and 55: interactive grid views; the login page and "Forgot password?".
 
 ### Added
+- **Interactive grid views** (APEX: Single Row View, Group By, Chart): the **single row view** shows one row of the
+  search as a form, with First/Previous/Next/Last and *Add row*, opened from Actions or a row's menu and saved by the
+  grid's `grid_dml` process with the same checks; **group by** and **chart** are set up in the Actions menu, as for an
+  interactive report. The region attribute `views` (builder: *Views*) limits them.
 - **An editable login page** (APEX: the login page): *Application settings → Sign-in methods → Create a login page*
   adds page 9999 with the new **Login** region (the sign-in form) and makes it the application's login page;
   `/a/<alias>/login` sends visitors there and failed sign-ins come back to it with their message. Add any regions
@@ -19,11 +23,15 @@ Sprint 55: the login page and "Forgot password?".
 - The Advisor reports a login page that is missing, requires authentication or has no Login region.
 
 ### Fixed
+- Pages could keep an old `app.css`, `app.js` or icon sprite from a PWA's service worker cache after pgkiln's
+  static files changed (unstyled navigation bar items and developer toolbar): the files are now asked for with a
+  version from their contents (`?v=…`), looked up again when they change, and the service worker matches the exact URL.
 - A refused sign-in (throttled, an expired form, a sign-in method that is off) could answer with an empty page:
   the handler no longer returns before the sign-in page is sent.
 
 ### Changed
-- APEX parity: 141 features compared, 131 available, 5 partial, 2 not yet, 3 not planned.
+- After **Save**, a grid comes back with its search, page, sort and view instead of the page's defaults.
+- APEX parity: 141 features compared, 132 available, 5 partial, 1 not yet, 3 not planned.
 
 ## [0.35.0] - 2026-10-12
 

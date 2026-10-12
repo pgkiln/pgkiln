@@ -810,6 +810,14 @@ fieldset.prop-group > legend { font-size: 0.75rem; text-transform: uppercase; le
 .grid-table tr.deleted td { opacity: 0.5; text-decoration: line-through; }
 .grid-table tr.grid-new { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 .grid-table tr.dirty td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+/* the single row view: one row as a form */
+.grid-record { padding: 0.9rem 1rem; border: 1px solid var(--border); border-radius: var(--radius, 8px); display: grid; gap: 0.9rem; }
+.grid-record .grid-field { display: grid; gap: 0.3rem; align-content: start; }
+.grid-record .grid-value { min-height: 1.5rem; overflow-wrap: anywhere; }
+.grid-record.grid-new { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.grid-record.dirty { box-shadow: inset 3px 0 0 var(--accent); }
+.grid-record.deleted .form-grid { opacity: 0.5; text-decoration: line-through; }
+.grid-record-nav { justify-content: center; }
 .js .grid-template { display: none; }
 .grid-table .icon { width: 14px; height: 14px; }
 /* columns a user hid stay in the form (their values still post) */

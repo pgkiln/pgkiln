@@ -6921,6 +6921,66 @@ describe('sprint 53 data and settings', () => {
   });
 });
 
+describe('sprint 54 interactive grid views', () => {
+  const grid10 = async () =>
+    (await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 10 and r.type = 'grid'`, [appId])) as { id: number; config: unknown };
+  const sectionOf = (page: string, id: number) => page.slice(page.indexOf(`id="R${id}"`), page.indexOf('</section>', page.indexOf(`id="R${id}"`)));
+
+  test('group by, chart and single row parameters of a grid cannot inject SQL', async () => {
+    const king = await as('king');
+    const { id } = await grid10();
+    const get = (params: [string, string][]) => king.get(`/a/hr/10?${new URLSearchParams(params.map(([k, v]) => [`r${id}_${k}`, v]))}`);
+    for (const params of [
+      [['g', 'dname" from meta.account --'], ['ga', 'sum|deptno) from meta.account --'], ['v', 'group']],
+      [['ch', 'bar|dname"; drop table hr.dept; --|count|deptno'], ['v', 'chart']],
+      [['v', 'row'], ['row', '1; drop table hr.dept']],
+      [['v', 'row'], ['row', '-5']],
+      [['v', 'row'], ['row', '99999999999999999999']],
+      [['v', 'pivot'], ['pv', 'dname|loc|count|deptno']],
+    ] as [string, string][][]) {
+      const res = await get(params);
+      assert.equal(res.statusCode, 200, JSON.stringify(params));
+      assert.doesNotMatch(res.body, /\$2[aby]\$/, 'no password hashes');
+      assert.doesNotMatch(res.body, /pgkiln_runtime|syntax error|alert-error/, JSON.stringify(params));
+    }
+    assert.ok((await owner.one('select count(*)::int as n from hr.dept')).n > 0);
+  });
+
+  test('after a grid save the redirect keeps only report and grid parameters, on the same page', async () => {
+    const king = await as('king');
+    const { id } = await grid10();
+    await king.get('/a/hr/10');
+    const res = await king.post(`/a/hr/10?r${id}_q=x&next=https://evil.example.com&r${id}_csv=1&P10_X=1&r${id}_x=${encodeURIComponent('//evil.example.com')}`, { __csrf: king.lastCsrf, __request: `GRID_SAVE_${id}` });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 200));
+    assert.equal(res.headers.location, `/a/hr/10?r${id}_q=x&r${id}_x=%2F%2Fevil.example.com`);
+  });
+
+  test('a column the developer hides stays hidden in every view', async () => {
+    const { id, config } = await grid10();
+    await owner.query(`update meta.region set config = config || '{"hidden": ["loc"]}' where id = $1`, [id]);
+    try {
+      const king = await as('king');
+      const locs = (await owner.query('select loc from hr.dept where loc is not null')).rows.map((x) => x.loc as string);
+      const views: [string, string][][] = [
+        [['v', 'group'], ['g', 'loc']],
+        [['v', 'group'], ['g', 'dname'], ['ga', 'max|loc']],
+        [['v', 'chart'], ['ch', 'bar|loc|count|deptno']],
+        [['v', 'chart'], ['ch', 'bar|dname|max|loc']],
+        [['v', 'row'], ['row', '1']],
+        [['v', 'row'], ['row', 'new']],
+      ];
+      for (const params of views) {
+        const s = sectionOf((await king.get(`/a/hr/10?${new URLSearchParams(params.map(([k, v]) => [`r${id}_${k}`, v]))}`)).body, id);
+        for (const loc of locs) assert.ok(!s.includes(loc), `${loc} in ${JSON.stringify(params)}`);
+      }
+      // nor offered in the Actions menu
+      assert.doesNotMatch(sectionOf((await king.get('/a/hr/10')).body, id), /<option value="loc"/);
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [id, config]);
+    }
+  });
+});
+
 describe('sprint 55 login page and forgot password', () => {
   const SERVICE = 'SEC_RESET_TEST';
   let saved: { login_page: number | null; password_reset: boolean; access_control: string };

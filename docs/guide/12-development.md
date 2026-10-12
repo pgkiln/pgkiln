@@ -34,6 +34,7 @@ src/
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
+  static-version.ts        the version of app.css, app.js, icons.svg and sw.js (?v= in their URLs, the service worker version): content hash, looked at again when a file changes
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
@@ -111,7 +112,7 @@ src/
                            style (user choice, default), themeCss() (only hex values and constants reach the CSS)
     template-options.ts    template options: the fixed CSS class list per region and button, templateClasses() (unknown values ignored)
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges)
-    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts, items.ts
+    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts, items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)

@@ -242,6 +242,10 @@ function mergeGridFeatures(out: Config, b: Body, a: Allowed, columns: string[]) 
   set('saved_reports', b.saved_reports === 'true' ? undefined : false);
   const pub = (b.public_reports ?? '').trim().toUpperCase();
   set('public_reports', pub && a.authz?.has(pub) ? pub : undefined);
+  // views besides the grid: all three is the default (left out); none ticked means the grid only
+  // (only when the form has the Views fieldset)
+  const views = GRID_USER_VIEWS.filter((v) => b[`view_${v}`] === 'true');
+  if (b.grid_views === '1') set('views', views.length < GRID_USER_VIEWS.length ? views : undefined);
   // row actions: an edit link, duplicate and delete; custom links stay as written in the JSON
   const edit = mergeLink(b, a.pages, 'edit');
   const ra: Config = { ...(out.row_actions && typeof out.row_actions === 'object' ? out.row_actions : {}) };
@@ -497,6 +501,11 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
       <div class="field"><label class="label" for="${id('public_reports')}">Public reports by</label>
         <select id="${id('public_reports')}" name="public_reports">${opt('', '- nobody -', cfg.public_reports)}${authz.map((n) => opt(n, n, cfg.public_reports))}</select></div>
     </div></fieldset>
+    <input type="hidden" name="grid_views" value="1">
+    <fieldset class="prop-group"><legend>Views</legend><div class="form-grid">
+      ${GRID_USER_VIEWS.map((v) => check(`view_${v}`, GRID_VIEW_LABELS[v], !Array.isArray(cfg.views) || cfg.views.includes(v)))}
+    </div>
+    <small class="help">Views users may switch to besides the grid. The single row view edits one row at a time (also from the row actions menu); group by and chart are set up in Actions.</small></fieldset>
     <fieldset class="prop-group"><legend>Row actions</legend><div class="form-grid">
       ${check('row_actions', 'Row actions menu', !!cfg.row_actions)}
       ${check('row_duplicate', 'Duplicate', cfg.row_actions?.duplicate !== false)}
@@ -634,6 +643,8 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
 }
 
 const VIEW_LABELS: Record<string, string> = { month: 'Month', week: 'Week', day: 'Day', list: 'List' };
+const GRID_USER_VIEWS = ['row', 'group', 'chart'] as const;
+const GRID_VIEW_LABELS: Record<string, string> = { row: 'Single row view', group: 'Group by', chart: 'Chart' };
 
 async function calendarFields(appId: number, r: RegionRow, id: (n: string) => string, pages: { page_no: number; name: string }[]) {
   const cfg = r.config ?? {};
