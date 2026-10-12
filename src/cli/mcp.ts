@@ -474,6 +474,48 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'generate_ddl',
+    title: 'Generate the DDL of a schema',
+    description:
+      'The DDL of a schema\'s objects from the catalog (types, sequences, tables, functions, views, constraints, indexes, triggers, ' +
+      'row level security, comments and grants), in an order that runs, with the schema in search_path at the top. ' +
+      'Use it to start a migration script or to see how objects are defined; nothing is run.',
+    inputSchema: { type: 'object', properties: { schema: { type: 'string', description: 'the schema, e.g. sales' } }, required: ['schema'] },
+    annotations: { readOnlyHint: true },
+    async run(a) {
+      const schema = str(a, 'schema');
+      if (!schema) throw new ToolError('schema is required');
+      const { ddlScript, readSchema } = await import('../ddl.ts');
+      return withDb(async (db) => cap(ddlScript(schema, await readSchema(db, schema))));
+    },
+  },
+  {
+    name: 'compare_schemas',
+    title: 'Compare two schemas',
+    description:
+      'Compares the objects of two schemas of the database by their DDL: what only the source has (+), only the target has (-), ' +
+      'and what differs (~), followed by a script that makes the target like the source (drops commented out). Nothing is run.',
+    inputSchema: {
+      type: 'object',
+      properties: { source: { type: 'string', description: 'the schema to compare with, e.g. sales' }, target: { type: 'string', description: 'the schema to make like the source, e.g. sales_dev' } },
+      required: ['source', 'target'],
+    },
+    annotations: { readOnlyHint: true },
+    async run(a) {
+      const source = str(a, 'source');
+      const target = str(a, 'target');
+      if (!source || !target) throw new ToolError('source and target are required');
+      const { changeScript, compare, readSchema } = await import('../ddl.ts');
+      return withDb(async (db) => {
+        const [x, y] = [await readSchema(db, source), await readSchema(db, target)];
+        const { differences, same } = compare(x, y);
+        if (!differences.length) return `The schemas are the same (${same} objects).\n`;
+        const list = differences.map((d) => `${d.state === 'source' ? '+' : d.state === 'target' ? '-' : '~'} ${d.kind} ${d.name}`).join('\n');
+        return cap(`${differences.length} difference(s), ${same} object(s) the same:\n${list}\n\n${changeScript(source, target, x, y)}`);
+      });
+    },
+  },
+  {
     name: 'run_query',
     title: 'Run a read-only query',
     description:

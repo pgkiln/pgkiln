@@ -133,6 +133,51 @@ const COMMANDS: Record<string, Command> = {
     },
   },
 
+  ddl: {
+    usage: 'pgkiln ddl <schema> [--no-comments] [--no-grants] [--out <file>]',
+    summary: 'write the DDL of a schema\'s objects (SQL Workshop → Generate DDL)',
+    details:
+      'Types, sequences, tables, functions, views, constraints, indexes, triggers, row level security,\n' +
+      'comments and grants, in an order that runs, with the schema in search_path at the top (so the\n' +
+      'script also creates the objects in another schema). Objects of extensions are left out.',
+    options: { 'no-comments': { type: 'boolean' }, 'no-grants': { type: 'boolean' }, out: { type: 'string', short: 'o' } },
+    optionHelp: [['--no-comments', 'leave out comments'], ['--no-grants', 'leave out grants'], ['-o, --out <file>', 'write to a file instead of standard output']],
+    positionals: [1, 1],
+    async run(v, [schema]) {
+      const { ddlScript, OBJECT_TYPES, pick, readSchema } = await import('../ddl.ts');
+      const objects = await withDb((db) => readSchema(db, schema));
+      const script = ddlScript(schema, pick(objects, new Set(OBJECT_TYPES), { comments: !v['no-comments'], grants: !v['no-grants'] }));
+      if (v.out) {
+        writeFileSync(v.out as string, script);
+        err(`Wrote the DDL of ${schema} to ${v.out}.\n`);
+      } else out(script);
+      return EXIT.ok;
+    },
+  },
+
+  compare: {
+    usage: 'pgkiln compare <source> <target> [--script]',
+    summary: 'compare two schemas (SQL Workshop → Schema Comparison); exit code 1 when they differ',
+    details:
+      'Lists what only the source has (+), what only the target has (-) and what differs (~), by their DDL;\n' +
+      'the order of a table\'s columns is not compared. --script writes the script that makes the target\n' +
+      'like the source instead (drops of what only the target has are commented out). Nothing is run.',
+    options: { script: { type: 'boolean' } },
+    optionHelp: [['--script', 'write the change script']],
+    positionals: [2, 2],
+    async run(v, [source, target]) {
+      const { changeScript, compare, readSchema } = await import('../ddl.ts');
+      const [a, b] = await withDb(async (db) => [await readSchema(db, source), await readSchema(db, target)]);
+      const { differences, same } = compare(a, b);
+      if (v.script) out(changeScript(source, target, a, b));
+      else {
+        for (const d of differences) out(`${d.state === 'source' ? '+' : d.state === 'target' ? '-' : '~'} ${d.kind} ${d.name}\n`);
+        err(differences.length ? `${differences.length} difference(s), ${same} object(s) the same.\n` : `The schemas are the same (${same} objects).\n`);
+      }
+      return differences.length ? EXIT.differences : EXIT.ok;
+    },
+  },
+
   export: {
     usage: 'pgkiln export <alias> [--format json|dir|text] [--out <path>]',
     summary: 'export an application as one JSON file or as a directory with a file per component',

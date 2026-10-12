@@ -48,6 +48,8 @@ directory the agent started the server in (the project).
 | `get_page` | every component of one page as YAML, SQL inline | no |
 | `read_app_files` | component files by path or prefix (`shared/lovs/`, `navigation.yaml`, …) | no |
 | `describe_schema` | schemas with tables, views and functions; or one table with columns, constraints, indexes, RLS policies and triggers | no |
+| `generate_ddl` | the DDL of a schema's objects, in an order that runs: a start for a migration script | no |
+| `compare_schemas` | the differences between two schemas and a script that makes the target like the source (not run) | no |
 | `run_query` | one SQL statement, read-only, rows as JSON | no |
 | `search_docs` | searches this user guide, the parity matrix and SECURITY.md | no |
 | `recent_errors` | the latest errors and refused requests from the activity log | no |

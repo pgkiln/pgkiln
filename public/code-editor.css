@@ -4,7 +4,7 @@
 :root {
   --ce-bg: #fbfcfd;
   --ce-gutter: #f1f3f6;
-  --ce-gutter-text: #8a94a3;
+  --ce-gutter-text: #5d6876;
   --ce-text: #1b2330;
   --ce-kw: #8b2bb9;
   --ce-type: #0b6e8a;
@@ -26,7 +26,7 @@
   :root:not([data-theme="light"]) {
     --ce-bg: #12161d;
     --ce-gutter: #171c24;
-    --ce-gutter-text: #6c7686;
+    --ce-gutter-text: #8f99a8;
     --ce-text: #e3e7ed;
     --ce-kw: #d39bff;
     --ce-type: #5fd0e6;
@@ -46,7 +46,7 @@
 :root[data-theme="dark"] {
   --ce-bg: #12161d;
   --ce-gutter: #171c24;
-  --ce-gutter-text: #6c7686;
+  --ce-gutter-text: #8f99a8;
   --ce-text: #e3e7ed;
   --ce-kw: #d39bff;
   --ce-type: #5fd0e6;

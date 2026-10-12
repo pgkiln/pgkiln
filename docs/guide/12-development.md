@@ -34,6 +34,7 @@ src/
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
+  ddl.ts                   Generate DDL and Schema Comparison: readSchema (catalog → one DDL per object, unqualified), ddlScript (order), compare, changeScript
   static-version.ts        the version of app.css, app.js, icons.svg and sw.js (?v= in their URLs, the service worker version): content hash, looked at again when a file changes
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
@@ -209,6 +210,7 @@ src/
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
+    ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts)
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
     top-sql.ts             Top SQL per app role from pg_stat_statements
     diagnostics.ts         Activity → Debug messages (level, list, one request's entries, purge); Workspace utilities →

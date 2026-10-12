@@ -951,6 +951,25 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
   save the definition to rerun it ([chapter 16](16-files.md#sql-workshop--sample-data)).
 - **AI**: SQL from a question (shown, never run), explanations of queries and errors, and
   descriptions of tables for models ([App Builder AI](#app-builder-ai)).
+- **DDL** (APEX: Generate DDL): choose a schema and the kinds of objects (types and domains,
+  sequences, tables with their constraints and indexes, views and materialized views, functions
+  and procedures, triggers, row level security and policies; comments and grants) and get their
+  DDL from the database catalog, in an order that runs: types, sequences, PL/pgSQL functions,
+  tables, SQL-standard functions, views in dependency order, constraints, foreign keys, indexes,
+  triggers, RLS, comments, grants (including `revoke execute … from public` where a function's
+  privileges leave PUBLIC out). Names of the schema itself are left unqualified and the script
+  starts with `set search_path = <schema>`, so it also creates the same objects in another schema.
+  Objects of extensions are left out. Shown in the editor and downloaded as `<schema>.sql`; not run.
+- **Compare** (APEX: Schema Comparison): choose a source and a target schema of this database
+  (a development copy and the schema it came from, say). Their objects are compared by their DDL
+  (the order of a table's columns is not), and listed as only in the source, only in the target,
+  or different, with a diff. The **change script** makes the target like the source: it creates
+  what only the source has, changes tables column by column (add, type, default, not null),
+  replaces views and functions, drops and creates constraints, indexes, triggers, policies and
+  grants that differ, and lists for review what it doesn't change: drops of what only the target
+  has (commented out), columns whose identity or generation differs, and types, domains and
+  sequences that differ. The same from the command line (`pgkiln ddl`, `pgkiln compare`,
+  [chapter 18](18-cli.md)) and for AI agents (`generate_ddl`, `compare_schemas`).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 
