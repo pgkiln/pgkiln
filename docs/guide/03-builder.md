@@ -288,6 +288,16 @@ are accepted, whatever the form says.
 Give a page number, name, mode (normal or modal dialog) and breadcrumb parent, then add
 components in the page designer.
 
+### Page groups
+
+**Shared Components → Page groups** (APEX: Page Groups) names groups of pages, e.g. *Employees*,
+*Leave*, *Administration*; each page joins one with its **Page group** property (Page Designer →
+Page → Appearance). The application's page list then has a *Group* column and a filter: all pages,
+one group, or the pages without a group. Renaming a group renames it on its pages, deleting it takes
+them out of it; the Advisor reports a page in a group that doesn't exist. Groups travel with the
+application (export, import, working copies) and change nothing when it runs. The HR example puts
+its pages in four groups.
+
 ## The page designer
 
 The page designer has three panes, as in APEX's Page Designer. From 1024 pixels wide they sit

@@ -208,6 +208,11 @@ export async function builderRoutes(app: FastifyInstance) {
       wizardTables(a.db_role),
     ]);
     const nextPage = Math.max(0, ...pages.rows.map((p) => p.page_no)) + 1;
+    // (089) page groups: a column and a filter (?group=name, or "-" for pages without one)
+    const groups = (await owner.query<{ name: string }>('select name from meta.page_group where app_id = $1 order by name', [a.id])).rows.map((g) => g.name);
+    const grouped = groups.length > 0 || pages.rows.some((p) => p.page_group);
+    const groupFilter = typeof req.query?.group === 'string' ? req.query.group : '';
+    const shownPages = pages.rows.filter((p) => !groupFilter || (groupFilter === '-' ? !p.page_group : p.page_group === groupFilter));
     const locks = new Map((await appLocks(a.id)).map((l) => [l.page_no, l]));
     const commentsPerPage = new Map((await owner.query('select page_no, count(*)::int as n from meta.dev_comment where app_id = $1 group by 1', [a.id])).rows.map((r) => [r.page_no, r.n]));
     const appLock = locks.get(0);
@@ -215,10 +220,14 @@ export async function builderRoutes(app: FastifyInstance) {
     const main = html`
       ${appHeader(a, 'pages')}
       ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${icon('key')} ${lockText(appLock)} Changes are refused until it is unlocked.</div>` : ''}
-      ${region('Pages', html`<div class="table-wrap"><table class="report">
-          <thead><tr><th class="num">Page</th><th>Name</th><th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th>Lock</th><th></th></tr></thead>
-          <tbody>${pages.rows.map((p) => html`<tr>
-            <td class="num">${p.page_no}</td><td><a href="${BASE}/pages/${p.id}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}</td><td>${p.mode}</td>
+      ${region('Pages', html`${grouped
+          ? html`<form method="get" class="search u-mwnone u-mb1"><div class="field"><label class="label" for="f_group">Page group</label>
+              <select id="f_group" name="group">${[['', 'All pages'], ...groups.map((g) => [g, g]), ['-', 'Without a group']].map(([v, l]) => html`<option value="${v}"${v === groupFilter ? raw(' selected') : ''}>${l}</option>`)}</select></div>
+              <button class="btn u-selfend">Show</button></form>`
+          : ''}<div class="table-wrap"><table class="report">
+          <thead><tr><th class="num">Page</th><th>Name</th>${grouped ? html`<th>Group</th>` : ''}<th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th>Lock</th><th></th></tr></thead>
+          <tbody>${shownPages.map((p) => html`<tr>
+            <td class="num">${p.page_no}</td><td><a href="${BASE}/pages/${p.id}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
             <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
             <td>${p.requires_auth ? (p.authz ?? '—') : 'public'}</td><td>${p.protection}</td>
             <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? 'you' : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>

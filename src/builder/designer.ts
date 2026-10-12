@@ -301,6 +301,7 @@ export async function designerRoutes(app: FastifyInstance) {
           </div></fieldset>
           <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
             ${select('mode', 'Page mode', p.mode, [['normal', 'Normal'], ['modal', 'Modal dialog']])}
+            ${select('page_group', 'Page group', p.page_group ?? '', [['', '- none -'], ...lk.pageGroups.map((g): [string, string] => [g, g]), ...(p.page_group && !lk.pageGroups.includes(p.page_group) ? [[p.page_group, `${p.page_group} (no such group)`] as [string, string]] : [])], 'Organises the pages in the App Builder (Shared Components → Page groups). Changes nothing when the application runs.')}
             ${select('page_template', 'Page template', p.page_template ?? 'standard', [['standard', 'Standard'], ['minimal', 'Minimal (no navigation)']], 'Minimal: no header and navigation menu, e.g. for a login page (Application settings → Login page).')}
             ${select('dialog_position', 'Dialog position', p.dialog_position ?? 'center', [['center', 'Centred dialog'], ['right', 'Drawer from the right'], ['left', 'Drawer from the left'], ['top', 'Drawer from the top'], ['bottom', 'Drawer from the bottom']], 'Modal pages only. On phones dialogs and side drawers fill the screen.')}
             ${select('dialog_size', 'Dialog size', p.dialog_size ?? 'medium', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], 'The width (the height of top and bottom drawers).')}
@@ -389,9 +390,9 @@ export async function designerRoutes(app: FastifyInstance) {
       const before = await owner.one('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
       await owner.query(
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
-                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15 where id = $1`,
+                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
-         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', b.page_template === 'minimal' ? 'minimal' : 'standard'],
+         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', b.page_template === 'minimal' ? 'minimal' : 'standard', b.page_group?.trim() || null],
       );
       // the page's lock and comments follow a new page number
       if (before && before.page_no !== Number(b.page_no))

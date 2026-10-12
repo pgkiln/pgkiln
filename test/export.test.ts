@@ -73,6 +73,7 @@ const SECTIONS: Record<string, string> = {
   search_config: 'search_configs',
   email_template: 'email_templates',
   app_setting: 'app_settings',
+  page_group: 'page_groups',
   dynamic_translation: 'dynamic_translations',
   nav_entry: 'nav',
   page: 'pages',

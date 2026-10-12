@@ -6668,6 +6668,8 @@ describe('sprint 51 safe deployments and feedback', () => {
       assert.equal((await c.query(`select current_setting('role') as r`)).rows[0].r, 'none');
       await c.query('rollback');
     } finally {
+      // a failed assertion leaves the transaction open: end it before the connection goes back to the pool
+      await c.query('rollback').catch(() => {});
       c.release();
       await owner.query('delete from meta.process where id = $1', [proc]);
       await owner.query('drop table public.sec51_probe');
@@ -7123,5 +7125,18 @@ describe('sprint 56 generate DDL and schema comparison', () => {
     assert.equal((await owner.one(`select count(*)::int as n from pg_namespace`)).n, before);
     // the meta schema (pgkiln's own, with password hashes) is never read
     assert.doesNotMatch((await dev.get('/builder/sql/ddl')).body, /<option value="meta">/);
+  });
+});
+
+describe('sprint 58 page groups', () => {
+  test('the page list filter is escaped; group names are plain names; only developers see the builder', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const body = (await dev.get(`/builder/apps/${appId}?group=${encodeURIComponent('"><script>alert(1)</script>')}`)).body;
+    assert.doesNotMatch(body, /<script>alert\(1\)/);
+    await assert.rejects(owner.query(`insert into meta.page_group (app_id, name) values ($1, $2)`, [appId, 'a"><img src=x onerror=alert(1)>']), /check/);
+    const king = await as('king');
+    assert.notEqual((await king.get(`/builder/apps/${appId}?group=Leave`)).statusCode, 200);
   });
 });

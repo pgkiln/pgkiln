@@ -173,6 +173,20 @@ export async function advise(appId: number, tx?: pg.ClientBase): Promise<{ findi
     ).rows.map((row) => ({ kind, row }));
   const all = (await Promise.all(Object.entries(COMPONENTS).map(([kind, spec]) => rowsOf(kind, spec.table, spec.scope)))).flat();
 
+  // metadata checks, as the owner (before the role switch below: the application's role can't read meta)
+  // (087) the application's login page: a page that needs no sign-in, with a login region
+  if (app.login_page) {
+    const page = await one('select id, requires_auth from meta.page where app_id = $1 and page_no = $2', [appId, app.login_page]);
+    const field = 'Application settings → Login page';
+    if (!page) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} doesn't exist: the built-in sign-in page is shown instead.` });
+    else if (page.requires_auth) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} requires authentication: the built-in sign-in page is shown instead.` });
+    else if (!all.some((x) => x.kind === 'region' && x.row.type === 'login' && Number(x.row.page_no) === Number(app.login_page)))
+      findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} has no Login region: nobody can sign in.` });
+  }
+  // (089) a page's group exists
+  for (const p of (await query(`select p.page_no, p.page_group from meta.page p where p.app_id = $1 and p.page_group is not null
+                                   and not exists (select 1 from meta.page_group g where g.app_id = p.app_id and g.name = p.page_group) order by 1`, [appId])).rows)
+    findings.push({ severity: 'warning', entry: null, field: `Page ${p.page_no} → Page group`, message: `Page group ${p.page_group} doesn't exist (Shared Components → Page groups).` });
   // ---- SQL, as the application's role, rolled back (a savepoint in the caller's transaction)
   const c = (tx ?? (await owner.pool.connect())) as pg.PoolClient;
   try {
@@ -213,15 +227,6 @@ export async function advise(appId: number, tx?: pg.ClientBase): Promise<{ findi
       checked++;
       const problem = await checkSql(c, `select ${cols} from ${row.source_type === 'table' ? row.source.trim() : `(${row.source})`} t`, 'select');
       if (problem) findings.push({ ...problem, entry, field: 'Source' });
-    }
-    // (087) the application's login page: a page that needs no sign-in, with a login region
-    if (app.login_page) {
-      const page = await one('select id, requires_auth from meta.page where app_id = $1 and page_no = $2', [appId, app.login_page]);
-      const field = 'Application settings → Login page';
-      if (!page) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} doesn't exist: the built-in sign-in page is shown instead.` });
-      else if (page.requires_auth) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} requires authentication: the built-in sign-in page is shown instead.` });
-      else if (!all.some((x) => x.kind === 'region' && x.row.type === 'login' && Number(x.row.page_no) === Number(app.login_page)))
-        findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} has no Login region: nobody can sign in.` });
     }
     // the search regions name existing configurations
     for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'search')) {
