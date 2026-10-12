@@ -21,6 +21,7 @@ import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
+import { clearDevbar } from '../runtime/devbar.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -96,7 +97,10 @@ export async function builderRoutes(app: FastifyInstance) {
 
   app.post(`${BASE}/logout`, async (req: Req, reply) => {
     const s = await getSession(req, reply, null, BASE);
-    if (req.body?.__csrf === s.csrf_token) await destroySession(reply, s, BASE);
+    if (req.body?.__csrf === s.csrf_token) {
+      await destroySession(reply, s, BASE);
+      clearDevbar(reply);
+    }
     return reply.redirect(`${BASE}/login`, 303);
   });
 

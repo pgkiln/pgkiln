@@ -20,6 +20,7 @@ import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
 import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
 import { frameOrigins } from './url-region.ts';
+import { devbarHtml } from './devbar.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -277,7 +278,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
       <a href="#" class="t-nav-backdrop" tabindex="-1" aria-hidden="true"></a>
       <main class="t-main" id="main">${main}</main>
-    </div>`,
+    </div>
+    ${devbarHtml(ctx)}`,
     `t-app${topNav ? ' nav-top' : ''}`,
     { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)) },
     html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,

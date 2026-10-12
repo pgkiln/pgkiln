@@ -43,6 +43,7 @@ import { renderDocument } from './documents.ts';
 import { pwaHead } from './pwa.ts';
 import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
+import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -252,8 +253,11 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
     else reply.redirect(`${base}/login?next=${encodeURIComponent(req.url)}`);
     return null;
   }
-  // debug messages (src/debug.ts): only when the application's debug level is on
-  const debug = startDebug(req, app);
+  // debug messages (src/debug.ts): when the application's debug level is on, or (079) the developer
+  // toolbar switched it on for this session
+  const debug = startDebug(req, { id: app.id, debug_level: Math.max(Number(app.debug_level ?? 0), sessionDebugLevel(session)) });
+  // (079) the developer toolbar: a builder session of a developer of this application in the same browser
+  const devbar = await devbarOf(req, app.id);
   if (debug) {
     debug.pageNo = page.page_no;
     debug.username = user;
@@ -262,6 +266,7 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   }
   return {
     debug,
+    devbar,
     app,
     page,
     session,
@@ -573,6 +578,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- file downloads
   fileRoutes(app, loadContext, txContext, forbidden);
+  // (079) the developer toolbar's session state viewer and actions
+  devbarRoutes(app, loadContext);
 
   // ---------------------------------------------------------------- dynamic actions (AJAX)
   app.post('/a/:alias/:page/da/:id', async (req: Req, reply) => {

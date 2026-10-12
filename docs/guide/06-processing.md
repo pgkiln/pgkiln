@@ -182,6 +182,10 @@ application's settings):
 | 6 trace | Also each region, process, application process and computation with its duration, and the session (page, user, language, time zone) |
 | 9 everything | Also the posted item values, computed values, skipped processes, hidden regions and other SQL notices |
 
+A developer can also switch debug on for **their own session** only, from the
+[developer toolbar](03-builder.md#developer-toolbar) on the running application: the application
+stays out of debug for everyone else.
+
 Each recorded request lists its entries with the time since the start of the request and, for
 timed steps, their duration. Add your own from any application SQL (processes, region sources,
 conditions, your PL/pgSQL functions), as with `apex_debug.message`:

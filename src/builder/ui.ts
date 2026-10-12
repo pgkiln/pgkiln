@@ -6,6 +6,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
 import { getSession, saveState, takeFlash, type Session } from '../session.ts';
+import { ensureDevbar } from '../runtime/devbar.ts';
 
 // Shared building blocks of the builder UI.
 
@@ -242,6 +243,8 @@ export async function developer(req: Req, reply: FastifyReply) {
     reply.code(403).send('Invalid CSRF token; reload the page and try again.');
     return null;
   }
+  // (079) the developer toolbar on the applications' pages in this browser
+  await ensureDevbar(req, reply, s);
   // workspaces: an application outside the developer's workspaces doesn't exist for them
   await loadWorkspaces(s);
   const target = await appOfPath(req.url);

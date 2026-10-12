@@ -6431,3 +6431,80 @@ describe('sprint 50 url region', () => {
     }
   });
 });
+
+describe('sprint 50 developer toolbar', () => {
+  const devBrowser = async () => {
+    const b = await as('king');
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal(res.statusCode, 303);
+    const builder = await b.get('/builder');
+    const cookie = (builder.cookies as { name: string; path?: string; httpOnly?: boolean }[]).find((c) => c.name === 'pgkiln_devbar');
+    assert.ok(cookie, 'the toolbar cookie is set by the builder');
+    assert.equal(cookie.path, '/a');
+    assert.equal(cookie.httpOnly, true);
+    return b;
+  };
+
+  test('an application user can\'t reach the viewer or switch debug on for their session', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/1');
+    assert.equal((await king.get('/a/hr/1/devbar/session')).statusCode, 404);
+    assert.equal((await king.post('/a/hr/1/devbar/debug', { __csrf: king.lastCsrf, level: '9' })).statusCode, 404);
+    assert.equal((await king.post('/a/hr/1/devbar/clear', { __csrf: king.lastCsrf })).statusCode, 404);
+    const state = (await owner.one(`select state from meta.session where app_id = $1 and username = 'king' order by last_seen desc limit 1`, [appId])).state;
+    assert.equal(state.__DEBUG_LEVEL, undefined);
+    // an item can't be named like the session's debug level: posted and URL values only reach real items
+    await king.post('/a/hr/1', { __csrf: king.lastCsrf, __DEBUG_LEVEL: '9' });
+    const after = (await owner.one(`select state from meta.session where app_id = $1 and username = 'king' order by last_seen desc limit 1`, [appId])).state;
+    assert.equal(after.__DEBUG_LEVEL, undefined);
+  });
+
+  test('the toolbar token is not the builder token, and the builder token doesn\'t show the toolbar', async () => {
+    const b = await devBrowser();
+    const dev = b.cookies.get('pgkiln_dev')!;
+    const bar = b.cookies.get('pgkiln_devbar')!;
+    assert.notEqual(dev, bar);
+    // the toolbar token doesn't open the builder
+    const other = new Browser();
+    other.cookies.set('pgkiln_dev', bar);
+    assert.equal((await other.get('/builder')).statusCode, 302);
+    // the builder token in the toolbar cookie shows nothing
+    const user = await as('king');
+    user.cookies.set('pgkiln_devbar', dev);
+    assert.doesNotMatch((await user.get('/a/hr/1')).body, /class="devbar"/);
+    user.cookies.set('pgkiln_devbar', bar);
+    assert.match((await user.get('/a/hr/1')).body, /class="devbar"/);
+  });
+
+  test('an expired builder session shows no toolbar', async () => {
+    const b = await devBrowser();
+    assert.match((await b.get('/a/hr/1')).body, /class="devbar"/);
+    const sid = (await owner.one(`select id from meta.session where app_id is null and devbar_hash is not null order by last_seen desc limit 1`)).id;
+    await owner.query(`update meta.session set last_seen = now() - interval '1 day' where id = $1`, [sid]);
+    assert.doesNotMatch((await b.get('/a/hr/1')).body, /class="devbar"/);
+    assert.equal((await b.get('/a/hr/1/devbar/session')).statusCode, 404);
+  });
+
+  test('meta.debug_save stores a session\'s log only for a session the toolbar put in debug', async () => {
+    const level = (await owner.one('select debug_level from meta.app where id = $1', [appId])).debug_level;
+    await owner.query('update meta.app set debug_level = 0 where id = $1', [appId]);
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/1');
+      const s = await owner.one(`select id from meta.session where app_id = $1 and username = 'king' order by last_seen desc limit 1`, [appId]);
+      const save = (sid: string) =>
+        owner.one(`select meta.debug_save($1, 1, 'king', $2, 'GET', '/a/hr/1', 200, 9, now(), 1, '[]'::jsonb) as id`, [appId, sid]);
+      assert.equal((await save(s.id)).id, null, 'not in debug: nothing stored');
+      await owner.query(`update meta.session set state = state || '{"__DEBUG_LEVEL": "nine"}' where id = $1`, [s.id]);
+      assert.equal((await save(s.id)).id, null, 'only a known level counts');
+      await owner.query(`update meta.session set state = state || '{"__DEBUG_LEVEL": "6"}' where id = $1`, [s.id]);
+      assert.notEqual((await save(s.id)).id, null);
+      // another application's session doesn't count for this application
+      const other = (await owner.one(`select id from meta.app where id <> $1 limit 1`, [appId]))?.id;
+      if (other) assert.equal((await owner.one(`select meta.debug_save($1, 1, 'king', $2, 'GET', '/', 200, 9, now(), 1, '[]'::jsonb) as id`, [other, s.id])).id, null);
+    } finally {
+      await owner.query('update meta.app set debug_level = $2 where id = $1', [appId, level]);
+    }
+  });
+});

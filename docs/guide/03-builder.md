@@ -434,6 +434,26 @@ Page properties:
 
 Chapters 4–7 describe every component type and property.
 
+## Developer toolbar
+
+While you are signed in to the builder, the pages of your applications show the **developer
+toolbar** at the bottom left when you run them in the same browser (APEX: the Runtime Developer
+Toolbar). It isn't shown to anyone else, nor inside dialogs, and it can be folded away. It has:
+
+| Entry | Does |
+|---|---|
+| **App Builder** | Back to the builder |
+| **Application *n*** | The application's page in the builder |
+| **Edit page *n*** | This page in the Page Designer |
+| **Session** | The **session state viewer**: the user, roles, session id, language, time zone and debug level; the values of this page's items, the application items and the items of other pages in the session. A password item's value is never shown. *Clear the items of page n* empties this page's items in the session (APEX: Clear Cache) |
+| **Debug** | Records [debug messages](06-processing.md#debug-messages) for **this session only**, at the chosen level, while the application itself stays out of debug (*Application (n)* when the application has a level of its own). *View debug* opens the recorded requests |
+
+How it knows you: signing in to the builder gives the browser a second, separate random token for
+the applications' pages (the cookie `pgkiln_devbar`, path `/a`, HttpOnly). A page shows the toolbar
+when that token belongs to a live builder session of a developer who may open the application (an
+administrator, or a member of its workspace). The token does nothing else; signing out of the
+builder ends it.
+
 ## Working copies
 
 APEX's working copies: a second application to change in isolation, then merge back. On an
