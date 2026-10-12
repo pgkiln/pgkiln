@@ -47,11 +47,52 @@ The builder and the runtime cover what APEX offers for its accounts:
 The `meta.set_password`/`expire`/`unexpire` functions are owner-only. Grant them to an app role if
 you want to build user administration pages inside an application.
 
-There is no self-service "forgot password" link (APEX apps don't have one out of the box either;
-an application can build one with [e-mail](06-processing.md#sending-e-mail) and its own token
-table). A user who forgot their password asks an administrator, who
-sets a temporary one under **Users → account → Set password**, with *Require change of password
-on first use* ticked (the default).
+A user who forgot their password asks an administrator, who sets a temporary one under
+**Users → account → Set password**, with *Require change of password on first use* ticked (the
+default), or uses **Forgot password?** when the application offers it (below).
+
+### Forgot password
+
+With **Application settings → Sign-in methods → Offer "Forgot password?"** the sign-in page (the
+built-in one or the application's [own login page](#the-login-page)) has a *Forgot password?* link
+(APEX apps don't have one out of the box). It needs an enabled [mail service](06-processing.md#sending-e-mail)
+with a From address for the application; without one the link isn't shown. It is for passwords
+of the user directory only: not for LDAP, single sign-on, database accounts or custom
+authentication.
+
+1. The user types their user name or e-mail address. The answer is always the same, whether or
+   not an account matched, so the page doesn't tell who has an account.
+2. An active account with a password and an e-mail address that may use the application gets an
+   e-mail (in the user's language) with a link to `/a/<alias>/password/reset?token=…`, built from
+   `PUBLIC_URL`, never from the request's `Host` header.
+3. The link works **once**, for **30 minutes**, in this application only. Opening it moves the
+   token into the session and out of the address bar; the user chooses a new password (the
+   [password policy](#passwords-and-my-account) applies).
+4. The new password ends every session and *Keep me signed in* token of the account, and makes
+   the account's other open links useless.
+
+Only a SHA-256 hash of each token is stored (`meta.password_reset`, owner only). Requests are
+limited to 5 per address in 15 minutes and 3 mails per account per hour; they count towards the
+application's daily mail limit and show in the activity log (`password_reset_request`,
+`password_reset`).
+
+### The login page
+
+`/a/<alias>/login` shows pgkiln's sign-in page: the application's name, the sign-in methods and,
+when the application has several languages, a language picker. To design your own (APEX: the
+login page, usually page 9999), choose **Application settings → Sign-in methods → Create a login
+page**: it adds page 9999 (or the next free number) that doesn't require authentication, with
+page template *Minimal (no navigation)* and a **Login** region, and makes it the application's
+**Login page**. From then on `/a/<alias>/login` (and every page that needs a signed-in user)
+sends visitors there.
+
+Edit it like any page: add static content, images, lists of links or any other region around the
+Login region, which is the sign-in form (identity providers, user name and password, *Keep me
+signed in*, *Forgot password?*). The form still posts to `/a/<alias>/login`, so throttling, the
+CSRF check and every sign-in method work as on the built-in page; a failed sign-in comes back to
+the login page with its message and the user name. A login page that requires authentication,
+or doesn't exist, is ignored (the built-in page shows) and the Advisor reports it; so does a
+login page without a Login region.
 
 With single sign-on, password changes happen at the identity provider; My account says so.
 

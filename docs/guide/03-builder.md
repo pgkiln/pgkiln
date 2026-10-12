@@ -684,7 +684,9 @@ register at the provider, and has a *Test discovery* button. See
   only). The state of the [debug messages](06-processing.md#debug-messages) is shown below it,
   with a link to set their level. **Custom authentication**: the function name, or the function body, and the
   post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)).
-- **Sign-in methods**: username and password, and/or the identity providers to offer on the login page.
+- **Sign-in methods**: username and password, and/or the identity providers to offer on the login page; the
+  application's own **Login page** (*Create a login page* makes one) and **Offer "Forgot password?"** (with a mail
+  service), see [chapter 8](08-security.md#the-login-page).
 - **Theme**: the **base style** (*Iris*, the default for applications created from 0.29 on, or *Standard*, pgkiln's
   look until 0.28; see [chapter 14](14-globalization.md#base-styles-iris-and-standard)), accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu

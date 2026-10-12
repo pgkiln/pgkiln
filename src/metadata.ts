@@ -72,6 +72,10 @@ export interface App {
   local_login: boolean;
   /** days a "Remember me" sign-in lasts; null = off */
   remember_me_days: number | null;
+  /** (087) the page that replaces the built-in sign-in page */
+  login_page: number | null;
+  /** (087) offer "Forgot password?" (with an enabled mail service) */
+  password_reset: boolean;
   /** (067) session sharing group (src/sharedlogin.ts) */
   session_group: string | null;
   /** LDAP directories the password form checks after local accounts */
@@ -136,7 +140,7 @@ export interface Region {
   title: string | null;
   /** (0.31, 073) optional, unique on the page */
   static_id?: string | null;
-  type: 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search';
+  type: 'login' | 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
@@ -323,6 +327,8 @@ export interface Page extends PageSummary {
   static_includes: StaticInclude[];
   /** (077) ask before leaving the page with unsaved changes */
   warn_unsaved: boolean;
+  /** (087) 'minimal': no header and navigation */
+  page_template: 'standard' | 'minimal';
 }
 
 /** The static files a list of names refers to, in that order, with their version. */
@@ -338,7 +344,7 @@ const agg = (table: string, fk: string, parent: string, appId: string) =>
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.session_group, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
+    `select a.id, a.alias, a.name, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.login_page, a.password_reset, a.session_group, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
             a.availability, a.availability_message, a.availability_users, a.feedback, a.error_function, a.session_warning_seconds,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format, a.time_zone, a.time_zone_auto, a.currency,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
@@ -364,7 +370,7 @@ export async function loadApp(alias: string) {
 export async function loadPage(appId: number, pageNo: number) {
   return runtime.one<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
-            p.protection, p.authz, p.warn_unsaved,
+            p.protection, p.authz, p.warn_unsaved, p.page_template,
             ${agg('meta.region', 'page_id', 'p', 'p.app_id')} as regions,
             ${agg('meta.item', 'page_id', 'p', 'p.app_id')} as items,
             ${agg('meta.button', 'page_id', 'p', 'p.app_id')} as buttons,

@@ -125,21 +125,22 @@ describe('expiry and first use', () => {
   });
 });
 
-describe('no forgot-password feature', () => {
-  // There is no "forgot password" link or page (APEX apps have none out of the box either). The
-  // pre-release mail objects were removed by 008; e-mail came back in 081 with a new design.
+describe('forgot password is off by default', () => {
+  // (087) "Forgot password?" is offered only when an application turns it on and has a mail service
+  // (test/login-page.test.ts); the pre-release mail objects were removed by 008 and the old pages stay gone.
   test('the login page has no forgot-password link and the old pages are gone', async () => {
     const b = new Browser(app);
     const login = await b.get('/a/hr/login');
     assert.doesNotMatch(login.body, /forgot/i);
     assert.equal((await b.get('/a/hr/forgot')).statusCode, 404);
     assert.equal((await b.get('/a/hr/reset?token=x')).statusCode, 404);
+    assert.equal((await b.get('/a/hr/password/forgot')).statusCode, 404);
   });
 
-  test('no password-reset objects; the mail objects are those of 081', async () => {
-    const r = await owner.one(`select to_regclass('meta.password_reset') as r, to_regclass('meta.mail_queue') is not null as q,
+  test('the password reset objects of 087; the mail objects are those of 081', async () => {
+    const r = await owner.one(`select to_regclass('meta.password_reset') is not null as r, to_regclass('meta.mail_queue') is not null as q,
                                       to_regclass('meta.email_template') is not null as t, to_regprocedure('meta.send_mail(text,text,text,text,text,text,text,text)') is not null as f`);
-    assert.deepEqual(r, { r: null, q: true, t: true, f: true });
+    assert.deepEqual(r, { r: true, q: true, t: true, f: true });
   });
 });
 

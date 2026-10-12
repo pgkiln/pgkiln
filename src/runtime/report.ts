@@ -14,7 +14,7 @@ import type { Formatter } from './format.ts';
 import { XlsxWriter, xlsxWidths, type XlsxCell } from '../xlsx.ts';
 import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
-import { renderView, VIEWS, type View } from './report-views.ts';
+import { GRID_VIEWS, renderView, VIEWS, type View } from './report-views.ts';
 import { columnTemplates } from './template-components.ts';
 import { facetFilterSql, facetFilters, hidesColumns, reportFacetDefs, searchSql, userColumnNames } from './facet-state.ts';
 import { resolveRestRegion } from './rest-sources.ts';
@@ -259,7 +259,7 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
       const [name, ...rest] = raw.split('|');
       return name && computeNameOk(name) && rest.length ? [{ name, expr: rest.join('|'), raw }] : [];
     }),
-    view: (VIEWS as string[]).includes(p.get(key(r, 'v')) ?? '') ? (p.get(key(r, 'v')) as View) : 'report',
+    view: ((r.type === 'grid' ? GRID_VIEWS : VIEWS) as string[]).includes(p.get(key(r, 'v')) ?? '') ? (p.get(key(r, 'v')) as View) : 'report',
     groupBy: {
       columns: p.getAll(key(r, 'g')).filter(Boolean).slice(0, MAX_GROUP_COLUMNS),
       functions: p.getAll(key(r, 'ga')).slice(0, MAX_GROUP_FUNCTIONS).flatMap((raw) => {
@@ -500,6 +500,38 @@ export function pageInfo(r: Region, st: { page: number; size: number }, rows: un
   return { rows: shown, page: win.page, from, to, total, capped, more, next: null as string | null, prev: null as string | null };
 }
 export type PageInfo = ReturnType<typeof pageInfo>;
+
+/** Actions → Group by of a report or grid: up to three columns and a function to add (r<id>_gb1… → r<id>_g, r<id>_ga). */
+export function groupBySection(ctx: PageContext, r: Region, st: ReportState, names: string[], form: string) {
+  const t = ctx.locale.t;
+  const options = (selected: string | undefined) => names.map((n) => html`<option value="${n}"${n === selected ? raw(' selected') : ''}>${headingOf(r, n, ctx.locale.tr)}</option>`);
+  return html`<div class="menu-section">
+      <strong>${t('report.group_by')}</strong>
+      <div class="filter-row">
+        ${[1, 2, 3].map((n) => html`<select name="${key(r, `gb${n}`)}" form="${form}" aria-label="${t('report.group_by')} ${n}">
+          <option value="">${t('report.none')}</option>${options(st.groupBy.columns[n - 1])}</select>`)}
+        <select name="${key(r, 'gbf')}" form="${form}" aria-label="${t('report.function')}"><option value="">${t('report.none')}</option>${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}">${t(`agg.${fn}`)}</option>`)}</select>
+        <select name="${key(r, 'gbc')}" form="${form}" aria-label="${t('report.column')}">${options(undefined)}</select>
+        <button class="btn" form="${form}">${t('report.apply')}</button>
+      </div>
+    </div>`;
+}
+
+/** Actions → Chart of a report or grid: kind, label column, function, value column (r<id>_ck… → r<id>_ch). */
+export function chartSection(ctx: PageContext, r: Region, st: ReportState, names: string[], form: string) {
+  const t = ctx.locale.t;
+  const options = (selected: string | undefined) => names.map((n) => html`<option value="${n}"${n === selected ? raw(' selected') : ''}>${headingOf(r, n, ctx.locale.tr)}</option>`);
+  return html`<div class="menu-section">
+      <strong>${t('report.chart')}</strong>
+      <div class="filter-row">
+        <select name="${key(r, 'ck')}" form="${form}" aria-label="${t('report.chart_type')}">${REPORT_CHART_KINDS.map((k) => html`<option value="${k}"${k === st.chart?.kind ? raw(' selected') : ''}>${t(`chart.${k}`)}</option>`)}</select>
+        <select name="${key(r, 'cl')}" form="${form}" aria-label="${t('report.label_column')}">${options(st.chart?.label)}</select>
+        <select name="${key(r, 'cf')}" form="${form}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}"${fn === (st.chart?.fn ?? 'count') ? raw(' selected') : ''}>${t(`agg.${fn}`)}</option>`)}</select>
+        <select name="${key(r, 'cv')}" form="${form}" aria-label="${t('report.value_column')}">${options(st.chart?.value)}</select>
+        <button class="btn" form="${form}">${t('report.apply')}</button>
+      </div>
+    </div>`;
+}
 
 /** The pager under a report or grid: "X–Y of N" (or "Rows X–Y"), Previous and Next. */
 export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: Raw | '' = '') {
@@ -1003,16 +1035,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
             </div>
             <small class="help">${t('report.compute_help')}</small>
           </div>
-          <div class="menu-section">
-            <strong>${t('report.group_by')}</strong>
-            <div class="filter-row">
-              ${[1, 2, 3].map((n) => html`<select name="${key(r, `gb${n}`)}" form="${groupForm}" aria-label="${t('report.group_by')} ${n}">
-                <option value="">${t('report.none')}</option>${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.groupBy.columns[n - 1] ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>`)}
-              <select name="${key(r, 'gbf')}" form="${groupForm}" aria-label="${t('report.function')}"><option value="">${t('report.none')}</option>${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}">${t(`agg.${fn}`)}</option>`)}</select>
-              <select name="${key(r, 'gbc')}" form="${groupForm}" aria-label="${t('report.column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === '' ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
-              <button class="btn" form="${groupForm}">${t('report.apply')}</button>
-            </div>
-          </div>
+          ${groupBySection(ctx, r, st, allCols.map(({ f }) => f.name), groupForm)}
           <div class="menu-section">
             <strong>${t('report.pivot')}</strong>
             <div class="filter-row">
@@ -1023,16 +1046,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
               <button class="btn" form="${pivotForm}">${t('report.apply')}</button>
             </div>
           </div>
-          <div class="menu-section">
-            <strong>${t('report.chart')}</strong>
-            <div class="filter-row">
-              <select name="${key(r, 'ck')}" form="${chartForm}" aria-label="${t('report.chart_type')}">${REPORT_CHART_KINDS.map((k) => html`<option value="${k}"${k === st.chart?.kind ? raw(' selected') : ''}>${t(`chart.${k}`)}</option>`)}</select>
-              <select name="${key(r, 'cl')}" form="${chartForm}" aria-label="${t('report.label_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.chart?.label ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
-              <select name="${key(r, 'cf')}" form="${chartForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}"${fn === (st.chart?.fn ?? 'count') ? raw(' selected') : ''}>${t(`agg.${fn}`)}</option>`)}</select>
-              <select name="${key(r, 'cv')}" form="${chartForm}" aria-label="${t('report.value_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.chart?.value ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
-              <button class="btn" form="${chartForm}">${t('report.apply')}</button>
-            </div>
-          </div>
+          ${chartSection(ctx, r, st, allCols.map(({ f }) => f.name), chartForm)}
           ${saved ?? ''}
           <div class="menu-section"><strong>${t('report.rows_per_page')}</strong>
             <div class="seg">${PAGE_SIZES.map((n) =>

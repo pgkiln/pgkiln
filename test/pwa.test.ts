@@ -59,6 +59,12 @@ describe('installable app', () => {
     assert.match((await b.get('/a/hr/offline')).body, /You&#39;re offline|You're offline/);
     const page = (await b.get('/a/hr/login')).body;
     assert.match(page, /<link rel="manifest" href="\/a\/hr\/manifest.webmanifest">/);
+    // the page asks for the static files under the service worker's version, which it caches by exact URL
+    const version = /"version":"([a-z0-9]+)"/.exec(sw.body)![1];
+    assert.match(page, new RegExp(`<link rel="stylesheet" href="/static/app.css\\?v=${version}">`));
+    assert.match(page, new RegExp(`<script src="/static/app.js\\?v=${version}" defer>`));
+    assert.match(sw.body, /caches\.match\(req, \{ cacheName: STATIC \}\)/);
+    assert.doesNotMatch(sw.body, /ignoreSearch: true \}\)\.then\(\(hit\) => hit \|\| fetch/);
 
     await owner.query('update meta.app set pwa = false where id = $1', [appId]);
     for (const url of ['/a/hr/manifest.webmanifest', '/a/hr/sw.js', '/a/hr/icon-192.png', '/a/hr/offline']) assert.equal((await b.get(url)).statusCode, 404, url);
@@ -153,5 +159,24 @@ describe('forms', () => {
     } finally {
       await owner.query('update hr.emp set mgr = $2, username = $3, comm = $4, sal = $5, work_location = null where empno = $1', [7788, before.mgr, before.username, before.comm, before.sal]);
     }
+  });
+});
+
+describe('static file versions', () => {
+  test('a changed static file gets a new version without a restart', async () => {
+    const { staticVersion } = await import('../src/static-version.ts');
+    const { appendFileSync, readFileSync, writeFileSync } = await import('node:fs');
+    const css = new URL('../public/app.css', import.meta.url);
+    const before = readFileSync(css, 'utf8');
+    const v1 = staticVersion();
+    try {
+      appendFileSync(css, '\n/* test */\n');
+      await new Promise((r) => setTimeout(r, 1100)); // looked at again at most once a second
+      assert.notEqual(staticVersion(), v1);
+    } finally {
+      writeFileSync(css, before);
+    }
+    await new Promise((r) => setTimeout(r, 1100));
+    assert.equal(staticVersion(), v1, 'the same contents: the same version');
   });
 });

@@ -242,6 +242,21 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       'data-dialog': '1',
     }, html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`, root);
 
+  // (087) a minimal page (a login page, for one): no header and navigation; the application's
+  // login page gets the sign-in page's backdrop
+  if (ctx.page.page_template === 'minimal') {
+    const login = ctx.app.login_page === ctx.page.page_no;
+    return documentShell(
+      `${title} · ${ctx.app.name}`,
+      html`<main class="t-minimal-main${login ? ' login' : ''}" id="main">${main}</main>
+      ${devbarHtml(ctx)}`,
+      `t-minimal${login ? ' login-body' : ''}`,
+      { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user) },
+      html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
+      root,
+    );
+  }
+
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
   const nav = await navTree(ctx, topNav);

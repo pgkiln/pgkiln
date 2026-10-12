@@ -12,7 +12,8 @@ import { lovContains, lovOptions, type LovOption } from './items.ts';
 import { resolveRestRegion, restAllows, restGridCall, restWritable } from './rest-sources.ts';
 import { fillItems, linkAttrs } from './links.ts';
 import { detailsOf, masterColumnOf, masterItemOf, selectHref, selectRowOf } from './master-detail.ts';
-import { aggregateRows, AGGREGATES, buildSql, cell, columnFormats, headingOf, key, pageInfo, pagerNav, regionUrl, reportParams, reportState, visibleColumns, type ReportState } from './report.ts';
+import { aggregateRows, AGGREGATES, buildSql, cell, chartSection, columnFormats, groupBySection, headingOf, key, MAX_PAGE, pageInfo, pagerNav, regionUrl, reportParams, reportState, visibleColumns, type ReportState } from './report.ts';
+import { GRID_VIEWS, renderView, type View } from './report-views.ts';
 
 // Interactive grid: an editable report on one table (APEX's Interactive
 // Grid). The region's SELECT must include the table's primary key column.
@@ -27,7 +28,15 @@ import { aggregateRows, AGGREGATES, buildSql, cell, columnFormats, headingOf, ke
 //                            "delete": true, "links": [{"label": "Reviews", "page": 20, "items": {...}}]},
 //            "select_row": {"column": "deptno", "item": "P27_DEPTNO"},   (a master grid, see master-detail.ts)
 //            "master": {"item": "P27_DEPTNO", "column": "deptno"},      (a detail grid)
-//            "actions": true, "saved_reports": true, "public_reports": "ADMIN"}
+//            "actions": true, "saved_reports": true, "public_reports": "ADMIN",
+//            "views": ["row", "group", "chart"]}
+//
+// Views (APEX: Single Row View, Group By, Chart), ?r<id>_v=row|group|chart:
+// the single row view shows one row of the search as a form (r<id>_row=N, the
+// position from 1, or "new" for a new row) with the grid's own field names,
+// so the same grid_dml process saves it; group by and chart are the
+// interactive report's views (report-views.ts). config.views limits them
+// (left out: all three).
 //
 // Aggregates are computed in the database over every row of the search (not
 // only the page). The layout is the developer's default; each user arranges
@@ -145,20 +154,47 @@ function rowActionsOf(r: Region): { edit: RowLink | null; duplicate: boolean; de
   };
 }
 
+/** The views a user may switch to besides the grid itself (config.views; left out: all three). */
+export function gridViews(r: Region): View[] {
+  const listed = r.config.views;
+  const all = GRID_VIEWS.filter((v) => v !== 'report');
+  return Array.isArray(listed) ? all.filter((v) => listed.includes(v)) : all;
+}
+
 export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const c = ctx.client!;
   const t = ctx.locale.t;
   const tr = ctx.locale.tr;
   if (!(r.table_name || r.rest_source) || !r.pk_column) return html`<div class="alert alert-error">Grid regions need a table (or a REST data source with key columns) and a primary key column.</div>`;
   const base = reportState(ctx, r);
-  const st = { ...base, size: Math.max(1, Math.min(200, Number(r.config.page_size) || 25)), breakCol: null, view: 'report' as const };
+  const views = gridViews(r);
+  const view: View = views.includes(base.view) ? base.view : 'report';
+  const pageSize = Math.max(1, Math.min(200, Number(r.config.page_size) || 25));
+  // the single row view: one row of the search at a time (r<id>_row=N from 1), or a new row (r<id>_row=new)
+  const rowParam = ctx.params.get(key(r, 'row'));
+  const adding = view === 'row' && rowParam === 'new';
+  const rowNo = view === 'row' && !adding ? Math.max(1, Math.min(MAX_PAGE, parseInt(rowParam ?? '1', 10) || 1)) : 0;
+  const st = view === 'row'
+    ? { ...base, size: 1, page: rowNo || 1, breakCol: null, view: 'report' as const }
+    : { ...base, size: pageSize, breakCol: null, view: 'report' as const };
   const aggs = gridAggregates(r, st);
   let res: pg.QueryResult<any[]>;
   let writable: Set<string>;
   let agg: Awaited<ReturnType<typeof aggregateRows>> = null;
   try {
     writable = await writableColumns(c, r);
-    res = await savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'page')), rowMode: 'array' }));
+    const query = async () => savepoint(c, async () => c.query({ ...(await buildSql(ctx, r, st, 'page')), rowMode: 'array' }));
+    res = await query();
+    // a position past the end (rows deleted, a narrower search): the last row
+    if (view === 'row' && !res.rows.length && st.page > 1) {
+      st.page = 1;
+      res = await query();
+      const total = Number(res.rows[0]?.[res.fields.findIndex((f) => f.name === '__total')]);
+      if (Number.isFinite(total) && total > 1) {
+        st.page = Math.min(total, MAX_PAGE);
+        res = await query();
+      }
+    }
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `grid "${r.title ?? r.id}"`)}</div>`;
   }
@@ -167,7 +203,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const info = pageInfo(r, st, res.rows, totalIdx);
   const pkIdx = fields.findIndex((f) => f.name === r.pk_column);
   if (pkIdx === -1) return html`<div class="alert alert-error">The grid query must select the primary key column ${r.pk_column}.</div>`;
-  if (aggs.length)
+  if (aggs.length && view === 'report')
     try {
       agg = await aggregateRows(ctx, r, { ...st, aggregates: aggs }, (col) => NUMERIC.has(fields.find((f) => f.name === col)?.dataTypeID ?? 0));
     } catch (e) {
@@ -248,6 +284,13 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     : html`<th scope="col" class="${leadCls(k)}"><span class="sr-only">${t('grid.row_actions')}</span></th>`,
   );
 
+  // the single row view of a position in the search (from 1), or of a new row
+  const rowUrl = (n: number | 'new') => regionUrl(ctx, r, (p) => {
+    p.set(key(r, 'v'), 'row');
+    p.set(key(r, 'row'), String(n));
+    for (const k of ['p', 'k', 'dup']) p.delete(key(r, k));
+  });
+
   const rowItems = (row: unknown[], items: Record<string, string> | undefined) =>
     fillItems(items, (col) => {
       const i = fields.findIndex((f) => f.name.toLowerCase() === col.toLowerCase());
@@ -284,6 +327,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
           ${editLink ? html`<a ${linkAttrs(ctx, editLink.page, rowItems(row, editLink.items))}>${icon('edit')} ${editLink.label ? tr(editLink.label) : t('report.edit')}</a>` : ''}
           ${canDuplicate ? html`<a href="${regionUrl(ctx, r, (q) => q.set(key(r, 'dup'), pk))}" data-grid-dup="${i}" data-grid-leave>${icon('plus')} ${t('grid.duplicate')}</a>` : ''}
           ${canDelete ? html`<label for="${g}_${i}_del" data-grid-del>${icon('close')} ${t('grid.delete_toggle')}</label>` : ''}
+          ${views.includes('row') ? html`<a href="${rowUrl(info.from + i)}" data-grid-leave>${t('grid.view_row')}</a>` : ''}
           ${extraLinks.map((l) => html`<a ${linkAttrs(ctx, l.page, rowItems(row, l.items))}>${tr(l.label!)}</a>`)}
         </div></details></td>`;
     });
@@ -326,6 +370,62 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     postedNew.push(newRow(nextNew++, values));
   }
 
+  // The single row view: one row as a form, with the grid's field names (row 0, or new row 0)
+  const field = (p: Placed<(typeof cols)[number]>, control: Raw | string, editable: boolean) => {
+    const lbl = html`${label(p.col.name)}${p.col.required && editable ? html`<span class="req" aria-hidden="true">*</span>` : ''}`;
+    return editable
+      ? html`<label class="field grid-field"${hiddenAttr(p)}><span class="label">${lbl}</span>${control}</label>`
+      : html`<div class="field grid-field"${hiddenAttr(p)}><span class="label">${lbl}</span><div class="grid-value">${control}</div></div>`;
+  };
+  const recordNav = () => {
+    const total = info.total;
+    const at = info.from;
+    const link = (n: number, text: string, rel = '') => html`<a class="btn" href="${rowUrl(n)}"${rel ? raw(` rel="${rel}"`) : ''} data-grid-leave>${text}</a>`;
+    return html`<nav class="pager grid-record-nav" aria-label="${t('report.pagination')}">
+      ${at > 1 || adding ? link(1, `« ${t('grid.first')}`) : ''}
+      ${at > 1 ? link(at - 1, `‹ ${t('report.previous')}`, 'prev') : ''}
+      <span>${adding ? t('grid.new_row') : total !== null ? t('grid.row_of', { row: at, total }) : t('grid.row', { row: at })}</span>
+      ${!adding && info.more ? link(at + 1, `${t('report.next')} ›`, 'next') : ''}
+      ${total !== null && total > 0 && (adding || at < total) ? link(total, `${t('grid.last')} »`) : ''}
+    </nav>`;
+  };
+  const record = (row: unknown[]) => {
+    const pk = toState(row[pkIdx]) ?? '';
+    const pi = postedByPk.get(pk);
+    const orig: Record<string, string> = {};
+    const fieldsHtml = placed.map((p) => {
+      const col = p.col;
+      const dbValue = toState(row[col.idx]) ?? '';
+      orig[col.ci] = dbValue;
+      if (!col.editable) return field(p, cell(row[col.idx], col.typeOid, fmtOf(col.name)), false);
+      const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${col.ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${col.ci}`) ?? dbValue)) : dbValue;
+      return field(p, control(col, `${g}_0_c${col.ci}`, value, label(col.name)), true);
+    });
+    const deleted = pi !== undefined && pv(`${g}_${pi}_del`) === 'true';
+    const links = [
+      editLink ? html`<a class="btn" ${linkAttrs(ctx, editLink.page, rowItems(row, editLink.items))}>${icon('edit')} ${editLink.label ? tr(editLink.label) : t('report.edit')}</a>` : '',
+      ...extraLinks.map((l) => html`<a class="btn" ${linkAttrs(ctx, l.page, rowItems(row, l.items))}>${tr(l.label!)}</a>`),
+    ];
+    return html`<div class="grid-record${deleted ? ' deleted' : ''}" data-row="0">
+      <div class="form-grid">${fieldsHtml}</div>
+      ${deletable ? html`<label class="check grid-sel"><input type="checkbox" name="${g}_0_del" value="true"${deleted ? raw(' checked') : ''}> ${t('grid.delete_toggle')}</label>` : ''}
+      ${links.some(Boolean) ? html`<div class="buttons">${links}</div>` : ''}
+      ${savable ? html`<input type="hidden" name="${g}_0_pk" value="${pk}"><input type="hidden" name="${g}_0_cs" value="${rowToken(ctx, r, pk)}"><input type="hidden" name="${g}_0_orig" value="${JSON.stringify(orig)}">` : ''}
+    </div>
+    ${recordNav()}`;
+  };
+  const newRecord = () => {
+    if (!insertable) return html`<p class="empty">${t('report.no_data')}</p>`;
+    const fieldsHtml = placed.flatMap((p) => {
+      const col = p.col;
+      if (masterCol && col.name === masterCol) return [field(p, masterValue, false)];
+      if (!writable.has(col.name)) return [];
+      return [field(p, control({ ...col, editable: true }, `${g}_n0_c${col.ci}`, pv(`${g}_n0_c${col.ci}`) ?? '', label(col.name)), true)];
+    });
+    return html`<div class="grid-record grid-new" data-new-row="0"><div class="form-grid">${fieldsHtml}</div></div>
+    ${recordNav()}`;
+  };
+
   // the aggregates under their columns (over all rows of the search, not only this page)
   const footer = agg && cols.length
     ? (() => {
@@ -344,10 +444,50 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const searchForm = `rs${r.id}`;
   ctx.detached.push(
     html`<form id="${searchForm}" method="get" action="${ctx.base}/${ctx.page.page_no}">${[...ctx.params.entries()]
-      .filter(([k]) => ![key(r, 'q'), key(r, 'p'), key(r, 'dup'), 'clear', 'cs'].includes(k))
+      .filter(([k]) => ![key(r, 'q'), key(r, 'p'), key(r, 'dup'), key(r, 'row'), 'clear', 'cs'].includes(k))
       .map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}</form>`,
   );
-  const menu = r.config.actions === false ? '' : await actionsMenu(ctx, r, cols, placed, layout, ownLayout, aggs);
+  const menu = r.config.actions === false ? '' : await actionsMenu(ctx, r, base, cols, placed, layout, ownLayout, aggs, views, view === 'row' ? null : rowUrl(info.from || 1));
+
+  // Grid / Single row / Group by / Chart: once the user has set up group by or chart, or is in the single
+  // row view (opened from the Actions or row actions menu), so a plain grid looks as it always did
+  const shownViews = GRID_VIEWS.filter((v) => v === 'report' || v === view || (views.includes(v) && ((v === 'group' && base.groupBy.columns.length) || (v === 'chart' && base.chart))));
+  const switcher = shownViews.length > 1
+    ? html`<nav class="seg view-switch" aria-label="${t('report.view')}">${shownViews.map((v) => html`<a href="${v === 'row' ? rowUrl(view === 'report' ? info.from || 1 : 1) : regionUrl(ctx, r, (p) => {
+        if (v === 'report') p.delete(key(r, 'v'));
+        else p.set(key(r, 'v'), v);
+        p.delete(key(r, 'row'));
+        // back to the grid: the page with the row the single row view showed
+        if (v === 'report' && view === 'row' && info.from) p.set(key(r, 'p'), String(Math.ceil(info.from / pageSize)));
+        else p.delete(key(r, 'p'));
+      })}" data-grid-leave${v === view ? raw(' aria-current="true"') : ''}>${t(v === 'report' ? 'grid.view_grid' : v === 'row' ? 'grid.view_row' : `report.view_${v}`)}</a>`)}</nav>`
+    : '';
+  const toolbar = (buttons: Raw | '') => html`<div class="report-toolbar grid-toolbar">
+      <div class="search" role="search">
+        <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_placeholder')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}">
+        <button class="btn" form="${searchForm}">${t('report.go')}</button>
+        ${menu}
+      </div>
+      <div class="buttons">${buttons}</div>
+    </div>`;
+  // Save posts the page's report and grid state along, so a failed save shows the same view and a
+  // successful one comes back to it (routes.ts: gridReturn)
+  const saveBtn = () => {
+    const state = statePart(ctx).toString();
+    return html`<button type="submit" class="btn btn-hot" name="__request" value="${saveRequest(r)}"${state ? html` formaction="${ctx.base}/${ctx.page.page_no}?${state}"` : ''}>${t('grid.save')}</button>`;
+  };
+  const gridAttrs = raw(`${details.length ? ` data-grid-details="${details.map((d) => d.id).join(',')}"` : ''}`);
+  if (view === 'group' || view === 'chart')
+    return html`<div class="grid grid-view" data-grid="${g}" data-region="${r.id}"${gridAttrs}>
+      ${toolbar('')}${switcher}${await renderView(ctx, r, { ...base, view })}
+    </div>`;
+  if (view === 'row')
+    return html`<div class="grid grid-view" data-grid="${g}" data-region="${r.id}"${gridAttrs}>
+      ${toolbar(html`${insertable && !adding ? html`<a class="btn" href="${rowUrl('new')}" data-grid-leave>${icon('plus')} ${t('grid.add_row')}</a>` : ''}
+        ${savable && (adding ? insertable : info.rows.length) ? saveBtn() : ''}`)}
+      ${switcher}
+      ${adding ? newRecord() : info.rows.length ? record(info.rows[0]) : html`<p class="empty">${r.config.empty ?? t('report.no_data')}</p>`}
+    </div>`;
   const chips = aggs.filter((a) => a.own).map((a) => html`<span class="chip">${t(`agg.${a.fn}`)}: <b>${label(a.column)}</b>
       <a href="${regionUrl(ctx, r, (p) => {
         const rest = p.getAll(key(r, 'a')).filter((x) => x !== a.raw);
@@ -355,18 +495,10 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
         rest.forEach((x) => p.append(key(r, 'a'), x));
       })}" aria-label="${t('report.remove')}" data-grid-leave>×</a></span>`);
 
-  return html`<div class="grid${frozenAny ? ' grid-has-frozen' : ''}" data-grid="${g}" data-region="${r.id}"${r.config.actions === false ? '' : raw(' data-arrange')}${details.length ? raw(` data-grid-details="${details.map((d) => d.id).join(',')}"`) : ''}>
-    <div class="report-toolbar grid-toolbar">
-      <div class="search" role="search">
-        <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_placeholder')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}">
-        <button class="btn" form="${searchForm}">${t('report.go')}</button>
-        ${menu}
-      </div>
-      <div class="buttons">
-        ${insertable ? html`<button type="button" class="btn" data-grid-add="${g}">${icon('plus')} ${t('grid.add_row')}</button>` : ''}
-        ${savable ? html`<button type="submit" class="btn btn-hot" name="__request" value="${saveRequest(r)}">${t('grid.save')}</button>` : ''}
-      </div>
-    </div>
+  return html`<div class="grid${frozenAny ? ' grid-has-frozen' : ''}" data-grid="${g}" data-region="${r.id}"${r.config.actions === false ? '' : raw(' data-arrange')}${gridAttrs}>
+    ${toolbar(html`${insertable ? html`<button type="button" class="btn" data-grid-add="${g}">${icon('plus')} ${t('grid.add_row')}</button>` : ''}
+      ${savable ? saveBtn() : ''}`)}
+    ${switcher}
     ${chips.length ? html`<div class="chips">${chips}</div>` : ''}
     <div class="table-wrap"><table class="report report-reflow grid-table" data-frozen="${placed.filter((p) => p.frozen).length}" data-leads="${leads.length}">
       <thead><tr>${leadHeads}${header}</tr></thead>
@@ -380,8 +512,8 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
 
 /** The grid's Actions menu: columns (order, shown, width, frozen), aggregates, saved reports, reset. */
 async function actionsMenu(
-  ctx: PageContext, r: Region, cols: (GridColumn & { ci: number })[], placed: Placed<GridColumn & { ci: number }>[],
-  layout: GridLayout, ownLayout: boolean, aggs: ReturnType<typeof gridAggregates>,
+  ctx: PageContext, r: Region, st: ReportState, cols: (GridColumn & { ci: number })[], placed: Placed<GridColumn & { ci: number }>[],
+  layout: GridLayout, ownLayout: boolean, aggs: ReturnType<typeof gridAggregates>, views: View[], singleRow: string | null,
 ) {
   const t = ctx.locale.t;
   const label = (name: string) => headingOf(r, name, ctx.locale.tr);
@@ -391,13 +523,17 @@ async function actionsMenu(
   const layoutForm = `rl${r.id}`;
   const resetForm = `rr${r.id}`;
   const aggForm = `ra${r.id}`;
+  const groupForm = `rg${r.id}`;
+  const chartForm = `rk${r.id}`;
   ctx.detached.push(html`<form id="${layoutForm}" method="post" action="${base}/layout">${csrf}<input type="hidden" name="params" value="${here}"><input type="hidden" name="n" value="${placed.length}"></form>`);
   ctx.detached.push(html`<form id="${resetForm}" method="post" action="${base}/layout/reset">${csrf}<input type="hidden" name="params" value="${here}"></form>`);
-  ctx.detached.push(
-    html`<form id="${aggForm}" method="get" action="${ctx.base}/${ctx.page.page_no}">${[...ctx.params.entries()]
-      .filter(([k]) => ![key(r, 'p'), key(r, 'dup'), 'clear', 'cs'].includes(k))
-      .map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}</form>`,
-  );
+  // Aggregate, Group by and Chart: GET forms that keep the rest of the page's state
+  for (const id of [aggForm, ...(views.includes('group') ? [groupForm] : []), ...(views.includes('chart') ? [chartForm] : [])])
+    ctx.detached.push(
+      html`<form id="${id}" method="get" action="${ctx.base}/${ctx.page.page_no}">${[...ctx.params.entries()]
+        .filter(([k]) => ![key(r, 'p'), key(r, 'dup'), key(r, 'row'), 'clear', 'cs'].includes(k))
+        .map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}</form>`,
+    );
   const columnRows = placed.map((p, i) => html`<tr>
       <th scope="row">${label(p.col.name)}<input type="hidden" name="col_${i}" value="${p.col.name}" form="${layoutForm}"></th>
       <td><input type="checkbox" name="show_${i}" value="true" form="${layoutForm}"${p.hidden ? '' : raw(' checked')} aria-label="${t('grid.show_column', { column: label(p.col.name) })}"></td>
@@ -431,6 +567,9 @@ async function actionsMenu(
         </div>
         ${aggs.some((a) => !a.own) ? html`<small class="help">${t('grid.default_aggregates', { list: aggs.filter((a) => !a.own).map((a) => `${t(`agg.${a.fn}`)} ${label(a.column)}`).join(', ') })}</small>` : ''}
       </div>
+      ${views.includes('row') && singleRow ? html`<div class="menu-section menu-links"><a href="${singleRow}" data-grid-leave>${t('grid.view_row')}</a></div>` : ''}
+      ${views.includes('group') ? groupBySection(ctx, r, st, cols.map((c) => c.name), groupForm) : ''}
+      ${views.includes('chart') ? chartSection(ctx, r, st, cols.map((c) => c.name), chartForm) : ''}
       ${saved ?? ''}
     </div>
   </details>`;
@@ -445,6 +584,11 @@ export function statePart(ctx: PageContext, drop?: Region) {
     out.append(k, v);
   }
   return out;
+}
+
+/** After a grid's Save: the report and grid parameters the request came with (the formaction), for the redirect. */
+export function gridReturn(ctx: PageContext, request: string) {
+  return /^GRID_SAVE_\d+$/.test(request) ? statePart(ctx).toString() : '';
 }
 
 /** Actions → Saved reports of a grid: its parameters plus the column layout (r<id>_lay). */

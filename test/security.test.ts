@@ -23,6 +23,8 @@ let appId: number;
 class Browser {
   cookies = new Map<string, string>();
   lastCsrf = '';
+  /** extra request headers (e.g. a forged Host) */
+  headers: Record<string, string> = {};
   async request(method: 'GET' | 'POST', url: string, form?: Record<string, string | string[]>) {
     const res = await app.inject({
       method,
@@ -30,6 +32,7 @@ class Browser {
       // an array posts the field once per value (checkboxes with one name)
       payload: form ? new URLSearchParams(Object.entries(form).flatMap(([k, v]) => [v].flat().map((x) => [k, x]))).toString() : undefined,
       headers: {
+        ...this.headers,
         cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
         ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
       },
@@ -6914,6 +6917,188 @@ describe('sprint 53 data and settings', () => {
       assert.match(csp, /img-src 'self' data:[^;]* https:\/\/ok\.example\.com/);
     } finally {
       await owner.query('delete from meta.item where id = any($1)', [ids]);
+    }
+  });
+});
+
+describe('sprint 54 interactive grid views', () => {
+  const grid10 = async () =>
+    (await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 10 and r.type = 'grid'`, [appId])) as { id: number; config: unknown };
+  const sectionOf = (page: string, id: number) => page.slice(page.indexOf(`id="R${id}"`), page.indexOf('</section>', page.indexOf(`id="R${id}"`)));
+
+  test('group by, chart and single row parameters of a grid cannot inject SQL', async () => {
+    const king = await as('king');
+    const { id } = await grid10();
+    const get = (params: [string, string][]) => king.get(`/a/hr/10?${new URLSearchParams(params.map(([k, v]) => [`r${id}_${k}`, v]))}`);
+    for (const params of [
+      [['g', 'dname" from meta.account --'], ['ga', 'sum|deptno) from meta.account --'], ['v', 'group']],
+      [['ch', 'bar|dname"; drop table hr.dept; --|count|deptno'], ['v', 'chart']],
+      [['v', 'row'], ['row', '1; drop table hr.dept']],
+      [['v', 'row'], ['row', '-5']],
+      [['v', 'row'], ['row', '99999999999999999999']],
+      [['v', 'pivot'], ['pv', 'dname|loc|count|deptno']],
+    ] as [string, string][][]) {
+      const res = await get(params);
+      assert.equal(res.statusCode, 200, JSON.stringify(params));
+      assert.doesNotMatch(res.body, /\$2[aby]\$/, 'no password hashes');
+      assert.doesNotMatch(res.body, /pgkiln_runtime|syntax error|alert-error/, JSON.stringify(params));
+    }
+    assert.ok((await owner.one('select count(*)::int as n from hr.dept')).n > 0);
+  });
+
+  test('after a grid save the redirect keeps only report and grid parameters, on the same page', async () => {
+    const king = await as('king');
+    const { id } = await grid10();
+    await king.get('/a/hr/10');
+    const res = await king.post(`/a/hr/10?r${id}_q=x&next=https://evil.example.com&r${id}_csv=1&P10_X=1&r${id}_x=${encodeURIComponent('//evil.example.com')}`, { __csrf: king.lastCsrf, __request: `GRID_SAVE_${id}` });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 200));
+    assert.equal(res.headers.location, `/a/hr/10?r${id}_q=x&r${id}_x=%2F%2Fevil.example.com`);
+  });
+
+  test('a column the developer hides stays hidden in every view', async () => {
+    const { id, config } = await grid10();
+    await owner.query(`update meta.region set config = config || '{"hidden": ["loc"]}' where id = $1`, [id]);
+    try {
+      const king = await as('king');
+      const locs = (await owner.query('select loc from hr.dept where loc is not null')).rows.map((x) => x.loc as string);
+      const views: [string, string][][] = [
+        [['v', 'group'], ['g', 'loc']],
+        [['v', 'group'], ['g', 'dname'], ['ga', 'max|loc']],
+        [['v', 'chart'], ['ch', 'bar|loc|count|deptno']],
+        [['v', 'chart'], ['ch', 'bar|dname|max|loc']],
+        [['v', 'row'], ['row', '1']],
+        [['v', 'row'], ['row', 'new']],
+      ];
+      for (const params of views) {
+        const s = sectionOf((await king.get(`/a/hr/10?${new URLSearchParams(params.map(([k, v]) => [`r${id}_${k}`, v]))}`)).body, id);
+        for (const loc of locs) assert.ok(!s.includes(loc), `${loc} in ${JSON.stringify(params)}`);
+      }
+      // nor offered in the Actions menu
+      assert.doesNotMatch(sectionOf((await king.get('/a/hr/10')).body, id), /<option value="loc"/);
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [id, config]);
+    }
+  });
+});
+
+describe('sprint 55 login page and forgot password', () => {
+  const SERVICE = 'SEC_RESET_TEST';
+  let saved: { login_page: number | null; password_reset: boolean; access_control: string };
+  let kingHash = '';
+  const link = (body: string) => /token=([A-Za-z0-9_-]{43})/.exec(body)?.[1];
+  const lastMail = async (after: number) =>
+    (await owner.query(`select to_addresses, body_text from meta.mail_queue where id > $1 and template = 'PASSWORD_RESET' order by id`, [after])).rows;
+  const maxMail = async () => Number((await owner.one('select coalesce(max(id), 0) as id from meta.mail_queue')).id);
+  const fresh = async () => {
+    await owner.query('delete from meta.password_reset where app_id = $1', [appId]);
+    await owner.query(`delete from meta.activity_log where app_id = $1 and event = 'password_reset_request'`, [appId]);
+  };
+  const request = async (login: string, headers: Record<string, string> = {}) => {
+    const b = new Browser();
+    b.headers = headers;
+    await b.get('/a/hr/password/forgot');
+    return b.post('/a/hr/password/forgot', { __csrf: b.lastCsrf, login });
+  };
+
+  before(async () => {
+    saved = (await owner.one('select login_page, password_reset, access_control from meta.app where id = $1', [appId]))!;
+    kingHash = (await owner.one(`select password_hash from meta.account where username = 'king'`)).password_hash;
+    await owner.query('delete from meta.mail_service where name = $1', [SERVICE]);
+    const id = (await owner.one(`insert into meta.mail_service (name, provider, senders) values ($1, 'log', '{@example.com}') returning id`, [SERVICE])).id;
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
+                       on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address`, [appId, id]);
+    await owner.query('update meta.app set password_reset = true, login_page = null where id = $1', [appId]);
+  });
+  after(async () => {
+    await owner.query('update meta.app set login_page = $2, password_reset = $3, access_control = $4 where id = $1', [appId, saved.login_page, saved.password_reset, saved.access_control]);
+    await owner.query('update meta.account set password_hash = $1 where username = $2', [kingHash, 'king']);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    await owner.query('delete from meta.mail_service where name = $1', [SERVICE]);
+    await owner.query(`delete from meta.mail_queue where app_id = $1 and template = 'PASSWORD_RESET'`, [appId]);
+    await fresh();
+  });
+
+  test('the reset link uses PUBLIC_URL, never the request\'s Host header', async () => {
+    await fresh();
+    const from = await maxMail();
+    await request('king', { host: 'evil.example.com', 'x-forwarded-host': 'evil.example.com' });
+    const [m] = await lastMail(from);
+    assert.ok(m, 'a mail');
+    assert.doesNotMatch(m.body_text, /evil\.example\.com/);
+  });
+
+  test('requests are limited per address and per account; unknown, inactive and other accounts get nothing', async () => {
+    await fresh();
+    const from = await maxMail();
+    for (let i = 0; i < 5; i++) assert.equal((await request(i < 4 ? 'king' : 'nobody-at-all')).statusCode, 200);
+    assert.equal((await request('king')).statusCode, 429, 'the sixth from one address');
+    assert.equal((await lastMail(from)).length, 3, 'three per account per hour');
+    // an account without access to the application gets no mail
+    await fresh();
+    await owner.query(`update meta.app set access_control = 'assigned' where id = $1`, [appId]);
+    try {
+      const outsider = (await owner.one(`select ac.username from meta.account ac where ac.active and ac.email is not null and ac.password_hash is not null
+                                          and not exists (select 1 from meta.app_access aa where aa.app_id = $1 and aa.account_id = ac.id) limit 1`, [appId]))?.username;
+      if (outsider) {
+        const f2 = await maxMail();
+        assert.equal((await request(outsider)).statusCode, 200);
+        assert.equal((await lastMail(f2)).length, 0);
+      }
+    } finally {
+      await owner.query('update meta.app set access_control = $2 where id = $1', [appId, saved.access_control]);
+    }
+  });
+
+  test('a token works once, only for its application, not after it expires, and only with the session\'s CSRF token', async () => {
+    await fresh();
+    const from = await maxMail();
+    await request('king');
+    const token = link((await lastMail(from))[0].body_text)!;
+    // another application: not valid there
+    const other = (await owner.one(`select alias from meta.app where id <> $1 and authentication = 'app_users' limit 1`, [appId]))?.alias;
+    if (other) {
+      await owner.query('update meta.app set password_reset = true where alias = $1', [other]);
+      try {
+        const b = new Browser();
+        await b.get(`/a/${other}/password/reset?token=${token}`);
+        assert.notEqual((await b.get(`/a/${other}/password/reset`)).statusCode, 200);
+      } finally {
+        await owner.query('update meta.app set password_reset = false where alias = $1', [other]);
+      }
+    }
+    // a forged CSRF token
+    const b = new Browser();
+    await b.get(`/a/hr/password/reset?token=${token}`);
+    await b.get('/a/hr/password/reset');
+    assert.equal((await b.post('/a/hr/password/reset', { __csrf: 'forged', new_password: 'Kiln-new-1234', confirm_password: 'Kiln-new-1234' })).statusCode, 403);
+    // expired
+    await owner.query(`update meta.password_reset set expires_at = now() - interval '1 second' where app_id = $1`, [appId]);
+    assert.equal((await b.get('/a/hr/password/reset')).statusCode, 410);
+    assert.equal((await b.post('/a/hr/password/reset', { __csrf: b.lastCsrf, new_password: 'Kiln-new-1234', confirm_password: 'Kiln-new-1234' })).statusCode, 410);
+    assert.equal((await owner.one(`select password_hash from meta.account where username = 'king'`)).password_hash, kingHash);
+    // the reset functions are not for applications' own roles
+    const grants = await owner.one(`select has_function_privilege('public', 'meta.reset_password(int, text, text)', 'execute') as reset,
+                                           has_function_privilege('public', 'meta.request_password_reset(int, text, text, text, text, text, text)', 'execute') as req`);
+    assert.deepEqual(grants, { reset: false, req: false });
+  });
+
+  test('the login page: next stays in the application, a failed user name is escaped', async () => {
+    const page = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth, page_template) values ($1, 9998, 'Sec login', false, 'minimal') returning id`, [appId])).id;
+    await owner.query(`insert into meta.region (page_id, seq, title, type) values ($1, 10, 'Sign in', 'login')`, [page]);
+    await owner.query('update meta.app set login_page = 9998 where id = $1', [appId]);
+    try {
+      const b = new Browser();
+      const res = await b.get('/a/hr/login?next=//evil.example.com/x');
+      assert.equal(res.headers.location, '/a/hr/9998?next=%2Fa%2Fhr%2F1');
+      await b.get('/a/hr/9998');
+      const bad = await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: '<script>alert(1)</script>', password: 'x', next: 'https://evil.example.com' });
+      assert.equal(bad.headers.location, '/a/hr/9998?next=%2Fa%2Fhr%2F1');
+      const body = (await b.get('/a/hr/9998')).body;
+      assert.doesNotMatch(body, /<script>alert\(1\)/);
+      assert.match(body, /value="&lt;script&gt;alert\(1\)&lt;\/script&gt;"/);
+    } finally {
+      await owner.query('update meta.app set login_page = $2 where id = $1', [appId, saved.login_page]);
+      await owner.query('delete from meta.page where id = $1', [page]);
     }
   });
 });

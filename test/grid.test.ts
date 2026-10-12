@@ -11,7 +11,7 @@ import { closePools, owner } from '../src/db.ts';
 import { arrange, cleanLayout, parseLayout } from '../src/runtime/grid-layout.ts';
 import { layoutFromForm } from '../src/runtime/grid.ts';
 import { aggregatesText, mergeGridSettings, parseAggregates } from '../src/builder/region-settings.ts';
-import { Browser } from './helpers.ts';
+import { Browser, gridForm } from './helpers.ts';
 
 let app: FastifyInstance;
 let king: Browser;
@@ -44,17 +44,6 @@ const selectLink = (page: string, value: string) => {
   assert.ok(m, `select link for ${value}`);
   return unescape(m[1]);
 };
-/** The posted fields of a grid as a browser would send them. */
-export function gridForm(body: string, g: string) {
-  const form: Record<string, string> = {};
-  for (const m of body.matchAll(new RegExp(`<input([^>]*)name="(${g}_\\d+_[a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>`, 'g'))) {
-    if (/type="checkbox"/.test(m[0]) && !/ checked/.test(m[0])) continue;
-    form[m[2]] = unescape(m[3]);
-  }
-  for (const m of body.matchAll(new RegExp(`<select name="(${g}_\\d+_c\\d+)"[^>]*>([\\s\\S]*?)</select>`, 'g')))
-    form[m[1]] = unescape(/<option value="([^"]*)" selected>/.exec(m[2])?.[1] ?? '');
-  return form;
-}
 const headerOrder = (section: string) => [...section.matchAll(/<th scope="col"[^>]*data-col-name="([^"]+)"/g)].map((m) => m[1]);
 
 describe('grid layout (pure)', () => {

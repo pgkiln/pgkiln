@@ -16,6 +16,7 @@ const NOT_EXPORTED = new Set([
   'sso_pending',
   'saved_report', // users' saved interactive reports
   'persistent_login', // "Remember me" tokens of this installation's accounts
+  'password_reset', // (087) password reset links of this installation's accounts
   'task', // task instances are data, not application definition
   'workflow', // workflow instances likewise
   'process_job', // background runs of chain processes: data of this installation

@@ -13,6 +13,7 @@ let base = '';
 let browser: Browser;
 let close: () => Promise<void>;
 let pageId: number;
+let job = '';
 let sal: string;
 
 before(async () => {
@@ -21,12 +22,13 @@ before(async () => {
   base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
   browser = await chromium.launch();
   pageId = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 3`)).id;
-  sal = (await owner.one('select sal::text from hr.emp where empno = 7839')).sal;
+  ({ sal, job } = (await owner.one('select sal::text, job from hr.emp where empno = 7839'))!);
   await owner.query('update meta.page set warn_unsaved = true where id = $1', [pageId]);
   close = async () => {
     await owner.query('update meta.page set warn_unsaved = false where id = $1', [pageId]);
     await owner.query(`update meta.item set config = config - 'warn_unsaved' where page_id = $1 and name = 'P3_JOB'`, [pageId]);
-    await owner.query('update hr.emp set sal = $1 where empno = 7839', [sal]);
+    // the test changes the job too (an item that doesn't count) and saves
+    await owner.query('update hr.emp set sal = $1, job = $2 where empno = 7839', [sal, job]);
     await browser.close();
     await app.close();
     await closePools();

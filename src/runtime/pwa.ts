@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { root } from '../env.ts';
+import { staticVersion } from '../static-version.ts';
 import { html, type Raw } from '../html.ts';
 import { documentShell } from '../layout.ts';
 import { loadApp, type App } from '../metadata.ts';
@@ -116,7 +117,9 @@ const icons = new Map<string, Buffer>(); // generated tiles by name|colour|size
 
 // ------------------------------------------------------------------ routes
 
-const SW = readFileSync(join(root, 'public', 'sw.js'), 'utf8');
+// read again when pgkiln's static files change (static-version.ts)
+let sw = { version: '', text: '' };
+const swText = (version: string) => (sw.version === version ? sw.text : (sw = { version, text: readFileSync(join(root, 'public', 'sw.js'), 'utf8') }).text);
 
 export async function pwaRoutes(app: FastifyInstance) {
   const pwaApp = async (alias: string) => {
@@ -171,12 +174,13 @@ export async function pwaRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('// not an installable application');
     const base = `/a/${a.alias}`;
     // the settings the worker needs, as a JSON literal (no user input in it)
-    const config = JSON.stringify({ base, offlinePages: a.pwa_offline_pages, offlineSubmit: a.pwa_offline_submit, version: SW_VERSION });
+    const version = staticVersion();
+    const config = JSON.stringify({ base, offlinePages: a.pwa_offline_pages, offlineSubmit: a.pwa_offline_submit, version });
     return reply
       .type('text/javascript; charset=utf-8')
       .header('cache-control', 'no-cache')
       .header('service-worker-allowed', `${base}/`)
-      .send(`const PGKILN = ${config};\n${SW}`);
+      .send(`const PGKILN = ${config};\n${swText(version)}`);
   });
 
   app.get<{ Params: { alias: string } }>('/a/:alias/offline', async (req, reply) => {
@@ -205,11 +209,4 @@ export async function pwaRoutes(app: FastifyInstance) {
   });
 }
 
-// changes whenever pgkiln's static files change (a new service worker then replaces the old one)
-const SW_VERSION = (() => {
-  let h = 0;
-  for (const f of ['public/app.css', 'public/app.js', 'public/icons.svg', 'public/sw.js'])
-    for (const ch of readFileSync(join(root, f), 'utf8')) h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0;
-  return (h >>> 0).toString(36);
-})();
 

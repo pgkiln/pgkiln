@@ -29,6 +29,8 @@ export const REPLACED = [
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',
+  // (087) password reset links of this installation's accounts
+  'password_reset',
   // (042) builder state of this installation: locks and developer comments (by page number)
   'builder_lock', 'dev_comment',
   // (051) debug messages recorded by this installation

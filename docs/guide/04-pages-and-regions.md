@@ -33,6 +33,13 @@ JavaScript, like APEX's `apex.page.isChanged()`); without JavaScript there is no
 - The create page wizards switch it on for the form pages they make; existing pages have it off
   until you switch it on.
 
+### Minimal pages
+
+Page template **Minimal (no navigation)** (Page Designer → Page → Appearance; APEX: the page
+template of the same name) shows the page without the header, the navigation menu and the
+navigation bar: the title and the regions only, centred. The application's
+[login page](08-security.md#the-login-page) uses it and gets the sign-in page's backdrop.
+
 ### Dialogs and drawers
 
 A modal page (Page Designer → Page → Appearance: *Page mode* Modal dialog) opens over the page that linked to it.
@@ -116,7 +123,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | Type | Purpose |
 |---|---|
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
-| [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail and copy/paste of cells |
+| [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail, copy/paste of cells, and single row, group by and chart views |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
 | [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid or polar chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
@@ -134,6 +141,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
 | [`search`](#search-search-region) | One search field over several sources (search configurations), results grouped per source |
 | [`url`](#url-url-region) | Another site's page (or a page of this server) in a sandboxed frame |
+| `login` | The sign-in form of the application's own login page (no attributes): identity providers, user name and password, *Keep me signed in*, *Forgot password?*; see [chapter 8](08-security.md#the-login-page) |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
 
@@ -354,6 +362,7 @@ Attributes:
 | `master` | | Makes it (or a report, chart, cards …) a **detail**: `{"item": "P27_DEPTNO", "column": "deptno"}` (below) |
 | `actions` | `true` | `false` hides the Actions menu (columns, aggregates, saved reports) |
 | `saved_reports`, `public_reports` | `true`, none | As for reports |
+| `views` | all | The views users may switch to besides the grid: `["row", "group", "chart"]`; `[]` for the grid only |
 
 Cell editors follow the column type: number, date, date-time, checkbox (boolean), select list
 (with `lov`) or text.
@@ -397,6 +406,23 @@ The selection is a signed link (bound to the application, page, user, region and
 user can only select a row the server showed them; the item is not taken from the URL or a
 submit otherwise. A detail **grid** with `master.column` fills that column with the selected value
 on its new rows (and never lets users edit it); saving new rows without a selection is refused.
+
+**Views** (APEX: Single Row View, Group By, Chart). Besides the rows, a grid has three views
+(`r<id>_v=row|group|chart` in the URL, kept in saved grid reports); `views` limits them:
+
+- **Single row view**: one row at a time as a form, opened from **Actions → Single row view** or
+  a row's ⋮ menu. *First*, *Previous*, *Next* and *Last* move through the rows of the search in
+  the grid's order (`r<id>_row=N`, the position from 1); **Add row** opens an empty form
+  (`r<id>_row=new`). It edits the same fields as the grid and is saved by the same `grid_dml`
+  process, with the same checks (signed keys, required columns, lists of values); the user is
+  warned before leaving with unsaved changes. Give the query an `order by` (or sort the grid)
+  so that positions stay the same after a save, as for paging.
+- **Group by** and **Chart**: set up in the Actions menu as for an
+  [interactive report](#report-interactive-report), over every row of the search. Once
+  set up, a switcher above the grid moves between *Grid* and these views.
+
+The developer's `hidden` columns can't be grouped, charted or shown in the single row view.
+After **Save** the grid comes back as it was: its search, page, sort and view.
 
 **Copy and paste.** Click a cell and Shift+click another to select a range; Ctrl+C copies it
 as tab-separated text (which spreadsheets paste as cells). Ctrl+V pastes such text (from a

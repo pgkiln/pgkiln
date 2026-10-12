@@ -33,6 +33,7 @@ import { templateClasses } from './template-options.ts';
 import { renderPluginRegion } from './plugins.ts';
 import { renderUrlRegion } from './url-region.ts';
 import { renderSearch } from './search.ts';
+import { renderLoginRegion } from './signin.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -358,6 +359,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'search':
       body = await renderSearch(ctx, r);
+      break;
+    case 'login':
+      body = await renderLoginRegion(ctx);
       break;
     case 'dynamic':
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The

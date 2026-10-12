@@ -1,5 +1,6 @@
 // pgkiln service worker for one application (served as /a/<alias>/sw.js with PGKILN = {base, offlinePages, offlineSubmit, version}).
-//   static files (app.css, app.js, icons) and the offline page: cached at install, served from the cache
+//   static files (app.css, app.js, icons) and the offline page: cached at install, served from the cache by their
+//   exact URL; pages ask for them with ?v=<version> (static-version.ts), so a changed file is fetched anew
 //   pages (navigations): network first; offline, the cached copy (only when the app keeps pages) or the offline page
 //   signing in or out empties the page cache, so the next person on the device doesn't see them
 //   push notifications (migration 074): shown as they arrive, a click opens their page of the app;
@@ -7,7 +8,7 @@
 /* global PGKILN */
 const STATIC = `pgkiln-static-${PGKILN.version}`;
 const PAGES = `pgkiln-pages-${PGKILN.base}`;
-const SHELL = ['/static/app.css', '/static/app.js', '/static/icons.svg', `${PGKILN.base}/offline`];
+const SHELL = [...['app.css', 'app.js', 'icons.svg'].map((f) => `/static/${f}?v=${PGKILN.version}`), `${PGKILN.base}/offline`];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(STATIC).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -39,7 +40,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   if (url.pathname.startsWith('/static/')) {
-    event.respondWith(caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req)));
+    // the exact URL: another ?v= (a changed file) is not the cached copy
+    event.respondWith(caches.match(req, { cacheName: STATIC }).then((hit) => hit || fetch(req)));
     return;
   }
 

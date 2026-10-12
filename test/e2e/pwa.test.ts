@@ -3,6 +3,7 @@
 // location button and photos made smaller before upload.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import '../../src/env.ts';
@@ -63,6 +64,24 @@ describe('Progressive Web App', () => {
     assert.deepEqual(installabilityErrors, [], 'Chrome can install it');
     assert.equal(await page.evaluate(() => navigator.serviceWorker.controller!.scriptURL.replace(location.origin, '')), '/a/hr/sw.js');
     await context.close();
+  });
+
+  test('a changed app.css reaches a device whose service worker cached the old one, without a restart', async () => {
+    const context = await browser.newContext();
+    const page = await signedIn(context);
+    await controlled(page);
+    await page.reload(); // the static files now come through the service worker's cache
+    const css = new URL('../../public/app.css', import.meta.url);
+    const before = readFileSync(css, 'utf8');
+    try {
+      appendFileSync(css, '\nbody.t-app { outline: 3px solid rgb(1, 2, 3); }\n');
+      await new Promise((r) => setTimeout(r, 1100)); // static-version.ts looks again at most once a second
+      await page.reload();
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).outlineColor), 'rgb(1, 2, 3)');
+    } finally {
+      writeFileSync(css, before);
+      await context.close();
+    }
   });
 
   test('offline: visited pages from the device with a notice, others get the offline page', async () => {
