@@ -133,3 +133,28 @@ describe('developer toolbar', () => {
     assert.match((await b.get('/a/hr/1')).body, /<option value="0" selected>/);
   });
 });
+
+describe('Quick edit and the Page Designer\'s help pane (sprint 59)', () => {
+  test('the toolbar offers Quick edit; an item or button is found by its name', async () => {
+    const b = await developerBrowser();
+    const page3 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 3', [appId])).id;
+    assert.match((await b.get('/a/hr/1')).body, /<button type="button" class="devbar-quick" data-quick-edit="\/builder\/pages\/\d+" aria-pressed="false" hidden>Quick edit<\/button>/);
+    const item = (await owner.one(`select id from meta.item where page_id = $1 and name = 'P3_SAL'`, [page3])).id;
+    const toItem = await b.get(`/builder/pages/${page3}/quick?item=p3_sal`);
+    assert.equal(toItem.headers.location, `/builder/pages/${page3}?c=item-${item}`);
+    const button = (await owner.one(`select id, name from meta.button where page_id = $1 order by id limit 1`, [page3]));
+    assert.equal((await b.get(`/builder/pages/${page3}/quick?button=${button.name}`)).headers.location, `/builder/pages/${page3}?c=button-${button.id}`);
+    assert.equal((await b.get(`/builder/pages/${page3}/quick?item=NOPE`)).headers.location, `/builder/pages/${page3}`);
+  });
+
+  test('the property editor has a help pane, every property is named, the guide section follows the type', async () => {
+    const b = await developerBrowser();
+    const region = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type = 'grid' limit 1`, [appId]);
+    const body = (await b.get(`/builder/pages/${region.page_id}?c=region-${region.id}`)).body;
+    assert.match(body, /<details class="pe-help" open data-guide="https:\/\/pgkiln\.vargar\.eu\/docs\/pages-and-regions#grid-interactive-grid">/);
+    assert.match(body, /<div class="pe-help-body" aria-live="polite" data-pe-help>/);
+    assert.match(body, /<div class="field" data-prop="title">/);
+    assert.match(body, /<div class="field" data-prop="source"/);
+  });
+});
+

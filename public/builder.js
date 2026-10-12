@@ -809,3 +809,53 @@ document.addEventListener('click', async (e) => {
     buttons.forEach((b) => (b.disabled = false));
   }
 });
+
+// (sprint 59) The Page Designer's help pane (APEX: the Help tab of the property editor): the property
+// that has the focus, its help, the column it is stored in and the guide section of the component type.
+(() => {
+  const pane = document.querySelector('[data-pe-help]');
+  if (!pane) return;
+  const guide = pane.closest('.pe-help')?.dataset.guide;
+  let current = null;
+  const show = (field) => {
+    if (!field || field === current) return;
+    current = field;
+    const label = (field.querySelector('label.label, label.check, .label')?.textContent || field.dataset.prop).trim();
+    const help = field.querySelector('.help');
+    pane.replaceChildren();
+    const h = document.createElement('h3');
+    h.textContent = label;
+    pane.append(h);
+    if (help) {
+      const p = document.createElement('p');
+      // the help is the server's own (escaped) markup: copy its nodes, links included
+      p.append(...[...help.childNodes].map((n) => n.cloneNode(true)));
+      pane.append(p);
+    } else {
+      const p = document.createElement('p');
+      p.className = 'muted';
+      p.textContent = 'This property has no help of its own: see the guide.';
+      pane.append(p);
+    }
+    const meta = document.createElement('p');
+    meta.className = 'small muted';
+    const code = document.createElement('code');
+    code.textContent = field.dataset.prop;
+    meta.append('Stored as ', code, ' (in exports and application files).');
+    pane.append(meta);
+    if (guide) {
+      const a = document.createElement('a');
+      a.href = guide;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = 'This component in the guide ▸';
+      pane.append(a);
+    }
+  };
+  document.addEventListener('focusin', (e) => show(e.target.closest?.('.pe [data-prop]')));
+  document.addEventListener('pointerover', (e) => {
+    // pointing at a property shows its help too, unless another one has the focus
+    if (document.activeElement?.closest?.('.pe [data-prop]')) return;
+    show(e.target.closest?.('.pe [data-prop]'));
+  });
+})();

@@ -7140,3 +7140,19 @@ describe('sprint 58 page groups', () => {
     assert.notEqual((await king.get(`/builder/apps/${appId}?group=Leave`)).statusCode, 200);
   });
 });
+
+describe('sprint 59 quick edit', () => {
+  test('the lookup is for developers only; a name is a parameter, not SQL', async () => {
+    const king = await as('king');
+    const page3 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 3', [appId])).id;
+    assert.equal((await king.get(`/builder/pages/${page3}/quick?item=P3_SAL`)).headers.location, '/builder/login', 'to the builder sign-in, not the page');
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const r = await dev.get(`/builder/pages/${page3}/quick?item=${encodeURIComponent("x' or 1=1 --")}`);
+    assert.equal(r.headers.location, `/builder/pages/${page3}`);
+    assert.equal((await dev.get(`/builder/pages/abc/quick?item=X`)).statusCode, 404);
+    // the toolbar (and so Quick edit) is not on the pages of a signed-in user without a builder session
+    assert.doesNotMatch((await king.get('/a/hr/1')).body, /data-quick-edit/);
+  });
+});

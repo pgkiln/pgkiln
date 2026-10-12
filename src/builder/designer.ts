@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { COMPONENTS } from './components.ts';
 import { back, BASE, bicon, csrf, developer, flash, input, select, send, shell, type Req } from './ui.ts';
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
+import { regionConfigHelp } from './region-help.ts';
 import { parseIncludes } from './static-files.ts';
 import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
@@ -324,12 +325,24 @@ export async function designerRoutes(app: FastifyInstance) {
         <form method="post" action="${BASE}/pages/${p.id}/delete" class="danger-zone">${csrf(s)}
           <button class="btn btn-sm btn-danger" data-confirm="Delete page ${p.page_no} and all its components?">Delete page</button></form>`;
     }
+    // (sprint 59) the help pane: the guide section of the selected component's type
+    const guide = (() => {
+      const GUIDE = 'https://pgkiln.vargar.eu/docs';
+      const k = newKind || kind;
+      if (k === 'region') return regionConfigHelp((newKind ? req.query.type : rows.region.find((r: any) => String(r.id) === cid)?.type) ?? null).url ?? `${GUIDE}/pages-and-regions#region-types`;
+      return ({ item: `${GUIDE}/items`, button: `${GUIDE}/processing#buttons`, dynamic_action: `${GUIDE}/dynamic-actions`, validation: `${GUIDE}/processing#validations`,
+        process: `${GUIDE}/processing#processes`, computation: `${GUIDE}/processing#computations`, branch: `${GUIDE}/processing#branches` } as Record<string, string>)[k] ?? `${GUIDE}/pages-and-regions`;
+    })();
     const right = html`
       <div class="pe-head"><div class="pe-title">${heading}</div>
         <div class="pe-filter-row" hidden><label class="sr-only" for="pe-filter">Filter properties</label>${icon('filter')}<input id="pe-filter" class="pe-filter" type="search" placeholder="Filter" autocomplete="off"></div>
       </div>
       ${arrange}
-      <div class="pe">${props}</div>`;
+      <div class="pe">${props}</div>
+      <details class="pe-help" open${guide ? raw(` data-guide="${guide}"`) : ''}>
+        <summary>${icon('help')} Help</summary>
+        <div class="pe-help-body" aria-live="polite" data-pe-help><p class="muted">Select a property to see its help here.</p></div>
+      </details>`;
 
     // ------------------------------------------------------------ toolbar
     const idx = pages.findIndex((x) => x.id === p.id);
@@ -380,6 +393,17 @@ export async function designerRoutes(app: FastifyInstance) {
         <section class="pd-pane pd-right tab-panel" id="pd-p-props" data-tab${pane === 'pd-p-props' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>Properties</span></h2>${right}</section>
       </div>`;
     return send(reply, s, shell(s, `Page ${p.page_no}`, [['App Builder', BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [`Page ${p.page_no}: ${p.name}`]], main, 'apps', { toolbar, full: true }));
+  });
+
+  // (sprint 59) Quick edit from the developer toolbar: an item or button of the page by its name
+  app.get(`${BASE}/pages/:pid/quick`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    if (!/^\d{1,9}$/.test(req.params.pid)) return reply.code(404).send('Not found');
+    const q = req.query ?? {};
+    const [kind, table, name] = q.item ? ['item', 'meta.item', String(q.item).toUpperCase()] : q.button ? ['button', 'meta.button', String(q.button).toUpperCase()] : [null, null, null];
+    const row = kind ? await owner.one(`select id from ${table} where page_id = $1 and name = $2 order by id limit 1`, [req.params.pid, name]) : null;
+    return reply.redirect(`${BASE}/pages/${req.params.pid}${row ? `?c=${kind}-${row.id}` : ''}`);
   });
 
   app.post(`${BASE}/pages/:pid`, async (req: Req, reply) => {

@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprints 54 to 58: interactive grid views; the login page and "Forgot password?"; Generate DDL and Schema Comparison; region templates; page groups.
+Sprints 54 to 59: interactive grid views; the login page and "Forgot password?"; Generate DDL and Schema Comparison; region templates; page groups; Quick edit and the help pane.
 
 ### Added
 - **Interactive grid views** (APEX: Single Row View, Group By, Chart): the **single row view** shows one row of the
@@ -34,6 +34,10 @@ Sprints 54 to 58: interactive grid views; the login page and "Forgot password?";
 - **Page groups** (APEX: Page Groups): Shared Components → Page groups, a page's *Page group*, the App Builder's page list
   with a group column and filter; renaming or deleting a group follows on its pages; exported with the application
   (migration 089). The HR pages are in four groups.
+- **Quick edit** (APEX: Quick Edit) on the developer toolbar: point at a region, item or button of a running page and
+  click it to open it in the Page Designer.
+- The Page Designer's **Help pane**: the focused property's help, the name it is stored under and the guide section
+  of the component's type.
 
 ### Fixed
 - Pages could keep an old `app.css`, `app.js` or icon sprite from a PWA's service worker cache after pgkiln's
@@ -45,7 +49,7 @@ Sprints 54 to 58: interactive grid views; the login page and "Forgot password?";
 ### Changed
 - The code editor's line numbers have enough contrast (WCAG AA) in light and dark mode.
 - After **Save**, a grid comes back with its search, page, sort and view instead of the page's defaults.
-- APEX parity: 141 features compared, 135 available, 3 partial, none missing, 3 not planned.
+- APEX parity: 141 features compared, 136 available, 2 partial, none missing, 3 not planned.
 
 ## [0.35.0] - 2026-10-12
 

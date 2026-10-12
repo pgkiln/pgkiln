@@ -3479,3 +3479,43 @@ function areaFilter(map, f) {
   }
   check();
 })();
+
+// (sprint 59) Quick edit from the developer toolbar (APEX: Quick Edit): while it is on, pointing at a
+// region, item or button outlines it and a click opens it in the Page Designer (in the builder's tab);
+// Esc or the button again turns it off. The toolbar is only there for developers of the application.
+(() => {
+  const toggle = document.querySelector('[data-quick-edit]');
+  if (!toggle) return;
+  toggle.hidden = false;
+  const base = toggle.dataset.quickEdit;
+  const pick = (el) => el?.closest?.('[data-item], [data-button], .region[id^="R"]');
+  let on = false;
+  let marked = null;
+  const mark = (el) => {
+    marked?.classList.remove('qe-target');
+    marked = el;
+    el?.classList.add('qe-target');
+  };
+  const set = (v) => {
+    on = v;
+    toggle.setAttribute('aria-pressed', String(v));
+    document.body.classList.toggle('quick-edit', v);
+    if (!v) mark(null);
+  };
+  const urlOf = (el) => {
+    if (el.dataset.item) return `${base}/quick?item=${encodeURIComponent(el.dataset.item)}`;
+    if (el.dataset.button) return `${base}/quick?button=${encodeURIComponent(el.dataset.button)}`;
+    return `${base}?c=region-${el.id.slice(1)}`;
+  };
+  toggle.addEventListener('click', () => set(!on));
+  document.addEventListener('pointerover', (e) => { if (on && !e.target.closest('.devbar')) mark(pick(e.target)); });
+  document.addEventListener('click', (e) => {
+    if (!on || e.target.closest('.devbar')) return;
+    const el = pick(e.target);
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(urlOf(el), 'pgkiln-builder');
+  }, true);
+  document.addEventListener('keydown', (e) => { if (on && e.key === 'Escape') set(false); });
+})();
