@@ -7,7 +7,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 ## Where it stands
 
 - **Current release:** 0.31.0, the first public release (October 2026).
-- **APEX parity:** 137 features compared: 113 available, 6 partial, 15 not yet, 3 deliberately
+- **APEX parity:** 139 features compared: 113 available, 7 partial, 16 not yet, 3 deliberately
   not planned (e-mail sending among them; use an extension or an external service).
 
 ## Next

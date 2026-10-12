@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **APEX parity matrix** reviewed: what an import checks (the export, not the application's tables, columns and
+  functions) and that an import with `--replace` is live at its commit; new rows for property help in the Page
+  Designer (partial) and application availability (not yet); APEX's SMTP-only `APEX_MAIL` in the e-mail note.
+  139 features compared: 113 available, 7 partial, 16 not yet, 3 not planned.
+
 ## [0.31.0] - 2026-10-09
 
 The first public release, on GitHub, Docker Hub (`pgkiln/pgkiln`) and npm (`pgkiln`).
