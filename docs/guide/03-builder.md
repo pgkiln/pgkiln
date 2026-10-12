@@ -781,7 +781,12 @@ senders** (addresses, or `@domain`) and a default From address. On a service's p
 
 - **Applications**: which applications send through it (one service per application), each with
   its From address (one of the allowed senders) and an optional limit per day;
-- **Test**: sends a short message now, outside the queue, and shows the provider's answer;
+- **Check before saving** (at the end of the form, also while adding a service): *Test connection*
+  checks the settings as filled in without sending anything (SMTP: connect, TLS and sign in;
+  Microsoft 365: an Entra token; Amazon SES: the account, with its sending quota and whether it is
+  still in the sandbox; Resend, Postmark, SendGrid, Mailgun: a read-only call with the key, which also
+  shows a key that may not send). *Send test mail* sends one message to the address you give, from an
+  allowed sender. An empty secret field uses the stored secret; nothing is saved;
 - **Recent mail** of its applications.
 
 Applications → Activity → **Mail** (developers) shows an application's service, today's count
