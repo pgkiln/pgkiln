@@ -13,6 +13,11 @@ Sprint 54: interactive grid views.
   grid's `grid_dml` process with the same checks; **group by** and **chart** are set up in the Actions menu, as for an
   interactive report. The region attribute `views` (builder: *Views*) limits them.
 
+### Fixed
+- Pages could keep an old `app.css`, `app.js` or icon sprite from a PWA's service worker cache after pgkiln's
+  static files changed (unstyled navigation bar items and developer toolbar): the files are now asked for with a
+  version from their contents (`?v=…`), looked up again when they change, and the service worker matches the exact URL.
+
 ### Changed
 - After **Save**, a grid comes back with its search, page, sort and view instead of the page's defaults.
 - APEX parity: 140 features compared, 131 available, 5 partial, 1 not yet, 3 not planned.

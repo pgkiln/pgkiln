@@ -27,7 +27,9 @@ Everything is per application, under its own address: `/a/<alias>/manifest.webma
 ## Offline
 
 - **The app shell** (pgkiln's CSS, script and icons) and an offline page are stored when the app is
-  installed, so the app always opens.
+  installed, so the app always opens. Pages ask for these files with a version in the URL
+  (`/static/app.css?v=…`, from the files' contents); when pgkiln is upgraded, or a file changes,
+  devices fetch the new one at the next page load.
 - **Pages** are fetched from the network first. Without a connection, a page the user opened before
   comes from the device (when *Keep visited pages* is on); otherwise the offline page appears,
   listing the pages that are on the device.

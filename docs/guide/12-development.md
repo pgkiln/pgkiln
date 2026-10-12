@@ -34,6 +34,7 @@ src/
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
+  static-version.ts        the version of app.css, app.js, icons.svg and sw.js (?v= in their URLs, the service worker version): content hash, looked at again when a file changes
   session.ts               sessions (hashed tokens), activity log, login throttling
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata

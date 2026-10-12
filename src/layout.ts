@@ -1,4 +1,5 @@
 import { html, type Raw } from './html.ts';
+import { staticUrl } from './static-version.ts';
 
 /** Attributes of <html>: language, text direction and a fixed theme (light/dark; absent = follow the OS). */
 export interface RootAttrs {
@@ -17,8 +18,8 @@ export function documentShell(title: string, body: Raw, bodyClass = '', data: Re
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/app.js" defer></script>
+<link rel="stylesheet" href="${staticUrl('app.css')}">
+<script src="${staticUrl('app.js')}" defer></script>
 ${head}
 </head>
 <body class="${bodyClass}"${attrs}>

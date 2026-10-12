@@ -9,6 +9,7 @@ import { closePools, owner } from '../src/db.ts';
 import { icon, iconParts, ICONS, isIcon, lucideNames, LUCIDE_VERSION, searchIcons } from '../src/icons.ts';
 import { iconPicker } from '../src/builder/forms.ts';
 import { Browser } from './helpers.ts';
+import { staticVersion } from '../src/static-version.ts';
 
 let app: FastifyInstance;
 let hr: number;
@@ -36,7 +37,7 @@ describe('icons', () => {
   });
 
   test('unknown names draw nothing; names never reach the markup unchecked', () => {
-    assert.equal(icon('trophy').toString(), '<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#trophy"></use></svg>');
+    assert.equal(icon('trophy').toString(), `<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg?v=${staticVersion()}#trophy"></use></svg>`);
     assert.equal(icon('"><script>'), '');
     assert.equal(icon(null), '');
   });
@@ -45,7 +46,7 @@ describe('icons', () => {
     const markup = iconPicker('f_x_icon', 'icon', 'Icon', 'star').toString();
     assert.equal((markup.match(/type="radio" name="icon"/g) ?? []).length, ICONS.length + 1, 'every icon and none');
     assert.match(markup, /<input type="radio" name="icon" value="star" checked>/);
-    assert.match(markup, /<summary[^>]*><svg class="icon"[^>]*><use href="\/static\/icons.svg#star"><\/use><\/svg><span>star<\/span><\/summary>/);
+    assert.match(markup, /<summary[^>]*><svg class="icon"[^>]*><use href="\/static\/icons.svg\?v=\w+#star"><\/use><\/svg><span>star<\/span><\/summary>/);
     assert.match(iconPicker('f', 'icon', 'Icon', 'gone').toString(), /value="" checked/, 'an unknown stored name shows as none');
     // (0.31) another icon is in the "any icon" field, shown in the summary
     const other = iconPicker('f', 'icon', 'Icon', 'car-front lg').toString();
@@ -125,6 +126,6 @@ describe('icons', () => {
     assert.equal((await owner.one('select icon from meta.nav_entry where id = $1', [entry.id])).icon, 'trophy');
     const king = new Browser(app);
     await king.login('king');
-    assert.match((await king.get('/a/hr/1')).body, /<use href="\/static\/icons.svg#trophy"><\/use>/);
+    assert.match((await king.get('/a/hr/1')).body, /<use href="\/static\/icons.svg\?v=\w+#trophy"><\/use>/);
   });
 });
