@@ -3,6 +3,7 @@ import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { APP_COLORS, BASE, csrf, developer, input, region, select, send, shell, type Req } from './ui.ts';
+import { crossAppLinks } from './cross-app.ts';
 import type { Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
 import { currentWorkspace, inWorkspaceSql, workspaceAdmin } from './workspaces.ts';
@@ -286,10 +287,11 @@ export async function homeRoutes(app: FastifyInstance) {
     if (!s) return;
     const card = (href: string, ic: Raw | '', title: string, text: string) =>
       html`<a class="ab-tile" href="${href}"><span class="ab-tile-icon">${ic}</span><strong>${title}</strong><span>${text}</span></a>`;
-    const main = html`<h1 class="u-mb1">Workspace utilities</h1>
+    const main = html`<div class="ab-home"><div class="ab-main"><h1 class="u-mb1">Workspace utilities</h1>
       <div class="ab-tiles ab-tiles-wrap">
         ${card(`${BASE}/users`, icon('user'), 'Users', 'Accounts of the people who use the applications, and their access.')}
         ${card(`${BASE}/app-groups`, icon('folder'), 'Application groups', 'Organise the applications of this workspace into groups.')}
+        ${card(`${BASE}/gallery`, icon('package'), 'App Gallery', 'Sample and starter applications to install, and this workspace\'s boilerplates.')}
         ${card(`${BASE}/users/providers`, icon('key'), 'Identity providers', 'OpenID Connect and SAML sign-in.')}
         ${card(`${BASE}/users/directories`, icon('org'), 'LDAP directories', 'Sign in with directory accounts.')}
         ${card(`${BASE}/users#account-settings`, icon('shield'), 'Password policy', 'Length, complexity and lifetime of passwords.')}
@@ -305,7 +307,12 @@ export async function homeRoutes(app: FastifyInstance) {
         ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), 'Mail services', 'SMTP, Microsoft 365, Amazon SES, Resend, Postmark, SendGrid or Mailgun for the applications\' e-mail (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
-      </div>`;
+      </div></div>
+      <aside class="ab-side" aria-label="About and reports">
+        <section><h2>About</h2><p>Workspace utilities hold what the applications of this workspace share: users and sign-in, groups, the gallery, and reports across the applications.</p>
+          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspace-utilities" target="_blank" rel="noopener">Learn more …</a></section>
+        <section><h2>Cross Application Reports</h2><ul class="ab-links ab-tasks">${crossAppLinks()}</ul></section>
+      </aside></div>`;
     return send(reply, s, shell(s, 'Workspace utilities', [['App Builder', BASE], ['Workspace utilities']], main));
   });
 }
