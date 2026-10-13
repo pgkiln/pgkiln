@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-14
+
 Sprint 65: facet charts. Sprint 66: a blueprint from an existing application.
 
 ### Added
