@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-13
+
 Sprint 61: the builder's screens like APEX 26.1's.
 
 ### Added
