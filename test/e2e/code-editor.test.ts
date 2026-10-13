@@ -229,7 +229,7 @@ describe('code editor', () => {
     await p2.fill('#f_username', 'admin');
     await p2.fill('#f_password', 'admin');
     await Promise.all([p2.waitForNavigation(), p2.click('button.btn-hot')]);
-    await p2.goto(`${base}/builder/sql`);
+    await p2.goto(`${base}/builder/sql/commands`);
     assert.equal(await p2.locator('.ce').count(), 0);
     assert.ok(await p2.locator('textarea[name=sql]').isVisible());
     await plain.close();
@@ -237,7 +237,7 @@ describe('code editor', () => {
 
   test('SQL Workshop and the inline check; fits a phone screen', async () => {
     const { context, page } = await builder({ width: 390, height: 844 });
-    await page.goto(`${base}/builder/sql`);
+    await page.goto(`${base}/builder/sql/commands`);
     const ta = page.locator('textarea[name=sql]');
     await ta.fill('select * from h');
     await ta.focus();
@@ -265,7 +265,7 @@ describe('code editor', () => {
 
   test('keyboard only: the list is announced to screen readers; the textarea keeps the focus', async () => {
     const { context, page } = await builder();
-    await page.goto(`${base}/builder/sql`);
+    await page.goto(`${base}/builder/sql/commands`);
     const ta = page.locator('textarea[name=sql]');
     await ta.fill('select * from hr.');
     await ta.focus();
