@@ -437,6 +437,41 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 .ide-login { background: linear-gradient(180deg, var(--chrome) 0 40%, var(--bg) 40%); color: var(--text); }
 .ide-login .btn-hot { background: var(--hot); border-color: var(--hot); color: var(--hot-text); }
 .ide-login .btn-hot:hover { background: var(--hot-hover); }
+.signin-body.ide-login { display: block; background: var(--bg); }
+.signin { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); width: 100%; max-width: none; min-height: 100vh; min-height: 100dvh; margin: 0; padding: 0; }
+.signin-hero {
+  display: flex; flex-direction: column; justify-content: flex-start; gap: 0.75rem; padding: 3rem;
+  color: var(--chrome-text); background-color: var(--chrome);
+  background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.025) 0 2px, transparent 2px 14px),
+                    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.02) 0 1px, transparent 1px 22px);
+}
+.signin-logo { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 8px; background: var(--hot); color: var(--hot-text); font-weight: 700; font-size: 18px; margin-bottom: 2rem; }
+.signin-title { margin: 0; font-size: clamp(2rem, 4vw, 2.75rem); font-weight: 750; color: var(--chrome-text); }
+.signin-tagline { margin: 0; font-size: 1.2rem; color: var(--chrome-muted); max-width: 30ch; }
+.signin-foot { margin: auto 0 0; font-size: 0.85rem; color: var(--chrome-muted); }
+.signin-panel { display: grid; place-items: center; padding: 2rem 1rem; background: var(--surface); }
+.signin-form { display: flex; flex-direction: column; gap: 0.85rem; width: 100%; max-width: 420px; }
+.signin-form h2 { margin: 0; font-size: 1.5rem; }
+.signin-form .field { margin: 0; }
+.signin-input { display: flex; align-items: center; gap: 0.6rem; padding: 0 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.signin-input:focus-within { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -1px; }
+.signin-input > .icon { flex: none; width: 18px; height: 18px; color: var(--muted); }
+.ide-login .signin-input input { flex: 1; width: auto; min-width: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 0.7rem 0; font-size: 1rem; color: var(--text); outline: none; }
+.signin-reveal { flex: none; border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 0.85rem; padding: 0.25rem; }
+.signin-remember { font-size: 0.9rem; }
+.signin-submit { padding: 0.75rem; font-size: 1rem; }
+.signin-hint { margin: 0; text-align: center; }
+.signin-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.signin-actions a { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--gold); text-decoration: none; }
+.signin-actions a:hover { text-decoration: underline; }
+@media (max-width: 760px) {
+  .signin { grid-template-columns: 1fr; }
+  .signin-hero { padding: 1.25rem 1rem; gap: 0.25rem; }
+  .signin-logo { margin-bottom: 0.5rem; width: 36px; height: 36px; font-size: 15px; }
+  .signin-tagline { font-size: 1rem; }
+  .signin-foot { display: none; }
+  .signin-panel { place-items: start center; }
+}
 
 /* ------------------------------------------------------------ small screens */
 /* ------------------------------------------------------------ status bar (every builder page, like APEX's footer) */
@@ -781,3 +816,59 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .pe-help-body { padding-top: 0.4rem; overflow-wrap: anywhere; }
 .pe-help-body h3 { font-size: 0.95rem; margin: 0 0 0.3rem; }
 .pe-help-body p { margin: 0 0 0.4rem; }
+
+/* ------------------------------------------------------------ environment banner, workspace message (091), Administration menu */
+.ide-banner { padding: 3px 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; }
+.ide-banner-red { background: #b42318; color: #fff; }
+.ide-banner-orange { background: #c4520f; color: #fff; }
+.ide-banner-yellow { background: #e6b400; color: #1e1d1b; }
+.ide-banner-green { background: #2f7d32; color: #fff; }
+.ide-banner-teal { background: #0e7a74; color: #fff; }
+.ide-banner-blue { background: #1a5f99; color: #fff; }
+.ide-banner-purple { background: #6941c6; color: #fff; }
+.ide-banner-gray { background: #5e5a54; color: #fff; }
+.ab-message { display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 12px; }
+.ab-message p { margin: 0.15rem 0 0; white-space: pre-line; }
+.rail-admin { padding: 0; }
+.rail-admin > summary { list-style: none; cursor: pointer; }
+.rail-admin > summary::-webkit-details-marker { display: none; }
+.rail-admin .menu-panel { bottom: 56px; }
+.rail-admin .menu-links strong { padding: 2px 0 4px; }
+.ide .alert-info { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+/* ------------------------------------------------------------ SQL Workshop home (sprint 61) */
+.sw-tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.sw-tile-icon { background: #2f7d32; }
+.sw-recents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.sw-recent { min-width: 0; border-left: 1px solid var(--border); }
+.sw-recent:first-child { border-left: 0; }
+.sw-recent h2 { margin: 0; padding: 10px 12px; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+.sw-recent ul { list-style: none; margin: 0; padding: 0; max-height: 440px; overflow-y: auto; }
+.sw-recent li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--border); }
+.sw-recent li a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--gold); text-decoration: none; }
+.sw-recent li a:hover { text-decoration: underline; }
+.sw-recent li .muted { flex: none; font-size: 12px; }
+.sw-recent > p { padding: 0 12px; }
+.sw-schema { display: flex; gap: 6px; }
+.sw-schema select { flex: 1; min-width: 0; }
+@media (max-width: 1100px) { .sw-tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); } .sw-recents { grid-template-columns: 1fr; } .sw-recent { border-left: 0; border-top: 1px solid var(--border); } .sw-recent:first-child { border-top: 0; } }
+
+/* ------------------------------------------------------------ App Gallery (sprint 61) */
+.gal-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
+.gal-search { flex: 1 1 320px; }
+.gal-tabs { display: inline-flex; }
+.gal-tabs a { padding: 6px 12px; text-decoration: none; color: var(--text); border: 1px solid var(--border); background: var(--surface); }
+.gal-tabs a + a { border-left: 0; }
+.gal-tabs a:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.gal-tabs a:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.gal-tabs a[aria-current] { background: var(--surface-3); font-weight: 650; }
+.gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+.gal-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); min-width: 0; }
+.gal-head { display: flex; gap: 12px; align-items: center; }
+.gal-head h2 { margin: 0; font-size: 15px; }
+.gal-icon { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+.gal-icon .icon { width: 26px; height: 26px; }
+.gal-card > p { margin: 0; flex: 1; line-height: 1.5; }
+.gal-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.gal-foot form { margin: 0; }
+.ab-group select { min-width: 140px; }

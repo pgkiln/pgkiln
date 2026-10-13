@@ -1,0 +1,35 @@
+{"blueprint": 1, "name": "Team Tasks", "alias": "team-tasks", "schema": "team_tasks",
+ "tables": [
+  {"name": "project", "label": "Projects", "columns": [
+    {"name": "name", "type": "text", "required": true, "unique": true},
+    {"name": "owner", "type": "text"},
+    {"name": "status", "type": "text", "required": true, "values": ["Planned", "Active", "On hold", "Done"]},
+    {"name": "start_date", "type": "date"},
+    {"name": "end_date", "type": "date"}]},
+  {"name": "task", "label": "Tasks", "columns": [
+    {"name": "project_id", "references": "project", "required": true},
+    {"name": "title", "type": "text", "required": true},
+    {"name": "assignee", "type": "text"},
+    {"name": "status", "type": "text", "required": true, "values": ["To do", "In progress", "Blocked", "Done"]},
+    {"name": "priority", "type": "text", "values": ["Low", "Normal", "High"]},
+    {"name": "due", "type": "date"},
+    {"name": "hours", "type": "number"}]}],
+ "pages": [
+  {"type": "report_form", "table": "project", "page": 2, "form_page": 3, "label": "Projects", "icon": "layers"},
+  {"type": "report_form", "table": "task", "page": 4, "form_page": 5, "label": "Tasks", "icon": "check"},
+  {"type": "facets", "table": "task", "page": 6, "label": "Find tasks", "icon": "filter"},
+  {"type": "calendar", "table": "task", "page": 7, "label": "Due dates", "icon": "calendar"}],
+ "dashboard": true,
+ "sample_data": [
+  {"table": "project", "columns": ["id", "name", "owner", "status", "start_date", "end_date"], "rows": [
+    [1, "Website relaunch", "Ann", "Active", "2026-09-01", "2026-12-15"],
+    [2, "Customer portal", "Ben", "Planned", "2026-11-01", "2027-03-31"],
+    [3, "Office move", "Cleo", "Done", "2026-05-01", "2026-08-30"]]},
+  {"table": "task", "columns": ["project_id", "title", "assignee", "status", "priority", "due", "hours"], "rows": [
+    [1, "Design the home page", "Dana", "Done", "High", "2026-09-20", 16],
+    [1, "Write the copy", "Eli", "In progress", "Normal", "2026-10-25", 12],
+    [1, "Move the content", "Dana", "To do", "Normal", "2026-11-15", 24],
+    [1, "Test on phones", "Finn", "To do", "High", "2026-12-01", 8],
+    [2, "Gather requirements", "Ben", "In progress", "High", "2026-11-10", 20],
+    [2, "Choose the sign-in", "Gus", "Blocked", "Normal", "2026-11-20", 4],
+    [3, "Pack the archive", "Cleo", "Done", "Low", "2026-08-10", 10]]}]}

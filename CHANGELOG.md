@@ -5,6 +5,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 61: the builder's screens like APEX 26.1's.
+
+### Added
+- **A sign-in page like APEX's**: a pgkiln panel beside the form, an optional **workspace** (it becomes the current
+  one; a wrong one answers like a wrong password), a *Show* button for the password, **Remember workspace and
+  username** (an HttpOnly cookie for `/builder`, never the password) and an *Administration* link that opens
+  Workspace utilities after signing in.
+- **The Administration menu** in the icon rail (it replaces the Users and Developers icons): Workspace utilities;
+  *Manage service* for the current workspace's administrators (workspace message and environment banner, workspace
+  utilization, the workspace's page); Manage users and groups, Developers, Monitor activity, Change my password.
+- **A workspace message** (on the App Builder home) and an **environment banner** (a coloured label such as
+  DEVELOPMENT across the top of every builder page of the workspace), set by administrators and workspace
+  administrators (migration 091).
+- **Workspace utilization**: applications, pages, developers, page views and users of the last 30 days, static
+  files and the storage of the schemas the workspace's roles use.
+- **The SQL Workshop home**: tiles, recently created tables, your recent SQL commands (click to open one) and the
+  workspace's recent scripts, and the session's **schema**, first in the search path of SQL Commands and SQL
+  Scripts. SQL Commands moved to `/builder/sql/commands` (a post to `/builder/sql` still runs).
+- **The App Gallery**: *Sample Apps* (HR Demo, Tasks) installed by administrators; *Starter Apps* (Team Tasks,
+  Contacts, Expense Claims, Asset Inventory, Event Registrations) shipped as blueprints and created after their review;
+  *Custom Apps*: the workspace's boilerplates.
+- **Application groups** (migration 092): a workspace's named groups of applications, a group filter and labels on
+  the App Builder home.
+- **Cross Application Reports** in Workspace utilities: application attributes, build options, developer comments,
+  authentication, authorization schemes, password items and theme summary over the workspace's applications.
+
+### Fixed
+- A calendar region whose query has no `end_date` column (e.g. one made by the calendar wizard without an end
+  column) failed with "column __q.end_date does not exist".
+
+### Changed
+- APEX parity: 144 features compared (four builder screens added), 141 available, none partial or missing, 3 not
+  planned.
+
 ## [0.37.0] - 2026-10-13
 
 Sprint 60: isolated workspaces.

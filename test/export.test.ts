@@ -37,6 +37,7 @@ const NOT_EXPORTED = new Set([
   'blueprint', // saved blueprints: builder data of this installation (app_id: the application created from one)
   'ai_conversation', // AI assistant conversations: per session, user data (the assistant's settings travel in the region's config)
   'workspace_app', // the workspace of an application: installation data (an import goes into the importer's workspace)
+  'app_group', 'app_group_member', // (092) application groups: a workspace's, not the application's
   'app_mail_service', // (081) the mail service an application sends through: installation data (services and secrets are never exported)
   'mail_queue', // (081) mail queued with meta.send_mail and its outcome (kept 30 days)
   'user_preference', // (086) users' preferences: user data of this installation, like saved reports

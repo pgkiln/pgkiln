@@ -4,6 +4,17 @@ import { runtimeForApp } from './workspace-db.ts';
 import { hashToken, loginMaxFailuresPerIp, loginMaxFailuresPerUser, loginWindowMinutes, newToken } from './security.ts';
 import { instanceSetting } from './instance.ts';
 
+/** A developer's workspace in the builder (src/builder/workspaces.ts loadWorkspaces). */
+export interface BuilderWorkspace {
+  id: number;
+  name: string;
+  message?: string | null;
+  banner_label?: string | null;
+  banner_color?: string;
+  isolated?: boolean;
+  admin?: boolean;
+}
+
 export interface Session {
   id: string; // internal id, exposed to SQL as pgkiln.session_id
   app_id: number | null;
@@ -14,8 +25,8 @@ export interface Session {
   roles: string[];
   isNew?: boolean;
   /** Builder only: the developer's workspaces and the current one (src/builder/workspaces.ts). */
-  workspaces?: { id: number; name: string }[];
-  workspace?: { id: number; name: string } | null;
+  workspaces?: BuilderWorkspace[];
+  workspace?: BuilderWorkspace | null;
   /** Builder only (079): sha256 of the developer toolbar token (src/runtime/devbar.ts). */
   devbar_hash?: string | null;
   /** (085) when the session started, in ms since the epoch (its maximum length counts from here) */

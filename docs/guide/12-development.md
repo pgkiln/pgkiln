@@ -233,6 +233,10 @@ src/
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview)
+    gallery.ts             the App Gallery (sprint 61): examples/gallery/gallery.json, sample apps (administrators, migrate --example),
+                           starter apps (blueprints → openBlueprint's review), custom apps (the workspace's boilerplates)
+    app-groups.ts          application groups (092): a workspace's groups, a group per application (the App Builder home filters)
+    cross-app.ts           Cross Application Reports (sprint 61): REPORTS (one SQL per topic over the workspace's applications)
     workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid
                            request), the current workspace (session state __WS), placeApp, the switcher, Workspace utilities → Workspaces;
                            (090) isolation and the workspace's database roles, workshopDb (the SQL Workshop's connection)
@@ -293,6 +297,8 @@ test/
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page), template options, base style Iris
   workspaces.test.ts       workspaces (064): Default, administrators' pages, current workspace, refused apps, imports and copies
+  gallery.test.ts          the App Gallery: every starter created from its review with all its pages rendering; sample apps (admins)
+  builder-apex-screens.test.ts sprint 61: sign-in with a workspace, message and banner, utilization, SQL Workshop home, groups, reports
   workspace-isolation.test.ts isolated workspaces (090): logins, RLS on meta, app_id, roles, SQL Workshop, scripts, imports
   ai.test.ts               AI services: Generate text with AI (text, structured outputs, errors, limits, keys), its dynamic action,
                            meta.ai_generate, the providers, HR page 37; against ai-mock.ts (no real API calls)

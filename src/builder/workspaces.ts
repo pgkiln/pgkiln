@@ -5,9 +5,9 @@ import { ownerUrl, runtimeUrl } from '../db.ts';
 import { secretKeyConfigured } from '../secrets.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { clientIp, logActivity, type Session } from '../session.ts';
+import { clientIp, logActivity, type BuilderWorkspace, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
-import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
+import { back, BANNER_COLORS, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // Workspaces (064; APEX: workspaces). A workspace groups applications and the
 // developers who build them. developer() loads the developer's workspaces into
@@ -20,10 +20,7 @@ import { back, BASE, csrf, developer, flash, input, region, send, shell, type Re
 // Not a security boundary between developers who write SQL (the SQL Workshop
 // and application code run with installation-wide rights): see chapter 3.
 
-export interface WorkspaceRef {
-  id: number;
-  name: string;
-}
+export type WorkspaceRef = BuilderWorkspace;
 
 /** Workspace 1: applications without a meta.workspace_app row belong to it. */
 export const DEFAULT_WORKSPACE = 1;
@@ -32,7 +29,10 @@ export const DEFAULT_WORKSPACE = 1;
 export async function loadWorkspaces(s: Session) {
   const rows = (
     await owner.query<WorkspaceRef>(
-      `select w.id, w.name from meta.workspace w
+      `select w.id, w.name, w.message, w.banner_label, w.banner_color, w.isolated,
+              exists (select 1 from meta.developer d where d.username = $1 and d.is_admin)
+                or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $1 and m.is_admin) as admin
+         from meta.workspace w
         where exists (select 1 from meta.developer d where d.username = $1 and d.is_admin)
            or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $1)
         order by w.id = 1 desc, lower(w.name)`,
@@ -79,6 +79,20 @@ export async function appAllowed(s: Session, appId: number | string) {
 export async function workshopDb(s: Session): Promise<Db> {
   if (!s.workspace || (await isAdmin(s.username))) return owner;
   return (await devDbForWorkspace(s.workspace.id)) ?? owner;
+}
+
+/** Schemas the SQL Workshop's connection may use (not pgkiln's, not the system's). */
+export async function usableSchemas(db: Db) {
+  return (await db.query<{ n: string }>(
+    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta')
+        and has_schema_privilege(oid, 'USAGE') order by 1`)).rows.map((r) => r.n);
+}
+
+/** (sprint 61) The session's default schema (SQL Workshop home), if the connection may still use it. */
+export async function sessionSchema(s: Session, db: Db) {
+  const v = s.state.__SQLSCHEMA;
+  if (typeof v !== 'string' || !v) return null;
+  return (await db.one<{ ok: boolean }>(`select has_schema_privilege(oid, 'USAGE') as ok from pg_namespace where nspname = $1`, [v]))?.ok ? v : null;
 }
 
 /** Who the SQL Workshop runs as, for its notes. */
@@ -177,6 +191,19 @@ function isolationRegion(s: Session, w: { id: number; name: string; isolated: bo
       <form method="post" action="${BASE}/workspaces/${w.id}/isolation">${csrf(s)}<input type="hidden" name="isolated" value="true">
         <div class="buttons"><button class="btn btn-hot"${problem ? raw(' disabled') : ''} data-confirm="Isolate ${w.name}?">${icon('lock')} Isolate this workspace</button></div></form>`;
   return region('Isolation', body);
+}
+
+/** (091) Manage service: the workspace message and the environment banner. */
+function serviceRegion(s: Session, w: { id: number; message: string | null; banner_label: string | null; banner_color: string }) {
+  return region('Manage service', html`<form method="post" action="${BASE}/workspaces/${w.id}/service">${csrf(s)}
+      <div class="field"><label class="label" for="f_message">Workspace message</label>
+        <textarea id="f_message" name="message" rows="3" maxlength="2000">${w.message ?? ''}</textarea>
+        <small class="help">Shown to this workspace's developers on the App Builder home, e.g. a maintenance window. Plain text.</small></div>
+      <div class="form-grid">
+        ${input('banner_label', 'Environment banner', w.banner_label ?? '', { placeholder: 'DEVELOPMENT', help: 'A short label shown at the top of every builder page while this workspace is current. Empty: no banner.' })}
+        ${select('banner_color', 'Banner colour', w.banner_color, BANNER_COLORS.map((c): [string, string] => [c, c[0].toUpperCase() + c.slice(1)]))}
+      </div>
+      <div class="buttons"><button class="btn">Save</button></div></form>`, '', 'service');
 }
 
 export async function workspaceRoutes(app: FastifyInstance) {
@@ -288,6 +315,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             </div><small class="help">They manage this workspace's name and developers. Isolation, database roles, moving applications and deleting the workspace stay with administrators.</small></fieldset>
             <div class="buttons"><button class="btn">Save developers</button></div></form>`)}
       </div>
+      ${serviceRegion(s, w)}
       ${full ? isolationRegion(s, w, roles.rows) : region('Isolation', html`<p class="u-mt0">${w.isolated ? 'Isolated: its applications and SQL run on database logins of its own.' : 'Shared.'} Administrators change it.</p>`)}
       ${!full ? '' : region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>Application</th><th>Move to</th></tr></thead>
@@ -361,6 +389,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
             await c.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2) on conflict do nothing', [to.id, role]);
         }
         await placeApp(c, appId, to.id);
+        // (092) groups are the old workspace's
+        await c.query('delete from meta.app_group_member where app_id = $1', [appId]);
       });
     } catch (e) {
       flash(s, `Not moved: ${roleError(e)}`, 'error');
@@ -442,5 +472,84 @@ export async function workspaceRoutes(app: FastifyInstance) {
       await workspacesChanged();
     }
     return back(reply, s, `${BASE}/workspaces/${id}`);
+  });
+
+  // (091) the workspace message and environment banner
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/service`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const message = String(req.body?.message ?? '').replace(/\r\n/g, '\n').trim();
+    const label = String(req.body?.banner_label ?? '').trim();
+    const color = BANNER_COLORS.includes(String(req.body?.banner_color)) ? String(req.body?.banner_color) : 'blue';
+    try {
+      if (message.length > 2000) throw new Error('The message is at most 2000 characters.');
+      if (label && !/^\S(.{0,38}\S)?$/.test(label)) throw new Error('The banner label is at most 40 characters.');
+      const r = await owner.query('update meta.workspace set message = $2, banner_label = $3, banner_color = $4 where id = $1', [req.params.id, message || null, label || null, color]);
+      if (!r.rowCount) return reply.code(404).send('Not found');
+      await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: message and banner` });
+      flash(s, 'Message and banner saved.');
+    } catch (e) {
+      flash(s, (e as Error).message, 'error');
+    }
+    return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
+  });
+
+  // (091) workspace utilization: its applications, their size and use, its schemas' storage
+  app.get(`${BASE}/workspaces/:id(^\\d{1,9}$)/utilization`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const w = await owner.one<{ id: number; name: string }>('select id, name from meta.workspace where id = $1', [req.params.id]);
+    if (!w) return reply.code(404).send('Not found');
+    const [apps, schemas, totals] = await Promise.all([
+      owner.query(
+        `select a.id, a.name, a.alias, a.db_role,
+                (select count(*) from meta.page p where p.app_id = a.id)::int as pages,
+                (select count(*) from meta.region r join meta.page p on p.id = r.page_id where p.app_id = a.id)::int as regions,
+                (select count(*) from meta.item i join meta.page p on p.id = i.page_id where p.app_id = a.id)::int as items,
+                (select count(*) from meta.activity_log l where l.app_id = a.id and l.event = 'page_view' and l.at > now() - interval '30 days')::int as views,
+                (select count(distinct l.username) from meta.activity_log l where l.app_id = a.id and l.event = 'page_view' and l.at > now() - interval '30 days')::int as users,
+                (select coalesce(sum(octet_length(f.content)), 0) from meta.static_file f where f.app_id = a.id)::bigint as files
+           from meta.app a where meta.app_workspace(a.id) = $1 order by lower(a.name)`,
+        [w.id],
+      ),
+      owner.query(
+        `select n.nspname as schema, n.nspowner::regrole::text as owner, count(c.oid)::int as tables,
+                coalesce(sum(pg_total_relation_size(c.oid)), 0)::bigint as bytes
+           from pg_namespace n left join pg_class c on c.relnamespace = n.oid and c.relkind in ('r', 'p', 'm')
+          where n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+            and exists (select 1 from (select db_role as r from meta.app where meta.app_workspace(id) = $1 and db_role is not null
+                                       union select role_name from meta.workspace_role where workspace_id = $1) x
+                         join pg_roles rl on rl.rolname = x.r
+                        where has_schema_privilege(rl.oid, n.oid, 'USAGE'))
+          group by 1, 2 order by 1`,
+        [w.id],
+      ),
+      owner.one(
+        `select (select count(*) from meta.workspace_member where workspace_id = $1)::int as developers,
+                (select count(*) from meta.sql_script where workspace_id = $1)::int as scripts`,
+        [w.id],
+      ),
+    ]);
+    const size = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
+    const sum = (k: string) => apps.rows.reduce((t, r) => t + Number(r[k]), 0);
+    const main = html`<div class="title-row"><h1>Workspace utilization: ${w.name}</h1></div>
+      <div class="stat-grid u-mb1">
+        ${[['Applications', apps.rows.length], ['Pages', sum('pages')], ['Developers', totals.developers], ['Page views (30 days)', sum('views')], ['SQL scripts', totals.scripts]]
+          .map(([l, v]) => html`<div class="stat"><b>${String(v)}</b><span>${l}</span></div>`)}
+      </div>
+      ${region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>Application</th><th class="num">Pages</th><th class="num">Regions</th><th class="num">Items</th><th class="num">Page views (30 days)</th><th class="num">Users (30 days)</th><th class="num">Static files</th></tr></thead>
+        <tbody>${apps.rows.length ? apps.rows.map((a) => html`<tr><td data-label="Application"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
+          <td class="num" data-label="Pages">${a.pages}</td><td class="num" data-label="Regions">${a.regions}</td><td class="num" data-label="Items">${a.items}</td>
+          <td class="num" data-label="Page views">${a.views}</td><td class="num" data-label="Users">${a.users}</td><td class="num" data-label="Static files">${size(Number(a.files))}</td></tr>`)
+          : html`<tr><td colspan="7" class="empty">No applications.</td></tr>`}</tbody></table></div>`)}
+      <div class="u-spacer"></div>
+      ${region('Schemas', html`<p class="muted u-mt0">The schemas the workspace's database roles may use, with the storage of their tables, indexes and TOAST data.</p>
+        <div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>Schema</th><th>Owner</th><th class="num">Tables</th><th class="num">Storage</th></tr></thead>
+        <tbody>${schemas.rows.length ? schemas.rows.map((r) => html`<tr><td data-label="Schema">${r.schema}</td><td data-label="Owner"><code>${r.owner}</code></td>
+          <td class="num" data-label="Tables">${r.tables}</td><td class="num" data-label="Storage">${size(Number(r.bytes))}</td></tr>`)
+          : html`<tr><td colspan="4" class="empty">No schemas: the workspace's applications have no database role of their own.</td></tr>`}</tbody></table></div>`)}`;
+    return send(reply, s, shell(s, `Utilization: ${w.name}`, [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [w.name, `${BASE}/workspaces/${w.id}`], ['Utilization']], main));
   });
 }

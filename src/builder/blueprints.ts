@@ -129,6 +129,20 @@ function review(s: Session, bp: Blueprint, spec: string, id: number | null, name
     </form>`)}`;
 }
 
+/**
+ * (sprint 61) Open a blueprint (e.g. a starter app of the App Gallery): its review when it can be
+ * created, else the editor with its problems. Nothing is created before the developer confirms.
+ */
+export async function openBlueprint(s: Session, reply: FastifyReply, name: string, spec: string) {
+  const { json, error } = parse(spec);
+  const { blueprint, problems } = error ? { blueprint: null, problems: [error] } : checkBlueprint(json);
+  const taken = blueprint ? await owner.one('select 1 from meta.app where alias = $1', [blueprint.alias]) : null;
+  if (taken) problems.push(`An application with the alias ${blueprint!.alias} already exists: change "alias" and "schema" in the blueprint.`);
+  if (!blueprint || problems.length)
+    return editor(s, reply, { name, spec, message: html`<div class="alert alert-error" role="alert"><p>The blueprint can't be created yet:</p><ul>${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` });
+  return page(s, reply, 'Review', review(s, blueprint, spec, null, name));
+}
+
 export async function blueprintRoutes(app: FastifyInstance) {
   app.get(`${BASE}/blueprints`, async (req: Req, reply) => {
     const s = await developer(req, reply);

@@ -544,6 +544,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
 
     test('builder pages fit the screen', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
+      // (sprint 61) the sign-in page itself
+      await page.goto(`${base}/builder/login`);
+      await check(page, 'builder-login', vp);
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
       const appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
       const pageId = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 3`, [appId])).id;
@@ -579,6 +582,15 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         installation: '/builder/installation',
         workspaces: '/builder/workspaces',
         workspace: '/builder/workspaces/1',
+        // (sprint 61) the screens like APEX's
+        workspace_utilization: '/builder/workspaces/1/utilization',
+        sql_home: '/builder/sql',
+        sql_commands: '/builder/sql/commands',
+        gallery: '/builder/gallery',
+        gallery_starters: '/builder/gallery?tab=starters',
+        app_groups: '/builder/app-groups',
+        report_attributes: '/builder/utilities/reports/attributes',
+        report_authentication: '/builder/utilities/reports/authentication',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,

@@ -6,7 +6,16 @@ The builder lives at `/builder`. Everything it does is also possible in SQL (see
 ## Signing in and developer accounts
 
 Sign in with a developer account. The first one is `admin` / `admin`, and a red banner reminds you
-to change it. On the **Developers** page you can:
+to change it.
+
+The sign-in page (`/builder/login`) is laid out like APEX's: **Workspace** (optional), **Username** and
+**Password** (with a *Show* button). A workspace you name must be one of yours (administrators: any); it becomes the
+current one, and a wrong one gets the same answer as a wrong password. Left empty, you continue in your first
+workspace and switch in your account menu. **Remember workspace and username** keeps both on this device (an
+HttpOnly cookie for `/builder`, no password); signing in without the tick forgets them. *Administration* under the
+form signs in and opens Workspace utilities.
+
+On the **Developers** page you can:
 
 - change your own password (minimum 8 characters; other builder sessions of yours end);
 - as an **administrator**: add developer accounts (developers or administrators), make a developer
@@ -33,6 +42,13 @@ department. Every installation has the **Default** workspace, which holds the ap
 - **New applications** (Create, from a file, pasted data, existing tables, a blueprint) and **imports** go into the
   current workspace; a working copy stays in its main application's workspace. Imports made with the command line
   (`pgkiln import`) go into Default. Exports don't carry the workspace.
+- **Workspace utilities**: tiles for users and sign-in, application groups, the App Gallery, developers, the SQL
+  Workshop and the dashboard (and, for administrators, instance settings, workspaces, AI and mail services and the
+  installation), with **Cross Application Reports** in the side column (APEX: Cross Application Reports), each over
+  every application of the current workspace: *Application attributes* (type, sign-in, availability, build status,
+  debug level, language, database role), *Build options*, *Developer comments*, *Authentication* (sign-in methods,
+  identity providers, LDAP, access, the login page, Forgot password), *Authorization schemes*, *Password items* and
+  *Theme summary*.
 - Workspace utilities → **Workspaces** (administrators): add a workspace (you become its first developer), rename it,
   choose its developers, move applications to another workspace and delete an empty workspace.
 - **Workspace administrators**: on a workspace's page, administrators tick which of its developers administer it. A
@@ -44,6 +60,21 @@ A **shared** workspace (the default) is not a security boundary between develope
 runs as pgkiln's owner, and its application code (processes, regions, validations) runs on the shared runtime
 connection, from which SQL can reach other shared applications' data and metadata. Make a workspace **isolated** when
 its developers must not reach other teams' applications or data.
+
+### Workspace message and environment banner
+
+Administrators and the workspace's administrators set them on the workspace's page (*Manage service*, or the
+Administration menu → *Workspace message and environment banner*; APEX: Define Workspace Message, Define Environment
+Banner): a **message** (plain text, up to 2000 characters) shown to the workspace's developers on the App Builder home,
+and an **environment banner**: a label of up to 40 characters in one of eight colours, shown at the top of every
+builder page while the workspace is current.
+
+### Workspace utilization
+
+Administration menu → **Workspace utilization** (`/builder/workspaces/<id>/utilization`; APEX: Workspace
+Utilization), for administrators and the workspace's administrators: the number of applications, pages, developers,
+page views of the last 30 days and SQL scripts; per application its pages, regions, items, page views, users and the
+size of its static files; and the schemas the workspace's database roles use with their tables and storage.
 
 ### Isolated workspaces
 
@@ -89,8 +120,11 @@ longer sign in. Delete a workspace only when it is shared and empty; its logins 
 
 Every builder page has the same frame, modelled on an IDE:
 
-- **The icon rail** on the left: App Builder, SQL Workshop, Users, Developers, **Search** (on the
-  pages of an application), Help, and your account menu (the circle with your initials) with the
+- **The icon rail** on the left: App Builder, SQL Workshop, [App Gallery](#app-gallery), **Search** (on the
+  pages of an application); at the bottom the **Administration** menu (Workspace utilities; for administrators of the
+  current workspace *Manage service*: [workspace message and environment banner](#workspace-message-and-environment-banner),
+  [workspace utilization](#workspace-utilization) and the workspace's page; Manage users and groups, Developers,
+  Monitor activity, Change my password), Help, and your account menu (the circle with your initials) with the
   **builder theme** (*Dark*, the default; *Light*; or *System*, which follows the operating system),
   Change password and Sign out. The theme is remembered on this device, also after signing out;
   it only changes the builder, not your applications.
@@ -101,6 +135,8 @@ Every builder page has the same frame, modelled on an IDE:
 
 - **The status bar** at the bottom: who is signed in, the current [workspace](#workspaces), the database, the
   builder's language and the pgkiln version.
+- **An environment banner** (when the current workspace has one) across the top: a coloured band with a label such as
+  DEVELOPMENT or TEST, so nobody mistakes one environment for another.
 
 On phones the rail gets narrower and the breadcrumb shows only the current page.
 
@@ -120,6 +156,34 @@ The home page is laid out like APEX's App Builder:
   **Actions**, to sort. The view and the sort are remembered until you sign out.
 - **A side column** (on the right on wide screens, below the list otherwise): About, **Recent** (the
   applications you opened last) and Tasks.
+- **The workspace message**, when the workspace has one, above the tiles.
+- **Application groups**: when the workspace has [groups](#application-groups), a select next to the views shows one
+  group; each application shows its group.
+
+### Application groups
+
+Workspace utilities → **Application groups** (`/builder/app-groups`; APEX: Application Groups) organises the
+applications of the current workspace into named groups: add, rename and delete groups, and choose each
+application's group. The App Builder home then filters by group. Groups belong to the workspace, not to the
+applications: they are not exported, an in-place import keeps them, and an application moved to another workspace
+leaves its group. Every developer of the workspace manages them.
+
+## App Gallery
+
+The **App Gallery** (the cube in the icon rail, `/builder/gallery`; APEX: App Gallery) has three tabs:
+
+- **Sample Apps**: applications shipped with pgkiln (HR Demo, Tasks) with their own schema, data and **demo accounts
+  with known passwords**, so install them on a development or demo instance only. Administrators install them (the
+  same scripts as `pgkiln migrate --example hr`); they go into the current workspace. An installed one shows Run and
+  Edit.
+- **Starter Apps**: small applications (Team Tasks, Contacts, Expense Claims, Asset Inventory, Event Registrations)
+  shipped as [blueprints](#creating-an-application-from-a-blueprint). **Install** opens the blueprint's review:
+  nothing is created before you confirm, the application gets a new role and schema in the current workspace, and you
+  may edit the blueprint first (another alias, more columns). Any developer installs them.
+- **Custom Apps**: the workspace's boilerplate applications (Application type *Boilerplate*): *Create from it* opens
+  Create with that boilerplate chosen.
+
+The list is `examples/gallery/gallery.json`; add your own starters there as blueprint files.
 
 ### Creating an application
 
@@ -950,14 +1014,21 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
 
 ## SQL Workshop
 
-- **SQL Commands**: run any SQL as the **owner connection**, not as an application role. Multiple
+The SQL Workshop opens on its **home** (`/builder/sql`; APEX: the SQL Workshop home): tiles for the Object Browser,
+SQL Commands, SQL Scripts, the utilities and Quick SQL; **Recently created tables** (the newest tables you can read:
+PostgreSQL keeps no creation time, so object ids decide), your **recent SQL commands** (click one to open it in SQL
+Commands; other developers' are never shown) and the workspace's **recent SQL scripts**. The side column sets the
+session's **schema** (APEX: the default schema): it goes first in the search path of SQL Commands and SQL Scripts until
+you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample data and Generate DDL.
+
+- **SQL Commands** (`/builder/sql/commands`): run any SQL as the **owner connection**, not as an application role. Multiple
   statements are allowed; the result of the last one is shown (up to 500 rows). Press
   **Ctrl/Cmd + Enter** to run. The [code editor](#the-code-editor) suggests every schema, table,
   column and function the owner sees.
 - **Object Browser**: tables, views and functions per schema. For a table you see columns, types
   and defaults, **row level security policies**, **grants** and the first 25 rows; for a
   function, its source.
-- **SQL Scripts**: saved scripts, shared by all developers. Create one in the editor, upload a
+- **SQL Scripts**: saved scripts, shared by the developers of the workspace. Create one in the editor, upload a
   `.sql` file (UTF-8, up to 5 MB) or save one from Quick SQL; download it again as `.sql`. **Run**
   splits the script into statements at semicolons (outside strings, comments, quoted identifiers,
   `$$` bodies and `BEGIN ATOMIC … END`) and runs them one after another, with a **result per

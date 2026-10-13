@@ -66,6 +66,9 @@ import { refreshInstanceSettings } from './instance.ts';
 import { loadSecrets, securityHeaders, trustProxySetting } from './security.ts';
 import { lucideSymbol } from './icons.ts';
 import { runtimeForAlias } from './workspace-db.ts';
+import { galleryRoutes } from './builder/gallery.ts';
+import { appGroupRoutes } from './builder/app-groups.ts';
+import { crossAppRoutes } from './builder/cross-app.ts';
 import { runtimeScope } from './db.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -171,6 +174,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(staticFileRoutes);
   await app.register(restRoutes);
   await app.register(builderRoutes);
+  await app.register(galleryRoutes);
+  await app.register(appGroupRoutes);
+  await app.register(crossAppRoutes);
   await app.register(sharedRoutes);
   await app.register(designerRoutes);
   await app.register(lockRoutes);

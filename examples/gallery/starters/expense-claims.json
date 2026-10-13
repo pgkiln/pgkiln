@@ -1,0 +1,32 @@
+{"blueprint": 1, "name": "Expense Claims", "alias": "expense-claims", "schema": "expense_claims",
+ "tables": [
+  {"name": "claim", "label": "Claims", "columns": [
+    {"name": "employee", "type": "text", "required": true},
+    {"name": "purpose", "type": "text", "required": true},
+    {"name": "submitted_on", "type": "date", "required": true},
+    {"name": "status", "type": "text", "required": true, "values": ["Draft", "Submitted", "Approved", "Rejected", "Paid"]},
+    {"name": "approver", "type": "text"}]},
+  {"name": "expense", "label": "Expenses", "columns": [
+    {"name": "claim_id", "references": "claim", "required": true},
+    {"name": "spent_on", "type": "date", "required": true},
+    {"name": "category", "type": "text", "required": true, "values": ["Travel", "Lodging", "Meals", "Supplies", "Other"]},
+    {"name": "description", "type": "text"},
+    {"name": "amount", "type": "number", "required": true}]}],
+ "pages": [
+  {"type": "master_detail", "table": "claim", "page": 2, "label": "Claims", "icon": "file"},
+  {"type": "report_form", "table": "expense", "page": 3, "form_page": 4, "label": "Expenses", "icon": "list"},
+  {"type": "chart", "table": "expense", "page": 5, "label": "By category", "icon": "chart"},
+  {"type": "grid", "table": "claim", "page": 6, "label": "Edit claims", "icon": "grid"}],
+ "dashboard": true,
+ "sample_data": [
+  {"table": "claim", "columns": ["id", "employee", "purpose", "submitted_on", "status", "approver"], "rows": [
+    [1, "Ann", "Customer visit Hamburg", "2026-09-30", "Approved", "Ben"],
+    [2, "Cleo", "Conference in Lisbon", "2026-10-06", "Submitted", null],
+    [3, "Dana", "Office supplies", "2026-10-08", "Draft", null]]},
+  {"table": "expense", "columns": ["claim_id", "spent_on", "category", "description", "amount"], "rows": [
+    [1, "2026-09-24", "Travel", "Train Utrecht-Hamburg return", 189.40],
+    [1, "2026-09-24", "Lodging", "Hotel, one night", 132.00],
+    [1, "2026-09-25", "Meals", "Lunch with the customer", 64.50],
+    [2, "2026-10-01", "Travel", "Flight", 245.00],
+    [2, "2026-10-01", "Lodging", "Hotel, three nights", 420.00],
+    [3, "2026-10-07", "Supplies", "Notebooks and pens", 38.95]]}]}
