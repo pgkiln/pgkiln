@@ -55,6 +55,9 @@ const CHART_LABELS: Record<string, string> = {
   gantt: 'Gantt (task, start and end columns)',
   pyramid: 'Pyramid (one series; two series back to back)',
   polar: 'Polar area (one sector per row)',
+  range: 'Range (low and high columns: floating columns)',
+  boxplot: 'Box plot (one value per row, or min, Q1, median, Q3 and max)',
+  stock: 'Stock (open, high, low and close columns: candlesticks)',
 };
 const GAUGE_KEYS = ['min', 'max', 'warning', 'critical'] as const;
 const CARD_COLUMNS = ['title', 'subtitle', 'body', 'badge', 'icon'];

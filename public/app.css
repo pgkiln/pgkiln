@@ -465,6 +465,10 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .chart-x { display: flex; margin-left: 2.6rem; font-size: 0.75rem; color: var(--muted); }
 .chart-x span { flex: 1 1 0; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.3rem 1px 0; }
 .chart-x span.skip { visibility: hidden; }
+.chart-x.sparse span:not(.skip) { overflow: visible; display: flex; justify-content: center; }
+/* a narrow chart (a region of a few columns, a phone): every other label of a sparse axis */
+.chart:has(> .chart-plot) { container-type: inline-size; }
+@container (max-width: 480px) { .chart-x.sparse span.odd { visibility: hidden; } }
 .chart-line .chart-x, .chart-area .chart-x { margin-right: 0; }
 .chart-cols { position: absolute; inset: 0; display: flex; }
 .col-group { position: relative; flex: 1 1 0; display: flex; justify-content: center; gap: 2px; outline-offset: -2px; }
@@ -473,6 +477,22 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .col { position: absolute; left: 0; right: 0; background: var(--c); border-radius: 4px 4px 0 0; }
 .col-value { position: absolute; left: 0; right: 0; text-align: center; font-size: 0.72rem; color: var(--muted); transform: translateY(-1.3em); font-variant-numeric: tabular-nums; pointer-events: none; }
 .col.neg { border-radius: 0 0 4px 4px; }
+/* range: a floating column from low to high */
+.col.range-col { border-radius: 4px; }
+/* box plot: whisker from minimum to maximum with caps, the box between the quartiles, the median across it */
+.box-slot { flex-basis: 32px; }
+.box-whisker { position: absolute; left: 50%; width: 0; border-left: 1.5px solid var(--muted); }
+.box-cap { position: absolute; left: 25%; right: 25%; border-top: 1.5px solid var(--muted); }
+.box-iqr { position: absolute; left: 0; right: 0; box-sizing: border-box; background: color-mix(in srgb, var(--c) 35%, var(--surface)); border: 1.5px solid var(--c); border-radius: 3px; }
+.box-median { position: absolute; left: 0; right: 0; border-top: 2.5px solid var(--text); }
+/* stock: a candle per row, the wick from low to high, the body from open to close */
+.stock-slot { flex-basis: 14px; }
+.stock-wick { position: absolute; left: 50%; width: 0; border-left: 1.5px solid var(--muted); }
+.stock-body { position: absolute; left: 0; right: 0; border-radius: 1px; }
+.stock-body.up { background: var(--success); }
+.stock-body.down { background: var(--danger); }
+.stock-thin .col-group { gap: 0; }
+.stock-thin .stock-slot { flex-basis: 6px; }
 .line-plot { overflow: visible; }
 .chart-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .chart-lines .line { fill: none; stroke: var(--c); stroke-width: 2px; stroke-linejoin: round; stroke-linecap: round; }

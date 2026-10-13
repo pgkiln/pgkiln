@@ -264,7 +264,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
-    test('project plan (page 32): Gantt bars and dependencies line up with their rows; pyramid and polar draw', async () => {
+    test('project plan (page 32): Gantt bars and dependencies line up with their rows; pyramid, polar, range, box plot and stock draw', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
       const res = await page.goto(`${base}/a/hr/32`);
@@ -283,6 +283,14 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       assert.ok(Math.abs(g.depsH - g.plotH) < 1, 'the dependency layer covers the rows');
       assert.ok((await page.locator('.chart-pyramid .pyramid-seg').count()) >= 3);
       assert.ok((await page.locator('.chart-polar .polar-sector').count()) >= 3);
+      // (sprint 63) range, box plot and stock: the marks have a size and stay inside their plot
+      const marks = await page.evaluate(() => Object.fromEntries(
+        [['range', '.chart-range .range-col'], ['box', '.chart-boxplot .box-iqr'], ['candle', '.chart-stock .stock-body'], ['wick', '.chart-stock .stock-wick']].map(([k, sel]) => {
+          const els = [...document.querySelectorAll(sel)].map((e) => [e.getBoundingClientRect(), e.closest('.chart-plot')!.getBoundingClientRect()]);
+          return [k, { n: els.length, sized: els.every(([r]) => r.height > 0.5 && (k === 'wick' || r.width > 2)), inside: els.every(([r, p]) => r.top >= p.top - 1 && r.bottom <= p.bottom + 1) }];
+        })));
+      assert.ok(marks.range.n >= 3 && marks.box.n >= 3 && marks.candle.n >= 20 && marks.wick.n >= 20, JSON.stringify(marks));
+      for (const [k, m] of Object.entries(marks)) assert.ok(m.sized && m.inside, `${k}: ${JSON.stringify(m)}`);
       await page.locator('.chart-gantt .gantt-bar').first().hover();
       await check(page, 'app-32-charts', vp);
       await page.context().close();
