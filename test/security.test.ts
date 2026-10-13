@@ -7191,3 +7191,55 @@ describe('sprint 60 isolated workspaces', () => {
     }
   });
 });
+
+describe('sprint 61 builder screens', () => {
+  const dev = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    return b;
+  };
+
+  test('sign-in: the remember cookie is HttpOnly and builder-only; a forged one is ignored; next stays in the builder', async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin', remember: '1', next: '//evil.example/x' });
+    assert.equal(res.headers.location, '/builder');
+    const cookie = String(([] as string[]).concat(res.headers['set-cookie'] ?? []).find((c) => c.startsWith('pgkiln_bsignin=')));
+    assert.match(cookie, /HttpOnly/i);
+    assert.match(cookie, /Path=\/builder/);
+    const forged = new Browser();
+    forged.cookies.set('pgkiln_bsignin', Buffer.from(JSON.stringify({ w: '"><script>alert(1)</script>', u: 'x' })).toString('base64url'));
+    const page = (await forged.get('/builder/login')).body;
+    assert.doesNotMatch(page, /<script>alert\(1\)/);
+    forged.cookies.set('pgkiln_bsignin', 'not-json');
+    assert.equal((await forged.get('/builder/login')).statusCode, 200);
+  });
+
+  test('message and banner, groups, schema and gallery posts need CSRF; app users never reach them', async () => {
+    const b = await dev();
+    for (const [url, form] of [
+      ['/builder/workspaces/1/service', { message: 'x' }],
+      ['/builder/app-groups', { name: 'Sec61' }],
+      ['/builder/sql/schema', { schema: 'public' }],
+      ['/builder/gallery/starters/contacts', {}],
+      ['/builder/gallery/samples/tasks', {}],
+    ] as const)
+      assert.equal((await b.post(url, form)).statusCode, 403, url);
+    assert.equal(await owner.one(`select 1 as ok from meta.app_group where name = 'Sec61'`), undefined);
+    const king = await as('king');
+    for (const url of ['/builder/gallery', '/builder/app-groups', '/builder/utilities/reports/attributes', '/builder/workspaces/1/utilization', '/builder/sql'])
+      assert.notEqual((await king.get(url)).statusCode, 200, url);
+  });
+
+  test('the banner colour is one of a list; a gallery key is a name, never a path', async () => {
+    const b = await dev();
+    await b.get('/builder/workspaces/1');
+    await b.post('/builder/workspaces/1/service', { __csrf: b.lastCsrf, banner_label: 'SEC', banner_color: 'red; background:url(x)' });
+    assert.equal((await owner.one('select banner_color from meta.workspace where id = 1')).banner_color, 'blue');
+    await owner.query(`update meta.workspace set banner_label = null where id = 1`);
+    await b.get('/builder/gallery');
+    for (const key of ['..%2F..%2Fpackage', 'HR', 'a'.repeat(60)])
+      assert.equal((await b.post(`/builder/gallery/starters/${key}`, { __csrf: b.lastCsrf })).statusCode, 404, key);
+  });
+});

@@ -310,7 +310,7 @@ export async function homeRoutes(app: FastifyInstance) {
       </div></div>
       <aside class="ab-side" aria-label="About and reports">
         <section><h2>About</h2><p>Workspace utilities hold what the applications of this workspace share: users and sign-in, groups, the gallery, and reports across the applications.</p>
-          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspace-utilities" target="_blank" rel="noopener">Learn more …</a></section>
+          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">Learn more …</a></section>
         <section><h2>Cross Application Reports</h2><ul class="ab-links ab-tasks">${crossAppLinks()}</ul></section>
       </aside></div>`;
     return send(reply, s, shell(s, 'Workspace utilities', [['App Builder', BASE], ['Workspace utilities']], main));
