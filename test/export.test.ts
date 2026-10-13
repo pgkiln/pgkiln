@@ -39,6 +39,7 @@ const NOT_EXPORTED = new Set([
   'workspace_app', // the workspace of an application: installation data (an import goes into the importer's workspace)
   'app_group', 'app_group_member', // (092) application groups: a workspace's, not the application's
   'workspace_link', // (093) extension links: a workspace's
+  'task_vacation', // (094) vacation rules: user data, like the tasks themselves
   'app_mail_service', // (081) the mail service an application sends through: installation data (services and secrets are never exported)
   'mail_queue', // (081) mail queued with meta.send_mail and its outcome (kept 30 days)
   'user_preference', // (086) users' preferences: user data of this installation, like saved reports

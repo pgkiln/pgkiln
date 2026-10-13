@@ -827,6 +827,7 @@ application ask someone to approve, reject or complete something, and act on the
 | Business administrator (role) | Sees every task of this definition, delegates and cancels them |
 | The person who requested it may complete it | Off by default: nobody approves their own request |
 | Priority, Due in | 1 (urgent) – 5 (low); e.g. `2 days`. Overdue tasks are marked |
+| When overdue, Maximum renewals, Escalation role | The expiration policy ([below](#overdue-tasks-expire-renew-escalate)); empty: overdue tasks stay open |
 | Details page, Details item | The subject links to this page, setting the item to the record key |
 | On completion (SQL) | Runs as the application's role when the task is approved, rejected or completed (below) |
 
@@ -858,6 +859,14 @@ user may do:
 
 Every step is in the task's history.
 
+**Vacation rules** (APEX: vacation rules): a task list of *my tasks* has a **Vacation rule** section where users name
+the user who stands in for them, from one day until another (at most a year ahead). While the rule is active, the
+stand-in may act on, claim, release and delegate the tasks the user may act on as a **named owner** (the users given
+to `meta.create_task`) or as the **actual owner**, and sees them in their own task list; the decision is recorded under
+the stand-in's name. The rule is checked on every request, so the stand-in's access ends with it. Owners by **role**
+are not passed on (the role's other members are there for that). From SQL: `meta.set_vacation_rule(delegate, from,
+until)`, `meta.clear_vacation_rule()` and `meta.vacation_rule()` (the signed-in user's own rule).
+
 **4. On completion**, the definition's SQL runs **as the application's role, in the same
 transaction** as the decision, with these binds: `:TASK_ID`, `:DETAIL_PK`, `:OUTCOME`
 (`APPROVED`, `REJECTED` or `COMPLETED`), `:COMMENT`, `:APPROVER`, `:INITIATOR`, and the task
@@ -871,6 +880,22 @@ select expenses.decide(:DETAIL_PK::int, :OUTCOME, :COMMENT)
 When a record is decided somewhere else (for example with buttons on its own page), close its
 open tasks so they don't linger: `select meta.close_tasks('EXPENSE_APPROVAL', :P5_ID::text,
 'approved')` (no completion SQL runs).
+
+#### Overdue tasks: expire, renew, escalate
+
+A task definition with *Due in* can say what happens to a task that is still open after its due date (APEX:
+expiration policy). The server checks every minute:
+
+| When overdue | What happens |
+|---|---|
+| (empty) | Nothing: the task stays open and is marked overdue |
+| `expire` | The task ends with the state **expired** and no outcome; the completion SQL doesn't run |
+| `renew` | The due date moves on by *Due in*, up to *Maximum renewals* times (default 3); then it expires |
+| `escalate` | Once: the *Escalation role* becomes a potential owner, the priority 1, the task unassigned (its actual owner loses it) with a new due date; overdue again, it expires |
+
+Each step is in the task's history, by `system`. A [workflow](#workflows) waiting for a task that expires goes on with
+the outcome `expired` (`"next": {"approved": "…", "expired": "…"}`); without an `expired` branch it ends, like a
+workflow whose task is cancelled.
 
 **SQL API** (application code; `meta.app_user()` is the acting user):
 
@@ -889,7 +914,8 @@ reminds owners of overdue tasks; or put a task list on the home page.
 
 **Example:** in the HR sample application, a leave request creates a `LEAVE_APPROVAL` task for the
 employee's manager; *My tasks* (page 14) approves or rejects it through `hr.decide_leave`, the same
-function as the leave request page's buttons, and a request decided there closes its task.
+function as the leave request page's buttons, and a request decided there closes its task. A leave request nobody
+decides on within two days escalates to the administrators; managers going on holiday set a vacation rule on page 14.
 
 ## Workflows
 

@@ -64,7 +64,7 @@ src/
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers, psql commands), runScript() (stop/continue, transaction, savepoints)
   quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
   xlsx.ts                  Excel writer for report downloads and Unload Data (typed cells, streamed through fflate's Zip)
-  automations.ts           cron parser, next run in a time zone, scheduler, running automations (the actions run
+  automations.ts           cron parser, next run in a time zone, scheduler (also meta.task_expire_tick, 094), running automations (the actions run
                            in PL/pgSQL: meta.automation_execute, shared with meta.run_automation; migration 044)
   html.ts                  auto-escaping html`` templates
   richtext.ts              rich text and Markdown items: allow-list HTML sanitiser, Markdown renderer
@@ -143,7 +143,7 @@ src/
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     builtin-components.ts  built-in template components (ut_avatar, ut_badge, ut_comments, ut_media_list, ut_metric_card, ut_timeline)
     template-region.ts     template_component region
-    tasks.ts               task list region and task actions (approvals)
+    tasks.ts               task list region and task actions (approvals); (094) the vacation rule panel and route
     data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
                            reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report)
     workflows.ts           workflow console region and its actions

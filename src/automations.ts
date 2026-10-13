@@ -307,6 +307,12 @@ export function startScheduler() {
       console.error('push notifications:', (e as Error).message);
     }
     try {
+      // (094) overdue tasks: expire, renew or escalate them by their definition's expiration policy
+      await owner.query('select meta.task_expire_tick()');
+    } catch (e) {
+      console.error('task expiration:', (e as Error).message);
+    }
+    try {
       // (082) a daily backup of every application that changed (src/builder/backups.ts)
       await (await import('./builder/backups.ts')).backupTick();
     } catch (e) {

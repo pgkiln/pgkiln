@@ -544,6 +544,9 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     validate: (v) => {
       if (v.due_in && !/^\s*\d+\s*(minute|hour|day|week|month)s?\s*$/i.test(String(v.due_in))) return 'Due in: a number and a unit, e.g. 2 days or 4 hours.';
       if (v.priority !== null && v.priority !== undefined && (Number(v.priority) < 1 || Number(v.priority) > 5)) return 'Priority: 1 (urgent) to 5 (low).';
+      if (v.expiration && !v.due_in) return 'When overdue: set "Due in" first (a task without a due date is never overdue).';
+      if (v.expiration === 'renew' && v.max_renewals !== null && v.max_renewals !== undefined && v.max_renewals !== '' && (Number(v.max_renewals) < 1 || Number(v.max_renewals) > 100)) return 'Maximum renewals: 1 to 100.';
+      if (v.expiration === 'escalate' && !String(v.escalate_role ?? '').trim()) return 'Escalation role: the role that takes the task over.';
       return null;
     },
     fields: [
@@ -555,6 +558,10 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'initiator_can_complete', label: 'The person who requested it may complete it', kind: 'bool', group: 'Participants' },
       { name: 'priority', label: 'Priority (1 urgent – 5 low)', kind: 'int', group: 'Deadline' },
       { name: 'due_in', label: 'Due in', kind: 'text', group: 'Deadline', help: 'e.g. 2 days; overdue tasks are marked in the task list.' },
+      { name: 'expiration', label: 'When overdue', kind: 'select', options: ['', 'expire', 'renew', 'escalate'], group: 'Deadline',
+        help: 'Empty: the task stays open. expire: it ends as expired. renew: the due date moves on by "Due in" (up to the maximum renewals), then it expires. escalate: once, the escalation role becomes an owner, the priority 1 and the task unassigned with a new due date; overdue again, it expires. A workflow waiting for the task goes on with the outcome "expired".' },
+      { name: 'max_renewals', label: 'Maximum renewals', kind: 'int', group: 'Deadline', help: 'For renew: 1 to 100 (default 3).' },
+      { name: 'escalate_role', label: 'Escalation role', kind: 'text', group: 'Deadline', help: 'For escalate: the role (e.g. a manager role) whose members may then act on the task.' },
       { name: 'details_page', label: 'Details page', kind: 'page', group: 'Details', help: 'The subject links here, setting the item below to the task\'s record key.' },
       { name: 'details_item', label: 'Details item', kind: 'upper', group: 'Details', help: 'e.g. P7_ID' },
       { name: 'action_code', label: 'On completion (SQL)', kind: 'code', wide: true, group: 'Action',

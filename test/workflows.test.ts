@@ -50,6 +50,14 @@ before(async () => {
     { name: 'DONE', type: 'sql', code: 'select true as done_flag' },
     { name: 'END', type: 'end' },
   ]);
+  // (094) a task that expires: the "expired" branch, or the end of the workflow without one
+  await def('TEST_EXPIRE', [
+    { name: 'ASK', type: 'task', task: 'ONBOARD_ACCESS', next: { approved: 'OK', expired: 'LATE' } },
+    { name: 'OK', type: 'sql', code: "select 'ok' as result", next: 'END' },
+    { name: 'LATE', type: 'sql', code: "select 'late' as result", next: 'END' },
+    { name: 'END', type: 'end' },
+  ]);
+  await def('TEST_EXPIRE_END', [{ name: 'ASK', type: 'task', task: 'ONBOARD_ACCESS' }, { name: 'AFTER', type: 'sql', code: "select 'after' as result" }]);
   await def('TEST_VERSIONS', [{ name: 'PAUSE', type: 'wait', for: '1 hour' }, { name: 'A', type: 'sql', code: "select 'v1' as ran" }]);
 });
 
@@ -272,6 +280,22 @@ describe('running workflows', () => {
     await settle(t2);
     assert.equal((await wf(t2)).state, 'terminated');
     assert.ok((await events(t2)).includes('PREPARE:terminated'));
+  });
+
+  test('(094) an expired task: the "expired" branch, or the workflow ends without one', async () => {
+    const expire = async (id: string) => {
+      await settle(id);
+      const task = (await owner.one(`select id from meta.task where workflow_id = $1 and state in ('unassigned', 'assigned')`, [id])).id;
+      await owner.query(`update meta.task set state = 'expired', completed_at = now() where id = $1`, [task]);
+      await settle(id);
+    };
+    const a = await start('king', 'TEST_EXPIRE', null, {});
+    await expire(a);
+    assert.deepEqual([(await wf(a)).state, (await wf(a)).vars.RESULT, (await wf(a)).vars.TASK_OUTCOME], ['completed', 'late', 'EXPIRED']);
+    const b = await start('king', 'TEST_EXPIRE_END', null, {});
+    await expire(b);
+    assert.equal((await wf(b)).state, 'terminated');
+    assert.equal((await wf(b)).vars.RESULT, undefined);
   });
 
   test('the employee form starts onboarding when an employee is created', async () => {

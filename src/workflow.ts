@@ -32,7 +32,7 @@ import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, t
 // the path that split waits there. The join goes on when all branches are
 // done, or with "wait_for": "any" when the first is (the others are then
 // cancelled, with their tasks). Branches share the variables. An "end" step in
-// a branch, or a cancelled task without a "cancelled" outcome, ends the whole
+// a branch, or a cancelled (or expired) task without a "cancelled" ("expired") outcome, ends the whole
 // workflow. A failing step faults its branch (and shows the workflow as
 // faulted); the other branches go on, and a retry resumes the failed one.
 //
@@ -80,7 +80,7 @@ const TYPES = ['task', 'sql', 'switch', 'wait', 'invoke_api', 'parallel', 'join'
 const VAR_NAME = /^[A-Z][A-Z0-9_]*$/;
 /** Binds the workflow sets itself (variables of these names would be hidden). */
 const BUILT_IN = ['DETAIL_PK', 'WORKFLOW_ID', 'INITIATOR'];
-const OUTCOMES = ['approved', 'rejected', 'completed', 'cancelled'];
+const OUTCOMES = ['approved', 'rejected', 'completed', 'cancelled', 'expired'];
 const INTERVAL = /^\s*\d+\s*(second|minute|hour|day|week|month)s?\s*$/i;
 const MAX_STEPS_PER_RUN = 100;
 const OPEN = ['active', 'waiting', 'faulted'];
@@ -640,18 +640,20 @@ async function step(c: pg.PoolClient, side: AppSide, id: string, at: { branch: s
   }
   if (k.waiting_task) {
     const t = (await c.query('select state, outcome, completed_by from meta.task where id = $1', [k.waiting_task])).rows[0];
-    if (!t || !['completed', 'cancelled'].includes(t.state)) {
+    if (!t || !['completed', 'cancelled', 'expired'].includes(t.state)) {
       // woken before its task ended: wait again
       await save('waiting', k.current_step, { task: k.waiting_task });
       return true;
     }
-    const outcome: string = t.state === 'cancelled' ? 'cancelled' : t.outcome;
+    const outcome: string = t.state === 'cancelled' || t.state === 'expired' ? t.state : t.outcome;
     vars.TASK_OUTCOME = outcome.toUpperCase();
     vars.TASK_APPROVER = t.completed_by;
     const next = (s as { next?: string | Record<string, string> }).next;
     const target: string | null | undefined = typeof next === 'string' ? next : next?.[outcome] ?? next?.default;
     // a cancelled task without a "cancelled" branch ends the workflow
     if (target === undefined && outcome === 'cancelled') return finish('terminated', false, 'its task was cancelled');
+    // (094) likewise an expired task without an "expired" branch
+    if (target === undefined && outcome === 'expired') return finish('terminated', false, 'its task expired');
     return goTo(target, outcome);
   }
 
