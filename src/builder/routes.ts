@@ -31,23 +31,61 @@ import { clearDevbar } from '../runtime/devbar.ts';
 
 export async function builderRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- login
+  // (sprint 61, APEX: the workspace sign-in page) workspace (optional), username and password;
+  // "Remember workspace and username" keeps both in a cookie of the builder's path
+  const REMEMBER_COOKIE = 'pgkiln_bsignin';
+  const remembered = (req: Req): { w: string; u: string } | null => {
+    try {
+      const v = JSON.parse(Buffer.from(String(req.cookies?.[REMEMBER_COOKIE] ?? ''), 'base64url').toString('utf8'));
+      return typeof v?.w === 'string' && typeof v?.u === 'string' ? { w: v.w.slice(0, 60), u: v.u.slice(0, 100) } : null;
+    } catch {
+      return null;
+    }
+  };
+  /** Where to go after signing in: a builder page only. */
+  const safeNext = (v: unknown) => (typeof v === 'string' && /^\/builder(\/[A-Za-z0-9_/-]{0,200})?$/.test(v) ? v : BASE);
+
   app.get(`${BASE}/login`, async (req: Req, reply) => {
     const s = await getSession(req, reply, null, BASE);
     if (s.username) return reply.redirect(BASE);
     const error = takeFlash(s, '__ERROR');
     await saveState(s);
+    const r = remembered(req);
+    const next = safeNext(req.query?.next);
+    const field = (name: string, label: string, ic: string, value: string, opts: { type?: string; required?: boolean; auto?: string; placeholder?: string; reveal?: boolean }) =>
+      html`<div class="field signin-field"><label class="sr-only" for="f_${name}">${label}</label>
+        <div class="signin-input">${icon(ic)}<input id="f_${name}" name="${name}" type="${opts.type ?? 'text'}" value="${value}" placeholder="${opts.placeholder ?? label}"${opts.required ? raw(' required') : ''}${opts.auto ? raw(` autocomplete="${opts.auto}"`) : ''}>
+          ${opts.reveal ? html`<button type="button" class="signin-reveal" data-reveal="f_${name}" aria-controls="f_${name}" aria-pressed="false" data-hide="Hide" hidden>Show</button>` : ''}</div></div>`;
     return reply.type('text/html').send(
       documentShell(
         'Sign in · Builder',
-        html`<main class="login"><form method="post" class="card login-card">
-          <h1>pgkiln Builder</h1>
-          ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
-          ${csrf(s)}
-          ${input('username', 'Username', '', { required: true, auto: 'username' })}
-          ${input('password', 'Password', '', { type: 'password', required: true, auto: 'current-password' })}
-          <button class="btn btn-hot">Sign in</button>
-        </form></main>`,
-        'login-body ide-login',
+        html`<main class="signin">
+          <section class="signin-hero" aria-label="pgkiln">
+            <span class="signin-logo" aria-hidden="true">pg</span>
+            <h1 class="signin-title">pgkiln</h1>
+            <p class="signin-tagline">Build data applications on PostgreSQL, in SQL you can trust</p>
+            <p class="signin-foot">Open source under the Apache-2.0 license</p>
+          </section>
+          <section class="signin-panel">
+            <form method="post" class="signin-form">
+              <h2>Welcome</h2>
+              <p class="muted u-mt0">Sign in to your workspace to continue</p>
+              ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
+              ${csrf(s)}<input type="hidden" name="next" value="${next}">
+              ${field('workspace', 'Workspace', 'database', r?.w ?? '', { placeholder: 'Workspace (optional)', auto: 'organization' })}
+              ${field('username', 'Username', 'user', r?.u ?? '', { required: true, auto: 'username' })}
+              ${field('password', 'Password', 'key', '', { type: 'password', required: true, auto: 'current-password', reveal: true })}
+              <label class="check signin-remember"><input type="checkbox" name="remember" value="1"${r ? raw(' checked') : ''}> Remember workspace and username</label>
+              <button class="btn btn-hot signin-submit">Sign in</button>
+              <p class="muted small signin-hint">Leave the workspace empty to open your last one; you can switch later in your account menu.</p>
+              <nav class="signin-actions" aria-label="Quick actions">
+                <a href="${BASE}/login?next=${encodeURIComponent(`${BASE}/utilities`)}">${icon('settings')} Administration</a>
+                <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">${icon('help')} About workspaces</a>
+              </nav>
+            </form>
+          </section>
+        </main>`,
+        'login-body ide-login signin-body',
         {},
         builderHead(),
         { theme: validTheme(req.cookies?.[THEME_COOKIE]) ?? 'dark' },
@@ -58,15 +96,18 @@ export async function builderRoutes(app: FastifyInstance) {
   app.post(`${BASE}/login`, async (req: Req, reply) => {
     const s = await getSession(req, reply, null, BASE);
     const { username = '', password = '' } = req.body ?? {};
+    const workspace = String(req.body?.workspace ?? '').trim().slice(0, 60);
+    const next = safeNext(req.body?.next);
+    const again = next === BASE ? `${BASE}/login` : `${BASE}/login?next=${encodeURIComponent(next)}`;
     const ip = clientIp(req);
     if (req.body?.__csrf !== s.csrf_token) {
       flash(s, 'Your session expired. Please try again.', 'error');
-      return back(reply, s, `${BASE}/login`);
+      return back(reply, s, again);
     }
     if (await loginThrottled(null, username, ip)) {
       logActivity({ username, event: 'login_locked', ip, detail: 'builder' });
       flash(s, 'Too many failed sign-in attempts. Try again later.', 'error');
-      return back(reply, s, `${BASE}/login`);
+      return back(reply, s, again);
     }
     // bcrypt always runs (dummy salt for unknown users) so timing does not reveal accounts
     const dev = await owner.one(
@@ -76,25 +117,36 @@ export async function builderRoutes(app: FastifyInstance) {
         where crypt($2, coalesce(d.password_hash, gen_salt('bf', 10))) = d.password_hash`,
       [username, password],
     );
-    if (!dev) {
-      await logActivity({ username: username.slice(0, 100), event: 'login_failed', ip, detail: 'builder' });
-      flash(s, 'Invalid username or password.', 'error');
-      return back(reply, s, `${BASE}/login`);
+    // a workspace, when given, must be one of the developer's (administrators: any); the same answer otherwise
+    const ws = dev && workspace
+      ? await owner.one<{ id: number }>(
+          `select w.id from meta.workspace w
+            where lower(w.name) = lower($1)
+              and (exists (select 1 from meta.developer d where d.username = $2 and d.is_admin)
+                   or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $2))`,
+          [workspace, dev.username],
+        )
+      : undefined;
+    if (!dev || (workspace && !ws)) {
+      await logActivity({ username: username.slice(0, 100), event: 'login_failed', ip, detail: workspace ? 'builder (workspace)' : 'builder' });
+      flash(s, workspace ? 'Invalid workspace, username or password.' : 'Invalid username or password.', 'error');
+      return back(reply, s, again);
     }
     await destroySession(reply, s, BASE);
     const ns = await createSession(reply, null, BASE, dev.username);
     // the builder theme chosen earlier on this device
     const theme = validTheme(req.cookies?.[THEME_COOKIE]);
-    if (theme) {
-      ns.state.__BTHEME = theme;
-      await saveState(ns);
-    }
+    if (theme) ns.state.__BTHEME = theme;
+    if (ws) ns.state.__WS = String(ws.id);
+    if (password === 'admin' || password === dev.username) ns.state.__WEAK = '1';
+    await saveState(ns);
+    if (req.body?.remember === '1')
+      reply.setCookie(REMEMBER_COOKIE, Buffer.from(JSON.stringify({ w: workspace, u: dev.username })).toString('base64url'), {
+        path: BASE, httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600, secure: process.env.COOKIE_SECURE === 'true',
+      });
+    else reply.clearCookie(REMEMBER_COOKIE, { path: BASE });
     logActivity({ username: dev.username, event: 'login', ip, detail: 'builder' });
-    if (password === 'admin' || password === dev.username) {
-      ns.state.__WEAK = '1';
-      await saveState(ns);
-    }
-    return reply.redirect(BASE, 303);
+    return reply.redirect(next, 303);
   });
 
   app.post(`${BASE}/logout`, async (req: Req, reply) => {
