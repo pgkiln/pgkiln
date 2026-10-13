@@ -16,7 +16,9 @@ same row level security, and both publish an OpenAPI description.
 ## REST modules in the builder
 
 **Shared Components → REST modules** (APEX: RESTful Services). A module is a set of handlers under
-`/a/<alias>/rest/<name>/`:
+`/a/<alias>/rest/<name>/`. A workspace's administrators can turn the REST modules of all its applications off with
+the workspace preference *Enable RESTful services* ([chapter 3](03-builder.md#workspace-preferences)): they then
+answer 404.
 
 ```json
 [{"method": "GET",  "path": "orders",     "type": "collection", "source": "select id, customer, total from sales.orders order by id"},

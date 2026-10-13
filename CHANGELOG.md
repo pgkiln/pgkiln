@@ -33,6 +33,17 @@ Sprint 61: the builder's screens like APEX 26.1's.
 - **Cross Application Reports** in Workspace utilities: application attributes, build options, developer comments,
   authentication, authorization schemes, password items and theme summary over the workspace's applications.
 
+Sprint 62: workspace preferences and Manage backups.
+
+### Added
+- **Workspace preferences** (migration 093; APEX: Set Workspace Preferences): administrators and a workspace's
+  administrators turn the **SQL Workshop** off for the workspace (every SQL Workshop page answers 403 while it is
+  current, and it leaves the rail) and its applications' **RESTful services** (their REST modules answer 404).
+- **Extension links** (APEX: Manage Extension Links): a workspace's links to other tools, in an **Extensions** menu of
+  the builder's rail.
+- **Manage backups** in Workspace utilities: the backups of every application of the workspace on one page, and
+  *Back up now* for all of them (only the changed ones by default).
+
 ### Fixed
 - A calendar region whose query has no `end_date` column (e.g. one made by the calendar wizard without an end
   column) failed with "column __q.end_date does not exist".

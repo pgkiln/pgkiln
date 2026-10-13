@@ -7243,3 +7243,75 @@ describe('sprint 61 builder screens', () => {
       assert.equal((await b.post(`/builder/gallery/starters/${key}`, { __csrf: b.lastCsrf })).statusCode, 404, key);
   });
 });
+
+describe('sprint 62 workspace preferences', () => {
+  const DEV = 'sec62_dev';
+  const DEV_PW = 'Sec62-dev-password!';
+  const signIn = async (username: string, password: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password });
+    return b;
+  };
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.workspace_link where label like 'Sec62%'`);
+    await owner.query('update meta.workspace set sql_workshop = true, rest_services = true where id = 1');
+    await owner.query(`delete from meta.app_backup where note = 'sec62'`);
+  });
+
+  test('preferences, links and backups posts need CSRF; app users never reach them', async () => {
+    const b = await signIn('admin', 'admin');
+    for (const [url, form] of [
+      ['/builder/workspaces/1/preferences', { sql_workshop: 'false' }],
+      ['/builder/workspaces/1/links', { label: 'Sec62 x', url: 'https://x.example' }],
+      ['/builder/backups', { note: 'sec62' }],
+    ] as const)
+      assert.equal((await b.post(url, form)).statusCode, 403, url);
+    assert.deepEqual(await owner.one('select sql_workshop from meta.workspace where id = 1'), { sql_workshop: true });
+    assert.equal(await owner.one(`select 1 as ok from meta.workspace_link where label like 'Sec62%'`), undefined);
+    assert.equal(await owner.one(`select 1 as ok from meta.app_backup where note = 'sec62'`), undefined);
+    const king = await as('king');
+    for (const url of ['/builder/backups', '/builder/workspaces/1'])
+      assert.notEqual((await king.get(url)).statusCode, 200, url);
+  });
+
+  test('a developer who is not the workspace\'s administrator changes neither preferences nor links', async () => {
+    const d = await signIn(DEV, DEV_PW);
+    await d.get('/builder');
+    assert.notEqual((await d.post('/builder/workspaces/1/preferences', { __csrf: d.lastCsrf })).statusCode, 303);
+    assert.notEqual((await d.post('/builder/workspaces/1/links', { __csrf: d.lastCsrf, label: 'Sec62 dev', url: 'https://x.example' })).statusCode, 303);
+    assert.deepEqual(await owner.one('select sql_workshop, rest_services from meta.workspace where id = 1'), { sql_workshop: true, rest_services: true });
+    assert.equal(await owner.one(`select 1 as ok from meta.workspace_link where label = 'Sec62 dev'`), undefined);
+  });
+
+  test('links: only http(s) URLs, also in the database; label and description are escaped', async () => {
+    await assert.rejects(owner.query(`insert into meta.workspace_link (workspace_id, label, url) values (1, 'Sec62 js', 'javascript:alert(1)')`));
+    await assert.rejects(owner.query(`insert into meta.workspace_link (workspace_id, label, url) values (1, 'Sec62 q', 'https://x.example/"onmouseover=alert(1)')`));
+    const b = await signIn('admin', 'admin');
+    await b.get('/builder/workspaces/1');
+    await b.post('/builder/workspaces/1/links', { __csrf: b.lastCsrf, label: 'Sec62 <img src=x onerror=alert(1)>', url: 'https://x.example/?a=<b>', description: '"><script>alert(1)</script>' });
+    assert.equal(await owner.one(`select 1 as ok from meta.workspace_link where url like '%<%'`), undefined, 'the URL check refuses <');
+    await b.post('/builder/workspaces/1/links', { __csrf: b.lastCsrf, label: 'Sec62 <img src=x onerror=alert(1)>', url: 'https://x.example/', description: '"><script>alert(1)</script>' });
+    const page = (await b.get('/builder')).body;
+    assert.match(page, /Sec62 &lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(page, /<script>alert\(1\)/);
+    assert.doesNotMatch(page, /<img src=x/);
+  });
+
+  test('the SQL Workshop off also refuses its posts; REST modules off answer 404 without running the handler', async () => {
+    await owner.query('update meta.workspace set sql_workshop = false, rest_services = false where id = 1');
+    try {
+      const b = await signIn('admin', 'admin');
+      await b.get('/builder');
+      for (const url of ['/builder/sql', '/builder/sql/commands', '/builder/sql/scripts', '/builder/sql/schema', '/builder/sql/ai/sql'])
+        assert.equal((await b.post(url, { __csrf: b.lastCsrf, sql: 'create table public.sec62 (id int)' })).statusCode, 403, url);
+      assert.equal(await owner.one(`select 1 as ok from pg_tables where tablename = 'sec62'`), undefined);
+    } finally {
+      await owner.query('update meta.workspace set sql_workshop = true, rest_services = true where id = 1');
+    }
+  });
+});

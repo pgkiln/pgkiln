@@ -591,6 +591,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         app_groups: '/builder/app-groups',
         report_attributes: '/builder/utilities/reports/attributes',
         report_authentication: '/builder/utilities/reports/authentication',
+        // (sprint 62) Manage backups across the workspace's applications
+        workspace_backups: '/builder/backups',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,
