@@ -25,6 +25,7 @@ src/
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
+  blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows
   subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
   workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
                            merge into the main application or refresh the copy, both through cli/replace.ts
@@ -247,7 +248,8 @@ src/
                            (093) workspace preferences (sql_workshop: checked in ui.ts developer() for /builder/sql…;
                            rest_services: checked in runtime/rest.ts) and extension links (the rail's Extensions menu in shell())
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST; appOfPath), developer comments, administrators
-    blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction
+    blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction;
+                           (sprint 66) From an application
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a
                            question, shown not run; explain), describe tables (meta.ai_table_note, COMMENT ON, AI drafts),
                            create pages with AI (proposals checked by checkProposals, created with meta.generate_page)
@@ -311,6 +313,7 @@ test/
   ai-assistant.test.ts     AI assistant region (context, tools as the app role, writes, REST, histories, limits, sessions), OpenAI,
                            natural-language report filters, builder settings; against ai-script-mock.ts
   blueprints.test.ts       blueprints: checks and SQL, review then create (rows, pages, grants), one transaction, AI draft, save
+  blueprint-from-app.test.ts  a blueprint of HR: checks clean, pages and menu, notes, a working copy with sample rows, workspaces
   ai-builder.test.ts       App Builder AI: the builder's service, SQL from a question, explain, describe tables, pages with AI
   ai-script-mock.ts        a scripted mock of Claude (SSE, tool_use with a thinking block) and OpenAI (tool calls), reply by reply
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions

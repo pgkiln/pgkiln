@@ -7364,3 +7364,21 @@ describe('sprint 64 task vacation and expiry', () => {
     assert.equal(await owner.one(`select 1 as ok from meta.task_vacation where username = 'jones'`), undefined, 'no CSRF token: nothing');
   });
 });
+
+describe('sprint 66 blueprint from an application', () => {
+  test('CSRF, a numeric application id, the builder only; never pgkiln\'s own tables', async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder/blueprints');
+    assert.equal((await b.post('/builder/blueprints/from-app', { app: '1' })).statusCode, 403, 'no CSRF token');
+    for (const app of ['1 or 1=1', '-1', '99999999', ''])
+      assert.equal((await b.post('/builder/blueprints/from-app', { __csrf: b.lastCsrf, app })).statusCode, 404, app);
+    const king = await as('king');
+    assert.notEqual((await king.post('/builder/blueprints/from-app', { app: '1' })).statusCode, 200);
+    const { blueprintFromApp } = await import('../src/blueprint-from-app.ts');
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const { spec } = await blueprintFromApp(hr);
+    assert.ok(spec.tables.every((t) => !['app', 'page', 'region', 'account', 'developer', 'session'].includes(t.name)));
+  });
+});

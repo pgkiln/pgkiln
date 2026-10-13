@@ -11,6 +11,9 @@ import { builderService } from './ai-builder.ts';
 import { addDashboard } from './appsheets.ts';
 import { checkNewApp, createApp, createAppError } from './newapp.ts';
 import { currentWorkspace } from './workspaces.ts';
+import { blueprintFromApp } from '../blueprint-from-app.ts';
+import { devDbForApp } from '../workspace-db.ts';
+import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { WIZARD_KINDS } from './wizards.ts';
 
@@ -148,6 +151,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const list = (await owner.query(`select b.id, b.name, b.created_by, b.updated_at::text as updated, a.id as app_id, a.alias from meta.blueprint b left join meta.app a on a.id = b.app_id where b.workspace_id = $1 order by lower(b.name), b.id`, [currentWorkspace(s)])).rows;
+    const apps = (await owner.query(`select id, name, alias from meta.app where meta.app_workspace(id) = $1 order by lower(name), id`, [currentWorkspace(s)])).rows;
     return page(s, reply, '', html`<h1>Blueprints</h1>
       <p class="muted">Describe an application as a blueprint (tables, pages, menu, sample rows), review it and create it. <a class="btn btn-hot" href="${BASE}/blueprints/new">${icon('plus')} New blueprint</a></p>
       ${list.length
@@ -156,7 +160,33 @@ export async function blueprintRoutes(app: FastifyInstance) {
               <td data-label="Application created">${x.app_id ? html`<a href="${BASE}/apps/${x.app_id}">${x.alias}</a>` : '—'}</td><td data-label="Changed">${String(x.updated).slice(0, 16)}</td>
               <td><form method="post" action="${BASE}/blueprints/${x.id}/delete">${csrf(s)}<button class="btn btn-small">Delete</button></form></td></tr>`)}
           </tbody></table></div>`
-        : html`<p class="muted">No saved blueprints yet.</p>`}`);
+        : html`<p class="muted">No saved blueprints yet.</p>`}
+      ${apps.length ? region('From an application', html`<form method="post" action="${BASE}/blueprints/from-app">${csrf(s)}
+        <p class="muted u-mt0">A blueprint of an application of this workspace: the tables its pages use, its pages and its menu, to review and change in the editor (for a copy, a new version or a test system). Nothing is created until you confirm the review.</p>
+        <div class="form-grid">
+          <div class="field"><label class="label" for="f_bp_app">Application</label><select id="f_bp_app" name="app">${apps.map((a) => html`<option value="${a.id}">${a.name} (${a.alias})</option>`)}</select></div>
+          <div class="field"><label class="check"><input type="checkbox" name="rows" value="true"> Sample rows: up to 20 per table</label>
+            <small class="help">The rows are copied into the blueprint as they are: leave this off for personal or confidential data.</small></div>
+        </div>
+        <div class="buttons"><button class="btn">${icon('layers')} Create a blueprint</button></div></form>`) : ''}`);
+  });
+
+  // (sprint 66) a blueprint from an application of the current workspace, opened in the editor
+  app.post(`${BASE}/blueprints/from-app`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const id = /^\d{1,9}$/.test(String(req.body?.app ?? '')) ? Number(req.body!.app) : null;
+    const a = id === null ? null : await owner.one<{ id: number; name: string }>(
+      `select id, name from meta.app where id = $1 and (meta.app_workspace(id) = $2 or $3)`, [id, currentWorkspace(s), await isAdmin(s.username)]);
+    if (!a) return reply.code(404).send('Not found');
+    const rows = req.body?.rows === 'true';
+    const { spec, notes } = await blueprintFromApp(a.id, { sampleRows: rows ? await devDbForApp(a.id) : null });
+    await logActivity({ appId: a.id, username: s.username, event: 'blueprint', ip: clientIp(req), detail: `blueprint from the application${rows ? ', with sample rows' : ''}` });
+    return editor(s, reply, {
+      name: `${a.name} blueprint`.slice(0, 100), spec: JSON.stringify(spec, null, 2),
+      message: html`<div class="alert alert-info" role="status"><p>A blueprint of ${a.name}: review it, change the name, alias and schema, then <b>Review</b>.</p>
+        ${notes.length ? html`<details><summary>${notes.length} note${notes.length === 1 ? '' : 's'} on what didn't carry over</summary><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></details>` : ''}</div>`,
+    });
   });
 
   app.get(`${BASE}/blueprints/new`, async (req: Req, reply) => {

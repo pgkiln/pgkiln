@@ -5,12 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprint 65: facet charts.
+Sprint 65: facet charts. Sprint 66: a blueprint from an existing application.
 
 ### Added
 - **Facet charts** (APEX: facet charts): a faceted search facet with `"chart": "bar"` or `"pie"` (builder: the *Chart*
   column of the facets table) shows its counts as a chart, collapsed under its heading; a bar or slice links to the
   page filtered on its value. HR example part 58 adds them to page 21.
+- **A blueprint from an existing application** (APEX 26.1): Blueprints → *From an application* opens a blueprint of an
+  application of the workspace in the editor: the tables its pages read (columns, types, required, unique, allowed
+  values, references), its pages and its menu, and up to 20 sample rows per table when asked for, with notes on what
+  didn't carry over. Review and create it like any blueprint, e.g. for a copy or a test system.
 
 ## [0.39.0] - 2026-10-13
 
