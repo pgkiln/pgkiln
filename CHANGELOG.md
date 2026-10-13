@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-13
+
 Sprint 60: isolated workspaces.
 
 ### Added
@@ -30,6 +32,7 @@ Sprint 60: isolated workspaces.
   workflow's own state (a step may run again after a crash between the two).
 - Data load definitions can only be saved for applications of the current workspace.
 - Sample data generators' and SQL scripts' names are unique per workspace (`on conflict (workspace_id, name)`).
+- APEX parity: 140 features compared, 137 available, none partial or missing, 3 not planned.
 
 ## [0.36.0] - 2026-10-12
 
