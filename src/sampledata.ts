@@ -172,7 +172,7 @@ export async function schemas(db: Db) {
     await db.query<{ name: string; tables: number; usable: boolean }>(
       `select n.nspname as name, count(*)::int as tables, has_schema_privilege(n.oid, 'USAGE') as usable from pg_namespace n join pg_class c on c.relnamespace = n.oid
         where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('meta', 'information_schema')
-        group by n.nspname order by n.nspname`,
+        group by n.oid, n.nspname order by n.nspname`,
     )
   ).rows;
 }

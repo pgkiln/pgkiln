@@ -33,6 +33,12 @@ alter table meta.workspace
   add column dev_role text unique;
 comment on column meta.workspace.isolated is 'Isolated (090): the workspace''s applications and SQL run on its own login roles (run_role, dev_role).';
 
+-- workspace administrators (APEX: workspace administrators): developers who manage their workspace's
+-- name and developers; isolation, its database roles, moving applications and deleting stay with
+-- the installation's administrators
+alter table meta.workspace_member add column is_admin boolean not null default false;
+comment on column meta.workspace_member.is_admin is 'A workspace administrator (090): manages the workspace''s name and developers.';
+
 -- the SQL Workshop's saved work belongs to a workspace (Default for what exists): an isolated
 -- workspace's developers see their own scripts, runs, blueprints and data generators only
 alter table meta.sql_script add column workspace_id int not null default 1 references meta.workspace on delete cascade;
@@ -380,6 +386,19 @@ begin
       execute format('revoke %I from pgkiln_runtime', r.role_name);
     end if;
   end loop;
+  -- the developer login starts as the workspace's first role, so what its SQL creates belongs to an
+  -- application role (SET ROLE picks another; RESET ROLE returns to this one)
+  for r in
+    select w.dev_role, (select x.role_name from meta.workspace_role x join pg_roles rl on rl.rolname = x.role_name
+                         where x.workspace_id = w.id order by x.role_name limit 1) as first
+      from meta.workspace w where w.isolated
+  loop
+    if r.first is not null then
+      execute format('alter role %I set role = %L', r.dev_role, r.first);
+    else
+      execute format('alter role %I reset role', r.dev_role);
+    end if;
+  end loop;
   -- memberships a workspace login no longer should have; a role a shared application uses goes back to pgkiln_runtime
   for r in
     select g.rolname as granted, l.rolname as login
@@ -448,20 +467,25 @@ end $$;
 create trigger workspace_take_roles after insert or update of isolated on meta.workspace
   for each row execute function meta.workspace_take_roles();
 
-create function meta.workspace_sync_roles_trigger() returns trigger
+-- checked at the commit, on the transaction's final state (an import or a working copy inserts an
+-- application before it places it in its workspace); once per transaction
+create function meta.workspace_sync_roles_once() returns trigger
 language plpgsql set search_path = meta, pg_catalog as $$
 begin
-  perform meta.workspace_sync_roles();
+  if current_setting('pgkiln.workspace_synced', true) is distinct from txid_current()::text then
+    perform set_config('pgkiln.workspace_synced', txid_current()::text, true);
+    perform meta.workspace_sync_roles();
+  end if;
   return null;
 end $$;
-create trigger workspace_sync_roles after insert or update of isolated on meta.workspace
-  for each statement execute function meta.workspace_sync_roles_trigger();
-create trigger workspace_sync_roles after insert or update or delete on meta.workspace_app
-  for each statement execute function meta.workspace_sync_roles_trigger();
-create trigger workspace_sync_roles after insert or delete or update of db_role on meta.app
-  for each statement execute function meta.workspace_sync_roles_trigger();
-create trigger workspace_sync_roles after insert or update or delete on meta.workspace_role
-  for each statement execute function meta.workspace_sync_roles_trigger();
+create constraint trigger workspace_sync_roles after insert or update of isolated on meta.workspace
+  deferrable initially deferred for each row execute function meta.workspace_sync_roles_once();
+create constraint trigger workspace_sync_roles after insert or update or delete on meta.workspace_app
+  deferrable initially deferred for each row execute function meta.workspace_sync_roles_once();
+create constraint trigger workspace_sync_roles after insert or delete or update of db_role on meta.app
+  deferrable initially deferred for each row execute function meta.workspace_sync_roles_once();
+create constraint trigger workspace_sync_roles after insert or update or delete on meta.workspace_role
+  deferrable initially deferred for each row execute function meta.workspace_sync_roles_once();
 
 -- deleting a workspace: its login roles go too (they own nothing; if they do, they stay, unable to sign in)
 create function meta.workspace_drop_roles() returns trigger
@@ -483,6 +507,6 @@ end $$;
 create trigger workspace_drop_roles after delete on meta.workspace
   for each row execute function meta.workspace_drop_roles();
 
-revoke all on function meta.workspace_isolate(), meta.workspace_take_roles(), meta.workspace_sync_roles_trigger(), meta.workspace_drop_roles() from public;
+revoke all on function meta.workspace_isolate(), meta.workspace_take_roles(), meta.workspace_sync_roles_once(), meta.workspace_drop_roles() from public;
 
 select meta.sync_app_code_grants();

@@ -115,6 +115,18 @@ async function adminOnly(s: Session, reply: FastifyReply) {
   return false;
 }
 
+/** An administrator, or a workspace administrator of this workspace (090). */
+export async function workspaceAdmin(username: string | null, workspaceId: number | string) {
+  if (!username) return false;
+  if (await isAdmin(username)) return true;
+  return !!(await owner.one('select 1 as ok from meta.workspace_member where workspace_id = $1 and username = $2 and is_admin', [workspaceId, username]));
+}
+
+async function workspaceAdminOnly(s: Session, reply: FastifyReply, workspaceId: string) {
+  if (await workspaceAdmin(s.username, workspaceId)) return true;
+  return adminOnly(s, reply);
+}
+
 const crumbs = (extra: [string, string?][] = []): [string, string?][] => [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Workspaces', `${BASE}/workspaces`], ...extra];
 
 const nameError = (e: unknown) => {
@@ -234,12 +246,13 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
   app.get(`${BASE}/workspaces/:id(^\\d{1,9}$)`, async (req: Req, reply) => {
     const s = await developer(req, reply);
-    if (!s || !(await adminOnly(s, reply))) return;
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const full = await isAdmin(s.username);
     const w = await owner.one('select * from meta.workspace where id = $1', [req.params.id]);
     if (!w) return reply.code(404).send('Not found');
     const [devs, apps, others, rolesQ] = await Promise.all([
       owner.query(
-        `select d.username, d.is_admin, m.username is not null as member
+        `select d.username, d.is_admin, m.username is not null as member, coalesce(m.is_admin, false) as ws_admin
            from meta.developer d left join meta.workspace_member m on m.username = d.username and m.workspace_id = $1 order by d.username`,
         [w.id],
       ),
@@ -260,7 +273,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             ${input('name', 'Name', w.name, { required: true })}
             ${input('description', 'Description', w.description ?? '')}
             <div class="buttons"><button class="btn btn-hot">Save</button></div></form>
-          ${w.id === 1
+          ${!full ? '' : w.id === 1
             ? html`<p class="muted small">The Default workspace can't be deleted: imported applications and applications made with the command line start here.</p>`
             : html`<form method="post" action="${BASE}/workspaces/${w.id}/delete" class="danger-zone">${csrf(s)}
                 <button class="btn btn-danger" data-confirm="Delete workspace ${w.name}?"${apps.rows.length ? raw(' disabled') : ''}>Delete workspace</button>
@@ -270,10 +283,13 @@ export async function workspaceRoutes(app: FastifyInstance) {
             <fieldset class="field"><legend class="sr-only">Developers</legend><div class="radio-group">
             ${devs.rows.map((d) => html`<label class="check"><input type="checkbox" name="member" value="${d.username}"${d.member ? raw(' checked') : ''}> ${d.username}${d.is_admin ? html` <span class="muted">(administrator)</span>` : ''}</label>`)}
             </div></fieldset>
+            <fieldset class="field"><legend class="label">Workspace administrators</legend><div class="radio-group">
+            ${devs.rows.filter((d) => d.member && !d.is_admin).map((d) => html`<label class="check"><input type="checkbox" name="admin" value="${d.username}"${d.ws_admin ? raw(' checked') : ''}> ${d.username}</label>`)}
+            </div><small class="help">They manage this workspace's name and developers. Isolation, database roles, moving applications and deleting the workspace stay with administrators.</small></fieldset>
             <div class="buttons"><button class="btn">Save developers</button></div></form>`)}
       </div>
-      ${isolationRegion(s, w, roles.rows)}
-      ${region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
+      ${full ? isolationRegion(s, w, roles.rows) : region('Isolation', html`<p class="u-mt0">${w.isolated ? 'Isolated: its applications and SQL run on database logins of its own.' : 'Shared.'} Administrators change it.</p>`)}
+      ${!full ? '' : region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>Application</th><th>Move to</th></tr></thead>
         <tbody>${apps.rows.length
           ? apps.rows.map((a) => html`<tr><td data-label="Application"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">${a.id} · /a/${a.alias}</span></td>
@@ -284,12 +300,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
                     <button class="btn">Move</button></form>`
                 : html`<span class="muted">no other workspace</span>`}</td></tr>`)
           : html`<tr><td colspan="2" class="empty">No applications.</td></tr>`}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, w.name, crumbs([[w.name]]), main));
+    return send(reply, s, shell(s, w.name, full ? crumbs([[w.name]]) : [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [w.name]], main));
   });
 
   app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)`, async (req: Req, reply) => {
     const s = await developer(req, reply);
-    if (!s || !(await adminOnly(s, reply))) return;
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
     const name = String(req.body?.name ?? '').trim();
     try {
       if (!NAME.test(name)) throw new Error('The name is 1 to 60 characters.');
@@ -303,16 +319,19 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
   app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/members`, async (req: Req, reply) => {
     const s = await developer(req, reply);
-    if (!s || !(await adminOnly(s, reply))) return;
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
     if (!(await owner.one('select 1 as ok from meta.workspace where id = $1', [req.params.id]))) return reply.code(404).send('Not found');
     const posted = req.body?.member as unknown;
     const names = (Array.isArray(posted) ? posted : posted == null ? [] : [posted]).map(String).slice(0, 10000);
+    const postedAdmins = req.body?.admin as unknown;
+    const admins = (Array.isArray(postedAdmins) ? postedAdmins : postedAdmins == null ? [] : [postedAdmins]).map(String).slice(0, 10000);
     await owner.tx(async (c) => {
       await c.query('delete from meta.workspace_member where workspace_id = $1', [req.params.id]);
       // only existing developers (unknown names are ignored)
       await c.query(
-        `insert into meta.workspace_member (workspace_id, username) select $1, d.username from meta.developer d where d.username = any($2::text[])`,
-        [req.params.id, names],
+        `insert into meta.workspace_member (workspace_id, username, is_admin)
+         select $1, d.username, d.username = any($3::text[]) from meta.developer d where d.username = any($2::text[])`,
+        [req.params.id, names, admins],
       );
     });
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `developers of workspace ${req.params.id}: ${names.join(', ').slice(0, 1000)}` });

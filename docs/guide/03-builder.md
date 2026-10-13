@@ -35,12 +35,55 @@ department. Every installation has the **Default** workspace, which holds the ap
   (`pgkiln import`) go into Default. Exports don't carry the workspace.
 - Workspace utilities → **Workspaces** (administrators): add a workspace (you become its first developer), rename it,
   choose its developers, move applications to another workspace and delete an empty workspace.
+- **Workspace administrators**: on a workspace's page, administrators tick which of its developers administer it. A
+  workspace administrator opens the page from Workspace utilities (the card names the current workspace) and changes
+  its name, description and developers; isolation, database roles, moving applications and deleting stay with the
+  installation's administrators.
 
-**Workspaces are not a security boundary between developers who write SQL.** The SQL Workshop runs as pgkiln's owner,
-and application code (processes, regions, validations) runs on the runtime connection, from which a developer's SQL
-can reach other applications' data and metadata. User accounts, identity providers, LDAP directories and AI services
-also stay installation-wide. Use workspaces to keep teams' applications apart in the builder; give tenants who must
-not see each other's applications or data **separate installations** (databases).
+A **shared** workspace (the default) is not a security boundary between developers who write SQL: its SQL Workshop
+runs as pgkiln's owner, and its application code (processes, regions, validations) runs on the shared runtime
+connection, from which SQL can reach other shared applications' data and metadata. Make a workspace **isolated** when
+its developers must not reach other teams' applications or data.
+
+### Isolated workspaces
+
+On a workspace's page an administrator chooses **Isolate this workspace** (Workspace utilities → Workspaces → the
+workspace → *Isolation*). It needs `RUNTIME_DATABASE_URL` (applications don't run on the owner connection) and
+`PGKILN_SECRET_KEY` (the passwords of the workspace's logins are derived from it; nothing is stored). Then:
+
+- **Two PostgreSQL logins of its own**: `pgkiln_ws<id>_run_<suffix>` runs its applications (pages, processes, REST
+  handlers, automations, workflows, background processes, REST synchronisation); `pgkiln_ws<id>_dev_<suffix>` runs its
+  developers' SQL: SQL Commands, SQL Scripts, Quick SQL, Load and Unload Data, Sample Data, DDL and Compare, the
+  Advisor, code checks and document previews. SQL that runs `RESET ROLE` (or `set_config('role', …)`) only gets back to
+  that login, which can use the workspace's database roles and nothing else.
+- **The workspace's database roles** (APEX: workspace schemas): isolating gives the workspace the roles its
+  applications run as; administrators add or remove roles on its page. Its applications can run only as these roles,
+  so an import or a changed *Database role* setting that names another role is refused. A role belongs to one
+  workspace; a superuser, a role that creates roles or bypasses row-level security, and pgkiln's own roles can't
+  belong to one. A **new application** in an isolated workspace gets a new role and a new schema (owned by that role),
+  or a schema of one of the workspace's roles. The developer login starts as the first role (alphabetically), so the
+  tables a developer creates in the SQL Workshop belong to an application role; `set role` picks another of them.
+- **pgkiln's own tables** (`meta`) show each login its own workspace's applications, pages, sessions and accounts
+  (row-level security), and the shared runtime connection no longer sees the isolated workspace's.
+  `meta.app_id()` refuses another workspace's application, so `meta.web_request`, `meta.ai_generate`, mail, push
+  and `meta.page_url` can't act for it. The developer login has no rights in `meta`.
+- **The SQL Workshop's saved work** (scripts and their runs, blueprints, sample data generators) belongs to the
+  workspace it was made in, also in shared workspaces; data load definitions are listed for the current workspace's
+  applications.
+- **Administrators keep the owner** in the SQL Workshop, and a developer who also belongs to a shared workspace has the
+  owner's rights there: make the developers of an isolated workspace members of that workspace only.
+- A workflow step's SQL runs on the workspace's login and commits just before the workflow's own state, so after a
+  crash between the two a step can run again.
+
+Still installation-wide: user accounts (an account with access to an isolated workspace's application is visible only
+to that workspace, other accounts to every workspace), identity providers, LDAP directories, mail and AI services, the
+REST API through PostgREST (use REST modules for isolated applications), and the database catalog (any login can read
+table and function definitions in `pg_catalog`, not their rows). Every login of every workspace counts towards the
+server's `max_connections`: each isolated workspace opens at most `PGKILN_WORKSPACE_POOL_SIZE` (5) connections per
+login and server process.
+
+**Make shared** undoes it: the roles go back to the shared runtime connection and the workspace's logins can no
+longer sign in. Delete a workspace only when it is shared and empty; its logins are dropped with it.
 
 ## The builder window
 

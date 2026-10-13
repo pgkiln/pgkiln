@@ -5,7 +5,7 @@ import { icon } from '../icons.ts';
 import { APP_COLORS, BASE, csrf, developer, input, region, select, send, shell, type Req } from './ui.ts';
 import type { Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
-import { currentWorkspace, inWorkspaceSql } from './workspaces.ts';
+import { currentWorkspace, inWorkspaceSql, workspaceAdmin } from './workspaces.ts';
 
 // The workspace pages of the builder, laid out like APEX's App Builder: the
 // home page (tiles, a searchable list of applications as a report or as
@@ -285,7 +285,11 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
         ${(await isAdmin(s.username)) ? card(`${BASE}/instance`, icon('settings'), 'Instance settings', 'Session length, sign-in throttling and the server\'s configuration (administrators).') : ''}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/workspaces`, icon('layers'), 'Workspaces', 'Groups of applications and their developers (administrators).') : ''}
+        ${(await isAdmin(s.username))
+          ? card(`${BASE}/workspaces`, icon('layers'), 'Workspaces', 'Groups of applications and their developers (administrators).')
+          : s.workspace && (await workspaceAdmin(s.username, s.workspace.id))
+            ? card(`${BASE}/workspaces/${s.workspace.id}`, icon('layers'), `Workspace ${s.workspace.name}`, 'Its name and developers (workspace administrators).')
+            : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), 'Mail services', 'SMTP, Microsoft 365, Amazon SES, Resend, Postmark, SendGrid or Mailgun for the applications\' e-mail (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
