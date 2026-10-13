@@ -21,6 +21,11 @@ Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities.
   Database** (version, settings, extensions, schema sizes) and a read-only **Database Monitor** of sessions and
   blocked queries for administrators.
 
+### Fixed
+- Progressive Web Apps: the service worker could be stopped before it kept a visited page, so a form sent offline right
+  after opening its page showed the offline page instead of "Saved on this device" (the cause of an intermittent e2e
+  failure).
+
 ### Changed
 - APEX parity: the Manage Service and SQL Workshop rows lose their Missing notes on workspace preferences, extension
   links and the SQL Workshop utilities.
