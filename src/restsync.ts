@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { nextRun, parseCron } from './automations.ts';
 import { owner, runtime, type Client } from './db.ts';
+import { withAppDb } from './workspace-db.ts';
 import { fetchSource, sourceParamValues, toRows, type RestSource } from './websources.ts';
 
 // REST data source synchronisation (APEX: REST Source Synchronization):
@@ -148,7 +149,7 @@ export async function runSync(sourceId: number, trigger: 'manual' | 'schedule' |
         // background: no page items; &NAME. substitutions in parameter defaults are empty
         const { json } = await fetchSource({ ...s, cache_seconds: 0 }, sourceParamValues(s, undefined, () => ''));
         const { columns, rows, truncated } = toRows(json, s);
-        const counts = await runtime.tx(async (c) => {
+        const counts = await withAppDb(s.app_id, () => runtime.tx(async (c) => {
           await c.query(
             `select set_config('pgkiln.app_user', $1, true), set_config('pgkiln.app_id', $2, true), set_config('pgkiln.session_id', '', true),
                     set_config('statement_timeout', '300s', true)`,
@@ -157,7 +158,7 @@ export async function runSync(sourceId: number, trigger: 'manual' | 'schedule' |
           if (s.db_role) await c.query(`set local role ${ident(s.db_role)}`);
           // a cut-off response (maximum rows) must not delete the rows beyond the cut
           return writeRows(c, s, columns.map((x) => x.name), rows, !truncated);
-        });
+        }));
         const note = truncated ? ` Only the first ${s.max_rows} rows were read (maximum rows)${s.sync_mode === 'merge' && s.sync_delete ? '; nothing was deleted' : ''}.` : '';
         result = { status: 'ok', log, rows: rows.length, ...counts, ...(note ? { message: note.trim() } : {}) };
       } catch (e) {

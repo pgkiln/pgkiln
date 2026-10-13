@@ -9,6 +9,7 @@ import { headerValue, HeaderAuthError, peerAddress, resolveHeaderAccount, truste
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { applyBinds } from '../binds.ts';
 import { appTx, runtime, savepoint } from '../db.ts';
+import { withAppDb } from '../workspace-db.ts';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
 import { accountRoles, loadApp, loadPage, type App, type Page, type Region } from '../metadata.ts';
@@ -1274,7 +1275,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   /** The end of a single sign-on (OpenID Connect or SAML): the app's access rules, then the session. */
-  const finishSso = async (req: FastifyRequest, reply: FastifyReply, p: { name: string }, result: SsoResult, ip: string) => {
+  const finishSso = (req: FastifyRequest, reply: FastifyReply, p: { name: string }, result: SsoResult, ip: string) =>
+    withAppDb(result.appId, () => finishSsoForApp(req, reply, p, result, ip));
+  const finishSsoForApp = async (req: FastifyRequest, reply: FastifyReply, p: { name: string }, result: SsoResult, ip: string) => {
     const alias = (await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [result.appId]))?.alias;
     const loaded = alias ? await appWithLocale(req, alias) : undefined;
     if (!loaded || loaded.app.authentication !== 'app_users' || !loaded.app.sso_providers.includes(p.name)) return simplePage(reply, 403, english('login.sso_failed'), english('login.method_unavailable'));

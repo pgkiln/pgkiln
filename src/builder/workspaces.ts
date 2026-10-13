@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { owner } from '../db.ts';
+import { owner, type Db } from '../db.ts';
+import { devDbForWorkspace } from '../workspace-db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
@@ -67,6 +68,19 @@ export async function appAllowed(s: Session, appId: number | string) {
   }
   return true;
 }
+
+/**
+ * The connection for a developer's own SQL (the SQL Workshop's tools): the owner, or in an
+ * isolated workspace (090) its developer login, which reaches the workspace's application
+ * roles only. Administrators keep the owner.
+ */
+export async function workshopDb(s: Session): Promise<Db> {
+  if (!s.workspace || (await isAdmin(s.username))) return owner;
+  return (await devDbForWorkspace(s.workspace.id)) ?? owner;
+}
+
+/** Who the SQL Workshop runs as, for its notes. */
+export const workshopRunsAs = (db: Db) => (db === owner ? 'the builder\'s owner connection' : 'this isolated workspace\'s developer login (its applications\' roles, nothing else)');
 
 /** Put an application in a workspace (inside the caller's transaction, or on the owner pool). */
 export async function placeApp(db: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, appId: number, workspaceId: number) {

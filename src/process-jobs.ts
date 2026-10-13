@@ -3,6 +3,7 @@ import pg from 'pg';
 import type { FastifyRequest } from 'fastify';
 import { PageCss } from './css.ts';
 import { owner, runtime } from './db.ts';
+import { withAppDb } from './workspace-db.ts';
 import { loadApp, loadPage } from './metadata.ts';
 import type { Session } from './session.ts';
 import { publicError, type PageContext } from './runtime/context.ts';
@@ -61,8 +62,12 @@ async function finish(id: string, state: 'completed' | 'failed', message: string
   );
 }
 
-/** Run one claimed job. */
-async function runJob(job: Job) {
+/** Run one claimed job (on its application's runtime connection: an isolated workspace's own). */
+function runJob(job: Job) {
+  return withAppDb(job.app_id, () => runJobIn(job));
+}
+
+async function runJobIn(job: Job) {
   const app = await loadApp(job.alias);
   const page = app ? await loadPage(app.id, job.page_no) : undefined;
   const chain = page?.processes.find((p) => p.id === job.process_id && p.type === 'chain');

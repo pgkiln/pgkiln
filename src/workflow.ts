@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { applyBinds, splitStatements, type BindValues } from './binds.ts';
 import { owner } from './db.ts';
+import { appIsolated, runtimeForApp } from './workspace-db.ts';
 import { html, type Raw } from './html.ts';
 import type { WebResponse } from './webclient.ts';
 import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, type InvokeConfig, type RestSource } from './websources.ts';
@@ -391,12 +392,12 @@ export async function runWorkflow(id: string | number): Promise<number> {
     let more: boolean | PendingCall;
     at.branch = null;
     try {
-      more = await owner.tx((c) => step(c, String(id), at));
+      more = await stepTx((c, side) => step(c, side, String(id), at));
       if (typeof more === 'object') {
         // an invoke_api step: the call runs between two transactions
         const done = await makeCall(more);
         at.branch = done.branch;
-        more = await owner.tx((c) => step(c, String(id), at, done));
+        more = await stepTx((c, side) => step(c, side, String(id), at, done));
       }
     } catch (e) {
       await fault(String(id), at.branch, (e as Error).message.slice(0, 2000));
@@ -426,8 +427,61 @@ async function fault(id: string, branch: string | null, msg: string) {
   });
 }
 
+/**
+ * A step's application SQL in an isolated workspace (090) runs on the workspace's own login, not in
+ * the owner's transaction (where RESET ROLE would reach the owner). It commits just before the
+ * owner's transaction: if that one then fails, the step runs again (at least once).
+ */
+class AppSide {
+  private client: pg.PoolClient | null = null;
+  private release: (() => void) | null = null;
+
+  /** The connection for an isolated application's SQL (opened once per step), or null: use the owner's transaction. */
+  async open(w: { app_id: number; db_role: string | null; initiator: string; id: string; tenant_id: string }) {
+    if (this.client) return this.client;
+    if (!(await appIsolated(w.app_id))) return null;
+    const db = await runtimeForApp(w.app_id);
+    const c = await db.pool.connect();
+    this.client = c;
+    this.release = () => c.release();
+    await c.query('begin');
+    await c.query(
+      `select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', '', true),
+              set_config('pgkiln.workflow_id', $3, true), set_config('statement_timeout', '30s', true), set_config('pgkiln.tenant_id', $4, true)`,
+      [String(w.app_id), w.initiator, w.id, w.tenant_id],
+    );
+    if (w.db_role) await c.query(`set local role ${pg.escapeIdentifier(w.db_role)}`);
+    return c;
+  }
+
+  async commit() {
+    if (this.client) await this.client.query('commit');
+    this.close(false);
+  }
+
+  async close(rollback = true) {
+    if (this.client && rollback) await this.client.query('rollback').catch(() => {});
+    this.release?.();
+    this.client = null;
+    this.release = null;
+  }
+}
+
+async function stepTx<T>(fn: (c: pg.PoolClient, side: AppSide) => Promise<T>): Promise<T> {
+  const side = new AppSide();
+  try {
+    return await owner.tx(async (c) => {
+      const result = await fn(c, side);
+      await side.commit();
+      return result;
+    });
+  } finally {
+    await side.close();
+  }
+}
+
 /** One step of the main path or of a branch, in the caller's transaction. Returns whether the workflow may go on right away. */
-async function step(c: pg.PoolClient, id: string, at: { branch: string | null }, done?: DoneCall): Promise<boolean | PendingCall> {
+async function step(c: pg.PoolClient, side: AppSide, id: string, at: { branch: string | null }, done?: DoneCall): Promise<boolean | PendingCall> {
   const w = (
     await c.query<Instance & { leased: boolean }>(
       `select w.id::text, w.app_id, w.name, w.detail_pk, w.vars, w.steps, w.state, w.current_step, w.waiting_task::text,
@@ -486,9 +540,11 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
   });
   // the application's SQL runs as its role; pgkiln's own bookkeeping as the owner
   // (on an error the transaction is rolled back as a whole: resetting the role then would only hide the error)
-  const asApp = async <T>(fn: () => Promise<T>) => {
+  const asApp = async <T>(fn: (q: pg.PoolClient) => Promise<T>) => {
+    const isolated = await side.open(w);
+    if (isolated) return fn(isolated);
     if (w.db_role) await c.query(`set local role ${pg.escapeIdentifier(w.db_role)}`);
-    const result = await fn();
+    const result = await fn(c);
     if (w.db_role) await c.query('reset role');
     return result;
   };
@@ -602,9 +658,9 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
   switch (s.type) {
     case 'sql': {
       const statements = splitStatements(applyBinds(s.code, binds()));
-      const res = await asApp(async () => {
+      const res = await asApp(async (q) => {
         let last: pg.QueryResult | undefined;
-        for (const stmt of statements) last = await c.query(stmt);
+        for (const stmt of statements) last = await q.query(stmt);
         return last;
       });
       const row = res?.rows?.[0];
@@ -613,14 +669,14 @@ async function step(c: pg.PoolClient, id: string, at: { branch: string | null },
     }
     case 'switch': {
       for (const cs of s.cases) {
-        const ok = await asApp(async () => (await c.query(`select (${applyBinds(cs.when, binds())})::boolean as ok`)).rows[0].ok);
+        const ok = await asApp(async (q) => (await q.query(`select (${applyBinds(cs.when, binds())})::boolean as ok`)).rows[0].ok);
         if (ok === true) return goTo(cs.next, `when ${cs.when}`);
       }
       return goTo(s.otherwise ?? undefined, 'otherwise');
     }
     case 'task': {
       const owners = s.owners?.trim()
-        ? await asApp(async () => (await c.query({ text: applyBinds(s.owners!.trim().replace(/;+\s*$/, ''), binds()), rowMode: 'array' })).rows.map((r) => String(r[0])).filter(Boolean))
+        ? await asApp(async (q) => (await q.query({ text: applyBinds(s.owners!.trim().replace(/;+\s*$/, ''), binds()), rowMode: 'array' })).rows.map((r) => String(r[0])).filter(Boolean))
         : [];
       const params = Object.fromEntries(Object.entries(vars).map(([key, v]) => [key, v]));
       const taskId = (await c.query(`select meta.create_task($1, $2, $3, $4) as id`, [s.task, w.detail_pk, params, owners])).rows[0].id;

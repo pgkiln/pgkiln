@@ -65,6 +65,8 @@ import { ownerUrl, runtime } from './db.ts';
 import { refreshInstanceSettings } from './instance.ts';
 import { loadSecrets, securityHeaders, trustProxySetting } from './security.ts';
 import { lucideSymbol } from './icons.ts';
+import { runtimeForAlias } from './workspace-db.ts';
+import { runtimeScope } from './db.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   // a database older than the code: apply the migrations (MIGRATE_ON_START=true)
@@ -104,6 +106,22 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
       );
     });
   }
+  // an application of an isolated workspace runs on its workspace's own login (src/workspace-db.ts):
+  // the rest of the request runs in that scope, so runtime.* uses that pool
+  app.addHook('onRequest', (req, _reply, done) => {
+    const m = /^\/a\/([^/?#]{1,100})/.exec(req.url);
+    if (!m || pending.length) return done();
+    let alias: string;
+    try {
+      alias = decodeURIComponent(m[1]);
+    } catch {
+      return done();
+    }
+    runtimeForAlias(alias).then(
+      (db) => runtimeScope.run(db, done),
+      (err: Error) => done(err),
+    );
+  });
   // debug messages: stored after the response, for requests that have a debug log (src/debug.ts)
   app.addHook('onError', async (req, _reply, err) => {
     debugOf(req)?.add(1, 'error', `unhandled: ${err.message}`);

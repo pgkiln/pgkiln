@@ -9,6 +9,7 @@
 // Item values are only written at level 9, and never those of password items.
 import type { FastifyRequest } from 'fastify';
 import { runtime } from './db.ts';
+import { withAppDb } from './workspace-db.ts';
 
 export const DEBUG_LEVELS: [number, string][] = [
   [0, 'Off'],
@@ -92,10 +93,10 @@ export class DebugLog {
     if (this.saved) return;
     this.saved = true;
     if (this.dropped) this.entries.push({ ms: round(performance.now() - this.started), level: 1, component: 'debug', text: `${this.dropped} more entries left out (at most ${MAX_ENTRIES} per request)` });
-    await runtime.query('select meta.debug_save($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)', [
+    await withAppDb(this.appId, () => runtime.query('select meta.debug_save($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)', [
       this.appId, this.pageNo, this.username, this.sessionId, this.method, this.path, status, this.level,
       this.startedAt.toISOString(), round(performance.now() - this.started), JSON.stringify(this.entries),
-    ]);
+    ]));
   }
 }
 
