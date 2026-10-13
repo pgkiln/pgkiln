@@ -59,7 +59,7 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
   const t = ctx.locale.t;
   if (ctx.user === 'nobody') return html`<p class="empty">${t('tasks.sign_in')}</p>`;
   const context = ['my', 'initiated', 'admin'].includes(r.config.context) ? r.config.context : 'my';
-  const vacation = context === 'my' ? await vacationPanel(ctx) : '';
+  const vacation = context === 'my' ? await vacationPanel(ctx, r) : '';
   const completed = r.config.completed === true;
   const where = {
     my: `(may_act or may_claim or (state = 'assigned' and lower(actual_owner) = lower(meta.app_user())))`,
@@ -137,7 +137,7 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
 }
 
 /** (094) The user's vacation rule: the rule, or a form to set one. */
-async function vacationPanel(ctx: PageContext): Promise<Raw | ''> {
+async function vacationPanel(ctx: PageContext, r: Region): Promise<Raw | ''> {
   const t = ctx.locale.t;
   const c = ctx.client!;
   let rule: { delegate_to: string; from_day: string; until_day: string; active: boolean } | undefined;
@@ -147,19 +147,20 @@ async function vacationPanel(ctx: PageContext): Promise<Raw | ''> {
   } catch {
     return '';
   }
-  const csrf = html`<input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="next" value="${`${ctx.base}/${ctx.page.page_no}`}">`;
-  const action = `${ctx.base}/tasks/vacation`;
+  // the region sits inside the page's form: the vacation form is detached (like the task actions' forms)
+  const f = `tkvac${r.id}`;
+  ctx.detached.push(html`<form id="${f}" method="post" action="${ctx.base}/tasks/vacation"><input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="next" value="${`${ctx.base}/${ctx.page.page_no}`}"></form>`);
   const fmt = ctx.locale.format;
   const day = (d: string) => cell(d, 1082, fmt);
   return html`<details class="task-vacation"${rule ? raw(' open') : ''}><summary>${t('tasks.vacation')}${rule ? html` · <b>${rule.delegate_to}</b>` : ''}</summary>
     ${rule ? html`<p>${t('tasks.vacation_active', { user: rule.delegate_to, from: day(rule.from_day), until: day(rule.until_day) })}</p>
-      <form method="post" action="${action}">${csrf}<button class="btn" name="action" value="clear">${t('tasks.vacation_clear')}</button></form>`
+      <button class="btn" form="${f}" name="action" value="clear">${t('tasks.vacation_clear')}</button>`
     : html`<p class="muted">${t('tasks.vacation_help')}</p>
-      <form method="post" action="${action}" class="filter-row">${csrf}
-        <label>${t('tasks.vacation_to')} <input name="to" maxlength="100" required autocomplete="off"></label>
-        <label>${t('tasks.vacation_from')} <input type="date" name="from" required></label>
-        <label>${t('tasks.vacation_until')} <input type="date" name="until" required></label>
-        <button class="btn" name="action" value="set">${t('tasks.vacation_save')}</button></form>`}
+      <div class="vacation-fields">
+        <label>${t('tasks.vacation_to')} <input name="to" form="${f}" maxlength="100" required autocomplete="off"></label>
+        <label>${t('tasks.vacation_from')} <input type="date" name="from" form="${f}" required></label>
+        <label>${t('tasks.vacation_until')} <input type="date" name="until" form="${f}" required></label>
+        <button class="btn" form="${f}" name="action" value="set">${t('tasks.vacation_save')}</button></div>`}
   </details>`;
 }
 
