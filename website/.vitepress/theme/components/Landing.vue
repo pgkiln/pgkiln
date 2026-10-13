@@ -15,7 +15,7 @@ const active = ref(shots[0].key);
 const features = [
   { icon: '🧱', title: 'Apps are data', text: 'Pages, regions, items, validations and processes are rows in a meta schema. Export them, diff them in git, import them in one transaction.' },
   { icon: '⚡', title: 'Generated from your tables', text: 'Point a wizard at a table and get a report and form, a grid, cards, a calendar, a chart, a map or a faceted search, with defaults from the catalog.' },
-  { icon: '🛡️', title: 'Secure by default', text: 'A least-privilege runtime role, a database role per app, row level security, checksummed URLs, CSRF protection and a strict CSP.' },
+  { icon: '🛡️', title: 'Secure by default', text: 'A least-privilege runtime role, a database role per app, row level security, checksummed URLs, CSRF protection, a strict CSP, and isolated workspaces with their own database logins for teams or tenants.' },
   { icon: '🐘', title: 'Your logic stays in PostgreSQL', text: 'Business rules live in PL/pgSQL. Raise an exception and the message appears on the right form field.' },
   { icon: '🔐', title: 'Sign-in your way', text: 'Built-in accounts with roles, OpenID Connect, SAML 2.0, LDAP, HTTP headers or database accounts, and authorization schemes.' },
   { icon: '📱', title: 'Phone, tablet and desktop', text: 'Responsive pages, installable as a Progressive Web App, with offline pages and forms sent when the network is back.' },
@@ -32,7 +32,7 @@ const steps = [
 
 const faqs = [
   { q: 'Is pgkiln free?', a: 'Yes. pgkiln is open source under the Apache-2.0 license. You host it yourself; there are no paid tiers or usage limits.' },
-  { q: 'How does it compare with Oracle APEX?', a: 'pgkiln follows APEX’s model (apps as metadata, pages with regions and items, page processing in SQL) on PostgreSQL. The parity matrix compares 140 APEX features: 136 are available, none are missing, and what is partial is listed honestly.' },
+  { q: 'How does it compare with Oracle APEX?', a: 'pgkiln follows APEX’s model (apps as metadata, pages with regions and items, page processing in SQL) on PostgreSQL. The parity matrix compares 140 APEX features: 137 are available, none are partial or missing, and the 3 left out on purpose are explained.' },
   { q: 'What do I need to run it?', a: 'PostgreSQL 15 or newer and Node.js 20 or newer, or just Docker: the compose file starts PostgreSQL 17 and pgkiln together. There is no separate web listener like ORDS.' },
   { q: 'How big a server do I need?', a: 'Small. To try it out or for a small team: 1 CPU core, 1 GB of memory and 5 GB of disk. In production for up to a few hundred users: 2 cores, 2\u20134 GB and 20 GB plus your data. In our test one pgkiln process served about 240 pages per second on a single core.', link: { href: '/docs/installation#hardware', text: 'Requirements and measurements' } },
   { q: 'Can I keep my applications in git?', a: 'Yes. The command line exports an application as one readable file per component (JSON or YAML with the SQL inline), shows a diff against the database and updates an application in place.' },
