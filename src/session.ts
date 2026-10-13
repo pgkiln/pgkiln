@@ -13,6 +13,11 @@ export interface BuilderWorkspace {
   banner_color?: string;
   isolated?: boolean;
   admin?: boolean;
+  /** (093) workspace preferences */
+  sql_workshop?: boolean;
+  rest_services?: boolean;
+  /** (093) extension links, in the builder's Extensions menu */
+  links?: { label: string; url: string; description: string | null }[];
 }
 
 export interface Session {

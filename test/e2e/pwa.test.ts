@@ -111,6 +111,9 @@ describe('Progressive Web App', () => {
     const page = await signedIn(context);
     await controlled(page);
     await page.goto(`${base}/a/hr/7?clear=1`);
+    // the service worker keeps the page in the background: offline before that, ?queued=1 gets the offline page
+    for (let i = 0; i < 50 && !(await page.evaluate(async () => (await (await caches.open('pgkiln-pages-/a/hr')).keys()).some((r) => new URL(r.url).pathname === '/a/hr/7'))); i++)
+      await page.waitForTimeout(100);
     await page.fill('#P7_START_DATE', '2027-06-07');
     await page.fill('#P7_END_DATE', '2027-06-08');
     await page.fill('#P7_REASON', REASON);

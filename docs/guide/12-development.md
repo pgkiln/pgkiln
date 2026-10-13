@@ -187,6 +187,8 @@ src/
     forms.ts               generic component property form (lookups, render, save)
     backups.ts             Application → Backups (migration 082): list, back up now, download, restore (replaceApp), keep N;
                            backupTick() for the scheduler's daily backups of changed applications
+    workspace-backups.ts   Workspace utilities → Manage backups (sprint 62): the backups of every application of the current
+                           workspace, back them all up (only the changed ones by default)
     availability.ts        Application → Availability (migration 083): status, message, users, build status (Run only is
                            enforced by locks.ts blockingLock); availabilityBadge() in the application header
     feedback.ts            Application → Feedback (migration 084): the setting, the list with filters, status and answers
@@ -213,6 +215,8 @@ src/
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts)
+    sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
+                           connection's usable schemas), About Database, Database Monitor (administrators); read only, with a timeout
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
     top-sql.ts             Top SQL per app role from pg_stat_statements
     diagnostics.ts         Activity → Debug messages (level, list, one request's entries, purge); Workspace utilities →
@@ -240,6 +244,8 @@ src/
     workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid
                            request), the current workspace (session state __WS), placeApp, the switcher, Workspace utilities → Workspaces;
                            (090) isolation and the workspace's database roles, workshopDb (the SQL Workshop's connection)
+                           (093) workspace preferences (sql_workshop: checked in ui.ts developer() for /builder/sql…;
+                           rest_services: checked in runtime/rest.ts) and extension links (the rail's Extensions menu in shell())
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST; appOfPath), developer comments, administrators
     blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a

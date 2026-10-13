@@ -69,6 +69,29 @@ Banner): a **message** (plain text, up to 2000 characters) shown to the workspac
 and an **environment banner**: a label of up to 40 characters in one of eight colours, shown at the top of every
 builder page while the workspace is current.
 
+### Workspace preferences
+
+Administrators and the workspace's administrators set them on the workspace's page (Administration menu →
+*Workspace preferences*; APEX: Set Workspace Preferences):
+
+- **Enable the SQL Workshop**: off, every SQL Workshop page (SQL Commands, the Object Browser, SQL scripts, Load and
+  Unload Data, Quick SQL, the query builder, Sample Data, DDL, Compare, AI) answers *403* while the workspace is
+  current, for every developer including administrators; the rail and Workspace utilities no longer show it. A
+  developer who belongs to another workspace can still use it there. Turn it off for a workspace whose developers
+  should build applications only, for example a shared workspace, where the SQL Workshop runs as pgkiln's owner.
+- **Enable RESTful services**: off, the [REST modules](13-rest-api.md#rest-modules-in-the-builder) of the workspace's applications answer
+  *404* at `/a/<alias>/rest/…` (also their OpenAPI description); they can still be edited, and they come back
+  when it is turned on again. PostgREST is not affected.
+
+Both are on by default (migration 093) and are not exported.
+
+### Extension links
+
+Links to the other tools a workspace's developers use (monitoring, a wiki, a ticket system; APEX: Manage Extension
+Links), added on the workspace's page by administrators and the workspace's administrators: a label, an `http://` or
+`https://` URL, an optional description and an order. While the workspace is current an **Extensions** icon in the
+rail opens them, each in a new tab (`rel="noopener noreferrer"`).
+
 ### Workspace utilization
 
 Administration menu → **Workspace utilization** (`/builder/workspaces/<id>/utilization`; APEX: Workspace
@@ -592,6 +615,12 @@ application, so the version it replaces becomes the newest backup and the restor
 same way. Backups belong to the installation: they are not exported, and an import over the
 application keeps them. Restores are logged in the activity log (`backup_restored`).
 
+Workspace utilities → **Manage backups** (`/builder/backups`; APEX: Manage Backups) shows the backups of
+every application of the current workspace on one page: how many, how many are kept, the newest and
+whether the application changed since, and their size, with a link to each application's Backups.
+**Back up now** there makes a backup of every application of the workspace that keeps backups (by
+default only of those changed since their newest backup), with a note.
+
 ## Availability and build status
 
 **Availability** (in an application's header; APEX: Application Availability and Build Status) says
@@ -1097,6 +1126,19 @@ you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample da
   has (commented out), columns whose identity or generation differs, and types, domains and
   sequences that differ. The same from the command line (`pgkiln ddl`, `pgkiln compare`,
   [chapter 18](18-cli.md)) and for AI agents (`generate_ddl`, `compare_schemas`).
+- **Utilities** (`/builder/sql/utilities`; APEX: SQL Workshop → Utilities): tiles for Load and Unload Data, Sample
+  Data, the Query Builder, DDL and Compare, and three pages of their own. Each runs in a read-only transaction with a
+  15-second statement timeout, on the SQL Workshop's connection (an isolated workspace's developers see only the
+  schemas of its roles):
+  - **Object Reports**: tables without a primary key, foreign keys without an index (with the `create index` to
+    add), row-level security without policies, tables without row-level security (and to whom they are granted),
+    privileges granted to PUBLIC, unused indexes, the largest tables and tables without a comment; each object links
+    to the Object Browser. pgkiln's own `meta` schema and the system's are left out.
+  - **About Database**: the PostgreSQL version, database size, uptime, a few settings (encoding, time zone,
+    connections, memory, row security), the installed extensions and the schemas with their size.
+  - **Database Monitor** (administrators only): the client sessions of this database from `pg_stat_activity`, active
+    first, with their state, wait event, running time, the sessions that block them and the query (as far as the
+    owner may read other roles' statistics). Read only: it cancels nothing.
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

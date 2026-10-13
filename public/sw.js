@@ -52,7 +52,8 @@ self.addEventListener('fetch', (event) => {
           // keep successful pages of this app (not the sign-in page, not downloads)
           if (PGKILN.offlinePages && res.ok && !res.redirected && (res.headers.get('content-type') || '').startsWith('text/html') && !signInOrOut(url)) {
             const copy = res.clone();
-            caches.open(PAGES).then((c) => c.put(req, copy));
+            // waitUntil: the worker isn't stopped before the copy is kept (a page used offline right after)
+            event.waitUntil(caches.open(PAGES).then((c) => c.put(req, copy)).catch(() => {}));
           }
           return res;
         })
