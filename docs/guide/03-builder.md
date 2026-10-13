@@ -353,6 +353,24 @@ in **one transaction**: if anything fails, nothing is created. Creation only acc
 text the review showed you (it is signed with your session); change it and review again. **Save**
 keeps a blueprint in the list (`meta.blueprint`, with the application last created from it).
 
+**From an application** (on the Blueprints page; APEX 26.1: a blueprint from an application) opens a blueprint of an
+application of the current workspace in the editor, for a copy, a new version or a test system:
+
+- **tables**: the tables its regions read (a form's table, the first `schema.table` after `FROM` in a query) that the
+  application's database role may read, with their columns: types (integers, numbers, dates, timestamps, booleans,
+  text; other types become text, binary columns are left out), *required* (NOT NULL without a default), *unique*
+  (a one-column unique constraint), allowed values (an enum, or a `CHECK (col IN (…))`) and references to another of
+  these tables' `id`. Every blueprint table gets an `id`: an old key with another name stays a required, unique column,
+  and a reference to it a plain column;
+- **pages**: a report with its form page becomes `report_form`, and grids, cards, calendars, charts, maps, faceted
+  searches and forms keep their type and page number; other pages become `blank` pages with their name;
+- **navigation**: the menu entries of those pages;
+- **sample rows** only when ticked: up to 20 per table, read read-only through the application's developer
+  connection. They are copied into the blueprint as they are, so leave this off for personal or confidential data.
+
+The new name, alias and schema end in *copy*; a list of **notes** says what didn't carry over. Nothing is created
+until you review and confirm it, as for any blueprint.
+
 ### Importing
 
 **Import** (a tile, or `/builder/import`): paste the JSON of an export and optionally give a new
