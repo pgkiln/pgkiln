@@ -1126,6 +1126,19 @@ you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample da
   has (commented out), columns whose identity or generation differs, and types, domains and
   sequences that differ. The same from the command line (`pgkiln ddl`, `pgkiln compare`,
   [chapter 18](18-cli.md)) and for AI agents (`generate_ddl`, `compare_schemas`).
+- **Utilities** (`/builder/sql/utilities`; APEX: SQL Workshop → Utilities): tiles for Load and Unload Data, Sample
+  Data, the Query Builder, DDL and Compare, and three pages of their own. Each runs in a read-only transaction with a
+  15-second statement timeout, on the SQL Workshop's connection (an isolated workspace's developers see only the
+  schemas of its roles):
+  - **Object Reports**: tables without a primary key, foreign keys without an index (with the `create index` to
+    add), row-level security without policies, tables without row-level security (and to whom they are granted),
+    privileges granted to PUBLIC, unused indexes, the largest tables and tables without a comment; each object links
+    to the Object Browser. pgkiln's own `meta` schema and the system's are left out.
+  - **About Database**: the PostgreSQL version, database size, uptime, a few settings (encoding, time zone,
+    connections, memory, row security), the installed extensions and the schemas with their size.
+  - **Database Monitor** (administrators only): the client sessions of this database from `pg_stat_activity`, active
+    first, with their state, wait event, running time, the sessions that block them and the query (as far as the
+    owner may read other roles' statistics). Read only: it cancels nothing.
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

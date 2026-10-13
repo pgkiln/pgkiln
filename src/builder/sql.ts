@@ -11,6 +11,7 @@ import { quickSqlRoutes } from './quicksql.ts';
 import { queryBuilderRoutes } from './querybuilder.ts';
 import { unloadRoutes } from './unload.ts';
 import { ddlToolRoutes } from './ddl-tools.ts';
+import { sqlUtilityRoutes } from './sql-utilities.ts';
 import { currentWorkspace, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection; an isolated
@@ -61,7 +62,7 @@ async function workshopHome(req: Req, reply: FastifyReply) {
         ${tile('/sql/objects', 'search', 'Object Browser', 'Browse tables, views and functions, their policies, grants and data.')}
         ${tile('/sql/commands', 'code', 'SQL Commands', 'Run SQL statements against your schemas.')}
         ${tile('/sql/scripts', 'file', 'SQL Scripts', 'Create, upload and run stored SQL scripts.')}
-        ${tile('/sql/load', 'upload', 'Utilities', 'Load and unload data, sample data, DDL and schema comparison.')}
+        ${tile('/sql/utilities', 'wrench', 'Utilities', 'Load and unload data, sample data, DDL, schema comparison, object reports and the database.')}
         ${tile('/sql/quick', 'bolt', 'Quick SQL', 'Write a data model in shorthand and get the DDL.')}
       </div>
       <div class="sw-recents">
@@ -99,6 +100,7 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(unloadRoutes);
   // Generate DDL and Schema Comparison (sprint 56)
   await app.register(ddlToolRoutes);
+  await app.register(sqlUtilityRoutes);
   // ---------------------------------------------------------------- SQL workshop
   const resultTable = (res: pg.QueryResult<any[]>, limit = 500) => {
     const rows = (res.rows ?? []).slice(0, limit);

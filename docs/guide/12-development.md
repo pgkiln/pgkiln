@@ -215,6 +215,8 @@ src/
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts)
+    sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
+                           connection's usable schemas), About Database, Database Monitor (administrators); read only, with a timeout
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
     top-sql.ts             Top SQL per app role from pg_stat_statements
     diagnostics.ts         Activity → Debug messages (level, list, one request's entries, purge); Workspace utilities →

@@ -7302,6 +7302,17 @@ describe('sprint 62 workspace preferences', () => {
     assert.doesNotMatch(page, /<img src=x/);
   });
 
+  test('SQL Workshop utilities: the Database Monitor is for administrators; a report key is a name, never SQL', async () => {
+    const d = await signIn(DEV, DEV_PW);
+    assert.equal((await d.get('/builder/sql/utilities/monitor')).statusCode, 403);
+    assert.equal((await d.get('/builder/sql/utilities/reports')).statusCode, 200);
+    for (const r of ['constructor', 'toString', "no-primary-key' or 1=1", '../x'])
+      assert.equal((await d.get(`/builder/sql/utilities/reports?r=${encodeURIComponent(r)}`)).statusCode, 404, r);
+    const king = await as('king');
+    for (const url of ['/builder/sql/utilities', '/builder/sql/utilities/about', '/builder/sql/utilities/monitor'])
+      assert.notEqual((await king.get(url)).statusCode, 200, url);
+  });
+
   test('the SQL Workshop off also refuses its posts; REST modules off answer 404 without running the handler', async () => {
     await owner.query('update meta.workspace set sql_workshop = false, rest_services = false where id = 1');
     try {

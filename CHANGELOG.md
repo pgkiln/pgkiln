@@ -43,6 +43,11 @@ Sprint 62: workspace preferences and Manage backups.
   the builder's rail.
 - **Manage backups** in Workspace utilities: the backups of every application of the workspace on one page, and
   *Back up now* for all of them (only the changed ones by default).
+- **SQL Workshop → Utilities** (APEX: SQL Workshop Utilities): the workshop's tools on one page, **Object Reports**
+  (tables without a primary key, foreign keys without an index with the index to add, row-level security without
+  policies or not enabled, PUBLIC grants, unused indexes, largest tables, tables without a comment), **About
+  Database** (version, settings, extensions, schema sizes) and a read-only **Database Monitor** of sessions and
+  blocked queries for administrators.
 
 ### Fixed
 - A calendar region whose query has no `end_date` column (e.g. one made by the calendar wizard without an end
