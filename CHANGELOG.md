@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 65: facet charts.
+
+### Added
+- **Facet charts** (APEX: facet charts): a faceted search facet with `"chart": "bar"` or `"pie"` (builder: the *Chart*
+  column of the facets table) shows its counts as a chart, collapsed under its heading; a bar or slice links to the
+  page filtered on its value. HR example part 58 adds them to page 21.
+
 ## [0.39.0] - 2026-10-13
 
 Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities. Sprint 63: range, box plot and stock

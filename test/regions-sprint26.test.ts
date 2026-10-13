@@ -293,3 +293,30 @@ describe('builder settings (sprint 26)', () => {
     }
   });
 });
+
+// (sprint 65) facet charts: a bar or pie chart of a facet's counts, each mark filtering on its value
+describe('facet charts (page 21, HR part 58)', () => {
+  test('the definition keeps bar or pie only; the builder saves it for faceted search, not smart filters', () => {
+    assert.deepEqual(facetDefs({ facets: [{ column: 'a', chart: 'bar' }, { column: 'b', chart: 'pie' }, { column: 'c', chart: 'radar' }] }).map((f) => f.chart), ['bar', 'pie', undefined]);
+    const allowed: Allowed = { pages: new Set([1]), lovs: new Set(), reports: new Map([[7, ['job', 'sal']]]) };
+    const out = mergeFacetsSettings({}, { report: '7', n: '2', col_0: 'job', on_0: 'true', chart_0: 'pie', col_1: 'sal', on_1: 'true', type_1: 'range', chart_1: 'donut' }, allowed);
+    assert.deepEqual(out.facets.map((f: { chart?: string }) => f.chart), ['pie', undefined]);
+    const smart = mergeSmartFiltersSettings({}, { report: '7', n: '1', col_0: 'job', on_0: 'true', chart_0: 'bar' }, allowed);
+    assert.equal(smart.facets[0].chart, undefined);
+  });
+
+  test('the job facet draws bars, the salary facet a pie; a mark links to the page filtered on its value', async () => {
+    const b = await king();
+    const body = (await b.get('/a/hr/21')).body;
+    assert.equal(body.match(/<details class="facet-chart">/g)?.length, 2);
+    assert.match(body, /<figure class="chart chart-bar" aria-label="Job">/);
+    assert.match(body, /<figure class="chart chart-pie" aria-label="Salary">/);
+    const href = /<a class="bar-row drill" href="([^"]+)"[^>]*data-tip="Clerk: 4"/.exec(body)?.[1]?.replace(/&amp;/g, '&');
+    assert.ok(href, 'the Clerk bar links');
+    const filtered = (await b.get(href!)).body;
+    assert.deepEqual([...new Set(names(filtered, facetReport))].length > 0, true);
+    assert.match(filtered, new RegExp(`name="r${facetReport}_x_job" value="Clerk" checked`));
+    // the salary slices set the range
+    assert.match(body, new RegExp(`href="/a/hr/21\\?r${facetReport}_rg_salary=3000%7C"`));
+  });
+});

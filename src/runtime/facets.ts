@@ -6,6 +6,7 @@ import type { Region } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { heading } from './items.ts';
 import { fieldsOf, regionUrl } from './report.ts';
+import { renderChartBody } from './charts.ts';
 import {
   CUSTOM_RANGE, facetDefs, facetFilters, facetKeys, facetParamNames, facetWhere, rangeKind, rangeLabel, rangeSql, rangeValue,
   reportFacetDefs, searchSql, hidesColumns, userColumnNames, type FacetDef,
@@ -105,6 +106,19 @@ export function starLabel(ctx: PageContext, f: FacetDef, n: number) {
   return html`<span class="facet-stars" aria-hidden="true">${'★'.repeat(n)}<span class="facet-stars-off">${'★'.repeat(Math.max(0, f.max - n))}</span></span><span class="sr-only">${ctx.locale.t(n === 1 ? 'facets.star_up' : 'facets.stars_up', { n: String(n) })}</span>`;
 }
 
+/**
+ * (sprint 65; APEX: facet charts) A facet's counts as a bar or pie chart, collapsed under the facet; each
+ * mark (and the data table) links to the page filtered on that value, the other filters kept.
+ */
+function facetChart(ctx: PageContext, report: Region, f: FacetDef, label: string, entries: { label: string; n: number; apply: (p: URLSearchParams) => void }[]) {
+  const shown = entries.filter((e) => e.n > 0);
+  if (!f.chart || !shown.length) return '';
+  const t = ctx.locale.t;
+  const link = (i: number) => html`href="${regionUrl(ctx, report, (p) => { shown[i].apply(p); p.delete(`r${report.id}_p`); })}"`;
+  return html`<details class="facet-chart"><summary>${t('report.chart')}</summary>
+    ${renderChartBody(f.chart, label, shown.map((e) => [e.label, e.n]), [{ name: label }, { name: t('report.rows') }], ctx.css, ctx.locale.lang, t, { link })}</details>`;
+}
+
 export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
   const fs = await facetSource(ctx, r);
   if (!isFacetSource(fs)) return fs ?? html``;
@@ -142,8 +156,13 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
       // keep selected values visible even when their count dropped to 0
       for (const s of selected) if (s && !values.some((x) => x.v === s)) values.push({ v: s, n: 0 });
       const excluded = f.exclude && ctx.params.get(k.exclude + f.column) === '1';
+      const chart = facetChart(ctx, report, f, label, values.map((x) => ({
+        label: toState(x.v) ?? '', n: x.n,
+        apply: (p) => { p.delete(k.values + f.column); p.delete(k.exclude + f.column); p.append(k.values + f.column, x.v); },
+      })));
       groups.push(html`<fieldset class="facet${excluded ? ' facet-excluded' : ''}">
         <legend>${label}${clearLink(f)}</legend>
+        ${chart}
         ${values.map((x) => html`<label class="check facet-value"><input type="checkbox" form="${formId}" name="${k.values}${f.column}" value="${x.v}"${selected.has(x.v) ? raw(' checked') : ''} data-facet>
             <span class="facet-label">${toState(x.v)}</span><span class="facet-count">${x.n}</span></label>`)}
         ${f.exclude
@@ -178,8 +197,14 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
     const input = (which: 'from' | 'to', value: string) =>
       html`<label class="sr-only" for="${fid}_${which}">${label}: ${t(`facets.${which}`)}</label>
         <input id="${fid}_${which}" type="${kind === 'date' ? 'date' : 'number'}"${kind === 'number' ? raw(' step="any"') : ''} form="${formId}" name="${which === 'from' ? k.from : k.to}${f.column}" value="${isCustom ? value : ''}" placeholder="${t(`facets.${which}`)}">`;
+    const rangeChart = facetChart(ctx, report, f, label, f.ranges.map((x, i) => ({
+      label: f.type === 'star' ? ctx.locale.t(Number(x.from) === 1 ? 'facets.star_up' : 'facets.stars_up', { n: String(x.from) }) : rangeLabel(x, t),
+      n: counts![i],
+      apply: (p) => { for (const n of [k.from, k.to]) p.delete(n + f.column); p.set(name, rangeValue(x)); },
+    })));
     groups.push(html`<fieldset class="facet facet-range">
       <legend>${label}${clearLink(f)}</legend>
+      ${rangeChart}
       ${f.ranges.length ? radio('', !chosen && !isCustom, t('facets.any')) : ''}
       ${f.ranges.map((x, i) => radio(rangeValue(x), chosen === rangeValue(x), f.type === 'star' ? starLabel(ctx, f, Number(x.from)) : rangeLabel(x, t), counts![i]))}
       ${f.custom

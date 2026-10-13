@@ -748,6 +748,11 @@ Counts take the search and all *other* facets into account. Three kinds of facet
 With `"search": true` the panel starts with a search field: the same search as the report's own
 (`r<id>_q`, the row as text contains the term).
 
+**Facet charts** (APEX: facet charts): with `"chart": "bar"` or `"chart": "pie"` a facet shows its counts as a chart,
+collapsed under its heading (*Chart*). Each bar or slice, and each row of the chart's data table, links to the page
+filtered on that value (a checkbox facet's value, or a range), the other filters kept. Values with no rows are left out
+of the chart. In the HR sample, page 21 has a bar chart of jobs and a pie chart of salary ranges.
+
 Attributes:
 
 ```json
@@ -774,6 +779,7 @@ Attributes:
 | `facets[].ranges` | range: `[{"from": …, "to": …, "label": …}]`, numbers or `YYYY-MM-DD` dates; either bound may be left out (at most 20) |
 | `facets[].custom` | range: `true` adds *from*/*to* fields (default: only when there are no `ranges`) |
 | `facets[].max` | star: the highest rating, 2–10 (default 5) |
+| `facets[].chart` | `bar` or `pie`: a chart of the facet's counts under it (faceted search only) |
 
 Only filters that a facet on the page allows are read from the URL: a value for a column without a
 facet, a range that isn't one of the facet's own, or a *from*/*to* on a facet without `custom`

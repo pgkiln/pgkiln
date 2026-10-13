@@ -103,6 +103,8 @@ export interface FacetDef {
   exclude: boolean;
   /** star: the highest rating */
   max: number;
+  /** (sprint 65) a chart of the values' counts under the facet (faceted search regions) */
+  chart?: 'bar' | 'pie';
 }
 
 /** A region's config.facets as definitions (unknown types and malformed entries are left out). */
@@ -126,6 +128,7 @@ export function facetDefs(config: Record<string, any> | null | undefined): Facet
       custom: type === 'range' && (f.custom === true || (f.custom !== false && !ranges.length)),
       exclude: type === 'checkbox' && f.exclude === true,
       max,
+      ...(f.chart === 'bar' || f.chart === 'pie' ? { chart: f.chart } : {}),
     });
   }
   return out;
