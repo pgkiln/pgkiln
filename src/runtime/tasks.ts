@@ -20,6 +20,11 @@ import { loadContext, safeNext, txContext, type Req } from './routes.ts';
 // The list shows meta.tasks, which already filters on what the user may
 // see and says what they may do; POST /a/:alias/tasks/:id runs the action
 // through the meta.*_task functions, which check the same rights again.
+//
+// (094) The "my" list also holds the user's vacation rule (who acts on their
+// tasks while they are away, from and until a day), saved by POST
+// /a/:alias/tasks/vacation through meta.set_vacation_rule / clear_vacation_rule.
+// Expired tasks (the definition's expiration policy) show as done.
 
 export const TASK_ACTIONS = ['claim', 'release', 'approve', 'reject', 'complete', 'delegate', 'cancel', 'comment'] as const;
 type Action = (typeof TASK_ACTIONS)[number];
@@ -54,6 +59,7 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
   const t = ctx.locale.t;
   if (ctx.user === 'nobody') return html`<p class="empty">${t('tasks.sign_in')}</p>`;
   const context = ['my', 'initiated', 'admin'].includes(r.config.context) ? r.config.context : 'my';
+  const vacation = context === 'my' ? await vacationPanel(ctx, r) : '';
   const completed = r.config.completed === true;
   const where = {
     my: `(may_act or may_claim or (state = 'assigned' and lower(actual_owner) = lower(meta.app_user())))`,
@@ -68,7 +74,7 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
       await savepoint(c, () =>
         c.query<TaskRow>(
           `select * from meta.tasks where ${where} ${completed ? '' : `and state in ('unassigned', 'assigned')`}
-            order by state in ('completed', 'cancelled'), overdue desc, priority, due_at nulls last, created_at limit 200`,
+            order by state in ('completed', 'cancelled', 'expired'), overdue desc, priority, due_at nulls last, created_at limit 200`,
         ),
       )
     ).rows;
@@ -78,7 +84,7 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `task list "${r.title ?? r.id}"`)}</div>`;
   }
-  if (!tasks.length) return html`<p class="empty">${r.config.empty ?? t('tasks.none')}</p>`;
+  if (!tasks.length) return html`${vacation}<p class="empty">${r.config.empty ?? t('tasks.none')}</p>`;
 
   const fmt = ctx.locale.format;
   const csrf = html`<input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="next" value="${`${ctx.base}/${ctx.page.page_no}`}">`;
@@ -95,7 +101,7 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
       : html`${k.subject}`;
     const status = open
       ? k.state === 'assigned' ? t('tasks.assigned_to', { user: k.actual_owner ?? '' }) : t('tasks.unassigned')
-      : k.state === 'cancelled' ? t('tasks.cancelled') : t(`tasks.outcome.${k.outcome ?? 'completed'}`);
+      : k.state === 'cancelled' ? t('tasks.cancelled') : k.state === 'expired' ? t('tasks.expired') : t(`tasks.outcome.${k.outcome ?? 'completed'}`);
     const actions = open
       ? html`<div class="task-actions">
           ${k.may_act
@@ -127,10 +133,62 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
       </details>
     </li>`);
   }
-  return html`<ul class="tasks">${rows}</ul>`;
+  return html`${vacation}<ul class="tasks">${rows}</ul>`;
+}
+
+/** (094) The user's vacation rule: the rule, or a form to set one. */
+async function vacationPanel(ctx: PageContext, r: Region): Promise<Raw | ''> {
+  const t = ctx.locale.t;
+  const c = ctx.client!;
+  let rule: { delegate_to: string; from_day: string; until_day: string; active: boolean } | undefined;
+  try {
+    rule = (await savepoint(c, () => c.query(
+      `select delegate_to, starts_at::date::text as from_day, (ends_at - interval '1 microsecond')::date::text as until_day, active from meta.vacation_rule()`))).rows[0];
+  } catch {
+    return '';
+  }
+  // the region sits inside the page's form: the vacation form is detached (like the task actions' forms)
+  const f = `tkvac${r.id}`;
+  ctx.detached.push(html`<form id="${f}" method="post" action="${ctx.base}/tasks/vacation"><input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="next" value="${`${ctx.base}/${ctx.page.page_no}`}"></form>`);
+  const fmt = ctx.locale.format;
+  const day = (d: string) => cell(d, 1082, fmt);
+  return html`<details class="task-vacation"${rule ? raw(' open') : ''}><summary>${t('tasks.vacation')}${rule ? html` · <b>${rule.delegate_to}</b>` : ''}</summary>
+    ${rule ? html`<p>${t('tasks.vacation_active', { user: rule.delegate_to, from: day(rule.from_day), until: day(rule.until_day) })}</p>
+      <button class="btn" form="${f}" name="action" value="clear">${t('tasks.vacation_clear')}</button>`
+    : html`<p class="muted">${t('tasks.vacation_help')}</p>
+      <div class="vacation-fields">
+        <label>${t('tasks.vacation_to')} <input name="to" form="${f}" maxlength="100" required autocomplete="off"></label>
+        <label>${t('tasks.vacation_from')} <input type="date" name="from" form="${f}" required></label>
+        <label>${t('tasks.vacation_until')} <input type="date" name="until" form="${f}" required></label>
+        <button class="btn" form="${f}" name="action" value="set">${t('tasks.vacation_save')}</button></div>`}
+  </details>`;
 }
 
 export async function taskRoutes(app: FastifyInstance) {
+  // (094) set or remove the user's vacation rule
+  app.post('/a/:alias/tasks/vacation', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { pageNo: 'home' });
+    if (!ctx) return;
+    const b = req.body ?? {};
+    const next = safeNext(ctx.app, b.next);
+    if (b.__csrf !== ctx.session.csrf_token || !['set', 'clear'].includes(String(b.action))) return reply.redirect(next, 303);
+    const t = ctx.locale.t;
+    const date = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    try {
+      await appTx(txContext(ctx), async (c) => {
+        if (b.action === 'clear') await c.query('select meta.clear_vacation_rule()');
+        // whole days in the session's time zone: from the start of the first until the end of the last
+        else await c.query('select meta.set_vacation_rule($1, $2::date::timestamptz, ($3::date + 1)::timestamptz)', [String(b.to ?? '').slice(0, 100), date(b.from), date(b.until)]);
+      });
+      logActivity({ appId: ctx.app.id, username: ctx.user, event: 'task', ip: ctx.ip, detail: `vacation rule ${b.action === 'clear' ? 'removed' : 'set'}` });
+      ctx.session.state.__FLASH = t(b.action === 'clear' ? 'tasks.done.vacation_clear' : 'tasks.done.vacation');
+    } catch (e) {
+      ctx.session.state.__FLASH_ERROR = await publicError(ctx, e, 'vacation rule');
+    }
+    await saveState(ctx.session);
+    return reply.redirect(next, 303);
+  });
+
   app.post('/a/:alias/tasks/:id', async (req: Req, reply) => {
     const ctx = await loadContext(req, reply, { pageNo: 'home' });
     if (!ctx) return;

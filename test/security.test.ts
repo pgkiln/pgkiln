@@ -7326,3 +7326,41 @@ describe('sprint 62 workspace preferences', () => {
     }
   });
 });
+
+describe('sprint 64 task vacation and expiry', () => {
+  const hr = async () => (await owner.one(`select id from meta.app where alias = 'hr'`)).id as number;
+  after(async () => {
+    await owner.query(`delete from meta.task_vacation where app_id = $1`, [await hr()]);
+  });
+
+  test('a vacation rule is always the signed-in user\'s own; the table is not readable at run time', async () => {
+    const appIdHr = await hr();
+    const b = new Browser();
+    await b.login('blake');
+    await b.get('/a/hr/14');
+    // fields naming another user are ignored: the rule is blake's
+    const later = new Date(Date.now() + 86400_000).toISOString().slice(0, 10);
+    await b.post('/a/hr/tasks/vacation', { __csrf: b.lastCsrf, action: 'set', to: 'jones', from: new Date().toISOString().slice(0, 10), until: later, username: 'king', next: '//evil.example/x' });
+    assert.deepEqual((await owner.query('select username, delegate_to from meta.task_vacation where app_id = $1', [appIdHr])).rows, [{ username: 'blake', delegate_to: 'jones' }]);
+    await assert.rejects(runtime.query('select * from meta.task_vacation'), /permission denied/);
+    await assert.rejects(runtime.query('select meta.task_expire_tick()'), /permission denied/);
+    // king sees only his own (none)
+    const king = await owner.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appIdHr)]);
+      return (await c.query('select * from meta.vacation_rule()')).rows;
+    });
+    assert.deepEqual(king, []);
+  });
+
+  test('the vacation route: CSRF, a next URL inside the app, dates as dates only', async () => {
+    const b = new Browser();
+    await b.login('jones');
+    await b.get('/a/hr/14');
+    const res = await b.post('/a/hr/tasks/vacation', { __csrf: b.lastCsrf, action: 'set', to: 'blake', from: "2026-01-01'::date; drop table x; --", until: '2099-01-01', next: 'https://evil.example/' });
+    assert.equal(res.statusCode, 303);
+    assert.doesNotMatch(String(res.headers.location), /evil/);
+    assert.equal(await owner.one(`select 1 as ok from meta.task_vacation where username = 'jones'`), undefined, 'a malformed date is refused');
+    assert.equal((await b.post('/a/hr/tasks/vacation', { action: 'set', to: 'blake', from: '2026-01-01', until: '2026-02-01' })).statusCode, 303);
+    assert.equal(await owner.one(`select 1 as ok from meta.task_vacation where username = 'jones'`), undefined, 'no CSRF token: nothing');
+  });
+});

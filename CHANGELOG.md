@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities. Sprint 63: range, box plot and stock
-charts.
+charts. Sprint 64: vacation rules and expiration policies for approvals.
 
 ### Added
 - **Workspace preferences** (migration 093; APEX: Set Workspace Preferences): administrators and a workspace's
@@ -25,6 +25,13 @@ charts.
   to high (several pairs per row); boxes with whiskers from one value column with a row per observation (computed
   per label, like `percentile_cont`) or from five statistics per row; candlesticks from open, high, low and close. Texts
   in the 22 built-in languages; HR example part 56 adds them to page 32.
+- **Vacation rules for approvals** (migration 094; APEX: vacation rules): on a task list of *my tasks* users name a
+  stand-in from one day until another; while the rule is active, the stand-in acts on the tasks they own by name or
+  are assigned, checked on every request. `meta.set_vacation_rule`, `meta.clear_vacation_rule`, `meta.vacation_rule`.
+- **Expiration policies for task definitions** (APEX: expiration policy): an overdue task expires, has its due date
+  renewed (up to a maximum), or escalates once to a role with priority 1; the scheduler applies them every minute
+  (`meta.task_expire_tick`). A workflow waiting for an expired task goes on with the outcome `expired`. HR example
+  part 57 sets them for leave and access requests.
 
 ### Fixed
 - A chart axis with many labels showed them cut off (e.g. "0." for "02 Sep"): the labels shown use the room of the

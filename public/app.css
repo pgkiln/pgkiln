@@ -1210,6 +1210,11 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .task-subject { overflow-wrap: anywhere; }
 .task-meta { font-size: 0.85rem; margin-top: 0.15rem; }
 .task-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.6rem; }
+/* (094) the vacation rule: label above each field, in a row that wraps */
+.task-vacation { margin-bottom: 1rem; }
+.task-vacation > summary { cursor: pointer; }
+.vacation-fields { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; }
+.vacation-fields label { display: flex; flex-direction: column; gap: 0.2rem; flex: 1 1 10rem; max-width: 16rem; }
 .task-actions input[name="comment"] { flex: 1 1 14rem; min-width: 0; }
 .task-delegate { display: inline-flex; gap: 0.3rem; }
 .task-delegate input { width: 9rem; }
