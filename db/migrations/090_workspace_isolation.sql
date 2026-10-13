@@ -33,6 +33,18 @@ alter table meta.workspace
   add column dev_role text unique;
 comment on column meta.workspace.isolated is 'Isolated (090): the workspace''s applications and SQL run on its own login roles (run_role, dev_role).';
 
+-- the SQL Workshop's saved work belongs to a workspace (Default for what exists): an isolated
+-- workspace's developers see their own scripts, runs, blueprints and data generators only
+alter table meta.sql_script add column workspace_id int not null default 1 references meta.workspace on delete cascade;
+alter table meta.sql_script drop constraint sql_script_name_key;
+create unique index sql_script_name_key on meta.sql_script (workspace_id, name);
+alter table meta.sql_script_run add column workspace_id int not null default 1 references meta.workspace on delete cascade;
+create index sql_script_run_workspace_idx on meta.sql_script_run (workspace_id, id);
+alter table meta.blueprint add column workspace_id int not null default 1 references meta.workspace on delete cascade;
+alter table meta.data_generator add column workspace_id int not null default 1 references meta.workspace on delete cascade;
+alter table meta.data_generator drop constraint data_generator_name_key;
+create unique index data_generator_name_key on meta.data_generator (workspace_id, name);
+
 -- ---------------------------------------------------------------------
 -- pgkiln_app_code: the rights of application code in meta. pgkiln_runtime
 -- keeps its own grants; meta.sync_app_code_grants() copies them here (also
@@ -292,11 +304,24 @@ create policy workspace on meta.account
   using ((select meta.isolation_off()) or id in (select meta.visible_accounts()));
 
 -- ---------------------------------------------------------------------
--- Role memberships follow the workspaces: a database role of an application
--- in an isolated workspace belongs to that workspace's two login roles and
--- not to pgkiln_runtime; it goes back to pgkiln_runtime when the application
--- leaves (or the workspace is no longer isolated).
+-- The database roles of an isolated workspace (APEX: the workspace's
+-- schemas). Administrators assign them (isolating a workspace assigns the
+-- roles its applications use); a new application made in the workspace adds
+-- its own new role. Its applications may run as these roles only, so an
+-- import or a settings change can't claim another role of the database.
+-- Installation data, not exported.
 -- ---------------------------------------------------------------------
+create table meta.workspace_role (
+  workspace_id int  not null references meta.workspace on delete cascade,
+  role_name    text not null unique check (role_name ~ '^[A-Za-z_][A-Za-z0-9_$]{0,62}$'),
+  primary key (workspace_id, role_name)
+);
+revoke all on meta.workspace_role from public;
+comment on table meta.workspace_role is 'The database roles of an isolated workspace (090): its applications run as these only. Installation data, not exported.';
+
+-- Role memberships follow the workspaces: a role of an isolated workspace belongs to that
+-- workspace's two login roles and not to pgkiln_runtime; it goes back to pgkiln_runtime when
+-- it leaves the workspace (or the workspace is no longer isolated) and a shared application uses it.
 create function meta.workspace_sync_roles() returns void
 language plpgsql set search_path = meta, pg_catalog as $$
 declare
@@ -309,10 +334,10 @@ begin
   -- the login roles of isolated workspaces
   for r in select id, run_role, dev_role from meta.workspace where isolated loop
     if not exists (select 1 from pg_roles where rolname = r.run_role) then
-      execute format('create role %I login noinherit', r.run_role);
+      execute format('create role %I login', r.run_role);
     end if;
     if not exists (select 1 from pg_roles where rolname = r.dev_role) then
-      execute format('create role %I login noinherit', r.dev_role);
+      execute format('create role %I login', r.dev_role);
     end if;
     execute format('alter role %I login inherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls', r.run_role);
     execute format('alter role %I login inherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls', r.dev_role);
@@ -320,49 +345,57 @@ begin
       execute format('grant pgkiln_app_code to %I', r.run_role);
     end if;
   end loop;
-  -- an application's database role in an isolated workspace: only that workspace's logins
+  -- an application of an isolated workspace runs as one of the workspace's roles
   for r in
-    select a.alias, a.db_role, w.id as ws, w.run_role, w.dev_role, rl.rolsuper or rl.rolcreaterole or rl.rolbypassrls or rl.rolreplication as powerful
-      from meta.app a
-      join meta.workspace w on w.id = meta.app_workspace(a.id) and w.isolated
-      join pg_roles rl on rl.rolname = a.db_role
+    select a.alias, a.db_role, w.name from meta.app a join meta.workspace w on w.id = meta.app_workspace(a.id)
+     where w.isolated and a.db_role is not null
+       and not exists (select 1 from meta.workspace_role x where x.workspace_id = w.id and x.role_name = a.db_role)
   loop
-    if r.powerful or r.db_role like 'pgkiln%' or r.db_role = (select nspowner::regrole::text from pg_namespace where nspname = 'meta') then
-      raise exception 'Application % runs as %, a role that an isolated workspace can''t use (a superuser, a role that creates roles or bypasses row-level security, or one of pgkiln''s own).', r.alias, r.db_role;
+    raise exception 'Application % runs as %, which is not a database role of workspace % (an administrator adds it on the workspace''s page).', r.alias, r.db_role, r.name
+      using errcode = '42501';
+  end loop;
+  -- the workspace's roles: only its logins have them
+  for r in
+    select x.role_name, w.id as ws, w.run_role, w.dev_role,
+           rl.oid is null as missing, coalesce(rl.rolsuper or rl.rolcreaterole or rl.rolbypassrls or rl.rolreplication, false) as powerful
+      from meta.workspace_role x join meta.workspace w on w.id = x.workspace_id and w.isolated
+      left join pg_roles rl on rl.rolname = x.role_name
+  loop
+    continue when r.missing;
+    if r.powerful or r.role_name like 'pgkiln%' or r.role_name = (select nspowner::regrole::text from pg_namespace where nspname = 'meta') then
+      raise exception 'The role % can''t belong to an isolated workspace (a superuser, a role that creates roles or bypasses row-level security, or one of pgkiln''s own).', r.role_name
+        using errcode = '42501';
     end if;
-    if exists (select 1 from meta.app b where b.db_role = r.db_role and meta.app_workspace(b.id) <> r.ws) then
-      raise exception 'The database role % is used by applications in two workspaces; an isolated workspace''s roles are its own. Give one of them another role first.', r.db_role;
+    if exists (select 1 from meta.app b where b.db_role = r.role_name and meta.app_workspace(b.id) <> r.ws) then
+      raise exception 'The database role % is used by an application of another workspace; an isolated workspace''s roles are its own.', r.role_name
+        using errcode = '42501';
     end if;
-    if not exists (select 1 from pg_auth_members m where m.roleid = r.db_role::regrole and m.member = r.run_role::regrole) then
-      execute format('grant %I to %I', r.db_role, r.run_role);
+    if not exists (select 1 from pg_auth_members m where m.roleid = r.role_name::regrole and m.member = r.run_role::regrole) then
+      execute format('grant %I to %I', r.role_name, r.run_role);
     end if;
-    if not exists (select 1 from pg_auth_members m where m.roleid = r.db_role::regrole and m.member = r.dev_role::regrole) then
-      execute format('grant %I to %I', r.db_role, r.dev_role);
+    if not exists (select 1 from pg_auth_members m where m.roleid = r.role_name::regrole and m.member = r.dev_role::regrole) then
+      execute format('grant %I to %I', r.role_name, r.dev_role);
     end if;
-    if exists (select 1 from pg_auth_members m where m.roleid = r.db_role::regrole and m.member = 'pgkiln_runtime'::regrole) then
-      execute format('revoke %I from pgkiln_runtime', r.db_role);
+    if exists (select 1 from pg_auth_members m where m.roleid = r.role_name::regrole and m.member = 'pgkiln_runtime'::regrole) then
+      execute format('revoke %I from pgkiln_runtime', r.role_name);
     end if;
   end loop;
-  -- memberships a workspace login no longer should have (the application moved, changed its role, or
-  -- the workspace is no longer isolated); a role that now belongs to a shared workspace's application
-  -- goes back to pgkiln_runtime
+  -- memberships a workspace login no longer should have; a role a shared application uses goes back to pgkiln_runtime
   for r in
-    select g.rolname as granted, l.rolname as login, w.id as ws, w.isolated
+    select g.rolname as granted, l.rolname as login
       from meta.workspace w
       join pg_roles l on l.rolname in (w.run_role, w.dev_role)
       join pg_auth_members m on m.member = l.oid
       join pg_roles g on g.oid = m.roleid
-     where g.rolname <> 'pgkiln_app_code' or not w.isolated
+     where not w.isolated
+        or (g.rolname <> 'pgkiln_app_code' and not exists (select 1 from meta.workspace_role x where x.workspace_id = w.id and x.role_name = g.rolname))
+        or (g.rolname = 'pgkiln_app_code' and l.rolname = w.dev_role)
   loop
-    if r.granted = 'pgkiln_app_code' or not r.isolated
-       or not exists (select 1 from meta.app a where a.db_role = r.granted and meta.app_workspace(a.id) = r.ws) then
-      execute format('revoke %I from %I', r.granted, r.login);
-      if r.granted <> 'pgkiln_app_code'
-         and exists (select 1 from meta.app a join meta.workspace w on w.id = meta.app_workspace(a.id)
-                      where a.db_role = r.granted and not w.isolated)
-         and not pg_has_role('pgkiln_runtime', r.granted, 'MEMBER') then
-        execute format('grant %I to pgkiln_runtime', r.granted);
-      end if;
+    execute format('revoke %I from %I', r.granted, r.login);
+    if r.granted <> 'pgkiln_app_code'
+       and exists (select 1 from meta.app a join meta.workspace w on w.id = meta.app_workspace(a.id) where a.db_role = r.granted and not w.isolated)
+       and not pg_has_role('pgkiln_runtime', r.granted, 'MEMBER') then
+      execute format('grant %I to pgkiln_runtime', r.granted);
     end if;
   end loop;
   -- logins of workspaces that are no longer isolated can't sign in
@@ -400,6 +433,21 @@ end $$;
 create trigger workspace_isolate before insert or update of isolated, run_role, dev_role on meta.workspace
   for each row execute function meta.workspace_isolate();
 
+-- isolating a workspace (an administrator) assigns it the roles its applications use
+create function meta.workspace_take_roles() returns trigger
+language plpgsql set search_path = meta, pg_catalog as $$
+begin
+  if new.isolated and not coalesce(old.isolated, false) then
+    insert into meta.workspace_role (workspace_id, role_name)
+    select distinct new.id, a.db_role from meta.app a
+     where meta.app_workspace(a.id) = new.id and a.db_role is not null
+    on conflict (workspace_id, role_name) do nothing;
+  end if;
+  return null;
+end $$;
+create trigger workspace_take_roles after insert or update of isolated on meta.workspace
+  for each row execute function meta.workspace_take_roles();
+
 create function meta.workspace_sync_roles_trigger() returns trigger
 language plpgsql set search_path = meta, pg_catalog as $$
 begin
@@ -411,6 +459,8 @@ create trigger workspace_sync_roles after insert or update of isolated on meta.w
 create trigger workspace_sync_roles after insert or update or delete on meta.workspace_app
   for each statement execute function meta.workspace_sync_roles_trigger();
 create trigger workspace_sync_roles after insert or delete or update of db_role on meta.app
+  for each statement execute function meta.workspace_sync_roles_trigger();
+create trigger workspace_sync_roles after insert or update or delete on meta.workspace_role
   for each statement execute function meta.workspace_sync_roles_trigger();
 
 -- deleting a workspace: its login roles go too (they own nothing; if they do, they stay, unable to sign in)
@@ -433,6 +483,6 @@ end $$;
 create trigger workspace_drop_roles after delete on meta.workspace
   for each row execute function meta.workspace_drop_roles();
 
-revoke all on function meta.workspace_isolate(), meta.workspace_sync_roles_trigger(), meta.workspace_drop_roles() from public;
+revoke all on function meta.workspace_isolate(), meta.workspace_take_roles(), meta.workspace_sync_roles_trigger(), meta.workspace_drop_roles() from public;
 
 select meta.sync_app_code_grants();

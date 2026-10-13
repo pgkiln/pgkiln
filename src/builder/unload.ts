@@ -21,6 +21,7 @@ import {
   type UnloadOptions,
 } from '../unload.ts';
 import { BASE, csrf, developer, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
+import { workshopDb } from './workspaces.ts';
 
 // SQL Workshop → Unload Data (APEX: Data Workshop → Unload Data): a table or
 // view (chosen columns, an optional WHERE and ORDER BY) or a query, to CSV,
@@ -125,7 +126,7 @@ export async function unloadRoutes(app: FastifyInstance) {
       <a class="ide-tab" href="${BASE}/sql/unload?source=query"${active === 'query' ? raw(' aria-current="page"') : ''}>${icon('code')}<span>Query</span></a></nav>`;
 
   const intro = html`<p class="muted">Download the rows of a table, a view or a query as CSV, JSON, Excel or XML (up to ${DOWNLOAD_MAX_ROWS.toLocaleString('en')} rows).
-    Runs as the builder's owner connection in a read-only transaction. To load a file into a table, use <a href="${BASE}/sql/load">Load Data</a>.</p>`;
+    Runs as the builder's owner connection (an isolated workspace's developer login for its developers) in a read-only transaction. To load a file into a table, use <a href="${BASE}/sql/load">Load Data</a>.</p>`;
 
   const form = async (s: Session, b: Body, error?: string) => {
     const alert = error ? html`<div class="alert alert-error" role="alert">${error}</div>` : '';
@@ -212,7 +213,7 @@ export async function unloadRoutes(app: FastifyInstance) {
     if (typeof opts === 'string') return refuse(opts);
 
     const started = performance.now();
-    const c = await owner.pool.connect();
+    const c = await (await workshopDb(s)).pool.connect();
     let opened;
     try {
       await c.query('begin transaction read only');

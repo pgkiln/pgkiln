@@ -64,9 +64,24 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   const S = pg.escapeIdentifier(a.schema);
   const R = pg.escapeIdentifier(a.role);
   // The parsing schema: a role that can only use this schema.
-  await c.query(`create schema if not exists ${S}`);
-  if (!(await c.query('select 1 from pg_roles where rolname = $1', [a.role])).rowCount) await c.query(`create role ${R} nologin`);
-  await c.query(`grant ${R} to pgkiln_runtime`);
+  // (090) an isolated workspace's application gets a new role, and a schema that is new (owned by that
+  // role) or one of the workspace's own: never another workspace's
+  const isolated = (await c.query('select 1 from meta.workspace where id = $1 and isolated', [a.workspaceId])).rowCount;
+  const roleExists = (await c.query('select 1 from pg_roles where rolname = $1', [a.role])).rowCount;
+  if (isolated) {
+    if (roleExists) throw new Error(`The database role ${a.role} exists already: choose another alias.`);
+    const foreign = await c.query(
+      `select 1 from pg_namespace n where n.nspname = $1
+          and n.nspowner::regrole::text not in (select role_name from meta.workspace_role where workspace_id = $2)`,
+      [a.schema, a.workspaceId],
+    );
+    if (foreign.rowCount) throw new Error(`The schema ${a.schema} exists already and doesn't belong to this workspace: choose another schema.`);
+  }
+  if (!roleExists) await c.query(`create role ${R} nologin`);
+  await c.query(`create schema if not exists ${S}${isolated ? ` authorization ${R}` : ''}`);
+  if (isolated) {
+    await c.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2)', [a.workspaceId, a.role]);
+  } else await c.query(`grant ${R} to pgkiln_runtime`);
   await c.query(`grant usage on schema ${S} to ${R}`);
   await c.query(`grant select, insert, update, delete on all tables in schema ${S} to ${R}`);
   await c.query(`grant usage, select on all sequences in schema ${S} to ${R}`);

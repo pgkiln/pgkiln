@@ -169,8 +169,8 @@ type Db = pg.ClientBase | pg.Pool;
 /** Schemas with at least one ordinary table, the allowed ones only. */
 export async function schemas(db: Db) {
   return (
-    await db.query<{ name: string; tables: number }>(
-      `select n.nspname as name, count(*)::int as tables from pg_namespace n join pg_class c on c.relnamespace = n.oid
+    await db.query<{ name: string; tables: number; usable: boolean }>(
+      `select n.nspname as name, count(*)::int as tables, has_schema_privilege(n.oid, 'USAGE') as usable from pg_namespace n join pg_class c on c.relnamespace = n.oid
         where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('meta', 'information_schema')
         group by n.nspname order by n.nspname`,
     )

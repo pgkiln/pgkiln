@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { applyBinds } from '../binds.ts';
 import { owner } from '../db.ts';
+import { devDbForApp } from '../workspace-db.ts';
 import { html } from '../html.ts';
 import { english } from '../i18n.ts';
 import { documentData, documentPdf, fillTemplate, TemplateError } from '../runtime/document.ts';
@@ -42,7 +43,7 @@ export async function documentRoutes(app: FastifyInstance) {
     const tpl = a && /^\d+$/.test(tid) ? await owner.one('select * from meta.document_template where id = $1 and app_id = $2', [tid, a.id]) : undefined;
     if (!a || !tpl) return reply.code(404).send('Not found');
     const binds = previewBinds(String(req.query.binds ?? ''));
-    const c = await owner.pool.connect();
+    const c = await (await devDbForApp(a.id)).pool.connect();
     try {
       await c.query('begin');
       await c.query(`set local statement_timeout = '10s'`);

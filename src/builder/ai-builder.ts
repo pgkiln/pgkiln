@@ -9,6 +9,7 @@ import type { Session } from '../session.ts';
 import { appOr404 } from './forms.ts';
 import { isAdmin } from './locks.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, select, send, shell, workshopTabs, type Req } from './ui.ts';
+import { workshopDb } from './workspaces.ts';
 import { WIZARD_KINDS, wizardTables } from './wizards.ts';
 
 // App Builder AI (migration 062), with the AI service an administrator
@@ -43,10 +44,20 @@ async function ask(s: Session, req: Parameters<typeof generate>[1]) {
   return generate(svc.name, req, { appId: null, user: s.username, source: 'builder' });
 }
 
-/** Schemas a developer may describe or ask about (not pgkiln's, not the system's). */
-async function schemas() {
-  return (await owner.query<{ n: string }>(
-    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`)).rows.map((r) => r.n);
+/** Schemas a developer may describe or ask about (not pgkiln's, not the system's; in an isolated workspace, its own). */
+async function schemas(s: Session) {
+  const db = await workshopDb(s);
+  return (await db.query<{ n: string }>(
+    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta')
+       ${db === owner ? '' : `and has_schema_privilege(oid, 'USAGE')`} order by 1`)).rows.map((r) => r.n);
+}
+
+/** A table's descriptions as database comments. */
+async function comment(c: { query: (sql: string) => Promise<unknown> }, t: TableInfo, notes: [string, string][]) {
+  const rel = `${pg.escapeIdentifier(t.schema)}.${pg.escapeIdentifier(t.table)}`;
+  const what = t.kind === 'view' ? 'view' : t.kind === 'materialized view' ? 'materialized view' : 'table';
+  for (const [col, note] of notes)
+    await c.query(col ? `comment on column ${rel}.${pg.escapeIdentifier(col)} is ${note ? pg.escapeLiteral(note) : 'null'}` : `comment on ${what} ${rel} is ${note ? pg.escapeLiteral(note) : 'null'}`);
 }
 
 interface TableInfo {
@@ -130,7 +141,7 @@ const SQL_SCHEMA = {
 };
 
 async function workshopPage(s: Session, reply: FastifyReply, out: { question?: string; schema?: string; sql?: string; error?: string; result?: Raw }) {
-  const list = await schemas();
+  const list = await schemas(s);
   const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ai')}
     ${await serviceBox(s)}
     <p><a href="${BASE}/sql/ai/describe">Describe tables for AI ▸</a> <span class="muted">(better answers: say what tables and columns mean)</span></p>
@@ -162,7 +173,7 @@ async function workshopPage(s: Session, reply: FastifyReply, out: { question?: s
 const isName = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 63;
 
 async function describePage(s: Session, reply: FastifyReply, schema: string, table: string, draft: { table?: string; columns?: Record<string, string> } | null, message?: Raw) {
-  const list = await schemas();
+  const list = await schemas(s);
   const tables = schema && list.includes(schema) ? await tableInfo({ schema }) : [];
   const t = table ? tables.find((x) => x.table === table) : undefined;
   const noted = new Set((await owner.query<{ t: string }>(`select distinct table_name as t from meta.ai_table_note where schema_name = $1`, [schema])).rows.map((r) => r.t));
@@ -299,7 +310,7 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     let result: Raw;
     try {
       if (!question) throw new AiError('config', 'Type a question.');
-      if (!(await schemas()).includes(schema)) throw new AiError('config', 'Choose a schema.');
+      if (!(await schemas(s)).includes(schema)) throw new AiError('config', 'Choose a schema.');
       const res = await ask(s, {
         system: `You write PostgreSQL ${(await owner.one<{ v: number }>(`select current_setting('server_version_num')::int / 10000 as v`))!.v} SQL for a developer, for these tables and views:\n\n${describeTables(await tableInfo({ schema }))}\n\n` +
           'Use only those tables and columns, qualified with their schema. Write a SELECT unless the question clearly asks to change data. The developer reviews the SQL before anything runs.',
@@ -331,7 +342,7 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     let result: Raw;
     try {
       if (!sql.trim() && !error.trim()) throw new AiError('config', 'Paste a query, an error message or both.');
-      const tables = schema && (await schemas()).includes(schema) ? describeTables(await tableInfo({ schema })) : '';
+      const tables = schema && (await schemas(s)).includes(schema) ? describeTables(await tableInfo({ schema })) : '';
       const res = await ask(s, {
         system: 'You explain PostgreSQL to a developer: what a query does, why an error happens and how to fix it. Be concise; show corrected SQL when it helps.' +
           (tables ? `\n\nThe tables and views of the schema:\n\n${tables}` : ''),
@@ -352,10 +363,10 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
   });
 
   /** The posted table, checked against the catalog (null: unknown or reserved). */
-  const postedTable = async (b: Record<string, any>) => {
+  const postedTable = async (s: Session, b: Record<string, any>) => {
     const schema = String(b.schema ?? '');
     const table = String(b.table ?? '');
-    if (!isName(schema) || !isName(table) || RESERVED.test(schema)) return null;
+    if (!isName(schema) || !isName(table) || RESERVED.test(schema) || !(await schemas(s)).includes(schema)) return null;
     return (await tableInfo({ schema, table }))[0] ?? null;
   };
 
@@ -363,11 +374,14 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const b = (req.body ?? {}) as Record<string, any>;
-    const t = await postedTable(b);
+    const t = await postedTable(s, b);
     if (!t) return reply.code(404).send('Not found');
     const notes: [string, string][] = [['', String(b['note:'] ?? '')], ...t.columns.map((c): [string, string] => [c.name, String(b[`note:${c.name}`] ?? '')])]
       .map(([k, v]) => [k, v.replace(/\s+/g, ' ').trim().slice(0, 2000)]);
     try {
+      // database comments as the developer's SQL connection (an isolated workspace: its own login), then the notes
+      const db = await workshopDb(s);
+      if (b.comments === 'true' && db !== owner) await db.tx((c) => comment(c, t, notes));
       await owner.tx(async (c) => {
         for (const [col, note] of notes) {
           if (note) await c.query(
@@ -376,12 +390,7 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
             [t.schema, t.table, col, note, s.username]);
           else await c.query('delete from meta.ai_table_note where schema_name = $1 and table_name = $2 and column_name = $3', [t.schema, t.table, col]);
         }
-        if (b.comments === 'true') {
-          const rel = `${pg.escapeIdentifier(t.schema)}.${pg.escapeIdentifier(t.table)}`;
-          const what = t.kind === 'view' ? 'view' : t.kind === 'materialized view' ? 'materialized view' : 'table';
-          for (const [col, note] of notes)
-            await c.query(col ? `comment on column ${rel}.${pg.escapeIdentifier(col)} is ${note ? pg.escapeLiteral(note) : 'null'}` : `comment on ${what} ${rel} is ${note ? pg.escapeLiteral(note) : 'null'}`);
-        }
+        if (b.comments === 'true' && db === owner) await comment(c, t, notes);
       });
       flash(s, `Descriptions of ${t.schema}.${t.table} saved${b.comments === 'true' ? ', also as database comments' : ''}.`);
     } catch (e) {
@@ -394,7 +403,7 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const b = (req.body ?? {}) as Record<string, any>;
-    const t = await postedTable(b);
+    const t = await postedTable(s, b);
     if (!t) return reply.code(404).send('Not found');
     const names = t.columns.map((c) => c.name);
     try {

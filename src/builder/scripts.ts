@@ -7,12 +7,14 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { runScript, splitScript, type ScriptRun, type StatementResult } from '../sqlscript.ts';
 import { clearCompletions } from './code-editor.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
+import { currentWorkspace, workshopDb } from './workspaces.ts';
 
 // SQL Workshop → SQL Scripts: saved scripts (create, edit, upload, download,
 // delete), run with a result per statement (stop at the first error or go on,
 // optionally in one transaction), and the run history. Scripts run on the
 // owner connection, like SQL Commands, on a connection of their own that is
-// closed afterwards (a script may SET ROLE or change settings).
+// closed afterwards (a script may SET ROLE or change settings). Scripts and runs belong
+// to the current workspace; an isolated workspace's run on its developer login (090).
 
 /** Largest script (upload or editor), in MB. */
 export const SCRIPT_MAX_MB = 5;
@@ -30,7 +32,7 @@ export interface RunRequest {
 /** Run a script, record the run (history + activity log) and return the run's id. */
 export async function runAndRecord(s: Session, ip: string, r: RunRequest): Promise<{ id: string; run: ScriptRun }> {
   const statements = splitScript(r.content);
-  const c = await owner.pool.connect();
+  const c = await (await workshopDb(s)).pool.connect();
   let run: ScriptRun;
   try {
     run = await runScript(c, statements, { stopOnError: r.stopOnError, transaction: r.transaction });
@@ -40,12 +42,17 @@ export async function runAndRecord(s: Session, ip: string, r: RunRequest): Promi
   }
   clearCompletions(); // the script may have changed tables or grants
   const saved = await owner.one<{ id: string }>(
-    `insert into meta.sql_script_run (script_id, script_name, run_by, elapsed_ms, stop_on_error, transactional, statements, succeeded, failed, rolled_back, results)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
+    `insert into meta.sql_script_run (script_id, script_name, run_by, elapsed_ms, stop_on_error, transactional, statements, succeeded, failed, rolled_back, results, workspace_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
     [r.scriptId, r.name, s.username, run.ms, r.stopOnError, r.transaction, run.statements, run.succeeded, run.failed, run.rolledBack,
-      JSON.stringify(run.commitError ? [...run.results, { n: 0, line: 0, sql: 'COMMIT', status: 'error', error: run.commitError, ms: 0 }] : run.results)],
+      JSON.stringify(run.commitError ? [...run.results, { n: 0, line: 0, sql: 'COMMIT', status: 'error', error: run.commitError, ms: 0 }] : run.results),
+      currentWorkspace(s)],
   );
-  await owner.query(`delete from meta.sql_script_run where id <= (select id from meta.sql_script_run order by id desc offset $1 limit 1)`, [KEEP_RUNS]);
+  await owner.query(
+    `delete from meta.sql_script_run where workspace_id = $2
+        and id <= (select id from meta.sql_script_run where workspace_id = $2 order by id desc offset $1 limit 1)`,
+    [KEEP_RUNS, currentWorkspace(s)],
+  );
   await logActivity({
     username: s.username,
     event: 'sql_script',
@@ -121,10 +128,12 @@ export async function scriptRoutes(app: FastifyInstance) {
                 r.started_at as last_run, r.failed as last_failed
            from meta.sql_script s
            left join lateral (select started_at, failed from meta.sql_script_run x where x.script_id = s.id order by x.id desc limit 1) r on true
+          where s.workspace_id = $1
           order by lower(s.name)`,
+        [currentWorkspace(s)],
       )
     ).rows;
-    const runs = (await owner.query('select * from meta.sql_script_run order by id desc limit 20')).rows;
+    const runs = (await owner.query('select * from meta.sql_script_run where workspace_id = $1 order by id desc limit 20', [currentWorkspace(s)])).rows;
     const list = scripts.length
       ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Script</th><th>Updated</th><th class="num">Size</th><th>Last run</th><th>File</th></tr></thead><tbody>
           ${scripts.map((x) => html`<tr><td><a href="${BASE}/sql/scripts/${x.id}">${x.name}</a>${x.description ? html`<br><span class="muted small">${x.description}</span>` : ''}</td>
@@ -193,7 +202,7 @@ export async function scriptRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/scripts/:id`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const row = /^\d+$/.test(req.params.id) ? await owner.one('select * from meta.sql_script where id = $1', [req.params.id]) : undefined;
+    const row = /^\d+$/.test(req.params.id) ? await owner.one('select * from meta.sql_script where id = $1 and workspace_id = $2', [req.params.id, currentWorkspace(s)]) : undefined;
     if (!row) return reply.code(404).send('Not found');
     return editor(req, reply, s, row);
   });
@@ -220,15 +229,15 @@ export async function scriptRoutes(app: FastifyInstance) {
     try {
       if (id) {
         const r = await owner.one(
-          'update meta.sql_script set name = $2, description = nullif($3, \'\'), content = $4, updated_by = $5, updated_at = now() where id = $1 returning id',
-          [id, name, b.description ?? '', content, s.username],
+          'update meta.sql_script set name = $2, description = nullif($3, \'\'), content = $4, updated_by = $5, updated_at = now() where id = $1 and workspace_id = $6 returning id',
+          [id, name, b.description ?? '', content, s.username, currentWorkspace(s)],
         );
         if (!r) return reply.code(404).send('Not found');
         scriptId = r.id;
       } else {
         const r = await owner.one(
-          `insert into meta.sql_script (name, description, content, created_by, updated_by) values ($1, nullif($2, ''), $3, $4, $4) returning id`,
-          [name, b.description ?? '', content, s.username],
+          `insert into meta.sql_script (name, description, content, created_by, updated_by, workspace_id) values ($1, nullif($2, ''), $3, $4, $4, $5) returning id`,
+          [name, b.description ?? '', content, s.username, currentWorkspace(s)],
         );
         scriptId = r!.id;
       }
@@ -260,6 +269,8 @@ export async function scriptRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!/^\d+$/.test(req.params.id)) return reply.code(404).send('Not found');
     const r = await owner.tx(async (c) => {
+      const own = (await c.query('select 1 from meta.sql_script where id = $1 and workspace_id = $2', [req.params.id, currentWorkspace(s)])).rowCount;
+      if (!own) return undefined;
       await c.query('delete from meta.sql_script_run where script_id = $1', [req.params.id]);
       return (await c.query('delete from meta.sql_script where id = $1 returning name', [req.params.id])).rows[0];
     });
@@ -270,7 +281,7 @@ export async function scriptRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/scripts/:id/download`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const row = /^\d+$/.test(req.params.id) ? await owner.one('select name, content from meta.sql_script where id = $1', [req.params.id]) : undefined;
+    const row = /^\d+$/.test(req.params.id) ? await owner.one('select name, content from meta.sql_script where id = $1 and workspace_id = $2', [req.params.id, currentWorkspace(s)]) : undefined;
     if (!row) return reply.code(404).send('Not found');
     return reply
       .header('content-type', 'application/sql; charset=utf-8')
@@ -302,8 +313,8 @@ export async function scriptRoutes(app: FastifyInstance) {
     if (content.includes('\0')) return fail('The file is not a text file.');
     const base = file.filename.replace(/^.*[\\/]/, '').replace(/\.sql$/i, '').slice(0, 180) || 'script';
     let name = base;
-    for (let n = 2; await owner.one('select 1 from meta.sql_script where name = $1', [name]); n++) name = `${base} (${n})`;
-    const r = await owner.one(`insert into meta.sql_script (name, content, created_by, updated_by) values ($1, $2, $3, $3) returning id`, [name, content, s.username]);
+    for (let n = 2; await owner.one('select 1 from meta.sql_script where name = $1 and workspace_id = $2', [name, currentWorkspace(s)]); n++) name = `${base} (${n})`;
+    const r = await owner.one(`insert into meta.sql_script (name, content, created_by, updated_by, workspace_id) values ($1, $2, $3, $3, $4) returning id`, [name, content, s.username, currentWorkspace(s)]);
     flash(s, `Script “${name}” uploaded.`);
     return back(reply, s, `${BASE}/sql/scripts/${r!.id}`);
   });
@@ -312,7 +323,7 @@ export async function scriptRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/scripts/runs/:run`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const run = /^\d+$/.test(req.params.run) ? await owner.one('select * from meta.sql_script_run where id = $1', [req.params.run]) : undefined;
+    const run = /^\d+$/.test(req.params.run) ? await owner.one('select * from meta.sql_script_run where id = $1 and workspace_id = $2', [req.params.run, currentWorkspace(s)]) : undefined;
     if (!run) return reply.code(404).send('Not found');
     const exists = run.script_id ? await owner.one('select id from meta.sql_script where id = $1', [run.script_id]) : undefined;
     const options = `${run.stop_on_error ? 'stop on error' : 'continue on error'}${run.transactional ? ', one transaction' : ''}`;

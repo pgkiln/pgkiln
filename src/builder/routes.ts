@@ -17,7 +17,7 @@ import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash,
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
-import { appAllowed, currentWorkspace, placeApp, workspaceRoutes } from './workspaces.ts';
+import { appAllowed, currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './workspaces.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
@@ -170,7 +170,7 @@ export async function builderRoutes(app: FastifyInstance) {
         await placeApp(c, made.id, ws);
         // (sprint 51) the Advisor on the imported application, before the commit: errors refuse it
         if (req.body?.check === 'true') {
-          const errors = (await advise(made.id, c)).findings.filter((f) => f.severity === 'error');
+          const errors = (await advise(made.id, c, { db: await workshopDb(s) })).findings.filter((f) => f.severity === 'error');
           if (errors.length)
             throw new Error(`the check found ${errors.length} error(s), nothing was imported: ${errors.slice(0, 5).map((f) =>
               `${f.entry ? `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.label}` : 'database'} (${f.field}): ${f.message}`).join('; ')}${errors.length > 5 ? '; …' : ''}. Fix them, or import without the check.`);

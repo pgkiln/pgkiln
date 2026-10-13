@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { applyBinds, splitStatements } from '../binds.ts';
-import { owner } from '../db.ts';
+import { owner, type Db } from '../db.ts';
+import { devDbForApp } from '../workspace-db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
@@ -156,7 +157,7 @@ const BUILT_IN = new Set(['MUST_NOT_BE_PUBLIC_USER']);
  * e.g. an import that hasn't committed yet) everything is read and checked
  * on that client, inside a savepoint that is rolled back.
  */
-export async function advise(appId: number, tx?: pg.ClientBase): Promise<{ findings: Finding[]; checked: number; plpgsqlCheck: boolean }> {
+export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db } = {}): Promise<{ findings: Finding[]; checked: number; plpgsqlCheck: boolean }> {
   const query = (sql: string, params: unknown[] = []) => (tx ? tx.query(sql, params) : owner.query(sql, params));
   const one = async (sql: string, params: unknown[] = []) => (await query(sql, params)).rows[0];
   const app = await one('select * from meta.app where id = $1', [appId]);
@@ -188,9 +189,14 @@ export async function advise(appId: number, tx?: pg.ClientBase): Promise<{ findi
                                    and not exists (select 1 from meta.page_group g where g.app_id = p.app_id and g.name = p.page_group) order by 1`, [appId])).rows)
     findings.push({ severity: 'warning', entry: null, field: `Page ${p.page_no} → Page group`, message: `Page group ${p.page_group} doesn't exist (Shared Components → Page groups).` });
   // ---- SQL, as the application's role, rolled back (a savepoint in the caller's transaction)
-  const c = (tx ?? (await owner.pool.connect())) as pg.PoolClient;
+  // (090) an isolated workspace's application: planned on the workspace's developer login, in a
+  // transaction of its own (planning can run the application's functions; RESET ROLE there only
+  // reaches that login, never the owner); `opts.db` names the login for an import into the workspace
+  const own = opts.db && opts.db !== owner ? opts.db : await devDbForApp(appId);
+  const inTx = !!tx && own === owner;
+  const c = (inTx ? tx : await (own === owner ? owner : own).pool.connect()) as pg.PoolClient;
   try {
-    await c.query(tx ? 'savepoint advisor_all' : 'begin');
+    await c.query(inTx ? 'savepoint advisor_all' : 'begin');
     await c.query(`set local statement_timeout = '5s'`);
     await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
     if (app.db_role) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
@@ -263,7 +269,7 @@ export async function advise(appId: number, tx?: pg.ClientBase): Promise<{ findi
       }
     }
   } finally {
-    if (tx) {
+    if (inTx) {
       await c.query('rollback to savepoint advisor_all');
       await c.query('release savepoint advisor_all');
     } else {

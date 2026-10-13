@@ -69,11 +69,12 @@ const lit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const end = (s: string) => (s.trimEnd().endsWith(';') ? s.trimEnd() : `${s.trimEnd()};`);
 
 /** The schemas a developer can pick: not PostgreSQL's own, not pgkiln's metadata. */
-export async function userSchemas(c: { query: (sql: string) => Promise<{ rows: { name: string }[] }> }) {
+export async function userSchemas(c: { query: (sql: string) => Promise<{ rows: { name: string }[] }> }, opts: { usable?: boolean } = {}) {
   const r = await c.query(
     `select nspname as name from pg_namespace
       where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta')
         and not exists (select 1 from pg_depend d where d.classid = 'pg_namespace'::regclass and d.objid = pg_namespace.oid and d.deptype = 'e')
+        ${opts.usable ? `and has_schema_privilege(oid, 'USAGE')` : ''}
       order by 1`,
   );
   return r.rows.map((x) => x.name);

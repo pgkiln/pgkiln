@@ -133,7 +133,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
   app.get(`${BASE}/blueprints`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const list = (await owner.query(`select b.id, b.name, b.created_by, b.updated_at::text as updated, a.id as app_id, a.alias from meta.blueprint b left join meta.app a on a.id = b.app_id order by lower(b.name), b.id`)).rows;
+    const list = (await owner.query(`select b.id, b.name, b.created_by, b.updated_at::text as updated, a.id as app_id, a.alias from meta.blueprint b left join meta.app a on a.id = b.app_id where b.workspace_id = $1 order by lower(b.name), b.id`, [currentWorkspace(s)])).rows;
     return page(s, reply, '', html`<h1>Blueprints</h1>
       <p class="muted">Describe an application as a blueprint (tables, pages, menu, sample rows), review it and create it. <a class="btn btn-hot" href="${BASE}/blueprints/new">${icon('plus')} New blueprint</a></p>
       ${list.length
@@ -154,7 +154,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
   app.get(`${BASE}/blueprints/:id(^\\d+$)`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const b = await owner.one('select id, name, spec from meta.blueprint where id = $1', [req.params.id]);
+    const b = await owner.one('select id, name, spec from meta.blueprint where id = $1 and workspace_id = $2', [req.params.id, currentWorkspace(s)]);
     if (!b) return reply.code(404).send('Not found');
     return editor(s, reply, { id: b.id, name: b.name, spec: JSON.stringify(b.spec, null, 2) });
   });
@@ -178,8 +178,8 @@ export async function blueprintRoutes(app: FastifyInstance) {
     if (error || !json || typeof json !== 'object' || Array.isArray(json))
       return editor(s, reply, { ...o, message: html`<div class="alert alert-error" role="alert">${error ?? 'A blueprint is a JSON object.'}</div>` });
     const id = o.id
-      ? (await owner.one('update meta.blueprint set name = $2, spec = $3, updated_at = now() where id = $1 returning id', [o.id, o.name, JSON.stringify(json)]))?.id
-      : (await owner.one('insert into meta.blueprint (name, spec, created_by) values ($1, $2, $3) returning id', [o.name, JSON.stringify(json), s.username])).id;
+      ? (await owner.one('update meta.blueprint set name = $2, spec = $3, updated_at = now() where id = $1 and workspace_id = $4 returning id', [o.id, o.name, JSON.stringify(json), currentWorkspace(s)]))?.id
+      : (await owner.one('insert into meta.blueprint (name, spec, created_by, workspace_id) values ($1, $2, $3, $4) returning id', [o.name, JSON.stringify(json), s.username, currentWorkspace(s)])).id;
     if (!id) return reply.code(404).send('Not found');
     flash(s, `Blueprint ${o.name} saved.`);
     return back(reply, s, `${BASE}/blueprints/${id}`);
@@ -240,8 +240,8 @@ export async function blueprintRoutes(app: FastifyInstance) {
           throw new Error(createAppError(e, checked.alias));
         });
         const r = await buildBlueprint(c, blueprint, checked.role, { dashboard: (tables, no) => addDashboard(c, checked.alias, tables, no) });
-        if (o.id) await c.query('update meta.blueprint set app_id = $2, spec = $3, updated_at = now() where id = $1', [o.id, a.id, JSON.stringify(json)]);
-        else await c.query('insert into meta.blueprint (name, spec, created_by, app_id) values ($1, $2, $3, $4)', [o.name, JSON.stringify(json), s.username, a.id]);
+        if (o.id) await c.query('update meta.blueprint set app_id = $2, spec = $3, updated_at = now() where id = $1 and workspace_id = $4', [o.id, a.id, JSON.stringify(json), currentWorkspace(s)]);
+        else await c.query('insert into meta.blueprint (name, spec, created_by, app_id, workspace_id) values ($1, $2, $3, $4, $5)', [o.name, JSON.stringify(json), s.username, a.id, currentWorkspace(s)]);
         return { ...r, existing: a.existingAccount };
       });
       await logActivity({ username: s.username, event: 'blueprint', ip: clientIp(req), detail: `created ${blueprint.alias} from blueprint ${o.name}` });
@@ -255,7 +255,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
   app.post(`${BASE}/blueprints/:id(^\\d+$)/delete`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const r = await owner.query('delete from meta.blueprint where id = $1', [req.params.id]);
+    const r = await owner.query('delete from meta.blueprint where id = $1 and workspace_id = $2', [req.params.id, currentWorkspace(s)]);
     flash(s, r.rowCount ? 'Blueprint deleted (applications created from it stay).' : 'There is no such blueprint.');
     return back(reply, s, `${BASE}/blueprints`);
   });
