@@ -23,9 +23,15 @@ import { cell } from './report.ts';
 // A Gantt chart is the exception to "label + numeric series": label, start and
 // end columns (dates or timestamps), plus optional progress, task_id and
 // depends_on columns by name; it has its own time axis and data table.
+//
+// (sprint 63) Range, box plot and stock charts read their series by position:
+// a range chart low and high (one floating column per pair of series); a box
+// plot either minimum, first quartile, median, third quartile and maximum per
+// row, or one value column with a row per observation (the label repeats; the
+// statistics are computed per label); a stock chart open, high, low and close.
 
-export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar' | 'gantt' | 'pyramid' | 'polar';
-export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar'];
+export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar' | 'gantt' | 'pyramid' | 'polar' | 'range' | 'boxplot' | 'stock';
+export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar', 'range', 'boxplot', 'stock'];
 
 /** A gauge's scale and thresholds (config.gauge): warning above critical means low values are bad. */
 export interface GaugeConfig {
@@ -89,6 +95,14 @@ let texts = {
   noGantt: 'A Gantt chart needs a label column, a start date and an end date (milestones may leave the end empty).',
   noData: 'No data to show.',
   today: 'Today',
+  noRange: 'A range chart needs a label column and two numeric columns: low and high.',
+  noBoxplot: 'A box plot needs a label column and either one numeric column (a row per value) or five: minimum, first quartile, median, third quartile and maximum.',
+  noStock: 'A stock chart needs a label column (the date) and four numeric columns: open, high, low and close.',
+  min: 'Minimum',
+  q1: 'First quartile',
+  median: 'Median',
+  q3: 'Third quartile',
+  max: 'Maximum',
 };
 let chartLang = 'en';
 const pct = (v: number) => `${Math.max(0, Math.min(100, v)).toFixed(3)}%`;
@@ -181,8 +195,10 @@ function yAxis(scale: ReturnType<typeof niceScale>) {
 function xLabels(labels: string[]) {
   // thin out labels so they never collide: at most ~12 on the axis
   const every = Math.ceil(labels.length / 12);
-  return html`<div class="chart-x" aria-hidden="true">${labels.map(
-    (l, i) => html`<span${i % every ? raw(' class="skip"') : ''} title="${l}">${l}</span>`,
+  // labels between the shown ones are hidden: the shown ones may use their room
+  return html`<div class="chart-x${every > 1 ? ' sparse' : ''}" aria-hidden="true">${labels.map(
+    // every other shown label is "odd": hidden when the chart is narrow (app.css)
+    (l, i) => html`<span${i % every ? raw(' class="skip"') : every > 1 && (i / every) % 2 ? raw(' class="odd"') : ''} title="${l}">${l}</span>`,
   )}</div>`;
 }
 
@@ -595,6 +611,115 @@ function polar(labels: string[], series: Series[]) {
   </div></div>`;
 }
 
+// ---------------------------------------------------------------- range
+/** bottom and height (percent) of a mark from lo to hi, at least `min` tall, centred on a thin band and kept inside the plot. */
+function band(lo: number, hi: number, min = 1) {
+  if (hi - lo >= min) return `bottom:${pct(lo)};height:${pct(hi - lo)}`;
+  const bottom = Math.max(0, Math.min(100 - min, (lo + hi) / 2 - min / 2));
+  return `bottom:${pct(bottom)};height:${pct(min)}`;
+}
+
+function range(labels: string[], series: Series[]) {
+  // Pairs of series (low, high): one floating column per pair and row; up to four pairs.
+  const pairs: [Series, Series][] = [];
+  for (let k = 0; k + 1 < series.length && pairs.length < 4; k += 2) pairs.push([series[k], series[k + 1]]);
+  if (!pairs.length) return html`<p class="empty">${texts.noRange}</p>`;
+  const all = pairs.flatMap(([a, b]) => [...a.values, ...b.values]);
+  const scale = niceScale(Math.min(...all), Math.max(...all), false);
+  const { y, grid } = yAxis(scale);
+  const tipOf = (l: string, i: number) => `${l} · ${pairs.map(([a, b]) => `${pairs.length > 1 ? `${a.name}–${b.name}: ` : ''}${fmt.format(Math.min(a.values[i], b.values[i]))} – ${fmt.format(Math.max(a.values[i], b.values[i]))}`).join(' · ')}`;
+  return html`<div class="chart-plot">
+    ${grid}
+    <div class="chart-cols">${labels.map((l, i) => {
+      const inner = pairs.map(([a, b], k) => {
+        const lo = y(Math.min(a.values[i], b.values[i]));
+        const hi = y(Math.max(a.values[i], b.values[i]));
+        const col = html`<span class="col range-col s${k + 1} ${css.cls(band(lo, hi))}"></span>`;
+        return pairs.length > 1 && link ? mark('span', i, k * 2, 'col-slot', `${l} · ${a.name}–${b.name}: ${fmt.format(a.values[i])} – ${fmt.format(b.values[i])}`, col, false) : html`<span class="col-slot">${col}</span>`;
+      });
+      return pairs.length > 1 ? html`<div class="col-group" role="img" data-tip="${tipOf(l, i)}" tabindex="0" aria-label="${tipOf(l, i)}">${inner}</div>` : mark('div', i, 0, 'col-group', tipOf(l, i), inner);
+    })}</div>
+  </div>${xLabels(labels)}`;
+}
+
+// ---------------------------------------------------------------- box plot
+/** A quantile by linear interpolation between the closest ranks (like percentile_cont); `sorted` ascending. */
+export function quantile(sorted: number[], q: number) {
+  if (!sorted.length) return NaN;
+  const at = (sorted.length - 1) * q;
+  const lo = Math.floor(at);
+  return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (at - lo);
+}
+
+interface Box { label: string; row: number; stats: [number, number, number, number, number]; n: number | null }
+
+/** The boxes of a box plot: five statistics per row, or computed per label from one value column. */
+export function boxes(rows: unknown[][], labels: string[], series: Series[]): Box[] {
+  if (series.length >= 5)
+    return labels.map((label, i) => {
+      const v = series.slice(0, 5).map((s) => s.values[i]).sort((a, b) => a - b) as Box['stats'];
+      return { label, row: i, stats: v, n: null };
+    });
+  const groups = new Map<string, { row: number; values: number[] }>();
+  rows.forEach((r, i) => {
+    const raw = r[1];
+    const v = raw === null || raw === '' ? NaN : Number(raw);
+    if (!Number.isFinite(v)) return;
+    const g = groups.get(labels[i]) ?? { row: i, values: [] };
+    g.values.push(v);
+    groups.set(labels[i], g);
+  });
+  return [...groups].map(([label, g]) => {
+    const v = g.values.sort((a, b) => a - b);
+    return { label, row: g.row, stats: [v[0], quantile(v, 0.25), quantile(v, 0.5), quantile(v, 0.75), v[v.length - 1]], n: v.length };
+  });
+}
+
+function boxplot(list: Box[]) {
+  if (!list.length) return html`<p class="empty">${texts.noBoxplot}</p>`;
+  const scale = niceScale(Math.min(...list.map((b) => b.stats[0])), Math.max(...list.map((b) => b.stats[4])), false);
+  const { y, grid } = yAxis(scale);
+  const name = [texts.min, texts.q1, texts.median, texts.q3, texts.max];
+  return html`<div class="chart-plot">
+    ${grid}
+    <div class="chart-cols">${list.map((b) => {
+      const [mn, q1, md, q3, mx] = b.stats.map(y);
+      const t = `${b.label} · ${b.stats.map((v, k) => `${name[k]}: ${fmt.format(v)}`).join(' · ')}${b.n === null ? '' : ` · n = ${b.n}`}`;
+      const inner = html`<span class="col-slot box-slot">
+        <span class="box-whisker ${css.cls(`bottom:${pct(mn)};height:${pct(mx - mn)}`)}"></span>
+        <span class="box-cap ${css.cls(`bottom:${pct(mx)}`)}"></span><span class="box-cap ${css.cls(`bottom:${pct(mn)}`)}"></span>
+        <span class="box-iqr s1 ${css.cls(band(q1, q3, 2))}"></span>
+        <span class="box-median ${css.cls(`bottom:${pct(md)}`)}"></span></span>`;
+      return mark('div', b.row, 0, 'col-group', t, inner);
+    })}</div>
+  </div>${xLabels(list.map((b) => b.label))}`;
+}
+
+// ---------------------------------------------------------------- stock
+function stock(labels: string[], series: Series[]) {
+  // open, high, low, close: a candle per row, rising (close ≥ open) or falling
+  if (series.length < 4) return html`<p class="empty">${texts.noStock}</p>`;
+  const [open, high, low, close] = series;
+  const all = [...high.values, ...low.values, ...open.values, ...close.values];
+  const scale = niceScale(Math.min(...all), Math.max(...all), false);
+  const { y, grid } = yAxis(scale);
+  const thin = labels.length > 60;
+  return html`<div class="chart-plot">
+    ${grid}
+    <div class="chart-cols${thin ? ' stock-thin' : ''}">${labels.map((l, i) => {
+      const [o, h, lo, c] = [open, high, low, close].map((s) => s.values[i]);
+      const up = c >= o;
+      const t = `${l} · ${open.name}: ${fmt.format(o)} · ${high.name}: ${fmt.format(h)} · ${low.name}: ${fmt.format(lo)} · ${close.name}: ${fmt.format(c)}`;
+      const top = y(Math.max(o, c));
+      const bottom = y(Math.min(o, c));
+      const inner = html`<span class="col-slot stock-slot">
+        <span class="stock-wick ${css.cls(`bottom:${pct(y(Math.min(lo, h)))};height:${pct(y(Math.max(lo, h)) - y(Math.min(lo, h)))}`)}"></span>
+        <span class="stock-body ${up ? 'up' : 'down'} ${css.cls(band(bottom, top))}"></span></span>`;
+      return mark('div', i, null, 'col-group', t, inner);
+    })}</div>
+  </div>${xLabels(labels)}`;
+}
+
 // ---------------------------------------------------------------- gantt
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -771,6 +896,10 @@ function gantt(title: string, rows: unknown[][], fields: { name: string }[], now
     </table></div></details>`;
 }
 
+/** A range chart's legend: one entry per pair of series. */
+const rangeNames = (series: Series[]): Series[] =>
+  Array.from({ length: Math.min(4, Math.floor(series.length / 2)) }, (_, k) => ({ name: `${series[2 * k].name} – ${series[2 * k + 1].name}`, values: [] }));
+
 /** A chart's markup; its geometry goes into `sheet` as classes (no inline styles: see css.ts). */
 export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][], fields: { name: string }[], sheet: PageCss, lang = 'en', t?: Translate, opts: ChartOptions = {}): Raw {
   css = sheet;
@@ -789,12 +918,26 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
       ...texts, table: t('chart.table'), other: t('chart.other'), label: t('chart.label'), noBubble: t('chart.no_bubble'), noRadar: t('chart.no_radar'),
       good: t('chart.status_good'), warning: t('chart.status_warning'), critical: t('chart.status_critical'), ofFirst: t('chart.of_first'), size: t('chart.size'),
       noGantt: t('chart.no_gantt'), noData: t('chart.no_data'), today: t('chart.today'),
+      noRange: t('chart.no_range'), noBoxplot: t('chart.no_boxplot'), noStock: t('chart.no_stock'),
+      min: t('chart.min'), q1: t('chart.q1'), median: t('chart.median'), q3: t('chart.q3'), max: t('chart.max'),
     };
   // a Gantt chart reads its date columns itself (its series are not numbers)
   if (kind === 'gantt')
     return html`<figure class="chart chart-gantt" aria-label="${title}">${gantt(title, rows, fields, opts.now ?? Date.now())}</figure>`;
   const { labels, series } = parse(rows, fields, opts.hidden);
   if (!series.length) return html`<p class="empty">${texts.noSeries}</p>`;
+  if (kind === 'boxplot') {
+    // the data table shows the statistics of each box (computed ones too)
+    const list = boxes(rows, labels, series);
+    const names = [texts.min, texts.q1, texts.median, texts.q3, texts.max];
+    const stats: Series[] = names.map((name, k) => ({ name, values: list.map((b) => b.stats[k]) }));
+    const rowsOf = list.map((b) => b.row);
+    const outer = link;
+    link = outer ? (i, si) => outer(rowsOf[i], si === null ? null : 0) : undefined;
+    const table = dataTable(title, list.map((b) => b.label), stats, fields[0]?.name ?? texts.label, true);
+    link = outer;
+    return html`<figure class="chart chart-boxplot" aria-label="${title}">${boxplot(list)}${list.length ? table : ''}</figure>`;
+  }
   let body: Raw;
   switch (kind) {
     case 'column':
@@ -835,11 +978,17 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
     case 'polar':
       body = polar(labels, series);
       break;
+    case 'range':
+      body = range(labels, series);
+      break;
+    case 'stock':
+      body = stock(labels, series);
+      break;
     default:
       body = bar(labels, series);
   }
   return html`<figure class="chart chart-${kind}" aria-label="${title}">
-    ${['donut', 'pie', 'bubble', 'gauge', 'funnel'].includes(kind) || (kind === 'pyramid' && series.length < 2) ? '' : legend(kind === 'pyramid' ? series.slice(0, 2) : series)}
+    ${['donut', 'pie', 'bubble', 'gauge', 'funnel', 'stock'].includes(kind) || (kind === 'pyramid' && series.length < 2) ? '' : kind === 'range' ? legend(rangeNames(series)) : legend(kind === 'pyramid' ? series.slice(0, 2) : series)}
     ${body}
     ${dataTable(title, labels, kind === 'gauge' || kind === 'funnel' ? series.slice(0, 1) : kind === 'pyramid' ? series.slice(0, 2) : series, fields[0]?.name ?? texts.label, kind === 'bubble')}
   </figure>`;

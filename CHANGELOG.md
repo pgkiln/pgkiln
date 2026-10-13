@@ -5,7 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities.
+Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities. Sprint 63: range, box plot and stock
+charts.
 
 ### Added
 - **Workspace preferences** (migration 093; APEX: Set Workspace Preferences): administrators and a workspace's
@@ -20,8 +21,14 @@ Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities.
   policies or not enabled, PUBLIC grants, unused indexes, largest tables, tables without a comment), **About
   Database** (version, settings, extensions, schema sizes) and a read-only **Database Monitor** of sessions and
   blocked queries for administrators.
+- **Range, box plot and stock charts** (APEX: Oracle JET range, box plot and stock charts): floating columns from low
+  to high (several pairs per row); boxes with whiskers from one value column with a row per observation (computed
+  per label, like `percentile_cont`) or from five statistics per row; candlesticks from open, high, low and close. Texts
+  in the 22 built-in languages; HR example part 56 adds them to page 32.
 
 ### Fixed
+- A chart axis with many labels showed them cut off (e.g. "0." for "02 Sep"): the labels shown use the room of the
+  hidden ones, and a narrow chart shows every other one.
 - Progressive Web Apps: the service worker could be stopped before it kept a visited page, so a form sent offline right
   after opening its page showed the offline page instead of "Saved on this device" (the cause of an intermittent e2e
   failure).

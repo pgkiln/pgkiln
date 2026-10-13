@@ -137,7 +137,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail, copy/paste of cells, and single row, group by and chart views |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
-| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid or polar chart from a SELECT, with drill-down links |
+| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid, polar, range, box plot or stock chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month, week, day and list views of dated rows, with create on click and drag and drop |
 | [`facets`](#facets-faceted-search) | Checkbox, range and star filters with counts and a search field for a report |
@@ -506,7 +506,7 @@ Attributes:
 
 | Key | Meaning |
 |---|---|
-| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel`, `radar`, `gantt`, `pyramid` or `polar` |
+| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel`, `radar`, `gantt`, `pyramid`, `polar`, `range`, `boxplot` or `stock` |
 | `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
 | `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
 | `format_mask` | A number format mask for the values in labels, tips and the data table, e.g. `"FML999G990"` (see [number formats](14-globalization.md#number-formats)) |
@@ -528,6 +528,9 @@ Attributes:
 | `gantt` | tasks over time | **label, start, end** (dates or timestamps; an empty end, or one equal to the start, is a milestone ◆), then optional columns **by name**: `progress` (0 to 100, the filled part of the bar), `task_id` and `depends_on` (the ids a task waits for: `3`, `3,4` or an array). A time axis in hours, days, weeks, months or years, a dashed line for now (in the session's time zone, like the timestamps the query returns), and elbow lines from the end of each predecessor to the start of the task. Rows without a start are left out |
 | `pyramid` | levels of a hierarchy, or two groups compared per band | **one series**: a triangle cut into segments from the top (the first row) down, each segment's **area** in proportion to its value (≤ 8; more fold into "Other"). **Two series**: back-to-back bars (a population pyramid), the first series to the left, both on one scale; negative values count as their size |
 | `polar` | values per period or direction (months, weekdays) | a polar area chart: **one equal sector per row** (up to 24) clockwise from 12 o'clock, the radius in proportion to the value on rings from zero; several series share a row's sector |
+| `range` | a span per category (lowest and highest, from and to) | **low and high** columns (in either order): a floating column from one to the other; each further pair of columns is another range per row (up to four, with a legend). The axis doesn't have to start at zero |
+| `boxplot` | the spread of values per group | **one value column with a row per observation** (the label repeats; the statistics are computed per label, in the order the labels first appear, like `percentile_cont`; empty values are left out), or **five columns** per row: minimum, first quartile, median, third quartile and maximum. A whisker from minimum to maximum, a box between the quartiles and a line at the median; the data table shows the five statistics (and the tip the number of values) |
+| `stock` | prices over time | **open, high, low and close** columns in that order (any names): a candle per row, filled green when it closed at or above its opening and red when below, with a wick from low to high. The axis doesn't have to start at zero |
 
 A stacked chart, a combination of columns and a line, and a scatter plot:
 
@@ -573,7 +576,7 @@ select initcap(job) as job,
   from hr.emp group by job order by 1
 ```
 
-Gantt, pyramid and polar charts (HR page 32 "Project plan"):
+Gantt, pyramid, polar, range, box plot and stock charts (HR page 32 "Project plan"):
 
 ```sql
 -- gantt: progress, task_id and depends_on by name; deptno only for the link
@@ -593,13 +596,25 @@ select b.band as "Salary",
 select to_char(make_date(2000, m, 1), 'Mon') as month, count(e.empno) as "Hires"
   from generate_series(1, 12) m left join hr.emp e on extract(month from e.hiredate) = m
  group by m order by m
+
+-- range: lowest and highest salary per department (deptno only for the link)
+select d.dname as "Department", min(e.sal) as "Lowest", max(e.sal) as "Highest", d.deptno
+  from hr.dept d join hr.emp e on e.deptno = d.deptno group by d.deptno, d.dname order by d.dname
+
+-- box plot: one row per employee; a box per job
+select e.job as "Job", e.sal as "Salary" from hr.emp e where e.active order by e.job
+
+-- stock: open, high, low and close per day
+select to_char(day, 'DD Mon') as "Day", open as "Open", high as "High", low as "Low", close as "Close"
+  from sales.share_price order by day
 ```
 
 A Gantt chart reads dates as their wall clock (a `timestamptz` in the session's time zone), shows a
 time only when it is not midnight, and has its own data table (label, start, end, progress,
 dependencies). Its rows count toward the chart's row limit (`max_rows`, default 1000).
 
-Up to 8 series; two or more get a legend. Every chart has hover/focus **tooltips** and a
+Up to 8 series; two or more get a legend. When an axis has many labels, only some are shown, and in a
+narrow chart (a region of a few columns, a phone) every other one of those. Every chart has hover/focus **tooltips** and a
 **Data table** toggle (the accessible alternative). Colours come from a palette checked for
 colour-vision deficiency, in light and dark mode; the gauge's status colours are reserved for
 status and always come with an icon and a label. Charts resize with the screen.
@@ -619,7 +634,8 @@ Columns that only the link refers to (here `deptno`) are **not drawn** as a seri
 can return a key next to the label. What links: bars, columns and stacked segments (per series),
 line and area points, scatter dots and bubbles, gauge dials, funnel stages, radar axis labels, pie
 and donut slices and their legend entries (not "Other"), Gantt bars and milestones (the whole row:
-`#series#` is empty), pyramid segments and bars, and polar sectors and their labels. The marks are for the mouse; from the
+`#series#` is empty), pyramid segments and bars, polar sectors and their labels, range columns (per pair of
+series when there are several), boxes (the first row of their label) and candles (the whole row). The marks are for the mouse; from the
 keyboard the **data table** has the same links (the labels, or each value when there are several
 series), and so do the radar and polar labels and the donut and pyramid legends.
 

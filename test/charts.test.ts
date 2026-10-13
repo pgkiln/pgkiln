@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PageCss } from '../src/css.ts';
 import { raw } from '../src/html.ts';
-import { CHART_KINDS, gaugeStatus, niceScale, renderChartBody, timeScale, wallClock, wallClockIn, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
+import { boxes, CHART_KINDS, gaugeStatus, quantile, niceScale, renderChartBody, timeScale, wallClock, wallClockIn, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
 
 const fields = (...names: string[]) => names.map((name) => ({ name }));
 const render = (kind: ChartKind, rows: unknown[][], f = fields('label', 'A', 'B'), opts: ChartOptions = {}) => {
@@ -27,7 +27,8 @@ describe('chart kinds', () => {
       // (a bubble chart needs x, y and size; a radar three axes)
       // (a Gantt chart reads dates: start and end)
       const data = kind === 'gantt' ? [['<img src=x>', '2026-01-01', '2026-01-05', 3], ['2', '2026-01-03', '2026-01-09', 5], ['3', '2026-01-09', null, 7]] : [['<img src=x>', 1, 2, 3], ['2', 3, 4, 5], ['3', 5, 6, 7]];
-      const { body } = render(kind, data, fields('label', 'A', 'B', 'C'));
+      // (a stock chart open, high, low and close)
+      const { body } = kind === 'stock' ? render(kind, data.map((r) => [...r, 4]), fields('label', 'A', 'B', 'C', 'D')) : render(kind, data, fields('label', 'A', 'B', 'C'));
       assert.doesNotMatch(body, /\sstyle=/, kind);
       assert.doesNotMatch(body, /<img src=x>/, kind);
       assert.match(body, new RegExp(`<figure class="chart chart-${kind}"`), kind);
@@ -294,5 +295,50 @@ describe('sprint 33: Gantt, pyramid and polar charts', () => {
     assert.equal(two.match(/class="polar-sector s2"/g)?.length, 2);
     assert.match(two, /<span class="swatch s2"><\/span>B/);
     assert.match(render('polar', [['all', 5]], fields('l', 'A')).body, /<circle class="polar-sector s1" cx="50" cy="50" r="36\.000">/, 'one row: a full circle');
+  });
+});
+
+describe('sprint 63: range, box plot and stock charts', () => {
+  test('range: a floating column from low to high per pair of series; low and high may come in any order', () => {
+    const { body, sheet } = render('range', [['Mon', 10, 20], ['Tue', 25, 15]], fields('day', 'Low', 'High'), { link: drill });
+    const geo = decls(body, sheet, /class="col range-col s1 ([^"]+)"/g);
+    assert.equal(geo.length, 2);
+    // the scale is not forced to zero: 10..25 → a nice scale around it
+    assert.match(body, /data-tip="Mon · 10 – 20"/);
+    assert.match(body, /data-tip="Tue · 15 – 25"/, 'swapped low and high');
+    assert.match(body, /<a class="col-group drill" href="\/p\?row=0&amp;s=0"/);
+    const two = render('range', [['a', 1, 2, 3, 4]], fields('l', 'L1', 'H1', 'L2', 'H2')).body;
+    assert.match(two, /class="col range-col s2 /);
+    assert.match(two, /<span class="swatch s2"><\/span>L2 – H2/);
+    assert.match(render('range', [['a', 1]], fields('l', 'A')).body, /needs a label column and two numeric columns/);
+  });
+
+  test('box plot: quantiles like percentile_cont; per label from one value column, or five statistics per row', () => {
+    assert.equal(quantile([1, 2, 3, 4], 0.5), 2.5);
+    assert.equal(quantile([1, 2, 3, 4, 5], 0.25), 2);
+    assert.equal(quantile([7], 0.75), 7);
+    const raw = [['A', 1], ['B', 10], ['A', 3], ['A', 2], ['A', 4], ['B', 20], ['A', null]];
+    const list = boxes(raw, raw.map((r) => String(r[0])), [{ name: 'v', values: raw.map((r) => Number(r[1]) || 0) }]);
+    assert.deepEqual(list.map((b) => [b.label, b.row, b.stats, b.n]), [['A', 0, [1, 1.75, 2.5, 3.25, 4], 4], ['B', 1, [10, 12.5, 15, 17.5, 20], 2]], 'a null value is left out');
+    const { body } = render('boxplot', raw, fields('grp', 'v'), { link: drill });
+    assert.equal(body.match(/class="box-iqr s1 /g)?.length, 2, 'one box per label');
+    assert.match(body, /data-tip="A · Minimum: 1 · First quartile: 1.75 · Median: 2.5 · Third quartile: 3.25 · Maximum: 4 · n = 4"/);
+    assert.match(body, /<a class="col-group drill" href="\/p\?row=1&amp;s=0"/, 'B links to its first row');
+    assert.match(body, /<th scope="col" class="num">Median<\/th>/, 'the data table shows the statistics');
+    const five = render('boxplot', [['x', 1, 2, 3, 4, 5]], fields('l', 'min', 'q1', 'med', 'q3', 'max')).body;
+    assert.match(five, /Median: 3 · Third quartile: 4 · Maximum: 5"/);
+    assert.doesNotMatch(five, /n = /);
+    assert.match(render('boxplot', [], fields('l', 'v')).body, /A box plot needs/);
+  });
+
+  test('stock: a candle per row, rising or falling, the wick from low to high', () => {
+    const { body, sheet } = render('stock', [['d1', 10, 15, 8, 12], ['d2', 12, 13, 9, 10]], fields('day', 'Open', 'High', 'Low', 'Close'), { link: drill });
+    assert.match(body, /class="stock-body up /);
+    assert.match(body, /class="stock-body down /);
+    assert.equal(decls(body, sheet, /class="stock-wick ([^"]+)"/g).length, 2);
+    assert.match(body, /data-tip="d1 · Open: 10 · High: 15 · Low: 8 · Close: 12"/);
+    assert.match(body, /<a class="col-group drill" href="\/p\?row=0&amp;s=null"/);
+    assert.doesNotMatch(body, /chart-legend/);
+    assert.match(render('stock', [['d', 1, 2, 3]], fields('l', 'a', 'b', 'c')).body, /four numeric columns/);
   });
 });
