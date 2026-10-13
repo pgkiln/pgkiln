@@ -22,25 +22,28 @@ interface Isolated {
   devRole: string;
 }
 
-let byApp = new Map<number, Isolated>();
-let byAlias = new Map<string, Isolated>();
+// every application with its isolated workspace (null: a shared one); an application that isn't
+// listed was made since the last load (e.g. just now, in an isolated workspace): load again
+let byApp = new Map<number, Isolated | null>();
+let byAlias = new Map<string, Isolated | null>();
 let loadedAt = 0;
 let loading: Promise<void> | null = null;
-/** How long the list of isolated applications is trusted (other server processes' changes). */
+/** How long the list is trusted (other server processes' changes: moving applications, isolating workspaces). */
 const TTL_MS = Number(process.env.PGKILN_WORKSPACE_CACHE_MS ?? 5000);
+/** At most this often again for an application the list doesn't know (unknown aliases in URLs). */
+const MISS_MS = 250;
 
 async function load() {
   const rows = (
-    await owner.query<{ app_id: number; alias: string; ws: number; run_role: string; dev_role: string }>(
+    await owner.query<{ app_id: number; alias: string; ws: number | null; run_role: string | null; dev_role: string | null }>(
       `select a.id as app_id, a.alias, w.id as ws, w.run_role, w.dev_role
-         from meta.app a join meta.workspace w on w.id = meta.app_workspace(a.id)
-        where w.isolated`,
+         from meta.app a left join meta.workspace w on w.id = meta.app_workspace(a.id) and w.isolated`,
     )
   ).rows;
-  const apps = new Map<number, Isolated>();
-  const aliases = new Map<string, Isolated>();
+  const apps = new Map<number, Isolated | null>();
+  const aliases = new Map<string, Isolated | null>();
   for (const r of rows) {
-    const iso = { ws: r.ws, runRole: r.run_role, devRole: r.dev_role };
+    const iso = r.ws !== null && r.run_role && r.dev_role ? { ws: r.ws, runRole: r.run_role, devRole: r.dev_role } : null;
     apps.set(r.app_id, iso);
     aliases.set(r.alias.toLowerCase(), iso);
   }
@@ -49,18 +52,27 @@ async function load() {
   loadedAt = Date.now();
 }
 
-async function fresh() {
-  if (Date.now() - loadedAt < TTL_MS) return;
+async function reload(maxAge: number) {
+  if (Date.now() - loadedAt < maxAge) return;
   loading ??= load().finally(() => (loading = null));
   await loading;
 }
 
+/** The isolated workspace of an application (by id or alias), or null for a shared one. */
+async function isolatedOf<K>(map: () => Map<K, Isolated | null>, key: K): Promise<Isolated | null> {
+  await reload(TTL_MS);
+  if (!map().has(key)) await reload(MISS_MS);
+  return map().get(key) ?? null;
+}
+const isoOfApp = (appId: number | string) => isolatedOf(() => byApp, Number(appId));
+const isoOfAlias = (alias: string) => isolatedOf(() => byAlias, alias.toLowerCase());
+
 /** Forget the cached list (after this process isolated a workspace or moved an application). */
 export async function workspacesChanged() {
   loadedAt = 0;
-  await fresh();
+  await reload(0);
   // logins of workspaces that are no longer isolated: close their pools
-  const live = new Set([...byApp.values()].flatMap((i) => [i.runRole, i.devRole]));
+  const live = new Set([...byApp.values()].flatMap((i) => (i ? [i.runRole, i.devRole] : [])));
   for (const [role, db] of pools) {
     if (live.has(role)) continue;
     pools.delete(role);
@@ -112,8 +124,7 @@ const quoteLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 /** The runtime pool of an application: its isolated workspace's login, or the shared one. */
 export async function runtimeForApp(appId: number | string): Promise<Db> {
-  await fresh();
-  const iso = byApp.get(Number(appId));
+  const iso = await isoOfApp(appId);
   return iso ? poolFor(iso.runRole) : sharedRuntime;
 }
 
@@ -121,8 +132,7 @@ setAppRuntime(runtimeForApp);
 
 /** The runtime pool for an application alias (a request under /a/:alias). */
 export async function runtimeForAlias(alias: string): Promise<Db> {
-  await fresh();
-  const iso = byAlias.get(alias.toLowerCase());
+  const iso = await isoOfAlias(alias);
   return iso ? poolFor(iso.runRole) : sharedRuntime;
 }
 
@@ -134,8 +144,7 @@ export async function withAppDb<T>(appId: number | string, fn: () => Promise<T>)
 
 /** Is the application in an isolated workspace? */
 export async function appIsolated(appId: number | string) {
-  await fresh();
-  return byApp.has(Number(appId));
+  return !!(await isoOfApp(appId));
 }
 
 /**
@@ -146,8 +155,7 @@ export async function appIsolated(appId: number | string) {
  */
 export async function devDbForApp(appId: number | string | null | undefined): Promise<Db> {
   if (appId == null || appId === '') return owner;
-  await fresh();
-  const iso = byApp.get(Number(appId));
+  const iso = await isoOfApp(appId);
   return iso ? poolFor(iso.devRole) : owner;
 }
 
