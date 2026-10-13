@@ -286,10 +286,10 @@ export const rangesText = (ranges: unknown) =>
     .map((r: any) => `${r?.from ?? ''}..${r?.to ?? ''}${r?.label ? ` = ${r.label}` : ''}`)
     .join('; ');
 
-const FACET_FORM_KEYS = ['label', 'limit', 'type', 'ranges', 'custom', 'exclude'];
+const FACET_FORM_KEYS = ['label', 'limit', 'type', 'ranges', 'custom', 'exclude', 'chart'];
 
 /** The facets table of a faceted search or smart filters form (and the report it filters). */
-function mergeFacetList(out: Config, config: Config, b: Body, a: Allowed) {
+function mergeFacetList(out: Config, config: Config, b: Body, a: Allowed, charts = true) {
   const set = setter(out);
   const report = Number(b.report);
   const columns = a.reports.get(report);
@@ -306,6 +306,7 @@ function mergeFacetList(out: Config, config: Config, b: Body, a: Allowed) {
     ranges: parseRanges(b[`ranges_${i}`]),
     custom: b[`custom_${i}`] === 'true',
     exclude: b[`exclude_${i}`] === 'true',
+    chart: charts && (b[`chart_${i}`] === 'bar' || b[`chart_${i}`] === 'pie') ? b[`chart_${i}`] : null,
     seq: Number(b[`seq_${i}`]) || (i + 1) * 10,
   }))
     .filter((f) => f.on && columns.includes(f.column))
@@ -323,6 +324,8 @@ function mergeFacetList(out: Config, config: Config, b: Body, a: Allowed) {
         ...(f.type === 'range' && f.ranges.length ? { ranges: f.ranges } : {}),
         // a range facet without ranges has from/to fields unless switched off; with ranges, only when switched on
         ...(f.type === 'range' && f.custom !== !f.ranges.length ? { custom: f.custom } : {}),
+        // (sprint 65) a chart of the counts (faceted search only)
+        ...(f.chart ? { chart: f.chart } : {}),
       };
     });
   set('facets', facets.length ? facets : undefined);
@@ -338,7 +341,8 @@ export function mergeFacetsSettings(config: Config, b: Body, a: Allowed): Config
 
 export function mergeSmartFiltersSettings(config: Config, b: Body, a: Allowed): Config {
   const out = { ...config };
-  if (!mergeFacetList(out, config, b, a)) return out;
+  // (sprint 65) facet charts belong to faceted search
+  if (!mergeFacetList(out, config, b, a, false)) return out;
   const set = setter(out);
   const n = Number(b.suggestions);
   set('suggestions', b.suggestions !== undefined && b.suggestions !== '' && Number.isInteger(n) && n >= 0 && n <= 10 && n !== 3 ? n : undefined);
@@ -621,6 +625,7 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
       <td data-label="Exclude"><input type="checkbox" name="exclude_${i}" value="true"${f?.exclude === true ? raw(' checked') : ''} aria-label="Users may exclude values of ${n}"></td>
       <td data-label="Ranges"><input name="ranges_${i}" value="${rangesText(f?.ranges)}" placeholder="..1000; 1000..3000 = Middle; 3000.." aria-label="Ranges of ${n}"></td>
       <td data-label="From/to"><input type="checkbox" name="custom_${i}" value="true"${custom ? raw(' checked') : ''} aria-label="Users may type a range for ${n}"></td>
+      ${smart ? '' : html`<td data-label="Chart"><select name="chart_${i}" aria-label="Chart of the facet on ${n}">${opt('', 'None', f?.chart)}${opt('bar', 'Bar', f?.chart)}${opt('pie', 'Pie', f?.chart)}</select></td>`}
       <td data-label="Order"><input name="seq_${i}" type="number" value="${(i + 1) * 10}" aria-label="Order of ${n}" class="u-mw6"></td>
     </tr>`;
   });
@@ -640,8 +645,8 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
     ${target
       ? html`<fieldset class="prop-group"><legend>Facets</legend>
           ${all.length
-            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Facet</th><th>Label</th><th>Type</th><th>Values shown</th><th>Exclude</th><th>Ranges</th><th>From/to</th><th>Order</th></tr></thead><tbody>${rows}</tbody></table></div>
-              <small class="help">Checkboxes list the most frequent values (Exclude lets users filter them out instead). Ranges and From/to need a number or date column: ranges are <code>from..to = label</code> separated by <code>;</code>, an open end left empty (<code>..1000</code>, <code>2020-01-01..</code>); a range includes its start, not its end. A star rating offers "4 stars and up" and so on (up to 5; <code>"max"</code> in the JSON changes it).</small>`
+            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Facet</th><th>Label</th><th>Type</th><th>Values shown</th><th>Exclude</th><th>Ranges</th><th>From/to</th>${smart ? '' : html`<th>Chart</th>`}<th>Order</th></tr></thead><tbody>${rows}</tbody></table></div>
+              <small class="help">Checkboxes list the most frequent values (Exclude lets users filter them out instead). Ranges and From/to need a number or date column: ranges are <code>from..to = label</code> separated by <code>;</code>, an open end left empty (<code>..1000</code>, <code>2020-01-01..</code>); a range includes its start, not its end. A star rating offers "4 stars and up" and so on (up to 5; <code>"max"</code> in the JSON changes it).${smart ? '' : ' Chart: a bar or pie chart of the counts under the facet (collapsed); a bar or slice filters on its value.'}</small>`
             : html`<p class="muted">The report has no columns.</p>`}
         </fieldset>`
       : ''}`;

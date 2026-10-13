@@ -112,14 +112,22 @@ describe('Progressive Web App', () => {
     await controlled(page);
     await page.goto(`${base}/a/hr/7?clear=1`);
     // the service worker keeps the page in the background: offline before that, ?queued=1 gets the offline page
-    for (let i = 0; i < 50 && !(await page.evaluate(async () => (await (await caches.open('pgkiln-pages-/a/hr')).keys()).some((r) => new URL(r.url).pathname === '/a/hr/7'))); i++)
-      await page.waitForTimeout(100);
+    const pageKept = () => page.evaluate(async () => (await (await caches.open('pgkiln-pages-/a/hr')).keys()).some((r) => new URL(r.url).pathname === '/a/hr/7'));
+    for (let i = 0; i < 50 && !(await pageKept()); i++) await page.waitForTimeout(100);
+    assert.ok(await pageKept(), 'the form page is kept on the device');
     await page.fill('#P7_START_DATE', '2027-06-07');
     await page.fill('#P7_END_DATE', '2027-06-08');
     await page.fill('#P7_REASON', REASON);
     await context.setOffline(true);
     await Promise.all([page.waitForURL(/queued=1/), page.locator('button.btn-hot[value="CREATE"]').click()]);
-    await page.locator('.alert-success', { hasText: 'Saved on this device' }).waitFor();
+    // (diagnostics for an intermittent CI failure: which page the browser shows instead)
+    await page.locator('.alert-success', { hasText: 'Saved on this device' }).waitFor({ timeout: 15000 }).catch(async (e) => {
+      const seen = await page.evaluate(async () => ({
+        url: location.href, sw: document.body.dataset.sw ?? null, controlled: !!navigator.serviceWorker.controller, main: !!document.querySelector('main'),
+        kept: (await (await caches.open('pgkiln-pages-/a/hr')).keys()).map((r) => r.url), text: document.body.innerText.slice(0, 300),
+      }));
+      throw new Error(`${(e as Error).message}\n${JSON.stringify(seen)}`);
+    });
     await page.locator('.offline-queue summary', { hasText: '1 form(s) waiting' }).waitFor();
     assert.equal((await owner.query('select 1 from hr.leave_request where reason = $1', [REASON])).rows.length, 0, 'not sent yet');
 

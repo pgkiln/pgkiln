@@ -992,6 +992,11 @@ td[data-add]:hover > .cal-add, .cal-add:focus-visible { opacity: 1; }
 .facet legend { font-weight: 650; font-size: 0.85rem; margin-bottom: 0.3rem; padding: 0; display: flex; gap: 0.5rem; }
 .facet-clear { font-weight: 400; font-size: 0.8rem; }
 .facet-value { font-weight: 400; font-size: 0.9rem; }
+/* (sprint 65) a facet's chart of its counts, collapsed under the legend */
+.facet-chart { margin: 0.1rem 0 0.4rem; }
+.facet-chart > summary { cursor: pointer; font-size: 0.8rem; color: var(--muted); }
+.facet-chart .chart { margin-top: 0.4rem; font-size: 0.85rem; }
+.facet-chart .donut-figure { max-width: 9rem; margin: 0 auto; }
 .facet-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .facet-count { font-size: 0.75rem; color: var(--muted); background: var(--surface-3); border-radius: 99px; padding: 0 0.5rem; font-variant-numeric: tabular-nums; }
 .js .facet-actions .btn-hot { display: none; }
