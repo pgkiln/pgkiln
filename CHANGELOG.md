@@ -5,6 +5,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities.
+
+### Added
+- **Workspace preferences** (migration 093; APEX: Set Workspace Preferences): administrators and a workspace's
+  administrators turn the **SQL Workshop** off for the workspace (every SQL Workshop page answers 403 while it is
+  current, and it leaves the rail) and its applications' **RESTful services** (their REST modules answer 404).
+- **Extension links** (APEX: Manage Extension Links): a workspace's links to other tools, in an **Extensions** menu of
+  the builder's rail.
+- **Manage backups** in Workspace utilities: the backups of every application of the workspace on one page, and
+  *Back up now* for all of them (only the changed ones by default).
+- **SQL Workshop → Utilities** (APEX: SQL Workshop Utilities): the workshop's tools on one page, **Object Reports**
+  (tables without a primary key, foreign keys without an index with the index to add, row-level security without
+  policies or not enabled, PUBLIC grants, unused indexes, largest tables, tables without a comment), **About
+  Database** (version, settings, extensions, schema sizes) and a read-only **Database Monitor** of sessions and
+  blocked queries for administrators.
+
+### Changed
+- APEX parity: the Manage Service and SQL Workshop rows lose their Missing notes on workspace preferences, extension
+  links and the SQL Workshop utilities.
+
 ## [0.38.0] - 2026-10-13
 
 Sprint 61: the builder's screens like APEX 26.1's.
@@ -32,22 +52,6 @@ Sprint 61: the builder's screens like APEX 26.1's.
   the App Builder home.
 - **Cross Application Reports** in Workspace utilities: application attributes, build options, developer comments,
   authentication, authorization schemes, password items and theme summary over the workspace's applications.
-
-Sprint 62: workspace preferences and Manage backups.
-
-### Added
-- **Workspace preferences** (migration 093; APEX: Set Workspace Preferences): administrators and a workspace's
-  administrators turn the **SQL Workshop** off for the workspace (every SQL Workshop page answers 403 while it is
-  current, and it leaves the rail) and its applications' **RESTful services** (their REST modules answer 404).
-- **Extension links** (APEX: Manage Extension Links): a workspace's links to other tools, in an **Extensions** menu of
-  the builder's rail.
-- **Manage backups** in Workspace utilities: the backups of every application of the workspace on one page, and
-  *Back up now* for all of them (only the changed ones by default).
-- **SQL Workshop → Utilities** (APEX: SQL Workshop Utilities): the workshop's tools on one page, **Object Reports**
-  (tables without a primary key, foreign keys without an index with the index to add, row-level security without
-  policies or not enabled, PUBLIC grants, unused indexes, largest tables, tables without a comment), **About
-  Database** (version, settings, extensions, schema sizes) and a read-only **Database Monitor** of sessions and
-  blocked queries for administrators.
 
 ### Fixed
 - A calendar region whose query has no `end_date` column (e.g. one made by the calendar wizard without an end
