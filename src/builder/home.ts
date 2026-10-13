@@ -151,6 +151,7 @@ export async function homeRoutes(app: FastifyInstance) {
     const main = html`<div class="ab-home">
       <div class="ab-main">
         <h1 class="sr-only">App Builder</h1>
+        ${s.workspace?.message ? html`<div class="alert alert-info ab-message" role="status">${icon('bell')}<div><strong>${s.workspace.name}</strong><p>${s.workspace.message}</p></div></div>` : ''}
         ${tiles()}
         <div class="ab-toolbar">
           <form class="ab-search" method="get" action="${BASE}" role="search">

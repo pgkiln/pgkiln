@@ -87,8 +87,8 @@ export interface ShellOpts {
 const initials = (name: string) => name.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
 /**
- * A builder page: the icon rail on the left (App Builder, SQL Workshop, Users,
- * Developers, Search, Help, the developer's menu), a compact toolbar with
+ * A builder page: the icon rail on the left (App Builder, SQL Workshop, Search;
+ * Administration, Help, the developer's menu), an environment banner (091), a compact toolbar with
  * back button and breadcrumb, then the page itself.
  */
 export function shell(s: Session, title: string, crumbs: [string, string?][], main: Raw, section: Section = 'apps', opts: ShellOpts = {}) {
@@ -110,11 +110,29 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       <ul class="rail-list">
         ${rail('apps', BASE, 'builder', 'App Builder')}
         ${rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
-        ${rail('users', `${BASE}/users`, 'user', 'Users')}
-        ${rail('developers', `${BASE}/developers`, 'users', 'Developers')}
         ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}
       </ul>
       <ul class="rail-list rail-bottom">
+        <li><details class="menu rail-user rail-admin">
+          <summary class="rail-link${section === 'users' || section === 'developers' ? ' rail-open' : ''}" title="Administration"${section === 'users' || section === 'developers' ? raw(' aria-current="page"') : ''}>${icon('settings')}<span class="rail-label">Administration</span></summary>
+          <div class="menu-panel">
+            <div class="menu-section menu-links">
+              <strong>Administration</strong>
+              <a href="${BASE}/utilities">${icon('grid')} Workspace utilities</a>
+            </div>
+            ${s.workspace?.admin ? html`<div class="menu-section menu-links">
+              <span class="small muted">Manage service: ${s.workspace.name}</span>
+              <a href="${BASE}/workspaces/${s.workspace.id}#service">${icon('bell')} Workspace message and environment banner</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}/utilization">${icon('chart')} Workspace utilization</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}">${icon('layers')} Workspace and developers</a>
+            </div>` : ''}
+            <div class="menu-section menu-links">
+              <a href="${BASE}/users">${icon('user')} Manage users and groups</a>
+              <a href="${BASE}/developers">${icon('users')} Developers</a>
+              <a href="${BASE}/dashboard">${icon('activity')} Monitor activity</a>
+              <a href="${BASE}/developers">${icon('key')} Change my password</a>
+            </div>
+          </div></details></li>
         ${rail('help', 'https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md', 'help', 'Help', raw(' target="_blank" rel="noopener"'))}
         <li><details class="menu rail-user">
           <summary class="rail-avatar" title="${s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">Account: ${s.username}</span></summary>
@@ -139,6 +157,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
           html`<li>${href && i < crumbs.length - 1 ? html`<a href="${href}">${label}</a>` : html`<span aria-current="page">${label}</span>`}</li>`)}</ol></nav>
         <div class="ide-tools">${opts.toolbar ?? ''}</div>
       </header>
+      ${s.workspace?.banner_label ? html`<div class="ide-banner ide-banner-${BANNER_COLORS.includes(s.workspace.banner_color ?? '') ? s.workspace.banner_color : 'blue'}" role="note" aria-label="Environment">${s.workspace.banner_label}</div>` : ''}
       ${s.state.__WEAK || ok || err ? html`<div class="ide-alerts">
         ${s.state.__WEAK ? html`<div class="alert alert-error" role="alert">You signed in with the default password. <a href="${BASE}/developers">Change it now.</a></div>` : ''}
         ${ok ? html`<div class="alert alert-success" role="status">${ok}</div>` : ''}
@@ -161,6 +180,9 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
     { theme },
   );
 }
+
+/** (091) the colours of a workspace's environment banner (builder.css draws them) */
+export const BANNER_COLORS = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'gray'];
 
 export const csrf = (s: Session) => html`<input type="hidden" name="__csrf" value="${s.csrf_token}">`;
 

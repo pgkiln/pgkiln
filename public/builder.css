@@ -816,3 +816,22 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .pe-help-body { padding-top: 0.4rem; overflow-wrap: anywhere; }
 .pe-help-body h3 { font-size: 0.95rem; margin: 0 0 0.3rem; }
 .pe-help-body p { margin: 0 0 0.4rem; }
+
+/* ------------------------------------------------------------ environment banner, workspace message (091), Administration menu */
+.ide-banner { padding: 3px 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; }
+.ide-banner-red { background: #b42318; color: #fff; }
+.ide-banner-orange { background: #c4520f; color: #fff; }
+.ide-banner-yellow { background: #e6b400; color: #1e1d1b; }
+.ide-banner-green { background: #2f7d32; color: #fff; }
+.ide-banner-teal { background: #0e7a74; color: #fff; }
+.ide-banner-blue { background: #1a5f99; color: #fff; }
+.ide-banner-purple { background: #6941c6; color: #fff; }
+.ide-banner-gray { background: #5e5a54; color: #fff; }
+.ab-message { display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 12px; }
+.ab-message p { margin: 0.15rem 0 0; white-space: pre-line; }
+.rail-admin { padding: 0; }
+.rail-admin > summary { list-style: none; cursor: pointer; }
+.rail-admin > summary::-webkit-details-marker { display: none; }
+.rail-admin .menu-panel { bottom: 56px; }
+.rail-admin .menu-links strong { padding: 2px 0 4px; }
+.ide .alert-info { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
