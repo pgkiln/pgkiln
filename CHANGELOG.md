@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-13
+
 Sprint 62: workspace preferences, Manage backups and the SQL Workshop utilities. Sprint 63: range, box plot and stock
 charts. Sprint 64: vacation rules and expiration policies for approvals.
 
