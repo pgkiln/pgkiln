@@ -7156,3 +7156,38 @@ describe('sprint 59 quick edit', () => {
     assert.doesNotMatch((await king.get('/a/hr/1')).body, /data-quick-edit/);
   });
 });
+
+describe('sprint 60 isolated workspaces', () => {
+  test('the unchecked functions and the workspace tables are closed to application code', async () => {
+    const r = await owner.query(
+      `select p.oid::regprocedure::text as f from pg_proc p where p.pronamespace = 'meta'::regnamespace and p.proname like '%\\_unchecked'
+          and (has_function_privilege('pgkiln_runtime', p.oid, 'EXECUTE') or has_function_privilege('pgkiln_app_code', p.oid, 'EXECUTE'))`,
+    );
+    assert.deepEqual(r.rows, []);
+    for (const t of ['workspace', 'workspace_member', 'workspace_role', 'workspace_app'])
+      for (const role of ['pgkiln_runtime', 'pgkiln_app_code'])
+        assert.equal((await owner.one(`select has_table_privilege($1, $2, 'SELECT') as ok`, [role, `meta.${t}`])).ok, false, `${role} on ${t}`);
+    // the shared runtime can't call the role management or the grant copy
+    await assert.rejects(runtime.query('select meta.workspace_sync_roles()'), /permission denied/);
+    await assert.rejects(runtime.query('select meta.sync_app_code_grants()'), /permission denied/);
+  });
+
+  test('isolation and workspace roles need an administrator and CSRF; a role name is a name, never SQL', async () => {
+    const ws = (await owner.one(`insert into meta.workspace (name) values ('Sec 60 workspace') returning id`)).id;
+    try {
+      const dev = new Browser();
+      await dev.get('/builder/login');
+      await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+      assert.equal((await dev.post(`/builder/workspaces/${ws}/roles`, { role: 'hr_app', action: 'add' })).statusCode, 403, 'CSRF');
+      assert.equal((await dev.post(`/builder/workspaces/${ws}/isolation`, { isolated: 'true' })).statusCode, 403, 'CSRF');
+      await dev.get(`/builder/workspaces/${ws}`);
+      await dev.post(`/builder/workspaces/${ws}/roles`, { __csrf: dev.lastCsrf, role: `x"; drop role pgkiln_runtime; --`, action: 'add' });
+      assert.equal((await owner.one(`select count(*)::int as n from meta.workspace_role where workspace_id = $1`, [ws])).n, 0);
+      assert.ok(await owner.one(`select 1 as ok from pg_roles where rolname = 'pgkiln_runtime'`));
+      const king = await as('king');
+      assert.notEqual((await king.get(`/builder/workspaces/${ws}`)).statusCode, 200);
+    } finally {
+      await owner.query('delete from meta.workspace where id = $1', [ws]);
+    }
+  });
+});

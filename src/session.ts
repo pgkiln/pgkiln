@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { runtime } from './db.ts';
+import { runtime, sharedRuntime } from './db.ts';
+import { runtimeForApp } from './workspace-db.ts';
 import { hashToken, loginMaxFailuresPerIp, loginMaxFailuresPerUser, loginWindowMinutes, newToken } from './security.ts';
 import { instanceSetting } from './instance.ts';
 
@@ -96,7 +97,9 @@ export async function logActivity(entry: {
   detail?: string;
 }) {
   try {
-    const r = await runtime.one<{ id: string }>(
+    // (090) on the connection of the entry's application (an isolated workspace's own); without one, the shared one
+    const db = entry.appId != null ? await runtimeForApp(entry.appId) : sharedRuntime;
+    const r = await db.one<{ id: string }>(
       `insert into meta.activity_log (app_id, page_no, username, event, ip, elapsed_ms, detail)
        values ($1, $2, $3, $4, $5, $6, $7) returning id`,
       [entry.appId ?? null, entry.pageNo ?? null, entry.username ?? null, entry.event, entry.ip ?? null, entry.elapsedMs ?? null, entry.detail?.slice(0, 2000) ?? null],

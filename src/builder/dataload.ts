@@ -26,6 +26,7 @@ import { readMultipart } from '../runtime/files.ts';
 import type { Session } from '../session.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
+import { appWorkspace, currentWorkspace, workshopDb } from './workspaces.ts';
 
 // SQL Workshop → Load Data: upload a CSV/TSV/XLSX/JSON/XML file, preview it,
 // and load it into a new table (column types inferred) or an existing one
@@ -73,17 +74,23 @@ export const DATA_LOAD_DEF_SPEC: ComponentSpec = {
 export const dataLoadDefExtras = (row: { id: number }) =>
   html`<p class="u-mt1"><a class="btn" href="${BASE}/sql/load?definition=${row.id}">${icon('upload')} Load a file with this definition</a></p>`;
 
-async function definitions() {
+/** The data load definitions of the current workspace's applications. */
+async function definitions(s: Session) {
   return (
     await owner.query<{ id: number; app_id: number; app_name: string; name: string; table_name: string }>(
-      'select d.id, d.app_id, a.name as app_name, d.name, d.table_name from meta.data_load_def d join meta.app a on a.id = d.app_id order by a.name, d.name',
+      `select d.id, d.app_id, a.name as app_name, d.name, d.table_name from meta.data_load_def d join meta.app a on a.id = d.app_id
+        where meta.app_workspace(a.id) = $1 order by a.name, d.name`,
+      [currentWorkspace(s)],
     )
   ).rows;
 }
 
-async function definition(id: unknown) {
+async function definition(s: Session, id: unknown) {
   if (!/^\d+$/.test(String(id ?? ''))) return undefined;
-  return owner.one<DataLoadDefinition & { id: number; app_id: number }>('select * from meta.data_load_def where id = $1', [id]);
+  return owner.one<DataLoadDefinition & { id: number; app_id: number }>(
+    'select * from meta.data_load_def where id = $1 and meta.app_workspace(app_id) = $2',
+    [id, currentWorkspace(s)],
+  );
 }
 
 export const MAX_MB = Number(process.env.DATA_LOAD_MAX_MB ?? 50);
@@ -142,7 +149,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
   });
 
   const uploadForm = async (s: Session, error?: string, chosen?: string) => {
-    const defs = await definitions();
+    const defs = await definitions(s);
     return region(
       'Load data from a file',
       html`${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
@@ -180,7 +187,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!file) return page(s, reply, await uploadForm(s, 'Choose a file.'));
     if (file.truncated) return page(s, reply, await uploadForm(s, `The file is larger than ${MAX_MB} MB.`));
-    const def = await definition(req.body?.definition);
+    const def = await definition(s, req.body?.definition);
     const rowTag = (req.body?.row_tag ?? '').trim();
     try {
       if (def) await parseFile(file.filename, file.data, { headers: def.headers, format: def.format, rowTag: def.row_tag });
@@ -203,7 +210,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
     if (!f) return reply.redirect(`${BASE}/sql/load`);
     const headers = (req.query.h ?? req.body?.h) !== '0';
     const rowTag = (req.query.rt ?? req.body?.rt ?? '').trim();
-    const def = await definition(req.query.d ?? req.body?.d);
+    const def = await definition(s, req.query.d ?? req.body?.d);
     let sheet: Sheet;
     try {
       sheet = def
@@ -256,17 +263,19 @@ export async function dataLoadRoutes(app: FastifyInstance) {
       ${skip}
       <div class="buttons"><button class="btn btn-hot">Create table and load</button></div></form>`;
 
+    const db = await workshopDb(s);
     const tables = (
-      await owner.query(
+      await db.query(
         `select c.oid::regclass::text as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
-          where c.relkind in ('r', 'p') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta') order by 1`,
+          where c.relkind in ('r', 'p') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+            and has_table_privilege(c.oid, 'INSERT') order by 1`,
       )
     ).rows.map((r) => r.name as string);
     const chosen = tables.find((t) => t === (req.query.table ?? req.body?.table));
-    const apps = (await owner.query<{ id: number; name: string }>('select id, name from meta.app order by name')).rows;
+    const apps = (await owner.query<{ id: number; name: string }>('select id, name from meta.app where meta.app_workspace(id) = $1 order by name', [currentWorkspace(s)])).rows;
     let mapping: Raw | '' = '';
     if (chosen) {
-      const cols = await owner.tx((c) => tableColumns(c, chosen));
+      const cols = await db.tx((c) => tableColumns(c, chosen));
       const auto = autoMap(sheet.headers, cols);
       const hasPk = cols.some((c) => c.pk);
       mapping = html`<form method="post" action="${action}">${hidden}<input type="hidden" name="target" value="existing"><input type="hidden" name="table" value="${chosen}">
@@ -335,6 +344,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
       const mode = ['append', 'replace', 'merge'].includes(b.mode ?? '') ? b.mode : 'append';
       const format = sheet instanceof Error ? 'auto' : sheet.format;
       try {
+        if (!/^\d{1,9}$/.test(String(b.def_app ?? '')) || (await appWorkspace(String(b.def_app))) !== currentWorkspace(s)) throw new LoadError('Choose an application of this workspace.');
         const r = await owner.one(
           `insert into meta.data_load_def (app_id, name, table_name, format, headers, row_tag, mode, skip_errors, columns)
            values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id, app_id`,
@@ -344,7 +354,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
         return back(reply, s, `${BASE}/apps/${r!.app_id}/shared?c=data_load_def-${r!.id}`);
       } catch (e) {
         const code = (e as { code?: string }).code;
-        if (!code?.startsWith('23') && code !== '22P02') throw e;
+        if (!(e instanceof LoadError) && !code?.startsWith('23') && code !== '22P02') throw e;
         reply.code(422);
         return targetPage(req, reply, s, html`<div class="alert alert-error" role="alert">The definition could not be saved: ${
           code === '23505' ? `the application already has a definition named ${name}.` : (e as Error).message}</div>`);
@@ -354,10 +364,10 @@ export async function dataLoadRoutes(app: FastifyInstance) {
     let error: string | undefined;
     let failed = false;
     try {
-      const def = b.target === 'definition' ? await definition(b.d) : undefined;
+      const def = b.target === 'definition' ? await definition(s, b.d) : undefined;
       const sheet = def ? null : await parseFile(f.filename, f.content, { headers, rowTag });
       const opts = { skipErrors: b.skip_errors === 'true', firstRow: headers && sheet && (sheet.format === 'csv' || sheet.format === 'xlsx') ? 2 : 1 };
-      result = await owner.tx(async (c) => {
+      result = await (await workshopDb(s)).tx(async (c) => {
         if (def) return loadWithDefinition(c, def, f);
         if (!sheet) throw new LoadError('The data load definition no longer exists.');
         if (b.target === 'new') {

@@ -13,7 +13,7 @@ const inTx = new AsyncLocalStorage<ReadonlySet<string>>();
 /** Waiting for a free connection fails after this, instead of hanging the request forever. */
 const ACQUIRE_TIMEOUT_MS = Number(process.env.DB_ACQUIRE_TIMEOUT_MS ?? 30_000);
 
-function makePool(connectionString: string | undefined, name: string) {
+export function makePool(connectionString: string | undefined, name: string, max = Number(process.env.DB_POOL_SIZE ?? 10)) {
   const opts = {
     connectionString,
     application_name: name,
@@ -21,7 +21,7 @@ function makePool(connectionString: string | undefined, name: string) {
     // a transaction left open (a bug, a hung client) is ended by the database and frees its connection
     idle_in_transaction_session_timeout: Number(process.env.DB_IDLE_IN_TRANSACTION_MS ?? 300_000),
   };
-  const pool = new pg.Pool({ ...opts, max: Number(process.env.DB_POOL_SIZE ?? 10) });
+  const pool = new pg.Pool({ ...opts, max });
   // A query issued while this async chain already holds a connection of this pool
   // (in tx()) must not wait for a second one from the same pool: with every
   // connection held by requests doing that, none would ever be released. Those
@@ -72,11 +72,36 @@ if (!process.env.RUNTIME_DATABASE_URL)
 
 /** Owner connection: builder, SQL Workshop, migrations. */
 export const owner = makePool(ownerUrl, 'pgkiln-builder');
-/** Least-privilege connection (pgkiln_runtime) that runs applications. */
-export const runtime = makePool(process.env.RUNTIME_DATABASE_URL ?? ownerUrl, 'pgkiln-runtime');
+export type Db = ReturnType<typeof makePool>;
+
+export const runtimeUrl = process.env.RUNTIME_DATABASE_URL ?? ownerUrl;
+/** The shared least-privilege connection (pgkiln_runtime): applications outside isolated workspaces. */
+export const sharedRuntime = makePool(runtimeUrl, 'pgkiln-runtime');
+
+/**
+ * The runtime connection of the current request or job: an isolated workspace's
+ * own login (src/workspace-db.ts sets it with runtimeScope.run) or the shared one.
+ */
+export const runtimeScope = new AsyncLocalStorage<Db>();
+const currentRuntime = () => runtimeScope.getStore() ?? sharedRuntime;
+
+/** Least-privilege connection that runs applications: the current scope's (see runtimeScope). */
+export const runtime: Db = {
+  get pool() {
+    return currentRuntime().pool;
+  },
+  query: (sql, params) => currentRuntime().query(sql, params),
+  one: (sql, params) => currentRuntime().one(sql, params),
+  tx: (fn) => currentRuntime().tx(fn),
+  end: () => sharedRuntime.end(),
+};
+
+const closers: (() => Promise<void>)[] = [];
+/** Pools made elsewhere (the workspaces' own) close with the others. */
+export const onClosePools = (fn: () => Promise<void>) => closers.push(fn);
 
 export async function closePools() {
-  await Promise.all([owner.end(), runtime.end()]);
+  await Promise.all([owner.end(), sharedRuntime.end(), ...closers.map((f) => f())]);
 }
 
 export interface AppContext {
@@ -123,8 +148,13 @@ export async function appTx<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): 
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+let appRuntime: (appId: number) => Promise<Db> = async () => currentRuntime();
+/** How appTx finds an application's runtime connection (src/workspace-db.ts: an isolated workspace's own). */
+export const setAppRuntime = (fn: (appId: number) => Promise<Db>) => (appRuntime = fn);
+
 async function appTxInner<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): Promise<T> {
-  return runtime.tx(async (c) => {
+  const db = await appRuntime(ctx.appId);
+  return db.tx(async (c) => {
     await c.query(
       `select set_config('pgkiln.app_user', $1, true),
               set_config('pgkiln.session_id', $2, true),

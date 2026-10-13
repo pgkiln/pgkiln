@@ -31,6 +31,7 @@ import {
 } from '../sampledata.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
+import { currentWorkspace, workshopDb } from './workspaces.ts';
 
 // SQL Workshop → Sample Data (APEX 26.1: Data Generator): generate realistic
 // rows for one or more tables of a schema (src/sampledata.ts). Step 1 picks a
@@ -58,9 +59,9 @@ interface Saved {
   tables: TableSpec[];
 }
 
-async function saved(id: unknown) {
+async function saved(s: Session, id: unknown) {
   if (!/^\d{1,9}$/.test(String(id ?? ''))) return undefined;
-  return owner.one<Saved>('select * from meta.data_generator where id = $1', [id]);
+  return owner.one<Saved>('select * from meta.data_generator where id = $1 and workspace_id = $2', [id, currentWorkspace(s)]);
 }
 
 /** The definition posted by the generator form (never trusted: plan() checks it against the catalog). */
@@ -108,12 +109,13 @@ export async function sampleDataRoutes(app: FastifyInstance) {
 
   const intro = html`<p class="muted">Generate realistic rows for the tables of a schema: names, e-mail addresses, dates and numbers in a range, values from a list,
     foreign keys that pick existing parent rows. Preview them, insert them in one transaction (parents first) or download them as SQL or CSV.
-    Runs as the builder's owner connection, like <a href="${BASE}/sql">SQL Commands</a>.</p>`;
+    Runs as the builder's owner connection (an isolated workspace's developer login for its developers), like <a href="${BASE}/sql">SQL Commands</a>.</p>`;
 
   // ------------------------------------------------------------ step 1 and 2: schema and tables
   const start = async (s: Session, reply: FastifyReply, schema: string | undefined) => {
-    const all = await schemas(owner.pool);
-    const gens = (await owner.query<Saved & { updated_at: string; updated_by: string }>('select id, name, description, schema_name, tables, updated_at, updated_by from meta.data_generator order by lower(name)')).rows;
+    const db = await workshopDb(s);
+    const all = (await schemas(db.pool)).filter((x) => db === owner || x.usable);
+    const gens = (await owner.query<Saved & { updated_at: string; updated_by: string }>('select id, name, description, schema_name, tables, updated_at, updated_by from meta.data_generator where workspace_id = $1 order by lower(name)', [currentWorkspace(s)])).rows;
     const savedList = gens.length
       ? html`<ul class="sd-saved">${gens.map(
           (g) => html`<li><a href="${sdUrl}/${g.id}">${g.name}</a> <span class="muted small">${g.schema_name}: ${g.tables.map((t) => `${t.table} (${t.rows})`).join(', ')}</span>
@@ -129,7 +131,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
         <button class="btn">Choose</button></form>`;
     let tablesForm: Raw | '' = '';
     if (chosen) {
-      const tables = await schemaTables(owner.pool, chosen);
+      const tables = await schemaTables(db.pool, chosen);
       tablesForm = html`<form method="get" action="${sdUrl}" class="u-mt1"><input type="hidden" name="schema" value="${chosen}">
         <fieldset class="prop-group"><legend>Tables of ${chosen}</legend><div class="qb-pick">${tables.map(
           (t) => html`<label class="check"><input type="checkbox" name="t" value="${t.name}"> ${t.name} <span class="muted small">${t.estimate >= 0 ? `~${t.estimate.toLocaleString('en')} rows` : ''}</span></label>`,
@@ -155,23 +157,24 @@ export async function sampleDataRoutes(app: FastifyInstance) {
   }
 
   /** The tables of a definition with their catalog info; specs proposed for columns the definition doesn't mention. */
-  const describeAll = async (def: GeneratorDef) => {
+  const describeAll = async (s: Session, def: GeneratorDef) => {
+    const db = (await workshopDb(s)).pool;
     const out: { info: TableInfo; spec: TableSpec }[] = [];
     const missing: string[] = [];
     for (const t of def.tables) {
-      const info = await describe(owner.pool, def.schema, t.table);
+      const info = await describe(db, def.schema, t.table);
       if (!info) {
         missing.push(t.table);
         continue;
       }
-      const spec = tableSpec(info, DEFAULT_ROWS, t, undefined, await nextValues(owner.pool, info));
+      const spec = tableSpec(info, DEFAULT_ROWS, t, undefined, await nextValues(db, info));
       out.push({ info, spec: { ...spec, rows: Number.isInteger(t.rows) ? t.rows : DEFAULT_ROWS } });
     }
     return { tables: out, missing };
   };
 
   const editor = async (s: Session, reply: FastifyReply, st: FormState, code = 200) => {
-    const { tables, missing } = await describeAll(st.def);
+    const { tables, missing } = await describeAll(s, st.def);
     const title = st.id ? (st.name ?? 'Generator') : 'New generator';
     const columnRow = (i: number, j: number, c: ColumnInfo, spec: TableSpec) => {
       const cs = spec.columns.find((x) => x.column === c.name)!;
@@ -246,7 +249,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
   app.get(`${sdUrl}/:id`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const g = await saved(req.params.id);
+    const g = await saved(s, req.params.id);
     if (!g) return reply.code(404).send('Not found');
     return editor(s, reply, { id: g.id, name: g.name, description: g.description ?? '', def: cleanDef({ schema: g.schema_name, seed: g.seed, tables: g.tables }) });
   });
@@ -256,7 +259,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     const def = defFromBody(b);
-    const g = b.id ? await saved(b.id) : undefined;
+    const g = b.id ? await saved(s, b.id) : undefined;
     if (b.id && !g) return reply.code(404).send('Not found');
     const st: FormState = { def, id: g?.id, name: (b.name ?? '').trim(), description: (b.description ?? '').trim() };
     const refuse = (error: string) => editor(s, reply, { ...st, error }, 422);
@@ -266,13 +269,13 @@ export async function sampleDataRoutes(app: FastifyInstance) {
       if (!st.name) return refuse('Give the generator a name to save it.');
       if (st.name.length > 100 || (st.description ?? '').length > 1000) return refuse('The name is at most 100 characters, the description 1000.');
       if (!allowedSchema(def.schema)) return refuse('Choose a schema of your own: not meta, information_schema or pg_*.');
-      const { tables } = await describeAll(def);
+      const { tables } = await describeAll(s, def);
       if (!tables.length) return refuse('Choose at least one table.');
       const json = JSON.stringify(tables.map(({ spec }) => spec));
       try {
         const id = g
           ? (await owner.one('update meta.data_generator set name = $2, description = $3, schema_name = $4, seed = $5, tables = $6, updated_by = $7, updated_at = now() where id = $1 returning id', [g.id, st.name, st.description || null, def.schema, def.seed, json, s.username])).id
-          : (await owner.one('insert into meta.data_generator (name, description, schema_name, seed, tables, created_by, updated_by) values ($1, $2, $3, $4, $5, $6, $6) returning id', [st.name, st.description || null, def.schema, def.seed, json, s.username])).id;
+          : (await owner.one('insert into meta.data_generator (name, description, schema_name, seed, tables, created_by, updated_by, workspace_id) values ($1, $2, $3, $4, $5, $6, $6, $7) returning id', [st.name, st.description || null, def.schema, def.seed, json, s.username, currentWorkspace(s)])).id;
         flash(s, `Generator ${st.name} saved.`);
         return back(reply, s, `${sdUrl}/${id}`);
       } catch (e) {
@@ -282,7 +285,8 @@ export async function sampleDataRoutes(app: FastifyInstance) {
     }
     if (!['preview', 'insert', 'sql', 'csv'].includes(action)) return refuse('Unknown action.');
 
-    const p = await plan(owner.pool, def);
+    const db = await workshopDb(s);
+    const p = await plan(db.pool, def);
     if (p.problems.length) return refuse(p.problems.join(' '));
     const seed = def.seed ?? randomSeed();
     st.def = { ...def, seed };
@@ -290,7 +294,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
     if (action === 'sql' || action === 'csv') {
       let generated;
       try {
-        generated = await generateAll(owner.pool, p.tables, seed);
+        generated = await generateAll(db.pool, p.tables, seed);
       } catch (e) {
         if (e instanceof SampleDataError) return refuse(e.message);
         throw e;
@@ -309,7 +313,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
 
     // preview and insert: the same run, rolled back or committed
     const started = performance.now();
-    const c = await owner.pool.connect();
+    const c = await db.pool.connect();
     let result: RunResult;
     try {
       await c.query('begin');
@@ -340,7 +344,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
   app.post(`${sdUrl}/:id/delete`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const g = await saved(req.params.id);
+    const g = await saved(s, req.params.id);
     if (!g) return reply.code(404).send('Not found');
     await owner.query('delete from meta.data_generator where id = $1', [g.id]);
     flash(s, `Generator ${g.name} deleted.`);

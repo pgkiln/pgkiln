@@ -5,6 +5,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 60: isolated workspaces.
+
+### Added
+- **Isolated workspaces** (APEX: a workspace as a tenant boundary): an administrator isolates a workspace on its page
+  (Workspace utilities → Workspaces). Its applications then run on a PostgreSQL login of their own and its developers'
+  SQL (SQL Commands, SQL Scripts, Quick SQL, Load and Unload Data, Sample Data, DDL and Compare, the Advisor, code
+  checks, document previews) on another; SQL that runs `RESET ROLE` only gets back to that login. Row-level security
+  on pgkiln's own tables shows each login its own workspace's applications, pages, sessions and accounts, and hides
+  isolated workspaces from the shared runtime connection. The logins' passwords are derived from `PGKILN_SECRET_KEY`;
+  `RUNTIME_DATABASE_URL` must be set (migration 090).
+- **A workspace's database roles** (APEX: workspace schemas): an isolated workspace's applications run only as the roles
+  an administrator gave it (isolating gives it the roles its applications use); a new application there gets a new
+  role and schema of its own. An import or a settings change can't claim another workspace's (or any other) role.
+- SQL scripts and their runs, blueprints and sample data generators belong to the workspace they were made in.
+- **Workspace administrators** (APEX: workspace administrators): an administrator marks developers of a workspace as
+  its administrators; they open its page from Workspace utilities and manage its name and developers.
+
+### Changed
+- `meta.app_id()` refuses an application of another isolated workspace, so `meta.web_request`, `meta.ai_generate`,
+  `meta.send_mail`, `meta.send_push` and `meta.page_url` can no longer act for another workspace's application
+  (the known gap in SECURITY.md, for isolated workspaces).
+- A workflow step's SQL in an isolated workspace runs on the workspace's login and commits just before the
+  workflow's own state (a step may run again after a crash between the two).
+- Data load definitions can only be saved for applications of the current workspace.
+- Sample data generators' and SQL scripts' names are unique per workspace (`on conflict (workspace_id, name)`).
+
 ## [0.36.0] - 2026-10-12
 
 Sprints 54 to 59: interactive grid views; the login page and "Forgot password?"; Generate DDL and Schema Comparison; region templates; page groups; Quick edit and the help pane.

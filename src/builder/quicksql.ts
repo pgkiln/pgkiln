@@ -6,6 +6,7 @@ import { quickSql } from '../quicksql.ts';
 import { clientIp, type Session } from '../session.ts';
 import { runAndRecord, runOptions, SCRIPT_MAX_MB } from './scripts.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import { currentWorkspace } from './workspaces.ts';
 
 // SQL Workshop → Quick SQL: shorthand → DDL preview, then save it as a SQL
 // script or run it (as a script, so the results per statement are kept).
@@ -85,8 +86,8 @@ export async function quickSqlRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/sql/scripts/runs/${id}`);
     }
     let unique = name;
-    for (let n = 2; await owner.one('select 1 from meta.sql_script where name = $1', [unique]); n++) unique = `${name} (${n})`;
-    const r = await owner.one(`insert into meta.sql_script (name, content, created_by, updated_by) values ($1, $2, $3, $3) returning id`, [unique, content, s.username]);
+    for (let n = 2; await owner.one('select 1 from meta.sql_script where name = $1 and workspace_id = $2', [unique, currentWorkspace(s)]); n++) unique = `${name} (${n})`;
+    const r = await owner.one(`insert into meta.sql_script (name, content, created_by, updated_by, workspace_id) values ($1, $2, $3, $3, $4) returning id`, [unique, content, s.username, currentWorkspace(s)]);
     flash(s, `Saved as script “${unique}”.`);
     return back(reply, s, `${BASE}/sql/scripts/${r!.id}`);
   });

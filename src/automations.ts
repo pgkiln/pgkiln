@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { owner, runtime } from './db.ts';
+import { withAppDb } from './workspace-db.ts';
 
 // Automations (Shared Components → Automations): SQL or PL/pgSQL on a cron
 // schedule, run by the pgkiln server as the application's database role.
@@ -226,7 +227,7 @@ export async function runAutomation(id: number, trigger: 'schedule' | 'manual' =
 
 /** The actions, as the application's role, through meta.automation_execute() (also used by meta.run_automation). */
 async function execute(def: Definition): Promise<{ rows: number; failed: number; errors: RowError[] }> {
-  return runtime.tx(async (c) => {
+  return withAppDb(def.app_id, () => runtime.tx(async (c) => {
     await c.query(
       `select set_config('pgkiln.app_user', $1, true), set_config('pgkiln.app_id', $2, true),
               set_config('pgkiln.automation_id', $3, true), set_config('pgkiln.session_id', '', true),
@@ -235,7 +236,7 @@ async function execute(def: Definition): Promise<{ rows: number; failed: number;
     );
     if (def.db_role) await c.query(`set local role ${pg.escapeIdentifier(def.db_role)}`);
     return (await c.query('select meta.automation_execute($1::jsonb) as r', [JSON.stringify(def)])).rows[0].r;
-  });
+  }));
 }
 
 // ------------------------------------------------------------------ scheduler

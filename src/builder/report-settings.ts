@@ -3,6 +3,7 @@ import { designSql } from './websources.ts';
 import pg from 'pg';
 import { applyBinds } from '../binds.ts';
 import { owner } from '../db.ts';
+import { devDbForApp } from '../workspace-db.ts';
 import { html, raw } from '../html.ts';
 import { formatMaskError } from '../runtime/format.ts';
 import { heading } from '../runtime/items.ts';
@@ -19,12 +20,13 @@ const PAGE_SIZES = ['5', '10', '15', '25', '50', '100'];
 /** The column names of a report's query: run with limit 0, as the app's role, then rolled back. */
 export async function reportColumns(appId: number, source: string | null): Promise<{ columns: string[] } | { error: string }> {
   if (!source?.trim()) return { error: 'The region has no source query yet.' };
-  const c = await owner.pool.connect();
+  // the role from pgkiln's tables (the owner); the query on the developer's connection (090)
+  const role = (await owner.one<{ db_role: string | null }>('select db_role from meta.app where id = $1', [appId]))?.db_role;
+  const c = await (await devDbForApp(appId)).pool.connect();
   try {
     await c.query('begin');
     await c.query(`set local statement_timeout = '5s'`);
     await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
-    const role = (await c.query('select db_role from meta.app where id = $1', [appId])).rows[0]?.db_role;
     if (role) await c.query(`set local role ${pg.escapeIdentifier(role)}`);
     const sql = applyBinds(source.trim().replace(/;+\s*$/, ''), {});
     const res = await c.query(`select * from (\n${sql}\n) "__q" limit 0`);

@@ -6,6 +6,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity } from '../session.ts';
 import { BASE, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import { workshopDb } from './workspaces.ts';
 
 // SQL Workshop → Generate DDL and Schema Comparison (APEX: SQL Workshop →
 // Utilities). Both only read the catalog (src/ddl.ts); the scripts they
@@ -32,7 +33,8 @@ export async function ddlToolRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/ddl`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const schemas = await userSchemas(owner);
+    const db = await workshopDb(s);
+    const schemas = await userSchemas(db, { usable: db !== owner });
     const q = req.query ?? {};
     const schema = schemas.includes(q.schema ?? '') ? q.schema! : '';
     // the first visit: every type, comments and grants
@@ -42,7 +44,7 @@ export async function ddlToolRoutes(app: FastifyInstance) {
     let result: Raw | '' = '';
     if (schema) {
       try {
-        const objects = pick(await readSchema(owner.pool, schema), types, opts);
+        const objects = pick(await readSchema(db.pool, schema), types, opts);
         const script = ddlScript(schema, objects);
         await logActivity({ username: s.username, event: 'generate_ddl', ip: clientIp(req), detail: `${schema}: ${objects.length} objects` });
         if (q.download === '1')
@@ -73,7 +75,8 @@ export async function ddlToolRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/compare`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const schemas = await userSchemas(owner);
+    const db = await workshopDb(s);
+    const schemas = await userSchemas(db, { usable: db !== owner });
     const q = req.query ?? {};
     const source = schemas.includes(q.source ?? '') ? q.source! : '';
     const target = schemas.includes(q.target ?? '') ? q.target! : '';
@@ -81,7 +84,7 @@ export async function ddlToolRoutes(app: FastifyInstance) {
     if (source && target && source === target) result = html`<div class="alert alert-error" role="alert">Choose two different schemas.</div>`;
     else if (source && target) {
       try {
-        const [a, b] = await Promise.all([readSchema(owner.pool, source), readSchema(owner.pool, target)]);
+        const [a, b] = await Promise.all([readSchema(db.pool, source), readSchema(db.pool, target)]);
         const { differences, same } = compare(a, b);
         const script = changeScript(source, target, a, b);
         await logActivity({ username: s.username, event: 'schema_compare', ip: clientIp(req), detail: `${source} → ${target}: ${differences.length} differences` });

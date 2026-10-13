@@ -103,6 +103,9 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
       else await apply('examples/hr', 'pgkiln_seed');
     }
     if (o.example) await apply(`examples/${o.example}`, 'pgkiln_seed');
+    // (090) application code in isolated workspaces gets what later migrations granted pgkiln_runtime
+    if (applied.length && (await client.query(`select to_regprocedure('meta.sync_app_code_grants()') is not null as ok`)).rows[0].ok)
+      await client.query('select meta.sync_app_code_grants()');
   } finally {
     if (applied.length || failure) await recordRun(client, o.root, { startedAt, fresh, applied, failure }).catch(() => {});
     await client.end();

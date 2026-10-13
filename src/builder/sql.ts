@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import pg from 'pg';
-import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { BASE, csrf, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
@@ -11,8 +10,10 @@ import { quickSqlRoutes } from './quicksql.ts';
 import { queryBuilderRoutes } from './querybuilder.ts';
 import { unloadRoutes } from './unload.ts';
 import { ddlToolRoutes } from './ddl-tools.ts';
+import { workshopDb, workshopRunsAs } from './workspaces.ts';
 
-// SQL Workshop: SQL commands and the object browser (owner connection).
+// SQL Workshop: SQL commands and the object browser (owner connection; an isolated
+// workspace's developer login for its developers, see workshopDb).
 
 export async function sqlRoutes(app: FastifyInstance) {
   // SQL Scripts, Quick SQL and the query builder (sprint 31)
@@ -35,12 +36,13 @@ export async function sqlRoutes(app: FastifyInstance) {
     if (!s) return;
     const sql = req.body?.sql ?? '';
     let result: Raw | '' = '';
+    const db = await workshopDb(s);
     if (req.method === 'POST' && sql.trim()) {
       const started = performance.now();
       try {
         // a connection of its own, closed afterwards: the SQL may SET ROLE or change settings,
         // which must not leak into the builder's pooled owner connections
-        const c = await owner.pool.connect();
+        const c = await db.pool.connect();
         let out;
         try {
           out = await c.query({ text: sql, rowMode: 'array' });
@@ -59,7 +61,7 @@ export async function sqlRoutes(app: FastifyInstance) {
       await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), elapsedMs: Math.round(performance.now() - started), detail: sql.length > 2000 ? `${sql.slice(0, 2000)}…` : sql });
     }
     const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sql')}
-      <p class="muted">Runs as the builder's owner connection (not as an application role). Multiple statements are allowed; results of the last one are shown.</p>
+      <p class="muted">Runs as ${workshopRunsAs(db)} (not as an application role). Multiple statements are allowed; results of the last one are shown.</p>
       <form method="post">${csrf(s)}
         <textarea name="sql" class="code sql-editor" rows="12" spellcheck="false" aria-label="SQL" data-code="plpgsql">${sql || 'select current_user, version();'}</textarea>
         <div class="buttons"><button class="btn btn-hot">${icon('play')} Run (Ctrl+Enter)</button></div>
@@ -73,17 +75,20 @@ export async function sqlRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/objects`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const db = await workshopDb(s);
     const objects = (
-      await owner.query(
+      await db.query(
         `select n.nspname as schema, c.relname as name, c.oid::regclass::text as qname,
                 case c.relkind when 'r' then 'table' when 'p' then 'table' when 'v' then 'view' when 'm' then 'view' end as kind,
                 c.relrowsecurity as rls
            from pg_class c join pg_namespace n on n.oid = c.relnamespace
           where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema')
+            and has_schema_privilege(n.oid, 'USAGE')
          union all
          select n.nspname, p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', p.oid::regprocedure::text, 'function', false
            from pg_proc p join pg_namespace n on n.oid = p.pronamespace
           where n.nspname !~ '^pg_' and n.nspname not in ('information_schema') and p.prokind in ('f', 'p')
+            and has_schema_privilege(n.oid, 'USAGE')
           order by 1, 4 desc, 2`,
       )
     ).rows;
@@ -92,24 +97,24 @@ export async function sqlRoutes(app: FastifyInstance) {
     let detail: Raw = html`<p class="muted">Select a table, view or function.</p>`;
     if (selected) {
       if (selected.kind === 'function') {
-        const src = await owner.one('select pg_get_functiondef($1::regprocedure) as def', [selected.qname]);
+        const src = await db.one('select pg_get_functiondef($1::regprocedure) as def', [selected.qname]);
         detail = region(selected.qname, html`<pre class="source">${src.def}</pre>`);
       } else {
         const [cols, policies, grants, data] = await Promise.all([
-          owner.query(
+          db.query(
             `select a.attname as column, format_type(a.atttypid, a.atttypmod) as type, not a.attnotnull as nullable,
                     pg_get_expr(d.adbin, d.adrelid) as "default"
                from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
               where a.attrelid = $1::regclass and a.attnum > 0 and not a.attisdropped order by a.attnum`,
             [selected.qname],
           ),
-          owner.query('select policyname as policy, cmd, roles::text, qual as using, with_check from pg_policies where schemaname = $1 and tablename = $2', [selected.schema, selected.name]),
-          owner.query(
+          db.query('select policyname as policy, cmd, roles::text, qual as using, with_check from pg_policies where schemaname = $1 and tablename = $2', [selected.schema, selected.name]),
+          db.query(
             `select grantee, string_agg(privilege_type, ', ' order by privilege_type) as privileges
                from information_schema.role_table_grants where table_schema = $1 and table_name = $2 group by grantee order by grantee`,
             [selected.schema, selected.name],
           ),
-          owner.pool.query({ text: `select * from ${selected.qname} limit 25`, rowMode: 'array' }).catch((e) => e as Error),
+          db.pool.query({ text: `select * from ${selected.qname} limit 25`, rowMode: 'array' }).catch((e) => e as Error),
         ]);
         const asArray = (r: pg.QueryResult) => ({ ...r, rows: r.rows.map((x) => Object.values(x)) }) as unknown as pg.QueryResult<any[]>;
         detail = html`${region(`${selected.kind === 'view' ? 'View' : 'Table'} ${selected.qname}`, resultTable(asArray(cols)),

@@ -32,7 +32,9 @@ src/
                            read, import), files.ts (directories, zip), diff.ts, replace.ts (import --replace in place),
                            mcp.ts (`pgkiln mcp`: the MCP server for AI coding agents, chapter 20)
   app.ts / server.ts       Fastify setup / entry point
-  db.ts                    the two pools, appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
+  db.ts                    the owner and shared runtime pools, `runtime` (the current scope's: runtimeScope), appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
+  workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
+                           PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   ddl.ts                   Generate DDL and Schema Comparison: readSchema (catalog → one DDL per object, unqualified), ddlScript (order), compare, changeScript
   static-version.ts        the version of app.css, app.js, icons.svg and sw.js (?v= in their URLs, the service worker version): content hash, looked at again when a file changes
@@ -232,7 +234,8 @@ src/
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview)
     workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid
-                           request), the current workspace (session state __WS), placeApp, the switcher, Workspace utilities → Workspaces
+                           request), the current workspace (session state __WS), placeApp, the switcher, Workspace utilities → Workspaces;
+                           (090) isolation and the workspace's database roles, workshopDb (the SQL Workshop's connection)
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST; appOfPath), developer comments, administrators
     blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a
@@ -290,6 +293,7 @@ test/
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page), template options, base style Iris
   workspaces.test.ts       workspaces (064): Default, administrators' pages, current workspace, refused apps, imports and copies
+  workspace-isolation.test.ts isolated workspaces (090): logins, RLS on meta, app_id, roles, SQL Workshop, scripts, imports
   ai.test.ts               AI services: Generate text with AI (text, structured outputs, errors, limits, keys), its dynamic action,
                            meta.ai_generate, the providers, HR page 37; against ai-mock.ts (no real API calls)
   ai-assistant.test.ts     AI assistant region (context, tools as the app role, writes, REST, histories, limits, sessions), OpenAI,

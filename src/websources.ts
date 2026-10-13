@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { owner, runtime } from './db.ts';
+import { runtimeForApp } from './workspace-db.ts';
 import { decryptSecret, encryptSecret } from './secrets.ts';
 import { WebError, webRequest, type WebResponse } from './webclient.ts';
 
@@ -372,7 +373,8 @@ export const withRest = (rowsQuery: string, sql: string | null | undefined) =>
 // ---------------------------------------------------------------- loading
 
 export async function loadSource(appId: number, name: string) {
-  const s = await runtime.one<RestSource>(
+  // the application's own connection (an isolated workspace's), also from a workflow or job (090)
+  const s = await (await runtimeForApp(appId)).one<RestSource>(
     `select id, app_id, name, url, method, credential, headers, params, body, row_selector, columns, cache_seconds, timeout_s, max_rows, key_columns, operations
        from meta.rest_source where app_id = $1 and name = $2`,
     [appId, name.toUpperCase()],

@@ -628,7 +628,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         scripts: '/builder/sql/scripts',
         script_new: '/builder/sql/scripts/new',
         script: `/builder/sql/scripts/${(await owner.one(`insert into meta.sql_script (name, content) values ('E2E script', 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp;\nselect 1/0;')
-          on conflict (name) do update set content = excluded.content returning id`)).id}`,
+          on conflict (workspace_id, name) do update set content = excluded.content returning id`)).id}`,
         script_run: `/builder/sql/scripts/runs/${(await owner.one(`insert into meta.sql_script_run (script_name, run_by, statements, succeeded, failed, results) values ('E2E script', 'admin', 2, 1, 1, $1) returning id`, [JSON.stringify([
           { n: 1, line: 1, sql: 'select empno, ename, job, hiredate, sal, comm, deptno from hr.emp', status: 'ok', command: 'SELECT', rows: 2, ms: 1,
             columns: ['empno', 'ename', 'job', 'hiredate', 'sal', 'comm', 'deptno'], sample: [['7369', 'SMITH', 'CLERK', '1980-12-17', '850.00', null, '20'], ['7499', 'ALLEN', 'SALESMAN', '1981-02-20', '1600.00', '300.00', '30']] },

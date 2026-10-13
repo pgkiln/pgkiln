@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { owner, runtime } from '../db.ts';
+import { devDbForApp } from '../workspace-db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { checkSql, type SqlShape } from './advisor.ts';
 import { BASE, developer, type Req } from './ui.ts';
-import { appAllowed } from './workspaces.ts';
+import { appAllowed, workshopDb } from './workspaces.ts';
 
 // The builder's code editor (public/code-editor.js) and its SQL completions.
 //
@@ -215,7 +216,7 @@ export async function codeEditorRoutes(app: FastifyInstance) {
     if (!sql.trim()) return reply.send({ ok: true, message: 'Nothing to check.' });
     if (/^\s*(STATIC|LOV):/i.test(sql)) return reply.send({ ok: true, message: 'Not SQL: a static or shared list of values.' });
     const role = target ? (await owner.one('select db_role from meta.app where id = $1', [target.id]))?.db_role : null;
-    const c = await owner.pool.connect();
+    const c = await (target ? await devDbForApp(target.id) : await workshopDb(s)).pool.connect();
     try {
       await c.query('begin');
       await c.query(`set local statement_timeout = '5s'`);

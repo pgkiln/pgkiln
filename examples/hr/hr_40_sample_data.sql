@@ -47,4 +47,4 @@ values ('HR demo staff', 'Departments, employees and leave requests for trying o
     {"column": "decision_note", "generator": "skip", "options": "", "nulls": 0},
     {"column": "created_at", "generator": "timestamp", "options": "2025-10-01..2026-10-01", "nulls": 0}]}
 ]$json$::jsonb, 'admin', 'admin')
-on conflict (name) do nothing;
+on conflict (workspace_id, name) do nothing;
