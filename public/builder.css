@@ -871,3 +871,4 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .gal-card > p { margin: 0; flex: 1; line-height: 1.5; }
 .gal-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .gal-foot form { margin: 0; }
+.ab-group select { min-width: 140px; }

@@ -98,15 +98,22 @@ export async function homeRoutes(app: FastifyInstance) {
     if (typeof req.query.sort === 'string' && req.query.sort in SORTS) s.state.__BSORT = req.query.sort;
     const view: View = s.state.__BVIEW === 'grid' ? 'grid' : 'report';
     const sort: Sort = (typeof s.state.__BSORT === 'string' && s.state.__BSORT in SORTS ? s.state.__BSORT : 'name') as Sort;
+    // (092) application groups of the workspace: a filter, remembered for the session
+    const groups = (await owner.query<{ id: number; name: string }>('select id, name from meta.app_group where workspace_id = $1 order by lower(name)', [currentWorkspace(s)])).rows;
+    if (typeof req.query.group === 'string') s.state.__BGROUP = req.query.group;
+    const group = groups.find((g) => String(g.id) === s.state.__BGROUP) ?? null;
     const [apps, total, recent] = await Promise.all([
       owner.query(
-        `select a.id, a.name, a.alias, a.authentication, a.db_role, a.updated_at,
+        `select a.id, a.name, a.alias, a.authentication, a.db_role, a.updated_at, g.name as group_name,
                 (select count(*) from meta.page p where p.app_id = a.id)::int as pages,
                 (select count(*) from meta.activity_log l where l.app_id = a.id and l.event = 'page_view' and l.at > now() - interval '1 day')::int as views
            from meta.app a
+           left join meta.app_group_member gm on gm.app_id = a.id
+           left join meta.app_group g on g.id = gm.group_id
           where ($1 = '' or a.name ilike '%' || $1 || '%' or a.alias ilike '%' || $1 || '%' or a.id::text = $1) and ${inWorkspaceSql('a', 2)}
+            and ($3::int is null or gm.group_id = $3)
           order by ${SORTS[sort]}`,
-        [q.replace(/[\\%_]/g, (c) => `\\${c}`), currentWorkspace(s)],
+        [q.replace(/[\\%_]/g, (c) => `\\${c}`), currentWorkspace(s), group?.id ?? null],
       ),
       owner.one(`select count(*)::int as n from meta.app a where ${inWorkspaceSql('a', 1)}`, [currentWorkspace(s)]),
       recentApps(s),
@@ -122,11 +129,11 @@ export async function homeRoutes(app: FastifyInstance) {
       html`<th scope="col"${cls ? raw(` class="${cls}"`) : ''}${sort === key ? raw(' aria-sort="' + (key === 'pages' || key === 'updated' ? 'descending' : 'ascending') + '"') : ''}><a href="${link({ sort: key })}">${label}${sort === key ? html`<span class="ab-sorted" aria-hidden="true">${key === 'pages' || key === 'updated' ? '↓' : '↑'}</span>` : ''}</a></th>`;
     const rows = apps.rows;
     const list = rows.length === 0
-      ? html`<p class="ab-empty">${total.n ? html`No application matches “${q}”. <a href="${BASE}?q=">Show all</a>` : html`No applications yet. <a href="${BASE}/create">Create one</a> or <a href="${BASE}/import">import one</a>.`}</p>`
+      ? html`<p class="ab-empty">${total.n ? html`No application ${group ? html`in the group ${group.name}${q ? html` matches “${q}”` : ''}` : html`matches “${q}”`}. <a href="${BASE}?q=&amp;group=">Show all</a>` : html`No applications yet. <a href="${BASE}/create">Create one</a> or <a href="${BASE}/import">import one</a>.`}</p>`
       : view === 'grid'
         ? html`<div class="ab-cards">${rows.map((a) => html`<article class="ab-card" data-filter-row>
             <a class="ab-card-main" href="${BASE}/apps/${a.id}">${appIcon(a)}<span><strong>${a.name}</strong><small>${a.id} · /a/${a.alias}</small></span></a>
-            <div class="ab-card-meta"><span>${a.pages} pages</span><span>${a.views} views today</span><span>${ago(a.updated_at)}</span></div>
+            <div class="ab-card-meta">${a.group_name ? html`<span class="tag">${a.group_name}</span>` : ''}<span>${a.pages} pages</span><span>${a.views} views today</span><span>${ago(a.updated_at)}</span></div>
             <div class="ab-card-actions">
               <a class="tb-btn" href="${BASE}/apps/${a.id}" title="Edit ${a.name}">${icon('edit')}<span class="sr-only">Edit ${a.name}</span></a>
               <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="Run ${a.name}">${icon('play')}<span class="sr-only">Run ${a.name}</span></a>
@@ -137,7 +144,7 @@ export async function homeRoutes(app: FastifyInstance) {
             <tbody>${rows.map((a) => html`<tr data-filter-row>
               <td class="num">${a.id}</td>
               <td class="ab-name"><a href="${BASE}/apps/${a.id}">${appIcon(a)}<span>${a.name}</span></a></td>
-              <td>${a.alias}</td>
+              <td>${a.alias}${a.group_name ? html` <span class="tag">${a.group_name}</span>` : ''}</td>
               <td class="num">${a.pages}</td>
               <td class="num">${a.views}</td>
               <td>${a.authentication === 'none' ? 'Public' : a.authentication === 'header' ? 'HTTP header' : a.authentication === 'database' ? 'Database accounts' : a.authentication === 'custom' ? 'Custom' : 'App users'}</td>
@@ -159,6 +166,9 @@ export async function homeRoutes(app: FastifyInstance) {
             <input id="ab-q" name="q" type="search" value="${q}" placeholder="Search" autocomplete="off" data-filter-list=".ab-home [data-filter-row]">
           </form>
           <div class="ab-views" role="group" aria-label="View">${viewButton('grid', 'grid', 'Cards')}${viewButton('report', 'list', 'Report')}</div>
+          ${groups.length ? html`<form method="get" action="${BASE}" class="ab-group"><label class="sr-only" for="ab-group">Application group</label>
+            <select id="ab-group" name="group" data-autosubmit><option value="">All groups</option>${groups.map((g) => html`<option value="${g.id}"${group?.id === g.id ? raw(' selected') : ''}>${g.name}</option>`)}</select>
+            <noscript><button class="btn btn-sm">Show</button></noscript></form>` : ''}
           <details class="menu ab-menu"><summary class="btn">Actions ${icon('chevron')}</summary>
             <div class="menu-panel" role="menu">
               <div class="menu-section"><span class="small muted">Sort by</span>
@@ -279,6 +289,7 @@ export async function homeRoutes(app: FastifyInstance) {
     const main = html`<h1 class="u-mb1">Workspace utilities</h1>
       <div class="ab-tiles ab-tiles-wrap">
         ${card(`${BASE}/users`, icon('user'), 'Users', 'Accounts of the people who use the applications, and their access.')}
+        ${card(`${BASE}/app-groups`, icon('folder'), 'Application groups', 'Organise the applications of this workspace into groups.')}
         ${card(`${BASE}/users/providers`, icon('key'), 'Identity providers', 'OpenID Connect and SAML sign-in.')}
         ${card(`${BASE}/users/directories`, icon('org'), 'LDAP directories', 'Sign in with directory accounts.')}
         ${card(`${BASE}/users#account-settings`, icon('shield'), 'Password policy', 'Length, complexity and lifetime of passwords.')}

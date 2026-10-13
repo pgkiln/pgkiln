@@ -389,6 +389,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
             await c.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2) on conflict do nothing', [to.id, role]);
         }
         await placeApp(c, appId, to.id);
+        // (092) groups are the old workspace's
+        await c.query('delete from meta.app_group_member where app_id = $1', [appId]);
       });
     } catch (e) {
       flash(s, `Not moved: ${roleError(e)}`, 'error');

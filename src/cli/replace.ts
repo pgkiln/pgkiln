@@ -55,6 +55,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'blueprint',
   // (064) the workspace of the application
   'workspace_app',
+  // (092) the application's group in the App Builder
+  'app_group_member',
   // (074) push notifications: the app's VAPID keys, users' devices, queued notifications
   'push_key', 'push_subscription', 'push_message',
   // (082) the application's backups, (084) users' feedback
