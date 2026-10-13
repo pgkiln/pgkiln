@@ -135,12 +135,18 @@ async function caller(req: FastifyRequest, a: App, publicHandler: boolean): Prom
 
 const bindValue = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
+/** (093) The workspace preference "RESTful services": off, the workspace's REST modules don't exist. */
+async function restServicesOn(appId: number) {
+  const r = await owner.one<{ on: boolean }>('select coalesce((select w.rest_services from meta.workspace w where w.id = meta.app_workspace($1)), true) as on', [appId]);
+  return r?.on !== false;
+}
+
 async function handle(req: FastifyRequest, reply: FastifyReply) {
   const { alias, module: name } = req.params as { alias: string; module: string };
   const sub = ((req.params as Record<string, string>)['*'] ?? '').replace(/\/+$/, '');
   const a = await loadApp(alias);
   const mod = a ? await runtime.one<{ handlers: Handler[]; enabled: boolean }>('select handlers, enabled from meta.rest_module where app_id = $1 and name = $2', [a.id, name]) : undefined;
-  if (!a || !mod?.enabled) return reply.code(404).send({ error: 'Not found' });
+  if (!a || !mod?.enabled || !(await restServicesOn(a.id))) return reply.code(404).send({ error: 'Not found' });
   const m = matchHandler(mod.handlers ?? [], req.method, sub);
   if (m === 'method') return reply.code(405).send({ error: `${req.method} is not allowed here.` });
   if (!m) return reply.code(404).send({ error: 'Not found' });
@@ -264,7 +270,7 @@ export async function restRoutes(app: FastifyInstance) {
   app.get<{ Params: { alias: string; module: string } }>('/a/:alias/rest/:module/openapi.json', async (req, reply) => {
     const a = await loadApp(req.params.alias);
     const mod = a ? await runtime.one<{ name: string; title: string; description: string | null; handlers: Handler[]; enabled: boolean }>('select * from meta.rest_module where app_id = $1 and name = $2', [a.id, req.params.module]) : undefined;
-    if (!a || !mod?.enabled) return reply.code(404).send({ error: english('error.not_found') });
+    if (!a || !mod?.enabled || !(await restServicesOn(a.id))) return reply.code(404).send({ error: english('error.not_found') });
     return reply.send(openApi(a, mod));
   });
   app.route({ method: METHODS as never, url: '/a/:alias/rest/:module/*', handler: handle });

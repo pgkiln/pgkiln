@@ -29,7 +29,9 @@ export const DEFAULT_WORKSPACE = 1;
 export async function loadWorkspaces(s: Session) {
   const rows = (
     await owner.query<WorkspaceRef>(
-      `select w.id, w.name, w.message, w.banner_label, w.banner_color, w.isolated,
+      `select w.id, w.name, w.message, w.banner_label, w.banner_color, w.isolated, w.sql_workshop, w.rest_services,
+              coalesce((select json_agg(json_build_object('label', l.label, 'url', l.url, 'description', l.description) order by l.position, lower(l.label))
+                          from meta.workspace_link l where l.workspace_id = w.id), '[]') as links,
               exists (select 1 from meta.developer d where d.username = $1 and d.is_admin)
                 or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $1 and m.is_admin) as admin
          from meta.workspace w
@@ -206,6 +208,40 @@ function serviceRegion(s: Session, w: { id: number; message: string | null; bann
       <div class="buttons"><button class="btn">Save</button></div></form>`, '', 'service');
 }
 
+/** (093) Workspace preferences: the SQL Workshop and the applications' REST modules on or off. */
+function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean }) {
+  const check = (name: string, on: boolean, label: string, help: string) =>
+    html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
+  return region('Workspace preferences', html`<form method="post" action="${BASE}/workspaces/${w.id}/preferences">${csrf(s)}
+      ${check('sql_workshop', w.sql_workshop, 'Enable the SQL Workshop', 'Off: SQL Commands, the Object Browser, SQL scripts, data loading and unloading, Quick SQL, the query builder, DDL, Compare and AI are refused while this workspace is current, for every developer.')}
+      ${check('rest_services', w.rest_services, 'Enable RESTful services', 'Off: the REST modules of this workspace\'s applications answer 404 (Not found) at /a/<alias>/rest/…; they can still be edited.')}
+      <div class="buttons"><button class="btn">Save preferences</button></div></form>`, '', 'preferences');
+}
+
+/** (093) Extension links: links to other tools in the builder's Extensions menu. */
+function linksRegion(s: Session, w: { id: number }, links: { id: number; label: string; url: string; description: string | null; position: number }[]) {
+  return region('Extension links', html`<p class="muted u-mt0">Links to other tools this workspace's developers use (monitoring, a wiki, a ticket system), in the builder's <strong>Extensions</strong> menu while the workspace is current. They open in a new tab.</p>
+      <div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>Label</th><th>URL</th><th class="num">Order</th><th></th></tr></thead>
+        <tbody>${links.length
+          ? links.map((l) => html`<tr><td data-label="Label">${l.label}${l.description ? html` <span class="muted">${l.description}</span>` : ''}</td>
+              <td data-label="URL" class="u-break"><a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.url}</a></td>
+              <td class="num" data-label="Order">${l.position}</td>
+              <td><form method="post" action="${BASE}/workspaces/${w.id}/links/${l.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the link ${l.label}?">Delete</button></form></td></tr>`)
+          : html`<tr><td colspan="4" class="empty">No extension links.</td></tr>`}</tbody></table></div>
+      <form method="post" action="${BASE}/workspaces/${w.id}/links" class="u-mt1">${csrf(s)}
+        <div class="form-grid">
+          ${input('label', 'Label', '', { required: true, placeholder: 'Monitoring' })}
+          ${input('url', 'URL', '', { required: true, type: 'url', placeholder: 'https://grafana.example.com', help: 'http:// or https://' })}
+          ${input('description', 'Description', '')}
+          ${input('position', 'Order', '0', { type: 'number' })}
+        </div>
+        <div class="buttons"><button class="btn">${icon('plus')} Add link</button></div></form>`, '', 'links');
+}
+
+const LINK_LABEL = /^\S(.{0,58}\S)?$/;
+const LINK_URL = /^https?:\/\/[^\s<>"]+$/;
+
 export async function workspaceRoutes(app: FastifyInstance) {
   // switch the current workspace (any of the developer's own)
   app.post(`${BASE}/workspace`, async (req: Req, reply) => {
@@ -293,6 +329,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       ),
     ]);
     const roles = rolesQ;
+    const links = (await owner.query('select id, label, url, description, position from meta.workspace_link where workspace_id = $1 order by position, lower(label)', [w.id])).rows;
     const main = html`
       <div class="title-row"><h1>${w.name}</h1></div>
       <div class="columns wide-left">
@@ -316,6 +353,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             <div class="buttons"><button class="btn">Save developers</button></div></form>`)}
       </div>
       ${serviceRegion(s, w)}
+      <div class="columns">${preferencesRegion(s, w)}${linksRegion(s, w, links)}</div>
       ${full ? isolationRegion(s, w, roles.rows) : region('Isolation', html`<p class="u-mt0">${w.isolated ? 'Isolated: its applications and SQL run on database logins of its own.' : 'Shared.'} Administrators change it.</p>`)}
       ${!full ? '' : region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>Application</th><th>Move to</th></tr></thead>
@@ -492,6 +530,50 @@ export async function workspaceRoutes(app: FastifyInstance) {
       flash(s, (e as Error).message, 'error');
     }
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
+  });
+
+  // (093) workspace preferences
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/preferences`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const sql = req.body?.sql_workshop === 'true';
+    const rest = req.body?.rest_services === 'true';
+    const r = await owner.query('update meta.workspace set sql_workshop = $2, rest_services = $3 where id = $1', [req.params.id, sql, rest]);
+    if (!r.rowCount) return reply.code(404).send('Not found');
+    await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: SQL Workshop ${sql ? 'on' : 'off'}, RESTful services ${rest ? 'on' : 'off'}` });
+    flash(s, 'Preferences saved.');
+    return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
+  });
+
+  // (093) extension links
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/links`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const label = String(req.body?.label ?? '').trim();
+    const url = String(req.body?.url ?? '').trim();
+    const description = String(req.body?.description ?? '').trim();
+    const position = Number(req.body?.position || 0);
+    try {
+      if (!LINK_LABEL.test(label)) throw new Error('The label is 1 to 60 characters.');
+      if (!LINK_URL.test(url) || url.length > 2000 || !URL.canParse(url)) throw new Error('The URL starts with http:// or https://.');
+      if (description.length > 500) throw new Error('The description is at most 500 characters.');
+      if (!Number.isInteger(position) || Math.abs(position) > 100000) throw new Error('The order is a whole number.');
+      await owner.query('insert into meta.workspace_link (workspace_id, label, url, description, position) values ($1, $2, $3, $4, $5)', [req.params.id, label, url, description || null, position]);
+      await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: extension link ${label}` });
+      flash(s, `Link ${label} added.`);
+    } catch (e) {
+      const err = e as { code?: string; message: string };
+      flash(s, err.code === '23505' ? `There is a link ${label} already.` : err.code === '23503' ? 'Not found.' : err.code ? 'The link was not saved.' : err.message, 'error');
+    }
+    return back(reply, s, `${BASE}/workspaces/${req.params.id}#links`);
+  });
+
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/links/:lid(^\\d{1,9}$)/delete`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const r = await owner.query('delete from meta.workspace_link where id = $2 and workspace_id = $1', [req.params.id, req.params.lid]);
+    flash(s, r.rowCount ? 'Link deleted.' : 'Not found.', r.rowCount ? 'ok' : 'error');
+    return back(reply, s, `${BASE}/workspaces/${req.params.id}#links`);
   });
 
   // (091) workspace utilization: its applications, their size and use, its schemas' storage

@@ -109,7 +109,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       <a class="rail-logo" href="${BASE}" title="pgkiln Builder"><span aria-hidden="true">pg</span><span class="sr-only">pgkiln Builder home</span></a>
       <ul class="rail-list">
         ${rail('apps', BASE, 'builder', 'App Builder')}
-        ${rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
+        ${s.workspace?.sql_workshop === false ? '' : rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
         ${rail('gallery', `${BASE}/gallery`, 'package', 'App Gallery')}
         ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}
       </ul>
@@ -124,6 +124,8 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
             ${s.workspace?.admin ? html`<div class="menu-section menu-links">
               <span class="small muted">Manage service: ${s.workspace.name}</span>
               <a href="${BASE}/workspaces/${s.workspace.id}#service">${icon('bell')} Workspace message and environment banner</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}#preferences">${icon('sliders-horizontal')} Workspace preferences</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}#links">${icon('external-link')} Extension links</a>
               <a href="${BASE}/workspaces/${s.workspace.id}/utilization">${icon('chart')} Workspace utilization</a>
               <a href="${BASE}/workspaces/${s.workspace.id}">${icon('layers')} Workspace and developers</a>
             </div>` : ''}
@@ -134,6 +136,11 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
               <a href="${BASE}/developers">${icon('key')} Change my password</a>
             </div>
           </div></details></li>
+        ${s.workspace?.links?.length ? html`<li><details class="menu rail-user rail-admin rail-extensions">
+          <summary class="rail-link" title="Extensions">${icon('puzzle')}<span class="rail-label">Extensions</span></summary>
+          <div class="menu-panel"><div class="menu-section menu-links"><strong>Extensions</strong>
+            ${s.workspace.links.map((l) => html`<a href="${l.url}" target="_blank" rel="noopener noreferrer"${l.description ? html` title="${l.description}"` : ''}>${icon('external-link')} ${l.label}</a>`)}
+          </div></div></details></li>` : ''}
         ${rail('help', 'https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md', 'help', 'Help', raw(' target="_blank" rel="noopener"'))}
         <li><details class="menu rail-user">
           <summary class="rail-avatar" title="${s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">Account: ${s.username}</span></summary>
@@ -276,6 +283,12 @@ export async function developer(req: Req, reply: FastifyReply) {
   const target = await appOfPath(req.url);
   if (target && !(await appAllowed(s, target.appId))) {
     reply.code(404).send('Not found');
+    return null;
+  }
+  // (093) a workspace preference may turn the SQL Workshop off
+  if (s.workspace?.sql_workshop === false && /^\/builder\/sql(?:[/?]|$)/.test(req.url)) {
+    await send(reply.code(403), s, shell(s, 'SQL Workshop', [['App Builder', BASE], ['SQL Workshop']],
+      html`<h1>SQL Workshop</h1><div class="alert alert-info" role="status">The SQL Workshop is turned off for the workspace ${s.workspace.name}. Its administrators can turn it on in the workspace preferences${s.workspaces && s.workspaces.length > 1 ? '; or switch to another workspace' : ''}.</div>`, 'sql'));
     return null;
   }
   // a page or application locked by another developer can't be changed (locks.ts)

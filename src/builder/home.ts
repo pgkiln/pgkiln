@@ -296,13 +296,14 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/users/directories`, icon('org'), 'LDAP directories', 'Sign in with directory accounts.')}
         ${card(`${BASE}/users#account-settings`, icon('shield'), 'Password policy', 'Length, complexity and lifetime of passwords.')}
         ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
-        ${card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
+        ${s.workspace?.sql_workshop === false ? '' : card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
+        ${card(`${BASE}/backups`, icon('archive'), 'Manage backups', 'The backups of every application of this workspace; back them all up at once.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
         ${(await isAdmin(s.username)) ? card(`${BASE}/instance`, icon('settings'), 'Instance settings', 'Session length, sign-in throttling and the server\'s configuration (administrators).') : ''}
         ${(await isAdmin(s.username))
           ? card(`${BASE}/workspaces`, icon('layers'), 'Workspaces', 'Groups of applications and their developers (administrators).')
           : s.workspace && (await workspaceAdmin(s.username, s.workspace.id))
-            ? card(`${BASE}/workspaces/${s.workspace.id}`, icon('layers'), `Workspace ${s.workspace.name}`, 'Its name and developers (workspace administrators).')
+            ? card(`${BASE}/workspaces/${s.workspace.id}`, icon('layers'), `Workspace ${s.workspace.name}`, 'Its name, developers, preferences and extension links (workspace administrators).')
             : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), 'Mail services', 'SMTP, Microsoft 365, Amazon SES, Resend, Postmark, SendGrid or Mailgun for the applications\' e-mail (administrators).') : ''}
