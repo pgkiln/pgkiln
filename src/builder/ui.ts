@@ -231,12 +231,12 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 };
 
 /** Tabs of the SQL Workshop. */
-export type WorkshopTab = 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare';
+export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare';
 export const workshopTabs = (active: WorkshopTab) => {
   const tab = (key: WorkshopTab, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${BASE}${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
   return html`<nav class="ide-tabs u-mb1" aria-label="SQL Workshop">
-    ${tab('sql', '/sql', 'code', 'SQL Commands')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('quicksql', '/sql/quick', 'bolt', 'Quick SQL')}
+    ${tab('home', '/sql', 'home', 'Home')}${tab('sql', '/sql/commands', 'code', 'SQL Commands')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('quicksql', '/sql/quick', 'bolt', 'Quick SQL')}
     ${tab('query', '/sql/query', 'filter', 'Query Builder')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('load', '/sql/load', 'upload', 'Load Data')}${tab('unload', '/sql/unload', 'download', 'Unload Data')}${tab('sample', '/sql/sample-data', 'layers', 'Sample Data')}${tab('ddl', '/sql/ddl', 'file', 'DDL')}${tab('compare', '/sql/compare', 'layers', 'Compare')}${tab('ai', '/sql/ai', 'bolt', 'AI')}</nav>`;
 };
 

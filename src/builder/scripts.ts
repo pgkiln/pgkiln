@@ -7,7 +7,7 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { runScript, splitScript, type ScriptRun, type StatementResult } from '../sqlscript.ts';
 import { clearCompletions } from './code-editor.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
-import { currentWorkspace, workshopDb } from './workspaces.ts';
+import { currentWorkspace, sessionSchema, workshopDb } from './workspaces.ts';
 
 // SQL Workshop → SQL Scripts: saved scripts (create, edit, upload, download,
 // delete), run with a result per statement (stop at the first error or go on,
@@ -32,9 +32,13 @@ export interface RunRequest {
 /** Run a script, record the run (history + activity log) and return the run's id. */
 export async function runAndRecord(s: Session, ip: string, r: RunRequest): Promise<{ id: string; run: ScriptRun }> {
   const statements = splitScript(r.content);
-  const c = await (await workshopDb(s)).pool.connect();
+  const db = await workshopDb(s);
+  const schema = await sessionSchema(s, db);
+  const c = await db.pool.connect();
   let run: ScriptRun;
   try {
+    // (sprint 61) the session's schema first in the search path (the SQL Workshop home)
+    if (schema) await c.query(`select set_config('search_path', $1, false)`, [`"${schema.replace(/"/g, '""')}", public`]);
     run = await runScript(c, statements, { stopOnError: r.stopOnError, transaction: r.transaction });
   } finally {
     // never hand a connection back to the pool after arbitrary SQL (SET ROLE, search_path, temp tables)

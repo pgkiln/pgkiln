@@ -197,7 +197,7 @@ describe('code editor: marked fields', () => {
     assert.match(body, /name="config" [^>]*data-code="json"/);
     const shared = (await dev.get(`/builder/apps/${appId}/shared?new=document_template`)).body;
     assert.match(shared, /name="template" [^>]*data-code="html"/);
-    assert.match((await dev.get('/builder/sql')).body, /name="sql" [^>]*data-code="plpgsql"/);
+    assert.match((await dev.get('/builder/sql/commands')).body, /name="sql" [^>]*data-code="plpgsql"/);
     const wf = (await dev.get(`/builder/apps/${appId}/shared?new=workflow_definition`)).body;
     assert.match(wf, /name="steps" [^>]*data-code="json"/);
     const da = (await dev.get(`/builder/pages/${page.id}?new=dynamic_action`)).body;

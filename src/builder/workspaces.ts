@@ -81,6 +81,20 @@ export async function workshopDb(s: Session): Promise<Db> {
   return (await devDbForWorkspace(s.workspace.id)) ?? owner;
 }
 
+/** Schemas the SQL Workshop's connection may use (not pgkiln's, not the system's). */
+export async function usableSchemas(db: Db) {
+  return (await db.query<{ n: string }>(
+    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta')
+        and has_schema_privilege(oid, 'USAGE') order by 1`)).rows.map((r) => r.n);
+}
+
+/** (sprint 61) The session's default schema (SQL Workshop home), if the connection may still use it. */
+export async function sessionSchema(s: Session, db: Db) {
+  const v = s.state.__SQLSCHEMA;
+  if (typeof v !== 'string' || !v) return null;
+  return (await db.one<{ ok: boolean }>(`select has_schema_privilege(oid, 'USAGE') as ok from pg_namespace where nspname = $1`, [v]))?.ok ? v : null;
+}
+
 /** Who the SQL Workshop runs as, for its notes. */
 export const workshopRunsAs = (db: Db) => (db === owner ? 'the builder\'s owner connection' : 'this isolated workspace\'s developer login (its applications\' roles, nothing else)');
 
