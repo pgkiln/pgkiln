@@ -1,0 +1,30 @@
+{"blueprint": 1, "name": "Asset Inventory", "alias": "asset-inventory", "schema": "asset_inventory",
+ "tables": [
+  {"name": "location", "label": "Locations", "columns": [
+    {"name": "name", "type": "text", "required": true, "unique": true},
+    {"name": "building", "type": "text"},
+    {"name": "floor", "type": "integer"}]},
+  {"name": "asset", "label": "Assets", "columns": [
+    {"name": "location_id", "references": "location"},
+    {"name": "tag", "type": "text", "required": true, "unique": true},
+    {"name": "name", "type": "text", "required": true},
+    {"name": "category", "type": "text", "required": true, "values": ["Laptop", "Monitor", "Phone", "Furniture", "Vehicle", "Other"]},
+    {"name": "assigned_to", "type": "text"},
+    {"name": "purchased_on", "type": "date"},
+    {"name": "price", "type": "number"},
+    {"name": "in_use", "type": "boolean"}]}],
+ "pages": [
+  {"type": "report_form", "table": "asset", "page": 2, "form_page": 3, "label": "Assets", "icon": "list"},
+  {"type": "facets", "table": "asset", "page": 4, "label": "Find assets", "icon": "filter"},
+  {"type": "grid", "table": "location", "page": 5, "label": "Locations", "icon": "map"},
+  {"type": "chart", "table": "asset", "page": 6, "label": "By category", "icon": "chart"}],
+ "dashboard": true,
+ "sample_data": [
+  {"table": "location", "columns": ["id", "name", "building", "floor"], "rows": [
+    [1, "Head office 2nd floor", "Main", 2], [2, "Head office 3rd floor", "Main", 3], [3, "Warehouse", "North", 0]]},
+  {"table": "asset", "columns": ["location_id", "tag", "name", "category", "assigned_to", "purchased_on", "price", "in_use"], "rows": [
+    [1, "A-0001", "ThinkPad T14", "Laptop", "Ann", "2025-03-10", 1249.00, true],
+    [1, "A-0002", "Dell 27\" monitor", "Monitor", "Ann", "2025-03-10", 329.00, true],
+    [2, "A-0003", "MacBook Air", "Laptop", "Ben", "2024-11-02", 1399.00, true],
+    [2, "A-0004", "Standing desk", "Furniture", null, "2023-06-15", 610.00, false],
+    [3, "A-0005", "Delivery van", "Vehicle", "Logistics", "2022-01-20", 32500.00, true]]}]}

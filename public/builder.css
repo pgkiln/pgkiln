@@ -852,3 +852,22 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .sw-schema { display: flex; gap: 6px; }
 .sw-schema select { flex: 1; min-width: 0; }
 @media (max-width: 1100px) { .sw-tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); } .sw-recents { grid-template-columns: 1fr; } .sw-recent { border-left: 0; border-top: 1px solid var(--border); } .sw-recent:first-child { border-top: 0; } }
+
+/* ------------------------------------------------------------ App Gallery (sprint 61) */
+.gal-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
+.gal-search { flex: 1 1 320px; }
+.gal-tabs { display: inline-flex; }
+.gal-tabs a { padding: 6px 12px; text-decoration: none; color: var(--text); border: 1px solid var(--border); background: var(--surface); }
+.gal-tabs a + a { border-left: 0; }
+.gal-tabs a:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.gal-tabs a:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.gal-tabs a[aria-current] { background: var(--surface-3); font-weight: 650; }
+.gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+.gal-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); min-width: 0; }
+.gal-head { display: flex; gap: 12px; align-items: center; }
+.gal-head h2 { margin: 0; font-size: 15px; }
+.gal-icon { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+.gal-icon .icon { width: 26px; height: 26px; }
+.gal-card > p { margin: 0; flex: 1; line-height: 1.5; }
+.gal-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.gal-foot form { margin: 0; }

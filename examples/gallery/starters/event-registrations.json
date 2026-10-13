@@ -1,0 +1,29 @@
+{"blueprint": 1, "name": "Event Registrations", "alias": "event-registrations", "schema": "event_registrations",
+ "authentication": "app_users",
+ "tables": [
+  {"name": "event", "label": "Events", "columns": [
+    {"name": "title", "type": "text", "required": true},
+    {"name": "starts_at", "type": "timestamp", "required": true},
+    {"name": "venue", "type": "text"},
+    {"name": "capacity", "type": "integer"},
+    {"name": "status", "type": "text", "required": true, "values": ["Draft", "Open", "Full", "Closed"]}]},
+  {"name": "registration", "label": "Registrations", "columns": [
+    {"name": "event_id", "references": "event", "required": true},
+    {"name": "attendee", "type": "text", "required": true},
+    {"name": "email", "type": "text", "required": true},
+    {"name": "registered_on", "type": "date", "required": true},
+    {"name": "attended", "type": "boolean"}]}],
+ "pages": [
+  {"type": "calendar", "table": "event", "page": 2, "label": "Calendar", "icon": "calendar"},
+  {"type": "report_form", "table": "event", "page": 3, "form_page": 4, "label": "Events", "icon": "list"},
+  {"type": "report_form", "table": "registration", "page": 5, "form_page": 6, "label": "Registrations", "icon": "users"}],
+ "dashboard": true,
+ "sample_data": [
+  {"table": "event", "columns": ["id", "title", "starts_at", "venue", "capacity", "status"], "rows": [
+    [1, "PostgreSQL meetup", "2026-11-12 18:30", "Utrecht", 60, "Open"],
+    [2, "Low-code workshop", "2026-11-26 09:30", "Amsterdam", 20, "Full"],
+    [3, "Year-end drinks", "2026-12-18 17:00", "Head office", 120, "Draft"]]},
+  {"table": "registration", "columns": ["event_id", "attendee", "email", "registered_on", "attended"], "rows": [
+    [1, "Anna de Vries", "anna@example.com", "2026-10-01", null],
+    [1, "Bram Jansen", "bram@example.com", "2026-10-03", null],
+    [2, "Chloe Bakker", "chloe@example.com", "2026-09-28", null]]}]}

@@ -1,0 +1,41 @@
+{"blueprint": 1, "name": "Contacts", "alias": "contacts", "schema": "contacts",
+ "tables": [
+  {"name": "company", "label": "Companies", "columns": [
+    {"name": "name", "type": "text", "required": true, "unique": true},
+    {"name": "industry", "type": "text", "values": ["Retail", "Manufacturing", "Services", "Public sector", "Technology"]},
+    {"name": "city", "type": "text"},
+    {"name": "website", "type": "text"}]},
+  {"name": "contact", "label": "Contacts", "columns": [
+    {"name": "company_id", "references": "company"},
+    {"name": "first_name", "type": "text", "required": true},
+    {"name": "last_name", "type": "text", "required": true},
+    {"name": "email", "type": "text", "unique": true},
+    {"name": "phone", "type": "text"},
+    {"name": "role", "type": "text"},
+    {"name": "status", "type": "text", "required": true, "values": ["Lead", "Customer", "Former customer"]}]},
+  {"name": "interaction", "label": "Interactions", "columns": [
+    {"name": "contact_id", "references": "contact", "required": true},
+    {"name": "happened_on", "type": "date", "required": true},
+    {"name": "kind", "type": "text", "required": true, "values": ["Call", "Meeting", "E-mail", "Visit"]},
+    {"name": "notes", "type": "text"}]}],
+ "pages": [
+  {"type": "report_form", "table": "company", "page": 2, "form_page": 3, "label": "Companies", "icon": "building"},
+  {"type": "cards", "table": "contact", "page": 4, "label": "Contacts", "icon": "users"},
+  {"type": "report_form", "table": "contact", "page": 5, "form_page": 6, "label": "Contact list", "icon": "list"},
+  {"type": "facets", "table": "contact", "page": 7, "label": "Find contacts", "icon": "filter"},
+  {"type": "report_form", "table": "interaction", "page": 8, "form_page": 9, "label": "Interactions", "icon": "activity"}],
+ "dashboard": true,
+ "sample_data": [
+  {"table": "company", "columns": ["id", "name", "industry", "city", "website"], "rows": [
+    [1, "Northwind Traders", "Retail", "Utrecht", "https://northwind.example"],
+    [2, "Contoso Machines", "Manufacturing", "Eindhoven", "https://contoso.example"],
+    [3, "Fabrikam Services", "Services", "Rotterdam", null]]},
+  {"table": "contact", "columns": ["id", "company_id", "first_name", "last_name", "email", "phone", "role", "status"], "rows": [
+    [1, 1, "Anna", "de Vries", "anna@northwind.example", "+31 30 123 4567", "Buyer", "Customer"],
+    [2, 1, "Bram", "Jansen", "bram@northwind.example", null, "Director", "Customer"],
+    [3, 2, "Chloe", "Bakker", "chloe@contoso.example", "+31 40 765 4321", "Engineer", "Lead"],
+    [4, 3, "Daan", "Visser", "daan@fabrikam.example", null, "Owner", "Former customer"]]},
+  {"table": "interaction", "columns": ["contact_id", "happened_on", "kind", "notes"], "rows": [
+    [1, "2026-09-12", "Meeting", "Yearly review; wants a quote for spring."],
+    [1, "2026-10-02", "E-mail", "Sent the quote."],
+    [3, "2026-10-05", "Call", "Interested in a demo."]]}]}

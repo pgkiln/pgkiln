@@ -185,9 +185,10 @@ export async function renderCalendar(ctx: PageContext, r: Region): Promise<Raw> 
     const c = ctx.client!;
     const res = await savepoint(c, () =>
       c.query(
+        // end_date is optional: read through to_jsonb, so a query without one works
         `select * from (\n${src}\n) "__q"
           where "__q".start_date < ${literal(iso(to))}::date
-            and coalesce("__q".end_date, "__q".start_date) >= ${literal(iso(from))}::date
+            and coalesce(nullif(to_jsonb("__q") ->> 'end_date', '')::timestamptz, "__q".start_date::timestamptz) >= ${literal(iso(from))}::date
           order by "__q".start_date limit 2000`,
       ),
     );

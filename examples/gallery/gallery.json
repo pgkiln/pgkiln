@@ -1,0 +1,20 @@
+{
+  "samples": [
+    {"key": "hr", "title": "HR Demo", "alias": "hr", "icon": "briefcase", "example": "hr",
+     "description": "The showcase of pgkiln on the classic EMP and DEPT tables: reports and forms, an interactive grid, charts, maps, a calendar, faceted search, approvals and workflows, documents, a REST API, translations and a Progressive Web App. Demo accounts king, blake, jones, allen, scott and demo, with the username as password."},
+    {"key": "tasks", "title": "Tasks", "alias": "tasks", "icon": "check", "file": "tasks-app.sql",
+     "description": "The tutorial application: a personal task list where every user sees only their own tasks (row level security), with a business rule in PL/pgSQL behind a button. Demo accounts ann and bob (password ann-password, bob-password)."}
+  ],
+  "starters": [
+    {"key": "team-tasks", "title": "Team Tasks", "icon": "layout-grid", "file": "starters/team-tasks.json",
+     "description": "Projects and their tasks with status, priority, assignee and due date: reports and forms, a faceted search, a calendar of due dates and a dashboard."},
+    {"key": "contacts", "title": "Contacts", "icon": "contact", "file": "starters/contacts.json",
+     "description": "Companies, their contacts and the interactions with them: contact cards, a faceted search, reports and forms and a dashboard."},
+    {"key": "expense-claims", "title": "Expense Claims", "icon": "receipt", "file": "starters/expense-claims.json",
+     "description": "Claims with their expenses in a master-detail page, an editable grid, a chart by category and a dashboard."},
+    {"key": "asset-inventory", "title": "Asset Inventory", "icon": "package", "file": "starters/asset-inventory.json",
+     "description": "Assets with their tags, locations, owners and purchase data: a faceted search, an editable grid of locations, a chart by category and a dashboard."},
+    {"key": "event-registrations", "title": "Event Registrations", "icon": "calendar-days", "file": "starters/event-registrations.json",
+     "description": "Events in a calendar and the people who registered for them, with reports, forms and a dashboard."}
+  ]
+}

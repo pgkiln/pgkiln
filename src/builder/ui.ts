@@ -43,7 +43,7 @@ export async function send(reply: FastifyReply, s: Session, body: string) {
   return reply.type('text/html').send(body);
 }
 
-export type Section = 'apps' | 'users' | 'sql' | 'developers';
+export type Section = 'apps' | 'users' | 'sql' | 'developers' | 'gallery';
 
 // ------------------------------------------------------------------ builder head
 // Builder-only stylesheets and scripts, loaded on every builder page after
@@ -110,6 +110,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       <ul class="rail-list">
         ${rail('apps', BASE, 'builder', 'App Builder')}
         ${rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
+        ${rail('gallery', `${BASE}/gallery`, 'package', 'App Gallery')}
         ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}
       </ul>
       <ul class="rail-list rail-bottom">

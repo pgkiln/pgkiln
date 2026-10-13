@@ -196,7 +196,7 @@ export async function homeRoutes(app: FastifyInstance) {
           ${input('name', 'Name', '', { required: true })}
           ${input('alias', 'Alias (URL)', '', { required: true, help: 'lowercase, e.g. inventory → /a/inventory' })}
           ${boilerplates.length
-            ? select('boilerplate', 'Start from', '', [['', '- a blank application (a Home page) -'], ...boilerplates.map((x): [string, string] => [String(x.id), `${x.name} (boilerplate)`])],
+            ? select('boilerplate', 'Start from', /^\d{1,9}$/.test(String(req.query?.boilerplate ?? '')) ? String(req.query!.boilerplate) : '', [['', '- a blank application (a Home page) -'], ...boilerplates.map((x): [string, string] => [String(x.id), `${x.name} (boilerplate)`])],
                 'A boilerplate application\'s pages, shared components and settings are copied; the new application keeps its own name, alias, role and authentication.')
             : ''}
           ${select('schema', 'Parsing schema', '', [['', '- new schema named after the alias -'], ...schemas.rows.map((r): [string, string] => [r.nspname, r.nspname])],
