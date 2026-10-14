@@ -99,6 +99,20 @@ export async function rangeCounts(ctx: PageContext, fs: FacetSource, f: FacetDef
   return res.rows[0] as number[];
 }
 
+/** (sprint 78) Checkbox facet values shown before "Show all" (APEX shows seven). */
+export const FACET_SHOWN = 7;
+
+/** (sprint 78) The rows the report shows: the search and every facet's filter. */
+export async function totalRows(ctx: PageContext, fs: FacetSource): Promise<number> {
+  const p = new SqlParams();
+  const where = othersWhere(ctx, fs, '', p);
+  const c = ctx.client!;
+  const res = await savepoint(c, () =>
+    c.query<{ n: number }>({ text: `select count(*)::int as n from (\n${fs.src}\n) "__q"${where.length ? ` where ${where.join(' and ')}` : ''}`, values: queryValues(p.values) }),
+  );
+  return res.rows[0].n;
+}
+
 export const facetLabel = (ctx: PageContext, f: FacetDef) => f.label ?? ctx.locale.tr(heading(f.column));
 
 /** A star rating drawn with stars, read as "4 stars and up". */
@@ -156,15 +170,24 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
       // keep selected values visible even when their count dropped to 0
       for (const s of selected) if (s && !values.some((x) => x.v === s)) values.push({ v: s, n: 0 });
       const excluded = f.exclude && ctx.params.get(k.exclude + f.column) === '1';
+      // (sprint 78) a boolean's values as Yes and No, not true and false
+      const bool = fs.cols.get(f.column) === 16;
+      const shown = (v: string) => (bool && (v === 'true' || v === 'false') ? t(v === 'true' ? 'item.yes' : 'item.no') : (toState(v) ?? ''));
       const chart = facetChart(ctx, report, f, label, values.map((x) => ({
-        label: toState(x.v) ?? '', n: x.n,
+        label: shown(x.v), n: x.n,
         apply: (p) => { p.delete(k.values + f.column); p.delete(k.exclude + f.column); p.append(k.values + f.column, x.v); },
       })));
+      const value = (x: { v: string; n: number }) =>
+        html`<label class="check facet-value"><input type="checkbox" form="${formId}" name="${k.values}${f.column}" value="${x.v}"${selected.has(x.v) ? raw(' checked') : ''} data-facet>
+            <span class="facet-label">${shown(x.v)}</span><span class="facet-count">${x.n}</span></label>`;
       groups.push(html`<fieldset class="facet${excluded ? ' facet-excluded' : ''}">
         <legend>${label}${clearLink(f)}</legend>
         ${chart}
-        ${values.map((x) => html`<label class="check facet-value"><input type="checkbox" form="${formId}" name="${k.values}${f.column}" value="${x.v}"${selected.has(x.v) ? raw(' checked') : ''} data-facet>
-            <span class="facet-label">${toState(x.v)}</span><span class="facet-count">${x.n}</span></label>`)}
+        ${values.slice(0, FACET_SHOWN).map(value)}
+        ${values.length > FACET_SHOWN
+          ? html`<details class="facet-more"${values.slice(FACET_SHOWN).some((x) => selected.has(x.v)) ? raw(' open') : ''}><summary>${t('facets.show_all', { n: String(values.length) })}</summary>
+            ${values.slice(FACET_SHOWN).map(value)}</details>`
+          : ''}
         ${f.exclude
           ? html`<label class="check facet-exclude"><input type="checkbox" form="${formId}" name="${k.exclude}${f.column}" value="1"${excluded ? raw(' checked') : ''} data-facet> ${t('facets.exclude')}</label>`
           : ''}
@@ -225,7 +248,15 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
     html`<form id="${formId}" method="get" action="${ctx.base}/${ctx.page.page_no}">${keep.map(([name, v]) => html`<input type="hidden" name="${name}" value="${v}">`)}</form>`,
   );
   const any = defs.some((f) => active.has(f.column)) || (r.config.search === true && fs.search !== '');
+  // (sprint 78; APEX: the results' "Total Row Count") the rows the filters leave
+  let total: number | null = null;
+  try {
+    total = await totalRows(ctx, fs);
+  } catch {
+    total = null; // the facets' own errors are shown above
+  }
   return html`<div class="facets">
+    ${total !== null ? html`<p class="facet-total" role="status">${t('facets.total', { n: total.toLocaleString(ctx.locale.lang) })}</p>` : ''}
     ${groups}
     <div class="buttons facet-actions">
       <button class="btn btn-hot" form="${formId}">${t('report.apply')}</button>

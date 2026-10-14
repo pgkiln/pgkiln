@@ -390,6 +390,8 @@ export const uk: Record<MessageKey, string> = {
   'facets.stars_up': "{n} зірки й вище",
   'facets.star_up': "1 зірка й вище",
   'facets.clear_short': "Очистити",
+  'facets.show_all': "Показати все ({n})",
+  'facets.total': "Усього рядків {n}",
   'smart.placeholder': "Пошук або фільтр…",
   'smart.active': "Чинні фільтри",
   'smart.remove': "Видалити фільтр {filter}",

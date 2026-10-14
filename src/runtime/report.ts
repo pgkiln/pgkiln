@@ -791,6 +791,8 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const st = reportState(ctx, r);
   const searchable = r.config.searchable !== false;
   const interactive = r.config.interactive !== false && searchable;
+  // (sprint 78; APEX: a faceted search's results have no search bar) one search field: the facets'
+  const searchBox = !ctx.page.regions.some((x) => x.type === 'facets' && x.config.search === true && Number(x.config.report) === r.id && ctx.vis?.regions.has(x.id) !== false);
 
   let res: pg.QueryResult<any[]>;
   let pageNo = st.page;
@@ -1127,14 +1129,14 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       ? html`<div class="report-toolbar">
           ${filterItems}
           ${searchable
-            ? html`<div class="search" role="search">
-                <div class="search-field">${interactive
+            ? html`<div class="search"${searchBox ? raw(' role="search"') : ''}>
+                ${searchBox ? html`<div class="search-field">${interactive
                   ? html`<label class="sr-only" for="r${r.id}_qc">${t('report.search_column')}</label>
                     <select id="r${r.id}_qc" class="search-scope" name="${key(r, 'qc')}" form="${searchForm}">
                       <option value="">${t('report.all_columns')}</option>${cols.map(({ f }) => html`<option value="${f.name}"${f.name === st.searchCol ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>`
                   : ''}
                   <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_all')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}"></div>
-                <button class="btn" form="${searchForm}">${t('report.go')}</button>
+                <button class="btn" form="${searchForm}">${t('report.go')}</button>` : ''}
                 ${actionsMenu}
               </div>`
             : ''}

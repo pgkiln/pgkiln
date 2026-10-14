@@ -390,6 +390,8 @@ export const fi: Record<MessageKey, string> = {
   'facets.stars_up': "{n} tähteä tai enemmän",
   'facets.star_up': "1 tähti tai enemmän",
   'facets.clear_short': "Tyhjennä",
+  'facets.show_all': "Näytä kaikki ({n})",
+  'facets.total': "Rivejä yhteensä {n}",
   'smart.placeholder': "Hae tai suodata…",
   'smart.active': "Käytössä olevat suodattimet",
   'smart.remove': "Poista suodatin {filter}",

@@ -502,6 +502,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(await select.evaluate((el) => (el as HTMLSelectElement).form?.id), `rn${r.id}`);
         const box = await select.boundingBox();
         assert.ok(box && box.width < 120, `the select is not stretched: ${JSON.stringify(box)}`);
+        // (sprint 78, IR-3) the label on one line
+        const lbl = await page.locator(`label[for="r${r.id}_size"]`).boundingBox();
+        assert.ok(lbl && lbl.height < 30, `Rows per page on one line: ${JSON.stringify(lbl)}`);
         await Promise.all([page.waitForURL(new RegExp(`r${r.id}_n=5`)), select.selectOption('5')]);
         await page.locator('.pager').filter({ hasText: /1–5 of/ }).first().waitFor();
       } finally {

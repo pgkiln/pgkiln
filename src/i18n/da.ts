@@ -390,6 +390,8 @@ export const da: Record<MessageKey, string> = {
   'facets.stars_up': "{n} stjerner og op",
   'facets.star_up': "1 stjerne og op",
   'facets.clear_short': "Ryd",
+  'facets.show_all': "Vis alle ({n})",
+  'facets.total': "Antal rækker i alt {n}",
   'smart.placeholder': "Søg eller filtrér…",
   'smart.active': "Filtre i brug",
   'smart.remove': "Fjern filteret {filter}",

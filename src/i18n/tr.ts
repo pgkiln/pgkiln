@@ -390,6 +390,8 @@ export const tr: Record<MessageKey, string> = {
   'facets.stars_up': "{n} yıldız ve üzeri",
   'facets.star_up': "1 yıldız ve üzeri",
   'facets.clear_short': "Temizle",
+  'facets.show_all': "Tümünü göster ({n})",
+  'facets.total': "Toplam satır sayısı {n}",
   'smart.placeholder': "Ara veya süz…",
   'smart.active': "Kullanılan süzgeçler",
   'smart.remove': "{filter} süzgecini kaldır",

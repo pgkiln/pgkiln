@@ -269,7 +269,7 @@ describe('create an application from existing tables', () => {
     const form = formFields(/<form method="post" action="\/builder\/apps"[\s\S]*?<\/form>/.exec(page.body)![0]);
     assert.deepEqual(Object.entries(form).filter(([k]) => k.startsWith('t_')).map(([, v]) => v), ['region', 'stock_log', 'store', 'store_list']);
     assert.deepEqual(Object.entries(form).filter(([k]) => k.startsWith('k_')).map(([, v]) => v), ['report_form', 'report', 'report_form', 'report'], 'a report for a view or a table without a key');
-    assert.match(page.body, /store_list<\/label>[\s\S]*?<small class="muted">view<\/small>/);
+    assert.match(page.body, /Store Lists<\/label>[\s\S]*?<small class="muted"><code>store_list<\/code> · view<\/small>/);
     assert.match(page.body, /no single-column key: no form/);
     assert.match(page.body, /<input id="f_name" name="name" value="Aw35 src" required data-select-once>/);
     for (const schema of ['meta', 'pg_catalog', 'information_schema', 'nope']) assert.match((await b.get(`/builder/create/tables?schema=${schema}`)).body, /Choose one of the schemas in the list/);

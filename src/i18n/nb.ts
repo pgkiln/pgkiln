@@ -390,6 +390,8 @@ export const nb: Record<MessageKey, string> = {
   'facets.stars_up': "{n} stjerner og opp",
   'facets.star_up': "1 stjerne og opp",
   'facets.clear_short': "Fjern",
+  'facets.show_all': "Vis alle ({n})",
+  'facets.total': "Totalt antall rader {n}",
   'smart.placeholder': "Søk eller filtrer…",
   'smart.active': "Filtre i bruk",
   'smart.remove': "Fjern filteret {filter}",

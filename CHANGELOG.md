@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprint 78: generated reports and grids read the same (migration 100; parity handoff GEN-2, GEN-1, GEN-7).
+Sprint 78: generated reports and grids read the same (migration 100; parity handoff GEN-2, GEN-1, GEN-7, GEN-9).
 
 ### Changed
 - **Faceted search pages** made by the wizards show one column per foreign key: the parent's name under
@@ -17,8 +17,13 @@ Sprint 78: generated reports and grids read the same (migration 100; parity hand
   a map page's list report gets the masks too. `meta.wizard_grid_labels(table)` returns both.
 - The **Create Application** wizard's page list names each table's pages (*Employees*), with the table's
   name as secondary text.
+- **Faceted search** (GEN-9): the panel starts with the *Total row count* the filters leave; a checkbox facet
+  shows seven values and the rest under *Show all (n)*; a boolean's values read *Yes* and *No*, not
+  *true* and *false*; with the panel's search field the report shows no search field of its own (its
+  Actions menu stays), so the page has one.
 
 ### Fixed
+- The pager's *Rows per page* label stays on one line (IR-3).
 - **Rows per page** in an interactive report's pager: its GET form sat inside the page's form, so the browser
   dropped it; the select then belonged to the page's form (changing it posted the page) and stretched across the
   region. The form is now detached like the toolbar's forms; the select and its button join it by its id.

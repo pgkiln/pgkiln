@@ -390,6 +390,8 @@ export const ja: Record<MessageKey, string> = {
   'facets.stars_up': "星 {n} つ以上",
   'facets.star_up': "星 1 つ以上",
   'facets.clear_short': "クリア",
+  'facets.show_all': "すべて表示 ({n})",
+  'facets.total': "合計行数 {n}",
   'smart.placeholder': "検索またはフィルター…",
   'smart.active': "使用中のフィルター",
   'smart.remove': "フィルター {filter} を削除",
