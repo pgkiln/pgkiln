@@ -461,7 +461,8 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .bar-gridline { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--chart-grid); }
 .bar-gridline.baseline { border-left-color: var(--chart-axis); }
 .bar-stack > .bar-track { position: relative; }
-.bar-axis { font-size: 0.72rem; color: var(--muted); }
+.bar-axis { display: grid; grid-template-columns: minmax(70px, 30%) 1fr auto; gap: 0.75rem; font-size: 0.72rem; color: var(--muted); }
+.bar-axis > :last-child { min-width: 3rem; }
 .bar-ticks { position: relative; height: 1.1rem; }
 .bar-ticks > span { position: absolute; top: 0.15rem; transform: translateX(-50%); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bar-ticks > span:first-child { transform: none; }
@@ -840,7 +841,7 @@ pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--sur
   .card.metric { grid-template-columns: 1fr; row-gap: 0.25rem; }
   .metric-icon { grid-row: auto; width: 36px; height: 36px; }
   .metric-value { font-size: 1.35rem; }
-  .bar-row { grid-template-columns: minmax(60px, 35%) 1fr auto; gap: 0.5rem; }
+  .bar-row, .bar-axis { grid-template-columns: minmax(60px, 35%) 1fr auto; gap: 0.5rem; }
   .title-row .buttons { width: 100%; }
   .title-row .buttons .btn { flex: 1 1 auto; }
 

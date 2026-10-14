@@ -189,7 +189,7 @@ function bar(labels: string[], series: Series[]) {
       })}</span>
       <span class="bar-value">${multi ? '' : fmt.format(series[0].values[i])}</span>`;
     return !multi && link ? mark('div', i, 0, 'bar-row', tip(l, series, i), inner) : html`<div class="bar-row" data-tip="${tip(l, series, i)}">${inner}</div>`;
-  })}<div class="bar-row bar-axis" aria-hidden="true"><span></span><span class="bar-ticks">${ticks.map((t) => html`<span class="${at(t)}">${compact.format(t)}</span>`)}</span><span></span></div></div>`;
+  })}<div class="bar-axis" aria-hidden="true"><span></span><span class="bar-ticks">${ticks.map((t) => html`<span class="${at(t)}">${compact.format(t)}</span>`)}</span><span></span></div></div>`;
 }
 
 // ---------------------------------------------------------------- shared y axis
