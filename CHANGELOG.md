@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 74: the builder's information architecture like APEX's.
+
+### Added
+- **Shared Components as a grid** (APEX): ten groups of component types with counts; each type opens a list with
+  search (filtering while you type), sort and Create; Settings-backed types (authentication, PWA, globalization,
+  navigation bar list, user interface attributes) open their Settings tab; **Breadcrumbs** (the pages by their
+  breadcrumb parent). The earlier page stays as *Tree view*. The parity matrix maps every APEX Shared Components
+  link to pgkiln (or *not planned*).
+- **Settings in tabs**: Definition, Security, Sign-in, User Interface, Globalization, Errors and Sessions,
+  Progressive Web App; Save returns to the tab; the authentication type shows only its own fields.
+- **Application home**: search by page name or number, a Report / Icons view, Create page, and a Tasks sidebar.
+
+### Changed
+- The default-password warning shows on the App Builder home and Developers only and can be dismissed until the
+  next sign-in; the avatar has a red dot until the password is changed.
+
 ## [0.42.0] - 2026-10-14
 
 Sprint 71: generated applications read like APEX's (from a comparison of a pgkiln application made from existing

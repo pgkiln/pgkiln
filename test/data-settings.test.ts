@@ -272,9 +272,11 @@ describe('the builder', () => {
     const b = new Browser(app);
     await b.get('/builder/login');
     await b.submit('/builder/login', { username: 'admin', password: 'admin' });
-    const page = (await b.get(`/builder/apps/${appId}/shared`)).body;
+    // (sprint 74) the list of the type, from the Shared Components grid
+    assert.match((await b.get(`/builder/apps/${appId}/shared`)).body, /shared\?type=app_setting">Application Settings</);
+    const page = (await b.get(`/builder/apps/${appId}/shared?type=app_setting`)).body;
     assert.match(page, /Application settings[\s\S]*SUPPORT_EMAIL/);
-    assert.match(page, /Dynamic translations[\s\S]*nl: SALES/);
+    assert.match((await b.get(`/builder/apps/${appId}/shared?type=dynamic_translation`)).body, /Dynamic translations[\s\S]*nl: SALES/);
     await b.get(`/builder/apps/${appId}/shared?new=app_setting`);
     let res = await b.submit(`/builder/apps/${appId}/shared/app_setting`, { name: 't_any', value: 'x', valid_values: '', keep_on_upgrade: 'true' });
     assert.equal(res.statusCode, 303);

@@ -100,6 +100,10 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
   const rail = (key: Section | 'search' | 'help', href: string, ic: string, label: string, extra: Raw | '' = '') =>
     html`<li><a href="${href}" class="rail-link" title="${label}"${section === key ? raw(' aria-current="page"') : ''}${extra}>${bicon(ic)}<span class="rail-label">${label}</span></a></li>`;
   const back = [...crumbs].reverse().find(([, href], i) => i > 0 && href);
+  // (sprint 74) the default-password warning: on the App Builder home and the Developers page only, until
+  // dismissed (for this sign-in); a dot on the avatar stays until the password is changed
+  const weak = !!s.state.__WEAK;
+  const weakBanner = weak && !s.state.__WEAK_HIDDEN && crumbs.length === 1 && (crumbs[0][0] === 'App Builder' || crumbs[0][0] === 'Developers');
   const themeButton = (t: BuilderTheme, ic: string, label: string) =>
     html`<button name="theme" value="${t}" aria-pressed="${theme === t ? 'true' : 'false'}">${bicon(ic)}<span>${label}</span></button>`;
   return documentShell(
@@ -143,9 +147,10 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
           </div></div></details></li>` : ''}
         ${rail('help', 'https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md', 'help', 'Help', raw(' target="_blank" rel="noopener"'))}
         <li><details class="menu rail-user">
-          <summary class="rail-avatar" title="${s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">Account: ${s.username}</span></summary>
+          <summary class="rail-avatar${weak ? ' has-dot' : ''}" title="${weak ? `${s.username}: change the default password` : s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">Account: ${s.username}${weak ? ' (the default password: change it)' : ''}</span></summary>
           <div class="menu-panel">
             <div class="menu-section"><strong>${s.username}</strong><span class="muted small">Developer</span></div>
+            ${weak ? html`<div class="menu-section"><a class="weak-note" href="${BASE}/developers">${icon('alert')} You use the default password: change it</a></div>` : ''}
             ${workspaceMenu(s)}
             <div class="menu-section"><span class="small muted" id="theme-label">Builder theme</span>
               <form method="post" action="${BASE}/theme" class="segmented ide-theme" role="group" aria-labelledby="theme-label">${csrf(s)}
@@ -166,8 +171,9 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         <div class="ide-tools">${opts.toolbar ?? ''}</div>
       </header>
       ${s.workspace?.banner_label ? html`<div class="ide-banner ide-banner-${BANNER_COLORS.includes(s.workspace.banner_color ?? '') ? s.workspace.banner_color : 'blue'}" role="note" aria-label="Environment">${s.workspace.banner_label}</div>` : ''}
-      ${s.state.__WEAK || ok || err ? html`<div class="ide-alerts">
-        ${s.state.__WEAK ? html`<div class="alert alert-error" role="alert">You signed in with the default password. <a href="${BASE}/developers">Change it now.</a></div>` : ''}
+      ${weakBanner || ok || err ? html`<div class="ide-alerts">
+        ${weakBanner ? html`<div class="alert alert-error alert-dismissible" role="alert"><span>You signed in with the default password. <a href="${BASE}/developers">Change it now.</a></span>
+          <form method="post" action="${BASE}/weak/dismiss">${csrf(s)}<button class="link-button" aria-label="Dismiss until the next sign-in" title="Dismiss until the next sign-in">${icon('close')}</button></form></div>` : ''}
         ${ok ? html`<div class="alert alert-success" role="status">${ok}</div>` : ''}
         ${err ? html`<div class="alert alert-error" role="alert">${err}</div>` : ''}
       </div>` : ''}

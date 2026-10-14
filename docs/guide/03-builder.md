@@ -462,6 +462,14 @@ they are **not** run until you choose to.
 
 ## App dashboard
 
+(sprint 74) Above the pages: a **search** by page name or number (the rows filter while you type),
+**Report** and **Icons** views, and **Create page** (the page wizards below). **Tasks** on the right: run the
+application, create pages (also with AI), Shared Components, page groups, export, backups, supporting
+objects, lock or delete the application.
+
+The **default-password** warning shows on the App Builder home (and Developers) only; dismiss it with × until the
+next sign-in. The avatar keeps a red dot until the password is changed.
+
 Open an application to see its pages, with region/item/dynamic-action/process counts,
 authorization and protection. The tabs under its name lead to **Shared Components**, **Activity**,
 **REST API**, **Settings**, **Search** and **Advisor**; **Export** and **Run** are on the right.
@@ -813,7 +821,14 @@ exported.
 
 ## Shared components
 
-Components used by the whole application:
+Components used by the whole application. **Shared Components** opens on a grid like APEX's: ten groups
+(Application Logic, Security, Other Components, Navigation and Search, User Interface, Files and Reports,
+Data Sources, Workflows and Automations, Globalization, Generative AI) with a link and a count per component
+type. A type opens its list (`?type=…`): search by name (the rows filter while you type), sort by name,
+**Create**, and a row opens its editor. The types pgkiln keeps in the application's Settings (authentication,
+security attributes, navigation bar list, user interface attributes, PWA, globalization attributes) open the
+right Settings tab. **Breadcrumbs** shows the pages by their breadcrumb parent. **Tree view** (`?view=tree`)
+is the earlier page: every component in one rail, with **Access control** next to it.
 
 | Component | Purpose |
 |---|---|
@@ -928,6 +943,12 @@ register at the provider, and has a *Test discovery* button. See
 [chapter 8](08-security.md#single-sign-on-openid-connect).
 
 ## Settings
+
+Settings has tabs (APEX: Edit Application Definition and Security Attributes): **Definition**, **Security**,
+**Sign-in**, **User Interface**, **Globalization**, **Errors and Sessions** and **Progressive Web App**. It opens
+on Definition (`?tab=…` opens another). *Save settings* saves the first five together and comes back to the tab
+you were on. The Security tab shows only the fields of the chosen authentication type (HTTP header, database
+accounts or custom).
 
 - **Application**: name, alias, home page.
 - **Security**: authentication (*App users*, *HTTP header*, *Database accounts*, *Custom* or

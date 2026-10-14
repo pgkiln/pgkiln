@@ -188,6 +188,14 @@ export async function builderRoutes(app: FastifyInstance) {
 
   // (sprint 73) POST /apps, creating an application, is in appwizard.ts
 
+  // (sprint 74) hide the default-password warning until the next sign-in (the avatar keeps a dot)
+  app.post(`${BASE}/weak/dismiss`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    s.state.__WEAK_HIDDEN = '1';
+    return back(reply, s, BASE);
+  });
+
   app.post(`${BASE}/import`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
@@ -242,7 +250,12 @@ export async function builderRoutes(app: FastifyInstance) {
     const groups = (await owner.query<{ name: string }>('select name from meta.page_group where app_id = $1 order by name', [a.id])).rows.map((g) => g.name);
     const grouped = groups.length > 0 || pages.rows.some((p) => p.page_group);
     const groupFilter = typeof req.query?.group === 'string' ? req.query.group : '';
-    const shownPages = pages.rows.filter((p) => !groupFilter || (groupFilter === '-' ? !p.page_group : p.page_group === groupFilter));
+    // (sprint 74) search by name or number, and a report or icon view (APEX: the application home)
+    const q = typeof req.query?.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
+    const icons = req.query?.view === 'icons';
+    const shownPages = pages.rows.filter((p) => (!groupFilter || (groupFilter === '-' ? !p.page_group : p.page_group === groupFilter))
+      && (!q || String(p.page_no) === q || String(p.name).toLowerCase().includes(q.toLowerCase())));
+    const keep = (extra: Record<string, string>) => `?${new URLSearchParams({ ...(q ? { q } : {}), ...(groupFilter ? { group: groupFilter } : {}), ...extra })}`;
     const locks = new Map((await appLocks(a.id)).map((l) => [l.page_no, l]));
     const commentsPerPage = new Map((await owner.query('select page_no, count(*)::int as n from meta.dev_comment where app_id = $1 group by 1', [a.id])).rows.map((r) => [r.page_no, r.n]));
     const appLock = locks.get(0);
@@ -250,21 +263,33 @@ export async function builderRoutes(app: FastifyInstance) {
     const main = html`
       ${appHeader(a, 'pages')}
       ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${icon('key')} ${lockText(appLock)} Changes are refused until it is unlocked.</div>` : ''}
+      <div class="app-home">
+      <div class="app-home-main">
+      <div class="pages-bar">
+        <form method="get" class="search u-mwnone" role="search">${groupFilter ? html`<input type="hidden" name="group" value="${groupFilter}">` : ''}${icons ? html`<input type="hidden" name="view" value="icons">` : ''}
+          <label class="sr-only" for="f_pq">Search pages</label><input id="f_pq" name="q" type="search" value="${q}" placeholder="Page name or number" data-filter-rows="pages-rows">
+          <button class="btn">${icon('search')}<span class="sr-only">Search</span></button></form>
+        <div class="seg view-toggle" role="group" aria-label="View">
+          <a href="${keep({})}"${icons ? '' : raw(' aria-current="true"')}>${icon('list')} Report</a><a href="${keep({ view: 'icons' })}"${icons ? raw(' aria-current="true"') : ''}>${icon('grid')} Icons</a></div>
+        <a class="btn btn-hot" href="#create-page">${icon('plus')} Create page</a>
+      </div>
       ${region('Pages', html`${grouped
           ? html`<form method="get" class="search u-mwnone u-mb1"><div class="field"><label class="label" for="f_group">Page group</label>
               <select id="f_group" name="group">${[['', 'All pages'], ...groups.map((g) => [g, g]), ['-', 'Without a group']].map(([v, l]) => html`<option value="${v}"${v === groupFilter ? raw(' selected') : ''}>${l}</option>`)}</select></div>
               <button class="btn u-selfend">Show</button></form>`
-          : ''}<div class="table-wrap"><table class="report">
+          : ''}${icons
+          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${BASE}/pages/${p.id}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${p.mode}, ${p.regions} region${p.regions === 1 ? '' : 's'}</small></a></li>`)}</ul>`
+          : html`<div class="table-wrap"><table class="report">
           <thead><tr><th class="num">Page</th><th>Name</th>${grouped ? html`<th>Group</th>` : ''}<th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th>Lock</th><th></th></tr></thead>
-          <tbody>${shownPages.map((p) => html`<tr>
+          <tbody id="pages-rows">${shownPages.map((p) => html`<tr>
             <td class="num">${p.page_no}</td><td><a href="${BASE}/pages/${p.id}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
             <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
             <td>${p.requires_auth ? (p.authz ?? '—') : 'public'}</td><td>${p.protection}</td>
             <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? 'you' : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
             <td><a href="/a/${a.alias}/${p.page_no}" target="_blank" rel="noopener">Run ▸</a></td></tr>`)}</tbody>
-        </table></div>`)}
-      ${region('Application lock and comments', await lockPanel(s, a.id, 0, { headings: true }))}
-      <div class="columns">
+        </table></div>`}${q && !shownPages.length ? html`<p class="muted">No page matches “${q}”.</p>` : ''}`)}
+      <div id="app-lock">${region('Application lock and comments', await lockPanel(s, a.id, 0, { headings: true }))}</div>
+      <div class="columns" id="create-page">
         ${region('Create pages from a table', html`
           <p class="muted u-mt0">Choose a page type and a table or view; the next step proposes the columns, key, dates, positions and foreign keys from the database, and creates the page with a menu entry.</p>
           <form method="get" action="${BASE}/apps/${a.id}/wizard">
@@ -285,6 +310,21 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <div class="buttons"><button class="btn btn-hot">Create page</button></div>
           </form>`)}
+      </div>
+      </div>
+      <aside class="app-tasks region region-standard" aria-labelledby="app-tasks-h"><header class="region-header"><h2 id="app-tasks-h">Tasks</h2></header>
+        <ul class="sc-links">
+          <li><a href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run application</a></li>
+          <li><a href="#create-page">${icon('plus')} Create page</a></li>
+          <li><a href="${BASE}/apps/${a.id}/ai-pages">${icon('lightbulb')} Create pages with AI</a></li>
+          <li><a href="${BASE}/apps/${a.id}/shared">${icon('layers')} Shared Components</a></li>
+          <li><a href="${BASE}/apps/${a.id}/shared?type=page_group">${icon('folder')} Page groups</a></li>
+          <li><a href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a></li>
+          <li><a href="${BASE}/apps/${a.id}/backups">${icon('history')} Backups</a></li>
+          <li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('database')} Supporting objects</a></li>
+          <li><a href="#app-lock">${icon('lock')} Lock the application</a></li>
+          <li><a href="${BASE}/apps/${a.id}/settings?tab=definition">${icon('trash')} Delete the application</a></li>
+        </ul></aside>
       </div>`;
     return send(reply, s, shell(s, a.name, [['App Builder', BASE], [a.name]], main));
   });
@@ -333,6 +373,11 @@ export async function builderRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- settings
+  /** (sprint 74) The tabs of an application's Settings. */
+  const SETTINGS_TABS: [string, string][] = [
+    ['definition', 'Definition'], ['security', 'Security'], ['signin', 'Sign-in'], ['ui', 'User Interface'],
+    ['globalization', 'Globalization'], ['errors', 'Errors and Sessions'], ['pwa', 'Progressive Web App'],
+  ];
   app.get(`${BASE}/apps/:id/settings`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
@@ -342,18 +387,25 @@ export async function builderRoutes(app: FastifyInstance) {
     const directories = (await owner.query('select name, display_name, enabled from meta.ldap_directory order by display_name')).rows;
     const lists = (await owner.query('select name from meta.list where app_id = $1 order by name', [a.id])).rows.map((r) => r.name as string);
     const listChoices = (v: string | null, none: string): [string, string][] => [['', none], ...lists.map((n): [string, string] => [n, n]), ...(v && !lists.includes(v) ? [[v, `${v} (missing!)`] as [string, string]] : [])];
+    // (sprint 74) tabs like APEX's Edit Application Definition and Security Attributes: every tab of the
+    // main form is in the page (the others hidden), so Save keeps all of them; without JavaScript the tabs are links
+    const tab = SETTINGS_TABS.some(([k]) => k === req.query?.tab) ? String(req.query!.tab) : 'definition';
+    const panel = (k: string) => raw(`<section class="settings-panel" data-tab="${k}"${k === tab ? '' : ' hidden'}>`);
+    const end = raw('</section>');
+    const authPart = (k: string) => raw(`<div class="auth-part" data-auth="${k}"${a.authentication === k ? '' : ' hidden'}>`);
     const main = html`${appHeader(a, 'settings')}
-      <div class="columns">
-        ${region('Application settings', html`
-          <form method="post" action="${BASE}/apps/${a.id}/settings">${csrf(s)}
+      <nav class="settings-tabs" aria-label="Settings">${SETTINGS_TABS.map(([k, label]) => html`<a href="?tab=${k}" data-tab-link="${k}"${k === tab ? raw(' aria-current="page"') : ''}>${label}</a>`)}</nav>
+      <div class="settings-body">
+        <form method="post" action="${BASE}/apps/${a.id}/settings" class="settings-form">${csrf(s)}<input type="hidden" name="tab" value="${tab}" data-settings-tab>
+            ${panel('definition')}${region('Definition', html`
             <div class="form-grid">
               ${input('name', 'Name', a.name, { required: true })}
               ${input('alias', 'Alias', a.alias, { required: true })}
               ${input('home_page', 'Home page', a.home_page, { type: 'number' })}
               ${select('app_type', 'Application type', a.app_type ?? 'standard', APP_TYPES.map((t): [string, string] => [t, APP_TYPE_LABELS[t]]),
                 'Theme and library applications offer their theme or shared components to other applications (Shared Components → Subscriptions); Create application can start from a boilerplate application.')}
-            </div>
-            <h3>Security</h3>
+            </div>`)}${end}
+            ${panel('security')}${region('Authentication', html`
             <div class="form-grid">
               ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['header', 'HTTP header (reverse proxy)'], ['database', 'Database accounts (PostgreSQL roles)'], ['custom', 'Custom (a PL/pgSQL function)'], ['none', 'None (public)']])}
               ${input('db_role', 'Database role (parsing schema)', a.db_role, { help: 'All application SQL runs as this role (SET LOCAL ROLE), so grants and row level security apply. Leave empty only for trusted internal apps.' })}
@@ -362,7 +414,7 @@ export async function builderRoutes(app: FastifyInstance) {
               <div class="field"><span class="label">Debug messages</span><span>${a.debug_level ? html`<b>on, level ${a.debug_level}</b>` : 'off'} · <a href="${BASE}/apps/${a.id}/debug">Debug messages</a></span>
                 <small class="help">Records every request's steps with timings and the messages of <code>meta.debug(level, text)</code>, kept ${a.debug_retention_days} days.</small></div>
             </div>
-            <h3>HTTP header authentication</h3>
+            ${authPart('header')}<h3>HTTP header authentication</h3>
             <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgkiln trusts it only from the proxy addresses in <code>PGKILN_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
             <div class="form-grid">
               ${input('header_name', 'User name header', a.header_name ?? '', { placeholder: DEFAULT_HEADER, help: 'The request header with the user name (APEX: HTTP Header Variable). Empty: X-Remote-User. A changed or missing header ends the session.' })}
@@ -370,13 +422,13 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="header_auto_create" value="true"${a.header_auto_create ? raw(' checked') : ''}> Create accounts automatically</label>
               <small class="help">An unknown user name gets a new account with access to this app. Otherwise the account must exist and have access.</small></div>
-            <h3>Database accounts</h3>
+            </div>${authPart('database')}<h3>Database accounts</h3>
             <p class="muted">Only used when Authentication is "Database accounts". Users sign in with a PostgreSQL login role and its password, checked by a short connection to this database as that role. Superusers and pgkiln's own roles are always refused; with neither field set nobody can sign in.</p>
             <div class="form-grid">
               ${input('db_auth_roles', 'Allowed roles', (a.db_auth_roles ?? []).join(', '), { placeholder: 'e.g. alice, bob', help: 'Login roles that may sign in, comma separated (exact names).' })}
               ${input('db_auth_member_of', 'Or members of role', a.db_auth_member_of ?? '', { placeholder: 'e.g. app_users_group', help: 'Every member of this role may sign in too.' })}
             </div>
-            <h3>Custom authentication</h3>
+            </div>${authPart('custom')}<h3>Custom authentication</h3>
             <p class="muted">Only used when Authentication is "Custom". Your own PL/pgSQL checks the user name and password on the sign-in form, as the application's database role; the password is passed as a parameter and never logged. Failed attempts are throttled like other sign-ins. With neither field set nobody can sign in.</p>
             <div class="form-grid">
               ${input('custom_auth_function', 'Function name', a.custom_auth_function ?? '', { placeholder: 'e.g. app.check_login', help: 'A function (p_username text, p_password text) returns boolean, in lower case, optionally with its schema. The app\'s role needs EXECUTE on it. Takes precedence over the body below.' })}
@@ -387,6 +439,8 @@ export async function builderRoutes(app: FastifyInstance) {
             <div class="field" data-wide><label class="label" for="f_custom_auth_post_code">Post-authentication code</label>
               <textarea id="f_custom_auth_post_code" name="custom_auth_post_code" class="code" rows="4" spellcheck="false" data-code="plpgsql">${a.custom_auth_post_code ?? ''}</textarea>
               <small class="help">Optional PL/pgSQL run after a successful check, with p_username (and meta.app_user()), e.g. to record the last sign-in. Raising an exception refuses the sign-in. Application processes "after login" run afterwards as usual.</small></div>
+            </div>`)}${end}
+            ${panel('signin')}${region('Sign-in', html`
             <h3>Sign-in methods</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
             ${directories.length
@@ -399,6 +453,8 @@ export async function builderRoutes(app: FastifyInstance) {
             ${providers.length
               ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
               : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
+            `)}${end}
+            ${panel('ui')}${region('User Interface', html`
             <h3>Theme</h3>
             <div class="form-grid">
               ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['lavender', 'Lavender (Iris until pgkiln 0.41)'], ['standard', 'Standard (pgkiln until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
@@ -416,7 +472,8 @@ export async function builderRoutes(app: FastifyInstance) {
               <small class="help">Adds a switch to the user menu and My account; the choice is saved on the account (APEX: "Enable End Users to Choose Theme Style").</small></div>
             <p><a class="btn" href="${BASE}/apps/${a.id}/theme">${icon('settings')} Theme Roller: style variants…</a>
               <span class="muted">${(() => { const n = appStyles(a.theme).length; return n ? `${n} style${n === 1 ? '' : 's'}` : 'no styles yet'; })()}</span></p>
-            <h3>Globalization</h3>
+            `)}${end}
+            ${panel('globalization')}${region('Globalization', html`
             <div class="form-grid">
               ${input('language', 'Primary language', a.language, { help: 'The language the app is built in, e.g. en, nl, de, en-GB.' })}
               ${input('languages', 'Translated languages', (a.languages ?? []).join(', '), { placeholder: 'e.g. nl, de', help: 'Comma separated. Translate texts under Shared Components → Globalization.' })}
@@ -424,22 +481,22 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('date_format', 'Date format', a.date_format, { placeholder: 'e.g. DD-MM-YYYY (empty: per language)', help: 'Masks: YYYY YY MM MON MONTH DD DY DAY HH24 HH MI SS AM' })}
               ${input('timestamp_format', 'Date and time format', a.timestamp_format, { placeholder: 'e.g. DD-MM-YYYY HH24:MI' })}
             </div>
-            ${await timeZoneSettings(a)}
-            <div class="buttons"><button class="btn btn-hot">Save settings</button></div>
+            ${await timeZoneSettings(a)}`)}${end}
+            <div class="buttons settings-save"${['errors', 'pwa'].includes(tab) ? raw(' hidden') : ''}><button class="btn btn-hot">Save settings</button></div>
           </form>
-          <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
+          ${panel('definition')}<form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete application ${a.name} and all its pages?">Delete application</button>
-          </form>`)}
-        ${region('Errors and sessions', html`<form method="post" action="${BASE}/apps/${a.id}/settings/behaviour">${csrf(s)}
+          </form>${end}
+        ${panel('errors')}${region('Errors and sessions', html`<form method="post" action="${BASE}/apps/${a.id}/settings/behaviour">${csrf(s)}
           <div class="form-grid">
             ${input('error_function', 'Error handling function', a.error_function ?? '', { placeholder: 'e.g. sales.error_message',
               help: 'schema.function(jsonb) returns jsonb, run as the application\'s role: it receives the message and what is known of an error (code, constraint, table, column, component, page, user, internal, reference) and may return {"message": "…"} to show instead. Empty: none.' })}
             ${input('session_warning_seconds', 'Session timeout warning (seconds)', a.session_warning_seconds ?? 120, { type: 'number',
               help: 'Signed-in users are warned this long before their session ends and can stay signed in (0: no warning).' })}
           </div>
-          <div class="buttons"><button class="btn">Save</button></div></form>`)}
-        ${region('Progressive Web App', await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}
-        ${region('Security checklist', html`<ul class="checklist">
+          <div class="buttons"><button class="btn">Save</button></div></form>`)}${end}
+        ${panel('pwa')}${region('Progressive Web App', await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}${end}
+        ${panel('security')}${region('Security checklist', html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
           ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGKILN_AUTH_HEADER_PROXIES' : html`<b>refused: PGKILN_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
@@ -450,7 +507,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <li>${a.debug_level ? `✗ Debug messages are on (level ${a.debug_level}): every request is recorded` : '✓ Debug messages are off'}</li>
           <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
           <li>Public pages: ${(await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n}</li>
-        </ul>`)}
+        </ul>`)}${end}
       </div>`;
     return send(reply, s, shell(s, `${a.name} settings`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Settings']], main));
   });
@@ -473,7 +530,7 @@ export async function builderRoutes(app: FastifyInstance) {
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
-    return back(reply, s, `${BASE}/apps/${req.params.id}/settings`);
+    return back(reply, s, `${BASE}/apps/${req.params.id}/settings?tab=errors`);
   });
 
   app.post(`${BASE}/apps/:id/settings`, async (req: Req, reply) => {
@@ -530,7 +587,9 @@ export async function builderRoutes(app: FastifyInstance) {
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
-    return back(reply, s, `${BASE}/apps/${req.params.id}/settings`);
+    // (sprint 74) back to the tab the form was saved from
+    const tab = /^[a-z]{1,20}$/.test(String(b.tab ?? '')) ? `?tab=${b.tab}` : '';
+    return back(reply, s, `${BASE}/apps/${req.params.id}/settings${tab}`);
   });
 
   app.post(`${BASE}/apps/:id/delete`, async (req: Req, reply) => {
