@@ -5,6 +5,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 79: the runtime chrome, the report toolbar and the dashboard like APEX's (migration 101; parity handoff UI-2, UI-3, UI-4, IR-3, GEN-6).
+
+### Changed
+- **Light or dark** (UI-2): until a user chooses, an application opens in its own mode (a new Iris
+  application light, also when the device is dark). Accounts started with *Automatic* as their choice, so
+  at sign-in every Iris application followed the device; `meta.account.theme_pref` is now null until the
+  user chooses (migration 101 clears the old default; a user who chose *Automatic* chooses it again). A
+  signed-out user's choice is a cookie of that application only (`pgkiln_mode`, path `/a/<alias>`), no
+  longer one cookie for every application on the host.
+- **User menu** (UI-3): signed out on a public page of an application with sign-in, the header has a user
+  menu with *Appearance* and *Sign in* (was a *Sign in* link only); the Appearance menu of an application
+  without sign-in has a tooltip.
+- **Developer toolbar** (UI-4): each tool shows a short text next to its icon: *App 12*, *Page 3*,
+  *Debug off*/*on*… (icons only on narrow screens, docked at a side, or with the new *Icons only* setting).
+- **Report search** (IR-3): the column scope is the magnifier at the start of the search field (the
+  column's name once one is chosen); Enter searches and the *Go* button shows only without JavaScript.
+  A generated faceted search report's rows start with a pencil that opens the form; the key is plain text.
+- **Generated dashboards** (GEN-6): a chart sums a table's amount column when it has one (*Salary by
+  Department*), else counts rows; six groups or fewer make a donut, a date a line, else a sorted bar; a
+  grouping that says nothing (one group, or every group the same) is left out (the next foreign key or
+  repeating column is tried).
+
 Sprint 78: generated reports and grids read the same (migration 100; parity handoff GEN-2, GEN-1, GEN-7, GEN-9).
 
 ### Changed

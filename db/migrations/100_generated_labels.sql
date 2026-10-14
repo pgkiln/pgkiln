@@ -12,13 +12,15 @@
 --   and the number format masks of meta.wizard_mask, like the reports.
 -- - The faceted search report and a map's list report get the format masks
 --   too, so a salary reads 2,850.00 in the report, the grid and the form.
+-- - A faceted search report's rows start with a pencil that opens the form
+--   (link.icon), like a report and form page; the key is plain text.
 --
 -- meta.generate_page is 097's with those changes. Pages generated before
 -- keep their configuration.
 -- =====================================================================
 
 -- a grid's headings and number formats: {"headings": {...}, "formats": {...}}
-create function meta.wizard_grid_labels(p_table regclass) returns jsonb
+create or replace function meta.wizard_grid_labels(p_table regclass) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
     'headings', coalesce(jsonb_object_agg(column_name, meta.wizard_column_label(p_table, column_name)), '{}'),
@@ -354,7 +356,7 @@ begin
       end loop;
       insert into meta.region (page_id, seq, title, type, columns, source, config)
       values (v_page, 20, v_label, 'report', 9, format(E'select %s\n  from %s t', v_cols, meta.wizard_qname(p_table)),
-              jsonb_strip_nulls(jsonb_build_object('link', v_link || jsonb_build_object('column', v_pk), 'headings', v_heads,
+              jsonb_strip_nulls(jsonb_build_object('link', v_link || jsonb_build_object('column', v_pk, 'icon', true), 'headings', v_heads,
                 'hidden', nullif(v_hidden, '[]'), 'formats', nullif(v_fmts, '{}'))))
       returning id into v_region;
       insert into meta.region (page_id, seq, title, type, columns, template, config)

@@ -7,7 +7,7 @@ import { forgetAllRemembered, rememberCookie, rememberedCount } from '../remembe
 import { getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
 import { loginWindowMinutes } from '../security.ts';
 import type { PageContext } from './context.ts';
-import { databaseTimeZone, isTheme, matchLanguage, sameOffset, THEME_COOKIE, timeZoneFor, timeZoneNames, validTimeZone } from './locale.ts';
+import { databaseTimeZone, isTheme, matchLanguage, sameOffset, THEME_COOKIE, themeCookieOptions, timeZoneFor, timeZoneNames, validTimeZone } from './locale.ts';
 import { chrome, clientTexts } from './render.ts';
 import { appStyles, choosable, chosenStyleName, styleChoice } from './styles.ts';
 import { loadApp } from '../metadata.ts';
@@ -28,8 +28,8 @@ async function saveStyle(appId: number, username: string, style: string) {
   );
 }
 
-const themeCookie = (reply: FastifyReply, theme: string) =>
-  reply.setCookie(THEME_COOKIE, theme, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
+// (sprint 79) per application: a choice in one application doesn't change another's mode
+const themeCookie = (reply: FastifyReply, theme: string, base: string) => reply.setCookie(THEME_COOKIE, theme, themeCookieOptions(base));
 
 /** My account → Time zone: automatic (the browser's) or one of PostgreSQL's time zones. */
 async function timeZoneField(ctx: PageContext) {
@@ -160,7 +160,7 @@ export async function accountRoutes(app: FastifyInstance) {
     }
     if (theme) {
       ctx.session.state.__THEME = theme;
-      themeCookie(reply, theme);
+      themeCookie(reply, theme, ctx.base);
     }
     if (language) ctx.session.state.__LANG = language;
     // a style variant: only one of the app's own styles ('' = the base colours)
@@ -263,7 +263,7 @@ export async function accountRoutes(app: FastifyInstance) {
     const to = safeNext(a, b.next);
     if (b.__csrf !== session.csrf_token || a.theme?.user_choice === false || !isTheme(b.theme)) return reply.redirect(to, 303);
     session.state.__THEME = b.theme;
-    themeCookie(reply, b.theme);
+    themeCookie(reply, b.theme, `/a/${a.alias}`);
     if (session.username) {
       await runtime.query('update meta.account set theme_pref = $2 where lower(username) = lower($1)', [session.username, b.theme]);
     }

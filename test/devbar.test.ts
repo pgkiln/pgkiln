@@ -53,6 +53,11 @@ describe('developer toolbar', () => {
     assert.match(page, /href="\/a\/hr\/1\/devbar\/session" title="Session"/);
     assert.match(page, new RegExp(`href="/builder/apps/${appId}/theme" title="Customize \\(Theme Roller\\)"`));
     assert.match(page, /<summary class="devbar-tool" title="Info"[\s\S]*<dt>Page<\/dt><dd>1: /);
+    // (sprint 79, UI-4) the context as text: App <id>, Page <n>, the debug state
+    assert.match(page, new RegExp(`aria-label="Edit page 1"><svg[^]*?</svg><span class="devbar-text" aria-hidden="true">Page 1</span>`));
+    assert.match(page, /<span class="devbar-text" aria-hidden="true">App \d+<\/span>/);
+    assert.match(page, /title="Debug: off" aria-label="Debug: off"><svg[^]*?<\/svg><span class="devbar-text" aria-hidden="true">Debug off<\/span>/);
+    assert.match(page, /name="devbar-compact"> Icons only/);
     // not in a dialog
     assert.doesNotMatch((await b.get('/a/hr/7?dialog=1')).body, /class="devbar"/);
   });

@@ -292,9 +292,14 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
                 </form>
               </div>
             </details>`
-          : html`<a href="${ctx.base}/login">${t('login.sign_in_link')}</a>`
+          : // (sprint 79, UI-3; APEX: the user menu of a public page) signed out: Appearance and Sign in in the user menu
+            ctx.locale.themeChoice || styleChoice(ctx.app)
+            ? html`<details class="menu t-user"><summary>${icon('user')}<span>${t('login.sign_in_link')}</span></summary>
+                <div class="menu-panel align-right">${themeSwitch(ctx, here(ctx))}${styleSwitch(ctx, here(ctx))}
+                  <div class="menu-section"><a href="${ctx.base}/login">${icon('arrow-right')} ${t('login.sign_in_link')}</a></div></div></details>`
+            : html`<a href="${ctx.base}/login">${t('login.sign_in_link')}</a>`
         : ctx.locale.themeChoice || styleChoice(ctx.app)
-          ? html`<details class="menu t-user"><summary>${icon('settings')}<span class="sr-only">${t('theme.label')}</span></summary>
+          ? html`<details class="menu t-user"><summary title="${t('theme.label')}">${icon('settings')}<span class="sr-only">${t('theme.label')}</span></summary>
               <div class="menu-panel align-right">${themeSwitch(ctx, here(ctx))}${styleSwitch(ctx, here(ctx))}</div></details>`
           : ''}
     </header>

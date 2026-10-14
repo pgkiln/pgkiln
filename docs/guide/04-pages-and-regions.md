@@ -222,7 +222,8 @@ select e.empno, e.ename, e.job, d.dname as department, e.sal
 
 Features for end users:
 
-- **Search** across all columns, or in one column chosen in the list at the start of the search field
+- **Search** across all columns, or in one column chosen under the magnifier at the start of the search field
+  (it shows the column's name once one is chosen); Enter searches (without JavaScript, a *Go* button)
   (Enter searches; *Go* too).
 - **Column heading menu** (sprint 76; with JavaScript): clicking a heading opens a menu with *Sort ascending*,
   *Sort descending*, *Hide column*, *Control break* and the column's **values** with their counts (with the current

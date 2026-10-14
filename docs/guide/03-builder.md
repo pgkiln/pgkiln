@@ -381,8 +381,10 @@ The wizards (every *Create application* flow and the page wizards) make pages th
   *photo*, *image* or *logo* accept pictures only.
 - **Numbers** get a format mask with group separators (and the scale's decimals for `numeric(p,s)`),
   in reports, read-only grid cells and forms alike, in the application's language (*2,850.00*); keys get none.
-- The **Dashboard** comes right after *Home* in the menu; its charts are titled *Employees by Manager*,
-  rows without a value are labelled *(none)*, and bar charts show the ten largest values (the rest is
+- The **Dashboard** comes right after *Home* in the menu; its charts are titled *Employees by Manager*
+  (a count) or *Salary by Department* (the sum of an amount column: salary, total, price, cost, value…),
+  a donut for six groups or fewer, a line for a date, else a sorted bar; a grouping that says nothing (one
+  group, or every group the same size) is left out. Rows without a value are labelled *(none)*, and bar charts show the ten largest values (the rest is
   one *Other* bar). Tables with row-level security are left out (the application's role may see none of
   their rows); the result page says which.
 - The **Home** page has a hero with the application's icon and name, and a card per page of the menu
@@ -711,11 +713,13 @@ Chapters 4–7 describe every component type and property.
 
 While you are signed in to the builder, the pages of your applications show the **developer
 toolbar** when you run them in the same browser (APEX: the Runtime Developer Toolbar): a compact bar
-of icons, centred at the bottom, each with a tooltip. It isn't shown to anyone else, nor inside
+centred at the bottom, each tool an icon with a short text (*Home*, *App 12*, *Page 3*, *Session*,
+*Debug off*, *Quick edit*, *Customize*, *Info*) and a tooltip; on narrow screens, docked at the left or
+right, or with *Icons only* in Settings, just the icons. It isn't shown to anyone else, nor inside
 dialogs. The page keeps room for it, so it never covers the menu's last entry or a report's pager.
 After a few seconds without use it shrinks to a slim tab at the edge; point at it or Tab to it to
-bring it back. **Settings** (the last icon) docks it at the bottom, top, left or right and turns the
-hiding off (kept in your browser). It has:
+bring it back. **Settings** (the last icon) docks it at the bottom, top, left or right, turns the
+hiding off and shows *Icons only* (kept in your browser). It has:
 
 | Entry | Does |
 |---|---|

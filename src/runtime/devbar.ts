@@ -86,26 +86,28 @@ export function devbarHtml(ctx: PageContext): Raw | '' {
   const level = sessionDebugLevel(ctx.session);
   const appLevel = Number(ctx.app.debug_level ?? 0);
   const page = ctx.page.page_no;
-  const tool = (href: string, label: string, name: string) =>
-    html`<li><a class="devbar-tool" href="${href}" title="${label}" aria-label="${label}">${icon(name)}</a></li>`;
-  const menu = (label: string, name: string, cls: string, body: Raw, hidden = false) =>
-    html`<li${hidden ? raw(' hidden') : ''}><details class="devbar-menu ${cls}"><summary class="devbar-tool" title="${label}" aria-label="${label}">${icon(name)}</summary>
+  // (sprint 79, UI-4; APEX: App 77536, Page 8, Debug ⏻) each tool with a short text; "Icons only" in Settings
+  const text = (s: string) => html`<span class="devbar-text" aria-hidden="true">${s}</span>`;
+  const tool = (href: string, label: string, name: string, short: string) =>
+    html`<li><a class="devbar-tool" href="${href}" title="${label}" aria-label="${label}">${icon(name)}${text(short)}</a></li>`;
+  const menu = (label: string, name: string, cls: string, body: Raw, hidden = false, short = label) =>
+    html`<li${hidden ? raw(' hidden') : ''}><details class="devbar-menu ${cls}"><summary class="devbar-tool" title="${label}" aria-label="${label}">${icon(name)}${text(short)}</summary>
       <div class="devbar-pop" role="group" aria-label="${label}">${body}</div></details></li>`;
   return html`<div class="devbar" data-dock="bottom">
     <nav aria-label="Developer toolbar"><ul class="devbar-tools">
-      ${tool(BUILDER, 'App Builder', 'home')}
-      ${tool(`${BUILDER}/apps/${ctx.app.id}`, `Application ${ctx.app.id}`, 'grid')}
-      ${tool(`${BUILDER}/pages/${ctx.page.id}`, `Edit page ${page}`, 'edit')}
-      ${tool(`${ctx.base}/${page}/devbar/session`, 'Session', 'database')}
-      ${menu('Debug', 'bolt', `devbar-debug-menu${level || appLevel ? ' is-on' : ''}`, html`<form method="post" action="${ctx.base}/${page}/devbar/debug" class="devbar-debug">
+      ${tool(BUILDER, 'App Builder', 'home', 'Home')}
+      ${tool(`${BUILDER}/apps/${ctx.app.id}`, `Application ${ctx.app.id}`, 'grid', `App ${ctx.app.id}`)}
+      ${tool(`${BUILDER}/pages/${ctx.page.id}`, `Edit page ${page}`, 'edit', `Page ${page}`)}
+      ${tool(`${ctx.base}/${page}/devbar/session`, 'Session', 'database', 'Session')}
+      ${menu(`Debug: ${level || appLevel ? 'on' : 'off'}`, 'bolt', `devbar-debug-menu${level || appLevel ? ' is-on' : ''}`, html`<form method="post" action="${ctx.base}/${page}/devbar/debug" class="devbar-debug">
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
         <label for="devbar-debug">Debug messages</label>
         <select id="devbar-debug" name="level">${DEBUG_LEVELS.map(([n, label]) =>
           html`<option value="${n}"${n === level ? raw(' selected') : ''}>${n === 0 ? (appLevel ? `Application (${appLevel})` : 'Off') : label}</option>`)}</select>
         <button>Set</button>
-      </form>${level || appLevel ? html`<a href="${BUILDER}/apps/${ctx.app.id}/debug">View debug</a>` : ''}`)}
-      <li><button type="button" class="devbar-tool devbar-quick" data-quick-edit="${BUILDER}/pages/${ctx.page.id}" aria-pressed="false" title="Quick edit" aria-label="Quick edit" hidden>${icon('scan')}</button></li>
-      ${tool(`${BUILDER}/apps/${ctx.app.id}/theme`, 'Customize (Theme Roller)', 'sliders')}
+      </form>${level || appLevel ? html`<a href="${BUILDER}/apps/${ctx.app.id}/debug">View debug</a>` : ''}`, false, `Debug ${level || appLevel ? 'on' : 'off'}`)}
+      <li><button type="button" class="devbar-tool devbar-quick" data-quick-edit="${BUILDER}/pages/${ctx.page.id}" aria-pressed="false" title="Quick edit" aria-label="Quick edit" hidden>${icon('scan')}${text('Quick edit')}</button></li>
+      ${tool(`${BUILDER}/apps/${ctx.app.id}/theme`, 'Customize (Theme Roller)', 'sliders', 'Customize')}
       ${menu('Info', 'info', 'devbar-info', html`<dl class="devbar-facts">
         <dt>Application</dt><dd>${ctx.app.name} (${ctx.app.id})</dd>
         <dt>Page</dt><dd>${page}: ${ctx.page.name}</dd>
@@ -115,7 +117,8 @@ export function devbarHtml(ctx: PageContext): Raw | '' {
       ${menu('Settings', 'settings', 'devbar-settings', html`<fieldset class="devbar-dock"><legend>Position</legend>
         ${(['bottom', 'top', 'left', 'right'] as const).map((d) => html`<label><input type="radio" name="devbar-dock" value="${d}"${d === 'bottom' ? raw(' checked') : ''}> ${d[0].toUpperCase() + d.slice(1)}</label>`)}
       </fieldset>
-      <label class="devbar-autohide"><input type="checkbox" name="devbar-autohide" checked> Hide when not used</label>`, true)}
+      <label class="devbar-autohide"><input type="checkbox" name="devbar-autohide" checked> Hide when not used</label>
+      <label class="devbar-autohide"><input type="checkbox" name="devbar-compact"> Icons only</label>`, true)}
     </ul></nav>
   </div>`;
 }

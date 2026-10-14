@@ -210,7 +210,11 @@ Under **Settings → Theme**, *Theme style* is **Automatic** (follow the device,
 **Light** or **Dark**. With **Users may choose light or dark** (on by default, like APEX's
 *Enable End Users to Choose Theme Style*), the user menu has an *Appearance* switch and My account
 has the same choice. The choice is saved on the account, so it applies in every application that
-allows it. For public applications it's kept in a cookie.
+allows it. Until a user chooses, an application opens in its own *Theme style* (a new Iris application
+light, also when the device is in dark mode); *Automatic* follows the device only when the application
+or the user chose it. A user who isn't signed in has the *Appearance* switch in the user menu (with
+*Sign in*), kept in a cookie of that application only (`pgkiln_mode`, path `/a/<alias>`), so a choice in
+one application doesn't change another's.
 
 ## Base styles: Iris, Lavender and Standard
 

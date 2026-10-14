@@ -3642,7 +3642,7 @@ function areaFilter(map, f) {
   const bar = document.querySelector('.devbar');
   if (!bar) return;
   const KEY = 'pgkiln.devbar';
-  let prefs = { dock: 'bottom', autohide: true };
+  let prefs = { dock: 'bottom', autohide: true, compact: false };
   try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch {}
   if (!['bottom', 'top', 'left', 'right'].includes(prefs.dock)) prefs.dock = 'bottom';
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch {} };
@@ -3650,6 +3650,10 @@ function areaFilter(map, f) {
   settings?.closest('li')?.removeAttribute('hidden');
   const apply = () => {
     bar.dataset.dock = prefs.dock;
+    // (sprint 79) "Icons only": the tools without their texts
+    bar.toggleAttribute('data-compact', !!prefs.compact);
+    const compact = bar.querySelector('input[name="devbar-compact"]');
+    if (compact) compact.checked = !!prefs.compact;
     bar.querySelectorAll('input[name="devbar-dock"]').forEach((r) => { r.checked = r.value === prefs.dock; });
     const auto = bar.querySelector('input[name="devbar-autohide"]');
     if (auto) auto.checked = !!prefs.autohide;
@@ -3658,6 +3662,7 @@ function areaFilter(map, f) {
   bar.addEventListener('change', (e) => {
     if (e.target.name === 'devbar-dock') prefs.dock = e.target.value;
     else if (e.target.name === 'devbar-autohide') prefs.autohide = e.target.checked;
+    else if (e.target.name === 'devbar-compact') prefs.compact = e.target.checked;
     else return;
     save();
     apply();

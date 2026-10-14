@@ -44,7 +44,10 @@ export interface Locale {
   timeZoneFrom: 'user' | 'browser' | 'app' | 'database';
 }
 
-export const THEME_COOKIE = 'pgkiln_theme';
+/** (sprint 79) The light/dark choice of a user who is not signed in, per application (path /a/<alias>). */
+export const THEME_COOKIE = 'pgkiln_mode';
+/** The cookie's options: the application's path, a year. */
+export const themeCookieOptions = (base: string) => ({ path: base, sameSite: 'lax' as const, secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
 const THEMES: ThemeMode[] = ['auto', 'light', 'dark'];
 export const isTheme = (v: unknown): v is ThemeMode => THEMES.includes(v as ThemeMode);
 

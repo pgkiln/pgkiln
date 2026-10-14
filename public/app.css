@@ -478,6 +478,8 @@ details.btn-menu[open] > summary .btn-caret { transform: rotate(-90deg); }
 .report-toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: flex-end; margin-bottom: 0.75rem; }
 .report-toolbar .field { flex: 0 1 240px; }
 .search { display: flex; gap: 0.4rem; flex: 1 1 320px; max-width: 560px; margin-left: auto; }
+/* (sprint 78) a report whose search is the facets': the Actions menu at the start of the toolbar */
+.report-toolbar .search:not(:has(input[type=search])) { flex: 0 1 auto; min-width: 0; margin-left: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
 .chip { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.83rem; padding: 0.15rem 0.3rem 0.15rem 0.7rem; background: var(--accent-soft); border-radius: 99px; }
 .chip a { text-decoration: none; font-size: 1rem; line-height: 1; padding: 0 0.3rem; border-radius: 99px; }
@@ -1815,6 +1817,14 @@ dialog.crop-dialog::backdrop { background: rgb(15 20 30 / 55%); }
 .devbar-tool::-webkit-details-marker { display: none; }
 .devbar .devbar-tool:hover, .devbar-menu[open] > .devbar-tool, .devbar-quick[aria-pressed="true"] { background: #2f3b4f; color: #fff; }
 .devbar-debug-menu.is-on > .devbar-tool { color: #ffd166; }
+/* (sprint 79, UI-4) a text next to each icon (App 12, Page 3, Debug off); icons only when chosen or docked at a side */
+.devbar .devbar-tool:has(.devbar-text) { width: auto; min-width: 2.25rem; padding: 0 0.55rem; grid-auto-flow: column; gap: 0.35rem; white-space: nowrap; }
+.devbar[data-compact] .devbar-text, .devbar[data-dock="left"] .devbar-text, .devbar[data-dock="right"] .devbar-text { display: none; }
+.devbar[data-compact] .devbar-tool:has(.devbar-text), .devbar[data-dock="left"] .devbar-tool:has(.devbar-text), .devbar[data-dock="right"] .devbar-tool:has(.devbar-text) { width: 2.25rem; padding: 0; }
+@media (max-width: 900px) {
+  .devbar .devbar-text { display: none; }
+  .devbar .devbar-tool:has(.devbar-text) { width: 2.25rem; padding: 0; }
+}
 .devbar a, .devbar-pop a { color: #9cc8ff; }
 .devbar a:focus-visible, .devbar button:focus-visible, .devbar select:focus-visible, .devbar summary:focus-visible, .devbar input:focus-visible { outline: 2px solid #9cc8ff; outline-offset: 2px; }
 .devbar-menu { position: relative; }
@@ -1919,6 +1929,13 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .search-field { display: flex; flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .search-field:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 .search-field .search-scope { border: 0; border-right: 1px solid var(--border); border-radius: var(--radius) 0 0 var(--radius); max-width: 9rem; background: var(--surface-2); }
+/* (sprint 79, IR-3; APEX: the column scope in the magnifier of the search field) all columns: only the magnifier;
+   a column: the magnifier and its name */
+.search-scope-wrap { position: relative; display: flex; flex: none; }
+.search-scope-wrap > .icon { position: absolute; left: 0.6rem; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--muted); }
+.search-field .search-scope-wrap .search-scope { padding-left: 2rem; }
+.search-field .search-scope-wrap .search-scope:has(option[value=""]:checked) { width: 2.75rem; padding-right: 0.5rem; color: transparent; }
+.search-field .search-scope option { color: var(--text); }
 .search-field input[type=search] { border: 0; flex: 1; min-width: 0; background: transparent; }
 .search-field input[type=search]:focus { outline: none; }
 /* a column heading's menu */
