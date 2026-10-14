@@ -5,49 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprint 73: the Create Application wizard on one page, like APEX's.
-
-### Added
-- **Create Application on one page** (APEX: the Create Application wizard): name, description and icon; appearance
-  (theme style, side or top menu, accent colour); a **page type per table and view** of the chosen schema (interactive
-  report with form, faceted search, cards, calendar, master detail, interactive grid, report, or none; only the types
-  a table can have are offered; tables of more than 100,000 rows are proposed as an interactive grid); **features**
-  (About page, access control, activity reporting, feedback, theme style selection, install as an app, push
-  notifications); settings with the primary language; a boilerplate under Advanced. The other sources (a file,
-  pasted data, a blueprint, the App Gallery) are links at the top.
-- **Activity reporting** (migration 098): `meta.app_activity(days)` gives an application's administrators its page
-  views, sign-ins and errors; the feature adds an Activity page for them (page 9010).
-
-### Changed
-- After **Create application** the builder opens the new application (a progress message while it works), with
-  what was created as a message, instead of a result page. "From existing tables" is part of the Create page
-  (`/builder/create/tables` shows the same page).
-- The proposed application name is selected when clicked, so typing replaces it.
-
-Sprint 72: the application's chrome like APEX 26.2's: the developer toolbar, the Iris look, the header's Help menu and
-Install button.
-
-### Added
-- **Developer toolbar as a bar of icons** (APEX: the Runtime Developer Toolbar): App Builder, Application, Edit page,
-  Session, Debug, Quick edit, **Customize** (the Theme Roller) and **Info** as icons with tooltips, centred at the
-  bottom. It shrinks to a slim tab after a few seconds without use and comes back when pointed at or focused;
-  **Settings** docks it at the bottom, top, left or right and turns the hiding off (kept in the browser). The page
-  keeps room for it: it no longer covers the menu's last entry or a report's pager.
-- **Lavender** base style: pgkiln's Iris until 0.41, for applications that want to keep it.
-- **About page and Help menu** in generated applications (page 9000, list `NAVBAR` with Help → About).
-- **Install app** button in the header of an installable application, where the browser offers the installation.
-- The user menu shows the account's **display name** (the user name under it).
-- Menu colour tokens (`--nav-text`, `--nav-muted`, `--nav-hover`, `--nav-current`) for styles with a dark menu.
-
-### Changed
-- **Iris looks like APEX 26's Iris**: a white body, a dark warm-grey header with a thin accent strip and a dark menu,
-  a blue accent, 4 px corners, a rule under region headers, a dark primary button and a large bold page title on
-  the body instead of a title band. Applications on Iris change with it; choose Lavender for the earlier look.
-- New applications start in the light theme (users may still choose dark).
-- The icon `info` works on its own (it was taken as the *info* colour modifier).
+## [0.42.0] - 2026-10-14
 
 Sprint 71: generated applications read like APEX's (from a comparison of a pgkiln application made from existing
 tables with one made by APEX 26.2 on the same HR data).
+Sprint 72: the application's chrome like APEX 26.2's: the developer toolbar, the Iris look, the header's Help menu and
+Install button.
+Sprint 73: the Create Application wizard on one page, like APEX's.
 
 ### Added
 - **Human labels in generated applications** (migration 097): `meta.wizard_label` splits `snake_case` and
@@ -70,6 +34,25 @@ tables with one made by APEX 26.2 on the same HR data).
   per page of the menu (list `HOME_PAGES`).
 - **Charts**: horizontal bars get a value axis with gridlines; `"top": N` shows the N-1 largest rows and an *Other*
   row; generated charts label rows without a value *(none)* and are titled *Employees by Manager*.
+- **Developer toolbar as a bar of icons** (APEX: the Runtime Developer Toolbar): App Builder, Application, Edit page,
+  Session, Debug, Quick edit, **Customize** (the Theme Roller) and **Info** as icons with tooltips, centred at the
+  bottom. It shrinks to a slim tab after a few seconds without use and comes back when pointed at or focused;
+  **Settings** docks it at the bottom, top, left or right and turns the hiding off (kept in the browser). The page
+  keeps room for it: it no longer covers the menu's last entry or a report's pager.
+- **Lavender** base style: pgkiln's Iris until 0.41, for applications that want to keep it.
+- **About page and Help menu** in generated applications (page 9000, list `NAVBAR` with Help → About).
+- **Install app** button in the header of an installable application, where the browser offers the installation.
+- The user menu shows the account's **display name** (the user name under it).
+- Menu colour tokens (`--nav-text`, `--nav-muted`, `--nav-hover`, `--nav-current`) for styles with a dark menu.
+- **Create Application on one page** (APEX: the Create Application wizard): name, description and icon; appearance
+  (theme style, side or top menu, accent colour); a **page type per table and view** of the chosen schema (interactive
+  report with form, faceted search, cards, calendar, master detail, interactive grid, report, or none; only the types
+  a table can have are offered; tables of more than 100,000 rows are proposed as an interactive grid); **features**
+  (About page, access control, activity reporting, feedback, theme style selection, install as an app, push
+  notifications); settings with the primary language; a boilerplate under Advanced. The other sources (a file,
+  pasted data, a blueprint, the App Gallery) are links at the top.
+- **Activity reporting** (migration 098): `meta.app_activity(days)` gives an application's administrators its page
+  views, sign-ins and errors; the feature adds an Activity page for them (page 9010).
 
 ### Changed
 - The Dashboard of a generated application comes right after Home in the menu. Tables with row-level security are
@@ -79,6 +62,15 @@ tables with one made by APEX 26.2 on the same HR data).
 - Report headings are no longer upper case (`text-transform`); the heading text is shown as it is.
 - `meta.generate_page` and the page wizards: `form_label` option; page labels from `meta.wizard_table_label`.
   `meta.generate_crud` is unchanged.
+- **Iris looks like APEX 26's Iris**: a white body, a dark warm-grey header with a thin accent strip and a dark menu,
+  a blue accent, 4 px corners, a rule under region headers, a dark primary button and a large bold page title on
+  the body instead of a title band. Applications on Iris change with it; choose Lavender for the earlier look.
+- New applications start in the light theme (users may still choose dark).
+- The icon `info` works on its own (it was taken as the *info* colour modifier).
+- After **Create application** the builder opens the new application (a progress message while it works), with
+  what was created as a message, instead of a result page. "From existing tables" is part of the Create page
+  (`/builder/create/tables` shows the same page).
+- The proposed application name is selected when clicked, so typing replaces it.
 
 ## [0.41.0] - 2026-10-14
 
