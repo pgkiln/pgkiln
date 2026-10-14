@@ -126,7 +126,7 @@ src/
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
     gantt-move.ts          (sprint 69) Gantt drag and drop: ganttEditable, targetTime, moveGanttTask (the task in the region's
                            query, gantt_move with :TASK_ID/:NEW_START/:NEW_END); the dragging itself is in app.js
-    charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, Gantt (time axis, dependencies), pyramid, polar, range, box plot (quantile, boxes), stock, drill-down marks, data table
+    charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, Gantt (time axis, dependencies), pyramid, polar, range, box plot (quantile, boxes), stock, (sprint 70) treemap and sunburst (buildTree, squarify), timeline, drill-down marks, data table
     calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
                            the route POST …/calendar/:id/move is in routes.ts)
     links.ts               page links with checksums; fillItems() fills #column# in link items
@@ -327,6 +327,7 @@ test/
   blueprint-from-app.test.ts  a blueprint of HR: checks clean, pages and menu, notes, a working copy with sample rows, workspaces
   rest-catalogs.test.ts    OpenAPI/Swagger reading, parameter keys, catalog files, the builder's pages, a data source from a service
   workspace-transfer.test.ts  a workspace's export, import into another workspace (added, kept, replaced, all or nothing), groups, access
+  tree-charts.test.ts      treemap and sunburst (the hierarchy, cycles, squarify), timeline (lanes, rows, points and periods)
   gantt-move.test.ts       an editable Gantt's markup, the move route, dates, who may drag, the builder's settings
   find-workspace.test.ts   developers' addresses, builder mail, the workspaces mail, the same answer, limits
   ai-builder.test.ts       App Builder AI: the builder's service, SQL from a question, explain, describe tables, pages with AI

@@ -30,8 +30,8 @@ import { cell } from './report.ts';
 // row, or one value column with a row per observation (the label repeats; the
 // statistics are computed per label); a stock chart open, high, low and close.
 
-export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar' | 'gantt' | 'pyramid' | 'polar' | 'range' | 'boxplot' | 'stock';
-export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar', 'range', 'boxplot', 'stock'];
+export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar' | 'gantt' | 'pyramid' | 'polar' | 'range' | 'boxplot' | 'stock' | 'treemap' | 'sunburst' | 'timeline';
+export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar', 'range', 'boxplot', 'stock', 'treemap', 'sunburst', 'timeline'];
 
 /** A gauge's scale and thresholds (config.gauge): warning above critical means low values are bad. */
 export interface GaugeConfig {
@@ -100,6 +100,9 @@ let texts = {
   noRange: 'A range chart needs a label column and two numeric columns: low and high.',
   noBoxplot: 'A box plot needs a label column and either one numeric column (a row per value) or five: minimum, first quartile, median, third quartile and maximum.',
   noStock: 'A stock chart needs a label column (the date) and four numeric columns: open, high, low and close.',
+  noTree: 'A treemap or sunburst needs a label column and a numeric column (optionally node_id and parent_id columns for a hierarchy).',
+  noTimeline: 'A timeline needs a label column and a start date (an end date and a series column are optional).',
+  total: 'Total',
   ganttHint: 'Drag a task to move it, or its end to change its length. With the keyboard: the arrow keys move a task, Shift and the arrow keys change its end, Enter saves, Escape cancels.',
   min: 'Minimum',
   q1: 'First quartile',
@@ -909,6 +912,269 @@ function gantt(title: string, rows: unknown[][], fields: { name: string }[], now
     </table></div></details>`;
 }
 
+// ---------------------------------------------------------------- treemap and sunburst (sprint 70)
+// label, value; optional columns by name: node_id and parent_id (a node's parent; without
+// node_id the label is the id). A node's size is its own value plus its children's.
+interface TreeNode {
+  i: number;
+  id: string;
+  label: string;
+  own: number;
+  total: number;
+  parent: string | null;
+  children: TreeNode[];
+  depth: number;
+}
+const MAX_TREE_DEPTH = 4;
+
+/** The nodes of a hierarchy chart, as a forest (cycles and unknown parents make roots). */
+export function buildTree(rows: unknown[][], fields: { name: string }[]): TreeNode[] {
+  const col = (name: string) => fields.findIndex((f, i) => i > 1 && f.name.toLowerCase() === name);
+  const [cId, cParent] = [col('node_id'), col('parent_id')];
+  const nodes = rows.map((r, i): TreeNode => {
+    const v = Number(r[1]);
+    const label = cell(r[0]);
+    return { i, id: cId >= 0 ? cell(r[cId]) : label, label, own: Number.isFinite(v) && v > 0 ? v : 0, total: 0, parent: cParent >= 0 && r[cParent] !== null && r[cParent] !== '' ? cell(r[cParent]) : null, children: [], depth: 0 };
+  });
+  const byId = new Map<string, TreeNode>();
+  for (const n of nodes) if (!byId.has(n.id)) byId.set(n.id, n);
+  const roots: TreeNode[] = [];
+  // the parents given so far: a parent that is unknown, the node itself, or below it there makes a root
+  const given = new Map<TreeNode, TreeNode>();
+  for (const n of nodes) {
+    let p = n.parent !== null ? byId.get(n.parent) : undefined;
+    for (let a = p; a; a = given.get(a)) if (a === n) p = undefined;
+    if (p) {
+      given.set(n, p);
+      p.children.push(n);
+    } else roots.push(n);
+  }
+  const sum = (n: TreeNode, depth: number): number => {
+    n.depth = depth;
+    n.total = n.own + n.children.reduce((a, c) => a + sum(c, depth + 1), 0);
+    return n.total;
+  };
+  for (const r of roots) sum(r, 0);
+  return roots.filter((r) => r.total > 0);
+}
+
+interface Rect { x: number; y: number; w: number; h: number }
+/** Squarified treemap layout (Bruls, Huizing, van Wijk): rectangles close to squares, largest first. */
+export function squarify<T extends { total: number }>(items: T[], box: Rect): (T & Rect)[] {
+  const out: (T & Rect)[] = [];
+  const total = items.reduce((a, n) => a + n.total, 0);
+  if (!total || box.w <= 0 || box.h <= 0) return out;
+  const scale = (box.w * box.h) / total;
+  let rest = items.filter((n) => n.total > 0).sort((a, b) => b.total - a.total).map((n) => ({ n, area: n.total * scale }));
+  let { x, y, w, h } = box;
+  const worst = (row: { area: number }[], side: number) => {
+    const s = row.reduce((a, r) => a + r.area, 0);
+    const max = Math.max(...row.map((r) => r.area));
+    const min = Math.min(...row.map((r) => r.area));
+    return Math.max((side * side * max) / (s * s), (s * s) / (side * side * min));
+  };
+  while (rest.length) {
+    const side = Math.min(w, h);
+    let k = 1;
+    while (k < rest.length && worst(rest.slice(0, k + 1), side) <= worst(rest.slice(0, k), side)) k++;
+    const row = rest.slice(0, k);
+    rest = rest.slice(k);
+    const s = row.reduce((a, r) => a + r.area, 0);
+    if (w >= h) {
+      const cw = rest.length ? s / h : w;
+      let yy = y;
+      for (const r of row) {
+        const rh = (r.area / s) * h;
+        out.push({ ...r.n, x, y: yy, w: cw, h: rh });
+        yy += rh;
+      }
+      x += cw;
+      w -= cw;
+    } else {
+      const rh = rest.length ? s / w : h;
+      let xx = x;
+      for (const r of row) {
+        const rw = (r.area / s) * w;
+        out.push({ ...r.n, x: xx, y, w: rw, h: rh });
+        xx += rw;
+      }
+      y += rh;
+      h -= rh;
+    }
+  }
+  return out;
+}
+
+function hierarchy(kind: 'treemap' | 'sunburst', title: string, rows: unknown[][], fields: { name: string }[]) {
+  if (fields.length < 2) return html`<p class="empty">${texts.noTree}</p>`;
+  let roots = buildTree(rows, fields);
+  if (!roots.length) return html`<p class="empty">${texts.noData}</p>`;
+  // one root with children: its children are the top level (its name is the chart's centre)
+  const top = roots.length === 1 && roots[0].children.length ? roots[0] : null;
+  if (top) roots = top.children.filter((c) => c.total > 0);
+  const total = roots.reduce((a, r) => a + r.total, 0);
+  const share = (v: number) => `${((v / total) * 100).toFixed(1)}%`;
+  const path = (n: TreeNode, chain: string[]) => [...chain, n.label].join(' › ');
+  const tip = (n: TreeNode, chain: string[]) => `${path(n, chain)}: ${fmt.format(n.total)} (${share(n.total)})`;
+  const colour = (k: number) => `s${(k % MAX_SERIES) + 1}`;
+  const body = kind === 'treemap' ? treemap(roots, colour, tip) : sunburst(roots, colour, tip, top ? top.label : texts.total, total);
+  // the data table: every node with its parent and size (the accessible alternative)
+  const flat: { n: TreeNode; parent: string }[] = [];
+  const walk = (n: TreeNode, parent: string) => {
+    flat.push({ n, parent });
+    for (const c of n.children) walk(c, n.label);
+  };
+  for (const r of top ? [top] : roots) walk(r, '');
+  return html`${body}
+  <details class="chart-data"><summary>${texts.table}</summary>
+    <div class="table-wrap"><table class="report">
+      <caption class="sr-only">${title}</caption>
+      <thead><tr><th scope="col">${fields[0].name}</th><th scope="col">parent</th><th scope="col" class="num">${fields[1].name}</th><th scope="col" class="num">${texts.total}</th></tr></thead>
+      <tbody>${flat.map(({ n, parent }) => {
+        const l = link?.(n.i, null);
+        return html`<tr><th scope="row">${l ? html`<a ${l}>${n.label}</a>` : n.label}</th><td>${parent}</td><td class="num">${fmt.format(n.own)}</td><td class="num">${fmt.format(n.total)}</td></tr>`;
+      })}</tbody>
+    </table></div></details>`;
+}
+
+function treemap(roots: TreeNode[], colour: (k: number) => string, tip: (n: TreeNode, chain: string[]) => string) {
+  // in units of a 16:10 area; percentages of it for the classes
+  const W = 160;
+  const H = 100;
+  const geo = (b: Rect, outer: Rect) =>
+    css.cls(`left:${pct(((b.x - outer.x) / outer.w) * 100)};top:${pct(((b.y - outer.y) / outer.h) * 100)};width:${pct((b.w / outer.w) * 100)};height:${pct((b.h / outer.h) * 100)}`);
+  const area: Rect = { x: 0, y: 0, w: W, h: H };
+  const groups = squarify(roots.map((r, k) => ({ ...r, k })), area);
+  return html`<div class="treemap">${groups.map((g) => {
+    const c = colour(g.k);
+    const kids = g.children.filter((x) => x.total > 0);
+    if (!kids.length) return mark('div', g.i, null, `tm-cell tm-leaf ${c} ${geo(g, area)}`, tip(g, []), html`<span class="tm-label">${g.label}</span><span class="tm-value">${fmt.format(g.total)}</span>`, true, true);
+    // a title strip when the group is tall enough, the children below it
+    const head = g.h > 14 ? Math.min(7, g.h * 0.2) : 0;
+    const inner: Rect = { x: g.x, y: g.y + head, w: g.w, h: g.h - head };
+    const cells = squarify(kids, inner);
+    return html`<div class="tm-group ${c} ${geo(g, area)}">${head ? html`<span class="tm-title">${g.label}</span>` : ''}${cells.map((x) =>
+      mark('div', x.i, null, `tm-cell ${geo(x, g)}`, tip(x, [g.label]), html`<span class="tm-label">${x.label}</span><span class="tm-value">${fmt.format(x.total)}</span>`, true, true))}</div>`;
+  })}</div>`;
+}
+
+function sunburst(roots: TreeNode[], colour: (k: number) => string, tip: (n: TreeNode, chain: string[]) => string, centre: string, total: number) {
+  // rings from radius 6 (the centre shows the total) to 20 in a 42 × 42 box
+  const depth = Math.min(MAX_TREE_DEPTH, Math.max(...roots.map(function d(n: TreeNode): number {
+    return 1 + Math.max(0, ...n.children.filter((c) => c.total > 0).map(d));
+  })));
+  const R0 = 6.5;
+  const ring = (20 - R0) / depth;
+  const pt = (r: number, a: number) => `${(21 + r * Math.sin(a)).toFixed(3)},${(21 - r * Math.cos(a)).toFixed(3)}`;
+  const sector = (a0: number, a1: number, r1: number, r2: number) => {
+    const sweep = Math.min(a1 - a0, 2 * Math.PI - 1e-4);
+    const e = a0 + sweep;
+    const large = sweep > Math.PI ? 1 : 0;
+    return `M${pt(r1, a0)} A${r1},${r1} 0 ${large} 1 ${pt(r1, e)} L${pt(r2, e)} A${r2},${r2} 0 ${large} 0 ${pt(r2, a0)} Z`;
+  };
+  const arcs: Raw[] = [];
+  const draw = (n: TreeNode, a0: number, a1: number, level: number, c: string, chain: string[]) => {
+    const r1 = R0 + level * ring;
+    let arc = html`<path class="sb ${c} d${String(level + 1)}" d="${sector(a0, a1, r1 + 0.15, r1 + ring)}"><title>${tip(n, chain)}</title></path>`;
+    const h = link?.(n.i, null);
+    if (h) arc = html`<a class="drill" ${h} tabindex="-1">${arc}</a>`;
+    arcs.push(arc);
+    if (level + 1 >= depth) return;
+    let a = a0;
+    for (const k of n.children.filter((x) => x.total > 0)) {
+      const b = a + ((a1 - a0) * k.total) / n.total;
+      draw(k, a, b, level + 1, c, [...chain, n.label]);
+      a = b;
+    }
+  };
+  let a = 0;
+  roots.forEach((r, k) => {
+    const b = a + (2 * Math.PI * r.total) / total;
+    draw(r, a, b, 0, colour(k), []);
+    a = b;
+  });
+  return html`<div class="chart-donut chart-sunburst">
+    <div class="donut-figure">
+      <svg viewBox="0 0 42 42" aria-hidden="true">${arcs}</svg>
+      <div class="donut-center"><b>${compact.format(total)}</b><span>${centre}</span></div>
+    </div>
+    <ul class="chart-legend donut-legend">${roots.map((r, k) => {
+      const inner = html`<span class="swatch ${colour(k)}"></span><span class="lg-label">${r.label}</span><span class="lg-value">${fmt.format(r.total)} · ${((r.total / total) * 100).toFixed(0)}%</span>`;
+      const h = link?.(r.i, null);
+      return html`<li data-tip="${tip(r, [])}">${h ? html`<a class="drill" ${h}>${inner}</a>` : inner}</li>`;
+    })}</ul>
+  </div>`;
+}
+
+// ---------------------------------------------------------------- timeline (sprint 70)
+// label, start, end (empty or equal: a point in time); optional column by name: series
+// (a lane per series). Items that overlap in a lane get rows of their own.
+function timeline(title: string, rows: unknown[][], fields: { name: string }[]) {
+  if (fields.length < 2) return html`<p class="empty">${texts.noTimeline}</p>`;
+  const cSeries = fields.findIndex((f, i) => i > 1 && f.name.toLowerCase() === 'series');
+  const hasEnd = fields.length > 2 && cSeries !== 2;
+  const items = rows
+    .map((r, i) => {
+      const start = wallClock(r[1]);
+      const end = hasEnd ? wallClock(r[2]) : NaN;
+      return { i, label: cell(r[0]), start, end: Number.isFinite(end) && end > start ? end : start, series: cSeries >= 0 ? cell(r[cSeries]) : '' };
+    })
+    .filter((t) => Number.isFinite(t.start))
+    .sort((a, b) => a.start - b.start || a.i - b.i);
+  if (!items.length) return html`<p class="empty">${texts.noTimeline}</p>`;
+  const first = Math.min(...items.map((t) => t.start));
+  const last = Math.max(...items.map((t) => t.end));
+  const scale = timeScale(first, last + Math.max((last - first) * 0.03, HOUR));
+  const span = scale.hi - scale.lo;
+  const x = (t: number) => ((t - scale.lo) / span) * 100;
+  const dateOnly = dateFormat({ dateStyle: 'medium' });
+  const dateTime = dateFormat({ dateStyle: 'medium', timeStyle: 'short' });
+  const when = (t: number) => (t % DAY ? dateTime.format(t) : dateOnly.format(t));
+  const tickFmt = dateFormat(
+    scale.unit === 'hour' ? { hour: '2-digit', minute: '2-digit' } : scale.unit === 'month' ? { month: 'short', year: '2-digit' } : scale.unit === 'year' ? { year: 'numeric' } : { day: 'numeric', month: 'short' },
+  );
+  const lanes = [...new Set(items.map((t) => t.series))];
+  // rows within a lane: an item takes the first row free from its start (its label needs room too)
+  const room = span * 0.16;
+  const laid = lanes.map((name) => {
+    const ends: number[] = [];
+    const placed = items.filter((t) => t.series === name).map((t) => {
+      let row = ends.findIndex((e) => e <= t.start);
+      if (row < 0) row = ends.push(0) - 1;
+      ends[row] = Math.max(t.end, t.start + room);
+      return { t, row };
+    });
+    return { name, rows: Math.max(1, ends.length), placed };
+  });
+  const tipOf = (t: (typeof items)[number]) => `${t.series ? `${t.series} · ` : ''}${t.label}: ${t.end > t.start ? `${when(t.start)} – ${when(t.end)}` : when(t.start)}`;
+  const everyTick = Math.ceil(scale.ticks.length / 8);
+  return html`<div class="timeline">
+    <div class="timeline-axis" aria-hidden="true">${scale.ticks.slice(0, -1).map(
+      (t, k) => html`<span class="${k % everyTick ? 'skip ' : (k / everyTick) % 2 ? 'odd ' : ''}${css.cls(`left:${pct(x(t))}`)}">${tickFmt.format(t)}</span>`,
+    )}</div>
+    ${laid.map((lane, k) => html`<div class="timeline-lane s${String((k % MAX_SERIES) + 1)}">
+      ${lane.name ? html`<span class="timeline-name">${lane.name}</span>` : ''}
+      <div class="timeline-plot ${css.cls(`height:${(lane.rows * 1.9).toFixed(1)}rem`)}">
+        ${scale.ticks.map((t) => html`<span class="gantt-grid ${css.cls(`left:${pct(x(t))}`)}" aria-hidden="true"></span>`)}
+        ${lane.placed.map(({ t, row }) => {
+          const top = css.cls(`top:${(row * 1.9 + 0.3).toFixed(1)}rem`);
+          return t.end > t.start
+            ? mark('span', t.i, null, `tl-item ${top} ${css.cls(`left:${pct(x(t.start))};width:${pct(x(t.end) - x(t.start))}`)}`, tipOf(t), html`<span class="tl-label">${t.label}</span>`, true, true)
+            : mark('span', t.i, null, `tl-point ${top} ${css.cls(`left:${pct(x(t.start))}`)}`, tipOf(t), html`<span class="tl-dot" aria-hidden="true"></span><span class="tl-label">${t.label}</span>`, true, true);
+        })}
+      </div></div>`)}
+  </div>
+  <details class="chart-data"><summary>${texts.table}</summary>
+    <div class="table-wrap"><table class="report">
+      <caption class="sr-only">${title}</caption>
+      <thead><tr><th scope="col">${fields[0].name}</th>${cSeries >= 0 ? html`<th scope="col">${fields[cSeries].name}</th>` : ''}<th scope="col">${fields[1].name}</th>${hasEnd ? html`<th scope="col">${fields[2].name}</th>` : ''}</tr></thead>
+      <tbody>${items.map((t) => {
+        const l = link?.(t.i, null);
+        return html`<tr><th scope="row">${l ? html`<a ${l}>${t.label}</a>` : t.label}</th>${cSeries >= 0 ? html`<td>${t.series}</td>` : ''}<td>${when(t.start)}</td>${hasEnd ? html`<td>${t.end > t.start ? when(t.end) : ''}</td>` : ''}</tr>`;
+      })}</tbody>
+    </table></div></details>`;
+}
+
 /** A range chart's legend: one entry per pair of series. */
 const rangeNames = (series: Series[]): Series[] =>
   Array.from({ length: Math.min(4, Math.floor(series.length / 2)) }, (_, k) => ({ name: `${series[2 * k].name} – ${series[2 * k + 1].name}`, values: [] }));
@@ -931,12 +1197,17 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
       ...texts, table: t('chart.table'), other: t('chart.other'), label: t('chart.label'), noBubble: t('chart.no_bubble'), noRadar: t('chart.no_radar'),
       good: t('chart.status_good'), warning: t('chart.status_warning'), critical: t('chart.status_critical'), ofFirst: t('chart.of_first'), size: t('chart.size'),
       noGantt: t('chart.no_gantt'), noData: t('chart.no_data'), today: t('chart.today'),
-      noRange: t('chart.no_range'), noBoxplot: t('chart.no_boxplot'), noStock: t('chart.no_stock'), ganttHint: t('chart.gantt_hint'),
+      noRange: t('chart.no_range'), noBoxplot: t('chart.no_boxplot'), noStock: t('chart.no_stock'), ganttHint: t('chart.gantt_hint'), noTree: t('chart.no_tree'), noTimeline: t('chart.no_timeline'), total: t('chart.total'),
       min: t('chart.min'), q1: t('chart.q1'), median: t('chart.median'), q3: t('chart.q3'), max: t('chart.max'),
     };
   // a Gantt chart reads its date columns itself (its series are not numbers)
   if (kind === 'gantt')
     return html`<figure class="chart chart-gantt" aria-label="${title}">${gantt(title, rows, fields, opts.now ?? Date.now(), opts.edit)}</figure>`;
+  // (sprint 70) hierarchies and timelines read their columns by position and name, like a Gantt chart
+  if (kind === 'treemap' || kind === 'sunburst')
+    return html`<figure class="chart chart-${kind}" aria-label="${title}">${hierarchy(kind, title, rows, fields)}</figure>`;
+  if (kind === 'timeline')
+    return html`<figure class="chart chart-timeline" aria-label="${title}">${timeline(title, rows, fields)}</figure>`;
   const { labels, series } = parse(rows, fields, opts.hidden);
   if (!series.length) return html`<p class="empty">${texts.noSeries}</p>`;
   if (kind === 'boxplot') {

@@ -31,6 +31,15 @@ Sprint 67: REST source catalogs and a workspace's export and import.
   pgkiln's static files got neither `app.js` nor `app.css` offline once the service worker had cached the newer ones;
   it now gets the cached copy of the other version. (This was also the cause of the intermittent CI failure of the
   e2e test "a form sent offline …".)
+Sprint 70: treemap, sunburst and timeline charts.
+
+### Added
+- **Treemap, sunburst and timeline charts** (APEX: Oracle JET treemap, sunburst and timeline): a treemap and a
+  sunburst read `label, value` and optional `node_id` / `parent_id` columns for a hierarchy (squarified rectangles;
+  rings with the total in the centre); a timeline reads `label, start, end` with an optional `series` column for
+  lanes (points and periods, overlaps in rows). Tooltips, drill-down links and data tables like the other charts.
+  HR example part 60 adds one of each to page 32.
+
 Sprint 69: dragging tasks on a Gantt chart.
 
 ### Added

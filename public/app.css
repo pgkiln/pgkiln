@@ -620,6 +620,33 @@ a.drill > .polar-sector:hover { fill-opacity: 1; }
 .gantt-bar:hover, .gantt-bar:focus-visible, .gantt-milestone:hover, .gantt-milestone:focus-visible { filter: brightness(1.12); }
 .gantt-deps { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
 .gantt-dep { fill: none; stroke: var(--muted); stroke-width: 1.25px; }
+/* (sprint 70) treemap, sunburst and timeline */
+.treemap { position: relative; aspect-ratio: 16 / 10; max-height: 26rem; width: 100%; font-size: 0.78rem; }
+.tm-group, .tm-cell { position: absolute; box-sizing: border-box; overflow: hidden; }
+.tm-group { border: 1px solid var(--surface); }
+.tm-title { position: absolute; top: 0; left: 0; right: 0; padding: 0.1rem 0.35rem; font-weight: 650; color: #fff; background: var(--c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; }
+.tm-cell { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.2rem 0.35rem; border: 1px solid var(--surface); background: color-mix(in srgb, var(--c) 72%, var(--surface)); color: #fff; text-decoration: none; }
+.tm-leaf { background: var(--c); }
+.tm-cell:hover, .tm-cell:focus-visible { filter: brightness(1.12); }
+.tm-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-value { opacity: 0.9; font-variant-numeric: tabular-nums; }
+.sb { fill: var(--c); stroke: var(--surface); stroke-width: 0.25; }
+.sb.d2 { fill-opacity: 0.78; } .sb.d3 { fill-opacity: 0.58; } .sb.d4 { fill-opacity: 0.4; }
+a.drill > .sb:hover { filter: brightness(1.12); }
+.timeline { font-size: 0.8rem; }
+.timeline-axis { position: relative; height: 1.5rem; border-bottom: 1px solid var(--chart-axis); font-size: 0.72rem; color: var(--muted); }
+.timeline-axis span { position: absolute; bottom: 0.3rem; padding-left: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.timeline-axis span.skip { visibility: hidden; }
+@media (max-width: 640px) { .timeline-axis span.odd { visibility: hidden; } }
+.timeline-lane { border-bottom: 1px solid var(--chart-grid); padding-top: 0.25rem; }
+.timeline-name { display: block; font-size: 0.75rem; font-weight: 650; color: var(--muted); }
+.timeline-plot { position: relative; overflow: hidden; }
+.tl-item, .tl-point { position: absolute; display: flex; align-items: center; height: 1.4rem; color: inherit; text-decoration: none; z-index: 2; outline-offset: 2px; }
+.tl-item { min-width: 3px; border-radius: 4px; background: color-mix(in srgb, var(--c) 30%, var(--surface)); box-shadow: inset 3px 0 0 var(--c); }
+.tl-item .tl-label { padding: 0 0.35rem 0 0.5rem; white-space: nowrap; }
+.tl-point { gap: 0.3rem; margin-left: -0.35rem; white-space: nowrap; }
+.tl-dot { width: 0.7rem; height: 0.7rem; flex: none; border-radius: 50%; background: var(--c); }
+.tl-item:hover, .tl-item:focus-visible, .tl-point:hover .tl-dot, .tl-point:focus-visible .tl-dot { filter: brightness(1.12); }
 .gantt-editable [data-task] { cursor: grab; touch-action: none; }
 .gantt-editable .gantt-dragging { cursor: grabbing; z-index: 3; }
 .gantt-editable .gantt-moving { box-shadow: 0 0 0 2px var(--accent); }

@@ -137,7 +137,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail, copy/paste of cells, and single row, group by and chart views |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
-| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid, polar, range, box plot or stock chart from a SELECT, with drill-down links |
+| [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid, polar, range, box plot, stock, treemap, sunburst or timeline chart from a SELECT, with drill-down links |
 | [`cards`](#cards) | Cards or KPI tiles from a SELECT |
 | [`calendar`](#calendar) | Month, week, day and list views of dated rows, with create on click and drag and drop |
 | [`facets`](#facets-faceted-search) | Checkbox, range and star filters with counts and a search field for a report |
@@ -506,7 +506,7 @@ Attributes:
 
 | Key | Meaning |
 |---|---|
-| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel`, `radar`, `gantt`, `pyramid`, `polar`, `range`, `boxplot` or `stock` |
+| `kind` | `bar` (default), `column`, `stacked`, `line`, `area`, `combo`, `scatter`, `bubble`, `donut`, `pie`, `gauge`, `funnel`, `radar`, `gantt`, `pyramid`, `polar`, `range`, `boxplot`, `stock`, `treemap`, `sunburst` or `timeline` |
 | `link` | Drill-down: `{"page": 2, "items": {"P2_DEPTNO": "#deptno#"}}` makes every data point a link (see below) |
 | `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
 | `format_mask` | A number format mask for the values in labels, tips and the data table, e.g. `"FML999G990"` (see [number formats](14-globalization.md#number-formats)) |
@@ -529,6 +529,9 @@ Attributes:
 | `funnel` | stages of a process | the first series, in the query's order (sort it); each stage shows its share of the first stage |
 | `radar` | several measures per series, side by side | **one axis per row** (3 to 12 rows), one polygon per series, all on one scale from zero |
 | `gantt` | tasks over time | **label, start, end** (dates or timestamps; an empty end, or one equal to the start, is a milestone ◆), then optional columns **by name**: `progress` (0 to 100, the filled part of the bar), `task_id` and `depends_on` (the ids a task waits for: `3`, `3,4` or an array). A time axis in hours, days, weeks, months or years, a dashed line for now (in the session's time zone, like the timestamps the query returns), and elbow lines from the end of each predecessor to the start of the task. Rows without a start are left out |
+| `treemap` | parts of a whole in a hierarchy | **label, value**, then optional columns **by name** `node_id` and `parent_id` (a node's parent; without `node_id` the label is the id). Rectangles sized by value (a node's own value plus its children's), squarified; the top level as coloured groups with their children inside. One root with children: its children are the top level. Cycles and unknown parents make roots |
+| `sunburst` | the same, as rings | Like `treemap`: the top level as the inner ring, children outwards (up to four rings), the total in the centre and a legend of the top level |
+| `timeline` | events and periods over time | **label, start, end** (an empty end is a point in time), and an optional column named `series`: a lane per series. Items that overlap in a lane get rows of their own |
 | `pyramid` | levels of a hierarchy, or two groups compared per band | **one series**: a triangle cut into segments from the top (the first row) down, each segment's **area** in proportion to its value (≤ 8; more fold into "Other"). **Two series**: back-to-back bars (a population pyramid), the first series to the left, both on one scale; negative values count as their size |
 | `polar` | values per period or direction (months, weekdays) | a polar area chart: **one equal sector per row** (up to 24) clockwise from 12 o'clock, the radius in proportion to the value on rings from zero; several series share a row's sector |
 | `range` | a span per category (lowest and highest, from and to) | **low and high** columns (in either order): a floating column from one to the other; each further pair of columns is another range per row (up to four, with a legend). The axis doesn't have to start at zero |

@@ -25,8 +25,8 @@ describe('chart kinds', () => {
   test('every kind: no style attributes, a data table, tooltips, escaped labels', () => {
     for (const kind of CHART_KINDS) {
       // (a bubble chart needs x, y and size; a radar three axes)
-      // (a Gantt chart reads dates: start and end)
-      const data = kind === 'gantt' ? [['<img src=x>', '2026-01-01', '2026-01-05', 3], ['2', '2026-01-03', '2026-01-09', 5], ['3', '2026-01-09', null, 7]] : [['<img src=x>', 1, 2, 3], ['2', 3, 4, 5], ['3', 5, 6, 7]];
+      // (a Gantt chart and a timeline read dates: start and end)
+      const data = kind === 'gantt' || kind === 'timeline' ? [['<img src=x>', '2026-01-01', '2026-01-05', 3], ['2', '2026-01-03', '2026-01-09', 5], ['3', '2026-01-09', null, 7]] : [['<img src=x>', 1, 2, 3], ['2', 3, 4, 5], ['3', 5, 6, 7]];
       // (a stock chart open, high, low and close)
       const { body } = kind === 'stock' ? render(kind, data.map((r) => [...r, 4]), fields('label', 'A', 'B', 'C', 'D')) : render(kind, data, fields('label', 'A', 'B', 'C'));
       assert.doesNotMatch(body, /\sstyle=/, kind);
