@@ -490,6 +490,25 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('rows per page: the pager select sends its own form, not the page form, and stays narrow', async () => {
+      if (vp !== 'desktop') return;
+      const r = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report'`);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        await page.goto(`${base}/a/hr/2`);
+        const select = page.locator(`#r${r.id}_size`);
+        // (0.43.1) the form was nested in the page's form: the browser dropped it and the select joined the page's form
+        assert.equal(await select.evaluate((el) => (el as HTMLSelectElement).form?.id), `rn${r.id}`);
+        const box = await select.boundingBox();
+        assert.ok(box && box.width < 120, `the select is not stretched: ${JSON.stringify(box)}`);
+        await Promise.all([page.waitForURL(new RegExp(`r${r.id}_n=5`)), select.selectOption('5')]);
+        await page.locator('.pager').filter({ hasText: /1–5 of/ }).first().waitFor();
+      } finally {
+        await page.context().close();
+      }
+    });
+
     test('a drawer page slides in from the right (full screen on phones)', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'allen', 'allen');

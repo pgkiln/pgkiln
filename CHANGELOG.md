@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Rows per page** in an interactive report's pager: its GET form sat inside the page's form, so the browser
+  dropped it; the select then belonged to the page's form (changing it posted the page) and stretched across the
+  region. The form is now detached like the toolbar's forms; the select and its button join it by its id.
+
 ## [0.43.0] - 2026-10-14
 
 Sprint 74: the builder's information architecture like APEX's.
