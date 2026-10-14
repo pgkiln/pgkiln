@@ -154,6 +154,8 @@ export interface Region {
   rest_source?: string | null;
   /** (053) template options: CSS classes from REGION_OPTIONS (others are ignored) */
   template_options?: string[];
+  /** (099) where the region shows: banner, breadcrumb, left, body (null), right or footer */
+  position?: 'banner' | 'breadcrumb' | 'left' | 'body' | 'right' | 'footer' | null;
 }
 
 export type ItemType =
@@ -205,6 +207,8 @@ export interface Button {
   badge_query?: string | null;
   /** (053) template options: CSS classes from BUTTON_OPTIONS (others are ignored) */
   template_options?: string[];
+  /** (099) a region button's position: create, edit, change, copy, help, up, previous, close, delete, next or region (null) */
+  slot?: string | null;
 }
 
 export interface MenuEntry {
@@ -328,7 +332,7 @@ export interface Page extends PageSummary {
   /** (077) ask before leaving the page with unsaved changes */
   warn_unsaved: boolean;
   /** (087) 'minimal': no header and navigation */
-  page_template: 'standard' | 'minimal';
+  page_template: 'standard' | 'minimal' | 'left_side_column' | 'right_side_column';
 }
 
 /** The static files a list of names refers to, in that order, with their version. */

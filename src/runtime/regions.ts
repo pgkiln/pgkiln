@@ -100,9 +100,9 @@ export async function renderButton(ctx: PageContext, b: Button) {
   return html`<button type="submit" class="${cls}" name="__request" value="${b.name}" data-button="${b.name}"${confirm}>${b.label}${badge}</button>`;
 }
 
-export async function buttonsFor(ctx: PageContext, regionId: number | null) {
+export async function buttonsFor(ctx: PageContext, regionId: number | null, only: (b: Button) => boolean = () => true) {
   const out = [];
-  for (const b of ctx.vis!.buttons.values()) if (b.region_id === regionId && b.id > 0) out.push(await renderButton(ctx, b));
+  for (const b of ctx.vis!.buttons.values()) if (b.region_id === regionId && b.id > 0 && only(b)) out.push(await renderButton(ctx, b));
   return out.some(Boolean) ? html`<div class="buttons">${out}</div>` : '';
 }
 
@@ -408,7 +408,13 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
   return body!;
 }
 
+/** (099) Button positions in a region: its top bar, the bottom bar's left end, the bottom bar's right end. */
+const TOP_SLOTS = new Set(['create', 'edit', 'change', 'copy', 'help', 'up']);
+const LEFT_SLOTS = new Set(['previous', 'close', 'delete']);
+
 async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, body: Raw) {
+  const slotted = [...ctx.vis!.buttons.values()].some((b) => b.region_id === r.id && b.slot && b.slot !== 'region');
+  if (slotted && (r.template === 'standard' || r.template === 'collapsible' || r.template === 'plain')) return slottedShell(ctx, r, hidden, body);
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
   // (a grid renders its own Save button in its toolbar)
@@ -469,3 +475,31 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   </section>`;
 }
 
+/**
+ * (099) A region whose buttons have positions (APEX: Button Position): create, edit, change, copy, help and up in
+ * the header; previous, close and delete at the left end of the bottom bar, next at its right end; the others
+ * where they always go (the header for reports and charts, the bottom bar for forms and static content).
+ */
+async function slottedShell(ctx: PageContext, r: Region, hidden: Set<string>, body: Raw) {
+  const onTop = r.type !== 'form' && r.type !== 'static';
+  const plain = (b: Button) => !b.slot || b.slot === 'region';
+  const top = await buttonsFor(ctx, r.id, (b) => TOP_SLOTS.has(b.slot ?? '') || (onTop && plain(b)));
+  const left = await buttonsFor(ctx, r.id, (b) => LEFT_SLOTS.has(b.slot ?? ''));
+  const right = await buttonsFor(ctx, r.id, (b) => b.slot === 'next' || (!onTop && plain(b)));
+  const cls = `region region-${r.type} region-${r.template} col-${r.columns}${templateClasses('region', r.template_options)}`;
+  const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
+  const staticAttr = r.static_id ? raw(` data-static-id="${esc(r.static_id)}"`) : '';
+  const titleId = `R${r.id}_title`;
+  const footer = left || right ? html`<footer class="region-footer region-footer-split"><div class="region-footer-start">${left}</div><div class="region-footer-end">${right}</div></footer>` : '';
+  if (r.template === 'plain')
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
+      ${top ? html`<div class="region-toolbar">${top}</div>` : ''}${body}${footer}</section>`;
+  const header = html`<h2 id="${titleId}">${r.title}</h2>${top}`;
+  if (r.template === 'collapsible')
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+      <details open><summary class="region-header">${header}</summary><div class="region-body">${body}</div>${footer}</details></section>`;
+  return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
+    ${r.title || top ? html`<header class="region-header">${header}</header>` : ''}
+    <div class="region-body">${body}</div>${footer}
+  </section>`;
+}

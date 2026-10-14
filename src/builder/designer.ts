@@ -171,7 +171,7 @@ export async function designerRoutes(app: FastifyInstance) {
           <span class="pd-region-meta">${r.columns}/12</span>
         </div>
         <div class="pd-region-body">
-          <div class="pd-region-type">${REGION_LABELS[r.type]?.[0] ?? r.type}${r.template !== 'standard' ? ` · ${r.template}` : ''}</div>
+          <div class="pd-region-type">${REGION_LABELS[r.type]?.[0] ?? r.type}${r.template !== 'standard' ? ` · ${r.template}` : ''}${r.position && r.position !== 'body' ? ` · position ${r.position}` : ''}</div>
           ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
           ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
           ${slot('button', r.id, rows.button.filter((b) => b.region_id === r.id))}
@@ -303,7 +303,7 @@ export async function designerRoutes(app: FastifyInstance) {
           <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
             ${select('mode', 'Page mode', p.mode, [['normal', 'Normal'], ['modal', 'Modal dialog']])}
             ${select('page_group', 'Page group', p.page_group ?? '', [['', '- none -'], ...lk.pageGroups.map((g): [string, string] => [g, g]), ...(p.page_group && !lk.pageGroups.includes(p.page_group) ? [[p.page_group, `${p.page_group} (no such group)`] as [string, string]] : [])], 'Organises the pages in the App Builder (Shared Components → Page groups). Changes nothing when the application runs.')}
-            ${select('page_template', 'Page template', p.page_template ?? 'standard', [['standard', 'Standard'], ['minimal', 'Minimal (no navigation)']], 'Minimal: no header and navigation menu, e.g. for a login page (Application settings → Login page).')}
+            ${select('page_template', 'Page template', p.page_template ?? 'standard', [['standard', 'Standard'], ['left_side_column', 'Left side column'], ['right_side_column', 'Right side column'], ['minimal', 'Minimal (no navigation)']], 'Side column: regions with position left (or right) show in a column beside the body (under it on narrow screens). Minimal: no header and navigation menu, e.g. for a login page (Application settings → Login page).')}
             ${select('dialog_position', 'Dialog position', p.dialog_position ?? 'center', [['center', 'Centred dialog'], ['right', 'Drawer from the right'], ['left', 'Drawer from the left'], ['top', 'Drawer from the top'], ['bottom', 'Drawer from the bottom']], 'Modal pages only. On phones dialogs and side drawers fill the screen.')}
             ${select('dialog_size', 'Dialog size', p.dialog_size ?? 'medium', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], 'The width (the height of top and bottom drawers).')}
             ${input('static_includes', 'JavaScript and CSS files', (p.static_includes ?? []).join(', '), { placeholder: 'e.g. page-3.js, page-3.css', help: 'Static application files (.js, .css) this page loads after the application\'s own, in this order.' })}
@@ -416,7 +416,7 @@ export async function designerRoutes(app: FastifyInstance) {
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
                 dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
-         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', b.page_template === 'minimal' ? 'minimal' : 'standard', b.page_group?.trim() || null],
+         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', ['minimal', 'left_side_column', 'right_side_column'].includes(b.page_template ?? '') ? b.page_template : 'standard', b.page_group?.trim() || null],
       );
       // the page's lock and comments follow a new page number
       if (before && before.page_no !== Number(b.page_no))

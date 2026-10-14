@@ -1929,3 +1929,17 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 /* (sprint 76) a date item in the application's date format: the browser's picker on a hidden date field */
 .date-field { position: relative; }
 .date-native { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+
+/* (sprint 77) display positions: banner, breadcrumb bar, a side column, footer; button positions in a region */
+.t-pos-banner, .t-pos-breadcrumb { margin-bottom: 1rem; }
+.t-pos-breadcrumb { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.t-pos-footer { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.t-columns { display: grid; gap: 1.25rem; align-items: start; }
+.t-columns-left { grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); }
+.t-columns-right { grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem); }
+.t-columns-right > .t-side { order: 2; }
+.t-side .t-regions, .t-side { min-width: 0; }
+.t-side .region { grid-column: 1 / -1; }
+@media (max-width: 900px) { .t-columns-left, .t-columns-right { grid-template-columns: 1fr; } .t-columns-right > .t-side { order: 0; } }
+.region-footer-split { display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.region-footer-split > div { display: flex; gap: 0.5rem; }
