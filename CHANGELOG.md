@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 78: generated reports and grids read the same (migration 100; parity handoff GEN-2, GEN-1, GEN-7).
+
+### Changed
+- **Faceted search pages** made by the wizards show one column per foreign key: the parent's name under
+  the key's label (*Manager*: KING). The key is hidden (still in the query for filters and links); before,
+  both showed and the report had two *Manager* and two *Department* columns. Its number columns get
+  format masks (*2,850.00*), like the report and form pages.
+- **Interactive grids** made by the wizards (the grid page, both grids of a master-detail page) get friendly
+  headings (*Department Number*, *Hire Date*, not *Deptno*, *Hiredate*) and number format masks;
+  a map page's list report gets the masks too. `meta.wizard_grid_labels(table)` returns both.
+- The **Create Application** wizard's page list names each table's pages (*Employees*), with the table's
+  name as secondary text.
+
 ## [0.43.0] - 2026-10-14
 
 Sprint 74: the builder's information architecture like APEX's.
