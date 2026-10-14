@@ -620,6 +620,13 @@ a.drill > .polar-sector:hover { fill-opacity: 1; }
 .gantt-bar:hover, .gantt-bar:focus-visible, .gantt-milestone:hover, .gantt-milestone:focus-visible { filter: brightness(1.12); }
 .gantt-deps { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
 .gantt-dep { fill: none; stroke: var(--muted); stroke-width: 1.25px; }
+.gantt-editable [data-task] { cursor: grab; touch-action: none; }
+.gantt-editable .gantt-dragging { cursor: grabbing; z-index: 3; }
+.gantt-editable .gantt-moving { box-shadow: 0 0 0 2px var(--accent); }
+.gantt-handle { position: absolute; top: 0; right: 0; bottom: 0; width: 8px; cursor: ew-resize; background: color-mix(in srgb, var(--surface) 45%, transparent); }
+.gantt-editable [aria-busy="true"], .gantt-editable[aria-busy="true"] { opacity: 0.7; }
+.gantt-status { min-height: 1.3em; margin: 0.4rem 0 0; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.gantt-hint { margin: 0.2rem 0 0; font-size: 0.8rem; }
 .gantt-arrow { position: absolute; width: 0; height: 0; margin: -4px 0 0 -6px; border: 4px solid transparent; border-left: 6px solid var(--muted); border-right-width: 0; pointer-events: none; z-index: 1; }
 
 /* data table + tooltip */

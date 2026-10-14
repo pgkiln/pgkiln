@@ -131,6 +131,11 @@ export function mergeChartSettings(config: Config, b: Body, a: Allowed): Config 
     if (raw && Number.isFinite(v)) gauge[k] = v;
   }
   set('gauge', Object.keys(gauge).length ? gauge : undefined);
+  // (sprint 69) Gantt drag and drop
+  set('gantt_move', b.gantt_move?.trim() || undefined);
+  const authz = b.gantt_move_authz?.trim().toUpperCase();
+  set('gantt_move_authz', authz && (authz === 'MUST_NOT_BE_PUBLIC_USER' || a.authz?.has(authz)) ? authz : undefined);
+  set('gantt_snap', b.gantt_snap === 'day' || b.gantt_snap === 'hour' ? b.gantt_snap : undefined);
   return out;
 }
 
@@ -728,6 +733,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
   const cfg = r.config ?? {};
   const id = (n: string) => `rg_${r.id}_${n}`;
   const pages = async () => (await owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId])).rows;
+  const schemes = async () => (await owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
   let body: Raw;
   let title = 'Settings';
   switch (r.type as SettingsType) {
@@ -752,7 +758,16 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
         </div>
         <small class="help">Gauge charts only. A warning threshold above the critical one means low values are bad (e.g. warning 50, critical 20).</small></fieldset>
         ${linkFieldset(id, cfg.link, await pages(), 'Each data point')}
-        <small class="help">Drill-down: <code>#column#</code> takes the value from the point's row, <code>#series#</code> the name of its series. Columns only the link refers to are not drawn.</small>`;
+        <small class="help">Drill-down: <code>#column#</code> takes the value from the point's row, <code>#series#</code> the name of its series. Columns only the link refers to are not drawn.</small>
+        <fieldset class="prop-group"><legend>Gantt: drag and drop</legend><div class="form-grid">
+          <div class="field" data-wide><label class="label" for="${id('gantt_move')}">SQL that moves a task</label>
+            <textarea id="${id('gantt_move')}" name="gantt_move" rows="3" data-code="sql" placeholder="update my_schema.task set starts = :NEW_START::date, ends = :NEW_END::date where id = :TASK_ID::int">${cfg.gantt_move ?? ''}</textarea>
+            <small class="help">Gantt charts with a <code>task_id</code> column. Runs as the application's database role (row level security applies) with <code>:TASK_ID</code>, <code>:NEW_START</code> and <code>:NEW_END</code> (<code>YYYY-MM-DD</code>, or <code>YYYY-MM-DDTHH:MM</code> by the hour; a milestone gets the same start and end). Empty: tasks can't be dragged.</small></div>
+          <div class="field"><label class="label" for="${id('gantt_move_authz')}">Who may drag</label>
+            <select id="${id('gantt_move_authz')}" name="gantt_move_authz">${opt('', 'Everyone who sees the chart', cfg.gantt_move_authz)}${opt('MUST_NOT_BE_PUBLIC_USER', 'Signed-in users', cfg.gantt_move_authz)}${(await schemes()).map((n) => opt(n, `Authorization: ${n}`, cfg.gantt_move_authz))}</select></div>
+          <div class="field"><label class="label" for="${id('gantt_snap')}">Steps</label>
+            <select id="${id('gantt_snap')}" name="gantt_snap">${opt('', 'Days, or hours when a task has a time', cfg.gantt_snap)}${opt('day', 'Days', cfg.gantt_snap)}${opt('hour', 'Hours', cfg.gantt_snap)}</select></div>
+        </div><small class="help">Only tasks the user sees in this chart can be moved; the chart is drawn again from its query afterwards.</small></fieldset>`;
       break;
     case 'cards':
       title = 'Cards settings';

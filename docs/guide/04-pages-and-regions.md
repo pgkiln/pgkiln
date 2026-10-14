@@ -511,6 +511,9 @@ Attributes:
 | `gauge` | For `gauge`: `{"min": 0, "max": 120, "warning": 80, "critical": 100}` (all optional) |
 | `format_mask` | A number format mask for the values in labels, tips and the data table, e.g. `"FML999G990"` (see [number formats](14-globalization.md#number-formats)) |
 | `empty` | Text when there are no rows |
+| `gantt_move` | For `gantt` with a `task_id` column: SQL that gives a task new dates, run with `:TASK_ID`, `:NEW_START` and `:NEW_END` ([below](#dragging-tasks-on-a-gantt-chart)) |
+| `gantt_move_authz` | Who may drag: an authorization scheme, or `MUST_NOT_BE_PUBLIC_USER`; empty: everyone who sees the chart |
+| `gantt_snap` | `day` or `hour`: the step of a drag; default days, or hours when a task has a time |
 
 | Kind | Best for | Notes |
 |---|---|---|
@@ -612,6 +615,28 @@ select to_char(day, 'DD Mon') as "Day", open as "Open", high as "High", low as "
 A Gantt chart reads dates as their wall clock (a `timestamptz` in the session's time zone), shows a
 time only when it is not midnight, and has its own data table (label, start, end, progress,
 dependencies). Its rows count toward the chart's row limit (`max_rows`, default 1000).
+
+#### Dragging tasks on a Gantt chart
+
+With `gantt_move` (builder: Chart settings → *Gantt: drag and drop*) and a `task_id` column, users who pass
+`gantt_move_authz` change the plan on the chart itself (APEX: the Gantt chart's task dragging):
+
+- **drag a task** to move it (start and end by the same number of days or hours);
+- **drag the end of a bar** (its right edge) to make it longer or shorter; a milestone only moves;
+- **with the keyboard**: focus a task, the arrow keys move it, Shift and the arrow keys change its end, Enter saves,
+  Escape cancels. A line under the chart says the new dates while you drag or press keys.
+
+The server checks the dates (`YYYY-MM-DD`, or `YYYY-MM-DDTHH:MM` by the hour; the end not before the start) and that
+the task is a row the chart's query shows this user, then runs the SQL as the application's database role (row level
+security applies) and sends the chart back. A milestone gets the same start and end. A click without a drag still
+follows the task's drill-down link. Example (HR example part 59):
+
+```sql
+update hr.project_task
+   set starts = :NEW_START::date,
+       ends = case when ends is null then null else :NEW_END::date end   -- a milestone keeps no end
+ where id = :TASK_ID::int
+```
 
 Up to 8 series; two or more get a legend. When an axis has many labels, only some are shown, and in a
 narrow chart (a region of a few columns, a phone) every other one of those. Every chart has hover/focus **tooltips** and a

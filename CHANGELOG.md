@@ -31,6 +31,16 @@ Sprint 67: REST source catalogs and a workspace's export and import.
   pgkiln's static files got neither `app.js` nor `app.css` offline once the service worker had cached the newer ones;
   it now gets the cached copy of the other version. (This was also the cause of the intermittent CI failure of the
   e2e test "a form sent offline …".)
+Sprint 69: dragging tasks on a Gantt chart.
+
+### Added
+- **Gantt editing by drag and drop** (APEX: Gantt task dragging): a Gantt chart with `gantt_move` (SQL with
+  `:TASK_ID`, `:NEW_START`, `:NEW_END`) and a `task_id` column lets users who pass `gantt_move_authz` drag a task to
+  new dates, drag a bar's end to change its length, or do both with the arrow keys (Shift: the end; Enter saves). The
+  server checks the dates and that the task is in the chart's query, runs the SQL as the application's role and
+  sends the chart back. Builder: Chart settings → *Gantt: drag and drop*. HR example part 59 makes the office move on
+  page 32 editable for managers.
+
 Sprint 68: the Data Reporter's welcome page and Find my workspace.
 
 ### Added

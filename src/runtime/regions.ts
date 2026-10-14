@@ -1,4 +1,5 @@
 import type { QueryResult } from 'pg';
+import { ganttEditable } from './gantt-move.ts';
 import { applyBinds } from '../binds.ts';
 import { savepoint } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
@@ -145,6 +146,8 @@ async function renderChart(ctx: PageContext, r: Region) {
     ...chartFormat(ctx, r),
     // the query's timestamps are in the session's time zone: so is "today"
     ...(kind === 'gantt' ? { now: wallClockIn(ctx.locale.timeZone ?? (await databaseTimeZone())) } : {}),
+    // (sprint 69) tasks this user may drag
+    ...(kind === 'gantt' && (await ganttEditable(ctx, r)) ? { edit: { region: r.id, snap: r.config.gantt_snap === 'hour' || r.config.gantt_snap === 'day' ? r.config.gantt_snap : undefined } } : {}),
   })}${firstRows(ctx, res)}`;
 }
 

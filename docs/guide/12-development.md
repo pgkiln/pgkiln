@@ -124,6 +124,8 @@ src/
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
+    gantt-move.ts          (sprint 69) Gantt drag and drop: ganttEditable, targetTime, moveGanttTask (the task in the region's
+                           query, gantt_move with :TASK_ID/:NEW_START/:NEW_END); the dragging itself is in app.js
     charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, Gantt (time axis, dependencies), pyramid, polar, range, box plot (quantile, boxes), stock, drill-down marks, data table
     calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
                            the route POST …/calendar/:id/move is in routes.ts)
@@ -325,6 +327,7 @@ test/
   blueprint-from-app.test.ts  a blueprint of HR: checks clean, pages and menu, notes, a working copy with sample rows, workspaces
   rest-catalogs.test.ts    OpenAPI/Swagger reading, parameter keys, catalog files, the builder's pages, a data source from a service
   workspace-transfer.test.ts  a workspace's export, import into another workspace (added, kept, replaced, all or nothing), groups, access
+  gantt-move.test.ts       an editable Gantt's markup, the move route, dates, who may drag, the builder's settings
   find-workspace.test.ts   developers' addresses, builder mail, the workspaces mail, the same answer, limits
   ai-builder.test.ts       App Builder AI: the builder's service, SQL from a question, explain, describe tables, pages with AI
   ai-script-mock.ts        a scripted mock of Claude (SSE, tool_use with a thinking block) and OpenAI (tool calls), reply by reply
@@ -335,6 +338,7 @@ test/
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
+  e2e/gantt.test.ts        Gantt drag and drop: moving a task, its end, the keyboard, a click still drills down, the phone
   e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
   e2e/grid.test.ts         interactive grid in a browser: master-detail refresh, move/resize columns, row menu, copy/paste; without JavaScript
   e2e/page-logic.test.ts   dialog_closed refreshes a region without a reload, download process in a browser, dialog link without JavaScript

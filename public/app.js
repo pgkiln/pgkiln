@@ -972,6 +972,132 @@ const pgkilnUnsaved = (() => {
     }
   });
 
+  // ------------------------------------------------------------ Gantt chart drag and drop (sprint 69)
+  // An editable Gantt chart (.gantt-editable, data-gantt = its region) has tasks with
+  // data-task, data-start and data-end (wall clock ms, read as UTC). Dragging a task moves
+  // it, dragging a bar's end handle changes its end, in whole days or hours (data-snap);
+  // from the keyboard the arrow keys do the same (Shift: the end), Enter saves, Escape
+  // cancels. The server checks and saves the new dates and sends the chart back.
+  const GANTT_STEP = { day: 86400000, hour: 3600000 };
+  const ganttWhen = (ms, snap) => new Date(ms).toISOString().slice(0, snap === 'hour' ? 16 : 10);
+  const ganttState = new WeakMap();
+  function ganttPreview(task, steps, mode) {
+    const chart = task.closest('.gantt-editable');
+    const plot = chart.querySelector('.gantt-plot');
+    const step = GANTT_STEP[chart.dataset.snap] || GANTT_STEP.day;
+    const span = Number(chart.dataset.hi) - Number(chart.dataset.lo);
+    const start = Number(task.dataset.start);
+    const end = Number(task.dataset.end);
+    const prev = ganttState.get(task);
+    // the bar's width before this edit (the preview changes it)
+    const orig = prev ? prev.orig : task.getBoundingClientRect().width;
+    // a bar's end never goes before its start; a milestone only moves
+    const resize = mode === 'end' && task.classList.contains('gantt-bar');
+    if (resize) steps = Math.max(steps, Math.round((start - end) / step));
+    const next = resize ? { start, end: end + steps * step } : { start: start + steps * step, end: end + steps * step };
+    const px = (ms) => (ms / span) * plot.getBoundingClientRect().width;
+    // (translate, not transform: a milestone is a rotated square)
+    task.style.translate = !resize && steps ? `${px(steps * step)}px 0` : '';
+    task.style.width = resize && steps ? `${Math.max(orig + px(steps * step), 2)}px` : '';
+    ganttState.set(task, { steps, mode: resize ? 'end' : 'move', next, orig, keyboard: prev?.keyboard });
+    task.classList.toggle('gantt-moving', !!steps);
+    const status = chart.closest('.region')?.querySelector('.gantt-status');
+    if (status) status.textContent = steps ? `${task.dataset.label}: ${ganttWhen(next.start, chart.dataset.snap).replace('T', ' ')} – ${ganttWhen(next.end, chart.dataset.snap).replace('T', ' ')}` : '';
+    return next;
+  }
+  function ganttReset(task) {
+    task.style.translate = '';
+    task.style.width = '';
+    const status = task.closest('.region')?.querySelector('.gantt-status');
+    if (status) status.textContent = '';
+    task.classList.remove('gantt-moving', 'gantt-dragging');
+    ganttState.delete(task);
+  }
+  async function ganttSave(task) {
+    const st = ganttState.get(task);
+    if (!st || !st.steps) return ganttReset(task);
+    const chart = task.closest('.gantt-editable');
+    const region = chart.closest('.region');
+    const id = task.dataset.task;
+    const snap = chart.dataset.snap;
+    chart.setAttribute('aria-busy', 'true');
+    try {
+      const res = await post(`/chart/${chart.dataset.gantt}/move`, { task: id, start: ganttWhen(st.next.start, snap), end: ganttWhen(st.next.end, snap) });
+      const sheet = document.getElementById('pgkiln-css')?.sheet;
+      if (sheet && res.css) for (const rule of res.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
+      const node = region ? replaceHtml(region, res.region) : null;
+      const status = node?.querySelector('.gantt-status');
+      if (status) status.textContent = res.message;
+      // keyboard users keep their place
+      if (st.keyboard) node?.querySelector(`.gantt-editable [data-task="${CSS.escape(id)}"]`)?.focus();
+    } catch (err) {
+      chart.removeAttribute('aria-busy');
+      ganttReset(task);
+      showError(err.message);
+    }
+  }
+  let ganttDrag = null;
+  let ganttSwallowClick = false;
+  document.addEventListener('pointerdown', (e) => {
+    const task = e.button === 0 && e.target.closest?.('.gantt-editable [data-task]');
+    if (!task || task.closest('[aria-busy="true"]')) return;
+    ganttDrag = { task, x: e.clientX, mode: e.target.closest('.gantt-handle') ? 'end' : 'move', id: e.pointerId, moved: false };
+    task.setPointerCapture?.(e.pointerId);
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!ganttDrag || e.pointerId !== ganttDrag.id) return;
+    const { task } = ganttDrag;
+    const chart = task.closest('.gantt-editable');
+    const width = chart.querySelector('.gantt-plot').getBoundingClientRect().width || 1;
+    const step = GANTT_STEP[chart.dataset.snap] || GANTT_STEP.day;
+    const dx = e.clientX - ganttDrag.x;
+    if (!ganttDrag.moved && Math.abs(dx) < 4) return;
+    ganttDrag.moved = true;
+    task.classList.add('gantt-dragging');
+    const steps = Math.round(((dx / width) * (Number(chart.dataset.hi) - Number(chart.dataset.lo))) / step);
+    if (steps !== ganttState.get(task)?.steps) ganttPreview(task, steps, ganttDrag.mode);
+  });
+  const ganttEnd = (e, cancel) => {
+    if (!ganttDrag || e.pointerId !== ganttDrag.id) return;
+    const { task, moved } = ganttDrag;
+    ganttDrag = null;
+    task.classList.remove('gantt-dragging');
+    if (!moved) return;
+    // a drag is not a click on the task's link
+    ganttSwallowClick = true;
+    setTimeout(() => (ganttSwallowClick = false), 0);
+    if (cancel) ganttReset(task);
+    else ganttSave(task);
+  };
+  document.addEventListener('pointerup', (e) => ganttEnd(e, false));
+  document.addEventListener('pointercancel', (e) => ganttEnd(e, true));
+  document.addEventListener('click', (e) => {
+    if (ganttSwallowClick && e.target.closest?.('.gantt-editable [data-task]')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    const task = e.target.closest?.('.gantt-editable [data-task]');
+    if (!task || e.altKey || e.ctrlKey || e.metaKey) return;
+    const st = ganttState.get(task);
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const mode = e.shiftKey && task.classList.contains('gantt-bar') ? 'end' : 'move';
+      // switching between moving and changing the end starts over
+      if (st && st.mode !== mode) ganttReset(task);
+      const same = ganttState.get(task);
+      ganttPreview(task, (same ? same.steps : 0) + (e.key === 'ArrowRight' ? 1 : -1), mode);
+      ganttState.get(task).keyboard = true;
+    } else if (e.key === 'Enter' && st?.steps) {
+      e.preventDefault();
+      ganttSave(task);
+    } else if (e.key === 'Escape' && st) {
+      e.preventDefault();
+      ganttReset(task);
+    }
+  });
+
   // ------------------------------------------------------------ lazy regions
   // A lazy region arrives as a placeholder with a "Show" link (which works
   // without JavaScript); fetch the region now and put it in place, with its

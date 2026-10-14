@@ -7547,6 +7547,9 @@ describe('sprint 67 workspace export and import', () => {
     await b.upload('/builder/workspace-import', { part: 'extension_links' }, file({ extension_links: [{ label: 'Sec67x <img src=x onerror=alert(1)>', url: 'https://x.example/' }] }));
     const page = (await b.get('/builder')).body;
     assert.doesNotMatch(page, /<img src=x/);
+  });
+});
+
 describe('sprint 68 find my workspace and the data reporter welcome page', () => {
   const logged: string[] = [];
   const realLog = console.log;
@@ -7609,6 +7612,45 @@ describe('sprint 68 find my workspace and the data reporter welcome page', () =>
       assert.match((await b.get(`/a/hr/36?dr${rid}_q=${encodeURIComponent('<script>x')}`)).body, /value="&lt;script&gt;x"/);
     } finally {
       await owner.query(`delete from meta.data_report where name = 'Sec68 private'`);
+    }
+  });
+});
+
+describe('sprint 69 gantt drag and drop', () => {
+  let rid: number;
+  let saved: { id: number; starts: string; ends: string | null }[];
+  before(async () => {
+    rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 32 and r.title = 'Office move'`)).id;
+    saved = (await owner.query('select id, starts::text, ends::text from hr.project_task')).rows;
+  });
+  after(async () => {
+    for (const t of saved) await owner.query('update hr.project_task set starts = $2, ends = $3 where id = $1', [t.id, t.starts, t.ends]);
+  });
+
+  test('CSRF, the region\'s authorization, a numeric region, dates as dates; the SQL sees only checked values', async () => {
+    const b = new Browser();
+    await b.login('scott');
+    await b.get('/a/hr/32');
+    const before = (await owner.query('select id, starts, ends from hr.project_task order by id')).rows;
+    assert.equal((await b.post(`/a/hr/32/chart/${rid}/move`, { __csrf: b.lastCsrf, task: '3', start: '2031-01-01', end: '2031-01-02' })).statusCode, 403, 'not a manager');
+    const k = new Browser();
+    await k.login('king');
+    await k.get('/a/hr/32');
+    assert.equal((await k.post(`/a/hr/32/chart/${rid}/move`, { task: '3', start: '2031-01-01', end: '2031-01-02' })).statusCode, 403, 'no CSRF token');
+    for (const id of [`${rid} or 1=1`, '-1', 'x'])
+      assert.notEqual((await k.post(`/a/hr/32/chart/${encodeURIComponent(id)}/move`, { __csrf: k.lastCsrf, task: '3', start: '2031-01-01', end: '2031-01-02' })).statusCode, 200, id);
+    for (const [start, end] of [['2031-01-01', "2031-01-02'::date, ends = null where true; --"], ["now()", '2031-01-02'], ['2031-01-01T10:00:00Z', '2031-01-02']])
+      assert.equal((await k.post(`/a/hr/32/chart/${rid}/move`, { __csrf: k.lastCsrf, task: '3', start, end })).statusCode, 400, `${start} ${end}`);
+    assert.deepEqual((await owner.query('select id, starts, ends from hr.project_task order by id')).rows, before);
+    // a task outside the region's query (here: a row the query doesn't return) can't be moved
+    await owner.query(`insert into hr.project_task (id, name, starts) values (9069, 'Sec69 hidden', '2031-01-01')`);
+    try {
+      await owner.query(`update meta.region set source = replace(source, 'from hr.project_task t', 'from hr.project_task t where t.id < 9000') where id = $1`, [rid]);
+      assert.equal((await k.post(`/a/hr/32/chart/${rid}/move`, { __csrf: k.lastCsrf, task: '9069', start: '2031-02-01', end: '2031-02-01' })).statusCode, 403);
+      assert.equal((await owner.one(`select starts::text from hr.project_task where id = 9069`)).starts, '2031-01-01');
+    } finally {
+      await owner.query(`update meta.region set source = replace(source, ' where t.id < 9000', '') where id = $1`, [rid]);
+      await owner.query('delete from hr.project_task where id = 9069');
     }
   });
 });

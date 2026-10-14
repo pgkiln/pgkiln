@@ -51,6 +51,8 @@ export interface ChartOptions {
   format?: (v: number) => string;
   /** a Gantt chart's "today" line (milliseconds, wall clock as UTC); default now */
   now?: number;
+  /** (sprint 69) an editable Gantt chart: its region, and the step of a drag (default: days when every date is midnight) */
+  edit?: { region: number; snap?: 'day' | 'hour' };
 }
 /** The interactive report's chart view has one series with text labels: no stacked, combo or scatter. */
 export const REPORT_CHART_KINDS: ChartKind[] = ['bar', 'column', 'line', 'area', 'donut', 'pie'];
@@ -62,15 +64,15 @@ interface Series {
 
 let link: ChartOptions['link'];
 /** A mark: an <a> when the chart drills down (row i, series si), else `tag` (focusable when asked). */
-function mark(tag: 'div' | 'span', i: number, si: number | null, cls: string, tip: string | null, inner: unknown, focusable = true, namedByContent = false): Raw {
+function mark(tag: 'div' | 'span', i: number, si: number | null, cls: string, tip: string | null, inner: unknown, focusable = true, namedByContent = false, attrs: Raw | '' = ''): Raw {
   const href = link?.(i, si) ?? null;
   // a drill link with visible text is named by that text; elsewhere the tip is the name (role img: a labelled graphic)
   const tipAttr = tip === null ? '' : href && namedByContent ? html` data-tip="${tip}"` : html` data-tip="${tip}" aria-label="${tip}"`;
-  if (href) return html`<a class="${cls} drill" ${href}${tipAttr}${focusable ? '' : raw(' tabindex="-1"')}>${inner}</a>`;
+  if (href) return html`<a class="${cls} drill" ${href}${tipAttr}${attrs}${focusable ? '' : raw(' tabindex="-1"')}>${inner}</a>`;
   const role = tip === null ? '' : raw(' role="img"');
   return tag === 'div'
-    ? html`<div class="${cls}"${role}${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</div>`
-    : html`<span class="${cls}"${role}${tipAttr}${focusable ? raw(' tabindex="0"') : ''}>${inner}</span>`;
+    ? html`<div class="${cls}"${role}${tipAttr}${attrs}${focusable ? raw(' tabindex="0"') : ''}>${inner}</div>`
+    : html`<span class="${cls}"${role}${tipAttr}${attrs}${focusable ? raw(' tabindex="0"') : ''}>${inner}</span>`;
 }
 
 const MAX_SERIES = 8;
@@ -98,6 +100,7 @@ let texts = {
   noRange: 'A range chart needs a label column and two numeric columns: low and high.',
   noBoxplot: 'A box plot needs a label column and either one numeric column (a row per value) or five: minimum, first quartile, median, third quartile and maximum.',
   noStock: 'A stock chart needs a label column (the date) and four numeric columns: open, high, low and close.',
+  ganttHint: 'Drag a task to move it, or its end to change its length. With the keyboard: the arrow keys move a task, Shift and the arrow keys change its end, Enter saves, Escape cancels.',
   min: 'Minimum',
   q1: 'First quartile',
   median: 'Median',
@@ -810,7 +813,7 @@ function dateFormat(opts: Intl.DateTimeFormatOptions) {
   }
 }
 
-function gantt(title: string, rows: unknown[][], fields: { name: string }[], now: number) {
+function gantt(title: string, rows: unknown[][], fields: { name: string }[], now: number, edit?: ChartOptions['edit']) {
   // label, start, end (empty or equal to the start: a milestone); optional columns by name:
   // progress (0-100), task_id and depends_on (ids of the tasks it waits for: "3" or "3,4")
   if (fields.length < 3) return html`<p class="empty">${texts.noGantt}</p>`;
@@ -862,16 +865,25 @@ function gantt(title: string, rows: unknown[][], fields: { name: string }[], now
     (b) => html`<span class="gantt-arrow ${css.cls(`left:${pct(x(tasks[b].start))};top:${pct(((b + 0.5) / n) * 100)}`)}"></span>`,
   );
 
+  // (sprint 69) editable: a task with a task_id carries its id and dates (wall clock ms) for app.js; bars get an end handle
+  const editable = !!edit && cId >= 0;
+  const snap = edit?.snap ?? (tasks.every((t) => t.start % DAY === 0 && t.end % DAY === 0) ? 'day' : 'hour');
+  const editAttrs = (t: (typeof tasks)[number]) => {
+    const id = editable ? cell(rows[t.i][cId]) : '';
+    // (draggable="false": a drill-down link would start the browser's own drag of a link)
+    return id ? html` data-task="${id}" data-label="${t.label}" data-start="${String(t.start)}" data-end="${String(t.end)}" draggable="false"` : '';
+  };
   const lanes = tasks.map((t) => {
-    if (t.end === t.start) return html`<div class="gantt-lane">${mark('span', t.i, null, `gantt-milestone s1 ${css.cls(`left:${pct(x(t.start))}`)}`, tipOf(t), '')}</div>`;
+    if (t.end === t.start) return html`<div class="gantt-lane">${mark('span', t.i, null, `gantt-milestone s1 ${css.cls(`left:${pct(x(t.start))}`)}`, tipOf(t), '', true, false, editAttrs(t))}</div>`;
     const geo = css.cls(`left:${pct(x(t.start))};width:${pct(x(t.end) - x(t.start))}`);
     const done = t.progress === null ? '' : html`<span class="gantt-progress ${css.cls(`width:${pct(t.progress)}`)}"></span>`;
-    return html`<div class="gantt-lane">${mark('span', t.i, null, `gantt-bar s1${t.progress === null ? '' : ' partial'} ${geo}`, tipOf(t), done)}</div>`;
+    const handle = editAttrs(t) ? html`<span class="gantt-handle" aria-hidden="true"></span>` : '';
+    return html`<div class="gantt-lane">${mark('span', t.i, null, `gantt-bar s1${t.progress === null ? '' : ' partial'} ${geo}`, tipOf(t), html`${done}${handle}`, true, false, editAttrs(t))}</div>`;
   });
   const everyTick = Math.ceil(scale.ticks.length / 8);
   const today = now >= scale.lo && now <= scale.hi ? html`<span class="gantt-today ${css.cls(`left:${pct(x(now))}`)}" title="${texts.today}"></span>` : '';
   const head = (k: number) => fields[k]?.name ?? '';
-  return html`<div class="gantt">
+  return html`<div class="gantt${editable ? ' gantt-editable' : ''}"${editable ? html` data-gantt="${String(edit!.region)}" data-snap="${snap}" data-lo="${String(scale.lo)}" data-hi="${String(scale.hi)}"` : ''}>
     <span class="gantt-corner">${head(0)}</span>
     <div class="gantt-axis" aria-hidden="true">${scale.ticks.slice(0, -1).map(
       // every other shown label is "odd": hidden on narrow screens (app.css)
@@ -885,6 +897,7 @@ function gantt(title: string, rows: unknown[][], fields: { name: string }[], now
       ${lanes}
     </div>
   </div>
+  ${editable ? html`<p class="gantt-status" role="status" aria-live="polite"></p><p class="gantt-hint muted">${texts.ganttHint}</p>` : ''}
   <details class="chart-data"><summary>${texts.table}</summary>
     <div class="table-wrap"><table class="report">
       <caption class="sr-only">${title}</caption>
@@ -918,12 +931,12 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
       ...texts, table: t('chart.table'), other: t('chart.other'), label: t('chart.label'), noBubble: t('chart.no_bubble'), noRadar: t('chart.no_radar'),
       good: t('chart.status_good'), warning: t('chart.status_warning'), critical: t('chart.status_critical'), ofFirst: t('chart.of_first'), size: t('chart.size'),
       noGantt: t('chart.no_gantt'), noData: t('chart.no_data'), today: t('chart.today'),
-      noRange: t('chart.no_range'), noBoxplot: t('chart.no_boxplot'), noStock: t('chart.no_stock'),
+      noRange: t('chart.no_range'), noBoxplot: t('chart.no_boxplot'), noStock: t('chart.no_stock'), ganttHint: t('chart.gantt_hint'),
       min: t('chart.min'), q1: t('chart.q1'), median: t('chart.median'), q3: t('chart.q3'), max: t('chart.max'),
     };
   // a Gantt chart reads its date columns itself (its series are not numbers)
   if (kind === 'gantt')
-    return html`<figure class="chart chart-gantt" aria-label="${title}">${gantt(title, rows, fields, opts.now ?? Date.now())}</figure>`;
+    return html`<figure class="chart chart-gantt" aria-label="${title}">${gantt(title, rows, fields, opts.now ?? Date.now(), opts.edit)}</figure>`;
   const { labels, series } = parse(rows, fields, opts.hidden);
   if (!series.length) return html`<p class="empty">${texts.noSeries}</p>`;
   if (kind === 'boxplot') {
