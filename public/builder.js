@@ -474,11 +474,13 @@
       ok.className = 'pd-dialog-buttons';
       ok.innerHTML = '<button type="button" class="btn btn-primary">OK</button>';
       d.appendChild(ok);
-      ok.querySelector('button').addEventListener('click', () => d.close());
-      d.addEventListener('close', () => {
-        count();
+      // the count follows every change (Escape closes the dialog without OK)
+      for (const x of boxes) x.addEventListener('change', count);
+      ok.querySelector('button').addEventListener('click', () => {
+        d.close();
         b.focus();
       });
+      d.addEventListener('close', () => b.focus());
       b.addEventListener('click', () => d.showModal());
       count();
     }

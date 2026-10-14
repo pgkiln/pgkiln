@@ -230,7 +230,15 @@ describe('page designer interaction (desktop)', () => {
     await page.click('.pe-options-open > button');
     await page.locator('dialog[open] input[value="to-accent"]').check();
     await page.click('dialog[open] .pd-dialog-buttons button');
-    await page.waitForFunction(() => document.querySelector('.pe-options-open > button')?.textContent?.includes('(1)'));
+    await page.locator('dialog[open]').waitFor({ state: 'detached' }).catch(() => {});
+    const state = await page.evaluate(() => ({
+      text: [...document.querySelectorAll('.pe-options-open > button')].map((b) => b.textContent),
+      checked: [...document.querySelectorAll('#pd-form input[name="template_options"]:checked')].map((x) => (x as HTMLInputElement).value),
+      open: document.querySelectorAll('dialog[open]').length,
+    }));
+    assert.deepEqual(state.checked, ['to-accent'], JSON.stringify(state));
+    assert.equal(state.open, 0, JSON.stringify(state));
+    assert.match(state.text[0] ?? '', /\(1\)/, JSON.stringify(state));
     await Promise.all([page.waitForNavigation(), page.click('.tb-save')]);
     const copy = await owner.one(`select template_options from meta.region where page_id = $1 and title = 'First region' order by id desc limit 1`, [ids.p]);
     assert.deepEqual(copy.template_options, ['to-accent'], 'saved with the form');
