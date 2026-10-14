@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Offline pages keep their script and styles after an update:** a page kept on the device under an older version of
+  pgkiln's static files got neither `app.js` nor `app.css` offline once the service worker had cached the newer ones;
+  it now gets the cached copy of the other version. (This was also the cause of the intermittent CI failure of the
+  e2e test "a form sent offline …".)
+
 ## [0.40.0] - 2026-10-14
 
 Sprint 65: facet charts. Sprint 66: a blueprint from an existing application.
