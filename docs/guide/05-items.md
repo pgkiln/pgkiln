@@ -11,7 +11,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `text` | text field | text |
 | `textarea` | multi-line text (always full width) | text |
 | `number` | number field (numeric keyboard on phones) | e.g. `1250.50` |
-| `date` | date picker | `YYYY-MM-DD` |
+| `date` | date picker: the browser's, or (sprint 76) with an application date format or a date format mask on the item a text field in that format with a calendar button; typed dates are read back in the format | `YYYY-MM-DD` |
 | `datetime` | date-time picker | `YYYY-MM-DDTHH:MM` |
 | `email`, `tel`, `url` | typed fields with the matching phone keyboard | text |
 | `password` | password field; never shown back, empty = unchanged | text |

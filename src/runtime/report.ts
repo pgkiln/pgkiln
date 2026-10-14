@@ -186,6 +186,10 @@ interface Highlight extends Filter {
 
 export interface ReportState {
   search: string;
+  /** (sprint 76) the column the search is limited to (the search field's column list), or null: all */
+  searchCol: string | null;
+  /** (sprint 76) columns the user hid (a column heading's menu → Hide) */
+  hideCols: string[];
   sort: number;
   desc: boolean;
   page: number;
@@ -236,6 +240,8 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
   const size = parseInt(p.get(key(r, 'n')) ?? '', 10) || Number(r.config.page_size) || 15;
   const st: ReportState = {
     search: (p.get(key(r, 'q')) ?? '').trim(),
+    searchCol: (p.get(key(r, 'qc')) ?? '').trim() || null,
+    hideCols: p.getAll(key(r, 'x')).filter(Boolean).slice(0, 100),
     sort: r.config.sortable === false ? 0 : Math.max(0, Math.min(1000, parseInt(p.get(key(r, 's')) ?? '0', 10) || 0)),
     desc: p.get(key(r, 'd')) === 'desc',
     page: Math.max(1, Math.min(MAX_PAGE, parseInt(p.get(key(r, 'p')) ?? '1', 10) || 1)),
@@ -415,13 +421,14 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const p = new SqlParams();
   const hides = hidesColumns(r);
   const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions));
-  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort));
+  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort)) || (st.search && st.searchCol);
   // column name → type oid
   const fields = needCols ? await fieldsOf(ctx, src) : [];
   const cols = new Map<string, number>(fields.map((f) => [f.name, f.dataTypeID]));
   // the columns the user may choose (filters, highlights, control break, aggregates, views, sorting): not the hidden ones
   const userCols = new Map<string, number>(userColumnNames(r, [...cols.keys()]).map((n) => [n, cols.get(n)!]));
-  if (st.search) where.push(searchSql(st.search, p, hides ? [...userCols.keys()] : undefined));
+  // (sprint 76) the search in one column the user may see, or in all
+  if (st.search) where.push(searchSql(st.search, p, st.searchCol && userCols.has(st.searchCol) ? [st.searchCol] : hides ? [...userCols.keys()] : undefined));
   for (const f of st.filters) if (userCols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
   for (const f of facets) {
     const cond = facetFilterSql(f, cols, p);
@@ -536,7 +543,9 @@ export function chartSection(ctx: PageContext, r: Region, st: ReportState, names
 /** The pager under a report or grid: "X–Y of N" (or "Rows X–Y"), Previous and Next. */
 export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: Raw | '' = '') {
   const t = ctx.locale.t;
-  if (!info.more && info.page <= 1) return info.total ? html`<div class="pager"><span>${t('report.rows')}: ${info.total}</span></div>` : '';
+  // (sprint 76) "1 – 14 of 14" and the rows per page, also on a single page (APEX's pagination)
+  const sizes = sizeChooser(ctx, r, info);
+  if (!info.more && info.page <= 1) return info.total ? html`<div class="pager"><span>${t('report.range', { from: 1, to: info.total, total: info.total })}</span>${sizes}</div>` : '';
   // a page number, and the keyset position when there is one
   const go = (page: number, seek: string | null) => (p: URLSearchParams) => {
     p.set(key(r, 'p'), String(page));
@@ -546,11 +555,49 @@ export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: 
   const text =
     info.total === null ? t('report.range_open', { from: info.from, to: info.to })
     : t(info.capped ? 'report.range_more' : 'report.range', { from: info.from, to: info.to, total: info.total });
+  // the last page, when the total is known and pages are counted (not keyset paging)
+  const lastPage = info.total !== null && !info.capped && !info.next && !info.prev ? Math.ceil(info.total / reportState(ctx, r).size) : null;
   return html`<nav class="pager" aria-label="${t('report.pagination')}">
     <span>${text}</span>
+    ${info.page > 2 ? html`<a class="btn" href="${regionUrl(ctx, r, go(1, null))}"${linkAttr} aria-label="${t('report.first')}" title="${t('report.first')}">«</a>` : ''}
     ${info.page > 1 ? html`<a class="btn" href="${regionUrl(ctx, r, go(info.page - 1, info.prev))}"${linkAttr}>‹ ${t('report.previous')}</a>` : ''}
     ${info.more ? html`<a class="btn" href="${regionUrl(ctx, r, go(info.page + 1, info.next))}"${linkAttr}>${t('report.next')} ›</a>` : ''}
+    ${info.more && lastPage && lastPage > info.page + 1 ? html`<a class="btn" href="${regionUrl(ctx, r, go(lastPage, null))}"${linkAttr} aria-label="${t('report.last')}" title="${t('report.last')}">»</a>` : ''}
+    ${sizes}
   </nav>`;
+}
+
+/** (sprint 76) Rows per page as a select in the pager (a GET form; app.js sends it on change, else its button). */
+function sizeChooser(ctx: PageContext, r: Region, info: PageInfo): Raw | '' {
+  if (r.type !== 'report' || r.config.interactive === false) return '';
+  const st = reportState(ctx, r);
+  const keep = [...ctx.params.entries()].filter(([k]) => k !== key(r, 'n') && k !== key(r, 'p') && k !== key(r, 'k') && !['clear', 'cs'].includes(k));
+  const t = ctx.locale.t;
+  if (info.total !== null && info.total <= PAGE_SIZES[0] && st.size === PAGE_SIZES[0]) return '';
+  return html`<form method="get" action="${ctx.base}/${ctx.page.page_no}" class="pager-size">${keep.map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}
+    <label for="r${r.id}_size">${t('report.rows_per_page')}</label>
+    <select id="r${r.id}_size" name="${key(r, 'n')}" data-go>${[...new Set([...PAGE_SIZES, st.size])].sort((a, b) => a - b).map((n) => html`<option value="${n}"${n === st.size ? raw(' selected') : ''}>${n}</option>`)}</select>
+    <button class="btn btn-sm no-js-only">${t('report.go')}</button></form>`;
+}
+
+/** (sprint 76) The most values a column heading's menu lists. */
+export const MAX_COLUMN_VALUES = 200;
+
+/**
+ * (sprint 76) A column's values with their counts, for its heading's menu (APEX: the column heading's quick
+ * filter list): the report's rows with the user's search and filters, only a column the user may see.
+ */
+export async function columnValues(ctx: PageContext, r: Region, column: string) {
+  const st = reportState(ctx, r);
+  const { src, where, userCols, values } = await filtered(ctx, r, { ...st, filters: [...st.filters] });
+  // the column's own type is needed: filtered() reads the columns when anything asks for them
+  const names = userCols.size ? userCols : new Map((await fieldsOf(ctx, src)).filter((f) => userColumnNames(r, [f.name]).length).map((f) => [f.name, f.dataTypeID]));
+  if (!names.has(column)) return null;
+  const c = ctx.client!;
+  const res = await savepoint(c, () =>
+    c.query({ text: `select ${q(column)}::text as v, count(*)::int as n from (\n${src}\n) "__q"${where} group by 1 order by 1 nulls first limit ${MAX_COLUMN_VALUES}`, values }),
+  );
+  return res.rows.map((row: { v: string | null; n: number }) => ({ value: row.v, count: row.n }));
 }
 
 /**
@@ -783,7 +830,9 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     if (info.page > 2) info.prev = seekToken(ctx, r, st, info.page - 1, 'p', at(info.rows[0]));
   }
   const hlIdx = st.highlights.map((_, i) => res.fields.findIndex((f) => f.name === `__h${i}`));
-  const allCols = visibleColumns(r, fields);
+  // (sprint 76) without the columns the user hid (a heading's menu → Hide)
+  const userHidden = new Set(st.hideCols.map((c) => c.toLowerCase()));
+  const allCols = visibleColumns(r, fields).filter(({ f }) => !userHidden.has(f.name.toLowerCase()));
   // a control break on a shown column only (its values head the groups)
   const breakIdx = st.breakCol ? (allCols.find(({ f }) => f.name === st.breakCol)?.i ?? -1) : -1;
   const cols = allCols.filter(({ i }) => i !== breakIdx);
@@ -840,7 +889,13 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       else p.delete(key(r, 'd'));
       p.delete(key(r, 'p'));
     });
-    return html`<th scope="col" class="${cls}" aria-sort="${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
+    // (sprint 76) a heading's menu (app.js): sort either way, hide, control break and the column's values to filter by;
+    // without JavaScript the heading sorts
+    const set = (fn: (p: URLSearchParams) => void) => regionUrl(ctx, r, (p) => { fn(p); p.delete(key(r, 'p')); p.delete(key(r, 'k')); });
+    const menu = interactive
+      ? raw(` data-col="${esc(f.name)}" data-label="${esc(label)}" data-asc="${esc(set((p) => { p.set(key(r, 's'), String(pos)); p.delete(key(r, 'd')); }))}" data-desc="${esc(set((p) => { p.set(key(r, 's'), String(pos)); p.set(key(r, 'd'), 'desc'); }))}" data-hide="${esc(set((p) => p.append(key(r, 'x'), f.name)))}" data-break="${esc(set((p) => p.set(key(r, 'b'), f.name)))}" data-filter="${esc(key(r, 'f'))}" data-values="${esc(`${ctx.base}/${ctx.page.page_no}/report/${r.id}/values`)}"`)
+      : '';
+    return html`<th scope="col" class="${cls}" aria-sort="${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"${menu}><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
   });
   if (editIcon) header.unshift(html`<th scope="col" class="row-edit" aria-label="${t('report.edit')}"></th>`);
   if (selIdx >= 0) header.unshift(html`<th scope="col" class="row-select"><label><input type="checkbox" data-select-all="${selection!.item}" aria-label="${t('report.select_all')}"><span class="row-select-label" aria-hidden="true">${t('report.select_all')}</span></label></th>`);
@@ -901,7 +956,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       .map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`);
   const action = `${ctx.base}/${ctx.page.page_no}`;
   if (searchable) {
-    ctx.detached.push(html`<form id="${searchForm}" method="get" action="${action}">${hiddenInputs([key(r, 'q'), key(r, 'p')])}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}</form>`);
+    ctx.detached.push(html`<form id="${searchForm}" method="get" action="${action}">${hiddenInputs([key(r, 'q'), key(r, 'qc'), key(r, 'p')])}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}</form>`);
   }
   const breakForm = `rb${r.id}`;
   const aggForm = `ra${r.id}`;
@@ -971,101 +1026,96 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     if (st.area) chips.push(chip(t('report.map_area'), 'bb'));
     if (st.near) chips.push(chip(t('report.near', { km: ctx.locale.number.format(st.near.km) }), 'near'));
   }
+  for (const c of st.hideCols)
+    chips.push(html`<span class="chip">${t('report.hidden_column')}: <b>${headingOf(r, c, ctx.locale.tr)}</b>
+      <a href="${regionUrl(ctx, r, (p) => { const rest = p.getAll(key(r, 'x')).filter((x) => x !== c); p.delete(key(r, 'x')); for (const x of rest) p.append(key(r, 'x'), x); })}" aria-label="${t('report.show_column')}">×</a></span>`);
   if (st.search)
     chips.unshift(
-      html`<span class="chip">${t('report.search_chip')} <b>${st.search}</b> <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'q')); p.delete(key(r, 'p')); })}" aria-label="${t('report.clear_search')}">×</a></span>`,
+      html`<span class="chip">${t('report.search_chip')}${st.searchCol ? html` ${headingOf(r, st.searchCol, ctx.locale.tr)}:` : ''} <b>${st.search}</b> <a href="${regionUrl(ctx, r, (p) => { p.delete(key(r, 'q')); p.delete(key(r, 'qc')); p.delete(key(r, 'p')); })}" aria-label="${t('report.clear_search')}">×</a></span>`,
     );
 
+  // (sprint 76) Actions is a short menu like APEX's; each entry opens a dialog (app.js), or unfolds in place without JavaScript
+  const columnsForm = `rx${r.id}`;
+  if (interactive)
+    ctx.detached.push(html`<form id="${columnsForm}" method="get" action="${ctx.base}/${ctx.page.page_no}">${hiddenInputs([key(r, 'x'), key(r, 'p')])}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}</form>`);
+  const item = (k: string, ic: string, label: string, body: Raw | '') =>
+    html`<li><details class="ir-item" data-ir-dialog="${k}"><summary>${icon(ic)}<span>${label}</span></summary><div class="ir-body" role="group" aria-label="${label}">${body}</div></details></li>`;
+  const sub = (ic: string, label: string, items: (Raw | '')[]) =>
+    html`<li><details class="ir-item ir-sub"><summary>${icon(ic)}<span>${label}</span><span class="ir-more" aria-hidden="true">›</span></summary><ul class="ir-menu">${items}</ul></details></li>`;
+  const menuLink = (ic: string, label: Raw | string, href: string, attrs: Raw | '' = '') => html`<li><a class="ir-link" href="${href}"${attrs}>${icon(ic)}<span>${label}</span></a></li>`;
+  const sortLinks = r.config.sortable === false
+    ? ''
+    : html`<div class="seg">${cols.map(({ f, i }) => {
+        const pos = i + 1;
+        const active = st.sort === pos;
+        const href = regionUrl(ctx, r, (p) => {
+          p.set(key(r, 's'), String(pos));
+          if (active && !st.desc) p.set(key(r, 'd'), 'desc');
+          else p.delete(key(r, 'd'));
+          p.delete(key(r, 'p'));
+        });
+        return html`<a href="${href}"${active ? raw(' aria-current="true"') : ''}>${headingOf(r, f.name, ctx.locale.tr)}${active ? (st.desc ? ' ▼' : ' ▲') : ''}</a>`;
+      })}</div>`;
   const actionsMenu = interactive
     ? html`<details class="menu actions-menu">
         <summary class="btn">${t('report.actions')} <span aria-hidden="true">▾</span></summary>
-        <div class="menu-panel">
-          <div class="menu-section">
-            <strong>${t('report.filter')}</strong>
-            <div class="filter-row">
+        <div class="menu-panel"><ul class="ir-menu">
+          ${item('columns', 'eye-off', t('report.columns'), html`<fieldset class="ir-columns"><legend>${t('report.hide_columns')}</legend>
+            ${visibleColumns(r, fields).map(({ f }) => html`<label class="check"><input type="checkbox" name="${key(r, 'x')}" value="${f.name}" form="${columnsForm}"${userHidden.has(f.name.toLowerCase()) ? raw(' checked') : ''}> ${headingOf(r, f.name, ctx.locale.tr)}</label>`)}</fieldset>
+            <button class="btn btn-hot" form="${columnsForm}">${t('report.apply')}</button>`)}
+          ${item('filter', 'filter', t('report.filter'), html`<div class="filter-row">
               <select name="${key(r, 'fc')}" form="${filterForm}" aria-label="${t('report.column')}">${cols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
               <select name="${key(r, 'fo')}" form="${filterForm}" aria-label="${t('report.operator')}">${Object.keys(OPERATORS).map((k) => html`<option value="${k}"${k === 'contains' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
               <input name="${key(r, 'fv')}" form="${filterForm}" aria-label="${t('report.value')}" placeholder="${t('report.value')}">
               <button class="btn btn-hot" form="${filterForm}">${t('report.apply')}</button>
-            </div>
-          </div>
-          ${r.config.sortable === false
-            ? ''
-            : html`<div class="menu-section"><strong>${t('report.sort')}</strong>
-                <div class="seg">${cols.map(({ f, i }) => {
-                  const pos = i + 1;
-                  const active = st.sort === pos;
-                  const href = regionUrl(ctx, r, (p) => {
-                    p.set(key(r, 's'), String(pos));
-                    if (active && !st.desc) p.set(key(r, 'd'), 'desc');
-                    else p.delete(key(r, 'd'));
-                    p.delete(key(r, 'p'));
-                  });
-                  return html`<a href="${href}"${active ? raw(' aria-current="true"') : ''}>${headingOf(r, f.name, ctx.locale.tr)}${active ? (st.desc ? ' ▼' : ' ▲') : ''}</a>`;
-                })}</div>
-              </div>`}
-          <div class="menu-section">
-            <strong>${t('report.break')}</strong>
-            <div class="filter-row">
+            </div>`)}
+          ${sub('table', t('report.data'), [
+            r.config.sortable === false ? '' : item('sort', 'arrow-down', t('report.sort'), sortLinks),
+            item('aggregate', 'calculator', t('report.aggregate'), html`<div class="filter-row">
+              <select name="${key(r, 'af')}" form="${aggForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}">${t(`agg.${fn}`)}</option>`)}</select>
+              <select name="${key(r, 'ac')}" form="${aggForm}" aria-label="${t('report.column')}">${cols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+              <button class="btn btn-hot" form="${aggForm}">${t('report.apply')}</button></div>`),
+            item('compute', 'percent', t('report.compute'), html`<div class="filter-row">
+              <input name="${key(r, 'cn')}" form="${computeForm}" maxlength="40" aria-label="${t('report.compute_name')}" placeholder="${t('report.compute_name')}">
+              <input name="${key(r, 'ce')}" form="${computeForm}" maxlength="500" aria-label="${t('report.compute_expr')}" placeholder="${t('report.compute_expr')}">
+              <button class="btn btn-hot" form="${computeForm}">${t('report.apply')}</button></div>
+              <small class="help">${t('report.compute_help')}</small>`),
+            item('break', 'list', t('report.break'), html`<div class="filter-row">
               <select name="${key(r, 'bc')}" form="${breakForm}" aria-label="${t('report.break')}">
                 <option value="">${t('report.none')}</option>
                 ${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.breakCol ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}
               </select>
-              <button class="btn" form="${breakForm}">${t('report.apply')}</button>
-            </div>
-          </div>
-          <div class="menu-section">
-            <strong>${t('report.aggregate')}</strong>
-            <div class="filter-row">
-              <select name="${key(r, 'af')}" form="${aggForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}">${t(`agg.${fn}`)}</option>`)}</select>
-              <select name="${key(r, 'ac')}" form="${aggForm}" aria-label="${t('report.column')}">${cols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
-              <button class="btn" form="${aggForm}">${t('report.apply')}</button>
-            </div>
-          </div>
-          <div class="menu-section">
-            <strong>${t('report.highlight')}</strong>
-            <div class="filter-row">
+              <button class="btn btn-hot" form="${breakForm}">${t('report.apply')}</button></div>`),
+          ])}
+          ${sub('sliders', t('report.format'), [
+            item('highlight', 'tag', t('report.highlight'), html`<div class="filter-row">
               <select name="${key(r, 'hc')}" form="${hlForm}" aria-label="${t('report.column')}">${allCols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
               <select name="${key(r, 'ho')}" form="${hlForm}" aria-label="${t('report.operator')}">${Object.keys(OPERATORS).map((k) => html`<option value="${k}"${k === 'eq' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
               <input name="${key(r, 'hv')}" form="${hlForm}" aria-label="${t('report.value')}" placeholder="${t('report.value')}">
               <select name="${key(r, 'hk')}" form="${hlForm}" aria-label="${t('report.color')}">${HIGHLIGHT_COLORS.map((c) => html`<option value="${c}">${t(`color.${c}`)}</option>`)}</select>
-              <button class="btn" form="${hlForm}">${t('report.apply')}</button>
-            </div>
-          </div>
-          <div class="menu-section">
-            <strong>${t('report.compute')}</strong>
-            <div class="filter-row">
-              <input name="${key(r, 'cn')}" form="${computeForm}" maxlength="40" aria-label="${t('report.compute_name')}" placeholder="${t('report.compute_name')}">
-              <input name="${key(r, 'ce')}" form="${computeForm}" maxlength="500" aria-label="${t('report.compute_expr')}" placeholder="${t('report.compute_expr')}">
-              <button class="btn" form="${computeForm}">${t('report.apply')}</button>
-            </div>
-            <small class="help">${t('report.compute_help')}</small>
-          </div>
-          ${groupBySection(ctx, r, st, allCols.map(({ f }) => f.name), groupForm)}
-          <div class="menu-section">
-            <strong>${t('report.pivot')}</strong>
-            <div class="filter-row">
+              <button class="btn btn-hot" form="${hlForm}">${t('report.apply')}</button></div>`),
+            item('rows', 'hash', t('report.rows_per_page'), html`<div class="seg">${PAGE_SIZES.map((n) =>
+              html`<a href="${regionUrl(ctx, r, (p) => { p.set(key(r, 'n'), String(n)); p.delete(key(r, 'p')); })}"${n === st.size ? raw(' aria-current="true"') : ''}>${n}</a>`)}</div>`),
+          ])}
+          ${item('chart', 'chart', t('report.chart'), chartSection(ctx, r, st, allCols.map(({ f }) => f.name), chartForm))}
+          ${item('group', 'layers', t('report.group_by'), groupBySection(ctx, r, st, allCols.map(({ f }) => f.name), groupForm))}
+          ${item('pivot', 'grid', t('report.pivot'), html`<div class="filter-row">
               <select name="${key(r, 'pr')}" form="${pivotForm}" aria-label="${t('report.pivot_row')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.pivot?.row ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
               <select name="${key(r, 'pp')}" form="${pivotForm}" aria-label="${t('report.pivot_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.pivot?.column ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
               <select name="${key(r, 'pf')}" form="${pivotForm}" aria-label="${t('report.function')}">${Object.keys(AGGREGATES).map((fn) => html`<option value="${fn}"${fn === (st.pivot?.fn ?? 'count') ? raw(' selected') : ''}>${t(`agg.${fn}`)}</option>`)}</select>
               <select name="${key(r, 'pc')}" form="${pivotForm}" aria-label="${t('report.value_column')}">${allCols.map(({ f }) => html`<option value="${f.name}"${f.name === st.pivot?.value ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
-              <button class="btn" form="${pivotForm}">${t('report.apply')}</button>
-            </div>
-          </div>
-          ${chartSection(ctx, r, st, allCols.map(({ f }) => f.name), chartForm)}
-          ${saved ?? ''}
-          <div class="menu-section"><strong>${t('report.rows_per_page')}</strong>
-            <div class="seg">${PAGE_SIZES.map((n) =>
-              html`<a href="${regionUrl(ctx, r, (p) => { p.set(key(r, 'n'), String(n)); p.delete(key(r, 'p')); })}"${n === st.size ? raw(' aria-current="true"') : ''}>${n}</a>`)}</div>
-          </div>
-          <div class="menu-section menu-links">
-            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1'))}" download>${icon('download')} ${t('report.download')}</a>
-            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'xlsx'), '1'))}" download>${icon('download')} ${t('report.download_xlsx')}</a>
-            <a href="${regionUrl(ctx, r, (p) => p.set(key(r, 'pdf'), '1'))}" download>${icon('download')} ${t('report.download_pdf')}</a>
-            <button type="button" data-print>${icon('printer')} ${t('report.print')}</button>
-            <a href="${regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })}">${icon('history')} ${t('report.reset')}</a>
-          </div>
-        </div>
+              <button class="btn btn-hot" form="${pivotForm}">${t('report.apply')}</button></div>`)}
+          ${sub('bookmark', t('report.report'), [
+            saved ? item('saved', 'save', t('report.saved_reports'), saved) : '',
+            menuLink('history', t('report.reset'), regionUrl(ctx, r, (p) => { for (const k of [...p.keys()]) if (k.startsWith(`r${r.id}_`)) p.delete(k); })),
+          ])}
+          ${sub('download', t('report.download_menu'), [
+            menuLink('download', t('report.download'), regionUrl(ctx, r, (p) => p.set(key(r, 'csv'), '1')), raw(' download')),
+            menuLink('download', t('report.download_xlsx'), regionUrl(ctx, r, (p) => p.set(key(r, 'xlsx'), '1')), raw(' download')),
+            menuLink('download', t('report.download_pdf'), regionUrl(ctx, r, (p) => p.set(key(r, 'pdf'), '1')), raw(' download')),
+            html`<li><button type="button" class="ir-link" data-print>${icon('printer')}<span>${t('report.print')}</span></button></li>`,
+          ])}
+        </ul></div>
       </details>`
     : '';
 
@@ -1075,7 +1125,12 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
           ${filterItems}
           ${searchable
             ? html`<div class="search" role="search">
-                <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_all')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}">
+                <div class="search-field">${interactive
+                  ? html`<label class="sr-only" for="r${r.id}_qc">${t('report.search_column')}</label>
+                    <select id="r${r.id}_qc" class="search-scope" name="${key(r, 'qc')}" form="${searchForm}">
+                      <option value="">${t('report.all_columns')}</option>${cols.map(({ f }) => html`<option value="${f.name}"${f.name === st.searchCol ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>`
+                  : ''}
+                  <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_all')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}"></div>
                 <button class="btn" form="${searchForm}">${t('report.go')}</button>
                 ${actionsMenu}
               </div>`

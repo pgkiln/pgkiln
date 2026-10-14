@@ -74,6 +74,58 @@ export function applyMask(value: string, mask: string, lang: string) {
   });
 }
 
+/** (sprint 76) The month names of a language (long and short), for the date picker. */
+export function monthNames(lang: string) {
+  const n = localeNames(lang);
+  return { long: n.months, short: n.monthsShort };
+}
+
+/**
+ * (sprint 76) Read a date typed in a date mask back as "YYYY-MM-DD": YYYY, YY (2000–2099), MM, DD, MON and
+ * MONTH (the language's names, any case), DY and DAY (names, not checked), quoted text and other characters as
+ * they are. An ISO date is read too. Null when the text doesn't fit the mask or isn't a real date.
+ */
+export function parseDateMask(value: string, mask: string, lang: string): string | null {
+  const v = value.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  const n = localeNames(lang);
+  let y: number | undefined, mo: number | undefined, d: number | undefined;
+  if (iso) [y, mo, d] = iso.slice(1).map(Number);
+  else {
+    const parts: string[] = [];
+    const groups: string[] = [];
+    let last = 0;
+    const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    for (const m of mask.matchAll(TOKEN)) {
+      parts.push(esc(mask.slice(last, m.index)));
+      last = m.index! + m[0].length;
+      const tok = m[0];
+      if (tok.startsWith('"')) { parts.push(esc(tok.slice(1, -1))); continue; }
+      const up = tok.toUpperCase();
+      const names = (list: string[]) => `(${list.map(esc).join('|')})`;
+      const re: Record<string, string> = { YYYY: '(\\d{4})', YY: '(\\d{2})', MM: '(\\d{1,2})', DD: '(\\d{1,2})', MONTH: names(n.months), MON: names(n.monthsShort), DAY: names(n.days), DY: names(n.daysShort) };
+      if (!re[up]) return null; // a time in a date mask: not a date item's
+      parts.push(re[up]);
+      groups.push(up);
+    }
+    parts.push(esc(mask.slice(last)));
+    const m = new RegExp(`^${parts.join('')}$`, 'i').exec(v);
+    if (!m) return null;
+    groups.forEach((g, i) => {
+      const x = m[i + 1];
+      if (g === 'YYYY') y = Number(x);
+      else if (g === 'YY') y = 2000 + Number(x);
+      else if (g === 'MM') mo = Number(x);
+      else if (g === 'DD') d = Number(x);
+      else if (g === 'MONTH' || g === 'MON') mo = (g === 'MONTH' ? n.months : n.monthsShort).findIndex((name) => name.toLowerCase() === x.toLowerCase()) + 1;
+    });
+  }
+  if (!y || !mo || !d) return null;
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return null;
+  return `${String(y).padStart(4, '0')}-${pad(mo)}-${pad(d)}`;
+}
+
 /** A formatter for dates and timestamps with the given masks (null: ISO, as sent by Postgres). */
 export function dateFormatter(lang: string, dateMask: string | null, timestampMask: string | null): Formatter {
   return (v, oid) => {

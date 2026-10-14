@@ -198,6 +198,12 @@ export async function validate(ctx: PageContext) {
     const example = mask ? formatNumber('1234.5', mask, ctx.locale.numbers) : undefined;
     fail(i.name, example && !example.startsWith('#') ? ctx.locale.t('error.number_format', { label, example }) : ctx.locale.t('error.not_number', { label }));
   }
+  // (sprint 76) a date item holds a date (one in the application's date format was read back on submit)
+  for (const i of deleting ? [] : ctx.page.items) {
+    const v = state[i.name];
+    if (i.type !== 'date' || !v || !vis.editable.has(i.name) || errors.items[i.name] || /^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
+    fail(i.name, ctx.locale.t('error.not_date', { label: i.label ?? i.name }));
+  }
   for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (i.type !== 'location' || !v || !vis.editable.has(i.name) || errors.items[i.name]) continue;

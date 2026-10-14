@@ -31,6 +31,8 @@ export interface Locale {
   themeChoice: boolean;
   /** dates and timestamps for display (undefined: not a date) */
   format: Formatter;
+  /** (sprint 76) the application's own date format (or its FORMAT.DATE text message): date items show it with a picker; null: the browser's date field */
+  dateMask: string | null;
   number: Intl.NumberFormat;
   /** separators and currency for number format masks */
   numbers: NumberSymbols;
@@ -202,6 +204,7 @@ export async function resolveLocale(req: FastifyRequest, app: App, session?: Ses
     style: baseStyleOf(app.theme) === 'standard' ? undefined : (baseStyleOf(app.theme) as 'iris' | 'lavender'),
     themeChoice: app.theme?.user_choice !== false,
     format,
+    dateMask: messages['FORMAT.DATE'] ?? app.date_format ?? null,
     number,
     numbers,
     masked: (m) => maskedFormatter(format, lang, numbers, m),

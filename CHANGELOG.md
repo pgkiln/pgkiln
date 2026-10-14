@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 76: the interactive report's menus like APEX's, and date items in the application's date format.
+
+### Added
+- **Column heading menu**: sort either way, hide the column, control break, and the column's values with counts
+  (with the report's search and filters) to filter by, with a search box. New route
+  `GET /a/:alias/:page/report/:id/values?col=` (a visible interactive report, a column the user may see).
+- **Search in one column**: a column list at the start of the search field (`r<id>_qc`).
+- **Hidden columns** per user (`r<id>_x`): from the heading menu or Actions → Columns, shown as chips.
+- **Pagination**: *1–14 of 14* also on one page, first and last page, rows per page in the pager.
+- **Date items in the application's date format** (or their own date mask): a text field with a calendar button
+  (the browser's picker), read back on submit; a wrong date is refused.
+
+### Changed
+- **The Actions menu** is a short menu (Columns, Filter, Data, Format, Chart, Group by, Pivot, Report, Download);
+  each entry opens a dialog with its form (without JavaScript it unfolds in place).
+
 Sprint 75: the SQL Workshop's Object Browser like APEX's.
 
 ### Added

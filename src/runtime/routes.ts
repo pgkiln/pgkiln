@@ -24,15 +24,16 @@ import { startDebug } from '../debug.ts';
 import { assignable, clearPageItems, fetchForms, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
-import { comboMultiple, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitValues } from './items.ts';
+import { comboMultiple, itemDateMask, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitValues } from './items.ts';
 import { parseNumber } from '../numformat.ts';
+import { parseDateMask } from './format.ts';
 import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { downloadHeaders, type Download } from './processes.ts';
 import { moveGanttTask } from './gantt-move.ts';
 import { moveCalendarEvent } from './calendar.ts';
-import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
+import { columnValues, openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
 import { invalidatePage, lazyOf } from './region-cache.ts';
 import { applyRowSelection, mastersOf } from './master-detail.ts';
 import { layerInArea, layerTile, parseTile, servedLayer } from './maps.ts';
@@ -373,7 +374,10 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
     else if (item.type === 'markdown') ctx.session.state[item.name] = posted ? String(posted).replace(/\r\n?/g, '\n') : null;
     else if (item.type === 'checkbox' || item.type === 'switch') ctx.session.state[item.name] = posted === 'true' ? 'true' : 'false';
     else if (item.type === 'password' && !posted) continue;
-    else if (itemMask(item) && posted !== undefined && posted !== '') {
+    else if (item.type === 'date' && itemDateMask(ctx, item) && posted !== undefined && posted !== '') {
+      // (sprint 76) "23-05-1987" in the date format → "1987-05-23"; other text is kept as typed, and validate() reports it
+      ctx.session.state[item.name] = parseDateMask(String(posted), itemDateMask(ctx, item)!, ctx.locale.lang) ?? String(posted);
+    } else if (itemMask(item) && posted !== undefined && posted !== '') {
       // "1.234,50 €" → "1234.5"; text that isn't a number is kept as typed, and validate() reports it
       const parsed = parseNumber(String(posted), itemMask(item), ctx.locale.numbers);
       ctx.session.state[item.name] = parsed === null ? String(posted) : parsed || null;
@@ -733,6 +737,33 @@ export async function runtimeRoutes(app: FastifyInstance) {
     } catch (e) {
       if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
       return reply.code(400).send({ error: await publicError(ctx, e, 'row selection') });
+    }
+  });
+
+  // ---------------------------------------------------------------- a column heading's values
+  // (sprint 76) The values of a report column with their counts, for its heading's menu: the report must be
+  // visible and interactive; the query runs as the application's role with the request's search and filters;
+  // only a column the user may see. Read only.
+  app.get('/a/:alias/:page/report/:id/values', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    reply.header('cache-control', 'private, no-store');
+    const column = String((req.query as Record<string, unknown>)?.col ?? '');
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'report');
+        if (!r || !vis.regions.has(r.id) || r.config.interactive === false || r.config.searchable === false) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        const list = column ? await columnValues(ctx, r, column) : null;
+        if (!list) throw new Forbidden(ctx.locale.t('error.access_denied'));
+        return { values: list };
+      });
+      return reply.send(out);
+    } catch (e) {
+      if (e instanceof Forbidden) return reply.code(403).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'column values') });
     }
   });
 

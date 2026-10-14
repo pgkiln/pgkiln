@@ -187,9 +187,17 @@ select e.empno, e.ename, e.job, d.dname as department, e.sal
 
 Features for end users:
 
-- **Search** across all columns.
-- **Sort** by clicking a column heading (again for descending), or from the Actions menu.
-- **Actions menu**:
+- **Search** across all columns, or in one column chosen in the list at the start of the search field
+  (Enter searches; *Go* too).
+- **Column heading menu** (sprint 76; with JavaScript): clicking a heading opens a menu with *Sort ascending*,
+  *Sort descending*, *Hide column*, *Control break* and the column's **values** with their counts (with the current
+  search and filters; at most 200), with a box to narrow them; choosing a value filters the report on it. The sort
+  arrow of the sorted column sorts at once. Without JavaScript a heading sorts (again for descending).
+- **Hidden columns**: hidden from the heading menu or *Actions → Columns*, shown as chips to bring them back.
+- **Pagination**: *1–15 of 107*, first, previous, next and last page, and the **rows per page** list.
+- **Actions menu** (sprint 76: a short menu like APEX's; each entry opens a dialog, or unfolds in place without
+  JavaScript): *Columns*, *Filter*, *Data* (sort, aggregate, compute, control break), *Format* (highlight, rows per
+  page), *Chart*, *Group by*, *Pivot*, *Report* (saved reports, reset) and *Download* (CSV, Excel, PDF, print):
   - **column filters** (`=`, `≠`, contains, does not contain, `>`, `≥`, `<`, `≤`, is empty, is
     not empty) and **sort**;
   - **control break**: group the rows by a column, with a heading row per group;

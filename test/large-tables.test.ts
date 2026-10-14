@@ -88,9 +88,11 @@ describe('row limits', () => {
       const body = (await king.get('/a/hr/25')).body;
       assert.match(sectionOf(body, chart), /Showing the first 1000 rows\./);
       assert.equal(sectionOf(body, dyn).match(/<i>x<\/i>/g)?.length, 7);
-      assert.equal(body.match(/<option value="\d+"/g)?.length, 5000, 'lists of values: 5000 by default');
+      // the item's own select (the report pagers have a rows-per-page list too)
+      const pick = (html: string) => /<select id="P25_PICK"[\s\S]*?<\/select>/.exec(html)![0];
+      assert.equal(pick(body).match(/<option value="\d+"/g)?.length, 5000, 'lists of values: 5000 by default');
       await owner.query(`update meta.item set config = '{"max_rows": 40}' where id = $1`, [item]);
-      assert.equal((await king.get('/a/hr/25')).body.match(/<option value="\d+"/g)?.length, 40);
+      assert.equal(pick((await king.get('/a/hr/25')).body).match(/<option value="\d+"/g)?.length, 40);
     } finally {
       await owner.query('delete from meta.item where id = $1', [item]);
       await owner.query('delete from meta.region where id = any($1)', [[chart, dyn]]);
