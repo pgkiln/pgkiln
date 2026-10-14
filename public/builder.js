@@ -395,6 +395,93 @@
         }
       });
     }
+    // (sprint 77, APEX: Show Common / Show All, Go to Group) next to the filter
+    if (row && groups.length) {
+      const bar = document.createElement('div');
+      bar.className = 'pe-view';
+      if (pe.querySelector('[data-more]')) {
+        const seg = document.createElement('div');
+        seg.className = 'segmented pe-common';
+        seg.setAttribute('role', 'group');
+        seg.setAttribute('aria-label', 'Properties shown');
+        const showCommon = (on, remember) => {
+          pe.classList.toggle('pe-show-common', on);
+          for (const b of seg.querySelectorAll('button')) b.setAttribute('aria-pressed', String((b.value === 'common') === on));
+          for (const fs of groups) fs.classList.toggle('pe-group-more', on && !fs.querySelector('.field:not([data-more] .field), .options-field:not([data-more] .options-field)'));
+          if (remember) store.set('pe.common', on ? '1' : null);
+        };
+        for (const [v, label] of [['common', 'Common'], ['all', 'All']]) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.value = v;
+          b.textContent = label;
+          b.addEventListener('click', () => showCommon(v === 'common', true));
+          seg.appendChild(b);
+        }
+        bar.appendChild(seg);
+        showCommon(store.get('pe.common') === '1', false);
+      }
+      const named = groups.filter((fs) => fs.querySelector(':scope > legend'));
+      if (named.length > 1) {
+        const sel = document.createElement('select');
+        sel.className = 'pe-goto';
+        sel.setAttribute('aria-label', 'Go to group');
+        sel.innerHTML = '<option value="">Go to group</option>';
+        named.forEach((fs, i) => {
+          const o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = fs.querySelector(':scope > legend').textContent.trim();
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', () => {
+          const fs = named[Number(sel.value)];
+          sel.value = '';
+          if (!fs) return;
+          // a group on another tab (a region's Attributes): open that tab first (tabify names its tab <panel id>-tab)
+          const panel = fs.closest('[data-tab]');
+          if (panel?.hidden) document.getElementById(`${panel.id}-tab`)?.click();
+          const t = fs.querySelector('.pe-toggle');
+          if (t?.getAttribute('aria-expanded') === 'false') t.click();
+          fs.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          t?.focus({ preventScroll: true });
+        });
+        bar.appendChild(sel);
+      }
+      if (bar.children.length) row.after(bar);
+    }
+    // (sprint 77, APEX: the Template Options dialog) the checkboxes in a dialog, opened from a button that counts them;
+    // the dialog stays inside the form, so the checkboxes are saved with it
+    for (const fs of pe.querySelectorAll('fieldset.options-field')) {
+      const boxes = [...fs.querySelectorAll('input[type=checkbox]')];
+      const legend = fs.querySelector('legend')?.textContent.trim() ?? 'Options';
+      const holder = document.createElement('div');
+      holder.className = 'field pe-options-open';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-sm';
+      const count = () => {
+        const n = boxes.filter((x) => x.checked).length;
+        b.textContent = `${legend}${n ? ` (${n})` : ''}…`;
+      };
+      const d = document.createElement('dialog');
+      d.className = 'pd-dialog';
+      d.setAttribute('aria-label', legend);
+      fs.replaceWith(holder);
+      holder.appendChild(b);
+      holder.appendChild(d);
+      d.appendChild(fs);
+      const ok = document.createElement('div');
+      ok.className = 'pd-dialog-buttons';
+      ok.innerHTML = '<button type="button" class="btn btn-primary">OK</button>';
+      d.appendChild(ok);
+      ok.querySelector('button').addEventListener('click', () => d.close());
+      d.addEventListener('close', () => {
+        count();
+        b.focus();
+      });
+      b.addEventListener('click', () => d.showModal());
+      count();
+    }
     if (head) {
       const h = () => pe.style.setProperty('--pe-head-h', `${head.offsetHeight}px`);
       h();

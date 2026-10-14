@@ -999,3 +999,14 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .pd-node[data-kind="button"] .icon { color: var(--pd-c-button, #b4570f); }
 .pd-node[data-kind="dynamic_action"] .icon { color: var(--pd-c-da, #8a4fbf); }
 .pd-node[data-kind="process"] .icon, .pd-node[data-kind="computation"] .icon { color: var(--pd-c-process, #a23b72); }
+
+/* (sprint 77) the property editor: Common / All, Go to group, the Template Options button; the page number */
+.pe-more { display: contents; }
+.pe-show-common [data-more] { display: none; }
+.pe-show-common fieldset.pe-group-more { display: none; }
+.pe-view { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px 6px; }
+.pe-view .segmented { margin-top: 0; }
+.pe-view .segmented button { font-size: 12px; padding: 2px 8px; min-height: 0; }
+.pe-goto { font-size: 12px; max-width: 12rem; }
+.pe-options-open .btn { justify-self: start; }
+.pd-goto-no input { width: 5.5em; font-variant-numeric: tabular-nums; }

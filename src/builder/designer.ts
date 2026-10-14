@@ -416,6 +416,10 @@ export async function designerRoutes(app: FastifyInstance) {
     const toolbar = html`
       <div class="tb-group pd-pagenav" role="group" aria-label="Page">
         ${prev ? html`<a class="tb-btn" href="${BASE}/pages/${prev.id}" title="Previous page: ${prev.page_no}. ${prev.name}">${bicon('left')}<span class="sr-only">Previous page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
+        <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto-no">
+          <label class="sr-only" for="pd-goto-no">Page number (Enter goes there)</label>
+          <input id="pd-goto-no" name="page" type="number" min="0" max="999999999" step="1" value="${p.page_no}" inputmode="numeric" title="Page number: type or step to a number, then Enter">
+        </form>
         <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto">
           <label class="sr-only" for="pd-goto">Go to page</label>
           <select id="pd-goto" name="page" data-autosubmit>${pages.map((x) => html`<option value="${x.page_no}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no} · ${x.name}</option>`)}</select>

@@ -540,8 +540,11 @@ choosing a component opens the Properties tab.
 
 - **Left: the component tree**, with four tabs:
   - **Rendering**: the page, *Pre-Rendering* (branches, computations and processes that run
-    before the page is shown), the
-    **Regions** with their items and buttons, and page-level items and buttons;
+    before the page is shown), the regions by
+    [display position](04-pages-and-regions.md#side-columns-and-display-positions) (Banner, Breadcrumb bar,
+    Left column, Body, Right column, Footer: the page template's positions and any other that has regions)
+    with their items and buttons (by [button position](04-pages-and-regions.md#button-positions): *Buttons*,
+    *Buttons: Next*, …), and page-level items and buttons;
   - **Dynamic actions**, grouped by event (change, click, page load);
   - **Processing**: computations after submit, validations, processes and the branches (the
     [branch components](06-processing.md#branches) in sequence, then the buttons that go to
@@ -549,22 +552,36 @@ choosing a component opens the Properties tab.
   - **Shared components** the page can use (lists of values, authorization schemes, navigation,
     application items), linking to Shared Components.
 
-  Icons show which components have an authorization scheme, a condition or a build option. Folders open and close
+  Icons show which components have an authorization scheme, a condition or a build option; type icons are coloured
+  by kind (regions, items, buttons, dynamic actions, processes). Folders open and close
   with a click; with the keyboard, the arrow keys walk the tree (Left / Right close and open a
   folder), Enter opens a component.
-- **Middle: the Layout**: the page's regions on the 12-column grid, each with its items and
-  buttons, as they will be placed on the page; under it a **gallery** of region types, item types
+
+  **Right-click** a region, item or button in the Rendering tree (or press <kbd>Shift</kbd>+<kbd>F10</kbd> or the
+  menu key) for its menu (APEX: the tree's context menu): *Create page item*, *Create button* (in the region),
+  *Create dynamic action*, *Create region below*, **Duplicate** (a copy right after it; a region comes with its
+  items and buttons, names get `_2`), **Copy to other page…** (to the end of a page of the same application; items
+  named `P<n>_` get that page's number, a region's buttons and items come along, references in SQL are not changed),
+  *Expand all below*, *Collapse all below* and *Delete*. The arrow keys move through the menu, Escape closes it.
+  APEX's *Create Sub Region* (pgkiln has no nested regions) and *Comment Out* (use a build option) are not there.
+- **Middle: the Layout**: the page template's display positions as labelled zones (Banner, Breadcrumb bar,
+  the side column of a side-column template beside the Body, Footer), each with its regions on the 12-column
+  grid, each region with its items and its buttons in their button positions, as they will be placed on the page; under it a **gallery** of region types, item types
   and button actions. The middle pane also has a **Page search** tab (searches the application)
   a **Lock and comments** tab ([below](#page-locks-and-comments)) and a **Help** tab (layout keys and the substitution cheat sheet). Zoom in, zoom out and
   maximize (hides the side panes) are above the layout.
 - **Right: the property editor** for the selected component, grouped (Identification, Source,
   Layout, Security, …) with help text for each property. Type in **Filter** to show only the
   properties whose name contains the text (Escape clears it); click a group's name to fold it
-  (remembered on this device). Under the properties, the **Help** pane (APEX: the Help tab) shows the
+  (remembered on this device). **Common** / **All** (APEX: Show Common / Show All) shows only the properties
+  most often set for regions, items and buttons, or all of them (remembered); **Go to group** jumps to a group
+  (opening the Attributes tab when the group is there). **Template options** open in a dialog from a button that
+  counts the chosen ones; they are saved with the other properties. Under the properties, the **Help** pane (APEX: the Help tab) shows the
   property that has the focus (or the pointer): its help, the name it is stored under in exports and
   application files, and a link to the guide section of the component's type.
 
-The toolbar has the page switcher (previous, a list of all pages, next), **Undo** / **Redo** of
+The toolbar has the page switcher (previous, the page number: type or step to one and press Enter, a list of
+all pages, next), **Undo** / **Redo** of
 layout changes, the **Create** menu (region, item, button, dynamic action, computation, validation,
 process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
 **Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
@@ -594,7 +611,11 @@ region that no longer fits starts a new row.
 
 - **Drag a region** by its header to another place, or drag its right edge to make it wider or
   narrower.
-- **Drag an item or button** to another place in its region, to another region, or to *Page level*.
+- **Drag a region into another position** (zone) to set its display position: e.g. a faceted search into
+  the *Left column* of a page with the Left side column template.
+- **Drag an item or button** to another place in its region, to another region, or to *Page level*. While a
+  button is dragged, a region's empty [button positions](04-pages-and-regions.md#button-positions) (Create, Edit,
+  …, Previous, Next) show as drop targets; dropping it there sets its position.
 - **Drag an entry of the gallery** onto the layout to create that component there, with a working
   starting point (a sample query for reports, charts and cards; a name like `P5_NEW` for items);
   then set its properties on the right. Clicking a gallery entry instead opens the create form
@@ -605,7 +626,8 @@ region that no longer fits starts a new row.
   (move up, move down, narrower, wider, or move an item or button to another region); on phones and
   tablets this is the way to arrange things.
 - **Undo** and **Redo** in the toolbar take back the last 20 layout changes on this page (moving
-  and resizing; creating a component starts a new history).
+  and resizing, display and button positions too; creating, duplicating or copying a component starts a new
+  history).
 
 Without JavaScript the panes are shown one under the other, every component is a link and the
 Arrange buttons still work.
