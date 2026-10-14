@@ -12,6 +12,7 @@ import { markdownHtml, sanitizeHtml } from '../richtext.ts';
 import { qrSvg, type Ecc } from '../qrcode.ts';
 import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
 import { addressControl, imageControl } from './data-items.ts';
+import { applyMask, formatMaskError, monthNames } from './format.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -179,6 +180,17 @@ export const splitRange = (v: string | null | undefined): [string, string] => {
   const [from = '', to = ''] = (v ?? '').split(':');
   return [from, to];
 };
+
+/**
+ * (sprint 76) The date mask a date item shows its value in: its own format mask (a date mask), else the
+ * application's date format; null: the browser's date field (in the browser's notation).
+ */
+export function itemDateMask(ctx: PageContext, item: Item): string | null {
+  if (item.type !== 'date') return null;
+  const own = typeof item.config?.format_mask === 'string' ? item.config.format_mask.trim() : '';
+  if (own && /(YYYY|YY|MM|DD|MON)/i.test(own) && !formatMaskError(own)) return own;
+  return ctx.locale.dateMask?.trim() || null;
+}
 
 /** A number or display item's number format mask ({"format_mask": "999G990D00"}), when it is a valid one. */
 export function itemMask(item: Item): string | null {
@@ -383,6 +395,21 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         control = html`<div class="input-with-button"><input type="text" id="${id}" name="${id}" value="${value}" inputmode="decimal" placeholder="52.01160,4.35710"${aria}>
           <button type="button" class="btn" data-locate="${id}">${icon('map')} ${ctx.locale.t('item.locate')}</button></div>`;
         break;
+      case 'date': {
+        // (sprint 76) in the application's date format: a text field and a calendar button (app.js), read back on submit
+        const mask = itemDateMask(ctx, item);
+        if (!mask) {
+          control = html`<input type="date" id="${id}" name="${id}" value="${value}"${aria}${editable ? '' : raw(' readonly')}>`;
+          break;
+        }
+        const iso = /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : '';
+        const shown = iso ? applyMask(iso, mask, ctx.locale.lang) : value;
+        const months = monthNames(ctx.locale.lang);
+        control = html`<div class="input-with-button date-field"><input type="text" id="${id}" name="${id}" value="${shown}" placeholder="${mask}" autocomplete="off" data-date-mask="${mask}" data-months="${JSON.stringify(months)}"${aria}${editable ? '' : raw(' readonly')}>
+          ${editable ? html`<input type="date" class="date-native" value="${iso}" tabindex="-1" aria-hidden="true" data-date-for="${id}">
+          <button type="button" class="btn" data-date-pick="${id}" aria-label="${ctx.locale.t('item.choose_date')}" title="${ctx.locale.t('item.choose_date')}">${icon('calendar')}</button>` : ''}</div>`;
+        break;
+      }
       default: {
         const typed: Record<string, string> = { number: 'number', date: 'date', password: 'password', email: 'email', tel: 'tel', url: 'url' };
         // a number with a format mask is text in the language's notation (1.234,50), read back on submit

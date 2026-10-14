@@ -7752,3 +7752,21 @@ describe('sprint 73 activity reporting', () => {
     await assert.rejects(activity(appId, '00000000-0000-0000-0000-000000000000'), /for its administrators/, 'an unknown session');
   });
 });
+
+describe('sprint 76 report column values', () => {
+  test('signed in, the page\'s own visible report, a column the user may see; read only', async () => {
+    const r = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report'`);
+    const other = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no <> 2 and r.type = 'report' limit 1`);
+    const anon = await new Browser().get(`/a/hr/2/report/${r.id}/values?col=job`);
+    assert.notEqual(anon.statusCode, 200, 'signed out');
+    assert.doesNotMatch(anon.body, /CLERK/);
+    const b = new Browser();
+    await b.login('scott');
+    const ok = await b.get(`/a/hr/2/report/${r.id}/values?col=job`);
+    assert.equal(ok.statusCode, 200);
+    assert.ok(JSON.parse(ok.body).values.some((v: { value: string }) => v.value === 'CLERK'));
+    assert.equal((await b.get(`/a/hr/2/report/${other.id}/values?col=job`)).statusCode, 403, "another page's report");
+    for (const col of ['sal) from hr.emp --', '*', '__k0', ''])
+      assert.equal((await b.get(`/a/hr/2/report/${r.id}/values?col=${encodeURIComponent(col)}`)).statusCode, 403, col);
+  });
+});

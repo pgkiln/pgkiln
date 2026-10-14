@@ -3725,3 +3725,186 @@ function areaFilter(map, f) {
   }, true);
   document.addEventListener('keydown', (e) => { if (on && e.key === 'Escape') set(false); });
 })();
+
+// (sprint 76) the page's texts for the report menus below (render.ts CLIENT_TEXTS)
+const reportTexts = (() => {
+  try {
+    return JSON.parse(document.getElementById('pgkiln-meta')?.textContent || '{}').texts || {};
+  } catch {
+    return {};
+  }
+})();
+
+// (sprint 76) The interactive report's Actions menu: an entry opens its form in a dialog (APEX: the
+// Actions dialogs); the form fields stay the same elements, moved into the dialog and back on close.
+(() => {
+  const close = (details) => { if (details) details.open = false; };
+  document.addEventListener('toggle', (e) => {
+    const item = e.target;
+    if (!(item instanceof HTMLDetailsElement) || !item.matches('.ir-item[data-ir-dialog]') || !item.open) return;
+    const body = item.querySelector(':scope > .ir-body');
+    const menu = item.closest('details.actions-menu');
+    if (!body || typeof HTMLDialogElement !== 'function') return;
+    item.open = false;
+    menu?.querySelectorAll('details.ir-sub[open]').forEach(close);
+    close(menu);
+    const dialog = document.createElement('dialog');
+    dialog.className = 'ir-dialog';
+    const title = document.createElement('h2');
+    title.textContent = item.querySelector('summary span')?.textContent ?? '';
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'icon-button ir-dialog-close';
+    x.setAttribute('aria-label', reportTexts['common.dismiss'] || 'Close');
+    x.textContent = '×';
+    x.addEventListener('click', () => dialog.close());
+    const head = document.createElement('div');
+    head.className = 'ir-dialog-head';
+    head.append(title, x);
+    dialog.append(head, body);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      item.append(body);
+      dialog.remove();
+      menu?.querySelector('summary')?.focus();
+    });
+    dialog.showModal();
+    body.querySelector('select, input, a, button')?.focus();
+  }, true);
+  // one submenu open at a time
+  document.addEventListener('toggle', (e) => {
+    const sub = e.target;
+    if (!(sub instanceof HTMLDetailsElement) || !sub.matches('.ir-sub') || !sub.open) return;
+    sub.parentElement?.parentElement?.querySelectorAll(':scope > li > details.ir-sub[open]').forEach((d) => { if (d !== sub) d.open = false; });
+  }, true);
+})();
+
+// (sprint 76) A report column heading opens a menu: sort ascending or descending, hide, control break, and
+// the column's values (with counts, a search box) to filter by; the sort arrow still sorts at once.
+(() => {
+  let open = null;
+  const shut = () => { open?.remove(); open = null; };
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest?.('th[data-col] > a');
+    if (!a) {
+      if (open && !open.contains(e.target)) shut();
+      return;
+    }
+    const th = a.parentElement;
+    // the sort indicator keeps sorting
+    if (e.target.closest('.sort-ind') && th.getAttribute('aria-sort') !== 'none') return;
+    e.preventDefault();
+    shut();
+    const menu = document.createElement('div');
+    menu.className = 'th-menu menu-panel';
+    menu.setAttribute('role', 'dialog');
+    menu.setAttribute('aria-label', th.dataset.label);
+    const t = (k, d) => reportTexts[k] || d;
+    const link = (href, text) => { const l = document.createElement('a'); l.href = href; l.textContent = text; return l; };
+    const actions = document.createElement('div');
+    actions.className = 'th-menu-actions';
+    actions.append(link(th.dataset.asc, `▲ ${t('report.sort_asc', 'Sort ascending')}`), link(th.dataset.desc, `▼ ${t('report.sort_desc', 'Sort descending')}`),
+      link(th.dataset.hide, t('report.hide', 'Hide column')), link(th.dataset.break, t('report.break', 'Control break')));
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = t('report.filter_values', 'Filter the values');
+    search.setAttribute('aria-label', search.placeholder);
+    const list = document.createElement('ul');
+    list.className = 'th-menu-values';
+    menu.append(actions, search, list);
+    document.body.append(menu);
+    const box = th.getBoundingClientRect();
+    menu.style.setProperty('position', 'absolute');
+    menu.style.setProperty('top', `${window.scrollY + box.bottom + 4}px`);
+    menu.style.setProperty('left', `${Math.max(8, Math.min(window.scrollX + box.left, window.scrollX + document.documentElement.clientWidth - 288))}px`);
+    open = menu;
+    const here = new URL(location.href);
+    const url = new URL(th.dataset.values, location.href);
+    here.searchParams.forEach((v, k) => url.searchParams.append(k, v));
+    url.searchParams.set('col', th.dataset.col);
+    fetch(url, { headers: { accept: 'application/json' }, credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : { values: [] }))
+      .then(({ values }) => {
+        if (!values?.length) {
+          const li = document.createElement('li');
+          li.className = 'muted';
+          li.textContent = t('report.no_values', 'No values');
+          list.append(li);
+          return;
+        }
+        for (const { value, count } of values) {
+          if (value === null) continue;
+          const target = new URL(location.href);
+          for (const k of [...target.searchParams.keys()]) if (/^r\d+_(p|k)$/.test(k)) target.searchParams.delete(k);
+          target.searchParams.append(th.dataset.filter, `${th.dataset.col}|eq|${value}`);
+          const li = document.createElement('li');
+          const l = link(target.toString(), value);
+          const n = document.createElement('span');
+          n.className = 'muted';
+          n.textContent = String(count);
+          l.append(n);
+          li.append(l);
+          list.append(li);
+        }
+      })
+      .catch(() => {});
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      list.querySelectorAll('li').forEach((li) => { li.hidden = !!q && !li.textContent.toLowerCase().includes(q); });
+    });
+    actions.querySelector('a')?.focus();
+    menu.addEventListener('keydown', (k) => { if (k.key === 'Escape') { shut(); a.focus(); } });
+  });
+  window.addEventListener('resize', shut);
+})();
+
+// (sprint 76) the report pager's rows per page: sent on change
+document.addEventListener('change', (e) => {
+  if (e.target.matches?.('select[data-go]')) e.target.form?.submit();
+});
+
+// (sprint 76) A date item in the application's date format: the calendar button opens the browser's date
+// picker on a hidden date field; the chosen date is written into the text field in the mask.
+(() => {
+  const pad = (n) => String(n).padStart(2, '0');
+  const TOKEN = /"[^"]*"|YYYY|YY|MONTH|MON|MM|DD/gi;
+  const format = (iso, mask, months) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return '';
+    const [y, mo, d] = m.slice(1).map(Number);
+    return mask.replace(TOKEN, (tok) => {
+      if (tok.startsWith('"')) return tok.slice(1, -1);
+      const up = tok.toUpperCase();
+      const cased = (s) => (tok === up ? s.toUpperCase() : tok[1] && tok[1] !== up[1] ? s[0].toUpperCase() + s.slice(1) : s);
+      if (up === 'YYYY') return String(y);
+      if (up === 'YY') return pad(y % 100);
+      if (up === 'MM') return pad(mo);
+      if (up === 'DD') return pad(d);
+      if (up === 'MONTH') return cased(months.long[mo - 1]);
+      if (up === 'MON') return cased(months.short[mo - 1]);
+      return tok;
+    });
+  };
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('[data-date-pick]');
+    if (!btn) return;
+    const native = document.querySelector(`input[data-date-for="${CSS.escape(btn.dataset.datePick)}"]`);
+    if (!native) return;
+    try {
+      native.showPicker();
+    } catch {
+      native.focus();
+    }
+  });
+  document.addEventListener('change', (e) => {
+    const native = e.target;
+    if (!native.matches?.('input[data-date-for]')) return;
+    const text = document.getElementById(native.dataset.dateFor);
+    if (!text) return;
+    let months = { long: [], short: [] };
+    try { months = JSON.parse(text.dataset.months || '{}'); } catch {}
+    text.value = format(native.value, text.dataset.dateMask || 'YYYY-MM-DD', months);
+    text.dispatchEvent(new Event('change', { bubbles: true }));
+    text.focus();
+  });
+})();
