@@ -11,7 +11,7 @@ import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
-import { arrangeRoutes, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, REGION_LABELS, REGION_TYPES, undoState } from './arrange.ts';
+import { arrangeRoutes, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
 
 // Page designer, laid out like APEX's Page Designer: the component tree on
 // the left (Rendering / Dynamic actions / Processing / Shared components),
@@ -80,19 +80,30 @@ export async function designerRoutes(app: FastifyInstance) {
     const regionTitle = (r: any) => r.title ?? `(${r.type})`;
 
     // ------------------------------------------------------------ left: component tree
+    // (sprint 77) data-kind and data-id: the node's context menu (Duplicate, Copy to other page, Delete…) and icon colour
     const leaf = (k: string, r: any, ic: Raw | '', label: string, note = '') =>
-      html`<li><a class="pd-node" href="${url(`c=${k}-${r.id}`)}"${cur(`${k}-${r.id}`)}>${ic}<span class="pd-label">${label}</span>${badges(r)}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
+      html`<li><a class="pd-node" href="${url(`c=${k}-${r.id}`)}"${cur(`${k}-${r.id}`)} data-kind="${k}" data-id="${r.id}">${ic}<span class="pd-label">${label}</span>${badges(r)}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
     const folder = (label: string, children: Raw[] | Raw, open = true) =>
       html`<li${open ? '' : raw(' data-collapsed')}><span class="pd-node pd-folder"><span class="pd-label">${label}</span></span><ul>${children}</ul></li>`;
     const none = (text: string) => html`<li class="pd-empty">${text}</li>`;
     const itemLeaf = (i: any) => leaf('item', i, bicon(itemIcon(i.type)), i.name, i.type);
     const buttonLeaf = (b: any) => leaf('button', b, bicon('button'), b.name, b.action);
-    const regionLeaf = (r: any) => {
+    const regionLeaf = (r: any, next: any) => {
       const items = rows.item.filter((i) => i.region_id === r.id);
       const buttons = rows.button.filter((b) => b.region_id === r.id);
-      const kids = [...(items.length ? [folder('Items', items.map(itemLeaf))] : []), ...(buttons.length ? [folder('Buttons', buttons.map(buttonLeaf))] : [])];
-      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
+      // (sprint 77, APEX: region slots) buttons by their position in the region
+      const bySlot = ['region', ...TOP_SLOTS, ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
+      const kids = [...(items.length ? [folder('Items', items.map(itemLeaf))] : []),
+        ...bySlot.map(([sl, list]) => folder(sl === 'region' ? 'Buttons' : `Buttons: ${SLOT_LABELS[sl]}`, list.map(buttonLeaf)))];
+      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-next="${next?.id ?? ''}">${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
+    // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
+    const treeSide = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
+    const regionFolders = ['banner', 'breadcrumb', 'left', 'body', 'right', 'footer'].map((pos) => {
+      const list = rows.region.filter((r) => (r.position ?? 'body') === pos);
+      if (!list.length && pos !== 'body' && pos !== treeSide) return '';
+      return folder(POSITION_LABELS[pos], list.length ? list.map((r, i) => regionLeaf(r, list[i + 1])) : none(pos === 'body' ? 'No regions yet' : 'No regions'), list.length > 0);
+    });
     const pageItems = rows.item.filter((i) => i.region_id === null);
     const pageButtons = rows.button.filter((b) => b.region_id === null);
     const loadProcs = rows.process.filter((x) => x.point === 'load');
@@ -108,15 +119,25 @@ export async function designerRoutes(app: FastifyInstance) {
       html`<div class="pd-treebar">${links.map(([k, label]) => html`<a class="tb-btn tb-text" href="${url(`new=${k}`)}">${icon('plus')}<span>${label}</span></a>`)}</div>`;
 
     const rendering = html`${createBar([['region', 'Region'], ['item', 'Item'], ['button', 'Button']])}
-      <ul class="pd-tree" aria-label="Rendering">
+      <ul class="pd-tree" aria-label="Rendering" data-tree-menu data-page-id="${p.id}">
         <li><a class="pd-node" href="${url('c=page')}"${cur('page')}>${icon('file')}<span class="pd-label">Page ${p.page_no}: ${p.name}</span>${badges(p)}</a>
           <ul>
             ${folder('Pre-Rendering (before header)', preRendering.length ? preRendering : none('No branches, computations or processes before rendering'), preRendering.length > 0)}
-            ${folder('Regions', rows.region.length ? rows.region.map(regionLeaf) : none('No regions yet'))}
+            ${regionFolders}
             ${pageItems.length ? folder('Page items', pageItems.map(itemLeaf)) : ''}
             ${pageButtons.length ? folder('Page buttons', pageButtons.map(buttonLeaf)) : ''}
           </ul></li>
-      </ul>`;
+      </ul>
+      <dialog class="pd-dialog" id="pd-copy-dialog" aria-labelledby="pd-copy-title">
+        <form method="post" action="${url('')}/layout/copy">${csrf(s)}<input type="hidden" name="kind" value=""><input type="hidden" name="id" value="">
+          <h2 id="pd-copy-title">Copy to other page</h2>
+          <p class="muted" data-copy-what></p>
+          <div class="field"><label class="label" for="pd-copy-page">Page</label>
+            <select id="pd-copy-page" name="page">${pages.map((x) => html`<option value="${x.id}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no}. ${x.name}</option>`)}</select>
+            <small class="help">Items named P${p.page_no}_… get the other page's number; a region's items and buttons come along. References in SQL and conditions are not changed.</small></div>
+          <div class="pd-dialog-buttons"><button type="button" class="btn" data-dialog-close>Cancel</button><button class="btn btn-primary">Copy</button></div>
+        </form>
+      </dialog>`;
     const events: [string, string][] = [['change', 'Change'], ['click', 'Click'], ['load', 'Page load']];
     const dynamicActions = html`${createBar([['dynamic_action', 'Dynamic action']])}
       <ul class="pd-tree" aria-label="Dynamic actions">
@@ -162,8 +183,15 @@ export async function designerRoutes(app: FastifyInstance) {
     // ------------------------------------------------------------ center: layout + gallery
     const chip = (k: 'item' | 'button', r: any) =>
       html`<a class="pd-chip pd-chip-${k}${isSel(`${k}-${r.id}`) ? ' is-selected' : ''}${k === 'button' && r.hot ? ' is-hot' : ''}" href="${url(`c=${k}-${r.id}`)}" draggable="true" data-kind="${k}" data-id="${r.id}"${cur(`${k}-${r.id}`)} aria-describedby="pd-kbd">${k === 'item' ? bicon(itemIcon(r.type)) : ''}<span>${r.label || r.name}</span>${k === 'item' ? html`<small>${r.name}</small>` : ''}</a>`;
-    const slot = (k: 'item' | 'button', regionId: number | null, list: any[]) =>
-      html`<div class="pd-slot pd-slot-${k}" data-drop="${k}" data-region="${regionId ?? ''}">${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? 'Items' : 'Buttons'}</span>`}</div>`;
+    const slot = (k: 'item' | 'button', regionId: number | null, list: any[], buttonSlot = '') =>
+      html`<div class="pd-slot pd-slot-${k}${buttonSlot && buttonSlot !== 'region' && !list.length ? ' pd-slot-spare' : ''}" data-drop="${k}" data-region="${regionId ?? ''}"${buttonSlot ? raw(` data-slot="${buttonSlot}"`) : ''}${buttonSlot && buttonSlot !== 'region' ? raw(` title="Button position: ${SLOT_LABELS[buttonSlot]}"`) : ''}>${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? 'Items' : buttonSlot && buttonSlot !== 'region' ? SLOT_LABELS[buttonSlot] : 'Buttons'}</span>`}</div>`;
+    // (sprint 77, APEX: region slots) a region's buttons by position: the header's, the region's own, the bottom bar's
+    const buttonSlots = (r: any) => {
+      const mine = rows.button.filter((b) => b.region_id === r.id);
+      const at = (sl: string) => mine.filter((b) => (b.slot ?? 'region') === sl);
+      const row = (list: string[], cls: string) => html`<div class="pd-slots ${cls}">${list.map((sl) => slot('button', r.id, at(sl), sl))}</div>`;
+      return html`${row(TOP_SLOTS, 'pd-slots-top')}${slot('button', r.id, at('region'), 'region')}${row(BOTTOM_SLOTS, 'pd-slots-bottom')}`;
+    };
     const block = (r: any) => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}">
         <div class="pd-region-head" draggable="true" data-kind="region" data-id="${r.id}">
           <span class="pd-grip" title="Drag to move">${bicon('grip')}</span>
@@ -174,10 +202,29 @@ export async function designerRoutes(app: FastifyInstance) {
           <div class="pd-region-type">${REGION_LABELS[r.type]?.[0] ?? r.type}${r.template !== 'standard' ? ` · ${r.template}` : ''}</div>
           ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
           ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
-          ${slot('button', r.id, rows.button.filter((b) => b.region_id === r.id))}
+          ${buttonSlots(r)}
         </div>
         <span class="pd-resize" title="Drag to change the column span" aria-hidden="true"></span>
       </div>`;
+    // (sprint 77, APEX: the page template's display positions) a drop zone per position of the page template, and
+    // for any other position that has regions (they show in the body when the page runs)
+    const side = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
+    const byPos = (pos: string) => rows.region.filter((r) => (r.position ?? 'body') === pos);
+    const zone = (pos: string) => {
+      const list = byPos(pos);
+      const off = (pos === 'left' || pos === 'right') && pos !== side;
+      return html`<section class="pd-zone pd-zone-${pos}${list.length ? '' : ' is-empty'}" aria-label="${POSITION_LABELS[pos]}">
+        <div class="pd-zone-label">${POSITION_LABELS[pos]}${off ? html` <small>(not in this page template: shown in the body)</small>` : ''}</div>
+        <div class="pd-grid" data-drop="region" data-position="${pos}">
+          ${list.map(block)}
+          <div class="pd-grid-end" data-end><a href="${url(`new=region${pos === 'body' ? '' : `&position=${pos}`}`)}">${icon('plus')} Region${pos === 'body' ? '' : html`<span class="sr-only"> in ${POSITION_LABELS[pos]}</span>`}</a></div>
+        </div></section>`;
+    };
+    const extra = (pos: string) => pos !== side && byPos(pos).length > 0;
+    const zones = html`${zone('banner')}${zone('breadcrumb')}
+      <div class="pd-columns${side ? ` pd-columns-${side}` : ''}">
+        ${side === 'left' || extra('left') ? zone('left') : ''}${zone('body')}${side === 'right' || extra('right') ? zone('right') : ''}
+      </div>${zone('footer')}`;
     const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>) =>
       html`<ul class="pd-gallery-list" aria-label="${COMPONENTS[k].plural}">${types.map((t) => html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="Drag onto the layout, or open to create">${bicon(labels[t]?.[1] ?? k)}<span>${labels[t]?.[0] ?? t}</span></a></li>`)}</ul>`;
     const layout = html`
@@ -189,10 +236,7 @@ export async function designerRoutes(app: FastifyInstance) {
       </div>
       <div class="pd-canvas" id="pd-layout" data-page-id="${p.id}">
         <div class="pd-page-label">${icon('file')} Page ${p.page_no}: ${p.name}${p.mode === 'modal' ? ' (modal dialog)' : ''}</div>
-        <div class="pd-grid" data-drop="region">
-          ${rows.region.map(block)}
-          <div class="pd-grid-end" data-end><a href="${url('new=region')}">${icon('plus')} Region</a></div>
-        </div>
+        ${zones}
         <div class="pd-pagelevel">
           <div class="pd-pagelevel-title">Page level (no region)</div>
           ${slot('item', null, pageItems)}
@@ -256,7 +300,8 @@ export async function designerRoutes(app: FastifyInstance) {
       const lastSeq = Math.max(0, ...rows[newKind].map((r) => r.seq));
       const typeField = newKind === 'button' ? 'action' : 'type';
       const presetType = spec.fields.find((f) => f.name === typeField)?.options?.includes(req.query.type ?? '') ? { [typeField]: req.query.type } : {};
-      const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
+      const presetPlace = newKind === 'region' && POSITIONS().includes(req.query.position ?? '') ? { position: req.query.position } : {};
+      const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, ...presetPlace, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
       heading = html`${icon(spec.icon)}<span>New ${spec.label.toLowerCase()}</span>`;
       props = peTabs([tab('pd-r-props', spec.label, componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, `Create ${spec.label.toLowerCase()}`, { id: formId }), true)]);
     } else if (kind && kind !== 'page' && PAGE_KINDS.includes(kind)) {
@@ -303,7 +348,7 @@ export async function designerRoutes(app: FastifyInstance) {
           <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
             ${select('mode', 'Page mode', p.mode, [['normal', 'Normal'], ['modal', 'Modal dialog']])}
             ${select('page_group', 'Page group', p.page_group ?? '', [['', '- none -'], ...lk.pageGroups.map((g): [string, string] => [g, g]), ...(p.page_group && !lk.pageGroups.includes(p.page_group) ? [[p.page_group, `${p.page_group} (no such group)`] as [string, string]] : [])], 'Organises the pages in the App Builder (Shared Components → Page groups). Changes nothing when the application runs.')}
-            ${select('page_template', 'Page template', p.page_template ?? 'standard', [['standard', 'Standard'], ['minimal', 'Minimal (no navigation)']], 'Minimal: no header and navigation menu, e.g. for a login page (Application settings → Login page).')}
+            ${select('page_template', 'Page template', p.page_template ?? 'standard', [['standard', 'Standard'], ['left_side_column', 'Left side column'], ['right_side_column', 'Right side column'], ['minimal', 'Minimal (no navigation)']], 'Side column: regions with position left (or right) show in a column beside the body (under it on narrow screens). Minimal: no header and navigation menu, e.g. for a login page (Application settings → Login page).')}
             ${select('dialog_position', 'Dialog position', p.dialog_position ?? 'center', [['center', 'Centred dialog'], ['right', 'Drawer from the right'], ['left', 'Drawer from the left'], ['top', 'Drawer from the top'], ['bottom', 'Drawer from the bottom']], 'Modal pages only. On phones dialogs and side drawers fill the screen.')}
             ${select('dialog_size', 'Dialog size', p.dialog_size ?? 'medium', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], 'The width (the height of top and bottom drawers).')}
             ${input('static_includes', 'JavaScript and CSS files', (p.static_includes ?? []).join(', '), { placeholder: 'e.g. page-3.js, page-3.css', help: 'Static application files (.js, .css) this page loads after the application\'s own, in this order.' })}
@@ -371,6 +416,10 @@ export async function designerRoutes(app: FastifyInstance) {
     const toolbar = html`
       <div class="tb-group pd-pagenav" role="group" aria-label="Page">
         ${prev ? html`<a class="tb-btn" href="${BASE}/pages/${prev.id}" title="Previous page: ${prev.page_no}. ${prev.name}">${bicon('left')}<span class="sr-only">Previous page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
+        <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto-no">
+          <label class="sr-only" for="pd-goto-no">Page number (Enter goes there)</label>
+          <input id="pd-goto-no" name="page" type="number" min="0" max="999999999" step="1" value="${p.page_no}" inputmode="numeric" title="Page number: type or step to a number, then Enter">
+        </form>
         <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto">
           <label class="sr-only" for="pd-goto">Go to page</label>
           <select id="pd-goto" name="page" data-autosubmit>${pages.map((x) => html`<option value="${x.page_no}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no} · ${x.name}</option>`)}</select>
@@ -416,7 +465,7 @@ export async function designerRoutes(app: FastifyInstance) {
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
                 dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
-         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', b.page_template === 'minimal' ? 'minimal' : 'standard', b.page_group?.trim() || null],
+         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', ['minimal', 'left_side_column', 'right_side_column'].includes(b.page_template ?? '') ? b.page_template : 'standard', b.page_group?.trim() || null],
       );
       // the page's lock and comments follow a new page number
       if (before && before.page_no !== Number(b.page_no))

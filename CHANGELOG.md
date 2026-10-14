@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 77: the Page Designer's layout and tree by display position, like APEX's (migration 099).
+
+### Added
+- **Display positions**: a region's *Position* (`meta.region.position`): banner, breadcrumb bar, left or right
+  column, body (the default) or footer.
+- **Left side column** and **Right side column** page templates: the left (or right) regions in a column beside
+  the body; on other pages those regions show in the body.
+- **Button positions**: a region button's *Button position* (`meta.button.slot`): create, edit, change, copy, help
+  and up in the region's header, previous, close and delete at the left of its bottom bar, next at the right.
+- **The Page Designer's layout** draws the page template's positions as drop zones and a region's button positions;
+  dropping a region or button there sets its position (also from the gallery), with undo.
+- **The rendering tree** groups regions by position and buttons by button position, colours type icons, and has a
+  context menu: create in or below, **Duplicate**, **Copy to other page**, expand or collapse all below, delete.
+- **The property editor**: *Common* / *All*, *Go to group*, Template options in a dialog; a page number field in
+  the toolbar.
+
 Sprint 76: the interactive report's menus like APEX's, and date items in the application's date format.
 
 ### Added

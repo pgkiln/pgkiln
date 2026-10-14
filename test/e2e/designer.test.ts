@@ -182,6 +182,70 @@ describe('page designer interaction (desktop)', () => {
     await page.context().close();
   });
 
+  test('(sprint 77) display positions: a gallery region into the left column, the tree menu, Common and Template options', async () => {
+    const ids = await scratchPage();
+    await owner.query(`update meta.page set page_template = 'left_side_column' where id = $1`, [ids.p]);
+    const { page, errors } = await signIn(size);
+    await page.goto(`${base}/builder/pages/${ids.p}`);
+    // PD-1: the page template's positions are drop zones; a faceted search dropped on the left column goes there
+    assert.equal(await page.locator('.pd-zone-left .pd-zone-label').textContent().then((t) => t?.trim()), 'Left column');
+    await Promise.all([
+      page.waitForURL(/c=region-/),
+      page.dragAndDrop('.pd-gal[data-new="region"][data-type="facets"]', '.pd-grid[data-position="left"] .pd-grid-end'),
+    ]);
+    const facets = await owner.one(`select id, position from meta.region where page_id = $1 and type = 'facets'`, [ids.p]);
+    assert.equal(facets.position, 'left');
+    // a button dragged onto the Next position of a region (empty positions show while dragging)
+    // (the empty position shows only once a drag has started, so the drag events are sent directly)
+    await Promise.all([
+      page.waitForURL(/c=button-/),
+      page.evaluate((region) => {
+        const dt = new DataTransfer();
+        const chip = document.querySelector('.pd-chip[data-kind="button"]')!;
+        chip.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+        const next = document.querySelector(`.pd-slot[data-region="${region}"][data-slot="next"]`) as HTMLElement;
+        if (getComputedStyle(next).display === 'none') throw new Error('the Next position does not show while dragging');
+        next.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        next.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      }, ids.r2),
+    ]);
+    assert.equal((await owner.one(`select slot from meta.button where page_id = $1 and name = 'SAVE'`, [ids.p])).slot, 'next');
+    // PD-2: the tree groups by position; right-click opens the menu; Duplicate copies the region
+    assert.equal(await page.locator('.pd-tree .pd-folder .pd-label', { hasText: 'Left column' }).count(), 1);
+    await page.locator(`.pd-tree a.pd-node[data-kind="region"][data-id="${ids.r1}"]`).click({ button: 'right' });
+    const entries = await page.locator('.pd-menu [role=menuitem]').allTextContents();
+    for (const e of ['Duplicate', 'Copy to other page…', 'Create region below', 'Delete']) assert.ok(entries.includes(e), e);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.pd-menu').count(), 0, 'Escape closes the menu');
+    await page.locator(`.pd-tree a.pd-node[data-kind="region"][data-id="${ids.r1}"]`).click({ button: 'right' });
+    await Promise.all([page.waitForURL(/c=region-/), page.click('.pd-menu [role=menuitem]:text-is("Duplicate")')]);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.region where page_id = $1 and title = 'First region'`, [ids.p])).n, 2);
+    // PD-3: Common shows fewer properties; Template options open in a dialog and count what is chosen
+    const shown = () => page.locator('#pd-form .field:visible, #pd-form .options-field:visible').count();
+    const all = await shown();
+    await page.click('.pe-common button[value=common]');
+    const common = await shown();
+    assert.ok(common < all && common <= 25, `${common} of ${all}`);
+    await page.click('.pe-common button[value=all]');
+    await page.click('.pe-options-open > button');
+    await page.locator('dialog[open] input[value="to-accent"]').check();
+    await page.click('dialog[open] .pd-dialog-buttons button');
+    await page.locator('dialog[open]').waitFor({ state: 'detached', timeout: 5000 });
+    const state = await page.evaluate(() => ({
+      text: [...document.querySelectorAll('.pe-options-open > button')].map((b) => b.textContent),
+      checked: [...document.querySelectorAll('input[form="pd-form"][name="template_options"]:checked')].map((x) => (x as HTMLInputElement).value),
+      open: document.querySelectorAll('dialog[open]').length,
+    }));
+    assert.deepEqual(state.checked, ['to-accent'], JSON.stringify(state));
+    assert.equal(state.open, 0, JSON.stringify(state));
+    assert.match(state.text[0] ?? '', /\(1\)/, JSON.stringify(state));
+    await Promise.all([page.waitForNavigation(), page.click('.tb-save')]);
+    const copy = await owner.one(`select template_options from meta.region where page_id = $1 and title = 'First region' order by id desc limit 1`, [ids.p]);
+    assert.deepEqual(copy.template_options, ['to-accent'], 'saved with the form');
+    assert.deepEqual(errors, []);
+    await page.context().close();
+  });
+
   test('keyboard: Alt+arrows move and resize; the tree and the property filter', async () => {
     const ids = await scratchPage();
     const { page } = await signIn(size);
@@ -201,7 +265,7 @@ describe('page designer interaction (desktop)', () => {
     const start = await label();
     await page.keyboard.press('ArrowDown');
     assert.notEqual(await label(), start);
-    const regions = page.locator('#pd-l-rendering .pd-folder', { hasText: 'Regions' });
+    const regions = page.locator('#pd-l-rendering .pd-folder', { hasText: /^Body$/ }); // (sprint 77) regions by display position
     await regions.focus();
     await page.keyboard.press('ArrowLeft');
     assert.equal(await regions.getAttribute('aria-expanded'), 'false');

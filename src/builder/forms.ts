@@ -164,9 +164,12 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
     return html`<div class="field" data-prop="${f.name}"${f.wide ? raw(' data-wide') : ''}><label class="label" for="${id}">${f.label}</label>${control}${help}</div>`;
   };
   const groups = [...new Set(spec.fields.map((f) => f.group ?? ''))];
+  // (sprint 77, APEX: Show Common / Show All) the other properties are marked, for the property editor's toggle
+  const marked = spec.fields.some((f) => f.common);
+  const shown = (f: Field) => (marked && !f.common ? html`<div class="pe-more" data-more>${field(f)}</div>` : field(f));
   return html`<form method="post" action="${action}" class="component-form"${opts.id ? html` id="${opts.id}"` : ''}>
     ${csrf(s)}
-    ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${g}</legend>` : ''}<div class="form-grid">${spec.fields.filter((f) => (f.group ?? '') === g).map(field)}</div></fieldset>`)}
+    ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${g}</legend>` : ''}<div class="form-grid">${spec.fields.filter((f) => (f.group ?? '') === g).map(shown)}</div></fieldset>`)}
     <div class="buttons"><button class="btn btn-hot">${submit}</button></div>
   </form>`;
 }

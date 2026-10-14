@@ -362,8 +362,21 @@ export async function renderPage(ctx: PageContext) {
   const hidden = initiallyHidden(ctx);
   const defaultButton = [...ctx.vis!.buttons.values()].find((b) => b.hot && b.action === 'submit');
   const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);
-  const regions = [];
-  for (const r of ctx.page.regions) regions.push(await renderRegion(ctx, r, hidden));
+  // (099) regions by display position; the side column of a side-column page template, else its regions in the body
+  const side = ctx.page.page_template === 'left_side_column' ? 'left' : ctx.page.page_template === 'right_side_column' ? 'right' : null;
+  const at: Record<string, Raw[]> = { banner: [], breadcrumb: [], side: [], body: [], footer: [] };
+  for (const r of ctx.page.regions) {
+    const pos = r.position ?? 'body';
+    const into = pos === 'left' || pos === 'right' ? (pos === side ? 'side' : 'body') : pos in at ? pos : 'body';
+    // a region its condition or authorization leaves out ('') leaves no empty position behind
+    const out = await renderRegion(ctx, r, hidden);
+    if (out) at[into].push(out);
+  }
+  const area = (cls: string, list: Raw[]) => (list.length ? html`<div class="t-regions ${cls}">${list}</div>` : '');
+  const regions = side && at.side.length
+    ? html`<div class="t-columns t-columns-${side}"><aside class="t-side" aria-label="${side === 'left' ? 'Left column' : 'Right column'}"><div class="t-regions t-pos-side">${at.side}</div></aside>
+        <div class="t-regions t-pos-body">${at.body}</div></div>`
+    : html`<div class="t-regions">${at.body}</div>`;
   // (078) the origins of the page's URL regions (also those a refresh or lazy load shows later)
   for (const o of frameOrigins(ctx.page.regions.filter((r) => ctx.vis!.regions.has(r.id)))) ctx.frameSrc?.add(o);
   const title = substitute(ctx.page.title ?? ctx.page.name, ctx, (v) => v);
@@ -393,8 +406,9 @@ export async function renderPage(ctx: PageContext) {
         ${formKeys(ctx)}
         ${ctx.dialog ? html`<input type="hidden" name="__dialog" value="1">` : ''}
         ${defaultButton ? html`<button type="submit" name="__request" value="${defaultButton.name}" class="default-submit" tabindex="-1" aria-hidden="true"></button>` : ''}
+        ${area('t-pos-banner', at.banner)}${area('t-pos-breadcrumb', at.breadcrumb)}
         ${pageItems.length ? html`<div class="page-items form-grid">${pageItems}</div>` : ''}
-        <div class="t-regions">${regions}</div>
+        ${regions}${area('t-pos-footer', at.footer)}
         ${await buttonsFor(ctx, null)}
       </form>
       ${ctx.detached}

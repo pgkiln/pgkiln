@@ -40,6 +40,41 @@ template of the same name) shows the page without the header, the navigation men
 navigation bar: the title and the regions only, centred. The application's
 [login page](08-security.md#the-login-page) uses it and gets the sign-in page's backdrop.
 
+### Side columns and display positions
+
+Like APEX's Universal Theme, a page has **display positions** and a region chooses one with its
+**Position** (Page Designer → region → Layout; `position` in the files; APEX: Layout → Position):
+
+| `position` | Where the region shows |
+|---|---|
+| `banner` | At the top of the page content, above everything else |
+| `breadcrumb` | In the bar under the title (the place of APEX's Breadcrumb Bar) |
+| `left`, `right` | In the side column of a page with page template *Left side column* or *Right side column* |
+| `body` (or empty) | The page body, on the 12-column grid (the default) |
+| `footer` | After the body |
+
+The page templates **Left side column** and **Right side column** (Page Designer → Page → Appearance;
+`page_template` `left_side_column` / `right_side_column`) put the regions of that position in a column
+beside the body (14–18rem wide; under the body's start on screens under 900px). On a page without that
+side column, `left` and `right` regions show in the body, in sequence. Regions keep their sequence within
+a position, and a region its condition leaves out leaves no empty position behind. A faceted search in
+the left column next to its report is the typical use.
+
+### Button positions
+
+A region's button has a **Button position** (Page Designer → button → Layout; `slot` in the files; APEX:
+Button Position):
+
+| `slot` | Where the button shows |
+|---|---|
+| `create`, `edit`, `change`, `copy`, `help`, `up` | In the region's header, after the title |
+| `previous`, `close`, `delete` | At the left end of the region's bottom bar |
+| `next` | At the right end of the bottom bar |
+| `region` (or empty) | With the region's other buttons, as before: the header of reports and charts, the bottom of forms and static content |
+
+Positions apply to the `standard`, `collapsible` and `plain` templates; the other templates place every
+button where they always do. Page-level buttons have no position.
+
 ### Dialogs and drawers
 
 A modal page (Page Designer → Page → Appearance: *Page mode* Modal dialog) opens over the page that linked to it.

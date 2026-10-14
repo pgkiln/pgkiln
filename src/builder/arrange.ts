@@ -22,6 +22,19 @@ const options = (kind: string, field: string) => COMPONENTS[kind].fields.find((f
 export const REGION_TYPES = () => options('region', 'type');
 export const ITEM_TYPES = () => options('item', 'type');
 export const BUTTON_ACTIONS = () => options('button', 'action');
+/** (099) display positions of regions and button positions (slots) of region buttons; body and region are the defaults (null) */
+export const POSITIONS = () => options('region', 'position');
+export const SLOTS = () => options('button', 'slot');
+export const POSITION_LABELS: Record<string, string> = {
+  banner: 'Banner', breadcrumb: 'Breadcrumb bar', left: 'Left column', body: 'Body', right: 'Right column', footer: 'Footer',
+};
+export const SLOT_LABELS: Record<string, string> = {
+  region: 'Region buttons', create: 'Create', edit: 'Edit', change: 'Change', copy: 'Copy', help: 'Help', up: 'Up',
+  previous: 'Previous', close: 'Close', delete: 'Delete', next: 'Next',
+};
+/** The button positions in a region's header and in its bottom bar (previous, close, delete at the left; next at the right). */
+export const TOP_SLOTS = ['create', 'edit', 'change', 'copy', 'help', 'up'];
+export const BOTTOM_SLOTS = ['previous', 'close', 'delete', 'next'];
 
 /** Gallery names and icons. */
 export const REGION_LABELS: Record<string, [string, string]> = {
@@ -58,9 +71,10 @@ const NEW_REGION_SOURCE: Record<string, string | null> = {
 // ---------------------------------------------------------------- snapshots (undo / redo)
 
 interface Snap {
-  region: { id: number; seq: number; columns: number }[];
+  // position and slot (099) are missing from snapshots taken before them: those leave them as they are
+  region: { id: number; seq: number; columns: number; position?: string | null }[];
   item: { id: number; seq: number; region_id: number | null }[];
-  button: { id: number; seq: number; region_id: number | null }[];
+  button: { id: number; seq: number; region_id: number | null; slot?: string | null }[];
 }
 interface History {
   pid: number;
@@ -74,19 +88,22 @@ type Q = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; ro
 
 async function snapshot(c: Q, pid: number): Promise<Snap> {
   // one after the other: a transaction's client runs one query at a time
-  const region = await c.query('select id, seq, columns from meta.region where page_id = $1 order by id', [pid]);
+  const region = await c.query('select id, seq, columns, position from meta.region where page_id = $1 order by id', [pid]);
   const item = await c.query('select id, seq, region_id from meta.item where page_id = $1 order by id', [pid]);
-  const button = await c.query('select id, seq, region_id from meta.button where page_id = $1 order by id', [pid]);
+  const button = await c.query('select id, seq, region_id, slot from meta.button where page_id = $1 order by id', [pid]);
   return { region: region.rows, item: item.rows, button: button.rows };
 }
 
 /** Puts the layout of a snapshot back; components deleted since are skipped, regions that are gone become "no region". */
 async function restore(c: Q, pid: number, snap: Snap) {
   const regions = new Set((await c.query('select id from meta.region where page_id = $1', [pid])).rows.map((r) => r.id));
-  for (const r of snap.region) await c.query('update meta.region set seq = $3, columns = $4 where id = $1 and page_id = $2', [r.id, pid, r.seq, r.columns]);
-  for (const kind of ['item', 'button'] as const)
-    for (const r of snap[kind])
-      await c.query(`update ${COMPONENTS[kind].table} set seq = $3, region_id = $4 where id = $1 and page_id = $2`, [r.id, pid, r.seq, r.region_id !== null && regions.has(r.region_id) ? r.region_id : null]);
+  for (const r of snap.region)
+    await c.query('update meta.region set seq = $3, columns = $4, position = case when $5 then $6 else position end where id = $1 and page_id = $2', [r.id, pid, r.seq, r.columns, 'position' in r, r.position ?? null]);
+  for (const r of snap.item)
+    await c.query('update meta.item set seq = $3, region_id = $4 where id = $1 and page_id = $2', [r.id, pid, r.seq, r.region_id !== null && regions.has(r.region_id) ? r.region_id : null]);
+  for (const r of snap.button)
+    await c.query('update meta.button set seq = $3, region_id = $4, slot = case when $5 then $6 else slot end where id = $1 and page_id = $2',
+      [r.id, pid, r.seq, r.region_id !== null && regions.has(r.region_id) ? r.region_id : null, 'slot' in r, r.slot ?? null]);
 }
 
 function history(s: Session, pid: number): History {
@@ -128,17 +145,29 @@ async function targetRegion(c: Q, pid: number, value: string): Promise<number | 
 /**
  * Moves a region, item or button. `dir` moves it one place up or down among
  * its neighbours; otherwise it goes before `before` (an id in the target
- * container, or '' for the end) in `region` (items and buttons; '' = page level).
+ * container, or '' for the end) in `region` (items and buttons; '' = page level),
+ * `position` (regions: a display position, '' = body) and `slot` (buttons: a
+ * button position, '' = with the region's other buttons).
  * Sequences in the target container are renumbered 10, 20, 30…
  */
-export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: number, o: { dir?: string; region?: string; before?: string }) {
+export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: number, o: { dir?: string; region?: string; before?: string; position?: string; slot?: string }) {
   const table = COMPONENTS[kind].table;
   const row = (await c.query(`select * from ${table} where id = $1 and page_id = $2`, [id, pid])).rows[0];
   if (!row) throw new LayoutError(404, `${COMPONENTS[kind].label} not found on this page.`);
   let region: number | null = kind === 'region' ? null : row.region_id;
   if (kind !== 'region' && o.region !== undefined && !o.dir) region = await targetRegion(c, pid, o.region);
-  const scope = kind === 'region' ? '' : ' and region_id is not distinct from $2';
-  const list: number[] = (await c.query(`select id from ${table} where page_id = $1${scope} order by seq, id`, kind === 'region' ? [pid] : [pid, region])).rows.map((r) => r.id);
+  // the container: a region's display position; a button's region and position in it (page-level buttons have none)
+  let place: string = kind === 'region' ? (row.position ?? 'body') : kind === 'button' && region !== null ? (row.slot ?? 'region') : '';
+  if (kind === 'region' && o.position !== undefined && !o.dir) place = o.position || 'body';
+  if (kind === 'button' && o.slot !== undefined && !o.dir) place = o.slot || 'region';
+  if (kind === 'button' && region === null) place = '';
+  if (kind === 'region' && !POSITIONS().includes(place)) throw new LayoutError(400, 'Unknown position.');
+  if (kind === 'button' && place && !SLOTS().includes(place)) throw new LayoutError(400, 'Unknown button position.');
+  const scope = kind === 'region' ? " and coalesce(position, 'body') = $2"
+    : kind === 'button' ? " and region_id is not distinct from $2 and (region_id is null or coalesce(slot, 'region') = $3)"
+    : ' and region_id is not distinct from $2';
+  const params = kind === 'region' ? [pid, place] : kind === 'button' ? [pid, region, place] : [pid, region];
+  const list: number[] = (await c.query(`select id from ${table} where page_id = $1${scope} order by seq, id`, params)).rows.map((r) => r.id);
   const others = list.filter((x) => x !== id);
   let at: number;
   if (o.dir === 'up' || o.dir === 'down') {
@@ -154,8 +183,10 @@ export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: num
     if (at < 0) throw new LayoutError(400, 'The place to move to is not in that region.');
   }
   others.splice(at, 0, id);
+  const stored = place === 'body' || place === 'region' || place === '' ? null : place;
   for (const [i, x] of others.entries()) {
-    if (kind === 'region') await c.query(`update ${table} set seq = $3 where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10]);
+    if (kind === 'region') await c.query(`update ${table} set seq = $3, position = case when id = $4 then $5::text else position end where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10, id, stored]);
+    else if (kind === 'button') await c.query(`update ${table} set seq = $3, region_id = case when id = $4 then $5::int else region_id end, slot = case when id = $4 then $6::text else slot end where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10, id, region, stored]);
     else await c.query(`update ${table} set seq = $3, region_id = case when id = $4 then $5::int else region_id end where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10, id, region]);
   }
 }
@@ -171,7 +202,7 @@ export async function spanRegion(c: Q, pid: number, id: number, o: { columns?: s
 }
 
 /** A new component from the gallery, with a working default; placed like moveComponent. Returns its id. */
-export async function createComponent(c: Q, pid: number, kind: LayoutKind, type: string, o: { region?: string; before?: string }) {
+export async function createComponent(c: Q, pid: number, kind: LayoutKind, type: string, o: { region?: string; before?: string; position?: string; slot?: string }) {
   const page = (await c.query('select page_no from meta.page where id = $1', [pid])).rows[0];
   if (!page) throw new LayoutError(404, 'Page not found.');
   let id: number;
@@ -196,8 +227,60 @@ export async function createComponent(c: Q, pid: number, kind: LayoutKind, type:
       id = (await c.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 999999, $3, 'New button', $4) returning id`, [pid, region, name, type])).rows[0].id;
     }
   }
-  await moveComponent(c, pid, kind, id, { region: o.region ?? '', before: o.before ?? '' });
+  await moveComponent(c, pid, kind, id, { region: o.region ?? '', before: o.before ?? '', position: o.position ?? '', slot: o.slot ?? '' });
   return id;
+}
+
+/** A copy of a row of a page component table with some columns changed; returns its id. */
+async function copyRow(c: Q, kind: LayoutKind, id: number, over: Record<string, unknown>): Promise<number> {
+  const table = COMPONENTS[kind].table;
+  return (await c.query(
+    `insert into ${table} select (jsonb_populate_record(null::${table}, to_jsonb(x) || jsonb_build_object('id', nextval('${table}_id_seq')) || $2::jsonb)).* from ${table} x where id = $1 returning id`,
+    [id, JSON.stringify(over)],
+  )).rows[0].id;
+}
+
+/** NAME, or NAME_2, NAME_3… when the page has an item (or button) of that name already. */
+async function freeName(c: Q, kind: 'item' | 'button', pid: number, name: string) {
+  const taken = new Set((await c.query(`select name from ${COMPONENTS[kind].table} where page_id = $1`, [pid])).rows.map((r) => r.name));
+  let out = name;
+  for (let i = 2; taken.has(out); i++) out = `${name}_${i}`;
+  return out;
+}
+
+/**
+ * (sprint 77, APEX: Duplicate and Copy to other Page in the rendering tree's menu) A copy of a region (with its
+ * items and buttons), an item or a button: on the same page right after the original, or at the end of another
+ * page of the same application (items named P<n>_ get that page's number; components of a region go to page level
+ * there). Item and button names are made unique on the page. Returns the copy's id.
+ */
+export async function duplicateComponent(c: Q, pid: number, kind: LayoutKind, id: number, toPid: number = pid) {
+  const table = COMPONENTS[kind].table;
+  const row = (await c.query(`select * from ${table} where id = $1 and page_id = $2`, [id, pid])).rows[0];
+  if (!row) throw new LayoutError(404, `${COMPONENTS[kind].label} not found on this page.`);
+  const pages = (await c.query('select t.page_no from meta.page t join meta.page f on f.app_id = t.app_id where t.id = $1 and f.id = $2', [toPid, pid])).rows;
+  if (!pages.length) throw new LayoutError(400, 'That page is not in this application.');
+  const same = toPid === pid;
+  const rename = (name: string) => (same ? name : name.replace(/^P\d+_/, `P${pages[0].page_no}_`));
+  const copyChild = async (k: 'item' | 'button', x: any, regionId: number | null) =>
+    copyRow(c, k, x.id, { page_id: toPid, region_id: regionId, name: await freeName(c, k, toPid, rename(x.name)), ...(k === 'button' && regionId === null ? { slot: null } : {}) });
+  // where the copy goes: after the original in its container, or at the end of the other page
+  let place: { region?: string; position?: string; slot?: string; before: string } = { before: '' };
+  if (same) {
+    const scope = kind === 'region' ? " and coalesce(position, 'body') = coalesce($2, 'body')" : ' and region_id is not distinct from $2';
+    const list: number[] = (await c.query(`select id from ${table} where page_id = $1${scope} order by seq, id`, [pid, kind === 'region' ? row.position : row.region_id])).rows.map((r) => r.id);
+    const next = list[list.indexOf(id) + 1];
+    place = { region: String(row.region_id ?? ''), position: row.position ?? '', slot: row.slot ?? '', before: next ? String(next) : '' };
+  } else place = { region: '', position: row.position ?? '', slot: '', before: '' };
+  let copy: number;
+  if (kind === 'region') {
+    const staticId = row.static_id && !same && !(await c.query('select 1 from meta.region where page_id = $1 and static_id = $2', [toPid, row.static_id])).rowCount ? row.static_id : null;
+    copy = await copyRow(c, 'region', id, { page_id: toPid, static_id: staticId });
+    for (const k of ['item', 'button'] as const)
+      for (const x of (await c.query(`select id, name from ${COMPONENTS[k].table} where region_id = $1 order by seq, id`, [id])).rows) await copyChild(k, x, copy);
+  } else copy = await copyChild(kind, row, same ? row.region_id : null);
+  await moveComponent(c, toPid, kind, copy, place);
+  return copy;
 }
 
 // ---------------------------------------------------------------- routes
@@ -245,7 +328,7 @@ export async function arrangeRoutes(app: FastifyInstance) {
     const kind = b.kind;
     const id = int(b.id);
     if (!isKind(kind) || id === null) throw new LayoutError(400, 'Unknown component.');
-    await recorded(s, pid, `Move ${await describe(kind, id)}`, (c) => moveComponent(c, pid, kind, id, { dir: b.dir, region: b.region, before: b.before }));
+    await recorded(s, pid, `Move ${await describe(kind, id)}`, (c) => moveComponent(c, pid, kind, id, { dir: b.dir, region: b.region, before: b.before, position: b.position, slot: b.slot }));
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} moved.` };
   });
 
@@ -262,9 +345,42 @@ export async function arrangeRoutes(app: FastifyInstance) {
   route('create', async (s, pid, b) => {
     const kind = b.kind;
     if (!isKind(kind)) throw new LayoutError(400, 'Unknown component type.');
-    const id = await owner.tx((c) => createComponent(c, pid, kind, b.type ?? '', { region: b.region, before: b.before }));
+    const id = await owner.tx((c) => createComponent(c, pid, kind, b.type ?? '', { region: b.region, before: b.before, position: b.position, slot: b.slot }));
     keep(s, { pid, undo: [], redo: [] }); // earlier layout steps no longer line up with the new component
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} created; set its properties on the right.` };
+  });
+
+  // (sprint 77) the rendering tree's menu: Duplicate, Copy to other Page
+  route('duplicate', async (s, pid, b) => {
+    const kind = b.kind;
+    const id = int(b.id);
+    if (!isKind(kind) || id === null) throw new LayoutError(400, 'Unknown component.');
+    const copy = await owner.tx((c) => duplicateComponent(c, pid, kind, id));
+    keep(s, { pid, undo: [], redo: [] });
+    return { sel: `${kind}-${copy}`, message: `${COMPONENTS[kind].label} duplicated.` };
+  });
+
+  app.post(`${BASE}/pages/:pid/layout/copy`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = (req.body ?? {}) as Record<string, string | undefined>;
+    const pid = int(req.params.pid);
+    const to = int(b.page);
+    const kind = b.kind;
+    const id = int(b.id);
+    try {
+      if (pid === null || !(await owner.one('select 1 as ok from meta.page where id = $1', [pid]))) throw new LayoutError(404, 'Page not found');
+      if (!isKind(kind) || id === null || to === null) throw new LayoutError(400, 'Unknown component or page.');
+      const copy = await owner.tx((c) => duplicateComponent(c, pid, kind, id, to));
+      if (to === pid) keep(s, { pid, undo: [], redo: [] });
+      flash(s, `${COMPONENTS[kind].label} copied.`);
+      await saveState(s);
+      const location = `${BASE}/pages/${to}?c=${kind}-${copy}`;
+      return wantsJson(req) ? reply.send({ ok: true, location }) : reply.redirect(location, 303);
+    } catch (e) {
+      if (!(e instanceof LayoutError)) throw e;
+      return wantsJson(req) ? reply.code(e.status).send({ ok: false, error: e.message }) : reply.code(e.status).type('text/plain').send(e.message);
+    }
   });
 
   for (const op of ['undo', 'redo'] as const)

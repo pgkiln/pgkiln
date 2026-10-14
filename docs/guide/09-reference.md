@@ -423,6 +423,7 @@ navigation entries and application processes have the same `build_option` column
 | `config` | Attributes per type ([chapter 4](04-pages-and-regions.md)) |
 | `rest_source` | A REST data source the region reads; `source` is then SQL over `rest` ([chapter 19](19-rest-data-sources.md)) |
 | `template_options` | text[]: CSS classes from a fixed list ([template options](04-pages-and-regions.md#template-options)) |
+| `position` | `banner`, `breadcrumb`, `left`, `body` (or null), `right`, `footer` ([display positions](04-pages-and-regions.md#side-columns-and-display-positions)) |
 
 **`item`**: `page_id`, `region_id`, `seq`, `name`, `label`, `type`, `lov`, `source_column`,
 `default_value`, `required`, `help`, `readonly_condition`, `authz`, `config` ([chapter 5](05-items.md)).
@@ -430,7 +431,9 @@ navigation entries and application processes have the same `build_option` column
 **`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da` /
 `document` / `menu`), `target_page`, `target_items` (jsonb), `condition`, `authz`, `hot`, `confirm`,
 `menu` (jsonb, for `menu`), `badge`, `badge_query` ([chapter 6](06-processing.md)), `template_options`
-(text[], [template options](04-pages-and-regions.md#template-options)).
+(text[], [template options](04-pages-and-regions.md#template-options)), `slot` (a region button's
+[button position](04-pages-and-regions.md#button-positions): `create`, `edit`, `change`, `copy`, `help`, `up`,
+`previous`, `close`, `delete`, `next` or `region` / null).
 
 **`dynamic_action`**: `page_id`, `seq`, `name`, `event`, `trigger_element`, `condition_type`,
 `condition_value`, `action`, `affected_items`, `affected_region_id`, `code`, `items_to_submit`,

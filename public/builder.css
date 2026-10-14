@@ -44,6 +44,7 @@
     --bg: #1d1c1b; --surface: #2a2927; --surface-2: #31302d; --surface-3: #3b3936; --text: #e9e6e1; --muted: #aaa59d;
     --border: #44423e; --accent: #62b2ea; --accent-text: #0b1824; --accent-soft: #233a4c; --gold: #e3b75e;
     --canvas: #211f1e; --block: #33322f; --block-head: #3d3b38; --code-bg: #242321; --warn: #e0a740;
+    --pd-c-region: #7fb4ea; --pd-c-item: #7ccf8c; --pd-c-button: #f0a35e; --pd-c-da: #c49cf0; --pd-c-process: #ee8fbf;
     color-scheme: dark;
   }
 }
@@ -51,6 +52,7 @@
   --bg: #1d1c1b; --surface: #2a2927; --surface-2: #31302d; --surface-3: #3b3936; --text: #e9e6e1; --muted: #aaa59d;
   --border: #44423e; --accent: #62b2ea; --accent-text: #0b1824; --accent-soft: #233a4c; --gold: #e3b75e;
   --canvas: #211f1e; --block: #33322f; --block-head: #3d3b38; --code-bg: #242321; --warn: #e0a740;
+  --pd-c-region: #7fb4ea; --pd-c-item: #7ccf8c; --pd-c-button: #f0a35e; --pd-c-da: #c49cf0; --pd-c-process: #ee8fbf;
   color-scheme: dark;
 }
 
@@ -962,3 +964,51 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .ob-actions { display: grid; gap: 0.6rem; margin-top: 1rem; }
 .ob-action { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .ob-action input:not([type=checkbox]) { width: 10rem; }
+
+/* (sprint 77) the page template's display positions and a region's button positions on the layout */
+.pd-zone { display: grid; gap: 0.3em; margin-bottom: 10px; }
+.pd-zone-label { color: var(--muted); font-size: 0.74em; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
+.pd-zone-label small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.pd-zone.is-empty .pd-grid-end { padding: 0.3em; }
+.pd-columns { display: grid; gap: 10px; align-items: start; }
+.pd-columns > .pd-zone { margin-bottom: 0; min-width: 0; }
+.pd-columns:has(> .pd-zone-left) { grid-template-columns: minmax(9rem, 1fr) 3fr; }
+.pd-columns:has(> .pd-zone-right) { grid-template-columns: 3fr minmax(9rem, 1fr); }
+.pd-columns:has(> .pd-zone-left):has(> .pd-zone-right) { grid-template-columns: minmax(9rem, 1fr) 3fr minmax(9rem, 1fr); }
+.pd-columns + .pd-zone { margin-top: 10px; }
+.pd-zone-left .pd-grid > .pd-region, .pd-zone-right .pd-grid > .pd-region { grid-column: 1 / -1; }
+.pd-slots { display: flex; flex-wrap: wrap; gap: 0.3em; }
+.pd-slots-bottom > [data-slot="next"] { margin-left: auto; }
+.pd-slot-spare { display: none; min-height: 1.6em; }
+.pd-dragging-button .pd-slot-spare { display: flex; }
+.pd-canvas:not(.pd-dragging-button) .pd-slots:not(:has(> .pd-slot:not(.pd-slot-spare))) { display: none; }
+@media (max-width: 640px) { .pd-canvas .pd-columns:has(> .pd-zone) { grid-template-columns: minmax(0, 1fr); } }
+
+/* (sprint 77) the rendering tree's context menu, the Copy to other page dialog, component colours */
+.pd-menu { position: fixed; z-index: 60; min-width: 13rem; padding: 4px; background: var(--surface, #fff); color: var(--text); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); font-size: 13px; }
+.pd-menu [role=menuitem] { display: block; width: 100%; padding: 0.35rem 0.6rem; border: 0; border-radius: 3px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pd-menu [role=menuitem]:is(:hover, :focus-visible) { background: var(--sel-bg); color: var(--sel-text); outline: none; }
+.pd-menu [role=menuitem].is-danger { color: var(--danger); }
+.pd-menu [role=separator] { height: 1px; margin: 4px 2px; background: var(--border); }
+.pd-dialog { width: min(28rem, calc(100vw - 32px)); padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface, #fff); color: var(--text); }
+.pd-dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+.pd-dialog h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+.pd-dialog-buttons { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+.pd-node[data-kind="region"] .icon { color: var(--pd-c-region, #2f6fb3); }
+.pd-node[data-kind="item"] .icon { color: var(--pd-c-item, #2e8540); }
+.pd-node[data-kind="button"] .icon { color: var(--pd-c-button, #b4570f); }
+.pd-node[data-kind="dynamic_action"] .icon { color: var(--pd-c-da, #8a4fbf); }
+.pd-node[data-kind="process"] .icon, .pd-node[data-kind="computation"] .icon { color: var(--pd-c-process, #a23b72); }
+
+/* (sprint 77) the property editor: Common / All, Go to group, the Template Options button; the page number */
+.pe-more { display: contents; }
+.pe-show-common [data-more] { display: none; }
+.pe-show-common fieldset.pe-group-more { display: none; }
+.pe-view { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px 6px; }
+.pe-view .segmented { margin-top: 0; }
+.pe-view .segmented button { font-size: 12px; padding: 2px 8px; min-height: 0; }
+.pe-goto { font-size: 12px; max-width: 12rem; }
+.pe-options-open .btn { justify-self: start; }
+.pd-goto-no input { width: 5.5em; font-variant-numeric: tabular-nums; }
+/* on narrower screens the previous / next arrows and the page list do it */
+@media (max-width: 1279px) { .pd-goto-no { display: none; } }
