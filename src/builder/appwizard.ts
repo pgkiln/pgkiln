@@ -40,6 +40,8 @@ export const pastedName = (title: string) =>
 
 interface Relation {
   relname: string;
+  /** (sprint 78) the friendly name of its pages: Employees */
+  label: string;
   kind: 'table' | 'view';
   pk: string | null;
   /** the planner's estimate (null: never analyzed) */
@@ -54,7 +56,7 @@ interface Relation {
 export async function schemaRelations(schema: string): Promise<Relation[]> {
   return (
     await owner.query<Relation>(
-      `select c.relname, case when c.relkind in ('v', 'm') then 'view' else 'table' end as kind,
+      `select c.relname, meta.wizard_table_label(c.oid) as label, case when c.relkind in ('v', 'm') then 'view' else 'table' end as kind,
               meta.wizard_pk(c.oid) as pk, case when c.reltuples >= 0 then c.reltuples::bigint end as rows,
               meta.wizard_defaults('calendar', c.oid) ->> 'start' is not null as calendar,
               meta.wizard_pk(c.oid) is not null and meta.wizard_defaults('master_detail', c.oid) ->> 'detail' is not null as detail
@@ -350,9 +352,9 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
         ${known
           ? relations.length
             ? relations.map((r, i) => html`<li><input type="hidden" name="t_${i}" value="${r.relname}">
-                <label class="aw-page-kind" for="f_k_${i}">${icon(r.kind === 'view' ? 'eye' : 'table')} ${r.relname}</label>
+                <label class="aw-page-kind" for="f_k_${i}">${icon(r.kind === 'view' ? 'eye' : 'table')} ${r.label}</label>
                 <select id="f_k_${i}" name="k_${i}">${kindsFor(r).map((k) => html`<option value="${k}"${k === kindOf(r, i) ? raw(' selected') : ''}>${PAGE_KINDS[k]}</option>`)}</select>
-                <small class="muted">${r.kind === 'view' ? 'view' : rows(r)}${r.kind === 'table' && !r.pk ? ', no single-column key: no form' : ''}${Number(r.rows ?? 0) > LARGE_TABLE ? ': a paged grid' : ''}</small></li>`)
+                <small class="muted"><code>${r.relname}</code> · ${r.kind === 'view' ? 'view' : rows(r)}${r.kind === 'table' && !r.pk ? ', no single-column key: no form' : ''}${Number(r.rows ?? 0) > LARGE_TABLE ? ': a paged grid' : ''}</small></li>`)
             : html`<li class="muted">${schema} has no tables or views.</li>`
           : html`<li class="muted">Choose a schema under Data for a page per table, or add pages with the page wizards later.</li>`}
       </ul>

@@ -390,6 +390,8 @@ export const de: Record<MessageKey, string> = {
   'facets.stars_up': '{n} Sterne und mehr',
   'facets.star_up': '1 Stern und mehr',
   'facets.clear_short': 'Löschen',
+  'facets.show_all': 'Alle anzeigen ({n})',
+  'facets.total': 'Zeilen insgesamt {n}',
   'smart.placeholder': 'Suchen oder filtern…',
   'smart.active': 'Aktive Filter',
   'smart.remove': 'Filter {filter} entfernen',

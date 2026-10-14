@@ -390,6 +390,8 @@ export const el: Record<MessageKey, string> = {
   'facets.stars_up': "{n} αστέρια και πάνω",
   'facets.star_up': "1 αστέρι και πάνω",
   'facets.clear_short': "Απαλοιφή",
+  'facets.show_all': "Εμφάνιση όλων ({n})",
+  'facets.total': "Συνολικός αριθμός γραμμών {n}",
   'smart.placeholder': "Αναζήτηση ή φιλτράρισμα…",
   'smart.active': "Φίλτρα σε χρήση",
   'smart.remove': "Αφαίρεση του φίλτρου {filter}",

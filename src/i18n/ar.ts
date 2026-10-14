@@ -390,6 +390,8 @@ export const ar: Record<MessageKey, string> = {
   'facets.stars_up': "{n} نجوم فأكثر",
   'facets.star_up': "نجمة واحدة فأكثر",
   'facets.clear_short': "مسح",
+  'facets.show_all': "عرض الكل ({n})",
+  'facets.total': "إجمالي عدد الصفوف {n}",
   'smart.placeholder': "بحث أو تصفية…",
   'smart.active': "عوامل التصفية المستخدمة",
   'smart.remove': "إزالة عامل التصفية {filter}",

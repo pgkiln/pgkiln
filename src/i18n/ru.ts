@@ -390,6 +390,8 @@ export const ru: Record<MessageKey, string> = {
   'facets.stars_up': "{n} звезды и выше",
   'facets.star_up': "1 звезда и выше",
   'facets.clear_short': "Очистить",
+  'facets.show_all': "Показать все ({n})",
+  'facets.total': "Всего строк {n}",
   'smart.placeholder': "Поиск или фильтр…",
   'smart.active': "Действующие фильтры",
   'smart.remove': "Удалить фильтр {filter}",

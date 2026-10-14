@@ -390,6 +390,8 @@ export const sv: Record<MessageKey, string> = {
   'facets.stars_up': "{n} stjärnor och uppåt",
   'facets.star_up': "1 stjärna och uppåt",
   'facets.clear_short': "Rensa",
+  'facets.show_all': "Visa alla ({n})",
+  'facets.total': "Totalt antal rader {n}",
   'smart.placeholder': "Sök eller filtrera…",
   'smart.active': "Filter som används",
   'smart.remove': "Ta bort filtret {filter}",

@@ -371,13 +371,16 @@ The wizards (every *Create application* flow and the page wizards) make pages th
   forms and dialog titles the singular (*Employee*).
 - **Reports** show a foreign key's parent by its display column (a name, title or label, else its first
   text column): *Manager* shows KING, *Department* shows SALES. The key itself stays in the query,
-  hidden, so filters can use it. A row starts with a pencil that opens the form.
+  hidden, so filters can use it; a report never has two columns with the same heading (also a faceted
+  search report, whose facets filter on the display column). A row starts with a pencil that opens the form.
+- **Interactive grids** (the grid page and both grids of a master-detail page) use the same labels as
+  headings (*Department Number*, *Hire Date*); a foreign key is a select list of the parent's names.
 - **Files**: a `bytea` column becomes one file upload item that also fills the columns that go with it
   (`<col>_name`/`_filename`, `<col>_mime`/`_mime_type`, `<col>_size`, `<col>_updated`; or `filename`
   and `mime_type` next to the only `bytea` column). Reports leave these columns out. Columns named like
   *photo*, *image* or *logo* accept pictures only.
 - **Numbers** get a format mask with group separators (and the scale's decimals for `numeric(p,s)`),
-  in reports and forms alike, in the application's language (*2,850.00*); keys get none.
+  in reports, read-only grid cells and forms alike, in the application's language (*2,850.00*); keys get none.
 - The **Dashboard** comes right after *Home* in the menu; its charts are titled *Employees by Manager*,
   rows without a value are labelled *(none)*, and bar charts show the ten largest values (the rest is
   one *Other* bar). Tables with row-level security are left out (the application's role may see none of
@@ -493,7 +496,7 @@ step, which keeps the table and type.
 | **Calendar** | A [calendar](04-pages-and-regions.md#calendar) region (month, week, day and list views) | Start: a date or timestamp column named like *start*, *begin* or *…_date* (not *created*/*updated*); end: one named like *end* or *until*; title: a name column, else the first foreign key's name |
 | **Chart** | A [chart](04-pages-and-regions.md#chart) region: bar, column, line, area, donut, pie or funnel of the row count, or the sum, average, minimum or maximum of a number column, per label | Label: the first foreign key (its parent's name), else a text column that isn't unique |
 | **Map** | A [map](04-pages-and-regions.md#map) region with popups and, if ticked, an interactive report of the same rows that the map filters (*Show this area in the list*) | Position: a PostGIS geometry or geography (markers, and lines and areas as shapes), a `point`, `lat`/`lng`-like number columns, or a *location* text column with `latitude,longitude` |
-| **Faceted search** | An interactive report (9 columns wide) and a [facets](04-pages-and-regions.md#facets-faceted-search) panel (3 columns, collapsible) with a search field | Up to six facets: foreign keys (values of the parent's name, which the report shows next to the key), booleans, text columns with few values, dates and numbers as ranges with *from*/*to* |
+| **Faceted search** | An interactive report (9 columns wide) and a [facets](04-pages-and-regions.md#facets-faceted-search) panel (3 columns, collapsible) with a search field | Up to six facets: foreign keys (values of the parent's name, which the report shows instead of the key), booleans, text columns with few values, dates and numbers as ranges with *from*/*to* |
 | **Master detail** | One page with a grid of the table and an editable grid of the selected row's details below it (the grids' [master-detail](04-pages-and-regions.md#grid-interactive-grid)): a hidden item for the selection, both grids with a grid DML process; new detail rows get the master's key | The detail table: a table with a foreign key to this table's primary key |
 
 Cards, Calendar, Map and Faceted search take an optional **Form page** number: it adds a modal

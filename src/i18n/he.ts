@@ -390,6 +390,8 @@ export const he: Record<MessageKey, string> = {
   'facets.stars_up': "{n} כוכבים ומעלה",
   'facets.star_up': "כוכב אחד ומעלה",
   'facets.clear_short': "ניקוי",
+  'facets.show_all': "הצג הכול ({n})",
+  'facets.total': "סך כל השורות {n}",
   'smart.placeholder': "חיפוש או סינון…",
   'smart.active': "מסננים בשימוש",
   'smart.remove': "הסרת המסנן {filter}",

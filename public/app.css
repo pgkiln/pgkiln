@@ -1144,6 +1144,10 @@ td[data-add]:hover > .cal-add, .cal-add:focus-visible { opacity: 1; }
 .facet-chart .donut-figure { max-width: 9rem; margin: 0 auto; }
 .facet-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .facet-count { font-size: 0.75rem; color: var(--muted); background: var(--surface-3); border-radius: 99px; padding: 0 0.5rem; font-variant-numeric: tabular-nums; }
+/* (sprint 78) values after the seventh, and the rows the filters leave */
+.facet-more > summary { cursor: pointer; font-size: 0.85rem; color: var(--accent, var(--link)); padding: 0.15rem 0; }
+.facet-more[open] > summary { margin-bottom: 0.2rem; }
+.facet-total { margin: 0 0 0.6rem; font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .js .facet-actions .btn-hot { display: none; }
 .facet-exclude { font-size: 0.85rem; color: var(--muted); margin-top: 0.15rem; }
 .facet-excluded .facet-value .facet-label { text-decoration: line-through; }
@@ -1889,6 +1893,7 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 /* (sprint 76) the pager: rows per page; a Go button only without JavaScript */
 .pager .pager-size { margin-right: 0; display: inline-flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: 0.85rem; }
 .pager-size select { min-height: 0; padding: 0.15rem 0.4rem; }
+.pager-size label { white-space: nowrap; }
 .js .no-js-only { display: none; }
 
 /* (sprint 76) the interactive report's Actions menu: one line per entry, submenus, forms in dialogs */

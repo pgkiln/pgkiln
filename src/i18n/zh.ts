@@ -390,6 +390,8 @@ export const zh: Record<MessageKey, string> = {
   'facets.stars_up': "{n} 星及以上",
   'facets.star_up': "1 星及以上",
   'facets.clear_short': "清除",
+  'facets.show_all': "显示全部 ({n})",
+  'facets.total': "总行数 {n}",
   'smart.placeholder': "搜索或筛选…",
   'smart.active': "正在使用的筛选器",
   'smart.remove': "删除筛选器 {filter}",

@@ -807,7 +807,9 @@ link is the way to change its dates.
 A panel of filters, each with a live count, that filters a **report region on the same page**.
 Counts take the search and all *other* facets into account. Three kinds of facet:
 
-- **checkbox** (the default): the most frequent values of a column, each with a checkbox. With
+- **checkbox** (the default): the most frequent values of a column, each with a checkbox; after the seventh
+  the rest sit under *Show all (n)* (open when one of them is chosen), and a boolean's values read *Yes* and
+  *No*. With
   `"exclude": true` the facet gets an *Exclude the selected values* switch: the chosen values are
   then left out instead (rows where the column is empty stay).
 - **range**: a number or date column in ranges, as radio buttons ("Any", then each range). A
@@ -817,7 +819,11 @@ Counts take the search and all *other* facets into account. Three kinds of facet
 - **star**: a rating column as "5 stars and up", "4 stars and up", … down to 1 (`max`, default 5).
 
 With `"search": true` the panel starts with a search field: the same search as the report's own
-(`r<id>_q`, the row as text contains the term).
+(`r<id>_q`, the row as text contains the term). The report then shows no search field of its own (its
+*Actions* menu stays), so the page has one.
+
+The panel starts with the number of rows the search and the facets leave (*Total row count 14*,
+APEX's *Total Row Count*).
 
 **Facet charts** (APEX: facet charts): with `"chart": "bar"` or `"chart": "pie"` a facet shows its counts as a chart,
 collapsed under its heading (*Chart*). Each bar or slice, and each row of the chart's data table, links to the page

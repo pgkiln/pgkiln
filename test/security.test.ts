@@ -1405,6 +1405,25 @@ describe('sprint 26 regions: smart filters, facet kinds, display selector', () =
     assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, 14);
   });
 
+  test('(sprint 78) the total row count counts what the report shows: injected values count nothing', async () => {
+    const { id: rid } = await region('Employee list');
+    const king = await as('king');
+    const total = (body: string) => Number(/<p class="facet-total" role="status">Total row count ([\d,]+)<\/p>/.exec(body)?.[1].replace(/,/g, ''));
+    const n: [string, string] = [`r${rid}_n`, '50'];
+    const all = (await king.get(url([n]))).body;
+    assert.equal(total(all), rows(all, rid));
+    for (const params of [
+      [[`r${rid}_x_job`, "Clerk' or '1'='1"]],
+      [[`r${rid}_q`, "%' or 1=1 --"]],
+      [[`r${rid}_rf_salary`, '0 or 1=1'], [`r${rid}_rt_salary`, "1); drop table hr.emp; --"]],
+    ] as [string, string][][]) {
+      const body = (await king.get(url([n, ...params]))).body;
+      assert.equal(total(body), rows(body, rid), JSON.stringify(params));
+      assert.ok(total(body) === 0 || total(body) === total(all), `${JSON.stringify(params)}: ${total(body)}`);
+    }
+    assert.equal(total((await king.get(url([n, [`r${rid}_x_job`, 'Clerk']]))).body), 4);
+  });
+
   test('a NUL byte, huge and repeated values do not fail the page', async () => {
     const { id: rid } = await region('Employee list');
     const king = await as('king');

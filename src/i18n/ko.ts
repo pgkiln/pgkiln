@@ -390,6 +390,8 @@ export const ko: Record<MessageKey, string> = {
   'facets.stars_up': "별 {n}개 이상",
   'facets.star_up': "별 1개 이상",
   'facets.clear_short': "지우기",
+  'facets.show_all': "모두 표시 ({n})",
+  'facets.total': "전체 행 수 {n}",
   'smart.placeholder': "검색 또는 필터…",
   'smart.active': "사용 중인 필터",
   'smart.remove': "{filter} 필터 제거",

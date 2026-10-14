@@ -65,6 +65,9 @@ describe('the Create Application wizard', () => {
     assert.deepEqual(options('emp'), ['report_form', 'facets', 'cards', 'calendar', 'grid', 'report', '']);
     assert.deepEqual(options('note'), ['facets', 'cards', 'report', ''], 'no key: no form, no grid');
     assert.deepEqual(options('emp_v'), ['facets', 'cards', 'report', '']);
+    // (sprint 78) the friendly name of the pages, the table's name as secondary text
+    assert.match(page, new RegExp(`<label class="aw-page-kind" for="f_k_${/name="t_(\d+)" value="emp"/.exec(page)![1]}"><svg[^]*?</svg> Employees</label>`));
+    assert.match(page, /<small class="muted"><code>emp<\/code> · /);
     // a very large table (the planner's estimate) is proposed as a paged grid
     await owner.query(`update pg_class set reltuples = 250000 where oid = '${SRC}.emp'::regclass`);
     try {

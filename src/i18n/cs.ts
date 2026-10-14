@@ -390,6 +390,8 @@ export const cs: Record<MessageKey, string> = {
   'facets.stars_up': "{n} hvězdičky a více",
   'facets.star_up': "1 hvězdička a více",
   'facets.clear_short': "Vymazat",
+  'facets.show_all': "Zobrazit vše ({n})",
+  'facets.total': "Celkový počet řádků {n}",
   'smart.placeholder': "Hledat nebo filtrovat…",
   'smart.active': "Použité filtry",
   'smart.remove': "Odebrat filtr {filter}",
