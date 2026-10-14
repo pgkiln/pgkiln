@@ -939,3 +939,26 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .page-icon:hover, .page-icon:focus-visible { border-color: var(--accent); }
 .page-icon-no { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
 .app-tasks .sc-links a { display: inline-flex; align-items: center; gap: 0.45rem; }
+
+/* (sprint 75) SQL Workshop: main tools as tabs and a More menu (no horizontal scrolling); the Object Browser */
+.sw-tabs { overflow: visible; flex-wrap: wrap; }
+.sw-more { position: relative; }
+.sw-more > summary { list-style: none; cursor: pointer; }
+.sw-more > summary::-webkit-details-marker { display: none; }
+.sw-more .menu-panel a[aria-current] { font-weight: 600; }
+.ob-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; }
+.ob-schema { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ob-schema .label { margin: 0; }
+.ob-create > summary { list-style: none; }
+.ob-create > summary::-webkit-details-marker { display: none; }
+.ob-filter { padding: 0.5rem; }
+.ob-filter input { width: 100%; }
+.ob-folder > summary { display: flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.6rem; cursor: pointer; font-weight: 600; list-style: none; }
+.ob-folder > summary::-webkit-details-marker { display: none; }
+.ob-folder > summary .kind { margin-left: auto; }
+.ob-folder .tree { padding-left: 0.75rem; }
+.ob-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+.ob-title { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; overflow-wrap: anywhere; }
+.ob-actions { display: grid; gap: 0.6rem; margin-top: 1rem; }
+.ob-action { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ob-action input:not([type=checkbox]) { width: 10rem; }

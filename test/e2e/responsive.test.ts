@@ -682,7 +682,15 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           })),
         ),
         sql: '/builder/sql',
-        objects: '/builder/sql/objects?o=hr.emp',
+        objects: '/builder/sql/objects?schema=hr&k=table&o=hr.emp',
+        objects_ddl: '/builder/sql/objects?schema=hr&k=table&o=hr.emp&tab=ddl',
+        objects_home: '/builder/sql/objects?schema=hr&q=emp',
+        // (sprint 74) Shared Components, a type's list, Settings tabs, Breadcrumbs, the app home's icon view
+        shared_grid: `/builder/apps/${appId}/shared`,
+        shared_list: `/builder/apps/${appId}/shared?type=nav_entry`,
+        settings_security: `/builder/apps/${appId}/settings?tab=security`,
+        breadcrumbs: `/builder/apps/${appId}/breadcrumbs`,
+        app_icons: `/builder/apps/${appId}?view=icons`,
         load: '/builder/sql/load',
         unload: '/builder/sql/unload',
         unload_table: '/builder/sql/unload?table=hr.emp',
@@ -801,6 +809,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const res = await page.goto(`${base}${url}`);
           assert.equal(res?.status(), 200, name);
           await check(page, `builder-${name}`, vp);
+          // (sprint 75) the SQL Workshop's tabs never scroll sideways (main tabs and a More menu)
+          if (await page.locator('.sw-tabs').count())
+            assert.ok(await page.locator('.sw-tabs').evaluate((el) => el.scrollWidth <= el.clientWidth + 1), `${name}: the SQL Workshop tabs fit`);
         }
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);

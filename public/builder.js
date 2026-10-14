@@ -476,7 +476,7 @@
   // ---------------------------------------------------------------- small things
   // a select that navigates (the toolbar's page switcher)
   document.addEventListener('change', (e) => {
-    if (e.target.matches?.('select[data-autosubmit]')) e.target.form?.submit();
+    if (e.target.matches?.('select[data-autosubmit], input[type=checkbox][data-autosubmit]')) e.target.form?.submit();
   });
 
   // a search box that filters a list as you type (the App Builder's applications);
@@ -920,3 +920,22 @@ document.querySelectorAll('input[data-filter-rows]').forEach((el) => {
     document.querySelectorAll('.auth-part').forEach((p) => { p.hidden = p.dataset.auth !== auth.value; });
   });
 })();
+
+// (sprint 75) the Object Browser's filter: objects whose name holds the text; folders without any are hidden
+document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
+  const tree = document.getElementById(el.dataset.filterTree);
+  if (!tree) return;
+  el.addEventListener('input', () => {
+    const q = el.value.trim().toLowerCase();
+    tree.querySelectorAll('details.ob-folder').forEach((folder) => {
+      let n = 0;
+      folder.querySelectorAll('li').forEach((li) => {
+        const hit = !q || li.textContent.toLowerCase().includes(q);
+        li.hidden = !hit;
+        if (hit) n++;
+      });
+      folder.hidden = !!q && n === 0;
+      if (q && n) folder.open = true;
+    });
+  });
+});

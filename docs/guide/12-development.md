@@ -210,7 +210,8 @@ src/
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
-    sql.ts                 SQL Workshop: SQL commands, object browser
+    sql.ts                 SQL Workshop: the home and SQL commands (templates and drafts to review)
+    object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
     scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
     querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js

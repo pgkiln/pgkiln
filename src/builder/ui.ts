@@ -249,9 +249,18 @@ export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'o
 export const workshopTabs = (active: WorkshopTab) => {
   const tab = (key: WorkshopTab, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${BASE}${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
-  return html`<nav class="ide-tabs u-mb1" aria-label="SQL Workshop">
-    ${tab('home', '/sql', 'home', 'Home')}${tab('sql', '/sql/commands', 'code', 'SQL Commands')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('quicksql', '/sql/quick', 'bolt', 'Quick SQL')}
-    ${tab('query', '/sql/query', 'filter', 'Query Builder')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('load', '/sql/load', 'upload', 'Load Data')}${tab('unload', '/sql/unload', 'download', 'Unload Data')}${tab('sample', '/sql/sample-data', 'layers', 'Sample Data')}${tab('ddl', '/sql/ddl', 'file', 'DDL')}${tab('compare', '/sql/compare', 'layers', 'Compare')}${tab('ai', '/sql/ai', 'bolt', 'AI')}${tab('utilities', '/sql/utilities', 'wrench', 'Utilities')}</nav>`;
+  // (sprint 75) the main tools as tabs, the others in a More menu (the open one is a tab too), so the strip never scrolls
+  const more: [WorkshopTab, string, string, string][] = [
+    ['quicksql', '/sql/quick', 'bolt', 'Quick SQL'], ['query', '/sql/query', 'filter', 'Query Builder'], ['load', '/sql/load', 'upload', 'Load Data'],
+    ['unload', '/sql/unload', 'download', 'Unload Data'], ['sample', '/sql/sample-data', 'layers', 'Sample Data'], ['ddl', '/sql/ddl', 'file', 'DDL'],
+    ['compare', '/sql/compare', 'layers', 'Compare'], ['ai', '/sql/ai', 'bolt', 'AI'],
+  ];
+  const open = more.find(([k]) => k === active);
+  return html`<nav class="ide-tabs sw-tabs u-mb1" aria-label="SQL Workshop">
+    ${tab('home', '/sql', 'home', 'Home')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('sql', '/sql/commands', 'code', 'SQL Commands')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('utilities', '/sql/utilities', 'wrench', 'Utilities')}
+    ${open ? tab(...open) : ''}
+    <details class="menu sw-more"><summary class="ide-tab">${icon('chevron-down')}<span>More</span></summary>
+      <div class="menu-panel align-right"><div class="menu-section menu-links">${more.map(([k, href, ic, label]) => html`<a href="${BASE}${href}"${k === active ? raw(' aria-current="page"') : ''}>${icon(ic)} ${label}</a>`)}</div></div></details></nav>`;
 };
 
 /** Number of app tile colours (.app-color-0 … -7 in app.css). */
