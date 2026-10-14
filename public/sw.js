@@ -1,6 +1,7 @@
 // pgkiln service worker for one application (served as /a/<alias>/sw.js with PGKILN = {base, offlinePages, offlineSubmit, version}).
 //   static files (app.css, app.js, icons) and the offline page: cached at install, served from the cache by their
 //   exact URL; pages ask for them with ?v=<version> (static-version.ts), so a changed file is fetched anew
+//   (offline, the cached copy of another version)
 //   pages (navigations): network first; offline, the cached copy (only when the app keeps pages) or the offline page
 //   signing in or out empties the page cache, so the next person on the device doesn't see them
 //   push notifications (migration 074): shown as they arrive, a click opens their page of the app;
@@ -40,8 +41,10 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   if (url.pathname.startsWith('/static/')) {
-    // the exact URL: another ?v= (a changed file) is not the cached copy
-    event.respondWith(caches.match(req, { cacheName: STATIC }).then((hit) => hit || fetch(req)));
+    // the exact URL: another ?v= (a changed file) is not the cached copy. Offline, the copy under another ?v= is
+    // better than none: a page kept on the device under an older version still gets its script and styles
+    const anyVersion = async () => (await caches.match(req, { cacheName: STATIC, ignoreSearch: true })) || Response.error();
+    event.respondWith(caches.match(req, { cacheName: STATIC }).then((hit) => hit || fetch(req).catch(anyVersion)));
     return;
   }
 

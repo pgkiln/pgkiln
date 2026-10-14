@@ -80,8 +80,33 @@ describe('Progressive Web App', () => {
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).outlineColor), 'rgb(1, 2, 3)');
     } finally {
       writeFileSync(css, before);
+      // the edited version is handed out for up to a second more: the next test's service worker must not get it
+      await new Promise((r) => setTimeout(r, 1100));
       await context.close();
     }
+  });
+
+  test('offline, a kept page whose static files have another version still gets them from the device', async () => {
+    const context = await browser.newContext();
+    const page = await signedIn(context);
+    await controlled(page);
+    await page.goto(`${base}/a/hr/2`); // visited online: kept
+    // the device has app.js and app.css only under an older version (pgkiln was updated since)
+    await page.evaluate(async () => {
+      for (const name of (await caches.keys()).filter((k) => k.startsWith('pgkiln-static-'))) {
+        const cache = await caches.open(name);
+        for (const req of await cache.keys()) {
+          const url = new URL(req.url);
+          if (!/^\/static\/app\.(js|css)$/.test(url.pathname)) continue;
+          await cache.put(`${url.pathname}?v=older`, (await cache.match(req))!);
+          await cache.delete(req);
+        }
+      }
+    });
+    await context.setOffline(true);
+    await page.goto(`${base}/a/hr/2`);
+    await page.locator('.offline-banner').waitFor(); // app.js ran
+    await context.close();
   });
 
   test('offline: visited pages from the device with a notice, others get the offline page', async () => {
