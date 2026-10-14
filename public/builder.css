@@ -1010,3 +1010,5 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .pe-goto { font-size: 12px; max-width: 12rem; }
 .pe-options-open .btn { justify-self: start; }
 .pd-goto-no input { width: 5.5em; font-variant-numeric: tabular-nums; }
+/* on narrower screens the previous / next arrows and the page list do it */
+@media (max-width: 1279px) { .pd-goto-no { display: none; } }

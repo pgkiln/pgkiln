@@ -196,9 +196,18 @@ describe('page designer interaction (desktop)', () => {
     const facets = await owner.one(`select id, position from meta.region where page_id = $1 and type = 'facets'`, [ids.p]);
     assert.equal(facets.position, 'left');
     // a button dragged onto the Next position of a region (empty positions show while dragging)
+    // (the empty position shows only once a drag has started, so the drag events are sent directly)
     await Promise.all([
       page.waitForURL(/c=button-/),
-      page.dragAndDrop(`.pd-chip[data-kind="button"]`, `.pd-slot[data-region="${ids.r2}"][data-slot="next"]`),
+      page.evaluate((region) => {
+        const dt = new DataTransfer();
+        const chip = document.querySelector('.pd-chip[data-kind="button"]')!;
+        chip.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+        const next = document.querySelector(`.pd-slot[data-region="${region}"][data-slot="next"]`) as HTMLElement;
+        if (getComputedStyle(next).display === 'none') throw new Error('the Next position does not show while dragging');
+        next.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        next.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      }, ids.r2),
     ]);
     assert.equal((await owner.one(`select slot from meta.button where page_id = $1 and name = 'SAVE'`, [ids.p])).slot, 'next');
     // PD-2: the tree groups by position; right-click opens the menu; Duplicate copies the region
@@ -248,7 +257,7 @@ describe('page designer interaction (desktop)', () => {
     const start = await label();
     await page.keyboard.press('ArrowDown');
     assert.notEqual(await label(), start);
-    const regions = page.locator('#pd-l-rendering .pd-folder', { hasText: 'Regions' });
+    const regions = page.locator('#pd-l-rendering .pd-folder', { hasText: /^Body$/ }); // (sprint 77) regions by display position
     await regions.focus();
     await page.keyboard.press('ArrowLeft');
     assert.equal(await regions.getAttribute('aria-expanded'), 'false');
