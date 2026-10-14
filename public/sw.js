@@ -43,11 +43,8 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/static/')) {
     // the exact URL: another ?v= (a changed file) is not the cached copy. Offline, the copy under another ?v= is
     // better than none: a page kept on the device under an older version still gets its script and styles
-    event.respondWith(
-      caches
-        .match(req, { cacheName: STATIC })
-        .then((hit) => hit || fetch(req).catch(async () => (await caches.match(req, { cacheName: STATIC, ignoreSearch: true })) || Response.error())),
-    );
+    const anyVersion = async () => (await caches.match(req, { cacheName: STATIC, ignoreSearch: true })) || Response.error();
+    event.respondWith(caches.match(req, { cacheName: STATIC }).then((hit) => hit || fetch(req).catch(anyVersion)));
     return;
   }
 
