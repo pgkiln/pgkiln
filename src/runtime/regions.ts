@@ -140,8 +140,15 @@ async function renderChart(ctx: PageContext, r: Region) {
   }
   if (!res.rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
   const kind = CHART_KINDS.includes(r.config.kind) ? r.config.kind : 'bar';
-  return html`${renderChartBody(kind, r.title ?? '', res.rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t, {
-    ...(await chartLink(ctx, r, res.rows, res.fields)),
+  const rows = topRows(r, kind, res.rows, ctx.locale.t('chart.other'));
+  const drill: { hidden?: string[]; link?: (i: number, si: number | null) => Raw | null } = await chartLink(ctx, r, rows, res.fields);
+  // the "Other" row of a top-N chart has no drill-down
+  if (drill.link && rows !== res.rows) {
+    const inner = drill.link;
+    drill.link = (i, si) => (i === rows.length - 1 ? null : inner(i, si));
+  }
+  return html`${renderChartBody(kind, r.title ?? '', rows, res.fields, ctx.css, ctx.locale.lang, ctx.locale.t, {
+    ...drill,
     gauge: gaugeConfig(r.config.gauge),
     ...chartFormat(ctx, r),
     // the query's timestamps are in the session's time zone: so is "today"
@@ -149,6 +156,22 @@ async function renderChart(ctx: PageContext, r: Region) {
     // (sprint 69) tasks this user may drag
     ...(kind === 'gantt' && (await ganttEditable(ctx, r)) ? { edit: { region: r.id, snap: r.config.gantt_snap === 'hour' || r.config.gantt_snap === 'day' ? r.config.gantt_snap : undefined } } : {}),
   })}${firstRows(ctx, res)}`;
+}
+
+/** Charts that may show the top rows and an "Other" row (bar, pie, donut, funnel, column). */
+const TOP_KINDS = new Set(['bar', 'column', 'donut', 'pie', 'funnel']);
+
+/**
+ * (097) {"top": 10}: the first top-1 rows and one "Other" row with the sums of
+ * the rest (the query orders the rows, largest first). Other charts, and
+ * charts with no more rows than that, keep their rows.
+ */
+export function topRows(r: Region, kind: string, rows: unknown[][], other: string): unknown[][] {
+  const top = Number(r.config.top);
+  if (!Number.isInteger(top) || top < 2 || top > 100 || !TOP_KINDS.has(kind) || rows.length <= top) return rows;
+  const rest = rows.slice(top - 1);
+  const sums = (rows[0] ?? []).map((_, ci) => (ci === 0 ? other : rest.reduce((n: number, row) => n + (Number(row[ci]) || 0), 0)));
+  return [...rows.slice(0, top - 1), sums];
 }
 
 /** {"format_mask": "FML999G990"}: the chart's values (labels, tips, data table) with a number format mask. */

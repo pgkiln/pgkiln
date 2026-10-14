@@ -112,7 +112,8 @@ async function navTree(ctx: PageContext, topNav = false) {
       out.push(
         children.length
           ? html`<li><details${inTrail && !topNav ? raw(' open') : ''}><summary class="${inTrail ? 'in-trail' : null}">${label}</summary><ul>${children}</ul></details></li>`
-          : html`<li><a href="${ctx.base}/${e.target_page}"${active ? raw(' aria-current="page"') : inTrail ? raw(' class="in-trail"') : ''}>${label}</a></li>`,
+          : // (097) every page sits below Home: the home entry is only marked when it is the current page
+            html`<li><a href="${ctx.base}/${e.target_page}"${active ? raw(' aria-current="page"') : inTrail && e.target_page !== ctx.app.home_page ? raw(' class="in-trail"') : ''}>${label}</a></li>`,
       );
     }
     return out;

@@ -90,10 +90,11 @@ describe('defaults from the catalog', () => {
     assert.deepEqual(facets.facets, ['category_id', 'in_stock', 'released', 'price']);
     assert.ok(!facets.columns.includes('picture'), 'no binary columns in the report');
     const md = await defaults('master_detail', `${SCHEMA}.category`);
-    assert.deepEqual([md.detail, md.detail_column, md.label], [`${SCHEMA}.product`, 'category_id', 'Category and Product']);
+    assert.deepEqual([md.detail, md.detail_column, md.label], [`${SCHEMA}.product`, 'category_id', 'Categories and Products']);
     const form = await defaults('form', `${SCHEMA}.product`);
     assert.equal(form.nav, false);
-    assert.ok(!form.columns.includes('picture'));
+    // (097) a bytea column is a file item in a form
+    assert.ok(form.columns.includes('picture'));
     await assert.rejects(defaults('nonsense', `${SCHEMA}.product`), /unknown page type/);
   });
 });
@@ -108,7 +109,7 @@ describe('generate_page', () => {
     const form = await regions(11);
     assert.equal(form[0].type, 'form');
     const nav = (await owner.query('select label, target_page from meta.nav_entry where app_id = $1', [appId])).rows;
-    assert.deepEqual(nav, [{ label: 'Product', target_page: 10 }]);
+    assert.deepEqual(nav, [{ label: 'Products', target_page: 10 }]);
     await publish();
     const v = visitor();
     const page = (await v.get(`/a/${alias}/10`)).body;
@@ -118,7 +119,8 @@ describe('generate_page', () => {
     // the generated modal form creates a row
     const f = (await v.get(`/a/${alias}/11`)).body;
     assert.match(f, /name="P11_CATEGORY_ID"/);
-    assert.doesNotMatch(f, /P11_PICTURE/, 'no binary columns in the form');
+    // (097) a bytea column is one file upload item
+    assert.match(f, /<input type="file" id="P11_PICTURE" name="P11_PICTURE" accept="image\/\*"/);
     const res = await v.post(`/a/${alias}/11`, { ...formFields(f), P11_NAME: 'Drill', P11_CATEGORY_ID: '1', P11_PRICE: '99', __request: 'CREATE' });
     assert.ok([200, 303].includes(res.statusCode), res.body.slice(0, 300));
     assert.equal((await owner.one(`select count(*)::int as n from ${SCHEMA}.product where name = 'Drill' and price = 99`)).n, 1);

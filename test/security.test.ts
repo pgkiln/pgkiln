@@ -7654,3 +7654,64 @@ describe('sprint 69 gantt drag and drop', () => {
     }
   });
 });
+
+describe('sprint 71 generated applications', () => {
+  const ALIAS = 'sec71-gen';
+  const SCHEMA = 'sec71';
+  const ROLE = 'pgkiln_sec71';
+  let id: number;
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`).catch(() => undefined);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    // names that would break SQL or HTML unless quoted and escaped
+    await owner.query(`
+      create schema ${SCHEMA};
+      create table ${SCHEMA}."par""ent" ("k'ey" int primary key, "na<b>me" text);
+      create table ${SCHEMA}.child (id int primary key, "p""ref" int references ${SCHEMA}."par""ent", "doc;drop" bytea, "doc;drop_name" text, "doc;drop_updated" timestamptz);
+      comment on column ${SCHEMA}.child.id is '<img src=x onerror=alert(1)>';
+      insert into ${SCHEMA}."par""ent" values (1, '<script>alert(1)</script>');
+      insert into ${SCHEMA}.child values (5, 1, null, null, null);
+      grant usage on schema ${SCHEMA} to ${ROLE};
+      grant select, insert, update, delete on all tables in schema ${SCHEMA} to ${ROLE};
+    `);
+    id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec71', 'none', $2) returning id`, [ALIAS, ROLE])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false)`, [id]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [id]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+
+  test('the new wizard functions are not granted to application roles', async () => {
+    for (const fn of ['meta.wizard_report(regclass, text[])', 'meta.wizard_report_form(meta.app, regclass, int, int, text, text)', 'meta.wizard_files(regclass)',
+      'meta.wizard_column_label(regclass, text)', 'meta.wizard_table_label(regclass, boolean)'])
+      for (const role of ['pgkiln_runtime', 'hr_app'])
+        assert.equal((await owner.one('select has_function_privilege($1, $2, \'execute\') as ok', [role, fn])).ok, false, `${role} ${fn}`);
+  });
+
+  test('odd names stay quoted in the generated SQL; labels and values are escaped on the page', async () => {
+    await owner.query('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb)', [ALIAS, 'report_form', `${SCHEMA}.child`, 10, '{"form_page": 11}']);
+    const r = await owner.one(`select r.source, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 10`, [id]);
+    assert.match(r.source, /left join sec71\."par""ent" p1 on p1\."k'ey" = t\."p""ref"/);
+    assert.doesNotMatch(r.source, /doc;drop/, 'the file columns are left out');
+    const file = await owner.one(`select i.config from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and p.page_no = 11 and i.type = 'file'`, [id]);
+    assert.deepEqual(file.config, { filename_column: 'doc;drop_name', updated_column: 'doc;drop_updated' });
+    await owner.query('update meta.page set requires_auth = false where app_id = $1', [id]);
+    const res = await new Browser().get(`/a/${ALIAS}/10`);
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /<script>alert|<img src=x/);
+    assert.match(res.body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  });
+
+  test('chart "top": only a whole number from 2 to 100 changes the rows', async () => {
+    const { topRows } = await import('../src/runtime/regions.ts');
+    const rows = [['a', 3], ['b', 2], ['c', 1]];
+    for (const top of ['2; drop', '1e9', null, {}, 1000]) assert.equal(topRows({ config: { top } } as never, 'bar', rows, 'Other'), rows, String(top));
+  });
+});

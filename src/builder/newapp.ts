@@ -4,6 +4,38 @@ import { passwordProblem } from '../accounts.ts';
 import { replaceApp } from '../cli/replace.ts';
 import { placeApp } from './workspaces.ts';
 import { NEW_APP_BASE } from '../runtime/styles.ts';
+import { isIcon } from '../icons.ts';
+
+/** (097) The icon of a new application's home page when the developer chose none. */
+export const DEFAULT_APP_ICON = 'layers';
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
+/**
+ * (097) A card per page of the navigation menu on the home page (a static list
+ * HOME_PAGES shown by a list region with the cards template), after the pages
+ * of a new application were generated. Does nothing when the application has
+ * no other pages, or the list exists already.
+ */
+export async function addHomeCards(c: Client, appId: number) {
+  const entries = (
+    await c.query<{ label: string; icon: string | null; target_page: number }>(
+      `select e.label, e.icon, e.target_page from meta.nav_entry e join meta.app a on a.id = e.app_id
+        where e.app_id = $1 and e.parent_id is null and e.target_page is not null and e.target_page <> a.home_page
+        order by e.seq, e.id`,
+      [appId],
+    )
+  ).rows;
+  if (!entries.length) return;
+  const made = await c.query(`insert into meta.list (app_id, name, description) values ($1, 'HOME_PAGES', 'The cards of the home page') on conflict (app_id, name) do nothing`, [appId]);
+  if (!made.rowCount) return;
+  for (const [n, e] of entries.entries())
+    await c.query('insert into meta.list_entry (app_id, list_name, seq, label, icon, target_page) values ($1, $2, $3, $4, $5, $6)', [appId, 'HOME_PAGES', (n + 1) * 10, e.label, e.icon, e.target_page]);
+  await c.query(
+    `insert into meta.region (page_id, seq, title, type, template, config)
+     select p.id, 20, 'Pages', 'list', 'plain', '{"list": "HOME_PAGES", "template": "cards"}' from meta.page p join meta.app a on a.id = p.app_id and p.page_no = a.home_page where a.id = $1`,
+    [appId],
+  );
+}
 
 // Creating an application (Create → blank application, and Create → from a
 // file): the parsing schema, a database role app_<alias> that can use only
@@ -18,6 +50,10 @@ export interface NewAppInput {
   authentication?: string;
   admin_user?: string;
   admin_password?: string;
+  /** (097) a line about the application, shown on the home page */
+  description?: string;
+  /** (097) the application's icon (a name from icons.svg) */
+  icon?: string;
 }
 
 export interface CheckedApp {
@@ -31,6 +67,10 @@ export interface CheckedApp {
   adminPassword: string | null;
   /** the workspace that gets the application (the developer's current one) */
   workspaceId: number;
+  /** (097) shown under the name on the home page */
+  description?: string | null;
+  /** (097) the home page's icon */
+  icon?: string | null;
 }
 
 /** pgkiln's and the system's schemas never become an application's parsing schema. */
@@ -56,7 +96,10 @@ export async function checkNewApp(b: NewAppInput, workspaceId: number): Promise<
     if (problem) throw new Error(problem);
     adminPassword = known ? null : (b.admin_password ?? '');
   }
-  return { name, alias, schema, role: `app_${alias.replace(/-/g, '_')}`, authentication, adminUser, adminPassword, workspaceId };
+  const description = (b.description ?? '').trim().slice(0, 300) || null;
+  const appIcon = (b.icon ?? '').trim();
+  if (appIcon && !isIcon(appIcon)) throw new Error('Choose one of the icons in the list.');
+  return { name, alias, schema, role: `app_${alias.replace(/-/g, '_')}`, authentication, adminUser, adminPassword, workspaceId, description, icon: appIcon || null };
 }
 
 /** Create the schema, the role and the application (inside the caller's owner transaction). */
@@ -98,7 +141,10 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   const appId = r.rows[0].id as number;
   await placeApp(c, appId, a.workspaceId);
   const p = await c.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appId]);
-  await c.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Welcome', 'static', '<p>Hello, &APP_USER.! Edit this page in the builder.</p>')`, [p.rows[0].id]);
+  // (097) a hero with the application's icon, name and description (no developer wording for end users)
+  await c.query(`insert into meta.region (page_id, seq, title, type, source, template, config) values ($1, 10, $2, 'static', $3, 'hero', $4)`, [
+    p.rows[0].id, a.name, a.description ? `<p>${escapeHtml(a.description)}</p>` : '', { icon: a.icon ?? DEFAULT_APP_ICON },
+  ]);
   await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page) values ($1, 1, 'Home', 'home', 1)`, [appId]);
   await c.query(`insert into meta.authz_scheme (app_id, name, type, value, error_message) values ($1, 'ADMIN', 'role', 'admin', 'Only administrators can access this page.')`, [appId]);
   let existingAccount = false;

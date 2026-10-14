@@ -259,6 +259,9 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .region-hero { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem 1.5rem; padding: 2rem 1.75rem; border-radius: var(--radius);
   background: var(--accent-soft); color: var(--text); }
 .region-hero-icon .icon { width: 3rem; height: 3rem; color: var(--accent); }
+/* (097) the generated home page: the icon on a tile in the accent colour */
+.region-hero-icon { display: grid; place-items: center; width: 4.5rem; height: 4.5rem; border-radius: calc(var(--radius) + 4px); background: var(--accent); }
+.region-hero-icon .icon { width: 2.4rem; height: 2.4rem; color: var(--accent-text, #fff); }
 .region-hero-text h2 { font-size: 1.75rem; margin: 0 0 0.35rem; }
 .region-hero-buttons, .region-title-buttons, .region-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 @media (max-width: 640px) { .region-hero { grid-template-columns: 1fr; padding: 1.25rem 1rem; } }
@@ -401,7 +404,11 @@ details.btn-menu[open] > summary .btn-caret { transform: rotate(-90deg); }
 table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .report th, .report td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .report tbody tr:last-child td { border-bottom: 0; }
-.report th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); background: var(--surface-2); font-weight: 650; }
+.report th { font-size: 0.85rem; color: var(--muted); background: var(--surface-2); font-weight: 650; }
+/* (097) the edit link of a row: a pencil in a narrow first column */
+.report th.row-edit, .report td.row-edit { width: 2.25rem; text-align: center; padding-left: 0.4rem; padding-right: 0.4rem; }
+.report td.row-edit a { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 6px; color: var(--accent); }
+.report td.row-edit a:hover, .report td.row-edit a:focus-visible { background: var(--accent-soft); }
 .report th a { color: inherit; text-decoration: none; display: inline-flex; gap: 0.3rem; }
 .report th a:hover { color: var(--accent); }
 .sort-ind { font-size: 0.7em; }
@@ -446,7 +453,18 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
 
 /* horizontal bars */
-.chart-bar { display: flex; flex-direction: column; gap: 0.45rem; }
+.chart-bar { display: flex; flex-direction: column; gap: 0; }
+.chart-bar > .bar-row { padding: 0.22rem 0; }
+/* (097) gridlines behind the bars and a value axis under them */
+.bar-stack { position: relative; }
+.bar-grid { position: absolute; inset: -0.22rem 0; pointer-events: none; }
+.bar-gridline { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--chart-grid); }
+.bar-gridline.baseline { border-left-color: var(--chart-axis); }
+.bar-stack > .bar-track { position: relative; }
+.bar-axis { font-size: 0.72rem; color: var(--muted); }
+.bar-ticks { position: relative; height: 1.1rem; }
+.bar-ticks > span { position: absolute; top: 0.15rem; transform: translateX(-50%); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar-ticks > span:first-child { transform: none; }
 .bar-row { display: grid; grid-template-columns: minmax(70px, 30%) 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.88rem; }
 .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .bar-stack { display: flex; flex-direction: column; gap: 2px; }
@@ -842,7 +860,9 @@ pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--sur
     display: grid; grid-template-columns: minmax(90px, 38%) minmax(0, 1fr); gap: 0.75rem;
     border: 0; padding: 0.3rem 0.8rem; white-space: normal; max-width: none; text-align: left !important; overflow-wrap: anywhere;
   }
-  .report-reflow td::before { content: attr(data-label); font-size: 0.78rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+  .report-reflow td::before { content: attr(data-label); font-size: 0.8rem; font-weight: 650; color: var(--muted); }
+  .report-reflow td.row-edit { width: auto; text-align: left; }
+  .report-reflow td.row-edit::before { content: none; }
   .report-reflow td.empty { display: block; }
   .report-reflow td.empty::before { content: none; }
   .report-reflow td.pre { white-space: pre-wrap; }

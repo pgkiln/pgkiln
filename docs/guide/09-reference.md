@@ -274,11 +274,14 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 
 | Function | Description |
 |---|---|
-| `meta.generate_crud(app, table, report_page, form_page, label default null, icon default 'table')` | Report page + modal form page + menu entry for a table |
+| `meta.generate_crud(app, table, report_page, form_page, label default null, icon default 'table')` | Report page + modal form page + menu entry for a table, with the column names as labels (kept as it was for existing scripts; `meta.generate_page` *report_form* makes the labelled pages of the wizards) |
 | `meta.generate_grid(app, table, page, label default null, icon default 'grid')` | Interactive grid page + menu entry |
 | `meta.generate_page(app, kind, table, page, options default '{}')` | The create page wizards: `kind` is `form`, `cards`, `calendar`, `chart`, `map`, `facets`, `master_detail` (or `report_form`, `grid`). Options left out take the defaults of `meta.wizard_defaults`; JSON `null` means none. Returns the new page's id (below) |
 | `meta.wizard_defaults(kind, table)` | The options a wizard proposes for a table, from the catalog |
 | `meta.wizard_catalog(table)` | The columns as the wizards see them: kind (`text`, `number`, `date`, `timestamp`, `boolean`, `point`, `geometry`, `binary`, `other`), key, unique, foreign key and the parent's display column |
+| `meta.wizard_label(name)`, `meta.wizard_table_label(table, plural default true)`, `meta.wizard_column_label(table, column)` | (097) The labels of the wizards: `hiredate` → *Hire Date*, `hr.emp` → *Employees* / *Employee*, `deptno` → *Department*; short comments win ([what the generated pages look like](03-builder.md#what-the-generated-pages-look-like)) |
+| `meta.wizard_report(table, columns default null)` | (097) A report on a table as the wizards make it: `{"source", "hidden", "headings", "formats"}` (foreign keys joined to their parent's display column) |
+| `meta.wizard_files(table)` | (097) The `bytea` columns and the columns holding their file name, mime type, size and change time |
 | `meta.export_app(alias)` | The application as JSON (`pgkiln/2` format) |
 | `meta.import_app(json, alias default null)` | Import an export, optionally under a new alias; returns the new app id |
 | `meta.hash_password(text)` | A bcrypt hash for `meta.app_user.password_hash` / `meta.developer.password_hash` |
@@ -293,7 +296,7 @@ Options of `meta.generate_page` (all optional; column names must be columns of t
 
 | Kind | Options |
 |---|---|
-| all | `label` (page name and menu entry), `icon`, `nav` (add a navigation entry; default true, false for `form`) |
+| all | `label` (page name and menu entry; default the table's plural label, singular for `form`), `form_label` (the title of a form page; default the singular label), `icon`, `nav` (add a navigation entry; default true, false for `form`) |
 | `form` | `columns` (array), `mode` (`normal` or `modal`), `return_page` |
 | `cards` | `title`, `subtitle`, `body`, `badge`, `form_page` |
 | `calendar` | `start`, `end`, `title`, `drag` (boolean), `form_page` |

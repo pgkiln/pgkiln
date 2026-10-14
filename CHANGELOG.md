@@ -5,6 +5,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 71: generated applications read like APEX's (from a comparison of a pgkiln application made from existing
+tables with one made by APEX 26.2 on the same HR data).
+
+### Added
+- **Human labels in generated applications** (migration 097): `meta.wizard_label` splits `snake_case` and
+  `camelCase`, recognises run-together words (`hiredate` → *Hire Date*) and expands common abbreviations (`emp`,
+  `dept`, `sal`, `comm`, `mgr`, `no`, `qty`, `desc`, `pct`, `crm`, `id` …). New `meta.wizard_table_label` and
+  `meta.wizard_column_label` prefer a short `COMMENT ON TABLE`/`COLUMN` (a longer column comment becomes the item's
+  help), drop a foreign key's `_id`/`no` suffix and a leading table letter (`ename` → *Name*). Report pages and menu
+  entries are plural (*Employees*), forms and dialog titles singular (*Employee*); report headings are Title Case.
+- **Foreign keys by name in generated reports**: `meta.wizard_report` joins each foreign key to its parent's display
+  column (the key stays hidden for filters); the wizards' report and form pages (`meta.generate_page` *report_form*,
+  new `meta.wizard_report_form`) use it, with headings and number format masks.
+- **File columns**: a `bytea` column is one file upload item bound to the columns that go with it (`<col>_name`,
+  `<col>_mime`, `<col>_size`, `<col>_updated`, or `filename`/`mime_type`); reports leave them out
+  (`meta.wizard_files`). File items take `size_column` (also for files in the database) and `updated_column`.
+- **Number format masks** for generated number columns and items (`999G999G999G990D00`): the same notation in the
+  report and the form.
+- **A pencil per report row**: `{"link": {"icon": true}}` gives a report an edit column of its own; the key is then
+  plain text.
+- **A Home page** for new applications: a hero with the application's icon and name (no builder wording), and a card
+  per page of the menu (list `HOME_PAGES`).
+- **Charts**: horizontal bars get a value axis with gridlines; `"top": N` shows the N-1 largest rows and an *Other*
+  row; generated charts label rows without a value *(none)* and are titled *Employees by Manager*.
+
+### Changed
+- The Dashboard of a generated application comes right after Home in the menu. Tables with row-level security are
+  left out of it (their charts would be empty for the application's role), and the result page says so.
+- The menu marks the Home entry only on the home page (it was highlighted on every page below it); a long menu
+  scrolls to the current page's entry.
+- Report headings are no longer upper case (`text-transform`); the heading text is shown as it is.
+- `meta.generate_page` and the page wizards: `form_label` option; page labels from `meta.wizard_table_label`.
+  `meta.generate_crud` is unchanged.
+
 ## [0.41.0] - 2026-10-14
 
 Sprint 67: REST source catalogs and a workspace's export and import. Sprint 68: the Data Reporter's welcome

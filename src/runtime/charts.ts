@@ -173,18 +173,23 @@ const tip = (label: string, series: Series[], i: number) =>
 // ---------------------------------------------------------------- bar (horizontal)
 function bar(labels: string[], series: Series[]) {
   const all = series.flatMap((s) => s.values);
-  const max = Math.max(...all.map(Math.abs), 1);
+  // (097) a value axis with gridlines: bars are measured against a nice scale from zero
+  const scale = niceScale(0, Math.max(...all.map(Math.abs), 1));
+  const max = scale.hi || 1;
+  const ticks = scale.ticks.filter((t) => t >= 0 && t <= max);
+  const at = (t: number) => css.cls(`left:${pct((t / max) * 100)}`);
+  const grid = html`<span class="bar-grid" aria-hidden="true">${ticks.map((t) => html`<span class="bar-gridline${t === 0 ? ' baseline' : ''} ${at(t)}"></span>`)}</span>`;
   const multi = series.length > 1;
   return html`<div class="chart-bar${multi ? ' multi' : ''}">${labels.map((l, i) => {
     const inner = html`<span class="bar-label" title="${l}">${l}</span>
-      <span class="bar-stack">${series.map((s, si) => {
+      <span class="bar-stack">${grid}${series.map((s, si) => {
         const b = html`<span class="bar s${si + 1} ${css.cls(`width:${pct((Math.abs(s.values[i]) / max) * 100)}`)}"></span>`;
         // several series: each bar is its own link
         return multi && link ? mark('span', i, si, 'bar-track', `${l} · ${s.name}: ${fmt.format(s.values[i])}`, b, false) : html`<span class="bar-track">${b}</span>`;
       })}</span>
       <span class="bar-value">${multi ? '' : fmt.format(series[0].values[i])}</span>`;
     return !multi && link ? mark('div', i, 0, 'bar-row', tip(l, series, i), inner) : html`<div class="bar-row" data-tip="${tip(l, series, i)}">${inner}</div>`;
-  })}</div>`;
+  })}<div class="bar-row bar-axis" aria-hidden="true"><span></span><span class="bar-ticks">${ticks.map((t) => html`<span class="${at(t)}">${compact.format(t)}</span>`)}</span><span></span></div></div>`;
 }
 
 // ---------------------------------------------------------------- shared y axis
