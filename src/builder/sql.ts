@@ -12,6 +12,7 @@ import { queryBuilderRoutes } from './querybuilder.ts';
 import { unloadRoutes } from './unload.ts';
 import { ddlToolRoutes } from './ddl-tools.ts';
 import { sqlUtilityRoutes } from './sql-utilities.ts';
+import { createTemplate, objectBrowserRoutes } from './object-browser.ts';
 import { currentWorkspace, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection; an isolated
@@ -121,6 +122,16 @@ export async function sqlRoutes(app: FastifyInstance) {
       if (r) text = r.detail;
     }
     const schema = await sessionSchema(s, db);
+    if (req.method === 'GET') {
+      // (sprint 75) a statement to review: from the Object Browser's column actions, or a CREATE template
+      if (typeof s.state.__SQLDRAFT === 'string') {
+        text = s.state.__SQLDRAFT;
+        delete s.state.__SQLDRAFT;
+      } else if (typeof req.query?.template === 'string') {
+        const into = typeof req.query.schema === 'string' && (await usableSchemas(db)).includes(req.query.schema) ? req.query.schema : (schema ?? 'public');
+        text = createTemplate(req.query.template, into) ?? text;
+      }
+    }
     if (req.method === 'POST' && sql.trim()) {
       const started = performance.now();
       try {
@@ -173,69 +184,6 @@ export async function sqlRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/sql`);
   });
 
-  app.get(`${BASE}/sql/objects`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const db = await workshopDb(s);
-    const objects = (
-      await db.query(
-        `select n.nspname as schema, c.relname as name, c.oid::regclass::text as qname,
-                case c.relkind when 'r' then 'table' when 'p' then 'table' when 'v' then 'view' when 'm' then 'view' end as kind,
-                c.relrowsecurity as rls
-           from pg_class c join pg_namespace n on n.oid = c.relnamespace
-          where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema')
-            and has_schema_privilege(n.oid, 'USAGE')
-         union all
-         select n.nspname, p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', p.oid::regprocedure::text, 'function', false
-           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-          where n.nspname !~ '^pg_' and n.nspname not in ('information_schema') and p.prokind in ('f', 'p')
-            and has_schema_privilege(n.oid, 'USAGE')
-          order by 1, 4 desc, 2`,
-      )
-    ).rows;
-    const o = req.query.o;
-    const selected = objects.find((x) => x.qname === o);
-    let detail: Raw = html`<p class="muted">Select a table, view or function.</p>`;
-    if (selected) {
-      if (selected.kind === 'function') {
-        const src = await db.one('select pg_get_functiondef($1::regprocedure) as def', [selected.qname]);
-        detail = region(selected.qname, html`<pre class="source">${src.def}</pre>`);
-      } else {
-        const [cols, policies, grants, data] = await Promise.all([
-          db.query(
-            `select a.attname as column, format_type(a.atttypid, a.atttypmod) as type, not a.attnotnull as nullable,
-                    pg_get_expr(d.adbin, d.adrelid) as "default"
-               from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
-              where a.attrelid = $1::regclass and a.attnum > 0 and not a.attisdropped order by a.attnum`,
-            [selected.qname],
-          ),
-          db.query('select policyname as policy, cmd, roles::text, qual as using, with_check from pg_policies where schemaname = $1 and tablename = $2', [selected.schema, selected.name]),
-          db.query(
-            `select grantee, string_agg(privilege_type, ', ' order by privilege_type) as privileges
-               from information_schema.role_table_grants where table_schema = $1 and table_name = $2 group by grantee order by grantee`,
-            [selected.schema, selected.name],
-          ),
-          db.pool.query({ text: `select * from ${selected.qname} limit 25`, rowMode: 'array' }).catch((e) => e as Error),
-        ]);
-        const asArray = (r: pg.QueryResult) => ({ ...r, rows: r.rows.map((x) => Object.values(x)) }) as unknown as pg.QueryResult<any[]>;
-        detail = html`${region(`${selected.kind === 'view' ? 'View' : 'Table'} ${selected.qname}`, resultTable(asArray(cols)),
-            html`<span class="count">${selected.rls ? 'row level security ON' : 'no RLS'}</span>`)}
-          <div class="u-spacer"></div>
-          ${region('Row level security policies', policies.rowCount ? resultTable(asArray(policies)) : html`<p class="muted">No policies.</p>`)}
-          <div class="u-spacer"></div>
-          ${region('Grants', resultTable(asArray(grants)))}
-          <div class="u-spacer"></div>
-          ${region('Data (first 25 rows)', data instanceof Error ? html`<div class="alert alert-error">${data.message}</div>` : resultTable(data))}`;
-      }
-    }
-    let lastSchema = '';
-    const list = html`<ul class="tree">${objects.map((x) => {
-      const header = x.schema !== lastSchema ? html`<li class="group">${(lastSchema = x.schema)}</li>` : '';
-      return html`${header}<li><a href="?o=${encodeURIComponent(x.qname)}"${x.qname === o ? raw(' aria-current="page"') : ''}>${icon(x.kind === 'function' ? 'code' : x.kind === 'view' ? 'layers' : 'table')}<span>${x.name}</span>${x.rls ? html`<span class="tag">RLS</span>` : ''}</a></li>`;
-    })}</ul>`;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('objects')}
-      <div class="designer"><aside class="region region-standard" aria-label="Database objects">${list}</aside><div>${detail}</div></div>`;
-    return send(reply, s, shell(s, 'Object Browser', [['SQL Workshop', `${BASE}/sql`], ['Object Browser']], main, 'sql'));
-  });
-
+  // (sprint 75) the Object Browser: object-browser.ts
+  await app.register(objectBrowserRoutes);
 }

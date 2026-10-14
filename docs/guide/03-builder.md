@@ -1173,13 +1173,24 @@ Commands; other developers' are never shown) and the workspace's **recent SQL sc
 session's **schema** (APEX: the default schema): it goes first in the search path of SQL Commands and SQL Scripts until
 you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample data and Generate DDL.
 
+(sprint 75) The tools are tabs: Home, Object Browser, SQL Commands, SQL Scripts and Utilities; **More** opens the
+others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compare, AI), and the open one is a tab too.
+
 - **SQL Commands** (`/builder/sql/commands`): run any SQL as the **owner connection**, not as an application role. Multiple
   statements are allowed; the result of the last one is shown (up to 500 rows). Press
   **Ctrl/Cmd + Enter** to run. The [code editor](#the-code-editor) suggests every schema, table,
   column and function the owner sees.
-- **Object Browser**: tables, views and functions per schema. For a table you see columns, types
-  and defaults, **row level security policies**, **grants** and the first 25 rows; for a
-  function, its source.
+- **Object Browser** (APEX's): the **schema** in the header (the session's schema by default) and a tree with a
+  folder per object type (tables, views, materialized views, indexes, sequences, types, functions, procedures,
+  triggers) and a **filter** by name. pgkiln's own schemas (`meta`, `pgkiln_plugins`) and objects that belong to an
+  extension show only with **Show system objects**. **Create** (and the tiles shown when nothing is selected) opens
+  SQL Commands with a CREATE TABLE, VIEW, FUNCTION, SEQUENCE or INDEX statement to fill in. A table opens in tabs:
+  **Columns** (with comments; *Add*, *Rename* and *Drop column* write the ALTER TABLE statement into SQL Commands to
+  review and run: nothing changes until you press Run), **Data** (25 rows a page), **Indexes**, **Constraints**
+  (primary key, foreign keys with the table they refer to, unique, check), **Triggers**, **Grants**, **Row level
+  security** (on or off, the policies), **Dependencies** (views and foreign keys that use it, and what it uses),
+  **Statistics** (rows, sizes, analyze and vacuum times) and **DDL**. A view has the same tabs where they apply; a
+  function or procedure shows its source, a trigger, index, sequence or type its definition.
 - **SQL Scripts**: saved scripts, shared by the developers of the workspace. Create one in the editor, upload a
   `.sql` file (UTF-8, up to 5 MB) or save one from Quick SQL; download it again as `.sql`. **Run**
   splits the script into statements at semicolons (outside strings, comments, quoted identifiers,

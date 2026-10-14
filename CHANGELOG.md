@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 75: the SQL Workshop's Object Browser like APEX's.
+
+### Added
+- **Object Browser by object type**: a schema in the header (the session's schema by default), folders for tables,
+  views, materialized views, indexes, sequences, types, functions, procedures and triggers, a filter, a Create menu
+  and create tiles that start a CREATE statement in SQL Commands. pgkiln's schemas and extension objects show only
+  with *Show system objects*.
+- **A table in tabs**: Columns, Data (paged), Indexes, Constraints, Triggers, Grants, Row level security,
+  Dependencies, Statistics and DDL. Add, rename and drop column write the ALTER TABLE statement into SQL Commands to
+  review and run.
+
+### Changed
+- The SQL Workshop's tools are five main tabs and a More menu: the strip no longer scrolls sideways.
+
 Sprint 74: the builder's information architecture like APEX's.
 
 ### Added
