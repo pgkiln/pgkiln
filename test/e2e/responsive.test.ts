@@ -184,7 +184,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       const bar = (await page.locator('.devbar').boundingBox())!;
       const pager = page.locator('.pager, .report-footer, nav.pagination').last();
       if (await pager.count()) {
-        await pager.scrollIntoViewIfNeeded();
+        // at the end of the page the pager is above the bar (the page keeps room for it)
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
         const p = (await pager.boundingBox())!;
         const b2 = (await page.locator('.devbar').boundingBox())!;
         assert.ok(p.y + p.height <= b2.y + 1 || p.x + p.width <= b2.x || p.x >= b2.x + b2.width, `pager ${JSON.stringify(p)} under the bar ${JSON.stringify(b2)}`);
