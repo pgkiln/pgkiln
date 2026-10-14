@@ -1132,11 +1132,11 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
             ? html`<div class="search"${searchBox ? raw(' role="search"') : ''}>
                 ${searchBox ? html`<div class="search-field">${interactive
                   ? html`<label class="sr-only" for="r${r.id}_qc">${t('report.search_column')}</label>
-                    <select id="r${r.id}_qc" class="search-scope" name="${key(r, 'qc')}" form="${searchForm}">
-                      <option value="">${t('report.all_columns')}</option>${cols.map(({ f }) => html`<option value="${f.name}"${f.name === st.searchCol ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>`
+                    <span class="search-scope-wrap" title="${t('report.search_column')}">${icon('search')}<select id="r${r.id}_qc" class="search-scope" name="${key(r, 'qc')}" form="${searchForm}">
+                      <option value="">${t('report.all_columns')}</option>${cols.map(({ f }) => html`<option value="${f.name}"${f.name === st.searchCol ? raw(' selected') : ''}>${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select></span>`
                   : ''}
                   <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_all')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}"></div>
-                <button class="btn" form="${searchForm}">${t('report.go')}</button>` : ''}
+                <button class="btn no-js-only" form="${searchForm}">${t('report.go')}</button>` : ''}
                 ${actionsMenu}
               </div>`
             : ''}

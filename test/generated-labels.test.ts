@@ -10,6 +10,7 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { Browser } from './helpers.ts';
+import { addDashboard } from '../src/builder/appsheets.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -35,6 +36,9 @@ before(async () => {
     insert into ${SCHEMA}.dept values (10, 'ACCOUNTING', 'NEW YORK', 40.7128, -74.006), (30, 'SALES', 'CHICAGO', 41.8781, -87.6298);
     insert into ${SCHEMA}.emp (empno, ename, job, mgr, sal, deptno) overriding system value values
       (1, 'KING', 'PRESIDENT', null, 5000, 10), (2, 'BLAKE', 'MANAGER', 1, 2850, 30), (3, 'ALLEN', 'SALESMAN', 2, 1600, 30);
+    -- (GEN-6) two visits per department: a chart of visits per department says nothing
+    create table ${SCHEMA}.visit (id int primary key, deptno int references ${SCHEMA}.dept);
+    insert into ${SCHEMA}.visit values (1, 10), (2, 10), (3, 30), (4, 30);
     -- nine jobs: two behind "Show all"
     insert into ${SCHEMA}.emp (empno, ename, job, mgr, sal, deptno, active) overriding system value
     select 10 + n, 'E' || n, 'JOB' || n, 1, 1000, 30, n % 2 = 0 from generate_series(1, 6) n;
@@ -79,6 +83,19 @@ const shown = async (r: { source: string; config: any }) => {
   return res.fields.map((f) => f.name).filter((n) => !hidden.has(n)).map((n) => [n, r.config.headings?.[n]] as const);
 };
 
+describe('the dashboard (sprint 79, GEN-6)', () => {
+  test('the sum of an amount column, a donut for a few groups; a chart that says nothing is left out', async () => {
+    const skipped: string[] = [];
+    const dash = await owner.tx((c) => addDashboard(c, alias, [`${SCHEMA}.emp`, `${SCHEMA}.visit`], 30, skipped));
+    assert.ok(dash);
+    const charts = (await owner.query(`select r.title, r.source, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 30 order by r.seq`, [appId])).rows;
+    assert.deepEqual(charts.map((c) => c.title), ['Salary by Manager'], 'visits: two per department, no chart');
+    assert.match(charts[0].source, /sum\(t\.sal\)/);
+    assert.equal(charts[0].config.kind, 'donut', 'three groups: a donut');
+    assert.deepEqual(skipped, []);
+  });
+});
+
 describe('generated reports and grids (sprint 78)', () => {
   test('a faceted search report: one column per foreign key, the key hidden but kept for filters and links', async () => {
     const [rep] = await regions(2);
@@ -88,6 +105,7 @@ describe('generated reports and grids (sprint 78)', () => {
     assert.deepEqual(cols.filter(([, h]) => h === 'Manager').map(([n]) => n), ['mgr_ename']);
     assert.deepEqual(cols.filter(([, h]) => h === 'Department').map(([n]) => n), ['deptno_dname']);
     assert.deepEqual(rep.config.formats, { sal: '999G999G999G990D00', comm: '999G999G999G990D00' });
+    assert.equal(rep.config.link.icon, true, '(IR-3) a pencil opens the form; the key is plain text');
     // the facets filter on the display column
     const facets = (await owner.one(`select config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'facets'`, [appId])).config.facets;
     assert.deepEqual(facets.map((f: { column: string }) => f.column).filter((c: string) => /mgr|deptno/.test(c)), ['mgr_ename', 'deptno_dname']);

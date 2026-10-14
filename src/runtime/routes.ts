@@ -44,7 +44,7 @@ import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
 import { pwaHead } from './pwa.ts';
-import { resolveLocale, THEME_COOKIE, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
+import { resolveLocale, THEME_COOKIE, themeCookieOptions, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 import { LOGIN_ERROR, LOGIN_USER, safeNext, signInForm } from './signin.ts';
 import { passwordResetRoutes } from './password-reset.ts';
@@ -122,13 +122,14 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   // the browser's time zone (sent before signing in) stays with the new session
   if (typeof oldSession.state.__TZ === 'string') s.state.__TZ = oldSession.state.__TZ;
   // the account's preferences: light/dark, language and time zone
-  const pref = await runtime.one<{ theme_pref: string; language: string | null; time_zone: string | null }>(
+  const pref = await runtime.one<{ theme_pref: string | null; language: string | null; time_zone: string | null }>(
     'select theme_pref, language, time_zone from meta.account where lower(username) = lower($1)', [username]);
   if (pref) {
-    s.state.__THEME = pref.theme_pref;
+    // (sprint 79) no choice (null): the application's own mode
+    if (pref.theme_pref) s.state.__THEME = pref.theme_pref;
     if (pref.language) s.state.__LANG = pref.language;
     if (pref.time_zone) s.state.__TZ_PREF = pref.time_zone;
-    if (a.theme?.user_choice !== false) reply.setCookie(THEME_COOKIE, pref.theme_pref, { path: '/', sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 365 * 86400 });
+    if (pref.theme_pref && a.theme?.user_choice !== false) reply.setCookie(THEME_COOKIE, pref.theme_pref, themeCookieOptions(base));
   }
   // the account's style variant for this app (honoured only while the app offers it: styles.ts)
   const style = await runtime.one<{ style: string }>(

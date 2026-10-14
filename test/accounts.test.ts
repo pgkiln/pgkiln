@@ -177,7 +177,39 @@ describe('preferences', () => {
       assert.doesNotMatch(page, /theme-switch/);
     } finally {
       await owner.query(`update meta.app set theme = theme - 'user_choice' - 'mode' where id = $1`, [appId]);
-      await owner.query(`update meta.account set theme_pref = 'auto' where username = 'allen'`);
+      await owner.query(`update meta.account set theme_pref = null where username = 'allen'`);
+    }
+  });
+
+  test('(sprint 79, UI-2) no choice: the own mode of the application; a choice is per application', async () => {
+    const u = await account();
+    assert.equal((await owner.one('select theme_pref from meta.account where username = $1', [u])).theme_pref, null, 'no choice yet');
+    await owner.query(`update meta.app set theme = theme || '{"mode": "light"}' where id = $1`, [appId]);
+    try {
+      const b = new Browser(app);
+      await b.login(u, 'correct-horse-1');
+      assert.match((await b.get('/a/hr/1')).body, /<html lang="en" data-theme="light"/, 'the app\'s light mode, not the OS');
+      const res = await b.submit('/a/hr/account/theme', { theme: 'auto', next: '/a/hr/1' });
+      const cookie = String(res.headers['set-cookie']);
+      assert.match(cookie, /pgkiln_mode=auto; Max-Age=\d+; Path=\/a\/hr;/, 'the cookie belongs to this application');
+      assert.doesNotMatch((await b.get('/a/hr/1')).body, /data-theme=/, 'Automatic: the OS decides');
+      assert.equal((await owner.one('select theme_pref from meta.account where username = $1', [u])).theme_pref, 'auto');
+    } finally {
+      await owner.query(`update meta.app set theme = theme - 'mode' where id = $1`, [appId]);
+    }
+  });
+
+  test('(sprint 79, UI-3) signed out on a public page: a user menu with Appearance and Sign in', async () => {
+    const page = await owner.one(`select id from meta.page where app_id = $1 and page_no = 1`, [appId]);
+    await owner.query(`update meta.page set requires_auth = false where id = $1`, [page.id]);
+    try {
+      const body = (await new Browser(app).get('/a/hr/1')).body;
+      const menu = /<details class="menu t-user">[\s\S]*?<\/details>/.exec(body)![0];
+      assert.match(menu, /<summary><svg[^]*?<\/svg><span>Sign in<\/span><\/summary>/);
+      assert.match(menu, /class="menu-section theme-switch"/);
+      assert.match(menu, /<a href="\/a\/hr\/login"><svg[^]*?<\/svg> Sign in<\/a>/);
+    } finally {
+      await owner.query(`update meta.page set requires_auth = true where id = $1`, [page.id]);
     }
   });
 

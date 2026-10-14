@@ -274,6 +274,45 @@ interface Catalog {
   fk_table: string | null;
 }
 
+/** (sprint 79) A number column that holds an amount: a dashboard sums it (Salary by Department). */
+const AMOUNT = /(^|_)(sal|salary|salaries|amount|amt|total|price|cost|costs|revenue|value|budget|balance|fee|fees|pay|wage|wages)(_|$)/i;
+
+interface ChartPlan {
+  table: string;
+  group: string;
+  /** count, or sum of `value` */
+  fn: 'count' | 'sum';
+  value: string | null;
+  kind: 'donut' | 'line' | 'bar';
+}
+
+/**
+ * (sprint 79, GEN-6) How a table is charted: by its first foreign key that says something, else a text,
+ * yes/no or date column whose values repeat; the sum of an amount column when there is one, else the
+ * number of rows; a donut for six groups or fewer, a line for dates, else a sorted bar. A grouping that
+ * says nothing (one group, or every group the same) is skipped.
+ */
+async function chartPlan(c: Client, table: string, catalog: Catalog[], rows: number): Promise<ChartPlan | null> {
+  const amount = catalog.find((x) => x.kind === 'number' && !x.is_pk && !x.fk_table && AMOUNT.test(x.column_name))?.column_name ?? null;
+  const groups = [...catalog.filter((x) => x.fk_table && !x.is_pk).map((x) => x.column_name), groupColumn(catalog, rows)].filter(
+    (g, i, all): g is string => !!g && all.indexOf(g) === i,
+  );
+  for (const group of groups) {
+    for (const value of amount ? [amount, null] : [null]) {
+      const measure = value ? `sum(${pg.escapeIdentifier(value)})` : 'count(*)';
+      const spread = (
+        await c.query<{ groups: number; lo: string | null; hi: string | null }>(
+          `select count(*)::int as groups, min(v)::text as lo, max(v)::text as hi from (select ${pg.escapeIdentifier(group)} as g, ${measure} as v from ${table} group by 1) x`,
+        )
+      ).rows[0];
+      if (spread.groups < 2 || spread.lo === spread.hi) continue;
+      const kind = catalog.find((x) => x.column_name === group)?.kind === 'date' ? 'line' : spread.groups <= 6 ? 'donut' : 'bar';
+      return { table, group, fn: value ? 'sum' : 'count', value, kind };
+    }
+  }
+  return null;
+}
+
 /**
  * A dashboard page: a chart per table (at most six) with the number of rows per
  * parent row (the first foreign key), or per value of a text, yes/no or date
@@ -283,7 +322,7 @@ interface Catalog {
  * Manager", and the Dashboard comes right after Home in the navigation menu.
  */
 export async function addDashboard(c: Client, alias: string, tables: string[], page: number, skipped: string[] = []): Promise<{ page: number; label: string } | null> {
-  const picks: { table: string; group: string }[] = [];
+  const picks: ChartPlan[] = [];
   for (const t of tables) {
     if (picks.length >= MAX_CHARTS) break;
     const rel = (await c.query('select relrowsecurity as rls, greatest(reltuples, 0) as n from pg_class where oid = $1::regclass', [t])).rows[0];
@@ -292,24 +331,25 @@ export async function addDashboard(c: Client, alias: string, tables: string[], p
       continue;
     }
     const catalog = (await c.query<Catalog>('select column_name, kind, is_pk, distinct_values, fk_table::text from meta.wizard_catalog($1::regclass)', [t])).rows;
-    const group = catalog.find((x) => x.fk_table && !x.is_pk)?.column_name ?? groupColumn(catalog, Number(rel.n));
-    if (group) picks.push({ table: t, group });
+    const plan = await chartPlan(c, t, catalog, Number(rel.n));
+    if (plan) picks.push(plan);
   }
   if (!picks.length) return null;
-  const generate = (table: string, group: string, no: number, nav: boolean) =>
+  const generate = (p: ChartPlan, no: number, nav: boolean) =>
     c.query<{ id: number }>('select meta.generate_page($1, \'chart\', $2::regclass, $3, $4::jsonb) as id', [
-      alias, table, no,
-      JSON.stringify({ label: 'Dashboard', icon: 'chart', nav, label_column: group, function: 'count', value_column: null }),
+      alias, p.table, no,
+      JSON.stringify({ label: 'Dashboard', icon: 'chart', nav, label_column: p.group, function: p.fn, value_column: p.value, chart: p.kind }),
     ]);
-  const title = async (table: string, group: string) =>
-    (await c.query(`select meta.wizard_table_label($1::regclass) || ' by ' || meta.wizard_column_label($1::regclass, $2) as t`, [table, group])).rows[0].t as string;
-  const dash = (await generate(picks[0].table, picks[0].group, page, true)).rows[0].id;
-  await c.query('update meta.region set title = $2 where page_id = $1', [dash, await title(picks[0].table, picks[0].group)]);
+  // Employees by Manager; a sum: Salary by Department
+  const title = async (p: ChartPlan) =>
+    (await c.query(`select coalesce(meta.wizard_column_label($1::regclass, $3), meta.wizard_table_label($1::regclass)) || ' by ' || meta.wizard_column_label($1::regclass, $2) as t`, [p.table, p.group, p.value])).rows[0].t as string;
+  const dash = (await generate(picks[0], page, true)).rows[0].id;
+  await c.query('update meta.region set title = $2 where page_id = $1', [dash, await title(picks[0])]);
   for (const [n, p] of picks.slice(1).entries()) {
     // generated on a page of its own, then moved onto the dashboard
     const spare = (await c.query('select max(page_no) + 1000 as n from meta.page where app_id = (select id from meta.app where alias = $1)', [alias])).rows[0].n as number;
-    const tmp = (await generate(p.table, p.group, spare, false)).rows[0].id;
-    await c.query('update meta.region set page_id = $2, seq = $3, title = $4 where page_id = $1', [tmp, dash, (n + 2) * 10, await title(p.table, p.group)]);
+    const tmp = (await generate(p, spare, false)).rows[0].id;
+    await c.query('update meta.region set page_id = $2, seq = $3, title = $4 where page_id = $1', [tmp, dash, (n + 2) * 10, await title(p)]);
     await c.query('delete from meta.page where id = $1', [tmp]);
   }
   if (picks.length > 1) await c.query('update meta.region set columns = 6 where page_id = $1', [dash]);
@@ -319,7 +359,7 @@ export async function addDashboard(c: Client, alias: string, tables: string[], p
        from meta.app a where a.alias = $1 and e.app_id = a.id and e.parent_id is null and e.target_page = $2`,
     [alias, page],
   );
-  return { page, label: `Dashboard (${(await Promise.all(picks.map((p) => title(p.table, p.group)))).join(', ')})` };
+  return { page, label: `Dashboard (${(await Promise.all(picks.map((p) => title(p)))).join(', ')})` };
 }
 
 /** Create the application, the tables, the rows, the foreign keys and the pages, in one transaction. */

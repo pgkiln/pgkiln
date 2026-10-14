@@ -512,6 +512,28 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
     });
 
+    test('report search: the column scope is the magnifier in the field, Enter searches, no Go button', async () => {
+      if (vp !== 'desktop') return;
+      const r = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report'`);
+      const page = await (await newContext({ viewport: size })).newPage();
+      try {
+        await login(page, '/a/hr/login', 'king', 'king');
+        await page.goto(`${base}/a/hr/2`);
+        const scope = page.locator(`#r${r.id}_qc`);
+        const box = await scope.boundingBox();
+        assert.ok(box && box.width < 50, `all columns: the magnifier only (${JSON.stringify(box)})`);
+        assert.equal(await page.locator(`button[form="rs${r.id}"]`).isVisible(), false, 'no Go button with JavaScript');
+        await scope.selectOption({ label: 'Job' });
+        assert.ok(((await scope.boundingBox())?.width ?? 0) > 50, 'a column: its name shows');
+        const field = page.locator(`input[name="r${r.id}_q"]`);
+        await field.fill('CLERK');
+        await Promise.all([page.waitForURL(new RegExp(`r${r.id}_q=CLERK`)), field.press('Enter')]);
+        assert.match(page.url(), new RegExp(`r${r.id}_qc=job`));
+      } finally {
+        await page.context().close();
+      }
+    });
+
     test('a drawer page slides in from the right (full screen on phones)', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'allen', 'allen');
@@ -899,7 +921,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       try {
         const book = workbook([
           { name: 'Departments with a rather long sheet name', rows: [['ID', 'Name', 'City'], ...Array.from({ length: 6 }, (_, i) => [i + 1, `Department ${i + 1}`, ['Utrecht', 'Delft'][i % 2]])] },
-          { name: 'Employees', rows: [['Employee ID', 'Name', 'Department ID', 'A rather long column heading without breaks_to_wrap'], ...Array.from({ length: 12 }, (_, i) => [i + 1, `Person ${i + 1}`, (i % 6) + 1, 'x'.repeat(40)])] },
+          { name: 'Employees', rows: [['Employee ID', 'Name', 'Department ID', 'A rather long column heading without breaks_to_wrap'], ...Array.from({ length: 12 }, (_, i) => [i + 1, `Person ${i + 1}`, [1, 1, 1, 1, 2, 2, 3, 4, 5, 6, 6, 6][i], 'x'.repeat(40)])] },
         ]);
         await page.goto(`${base}/builder/create/file`);
         await page.setInputFiles('#f_file', { name: 'e2e-company.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: book });
@@ -914,6 +936,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await Promise.all([page.waitForNavigation(), page.locator('main button.btn-hot').click()]);
         assert.match(await page.locator('main').innerText(), /12 row\(s\) loaded/);
         await check(page, 'builder-create_file_sheets_done', vp);
+        // (sprint 79) an uneven spread: a dashboard chart only says something when the groups differ
         const res = await page.goto(`${base}/a/${wbAlias}/6`);
         assert.equal(res?.status(), 200, `${wbAlias} dashboard`);
         await check(page, 'app-from-sheets-dashboard', vp);
