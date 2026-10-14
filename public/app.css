@@ -1887,7 +1887,7 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .devbar-quick[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
 
 /* (sprint 76) the pager: rows per page; a Go button only without JavaScript */
-.pager-size { display: inline-flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: 0.85rem; }
+.pager .pager-size { margin-right: 0; display: inline-flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: 0.85rem; }
 .pager-size select { min-height: 0; padding: 0.15rem 0.4rem; }
 .js .no-js-only { display: none; }
 

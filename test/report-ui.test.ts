@@ -101,8 +101,11 @@ describe('the interactive report', () => {
 
   test('the pager: the range and the total on one page, rows per page, first and last', async () => {
     const one = await page();
-    assert.match(one, /<div class="pager"><span>1–14 of 14<\/span><form method="get" action="\/a\/rui-s76\/1" class="pager-size">/);
-    assert.match(one, new RegExp(`<select id="r${rid}_size" name="r${rid}_n" data-go>`));
+    assert.match(one, /<div class="pager"><span>1–14 of 14<\/span><span class="pager-size">/);
+    // (0.43.1) the GET form is detached: a form inside the page's form is dropped by the browser
+    assert.match(one, new RegExp(`<form id="rn${rid}" method="get" action="/a/rui-s76/1">`));
+    assert.doesNotMatch(one, /class="pager-size">\s*<form|<form[^>]*class="pager-size"/);
+    assert.match(one, new RegExp(`<select id="r${rid}_size" name="r${rid}_n" form="rn${rid}" data-go>`));
     const p2 = await page(`?r${rid}_n=5&r${rid}_p=2`);
     assert.match(p2, /6–10 of 14/);
     assert.doesNotMatch(p2, /aria-label="(First|Last) page"/, 'page 2 of 3: Previous and Next are the first and the last');

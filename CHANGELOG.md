@@ -18,6 +18,11 @@ Sprint 78: generated reports and grids read the same (migration 100; parity hand
 - The **Create Application** wizard's page list names each table's pages (*Employees*), with the table's
   name as secondary text.
 
+### Fixed
+- **Rows per page** in an interactive report's pager: its GET form sat inside the page's form, so the browser
+  dropped it; the select then belonged to the page's form (changing it posted the page) and stretched across the
+  region. The form is now detached like the toolbar's forms; the select and its button join it by its id.
+
 ## [0.43.0] - 2026-10-14
 
 Sprint 74: the builder's information architecture like APEX's.
