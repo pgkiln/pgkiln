@@ -828,6 +828,15 @@ const pgkilnUnsaved = (() => {
     });
     drawer.addEventListener('change', () => toggle.setAttribute('aria-expanded', String(navOpen())));
   }
+  // (097) a long menu shows the current page's entry: the menu scrolls, not the page
+  {
+    const nav = document.getElementById('t-nav');
+    const current = nav?.querySelector('a[aria-current="page"]');
+    if (nav && current && nav.scrollHeight > nav.clientHeight) {
+      const top = current.getBoundingClientRect().top - nav.getBoundingClientRect().top;
+      if (top < 0 || top + current.offsetHeight > nav.clientHeight) nav.scrollTop += top - nav.clientHeight / 3;
+    }
+  }
 
   // ------------------------------------------------------------ modal dialogs
   const POSITIONS = ['center', 'left', 'right', 'top', 'bottom'];

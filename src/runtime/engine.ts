@@ -271,7 +271,7 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       if (op === 'update' || v !== null) assignments.push([ident(i.source_column!), literal(v)]);
       continue;
     }
-    const conf = (i.config ?? {}) as { filename_column?: string; mime_column?: string; size_column?: string };
+    const conf = (i.config ?? {}) as { filename_column?: string; mime_column?: string; size_column?: string; updated_column?: string };
     const store = storeOf(i);
     if (store && (isTempId(v) || (v === REMOVE && op === 'update'))) {
       if (op === 'update') replaced.push([store, (await storedKey(i))!]);
@@ -282,8 +282,9 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
         if (conf.filename_column) assignments.push([ident(conf.filename_column), literal(f.filename)]);
         if (conf.mime_column) assignments.push([ident(conf.mime_column), literal(f.mime)]);
         if (conf.size_column) assignments.push([ident(conf.size_column), literal(String(f.size))]);
+        if (conf.updated_column) assignments.push([ident(conf.updated_column), 'now()']);
       } else {
-        for (const col of [i.source_column!, conf.filename_column, conf.mime_column, conf.size_column]) if (col) assignments.push([ident(col), 'null']);
+        for (const col of [i.source_column!, conf.filename_column, conf.mime_column, conf.size_column, conf.updated_column]) if (col) assignments.push([ident(col), 'null']);
       }
       continue;
     }
@@ -293,10 +294,12 @@ async function formDml(ctx: PageContext, p: Process): Promise<string | null> {
       assignments.push([ident(i.source_column!), file('content')]);
       if (conf.filename_column) assignments.push([ident(conf.filename_column), file('filename')]);
       if (conf.mime_column) assignments.push([ident(conf.mime_column), file('mime_type')]);
+      // (097) the size and the time of the change, when the table keeps them
+      if (conf.size_column) assignments.push([ident(conf.size_column), file('size')]);
+      if (conf.updated_column) assignments.push([ident(conf.updated_column), 'now()']);
     } else if (v === REMOVE && op === 'update') {
       assignments.push([ident(i.source_column!), 'null']);
-      if (conf.filename_column) assignments.push([ident(conf.filename_column), 'null']);
-      if (conf.mime_column) assignments.push([ident(conf.mime_column), 'null']);
+      for (const col of [conf.filename_column, conf.mime_column, conf.size_column, conf.updated_column]) if (col) assignments.push([ident(col), 'null']);
     }
   }
   // saved into the row: the temporary files are no longer needed, replaced objects go after the commit

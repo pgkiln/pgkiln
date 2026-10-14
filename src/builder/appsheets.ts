@@ -19,7 +19,7 @@ import {
   type Sheet,
 } from '../dataload.ts';
 import { preview } from './dataload.ts';
-import { createApp, createAppError, type CheckedApp } from './newapp.ts';
+import { addHomeCards, createApp, createAppError, type CheckedApp } from './newapp.ts';
 import { groupColumn } from './appfromfile.ts';
 import { region, type Body } from './ui.ts';
 
@@ -278,14 +278,21 @@ interface Catalog {
  * A dashboard page: a chart per table (at most six) with the number of rows per
  * parent row (the first foreign key), or per value of a text, yes/no or date
  * column whose values repeat (from the statistics). Null when no table has one.
+ * (097) Tables with row level security are left out (the application's role may
+ * see none of their rows: an empty chart); the charts are titled "Employees by
+ * Manager", and the Dashboard comes right after Home in the navigation menu.
  */
-export async function addDashboard(c: Client, alias: string, tables: string[], page: number): Promise<{ page: number; label: string } | null> {
+export async function addDashboard(c: Client, alias: string, tables: string[], page: number, skipped: string[] = []): Promise<{ page: number; label: string } | null> {
   const picks: { table: string; group: string }[] = [];
   for (const t of tables) {
     if (picks.length >= MAX_CHARTS) break;
+    const rel = (await c.query('select relrowsecurity as rls, greatest(reltuples, 0) as n from pg_class where oid = $1::regclass', [t])).rows[0];
+    if (rel.rls) {
+      skipped.push(t);
+      continue;
+    }
     const catalog = (await c.query<Catalog>('select column_name, kind, is_pk, distinct_values, fk_table::text from meta.wizard_catalog($1::regclass)', [t])).rows;
-    const rows = Number((await c.query('select greatest(reltuples, 0) as n from pg_class where oid = $1::regclass', [t])).rows[0].n);
-    const group = catalog.find((x) => x.fk_table && !x.is_pk)?.column_name ?? groupColumn(catalog, rows);
+    const group = catalog.find((x) => x.fk_table && !x.is_pk)?.column_name ?? groupColumn(catalog, Number(rel.n));
     if (group) picks.push({ table: t, group });
   }
   if (!picks.length) return null;
@@ -295,7 +302,7 @@ export async function addDashboard(c: Client, alias: string, tables: string[], p
       JSON.stringify({ label: 'Dashboard', icon: 'chart', nav, label_column: group, function: 'count', value_column: null }),
     ]);
   const title = async (table: string, group: string) =>
-    (await c.query(`select meta.wizard_label(relname) || ' per ' || lower(meta.wizard_label(regexp_replace($2, '_(id|no|code)$', ''))) as t from pg_class where oid = $1::regclass`, [table, group])).rows[0].t as string;
+    (await c.query(`select meta.wizard_table_label($1::regclass) || ' by ' || meta.wizard_column_label($1::regclass, $2) as t`, [table, group])).rows[0].t as string;
   const dash = (await generate(picks[0].table, picks[0].group, page, true)).rows[0].id;
   await c.query('update meta.region set title = $2 where page_id = $1', [dash, await title(picks[0].table, picks[0].group)]);
   for (const [n, p] of picks.slice(1).entries()) {
@@ -306,7 +313,13 @@ export async function addDashboard(c: Client, alias: string, tables: string[], p
     await c.query('delete from meta.page where id = $1', [tmp]);
   }
   if (picks.length > 1) await c.query('update meta.region set columns = 6 where page_id = $1', [dash]);
-  return { page, label: `Dashboard (${picks.map((p) => `${p.table.replace(/^.*\./, '')} per ${p.group}`).join(', ')})` };
+  // right after Home (the first top-level entry)
+  await c.query(
+    `update meta.nav_entry e set seq = coalesce((select min(seq) from meta.nav_entry h where h.app_id = e.app_id and h.parent_id is null and h.target_page = a.home_page), 0) + 1
+       from meta.app a where a.alias = $1 and e.app_id = a.id and e.parent_id is null and e.target_page = $2`,
+    [alias, page],
+  );
+  return { page, label: `Dashboard (${(await Promise.all(picks.map((p) => title(p.table, p.group)))).join(', ')})` };
 }
 
 /** Create the application, the tables, the rows, the foreign keys and the pages, in one transaction. */
@@ -371,9 +384,9 @@ export async function buildAppFromSheets(checked: CheckedApp, sheets: NamedSheet
     let next = 2;
     for (const p of plans) {
       const T = qualified.get(p.k)!;
-      const label = (await c.query('select meta.wizard_label($1) as l', [p.table])).rows[0].l as string;
-      await c.query('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb)', [checked.alias, 'report_form', T, next, JSON.stringify({ form_page: next + 1, label })]);
-      pages.push({ page: next, label }, { page: next + 1, label: `${label} form` });
+      const { label, singular } = (await c.query('select meta.wizard_table_label($1::regclass) as label, meta.wizard_table_label($1::regclass, false) as singular', [T])).rows[0] as { label: string; singular: string };
+      await c.query('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb)', [checked.alias, 'report_form', T, next, JSON.stringify({ form_page: next + 1 })]);
+      pages.push({ page: next, label }, { page: next + 1, label: `${singular} form` });
       next += 2;
     }
     if (b.chart === 'true') {
@@ -381,6 +394,7 @@ export async function buildAppFromSheets(checked: CheckedApp, sheets: NamedSheet
       if (dash) pages.push(dash);
       else notes.push('No dashboard: no table has a foreign key or a text, yes/no or date column with a few values that repeat, to count the rows by.');
     }
+    await addHomeCards(c, app.id);
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, tables, foreignKeys, pages, notes };
   });
 }

@@ -7,7 +7,7 @@ import { LoadError } from '../dataload.ts';
 import type { Session } from '../session.ts';
 import { aliasFor, check, createdHtml, ITEM, type Created } from './appfromfile.ts';
 import { addDashboard, parseBook } from './appsheets.ts';
-import { checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
+import { addHomeCards, checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { BASE, csrf, developer, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 
@@ -75,30 +75,38 @@ export async function buildAppFromTables(checked: CheckedApp, relations: Relatio
     for (const r of relations) {
       const T = `${pg.escapeIdentifier(checked.schema)}.${pg.escapeIdentifier(r.relname)}`;
       tables.push(T);
-      const label = (await c.query('select meta.wizard_label($1) as l', [r.relname])).rows[0].l as string;
+      // (097) Employees for the report and the menu, Employee for the form
+      const { plural, singular } = (await c.query('select meta.wizard_table_label($1::regclass) as plural, meta.wizard_table_label($1::regclass, false) as singular', [T])).rows[0];
       if (r.kind === 'table' && r.pk) {
-        await c.query('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb)', [checked.alias, 'report_form', T, next, JSON.stringify({ form_page: next + 1, label })]);
-        pages.push({ page: next, label }, { page: next + 1, label: `${label} form` });
+        await c.query('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb)', [checked.alias, 'report_form', T, next, JSON.stringify({ form_page: next + 1 })]);
+        pages.push({ page: next, label: plural }, { page: next + 1, label: `${singular} form` });
         next += 2;
       } else {
         // a report of the rows (no form: a view, or no single-column primary key)
-        const page = (await c.query(`select meta.wizard_new_page(a, $2, $3, a.home_page) as id from meta.app a where a.alias = $1`, [checked.alias, next, label])).rows[0].id;
+        const page = (await c.query(`select meta.wizard_new_page(a, $2, $3, a.home_page) as id from meta.app a where a.alias = $1`, [checked.alias, next, plural])).rows[0].id;
         await c.query(
-          `insert into meta.region (page_id, seq, title, type, source)
-           select $1, 10, $2, 'report', format(E'select %s\\n  from %s', string_agg(quote_ident(column_name), ', ' order by ordinal), meta.wizard_qname($3::regclass))
-             from meta.wizard_catalog($3::regclass) where kind <> 'binary'`,
-          [page, label, T],
+          `insert into meta.region (page_id, seq, title, type, source, config)
+           select $1, 10, $2, 'report', w ->> 'source',
+                  jsonb_build_object('headings', w -> 'headings')
+                  || case when jsonb_array_length(w -> 'hidden') > 0 then jsonb_build_object('hidden', w -> 'hidden') else '{}' end
+                  || case when w -> 'formats' <> '{}' then jsonb_build_object('formats', w -> 'formats') else '{}' end
+             from meta.wizard_report($3::regclass) w`,
+          [page, plural, T],
         );
-        await c.query(`select meta.wizard_nav(a, $2, 'table', $3) from meta.app a where a.alias = $1`, [checked.alias, label, next]);
-        pages.push({ page: next, label: `${label} (report)` });
+        await c.query(`select meta.wizard_nav(a, $2, 'table', $3) from meta.app a where a.alias = $1`, [checked.alias, plural, next]);
+        pages.push({ page: next, label: `${plural} (report)` });
         next += 1;
       }
     }
     if (chart) {
-      const dash = await addDashboard(c, checked.alias, tables, next);
+      const skipped: string[] = [];
+      const dash = await addDashboard(c, checked.alias, tables, next, skipped);
       if (dash) pages.push(dash);
       else notes.push('No dashboard: no table has a foreign key, or a text, yes/no or date column whose statistics show a few values that repeat (ANALYZE the tables first).');
+      if (skipped.length)
+        notes.push(`Not on the dashboard: ${skipped.map((t) => t.replace(/^.*\./, '').replace(/"/g, '')).join(', ')} (row level security: the application's role may see none of the rows).`);
     }
+    await addHomeCards(c, app.id);
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, pages, notes };
   });
 }

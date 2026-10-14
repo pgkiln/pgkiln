@@ -346,6 +346,36 @@ was never analyzed). Everything is created in one transaction. Foreign keys to t
 schema show in forms as select lists that the app's role may not be allowed to read: grant it, or
 pick a schema that holds them all.
 
+#### What the generated pages look like
+
+The wizards (every *Create application* flow and the page wizards) make pages that read like APEX's:
+
+- **Labels**: names become words. `snake_case` and `camelCase` are split, run-together words are
+  recognised (`hiredate` → *Hire Date*, `deptno` → *Department Number*) and common abbreviations are
+  expanded (`emp` → *Employee*, `dept` → *Department*, `sal` → *Salary*, `comm` → *Commission*, `mgr` →
+  *Manager*, `qty` → *Quantity*, `desc` → *Description*, `pct` → *Percent*, `crm` → *CRM*, `id` → *ID*).
+  A foreign key column drops its `_id`/`no` suffix (`deptno` → *Department*), and a column named after
+  the table's first letter drops it (`emp.ename` → *Name*). A short `COMMENT ON COLUMN` (one line, at
+  most 60 characters, no full stop) is the label; a longer one becomes the item's help text. A short
+  `COMMENT ON TABLE` names the pages.
+- **Plural and singular**: report pages, cards and the navigation menu use the plural (*Employees*),
+  forms and dialog titles the singular (*Employee*).
+- **Reports** show a foreign key's parent by its display column (a name, title or label, else its first
+  text column): *Manager* shows KING, *Department* shows SALES. The key itself stays in the query,
+  hidden, so filters can use it. A row starts with a pencil that opens the form.
+- **Files**: a `bytea` column becomes one file upload item that also fills the columns that go with it
+  (`<col>_name`/`_filename`, `<col>_mime`/`_mime_type`, `<col>_size`, `<col>_updated`; or `filename`
+  and `mime_type` next to the only `bytea` column). Reports leave these columns out. Columns named like
+  *photo*, *image* or *logo* accept pictures only.
+- **Numbers** get a format mask with group separators (and the scale's decimals for `numeric(p,s)`),
+  in reports and forms alike, in the application's language (*2,850.00*); keys get none.
+- The **Dashboard** comes right after *Home* in the menu; its charts are titled *Employees by Manager*,
+  rows without a value are labelled *(none)*, and bar charts show the ten largest values (the rest is
+  one *Other* bar). Tables with row-level security are left out (the application's role may see none of
+  their rows); the result page says which.
+- The **Home** page has a hero with the application's icon and name, and a card per page of the menu
+  (a list `HOME_PAGES`, Shared Components → Lists). A blank application gets the hero only.
+
 ### Creating an application from a blueprint
 
 **Create → From a blueprint** (`/builder/blueprints`; APEX 26.1: *Blueprints*, spec-driven

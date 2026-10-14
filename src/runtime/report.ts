@@ -794,7 +794,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     } catch (e) {
       failure = await publicError(ctx, e, `report "${r.title ?? r.id}" aggregates`);
     }
-  const link = r.config.link as { column: string; page: number; items?: Record<string, string> } | undefined;
+  const link = r.config.link as { column: string; page: number; items?: Record<string, string>; icon?: boolean } | undefined;
   const linkIdx = link && (await pageAllowed(ctx, link.page)) ? fields.findIndex((f) => f.name.toLowerCase() === link.column.toLowerCase()) : -1;
   const pre = new Set<string>((r.config.preformatted ?? []).map((x: string) => x.toLowerCase()));
   let computeErrors: { c: Computation; message: string }[] = [];
@@ -803,7 +803,9 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const selection = st.view === 'report' ? selectionOf(ctx.page, r) : null;
   const selIdx = selection ? fields.findIndex((f) => f.name.toLowerCase() === selection.column.toLowerCase()) : -1;
   const selected = new Set(selIdx >= 0 ? splitValues(ctx.session.state[selection!.item] ?? '') : []);
-  const lead = selIdx >= 0 ? 1 : 0;
+  // (097) {"link": {"icon": true}}: a pencil link in a column of its own; the key column is plain text
+  const editIcon = linkIdx >= 0 && link!.icon === true && st.view === 'report';
+  const lead = (selIdx >= 0 ? 1 : 0) + (editIcon ? 1 : 0);
   // columns rendered through a template component (config.column_templates)
   const fmtOf = columnFormats(ctx, r);
   const templated = st.view === 'report' ? await columnTemplates(ctx, r, fields, (v, oid) => cell(v, oid, ctx.locale.format), (v) => cell(v)) : new Map();
@@ -840,12 +842,13 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     });
     return html`<th scope="col" class="${cls}" aria-sort="${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
   });
-  if (lead) header.unshift(html`<th scope="col" class="row-select"><label><input type="checkbox" data-select-all="${selection!.item}" aria-label="${t('report.select_all')}"><span class="row-select-label" aria-hidden="true">${t('report.select_all')}</span></label></th>`);
+  if (editIcon) header.unshift(html`<th scope="col" class="row-edit" aria-label="${t('report.edit')}"></th>`);
+  if (selIdx >= 0) header.unshift(html`<th scope="col" class="row-select"><label><input type="checkbox" data-select-all="${selection!.item}" aria-label="${t('report.select_all')}"><span class="row-select-label" aria-hidden="true">${t('report.select_all')}</span></label></th>`);
 
   // an aggregate row (totals, or a control break's subtotals): the values
   // under their columns, the label in the first cell
   const aggRow = (values: unknown[], label: string, cls: string) =>
-    html`<tr class="${cls}">${lead ? html`<td class="row-select"></td>` : ''}${cols.map(({ f }, ci) => {
+    html`<tr class="${cls}">${selIdx >= 0 ? html`<td class="row-select"></td>` : ''}${editIcon ? html`<td class="row-edit"></td>` : ''}${cols.map(({ f }, ci) => {
       const parts = agg!.aggs.flatMap((a, ai) => (a.column === f.name ? [`${t(`agg.${a.fn}`)}: ${cell(values[ai], agg!.types[ai], aggregateFormat(a.fn, f.name, fmtOf, ctx.locale.format))}`] : []));
       const text = [ci === 0 ? label : '', ...parts].filter(Boolean).join(' · ');
       return html`<td class="${parts.length && NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null}" data-label="${parts.length ? headingOf(r, f.name, ctx.locale.tr) : ''}">${text}</td>`;
@@ -867,17 +870,20 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       }
     }
     const hl = st.highlights.find((_, hi) => hlIdx[hi] >= 0 && row[hlIdx[hi]] === true);
-    const pick = lead
+    const pick = selIdx >= 0
       ? html`<td class="row-select" data-label="${t('report.select_row')}"><input type="checkbox" name="${selection!.item}" value="${cell(row[selIdx])}"${selected.has(cell(row[selIdx])) ? raw(' checked') : ''} aria-label="${t('report.select_row')} ${cell(row[selIdx])}"></td>`
       : '';
     rowNum++;
-    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${cols.map(({ f, i }) => {
+    const edit = editIcon
+      ? html`<td class="row-edit"><a ${linkAttrs(ctx, link!.page, rowItems(row))} aria-label="${t('report.edit')} ${cell(row[linkIdx])}" title="${t('report.edit')}">${icon('edit')}</a></td>`
+      : '';
+    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${edit}${cols.map(({ f, i }) => {
       const text = cell(row[i], f.dataTypeID, fmtOf(f.name));
       const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name)].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
       const tpl = templated.get(i);
       if (tpl) return html`<td class="${cls ? `${cls} tc-cell` : 'tc-cell'}" data-label="${label}">${tpl(row, rowNum)}</td>`;
-      return i === linkIdx
+      return i === linkIdx && !editIcon
         ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
         : html`<td class="${cls}" data-label="${label}">${text}</td>`;
     })}</tr>`);
@@ -1098,12 +1104,12 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   // app.js records each change (POST …/report/<id>/select), so paging keeps them
   const onPage = new Set(selIdx >= 0 ? info.rows.map((row) => cell(row[selIdx])) : []);
   const elsewhere = [...selected].filter((v) => !onPage.has(v));
-  const selectionNote = lead
+  const selectionNote = selIdx >= 0
     ? html`<p class="sel-count muted" data-sel-count="${r.id}" aria-live="polite">${selected.size ? t('report.selected_count', { n: selected.size }) : ''}</p>
       ${elsewhere.map((v) => html`<input type="hidden" name="${selection!.item}" value="${v}" data-sel-other>`)}`
     : '';
   return html`${toolbar}${switcher}${errors}${selectionNote}
-    <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}"${lead ? raw(` data-sel-region="${r.id}"`) : ''}>
+    <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}"${selIdx >= 0 ? raw(` data-sel-region="${r.id}"`) : ''}>
       <thead><tr>${header}</tr></thead>
       <tbody>${body.length ? body : html`<tr><td colspan="${cols.length + lead || 1}" class="empty">${empty}</td></tr>`}</tbody>
       ${info.rows.length ? foot : ''}

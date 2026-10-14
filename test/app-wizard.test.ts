@@ -153,11 +153,12 @@ describe('create an application from a workbook with several sheets', () => {
     const pages = (await owner.query('select page_no, name, mode from meta.page where app_id = $1 order by page_no', [a.id])).rows;
     assert.deepEqual(pages.map((p) => p.page_no), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     const nav = (await owner.query('select label, target_page from meta.nav_entry where app_id = $1 order by seq', [a.id])).rows;
-    assert.deepEqual(nav.map((n) => n.label), ['Home', 'Departments', 'Employees', 'Projects', 'Assignments', 'Dashboard']);
+    // (097) the Dashboard right after Home
+    assert.deepEqual(nav.map((n) => n.label), ['Home', 'Dashboard', 'Departments', 'Employees', 'Projects', 'Assignments']);
     const charts = (await owner.query(`select r.title, r.columns from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 10 order by r.seq`, [a.id])).rows;
     assert.ok(charts.length >= 3, JSON.stringify(charts));
-    assert.equal(charts[0].title, 'Departments per city');
-    assert.equal(charts[1].title, 'Employees per department');
+    assert.equal(charts[0].title, 'Departments by City');
+    assert.equal(charts[1].title, 'Employees by Department');
     assert.ok(charts.every((c) => c.columns === 6));
     // a form's foreign key is a select list
     const item = await owner.one(`select i.type from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and p.page_no = 5 and i.source_column = 'department_id'`, [a.id]);
@@ -284,12 +285,22 @@ describe('create an application from existing tables', () => {
     assert.equal(a.db_role, 'app_aw35_tables');
     const pages = (await owner.query('select page_no, name, mode from meta.page where app_id = $1 order by page_no', [a.id])).rows;
     assert.deepEqual(pages.map((p) => [p.page_no, p.name]), [
-      [1, 'Home'], [2, 'Region'], [3, 'Region Form'], [4, 'Stock Log'], [5, 'Store'], [6, 'Store Form'], [7, 'Store List'], [8, 'Dashboard'],
+      [1, 'Home'], [2, 'Regions'], [3, 'Region Form'], [4, 'Stock Logs'], [5, 'Stores'], [6, 'Store Form'], [7, 'Store Lists'], [8, 'Dashboard'],
     ]);
     const nav = (await owner.query('select label from meta.nav_entry where app_id = $1 order by seq', [a.id])).rows.map((n) => n.label);
-    assert.deepEqual(nav, ['Home', 'Region', 'Stock Log', 'Store', 'Store List', 'Dashboard']);
+    assert.deepEqual(nav, ['Home', 'Dashboard', 'Regions', 'Stock Logs', 'Stores', 'Store Lists']);
     const charts = (await owner.query(`select r.title from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 8`, [a.id])).rows;
-    assert.deepEqual(charts.map((c) => c.title), ['Store per region'], 'the foreign key groups the rows');
+    assert.deepEqual(charts.map((c) => c.title), ['Stores by Region'], 'the foreign key groups the rows');
+    // (097) the report shows the region's name (the key hidden), with headings; the home page has a card per page
+    const report = (await owner.one(`select r.source, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 5`, [a.id]));
+    assert.match(report.source, /left join aw35_src\.region p1 on p1\.id = t\.region_id/);
+    assert.deepEqual(report.config.hidden, ['region_id']);
+    assert.equal(report.config.headings.region_id_display, 'Region');
+    assert.equal(report.config.link.icon, true);
+    const home = (await owner.query(`select r.type, r.template from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 1 order by r.seq`, [a.id])).rows;
+    assert.deepEqual(home.map((r) => `${r.type}/${r.template}`), ['static/hero', 'list/plain']);
+    const cards = (await owner.query(`select label from meta.list_entry where app_id = $1 and list_name = 'HOME_PAGES' order by seq`, [a.id])).rows.map((r) => r.label);
+    assert.deepEqual(cards, ['Dashboard', 'Regions', 'Stock Logs', 'Stores', 'Store Lists']);
     const v = new Browser(app);
     for (const page of [2, 4, 5, 7, 8]) assert.equal((await v.get(`/a/aw35-tables/${page}`)).statusCode, 200, `page ${page}`);
     assert.match((await v.get('/a/aw35-tables/7')).body, /South/);

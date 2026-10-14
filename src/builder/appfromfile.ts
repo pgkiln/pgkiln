@@ -21,7 +21,7 @@ import type { Session } from '../session.ts';
 import { MAX_MB, preview, resultHtml } from './dataload.ts';
 import { buildAppFromSheets, MAX_SHEETS, parseBook, sheetsForm, type BuiltBook, type NamedSheet } from './appsheets.ts';
 import { appWizardRoutes, PASTED } from './appwizard.ts';
-import { checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
+import { addHomeCards, checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { BASE, csrf, developer, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 
@@ -149,9 +149,9 @@ export async function buildAppFromFile(checked: CheckedApp, sheet: Sheet, b: Bod
     const generate = async (kind: string, page: number, options: Record<string, unknown>) => {
       await c.query('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb)', [checked.alias, kind, T, page, JSON.stringify(options)]);
     };
-    const label = (await c.query(`select meta.wizard_label($1) as l`, [tableName])).rows[0].l as string;
-    await generate('report_form', 2, { form_page: 3, label });
-    pages.push({ page: 2, label }, { page: 3, label: `${label} form` });
+    const { label, singular } = (await c.query('select meta.wizard_table_label($1::regclass) as label, meta.wizard_table_label($1::regclass, false) as singular', [T])).rows[0] as { label: string; singular: string };
+    await generate('report_form', 2, { form_page: 3 });
+    pages.push({ page: 2, label }, { page: 3, label: `${singular} form` });
     let next = 4;
     // the statistics tell which columns group the rows: a few values, repeated (not a name per row)
     const rows = result.inserted;
@@ -178,6 +178,7 @@ export async function buildAppFromFile(checked: CheckedApp, sheet: Sheet, b: Bod
         pages.push({ page: next++, label: `Faceted search (${facets.join(', ')})` });
       }
     }
+    await addHomeCards(c, app.id);
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, table: T, result, pages, notes };
   });
 }
