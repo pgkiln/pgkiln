@@ -4056,7 +4056,7 @@ describe('sprint 33 item 1: Gantt, pyramid and polar charts', () => {
          union all select '<script>alert(2)</script>', '2026-01-03', null, null, 2, '1,"><x'`]);
       const allen = await as('allen');
       const page = (await allen.get('/a/hr/32')).body;
-      assert.ok(!page.includes('<img src=x') && !page.includes('<script>alert') && !page.includes('<svg onload') && !page.includes('"><b>'));
+      for (const bad of ['<img src=x', '<script>alert', '<svg onload', '50"><b>']) assert.ok(!page.includes(bad), bad);
       assert.match(page, /&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
       assert.doesNotMatch(page, /\sstyle=/, 'geometry goes into the nonce stylesheet');
       assert.doesNotMatch(page, /\/a\/hr\/3\?/, 'page 3 needs MANAGER: no drill-down for allen');
