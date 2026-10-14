@@ -567,17 +567,20 @@ export function pagerNav(ctx: PageContext, r: Region, info: PageInfo, linkAttr: 
   </nav>`;
 }
 
-/** (sprint 76) Rows per page as a select in the pager (a GET form; app.js sends it on change, else its button). */
+/** (sprint 76) Rows per page as a select in the pager (a detached GET form; app.js sends it on change, else its button). */
 function sizeChooser(ctx: PageContext, r: Region, info: PageInfo): Raw | '' {
   if (r.type !== 'report' || r.config.interactive === false) return '';
   const st = reportState(ctx, r);
   const keep = [...ctx.params.entries()].filter(([k]) => k !== key(r, 'n') && k !== key(r, 'p') && k !== key(r, 'k') && !['clear', 'cs'].includes(k));
   const t = ctx.locale.t;
   if (info.total !== null && info.total <= PAGE_SIZES[0] && st.size === PAGE_SIZES[0]) return '';
-  return html`<form method="get" action="${ctx.base}/${ctx.page.page_no}" class="pager-size">${keep.map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}
+  // the region sits inside the page's form: the GET form is detached, the select and its button join it by its id
+  const form = `rn${r.id}`;
+  ctx.detached.push(html`<form id="${form}" method="get" action="${ctx.base}/${ctx.page.page_no}">${keep.map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}</form>`);
+  return html`<span class="pager-size">
     <label for="r${r.id}_size">${t('report.rows_per_page')}</label>
-    <select id="r${r.id}_size" name="${key(r, 'n')}" data-go>${[...new Set([...PAGE_SIZES, st.size])].sort((a, b) => a - b).map((n) => html`<option value="${n}"${n === st.size ? raw(' selected') : ''}>${n}</option>`)}</select>
-    <button class="btn btn-sm no-js-only">${t('report.go')}</button></form>`;
+    <select id="r${r.id}_size" name="${key(r, 'n')}" form="${form}" data-go>${[...new Set([...PAGE_SIZES, st.size])].sort((a, b) => a - b).map((n) => html`<option value="${n}"${n === st.size ? raw(' selected') : ''}>${n}</option>`)}</select>
+    <button class="btn btn-sm no-js-only" form="${form}">${t('report.go')}</button></span>`;
 }
 
 /** (sprint 76) The most values a column heading's menu lists. */
