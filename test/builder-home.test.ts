@@ -65,11 +65,14 @@ describe('App Builder home', () => {
   });
 
   test('Create and Import have their own pages; their errors come back to them', async () => {
-    assert.match((await dev.get('/builder/create')).body, /<form method="post" action="\/builder\/apps">/);
+    assert.match((await dev.get('/builder/create')).body, /<form method="post" action="\/builder\/apps" data-progress=/);
     assert.match((await dev.get('/builder/import')).body, /<form method="post" action="\/builder\/import">/);
     await dev.get('/builder/create');
+    // (sprint 73) the wizard comes back with the message and the values
     const bad = await dev.submit('/builder/apps', { name: 'x', alias: '1 bad alias', authentication: 'none' });
-    assert.equal(bad.headers.location, '/builder/create');
+    assert.equal(bad.statusCode, 422);
+    assert.match(bad.body, /The alias must start with a letter/);
+    assert.match(bad.body, /name="alias" type="text" value="1 bad alias"/);
     await dev.get('/builder/import');
     const broken = await dev.submit('/builder/import', { doc: '{not json' });
     assert.equal(broken.headers.location, '/builder/import');
