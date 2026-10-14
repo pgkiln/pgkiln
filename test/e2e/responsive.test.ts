@@ -97,9 +97,16 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         for (const p of [1, 2, 3]) {
           await page.goto(`${base}/a/hr/${p}`);
           assert.equal(await page.getAttribute('html', 'data-style'), 'iris');
-          assert.equal((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius'))).trim(), '12px');
+          // (sprint 72) APEX's Iris: 4 px corners, a dark menu
+          assert.equal((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius'))).trim(), '4px');
           await check(page, `app-${p}-iris`, vp);
         }
+        // the earlier Iris, kept as Lavender
+        await owner.query(`update meta.app set theme = theme || '{"base": "lavender"}' where alias = 'hr'`);
+        await page.goto(`${base}/a/hr/2`);
+        assert.equal(await page.getAttribute('html', 'data-style'), 'lavender');
+        assert.equal((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--radius'))).trim(), '12px');
+        await check(page, 'app-2-lavender', vp);
       } finally {
         await owner.query(`update meta.app set theme = theme - 'base' where alias = 'hr'`);
       }
