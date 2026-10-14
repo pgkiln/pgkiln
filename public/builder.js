@@ -449,10 +449,16 @@
       }
       if (bar.children.length) row.after(bar);
     }
-    // (sprint 77, APEX: the Template Options dialog) the checkboxes in a dialog, opened from a button that counts them;
-    // the dialog stays inside the form, so the checkboxes are saved with it
+    // (sprint 77, APEX: the Template Options dialog) the checkboxes in a dialog, opened from a button that counts them.
+    // The dialog is the body's (not inside the form or the property editor's wrappers, which Common hides); the
+    // checkboxes belong to their form through the form attribute, so they are saved with it.
+    let optionDialogs = 0;
     for (const fs of pe.querySelectorAll('fieldset.options-field')) {
+      const form = fs.closest('form');
+      if (!form) continue;
+      if (!form.id) form.id = `pe-form-${++optionDialogs}`;
       const boxes = [...fs.querySelectorAll('input[type=checkbox]')];
+      for (const x of boxes) x.setAttribute('form', form.id);
       const legend = fs.querySelector('legend')?.textContent.trim() ?? 'Options';
       const holder = document.createElement('div');
       holder.className = 'field pe-options-open';
@@ -468,18 +474,19 @@
       d.setAttribute('aria-label', legend);
       fs.replaceWith(holder);
       holder.appendChild(b);
-      holder.appendChild(d);
       d.appendChild(fs);
       const ok = document.createElement('div');
       ok.className = 'pd-dialog-buttons';
       ok.innerHTML = '<button type="button" class="btn btn-primary">OK</button>';
       d.appendChild(ok);
-      // the count follows every change (Escape closes the dialog without OK)
-      for (const x of boxes) x.addEventListener('change', count);
-      ok.querySelector('button').addEventListener('click', () => {
-        d.close();
-        b.focus();
-      });
+      document.body.appendChild(d);
+      // the count follows every change (Escape closes the dialog without OK); a change is an unsaved change
+      for (const x of boxes)
+        x.addEventListener('change', () => {
+          count();
+          document.querySelector(`.tb-save[form="${form.id}"]`)?.classList.add('is-dirty');
+        });
+      ok.querySelector('button').addEventListener('click', () => d.close());
       d.addEventListener('close', () => b.focus());
       b.addEventListener('click', () => d.showModal());
       count();

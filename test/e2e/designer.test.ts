@@ -229,22 +229,11 @@ describe('page designer interaction (desktop)', () => {
     await page.click('.pe-common button[value=all]');
     await page.click('.pe-options-open > button');
     await page.locator('dialog[open] input[value="to-accent"]').check();
-    const okInfo = await page.evaluate(() => {
-      const d = document.querySelector('dialog[open]') as HTMLDialogElement;
-      const ok = d.querySelector('.pd-dialog-buttons button') as HTMLElement;
-      const r = ok.getBoundingClientRect();
-      const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return { dialog: d.getAttribute('aria-label'), ok: [r.x, r.y, r.width, r.height].map(Math.round), atOk: at === ok, at: at?.outerHTML.slice(0, 120), vh: innerHeight, dh: Math.round(d.getBoundingClientRect().height) };
-    });
     await page.click('dialog[open] .pd-dialog-buttons button');
-    const closedByOk = await page.locator('dialog[open]').waitFor({ state: 'detached', timeout: 3000 }).then(() => true, () => false);
-    if (!closedByOk) {
-      console.log('OK did not close the dialog:', JSON.stringify(okInfo));
-      await page.keyboard.press('Escape');
-    }
+    await page.locator('dialog[open]').waitFor({ state: 'detached', timeout: 5000 });
     const state = await page.evaluate(() => ({
       text: [...document.querySelectorAll('.pe-options-open > button')].map((b) => b.textContent),
-      checked: [...document.querySelectorAll('#pd-form input[name="template_options"]:checked')].map((x) => (x as HTMLInputElement).value),
+      checked: [...document.querySelectorAll('input[form="pd-form"][name="template_options"]:checked')].map((x) => (x as HTMLInputElement).value),
       open: document.querySelectorAll('dialog[open]').length,
     }));
     assert.deepEqual(state.checked, ['to-accent'], JSON.stringify(state));
