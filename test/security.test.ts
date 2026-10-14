@@ -7770,3 +7770,55 @@ describe('sprint 76 report column values', () => {
       assert.equal((await b.get(`/a/hr/2/report/${r.id}/values?col=${encodeURIComponent(col)}`)).statusCode, 403, col);
   });
 });
+
+describe('sprint 77 display positions, duplicate and copy to other page', () => {
+  const devLogin = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    return dev;
+  };
+  test('a signed-in developer with the CSRF token; only pages of the same application; only known positions', async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no in (9111, 9112)', [appId]);
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec-s77', 'Other', 'none') returning id`)).id;
+    try {
+      const p = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 9111, 'Positions') returning id`, [appId])).id;
+      const r1 = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'One', 'static', '<p>1</p>') returning id`, [p])).id;
+      const otherPage = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Other') returning id`, [other])).id;
+      const anon = new Browser();
+      const king = await as('king');
+      const dev = await devLogin();
+      for (const [op, form] of [
+        ['duplicate', { kind: 'region', id: String(r1) }],
+        ['copy', { kind: 'region', id: String(r1), page: String(p) }],
+        ['move', { kind: 'region', id: String(r1), position: 'banner', before: '' }],
+      ] as [string, Record<string, string>][]) {
+        const url = `/builder/pages/${p}/layout/${op}`;
+        assert.equal((await anon.post(url, { ...form, __csrf: 'x' })).statusCode, 302, `${op}: anonymous`);
+        assert.equal((await king.post(url, { ...form, __csrf: king.lastCsrf })).statusCode, 302, `${op}: an application user`);
+        assert.equal((await dev.post(url, { ...form, __csrf: 'forged' })).statusCode, 403, `${op}: forged token`);
+      }
+      assert.equal((await owner.one('select count(*)::int as n from meta.region where page_id = $1', [p])).n, 1, 'nothing copied');
+      assert.equal((await owner.one('select position from meta.region where id = $1', [r1])).position, null, 'nothing moved');
+      await dev.get(`/builder/pages/${p}`);
+      const post = (op: string, form: Record<string, string>) => dev.post(`/builder/pages/${p}/layout/${op}`, { ...form, __csrf: dev.lastCsrf });
+      // a page of another application, and another page's component through this page, are refused
+      assert.equal((await post('copy', { kind: 'region', id: String(r1), page: String(otherPage) })).statusCode, 400);
+      assert.equal((await owner.one('select count(*)::int as n from meta.region where page_id = $1', [otherPage])).n, 0);
+      const foreign = (await owner.one(`insert into meta.region (page_id, seq, title, type) values ($1, 10, 'Theirs', 'static') returning id`, [otherPage])).id;
+      assert.equal((await post('duplicate', { kind: 'region', id: String(foreign) })).statusCode, 404);
+      assert.equal((await post('copy', { kind: 'region', id: String(foreign), page: String(p) })).statusCode, 404);
+      // positions and button positions from the fixed lists only
+      for (const position of ["banner'; drop table meta.page; --", 'toString', 'side'])
+        assert.equal((await post('move', { kind: 'region', id: String(r1), position, before: '' })).statusCode, 400, position);
+      assert.equal((await post('create', { kind: 'button', type: 'submit', region: String(r1), slot: '__proto__' })).statusCode, 400);
+      assert.equal((await owner.one('select count(*)::int as n from meta.button where page_id = $1', [p])).n, 0);
+      // the page template from its list only
+      await dev.post(`/builder/pages/${p}`, { __csrf: dev.lastCsrf, page_no: '9111', name: 'Positions', mode: 'normal', protection: 'none', page_template: 'two_columns' });
+      assert.equal((await owner.one('select page_template from meta.page where id = $1', [p])).page_template, 'standard');
+    } finally {
+      await owner.query('delete from meta.page where app_id = $1 and page_no in (9111, 9112)', [appId]);
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+});

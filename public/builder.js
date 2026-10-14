@@ -209,6 +209,132 @@
     });
   }
 
+  // ---------------------------------------------------------------- the rendering tree's context menu (sprint 77)
+  // Right-click (or Shift+F10 / the menu key) on a region, item or button: create in or below it, duplicate,
+  // copy to another page, expand or collapse everything below, delete. Every entry is a link or a form post
+  // the server also answers without JavaScript.
+  function setupTreeMenu(tree) {
+    const pid = tree.dataset.pageId;
+    const base = `/builder/pages/${pid}`;
+    const token = document.querySelector('input[name="__csrf"]')?.value ?? '';
+    let menu = null;
+    let opener = null;
+    const close = (refocus = true) => {
+      menu?.remove();
+      menu = null;
+      if (refocus) opener?.focus();
+    };
+    const submit = (action, fields, confirmText) => {
+      if (confirmText && !window.confirm(confirmText)) return;
+      const f = document.createElement('form');
+      f.method = 'post';
+      f.action = action;
+      for (const [k, v] of Object.entries({ __csrf: token, ...fields })) {
+        const i = document.createElement('input');
+        i.type = 'hidden';
+        i.name = k;
+        i.value = v;
+        f.appendChild(i);
+      }
+      document.body.appendChild(f);
+      f.submit();
+    };
+    const setAll = (node, open) => {
+      const li = node.closest('li');
+      for (const sub of [li, ...li.querySelectorAll('li')]) {
+        const n = sub.querySelector(':scope > .pd-node.has-kids');
+        if (!n) continue;
+        sub.toggleAttribute('data-collapsed', !open);
+        n.setAttribute('aria-expanded', String(open));
+      }
+    };
+    const entries = (node) => {
+      const kind = node.dataset.kind;
+      const id = node.dataset.id;
+      const label = node.querySelector('.pd-label')?.textContent ?? '';
+      const go = (q) => () => window.location.assign(`${base}?${q}`);
+      const copyDialog = () => {
+        const d = document.getElementById('pd-copy-dialog');
+        if (!d) return;
+        d.querySelector('input[name="kind"]').value = kind;
+        d.querySelector('input[name="id"]').value = id;
+        d.querySelector('[data-copy-what]').textContent = `${kind[0].toUpperCase()}${kind.slice(1)}: ${label}`;
+        d.showModal();
+      };
+      const list = [];
+      if (kind === 'region') {
+        list.push(['Create page item', go(`new=item&region=${id}`)], ['Create button', go(`new=button&region=${id}`)],
+          ['Create dynamic action', go('new=dynamic_action')],
+          ['Create region below', () => submit(`${base}/layout/create`, { kind: 'region', type: 'static', position: node.dataset.position ?? '', before: node.dataset.next ?? '' })], null);
+      }
+      list.push(['Duplicate', () => submit(`${base}/layout/duplicate`, { kind, id })], ['Copy to other page…', copyDialog]);
+      if (kind !== 'region') list.push(['Create dynamic action', go('new=dynamic_action')]);
+      if (node.classList.contains('has-kids')) list.push(null, ['Expand all below', () => setAll(node, true)], ['Collapse all below', () => setAll(node, false)]);
+      list.push(null, ['Delete', () => submit(`${base}/c/${kind}/${id}/delete`, {}, `Delete ${kind} ${label}?`), 'danger']);
+      return list;
+    };
+    const open = (node, x, y) => {
+      close(false);
+      opener = node;
+      menu = document.createElement('div');
+      menu.className = 'pd-menu';
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', `Actions: ${node.querySelector('.pd-label')?.textContent ?? ''}`);
+      for (const e of entries(node)) {
+        if (!e) {
+          const sep = document.createElement('div');
+          sep.setAttribute('role', 'separator');
+          menu.appendChild(sep);
+          continue;
+        }
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'menuitem');
+        b.tabIndex = -1;
+        b.textContent = e[0];
+        if (e[2]) b.classList.add(`is-${e[2]}`);
+        b.addEventListener('click', () => {
+          close(e[0] !== 'Copy to other page…');
+          e[1]();
+        });
+        menu.appendChild(b);
+      }
+      document.body.appendChild(menu);
+      const r = menu.getBoundingClientRect();
+      menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - r.width - 4))}px`;
+      menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - r.height - 4))}px`;
+      menu.querySelector('[role=menuitem]')?.focus();
+      menu.addEventListener('keydown', (e) => {
+        const items = [...menu.querySelectorAll('[role=menuitem]')];
+        const i = items.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') items[(i + 1) % items.length].focus();
+        else if (e.key === 'ArrowUp') items[(i - 1 + items.length) % items.length].focus();
+        else if (e.key === 'Home') items[0].focus();
+        else if (e.key === 'End') items[items.length - 1].focus();
+        else if (e.key === 'Escape' || e.key === 'Tab') close();
+        else return;
+        e.preventDefault();
+      });
+    };
+    tree.addEventListener('contextmenu', (e) => {
+      const node = e.target.closest('.pd-node[data-kind][data-id]');
+      if (!node || !['region', 'item', 'button'].includes(node.dataset.kind)) return;
+      e.preventDefault();
+      const r = node.getBoundingClientRect();
+      // the keyboard's menu key has no pointer position
+      open(node, e.clientX || r.left + 24, e.clientY || r.bottom);
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (menu && !menu.contains(e.target)) close(false);
+    });
+    window.addEventListener('blur', () => close(false));
+    const dialog = document.getElementById('pd-copy-dialog');
+    dialog?.querySelector('[data-dialog-close]')?.addEventListener('click', () => {
+      dialog.close();
+      opener?.focus();
+    });
+  }
+
   // ---------------------------------------------------------------- property editor
   function setupProperties() {
     const pe = document.querySelector('.pe');
@@ -781,6 +907,7 @@
     setupThemePreview();
     setupTabs();
     for (const tree of document.querySelectorAll('.pd-tree')) setupTree(tree);
+    for (const tree of document.querySelectorAll('.pd-tree[data-tree-menu]')) setupTreeMenu(tree);
     setupProperties();
     setupCanvas();
   }

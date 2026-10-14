@@ -231,6 +231,58 @@ export async function createComponent(c: Q, pid: number, kind: LayoutKind, type:
   return id;
 }
 
+/** A copy of a row of a page component table with some columns changed; returns its id. */
+async function copyRow(c: Q, kind: LayoutKind, id: number, over: Record<string, unknown>): Promise<number> {
+  const table = COMPONENTS[kind].table;
+  return (await c.query(
+    `insert into ${table} select (jsonb_populate_record(null::${table}, to_jsonb(x) || jsonb_build_object('id', nextval('${table}_id_seq')) || $2::jsonb)).* from ${table} x where id = $1 returning id`,
+    [id, JSON.stringify(over)],
+  )).rows[0].id;
+}
+
+/** NAME, or NAME_2, NAME_3… when the page has an item (or button) of that name already. */
+async function freeName(c: Q, kind: 'item' | 'button', pid: number, name: string) {
+  const taken = new Set((await c.query(`select name from ${COMPONENTS[kind].table} where page_id = $1`, [pid])).rows.map((r) => r.name));
+  let out = name;
+  for (let i = 2; taken.has(out); i++) out = `${name}_${i}`;
+  return out;
+}
+
+/**
+ * (sprint 77, APEX: Duplicate and Copy to other Page in the rendering tree's menu) A copy of a region (with its
+ * items and buttons), an item or a button: on the same page right after the original, or at the end of another
+ * page of the same application (items named P<n>_ get that page's number; components of a region go to page level
+ * there). Item and button names are made unique on the page. Returns the copy's id.
+ */
+export async function duplicateComponent(c: Q, pid: number, kind: LayoutKind, id: number, toPid: number = pid) {
+  const table = COMPONENTS[kind].table;
+  const row = (await c.query(`select * from ${table} where id = $1 and page_id = $2`, [id, pid])).rows[0];
+  if (!row) throw new LayoutError(404, `${COMPONENTS[kind].label} not found on this page.`);
+  const pages = (await c.query('select t.page_no from meta.page t join meta.page f on f.app_id = t.app_id where t.id = $1 and f.id = $2', [toPid, pid])).rows;
+  if (!pages.length) throw new LayoutError(400, 'That page is not in this application.');
+  const same = toPid === pid;
+  const rename = (name: string) => (same ? name : name.replace(/^P\d+_/, `P${pages[0].page_no}_`));
+  const copyChild = async (k: 'item' | 'button', x: any, regionId: number | null) =>
+    copyRow(c, k, x.id, { page_id: toPid, region_id: regionId, name: await freeName(c, k, toPid, rename(x.name)), ...(k === 'button' && regionId === null ? { slot: null } : {}) });
+  // where the copy goes: after the original in its container, or at the end of the other page
+  let place: { region?: string; position?: string; slot?: string; before: string } = { before: '' };
+  if (same) {
+    const scope = kind === 'region' ? " and coalesce(position, 'body') = coalesce($2, 'body')" : ' and region_id is not distinct from $2';
+    const list: number[] = (await c.query(`select id from ${table} where page_id = $1${scope} order by seq, id`, [pid, kind === 'region' ? row.position : row.region_id])).rows.map((r) => r.id);
+    const next = list[list.indexOf(id) + 1];
+    place = { region: String(row.region_id ?? ''), position: row.position ?? '', slot: row.slot ?? '', before: next ? String(next) : '' };
+  } else place = { region: '', position: row.position ?? '', slot: '', before: '' };
+  let copy: number;
+  if (kind === 'region') {
+    const staticId = row.static_id && !same && !(await c.query('select 1 from meta.region where page_id = $1 and static_id = $2', [toPid, row.static_id])).rowCount ? row.static_id : null;
+    copy = await copyRow(c, 'region', id, { page_id: toPid, static_id: staticId });
+    for (const k of ['item', 'button'] as const)
+      for (const x of (await c.query(`select id, name from ${COMPONENTS[k].table} where region_id = $1 order by seq, id`, [id])).rows) await copyChild(k, x, copy);
+  } else copy = await copyChild(kind, row, same ? row.region_id : null);
+  await moveComponent(c, toPid, kind, copy, place);
+  return copy;
+}
+
 // ---------------------------------------------------------------- routes
 
 const wantsJson = (req: Req) => String(req.headers.accept ?? '').includes('application/json');
@@ -296,6 +348,39 @@ export async function arrangeRoutes(app: FastifyInstance) {
     const id = await owner.tx((c) => createComponent(c, pid, kind, b.type ?? '', { region: b.region, before: b.before, position: b.position, slot: b.slot }));
     keep(s, { pid, undo: [], redo: [] }); // earlier layout steps no longer line up with the new component
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} created; set its properties on the right.` };
+  });
+
+  // (sprint 77) the rendering tree's menu: Duplicate, Copy to other Page
+  route('duplicate', async (s, pid, b) => {
+    const kind = b.kind;
+    const id = int(b.id);
+    if (!isKind(kind) || id === null) throw new LayoutError(400, 'Unknown component.');
+    const copy = await owner.tx((c) => duplicateComponent(c, pid, kind, id));
+    keep(s, { pid, undo: [], redo: [] });
+    return { sel: `${kind}-${copy}`, message: `${COMPONENTS[kind].label} duplicated.` };
+  });
+
+  app.post(`${BASE}/pages/:pid/layout/copy`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = (req.body ?? {}) as Record<string, string | undefined>;
+    const pid = int(req.params.pid);
+    const to = int(b.page);
+    const kind = b.kind;
+    const id = int(b.id);
+    try {
+      if (pid === null || !(await owner.one('select 1 as ok from meta.page where id = $1', [pid]))) throw new LayoutError(404, 'Page not found');
+      if (!isKind(kind) || id === null || to === null) throw new LayoutError(400, 'Unknown component or page.');
+      const copy = await owner.tx((c) => duplicateComponent(c, pid, kind, id, to));
+      if (to === pid) keep(s, { pid, undo: [], redo: [] });
+      flash(s, `${COMPONENTS[kind].label} copied.`);
+      await saveState(s);
+      const location = `${BASE}/pages/${to}?c=${kind}-${copy}`;
+      return wantsJson(req) ? reply.send({ ok: true, location }) : reply.redirect(location, 303);
+    } catch (e) {
+      if (!(e instanceof LayoutError)) throw e;
+      return wantsJson(req) ? reply.code(e.status).send({ ok: false, error: e.message }) : reply.code(e.status).type('text/plain').send(e.message);
+    }
   });
 
   for (const op of ['undo', 'redo'] as const)

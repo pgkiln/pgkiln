@@ -194,3 +194,68 @@ describe('the Page Designer layout', () => {
     assert.equal((await owner.one('select position from meta.region where id = $1', [r.body])).position, null);
   });
 });
+
+describe('the rendering tree', () => {
+  test('groups regions by display position and buttons by their position', async () => {
+    const dev = await devLogin();
+    const html = (await dev.get(`/builder/pages/${pageId}`)).body;
+    const tree = /<ul class="pd-tree" aria-label="Rendering"[\s\S]*?<\/ul>\s*<dialog/.exec(html)![0];
+    assert.match(tree, /data-tree-menu data-page-id="\d+"/);
+    for (const label of ['Banner', 'Breadcrumb bar', 'Left column', 'Body', 'Footer']) assert.match(tree, new RegExp(`<span class="pd-label">${label}</span>`), label);
+    assert.doesNotMatch(tree, /<span class="pd-label">Right column<\/span>/, 'an empty position the template lacks is left out');
+    assert.ok(tree.indexOf('>Banner<') < tree.indexOf('>Body<') && tree.indexOf('>Body<') < tree.indexOf('>Footer<'));
+    assert.match(tree, /<span class="pd-label">Buttons: Next<\/span>/);
+    assert.match(tree, /<span class="pd-label">Buttons: Create<\/span>/);
+    assert.match(tree, new RegExp(`data-kind="region" data-id="${r.left}" data-position="left" data-next=""`));
+    assert.match(html, /<dialog class="pd-dialog" id="pd-copy-dialog"/);
+  });
+
+  test('Duplicate: a region with its items and buttons, right after the original', async () => {
+    const item = (await owner.one(`insert into meta.item (page_id, region_id, seq, name, label) values ($1, $2, 10, 'P1_NAME', 'Name') returning id`, [pageId, r.footer])).id;
+    await owner.query(`update meta.region set static_id = 'small-print' where id = $1`, [r.footer]);
+    const dev = await devLogin();
+    await dev.get(`/builder/pages/${pageId}`);
+    const res = await dev.post(`/builder/pages/${pageId}/layout/duplicate`, { __csrf: dev.lastCsrf, kind: 'region', id: String(r.footer) });
+    assert.equal(res.statusCode, 303);
+    const copy = Number(/c=region-(\d+)/.exec(res.headers.location as string)![1]);
+    const c = await owner.one('select title, position, static_id from meta.region where id = $1', [copy]);
+    assert.deepEqual([c.title, c.position, c.static_id], ['Small print', 'footer', null]);
+    assert.deepEqual((await owner.query('select name from meta.item where region_id = $1', [copy])).rows.map((x) => x.name), ['P1_NAME_2']);
+    // and an item on its own
+    const one = await dev.post(`/builder/pages/${pageId}/layout/duplicate`, { __csrf: dev.lastCsrf, kind: 'item', id: String(item) });
+    const itemCopy = Number(/c=item-(\d+)/.exec(one.headers.location as string)![1]);
+    const ic = await owner.one('select name, region_id from meta.item where id = $1', [itemCopy]);
+    assert.deepEqual([ic.name, ic.region_id], ['P1_NAME_3', r.footer]);
+    const order = (await owner.query('select id from meta.item where region_id = $1 order by seq', [r.footer])).rows.map((x) => x.id);
+    assert.deepEqual(order, [item, itemCopy], 'right after the original');
+    await owner.query('delete from meta.region where id = $1', [copy]);
+    await owner.query('delete from meta.item where region_id = $1', [r.footer]);
+    await owner.query('update meta.region set static_id = null where id = $1', [r.footer]);
+  });
+
+  test('Copy to other page: item names get the page\'s number; not into another application', async () => {
+    const page2 = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 2, 'Second') returning id`, [appId])).id;
+    const otherApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ('ts-s77b', 'Other', 'none') returning id`)).id;
+    const otherPage = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Other') returning id`, [otherApp])).id;
+    try {
+      await owner.query(`insert into meta.item (page_id, region_id, seq, name, label) values ($1, $2, 10, 'P1_CODE', 'Code')`, [pageId, r.footer]);
+      const dev = await devLogin();
+      await dev.get(`/builder/pages/${pageId}`);
+      const res = await dev.post(`/builder/pages/${pageId}/layout/copy`, { __csrf: dev.lastCsrf, kind: 'region', id: String(r.footer), page: String(page2) });
+      assert.equal(res.statusCode, 303);
+      assert.match(res.headers.location as string, new RegExp(`/builder/pages/${page2}\\?c=region-\\d+`));
+      const c = await owner.one('select id, position from meta.region where page_id = $1', [page2]);
+      assert.equal(c.position, 'footer');
+      assert.deepEqual((await owner.query('select name from meta.item where region_id = $1', [c.id])).rows.map((x) => x.name), ['P2_CODE']);
+      assert.equal((await owner.one('select count(*)::int as n from meta.button where region_id = $1', [c.id])).n, 0);
+      // another application's page is refused, and nothing is copied
+      const bad = await dev.post(`/builder/pages/${pageId}/layout/copy`, { __csrf: dev.lastCsrf, kind: 'region', id: String(r.footer), page: String(otherPage) });
+      assert.equal(bad.statusCode, 400);
+      assert.equal((await owner.one('select count(*)::int as n from meta.region where page_id = $1', [otherPage])).n, 0);
+    } finally {
+      await owner.query('delete from meta.item where region_id = $1', [r.footer]);
+      await owner.query('delete from meta.page where id = $1', [page2]);
+      await owner.query('delete from meta.app where id = $1', [otherApp]);
+    }
+  });
+});

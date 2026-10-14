@@ -80,19 +80,30 @@ export async function designerRoutes(app: FastifyInstance) {
     const regionTitle = (r: any) => r.title ?? `(${r.type})`;
 
     // ------------------------------------------------------------ left: component tree
+    // (sprint 77) data-kind and data-id: the node's context menu (Duplicate, Copy to other page, Delete…) and icon colour
     const leaf = (k: string, r: any, ic: Raw | '', label: string, note = '') =>
-      html`<li><a class="pd-node" href="${url(`c=${k}-${r.id}`)}"${cur(`${k}-${r.id}`)}>${ic}<span class="pd-label">${label}</span>${badges(r)}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
+      html`<li><a class="pd-node" href="${url(`c=${k}-${r.id}`)}"${cur(`${k}-${r.id}`)} data-kind="${k}" data-id="${r.id}">${ic}<span class="pd-label">${label}</span>${badges(r)}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
     const folder = (label: string, children: Raw[] | Raw, open = true) =>
       html`<li${open ? '' : raw(' data-collapsed')}><span class="pd-node pd-folder"><span class="pd-label">${label}</span></span><ul>${children}</ul></li>`;
     const none = (text: string) => html`<li class="pd-empty">${text}</li>`;
     const itemLeaf = (i: any) => leaf('item', i, bicon(itemIcon(i.type)), i.name, i.type);
     const buttonLeaf = (b: any) => leaf('button', b, bicon('button'), b.name, b.action);
-    const regionLeaf = (r: any) => {
+    const regionLeaf = (r: any, next: any) => {
       const items = rows.item.filter((i) => i.region_id === r.id);
       const buttons = rows.button.filter((b) => b.region_id === r.id);
-      const kids = [...(items.length ? [folder('Items', items.map(itemLeaf))] : []), ...(buttons.length ? [folder('Buttons', buttons.map(buttonLeaf))] : [])];
-      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
+      // (sprint 77, APEX: region slots) buttons by their position in the region
+      const bySlot = ['region', ...TOP_SLOTS, ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
+      const kids = [...(items.length ? [folder('Items', items.map(itemLeaf))] : []),
+        ...bySlot.map(([sl, list]) => folder(sl === 'region' ? 'Buttons' : `Buttons: ${SLOT_LABELS[sl]}`, list.map(buttonLeaf)))];
+      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-next="${next?.id ?? ''}">${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
+    // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
+    const treeSide = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
+    const regionFolders = ['banner', 'breadcrumb', 'left', 'body', 'right', 'footer'].map((pos) => {
+      const list = rows.region.filter((r) => (r.position ?? 'body') === pos);
+      if (!list.length && pos !== 'body' && pos !== treeSide) return '';
+      return folder(POSITION_LABELS[pos], list.length ? list.map((r, i) => regionLeaf(r, list[i + 1])) : none(pos === 'body' ? 'No regions yet' : 'No regions'), list.length > 0);
+    });
     const pageItems = rows.item.filter((i) => i.region_id === null);
     const pageButtons = rows.button.filter((b) => b.region_id === null);
     const loadProcs = rows.process.filter((x) => x.point === 'load');
@@ -108,15 +119,25 @@ export async function designerRoutes(app: FastifyInstance) {
       html`<div class="pd-treebar">${links.map(([k, label]) => html`<a class="tb-btn tb-text" href="${url(`new=${k}`)}">${icon('plus')}<span>${label}</span></a>`)}</div>`;
 
     const rendering = html`${createBar([['region', 'Region'], ['item', 'Item'], ['button', 'Button']])}
-      <ul class="pd-tree" aria-label="Rendering">
+      <ul class="pd-tree" aria-label="Rendering" data-tree-menu data-page-id="${p.id}">
         <li><a class="pd-node" href="${url('c=page')}"${cur('page')}>${icon('file')}<span class="pd-label">Page ${p.page_no}: ${p.name}</span>${badges(p)}</a>
           <ul>
             ${folder('Pre-Rendering (before header)', preRendering.length ? preRendering : none('No branches, computations or processes before rendering'), preRendering.length > 0)}
-            ${folder('Regions', rows.region.length ? rows.region.map(regionLeaf) : none('No regions yet'))}
+            ${regionFolders}
             ${pageItems.length ? folder('Page items', pageItems.map(itemLeaf)) : ''}
             ${pageButtons.length ? folder('Page buttons', pageButtons.map(buttonLeaf)) : ''}
           </ul></li>
-      </ul>`;
+      </ul>
+      <dialog class="pd-dialog" id="pd-copy-dialog" aria-labelledby="pd-copy-title">
+        <form method="post" action="${url('')}/layout/copy">${csrf(s)}<input type="hidden" name="kind" value=""><input type="hidden" name="id" value="">
+          <h2 id="pd-copy-title">Copy to other page</h2>
+          <p class="muted" data-copy-what></p>
+          <div class="field"><label class="label" for="pd-copy-page">Page</label>
+            <select id="pd-copy-page" name="page">${pages.map((x) => html`<option value="${x.id}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no}. ${x.name}</option>`)}</select>
+            <small class="help">Items named P${p.page_no}_… get the other page's number; a region's items and buttons come along. References in SQL and conditions are not changed.</small></div>
+          <div class="pd-dialog-buttons"><button type="button" class="btn" data-dialog-close>Cancel</button><button class="btn btn-primary">Copy</button></div>
+        </form>
+      </dialog>`;
     const events: [string, string][] = [['change', 'Change'], ['click', 'Click'], ['load', 'Page load']];
     const dynamicActions = html`${createBar([['dynamic_action', 'Dynamic action']])}
       <ul class="pd-tree" aria-label="Dynamic actions">
