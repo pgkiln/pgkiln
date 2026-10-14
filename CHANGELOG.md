@@ -5,9 +5,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-14
+
+Sprint 74: the builder's information architecture like APEX's.
+Sprint 75: the SQL Workshop's Object Browser like APEX's.
+Sprint 76: the interactive report's menus like APEX's, and date items in the application's date format.
 Sprint 77: the Page Designer's layout and tree by display position, like APEX's (migration 099).
 
 ### Added
+- **Shared Components as a grid** (APEX): ten groups of component types with counts; each type opens a list with
+  search (filtering while you type), sort and Create; Settings-backed types (authentication, PWA, globalization,
+  navigation bar list, user interface attributes) open their Settings tab; **Breadcrumbs** (the pages by their
+  breadcrumb parent). The earlier page stays as *Tree view*. The parity matrix maps every APEX Shared Components
+  link to pgkiln (or *not planned*).
+- **Settings in tabs**: Definition, Security, Sign-in, User Interface, Globalization, Errors and Sessions,
+  Progressive Web App; Save returns to the tab; the authentication type shows only its own fields.
+- **Application home**: search by page name or number, a Report / Icons view, Create page, and a Tasks sidebar.
+- **Object Browser by object type**: a schema in the header (the session's schema by default), folders for tables,
+  views, materialized views, indexes, sequences, types, functions, procedures and triggers, a filter, a Create menu
+  and create tiles that start a CREATE statement in SQL Commands. pgkiln's schemas and extension objects show only
+  with *Show system objects*.
+- **A table in tabs**: Columns, Data (paged), Indexes, Constraints, Triggers, Grants, Row level security,
+  Dependencies, Statistics and DDL. Add, rename and drop column write the ALTER TABLE statement into SQL Commands to
+  review and run.
+- **Column heading menu**: sort either way, hide the column, control break, and the column's values with counts
+  (with the report's search and filters) to filter by, with a search box. New route
+  `GET /a/:alias/:page/report/:id/values?col=` (a visible interactive report, a column the user may see).
+- **Search in one column**: a column list at the start of the search field (`r<id>_qc`).
+- **Hidden columns** per user (`r<id>_x`): from the heading menu or Actions → Columns, shown as chips.
+- **Pagination**: *1–14 of 14* also on one page, first and last page, rows per page in the pager.
+- **Date items in the application's date format** (or their own date mask): a text field with a calendar button
+  (the browser's picker), read back on submit; a wrong date is refused.
 - **Display positions**: a region's *Position* (`meta.region.position`): banner, breadcrumb bar, left or right
   column, body (the default) or footer.
 - **Left side column** and **Right side column** page templates: the left (or right) regions in a column beside
@@ -21,51 +49,12 @@ Sprint 77: the Page Designer's layout and tree by display position, like APEX's 
 - **The property editor**: *Common* / *All*, *Go to group*, Template options in a dialog; a page number field in
   the toolbar.
 
-Sprint 76: the interactive report's menus like APEX's, and date items in the application's date format.
-
-### Added
-- **Column heading menu**: sort either way, hide the column, control break, and the column's values with counts
-  (with the report's search and filters) to filter by, with a search box. New route
-  `GET /a/:alias/:page/report/:id/values?col=` (a visible interactive report, a column the user may see).
-- **Search in one column**: a column list at the start of the search field (`r<id>_qc`).
-- **Hidden columns** per user (`r<id>_x`): from the heading menu or Actions → Columns, shown as chips.
-- **Pagination**: *1–14 of 14* also on one page, first and last page, rows per page in the pager.
-- **Date items in the application's date format** (or their own date mask): a text field with a calendar button
-  (the browser's picker), read back on submit; a wrong date is refused.
-
-### Changed
-- **The Actions menu** is a short menu (Columns, Filter, Data, Format, Chart, Group by, Pivot, Report, Download);
-  each entry opens a dialog with its form (without JavaScript it unfolds in place).
-
-Sprint 75: the SQL Workshop's Object Browser like APEX's.
-
-### Added
-- **Object Browser by object type**: a schema in the header (the session's schema by default), folders for tables,
-  views, materialized views, indexes, sequences, types, functions, procedures and triggers, a filter, a Create menu
-  and create tiles that start a CREATE statement in SQL Commands. pgkiln's schemas and extension objects show only
-  with *Show system objects*.
-- **A table in tabs**: Columns, Data (paged), Indexes, Constraints, Triggers, Grants, Row level security,
-  Dependencies, Statistics and DDL. Add, rename and drop column write the ALTER TABLE statement into SQL Commands to
-  review and run.
-
-### Changed
-- The SQL Workshop's tools are five main tabs and a More menu: the strip no longer scrolls sideways.
-
-Sprint 74: the builder's information architecture like APEX's.
-
-### Added
-- **Shared Components as a grid** (APEX): ten groups of component types with counts; each type opens a list with
-  search (filtering while you type), sort and Create; Settings-backed types (authentication, PWA, globalization,
-  navigation bar list, user interface attributes) open their Settings tab; **Breadcrumbs** (the pages by their
-  breadcrumb parent). The earlier page stays as *Tree view*. The parity matrix maps every APEX Shared Components
-  link to pgkiln (or *not planned*).
-- **Settings in tabs**: Definition, Security, Sign-in, User Interface, Globalization, Errors and Sessions,
-  Progressive Web App; Save returns to the tab; the authentication type shows only its own fields.
-- **Application home**: search by page name or number, a Report / Icons view, Create page, and a Tasks sidebar.
-
 ### Changed
 - The default-password warning shows on the App Builder home and Developers only and can be dismissed until the
   next sign-in; the avatar has a red dot until the password is changed.
+- The SQL Workshop's tools are five main tabs and a More menu: the strip no longer scrolls sideways.
+- **The Actions menu** is a short menu (Columns, Filter, Data, Format, Chart, Group by, Pivot, Report, Download);
+  each entry opens a dialog with its form (without JavaScript it unfolds in place).
 
 ## [0.42.0] - 2026-10-14
 
