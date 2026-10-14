@@ -231,7 +231,7 @@ describe('the builder', () => {
   test('a catalog from a URL (relative server: the document\'s own address)', async () => {
     const res = await dev.upload('/builder/rest-catalogs/import', { url: `${mockBase}/openapi.json` }, {});
     const id = Number(/rest-catalogs\/(\d+)/.exec(res.headers.location as string)?.[1]);
-    assert.ok(id, (await dev.get(res.headers.location as string)).body.match(/alert[^<]*<[^<]*/)?.[0]);
+    assert.ok(id, /alert[^<]*<[^<]*/.exec((await dev.get(res.headers.location as string)).body)?.[0] ?? 'no catalog');
     assert.equal((await owner.one('select base_url from meta.rest_catalog where id = $1', [id])).base_url, `${mockBase}/v2`);
   });
 

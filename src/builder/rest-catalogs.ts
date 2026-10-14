@@ -40,7 +40,7 @@ function notesHtml(s: Session): Raw | '' {
   delete s.state[NOTES];
   const notes = JSON.parse(v) as string[];
   return notes.length
-    ? html`<div class="alert alert-info" role="status"><b>What the document had that the catalog doesn't use:</b><ul class="u-mb0">${notes.map((n) => html`<li>${n}</li>`)}</ul></div>`
+    ? html`<div class="alert alert-info" role="status"><b>What the document had that the catalog doesn't use:</b><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></div>`
     : '';
 }
 
@@ -51,7 +51,7 @@ function importForm(s: Session, action: string, replacing: boolean): Raw {
     <div class="form-grid">
       <div class="field"><label class="label" for="f_file">File</label><input id="f_file" type="file" name="file" accept=".json,application/json"></div>
       ${input('url', 'Or read it from a URL', '', { placeholder: 'https://api.example.com/openapi.json', help: 'The server reads it; the host must be on its allow-list (PGKILN_REST_ALLOWED_HOSTS).' })}
-      <div class="field field-wide"><label class="label" for="f_text">Or paste it</label><textarea id="f_text" name="text" class="code" rows="4" spellcheck="false"></textarea></div>
+      <div class="field" data-wide><label class="label" for="f_text">Or paste it</label><textarea id="f_text" name="text" class="code" rows="4" spellcheck="false"></textarea></div>
       ${input('base_url', 'Base URL', '', { placeholder: 'from the document', help: 'Instead of the document\'s server, e.g. https://test.api.example.com/v1.' })}
       ${replacing ? '' : input('name', 'Name', '', { placeholder: 'the document\'s title' })}
     </div>
@@ -107,14 +107,14 @@ function serviceFromBody(b: Body): CatalogService {
 
 function serviceForm(s: Session, action: string, v: Partial<CatalogService>, label: string): Raw {
   const area = (name: string, title: string, value: string, help: string, rows = 4) =>
-    html`<div class="field field-wide"><label class="label" for="f_${name}">${title}</label><textarea id="f_${name}" name="${name}" class="code" rows="${rows}" spellcheck="false">${value}</textarea><small class="help">${help}</small></div>`;
+    html`<div class="field" data-wide><label class="label" for="f_${name}">${title}</label><textarea id="f_${name}" name="${name}" class="code" rows="${rows}" spellcheck="false">${value}</textarea><small class="help">${help}</small></div>`;
   return html`<form method="post" action="${action}">${csrf(s)}
     <div class="form-grid">
       ${input('name', 'Name', v.name ?? '', { required: true, placeholder: 'GET_PETS', help: 'The data source\'s name when an application makes one from this service.' })}
       <div class="field"><label class="label" for="f_method">Method</label><select id="f_method" name="method">${['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => html`<option${(v.method ?? 'GET') === m ? raw(' selected') : ''}>${m}</option>`)}</select></div>
       ${input('path', 'Path', v.path ?? '', { required: true, placeholder: '/pets/{pet_id}', help: 'After the catalog\'s base URL; {name} is a path parameter.' })}
       ${input('row_selector', 'Row selector', v.row_selector ?? '', { placeholder: 'items', help: 'Where the rows are in the response; empty: the response.' })}
-      <div class="field field-wide"><label class="label" for="f_description">Description</label><input id="f_description" name="description" value="${v.description ?? ''}"></div>
+      <div class="field" data-wide><label class="label" for="f_description">Description</label><input id="f_description" name="description" value="${v.description ?? ''}"></div>
       ${area('params', 'Parameters (JSON)', pretty(v.params ?? []), '[{"name": "page_size", "in": "query", "key": "pageSize", "default": "20"}] · in: path, query, header, body; "key": the service\'s name for it when it isn\'t lower case with _.')}
       ${area('columns', 'Columns (JSON)', pretty(v.columns ?? []), '[{"name": "id", "path": "id", "type": "integer"}] · types: text, number, integer, boolean, date, timestamp, json.', 6)}
       ${area('headers', 'Headers (JSON)', pretty(v.headers ?? {}), 'Extra request headers, not secrets: an application\'s web credential signs in.', 2)}
@@ -141,7 +141,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
         <thead><tr><th>Catalog</th><th>Base URL</th><th class="num">Services</th><th>From</th><th>Updated (UTC)</th></tr></thead>
         <tbody>${rows.length ? rows.map((c) => html`<tr>
           <td data-label="Catalog"><a href="${root}/${c.id}">${c.name}</a>${c.description ? html`<br><span class="muted small">${String(c.description).slice(0, 160)}</span>` : ''}</td>
-          <td data-label="Base URL"><code class="u-break">${c.base_url}</code></td>
+          <td data-label="Base URL"><code class="wrap-anywhere">${c.base_url}</code></td>
           <td class="num" data-label="Services">${c.services}</td>
           <td data-label="From">${c.source === 'openapi' ? html`OpenAPI${c.api_version ? html` <span class="muted">${c.api_version}</span>` : ''}` : 'by hand'}</td>
           <td data-label="Updated">${when(c.updated_at)}</td></tr>`)
@@ -149,7 +149,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       ${region('Import a catalog', importForm(s, `${root}/import`, false))}
       ${region('Create a catalog by hand', html`<form method="post" action="${root}">${csrf(s)}
         <div class="form-grid">${input('name', 'Name', '', { required: true, placeholder: 'e.g. Weather service' })}${input('base_url', 'Base URL', '', { required: true, placeholder: 'https://api.example.com/v1' })}
-          <div class="field field-wide"><label class="label" for="f_cdescription">Description</label><input id="f_cdescription" name="description"></div></div>
+          <div class="field" data-wide><label class="label" for="f_cdescription">Description</label><input id="f_cdescription" name="description"></div></div>
         <div class="buttons"><button class="btn">${icon('plus')} Create</button></div></form>`)}`;
     return send(reply, s, shell(s, 'REST Source Catalogs', crumbs(), main));
   });
@@ -211,30 +211,30 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     const sel = req.query.service ? c.services.find((x) => String(x.id) === req.query.service) : null;
     const main = html`<div class="title-row"><h1>${c.name}</h1>
         <a class="btn" href="${base}/download">${icon('download')} Download</a></div>
-      <p class="muted u-mt0"><code class="u-break">${c.base_url}</code>${c.source === 'openapi' ? html` · from an OpenAPI document${c.api_version ? html` (version ${c.api_version})` : ''}` : ''} · updated ${when(c.updated_at)} UTC</p>
+      <p class="muted u-mt0"><code class="wrap-anywhere">${c.base_url}</code>${c.source === 'openapi' ? html` · from an OpenAPI document${c.api_version ? html` (version ${c.api_version})` : ''}` : ''} · updated ${when(c.updated_at)} UTC</p>
       ${notesHtml(s)}
       ${region('Services', html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>Service</th><th>Method</th><th>Path</th><th class="num">Parameters</th><th class="num">Columns</th><th>Write back</th></tr></thead>
         <tbody>${c.services.length ? c.services.map((x) => html`<tr${sel?.id === x.id ? raw(' aria-current="true"') : ''}>
           <td data-label="Service"><a href="${base}?service=${x.id}#service">${x.name}</a>${x.description ? html`<br><span class="muted small">${x.description.slice(0, 140)}</span>` : ''}</td>
           <td data-label="Method"><span class="tag">${x.method}</span></td>
-          <td data-label="Path"><code class="u-break">${x.path}</code></td>
+          <td data-label="Path"><code class="wrap-anywhere">${x.path}</code></td>
           <td class="num" data-label="Parameters">${x.params.length}</td>
           <td class="num" data-label="Columns">${x.columns.length}</td>
           <td data-label="Write back">${Object.keys(x.operations).join(', ') || html`<span class="muted">—</span>`}</td></tr>`)
           : html`<tr><td colspan="6" class="empty">No services yet.</td></tr>`}</tbody></table></div>
-        <p class="u-mb0"><a class="btn" href="${base}?service=new#service">${icon('plus')} Add a service</a></p>`)}
+        <p class="u-m0 u-mt1"><a class="btn" href="${base}?service=new#service">${icon('plus')} Add a service</a></p>`)}
       ${req.query.service === 'new'
         ? region('New service', serviceForm(s, `${base}/services`, { method: 'GET', path: '/' }, 'Add'), '', 'service')
         : sel
-          ? region(`Service ${sel.name}`, html`<p class="muted u-mt0">URL: <code class="u-break">${serviceUrl(c.base_url, sel.path)}</code></p>
+          ? region(`Service ${sel.name}`, html`<p class="muted u-mt0">URL: <code class="wrap-anywhere">${serviceUrl(c.base_url, sel.path)}</code></p>
               ${serviceForm(s, `${base}/services/${sel.id}`, sel, 'Save')}
               <form method="post" action="${base}/services/${sel.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete the service ${sel.name}?">Delete service</button></form>`, '', 'service')
           : ''}
       ${region('Catalog', html`<form method="post" action="${base}">${csrf(s)}
         <div class="form-grid">${input('name', 'Name', c.name, { required: true })}${input('base_url', 'Base URL', c.base_url, { required: true, help: 'e.g. a test system\'s URL. Data sources made earlier keep the URL they were made with.' })}
           ${input('api_version', 'API version', c.api_version ?? '')}
-          <div class="field field-wide"><label class="label" for="f_cdescription">Description</label><textarea id="f_cdescription" name="description" rows="2">${c.description ?? ''}</textarea></div></div>
+          <div class="field" data-wide><label class="label" for="f_cdescription">Description</label><textarea id="f_cdescription" name="description" rows="2">${c.description ?? ''}</textarea></div></div>
         <div class="buttons"><button class="btn btn-hot">${icon('save')} Save</button></div></form>`)}
       ${region('Replace from a document', importForm(s, `${base}/import`, true))}
       <form method="post" action="${base}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete the catalog ${c.name} and its services? Data sources made from it stay.">Delete catalog</button></form>`;
@@ -407,14 +407,14 @@ export async function catalogPicker(appId: number, s: Session): Promise<Raw | ''
     `select x.id, x.name, x.method, x.path, c.name as catalog from meta.rest_catalog_service x join meta.rest_catalog c on c.id = x.catalog_id
       where c.workspace_id = meta.app_workspace($1) order by lower(c.name), x.position, x.name`, [appId])).rows;
   if (!services.length)
-    return html`<p class="muted u-mt1">${icon('globe')} Services described once for the workspace: <a href="${root}">REST Source Catalogs</a>.</p>`;
+    return html`<p class="muted u-mt0 u-mb1">${icon('globe')} Services described once for the workspace: <a href="${root}">REST Source Catalogs</a>.</p>`;
   const credentials = (await owner.query('select name from meta.web_credential where app_id = $1 order by name', [appId])).rows;
   const groups = new Map<string, typeof services>();
   for (const x of services) groups.set(x.catalog, [...(groups.get(x.catalog) ?? []), x]);
   return region('From a REST source catalog', html`<form method="post" action="${BASE}/apps/${appId}/rest-sources/from-catalog">${csrf(s)}
     <p class="muted u-mt0">A copy of a service of this workspace's <a href="${root}">catalogs</a>: its URL, parameters, columns and write-back operations.</p>
     <div class="form-grid">
-      <div class="field field-wide"><label class="label" for="f_service">Service</label><select id="f_service" name="service" required>
+      <div class="field" data-wide><label class="label" for="f_service">Service</label><select id="f_service" name="service" required>
         ${[...groups].map(([cat, xs]) => html`<optgroup label="${cat}">${xs.map((x) => html`<option value="${x.id}">${x.name} · ${x.method} ${x.path}</option>`)}</optgroup>`)}</select></div>
       ${input('name', 'Name', '', { placeholder: 'the service\'s name' })}
       <div class="field"><label class="label" for="f_credential">Web credential</label><select id="f_credential" name="credential"><option value="">none</option>${credentials.map((c) => html`<option>${c.name}</option>`)}</select></div>

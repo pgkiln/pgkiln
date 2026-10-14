@@ -605,6 +605,19 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_object_report: '/builder/sql/utilities/reports?r=unindexed-foreign-keys',
         sql_about: '/builder/sql/utilities/about',
         sql_monitor: '/builder/sql/utilities/monitor',
+        // (sprint 67) REST source catalogs, a data source from one, the workspace's export and import
+        rest_catalogs: '/builder/rest-catalogs',
+        ...(await (async () => {
+          await owner.query(`delete from meta.rest_catalog where workspace_id = 1 and name = 'E2E catalog'`);
+          const c = (await owner.one(`insert into meta.rest_catalog (workspace_id, name, description, base_url, source, api_version)
+            values (1, 'E2E catalog', 'A catalog with a long base URL and a long path, to see that they wrap', 'https://a-rather-long-host-name.api.example.com/version-one/with/a/long/base/path', 'openapi', '1.0.0') returning id`)).id;
+          const sid = (await owner.one(`insert into meta.rest_catalog_service (catalog_id, name, description, path, params, columns, key_columns, operations)
+            values ($1, 'LIST_THINGS_WITH_A_RATHER_LONG_NAME', 'List the things', '/things/{thing_id}/children-of-the-thing?expand=everything-there-is',
+                    '[{"name": "thing_id", "in": "path", "required": true}, {"name": "page_size", "in": "query", "key": "pageSize"}]', '[{"name": "id", "path": "id", "type": "integer"}]',
+                    '{id}', '{"update": {"method": "PUT", "path": "/{id}"}}') returning id`, [c])).id;
+          return { rest_catalog: `/builder/rest-catalogs/${c}`, rest_catalog_service: `/builder/rest-catalogs/${c}?service=${sid}`, rest_source_new: `/builder/apps/${appId}/shared?new=rest_source` };
+        })()),
+        workspace_export: '/builder/workspace-export',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,

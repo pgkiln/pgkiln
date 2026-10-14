@@ -26,6 +26,10 @@ src/
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows
+  restcatalog.ts           (095) REST source catalogs: checks, fromOpenApi (OpenAPI 3 / Swagger 2 → services: parameters with "key",
+                           rows and columns from the response schema, write-back from collection and item paths, notes), catalog
+                           files, load/insert/replace, sourceFromService
+  workspace-export.ts      (sprint 67) a workspace's components as a file (pgkiln-workspace/1) and importWorkspace (one transaction)
   subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
   workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
                            merge into the main application or refresh the copy, both through cli/replace.ts
@@ -190,6 +194,9 @@ src/
                            backupTick() for the scheduler's daily backups of changed applications
     workspace-backups.ts   Workspace utilities → Manage backups (sprint 62): the backups of every application of the current
                            workspace, back them all up (only the changed ones by default)
+    rest-catalogs.ts       Workspace utilities → REST Source Catalogs (095): list, import (file, pasted, URL), a catalog and its
+                           services, download; catalogPicker and "from a catalog" for an application's REST data sources
+    workspace-transfer.ts  Workspace utilities → Export and import (sprint 67, workspace administrators)
     availability.ts        Application → Availability (migration 083): status, message, users, build status (Run only is
                            enforced by locks.ts blockingLock); availabilityBadge() in the application header
     feedback.ts            Application → Feedback (migration 084): the setting, the list with filters, status and answers
@@ -314,6 +321,8 @@ test/
                            natural-language report filters, builder settings; against ai-script-mock.ts
   blueprints.test.ts       blueprints: checks and SQL, review then create (rows, pages, grants), one transaction, AI draft, save
   blueprint-from-app.test.ts  a blueprint of HR: checks clean, pages and menu, notes, a working copy with sample rows, workspaces
+  rest-catalogs.test.ts    OpenAPI/Swagger reading, parameter keys, catalog files, the builder's pages, a data source from a service
+  workspace-transfer.test.ts  a workspace's export, import into another workspace (added, kept, replaced, all or nothing), groups, access
   ai-builder.test.ts       App Builder AI: the builder's service, SQL from a question, explain, describe tables, pages with AI
   ai-script-mock.ts        a scripted mock of Claude (SSE, tool_use with a thinking block) and OpenAI (tool calls), reply by reply
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions

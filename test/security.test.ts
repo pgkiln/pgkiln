@@ -7493,3 +7493,59 @@ describe('sprint 67 REST source catalogs', () => {
     }
   });
 });
+
+describe('sprint 67 workspace export and import', () => {
+  let ws: number;
+  const signIn = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.get('/builder');
+    await b.submit('/builder/workspace', { workspace: String(ws) });
+    await b.get('/builder/workspace-export');
+    return b;
+  };
+  const file = (doc: Record<string, unknown>) => ({ file: { name: 'w.json', type: 'application/json', data: Buffer.from(JSON.stringify({ format: 'pgkiln-workspace/1', ...doc })) } });
+  before(async () => {
+    ws = (await owner.one(`insert into meta.workspace (name) values ('Sec67x Target') returning id`)).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.workspace where name = 'Sec67x Target'`);
+  });
+
+  test('CSRF on export and import', async () => {
+    const b = await signIn();
+    b.lastCsrf = 'wrong';
+    assert.equal((await b.post('/builder/workspace-export', { __csrf: 'wrong', part: 'sql_scripts' })).statusCode, 403);
+    assert.equal((await b.upload('/builder/workspace-import', { part: 'sql_scripts' }, file({ sql_scripts: [{ name: 'sec67x.sql', content: 'x' }] }))).statusCode, 403);
+    assert.equal(await owner.one(`select 1 as ok from meta.sql_script where name = 'sec67x.sql'`), undefined);
+    const king = await as('king');
+    assert.notEqual((await king.get('/builder/workspace-export')).statusCode, 200);
+  });
+
+  test('a file never isolates a workspace, changes its name or roles, creates developers or makes installation administrators', async () => {
+    const b = await signIn();
+    await b.upload('/builder/workspace-import', { part: ['settings', 'developers'], replace: 'true' }, file({
+      workspace: 'Default',
+      settings: { name: 'Hijacked', isolated: true, run_role: 'postgres', dev_role: 'pgkiln', banner_color: 'red;background:url(x)', message: 'ok' },
+      developers: [{ username: 'sec67x_ghost', admin: true }, { username: 'admin', admin: true, is_admin: true, password_hash: 'x' }],
+    }));
+    const w = await owner.one('select name, isolated, run_role, dev_role, banner_color, message from meta.workspace where id = $1', [ws]);
+    assert.deepEqual(w, { name: 'Sec67x Target', isolated: false, run_role: null, dev_role: null, banner_color: 'blue', message: 'ok' });
+    assert.equal(await owner.one(`select 1 as ok from meta.developer where username = 'sec67x_ghost'`), undefined);
+    assert.equal((await owner.one(`select password_hash <> 'x' as ok from meta.developer where username = 'admin'`)).ok, true);
+  });
+
+  test('application groups never take another workspace\'s applications; generators never target pgkiln\'s schema', async () => {
+    const b = await signIn();
+    await b.upload('/builder/workspace-import', { part: 'app_groups' }, file({ app_groups: [{ name: 'Sec67x group', apps: ['hr'] }] }));
+    assert.equal(await owner.one(`select 1 as ok from meta.app_group_member m join meta.app_group g on g.id = m.group_id where g.name = 'Sec67x group'`), undefined);
+    await b.upload('/builder/workspace-import', { part: ['data_generators', 'sql_scripts'] }, file({ data_generators: [{ name: 'sec67x', schema_name: 'meta', tables: [] }], sql_scripts: [{ name: 'sec67x.sql', content: 'x' }] }));
+    assert.match((await b.get('/builder/workspace-export')).body, /Import failed, nothing was changed/);
+    assert.equal(await owner.one(`select 1 as ok from meta.sql_script where name = 'sec67x.sql'`), undefined, 'all or nothing');
+    // names and texts from the file are escaped on the result page
+    await b.upload('/builder/workspace-import', { part: 'extension_links' }, file({ extension_links: [{ label: 'Sec67x <img src=x onerror=alert(1)>', url: 'https://x.example/' }] }));
+    const page = (await b.get('/builder')).body;
+    assert.doesNotMatch(page, /<img src=x/);
+  });
+});

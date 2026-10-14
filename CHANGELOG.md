@@ -5,6 +5,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 67: REST source catalogs and a workspace's export and import.
+
+### Added
+- **REST source catalogs** (migration 095; APEX: Workspace Utilities → REST Source Catalogs): a workspace's web
+  services described once, with a base URL and services. Import an **OpenAPI 3 or Swagger 2.0** document (JSON: a
+  file, pasted, or read from a URL on the allow-list) or a catalog file, or enter one by hand: services get their
+  parameters, row selector, typed columns and write-back operations from the document, and what can't be used is
+  listed. Shared Components → REST data sources → ＋ Add → **From a REST source catalog** makes a data source (a copy)
+  from a service, with the application's own web credential.
+- REST data source parameters take a **`key`**: the service's own name for a query, header or body parameter
+  (`pageSize`, `X-Request-ID`) when it isn't lower case with `_`.
+- **Workspace export and import** (APEX: Workspace Utilities → Export): Workspace utilities → *Export and import*
+  writes the current workspace's settings, developers, application groups, extension links, REST source catalogs, SQL
+  scripts, blueprints and data generators to one file (`pgkiln-workspace/1`) and imports such a file into the current
+  workspace in one transaction, keeping or replacing components with the same name. For administrators and the
+  workspace's administrators.
+
+### Security
+- Reserved headers (`Authorization`, `Cookie`, `Host`, the transport headers) can't be REST data source header
+  parameters, also not under a `key`.
+
 ### Fixed
 - **Offline pages keep their script and styles after an update:** a page kept on the device under an older version of
   pgkiln's static files got neither `app.js` nor `app.css` offline once the service worker had cached the newer ones;
