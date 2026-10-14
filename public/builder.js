@@ -859,3 +859,34 @@ document.addEventListener('click', async (e) => {
     show(e.target.closest?.('.pe [data-prop]'));
   });
 })();
+
+// (sprint 73) a proposed value is selected on the first focus, so typing replaces it (data-select-once)
+document.querySelectorAll('input[data-select-once]').forEach((el) => {
+  el.addEventListener('focus', () => {
+    el.select();
+    // the click that focused it would put the caret back: keep the selection
+    el.addEventListener('mouseup', (e) => e.preventDefault(), { once: true });
+  }, { once: true });
+});
+
+// (sprint 73) a form that takes a while (data-progress="Creating …"): an overlay with the message while the server works
+document.addEventListener('submit', (e) => {
+  const form = e.target.closest?.('form[data-progress]');
+  if (!form || e.defaultPrevented || !form.checkValidity()) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'progress-overlay';
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+  const box = document.createElement('div');
+  box.className = 'progress-box';
+  const spin = document.createElement('span');
+  spin.className = 'progress-spinner';
+  spin.setAttribute('aria-hidden', 'true');
+  const text = document.createElement('span');
+  text.textContent = form.dataset.progress;
+  box.append(spin, text);
+  overlay.append(box);
+  document.body.append(overlay);
+  // back from the browser's cache (the back button): no overlay
+  window.addEventListener('pageshow', (ev) => { if (ev.persisted) overlay.remove(); }, { once: true });
+});

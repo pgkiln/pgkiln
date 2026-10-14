@@ -261,15 +261,17 @@ describe('create an application from existing tables', () => {
 
   test('lists the tables and views of a schema; refuses pgkiln and system schemas', async () => {
     const b = await builder();
-    assert.match((await b.get('/builder/create')).body, /href="\/builder\/create\/tables"/);
-    const first = await b.get('/builder/create/tables');
+    // (sprint 73) one page: choosing a schema lists its tables and views with a page type each
+    const first = await b.get('/builder/create');
     assert.equal(first.statusCode, 200);
     assert.doesNotMatch(first.body, /<option value="meta"|<option value="pg_catalog"|<option value="information_schema"/);
-    const page = await b.get(`/builder/create/tables?schema=${SOURCE}`);
-    const form = formFields(/<form method="post" action="\/builder\/create\/tables">[\s\S]*?<\/form>/.exec(page.body)![0]);
-    assert.deepEqual(Object.entries(form).filter(([k]) => k.startsWith('t_')).map(([, v]) => v), ['region', 'stock_log', 'store'], 'tables ticked, the view not');
-    assert.match(page.body, /store_list<\/label>\s*<small class="muted">view: a report/);
-    assert.match(page.body, /no single-column primary key: a report/);
+    const page = await b.get(`/builder/create?schema=${SOURCE}`);
+    const form = formFields(/<form method="post" action="\/builder\/apps"[\s\S]*?<\/form>/.exec(page.body)![0]);
+    assert.deepEqual(Object.entries(form).filter(([k]) => k.startsWith('t_')).map(([, v]) => v), ['region', 'stock_log', 'store', 'store_list']);
+    assert.deepEqual(Object.entries(form).filter(([k]) => k.startsWith('k_')).map(([, v]) => v), ['report_form', 'report', 'report_form', 'report'], 'a report for a view or a table without a key');
+    assert.match(page.body, /store_list<\/label>[\s\S]*?<small class="muted">view<\/small>/);
+    assert.match(page.body, /no single-column key: no form/);
+    assert.match(page.body, /<input id="f_name" name="name" value="Aw35 src" required data-select-once>/);
     for (const schema of ['meta', 'pg_catalog', 'information_schema', 'nope']) assert.match((await b.get(`/builder/create/tables?schema=${schema}`)).body, /Choose one of the schemas in the list/);
   });
 
@@ -280,8 +282,11 @@ describe('create an application from existing tables', () => {
       schema: SOURCE, t_0: 'region', t_1: 'stock_log', t_2: 'store', t_3: 'store_list', t_9: 'app',
       name: 'AW tables', alias: 'aw35-tables', authentication: 'none', chart: 'true',
     });
-    assert.equal(res.statusCode, 200, res.body.slice(0, 2000));
+    // (sprint 73) straight to the new application, the result as a message there
+    assert.equal(res.statusCode, 303, res.body.slice(0, 2000));
     const a = await owner.one(`select id, db_role from meta.app where alias = 'aw35-tables'`);
+    assert.equal(res.headers.location, `/builder/apps/${a.id}`);
+    assert.match((await b.get(res.headers.location as string)).body, /Application aw35-tables created with 7 page\(s\) besides Home/);
     assert.equal(a.db_role, 'app_aw35_tables');
     const pages = (await owner.query('select page_no, name, mode from meta.page where app_id = $1 order by page_no', [a.id])).rows;
     assert.deepEqual(pages.map((p) => [p.page_no, p.name]), [
@@ -326,7 +331,7 @@ describe('create an application from existing tables', () => {
     const bad = await b.submit('/builder/create/tables', { schema: SOURCE, t_0: 'region', name: 'AW', alias: 'Bad alias', authentication: 'none' });
     assert.equal(bad.statusCode, 422);
     assert.match(bad.body, /The alias must start with a letter/);
-    assert.match(bad.body, /name="t_0" value="region" checked/, 'the choice is kept');
+    assert.match(bad.body, /<select id="f_k_0" name="k_0"><option value="report_form" selected>/, 'the choice is kept');
     assert.equal((await owner.query(`select 1 from meta.app where alias = 'aw35-tables'`)).rowCount, 0);
   });
 });

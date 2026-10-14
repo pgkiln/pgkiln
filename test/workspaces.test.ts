@@ -154,8 +154,7 @@ describe('workspaces', () => {
     await admin.submit(`/builder/workspaces/${alpha}/members`, { member: ['admin'] });
     assert.match((await dev.get('/builder')).body, /No applications yet/);
     await dev.get('/builder/create');
-    await dev.submit('/builder/apps', { name: 'Nope', alias: 'ws-test-nope', authentication: 'none' });
-    assert.match((await dev.get('/builder/create')).body, /not a developer of any workspace/);
+    assert.match((await dev.submit('/builder/apps', { name: 'Nope', alias: 'ws-test-nope', authentication: 'none' })).body, /not a developer of any workspace/);
     assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias = 'ws-test-nope'`)));
     // back to Default for the other tests
     await owner.query(`insert into meta.workspace_member (workspace_id, username) select 1, username from meta.developer on conflict do nothing`);

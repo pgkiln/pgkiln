@@ -17,11 +17,10 @@ import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash,
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
-import { appAllowed, currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './workspaces.ts';
+import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './workspaces.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
-import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
@@ -187,30 +186,7 @@ export async function builderRoutes(app: FastifyInstance) {
   await wizardRoutes(app);
   await appFromFileRoutes(app);
 
-  app.post(`${BASE}/apps`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const b = req.body ?? {};
-    try {
-      const checked = await checkNewApp(b, currentWorkspace(s));
-      const boilerplate = /^\d{1,9}$/.test(b.boilerplate ?? '') ? Number(b.boilerplate) : null;
-      if (boilerplate && !(await appAllowed(s, boilerplate))) throw new Error('Choose a boilerplate application (an application of type Boilerplate).');
-      const { id, existingAccount } = await owner.tx(async (c) => {
-        const made = await createApp(c, checked);
-        if (boilerplate) await startFromBoilerplate(c, made.id, checked, boilerplate);
-        return made;
-      }).catch((e) => {
-        throw new Error(createAppError(e, checked.alias));
-      });
-      flash(s, existingAccount
-        ? `Application created. The existing account ${checked.adminUser} got the admin role (its password was not changed).`
-        : 'Application created.');
-      return back(reply, s, `${BASE}/apps/${id}`);
-    } catch (e) {
-      flash(s, (e as Error).message, 'error');
-      return back(reply, s, `${BASE}/create`);
-    }
-  });
+  // (sprint 73) POST /apps, creating an application, is in appwizard.ts
 
   app.post(`${BASE}/import`, async (req: Req, reply) => {
     const s = await developer(req, reply);

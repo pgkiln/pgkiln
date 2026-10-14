@@ -4018,8 +4018,9 @@ describe('sprint 32 item 5: create application from a file', () => {
     // the blank application wizard refuses them too
     await dev.get('/builder/create');
     const blank = await dev.submit('/builder/apps', { name: 'Blank', alias: 'sec32-ff-blank', schema: 'meta', authentication: 'none' });
-    assert.equal(blank.statusCode, 303);
-    assert.equal(blank.headers.location, '/builder/create');
+    // (sprint 73) the wizard's page comes back with the message
+    assert.equal(blank.statusCode, 422);
+    assert.match(blank.body, /Choose one of the schemas in the list/);
     assert.equal((await owner.query(`select 1 from meta.app where alias in ('sec32-ff-meta', 'sec32-ff-blank')`)).rowCount, 0);
     assert.equal((await owner.one(`select has_schema_privilege('app_sec32_ff_meta', 'meta', 'usage') as x where exists (select 1 from pg_roles where rolname = 'app_sec32_ff_meta')`))?.x ?? false, false);
   });
@@ -4917,7 +4918,7 @@ describe('sprint 35 appwizard', () => {
     assert.equal((await owner.one(`select to_regclass('meta.app') is not null as ok`)).ok, true);
     // the app's role gets the schema it was built on, not pgkiln's tables
     const ok = await dev.submit('/builder/create/tables', { ...base, schema: SRC, t_0: 'thing' });
-    assert.equal(ok.statusCode, 200);
+    assert.equal(ok.statusCode, 303);
     const priv = await owner.one(`select has_table_privilege('app_sec35_aw_t', '${SRC}.thing', 'select') as t, has_table_privilege('app_sec35_aw_t', 'meta.account', 'select') as m`);
     assert.deepEqual(priv, { t: true, m: false });
   });
@@ -7713,5 +7714,41 @@ describe('sprint 71 generated applications', () => {
     const { topRows } = await import('../src/runtime/regions.ts');
     const rows = [['a', 3], ['b', 2], ['c', 1]];
     for (const top of ['2; drop', '1e9', null, {}, 1000]) assert.equal(topRows({ config: { top } } as never, 'bar', rows, 'Other'), rows, String(top));
+  });
+});
+
+describe('sprint 73 activity reporting', () => {
+  let hrSession: string;
+  let readerSession: string;
+  let otherApp: number;
+  before(async () => {
+    hrSession = (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values ('sec73-a', $1, 'king', '{admin}') returning id`, [appId])).id;
+    readerSession = (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values ('sec73-r', $1, 'allen', '{employee}') returning id`, [appId])).id;
+    await owner.query(`delete from meta.app where alias = 'sec73-other'`);
+    otherApp = (await owner.one(`insert into meta.app (alias, name) values ('sec73-other', 'Other') returning id`)).id;
+    await owner.query(`insert into meta.activity_log (app_id, page_no, username, event, ip, detail) values ($1, 1, 'king', 'page_view', '10.0.0.1', 'sec73'), ($2, 1, 'eve', 'page_view', '10.0.0.2', 'sec73')`, [appId, otherApp]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.session where token_hash in ('sec73-a', 'sec73-r')`);
+    await owner.query(`delete from meta.activity_log where detail = 'sec73'`);
+    await owner.query('delete from meta.app where id = $1', [otherApp]);
+  });
+  /** meta.app_activity as the HR application's role, with the given app and session settings */
+  const activity = (app: number, session: string | null) =>
+    runtime.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.session_id', $2, true)`, [String(app), session ?? '']);
+      await c.query('set local role hr_app');
+      return (await c.query('select * from meta.app_activity(1)')).rows;
+    });
+
+  test("only the application's administrators, only its own activity, without IP addresses", async () => {
+    const rows = await activity(appId, hrSession);
+    assert.ok(rows.some((r) => r.username === 'king'));
+    assert.ok(!rows.some((r) => r.username === 'eve'), "not another application's activity");
+    assert.deepEqual(Object.keys(rows[0]).sort(), ['at', 'elapsed_ms', 'event', 'page_no', 'username']);
+    await assert.rejects(activity(appId, readerSession), /for its administrators/, 'not an admin');
+    await assert.rejects(activity(appId, null), /for its administrators/, 'no session');
+    await assert.rejects(activity(otherApp, hrSession), /for its administrators/, "an admin of HR asking for another application's");
+    await assert.rejects(activity(appId, '00000000-0000-0000-0000-000000000000'), /for its administrators/, 'an unknown session');
   });
 });

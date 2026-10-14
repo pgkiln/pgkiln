@@ -3,8 +3,10 @@ import { owner, type Client } from '../db.ts';
 import { passwordProblem } from '../accounts.ts';
 import { replaceApp } from '../cli/replace.ts';
 import { placeApp } from './workspaces.ts';
-import { NEW_APP_BASE } from '../runtime/styles.ts';
+import { BASE_STYLES, NEW_APP_BASE } from '../runtime/styles.ts';
+import { LANGUAGE_NAMES } from '../i18n.ts';
 import { isIcon } from '../icons.ts';
+import { secretKeyConfigured } from '../secrets.ts';
 
 /** (097) The icon of a new application's home page when the developer chose none. */
 export const DEFAULT_APP_ICON = 'layers';
@@ -43,10 +45,76 @@ export async function addAboutPage(c: Client, appId: number, description?: strin
   await c.query(`update meta.app set navbar_list = 'NAVBAR' where id = $1`, [appId]);
 }
 
-/** (sprint 72) After a wizard generated the pages: the home page's cards and, unless turned off, the About page. */
-export async function finishGeneratedApp(c: Client, appId: number, o: { about?: boolean; description?: string | null } = {}) {
+/**
+ * (sprint 73) The Create Application wizard's features (APEX: Features). Each maps to a setting or to pages:
+ * - about: an About page in a Help menu (addAboutPage)
+ * - access: authorization schemes CONTRIBUTOR and READER next to ADMIN (roles admin, contributor, reader)
+ * - activity: an Activity page for administrators (page 9010: page views per day and the latest activity)
+ * - feedback: users may send feedback (the navigation bar's Feedback entry)
+ * - theme: users may choose light or dark (theme.user_choice)
+ * - pwa, push: installable, with push notifications (push needs PGKILN_SECRET_KEY; its key is made after the commit)
+ */
+export interface Features { about: boolean; access: boolean; activity: boolean; feedback: boolean; theme: boolean; pwa: boolean; push: boolean }
+export const FEATURES: [keyof Features, string, string, boolean][] = [
+  ['about', 'About page', 'An About page in a Help menu of the header.', true],
+  ['access', 'Access control', 'Authorization schemes for the roles admin, contributor and reader, to put on pages, regions and buttons.', false],
+  ['activity', 'Activity reporting', 'A page for administrators with the page views per day and the latest activity.', false],
+  ['feedback', 'Feedback', 'Users send feedback from the header; you read it under Activity → Feedback.', false],
+  ['theme', 'Theme style selection', 'Users may choose the light or the dark theme.', true],
+  ['pwa', 'Install as an app (PWA)', 'Installable on phones and desktops, with offline pages.', false],
+  ['push', 'Push notifications', 'Notifications to the users\' devices (with Install as an app).', false],
+];
+/** The features ticked on a form (a form without them: the defaults). */
+export const featuresFrom = (b: Record<string, unknown>, posted: boolean): Features =>
+  Object.fromEntries(FEATURES.map(([k, , , on]) => [k, posted ? b[`f_${k}`] === 'true' : on])) as unknown as Features;
+
+/** (sprint 73) The Activity page of a generated application. */
+export const ACTIVITY_PAGE = 9010;
+
+async function applyFeatures(c: Client, appId: number, f: Partial<Features>, notes: string[]) {
+  if (f.access) {
+    await c.query(
+      `insert into meta.authz_scheme (app_id, name, type, value, error_message) values
+         ($1, 'CONTRIBUTOR', 'sql', 'meta.has_role(''admin'') or meta.has_role(''contributor'')', 'Only contributors can do this.'),
+         ($1, 'READER', 'sql', 'meta.has_role(''admin'') or meta.has_role(''contributor'') or meta.has_role(''reader'')', 'Only readers can open this page.')
+       on conflict do nothing`,
+      [appId],
+    );
+  }
+  if (f.activity && !(await c.query('select 1 from meta.page where app_id = $1 and page_no = $2', [appId, ACTIVITY_PAGE])).rowCount) {
+    const home = (await c.query('select home_page from meta.app where id = $1', [appId])).rows[0].home_page;
+    const page = (await c.query(`insert into meta.page (app_id, page_no, name, title, parent_page, authz) values ($1, $2, 'Activity', 'Activity', $3, 'ADMIN') returning id`, [appId, ACTIVITY_PAGE, home])).rows[0].id;
+    await c.query(
+      `insert into meta.region (page_id, seq, title, type, source, config) values
+         ($1, 10, 'Page views per day', 'chart', $2, '{"kind": "column"}'),
+         ($1, 20, 'Latest activity', 'report', $3, '{"headings": {"at": "Time", "username": "User", "event": "Event", "page_no": "Page", "elapsed_ms": "Time taken (ms)"}}')`,
+      [page,
+       `select to_char(date_trunc('day', at), 'YYYY-MM-DD') as "Day", count(*) as "Page views"
+  from meta.app_activity(30)
+ where event = 'page_view'
+ group by 1
+ order by 1`,
+       `select at, username, event, page_no, elapsed_ms
+  from meta.app_activity(30)`],
+    );
+    await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page, authz) values ($1, 9010, 'Activity', 'activity', $2, 'ADMIN')`, [appId, ACTIVITY_PAGE]);
+  }
+  if (f.feedback) await c.query('update meta.app set feedback = true where id = $1', [appId]);
+  if (f.theme === false) await c.query(`update meta.app set theme = theme || '{"user_choice": false}' where id = $1`, [appId]);
+  if (f.pwa || f.push) await c.query('update meta.app set pwa = true where id = $1', [appId]);
+  if (f.push) {
+    if (secretKeyConfigured()) await c.query('update meta.app set pwa_push = true where id = $1', [appId]);
+    else notes.push('Push notifications are off: they need PGKILN_SECRET_KEY in the server\'s environment.');
+  }
+}
+
+/** (sprint 72) After a wizard generated the pages: the home page's cards and, unless turned off, the About page; (sprint 73) the chosen features. */
+export async function finishGeneratedApp(c: Client, appId: number, o: { about?: boolean; description?: string | null; features?: Partial<Features>; notes?: string[] } = {}) {
+  const f = { ...(o.features ?? {}) };
+  if (f.about === undefined) f.about = o.about !== false;
+  await applyFeatures(c, appId, f, o.notes ?? []);
   await addHomeCards(c, appId);
-  if (o.about !== false) await addAboutPage(c, appId, o.description);
+  if (f.about) await addAboutPage(c, appId, o.description);
 }
 
 /**
@@ -57,8 +125,8 @@ export async function finishGeneratedApp(c: Client, appId: number, o: { about?: 
  */
 export async function addHomeCards(c: Client, appId: number) {
   const entries = (
-    await c.query<{ label: string; icon: string | null; target_page: number }>(
-      `select e.label, e.icon, e.target_page from meta.nav_entry e join meta.app a on a.id = e.app_id
+    await c.query<{ label: string; icon: string | null; target_page: number; authz: string | null }>(
+      `select e.label, e.icon, e.target_page, e.authz from meta.nav_entry e join meta.app a on a.id = e.app_id
         where e.app_id = $1 and e.parent_id is null and e.target_page is not null and e.target_page <> a.home_page
         order by e.seq, e.id`,
       [appId],
@@ -68,7 +136,7 @@ export async function addHomeCards(c: Client, appId: number) {
   const made = await c.query(`insert into meta.list (app_id, name, description) values ($1, 'HOME_PAGES', 'The cards of the home page') on conflict (app_id, name) do nothing`, [appId]);
   if (!made.rowCount) return;
   for (const [n, e] of entries.entries())
-    await c.query('insert into meta.list_entry (app_id, list_name, seq, label, icon, target_page) values ($1, $2, $3, $4, $5, $6)', [appId, 'HOME_PAGES', (n + 1) * 10, e.label, e.icon, e.target_page]);
+    await c.query('insert into meta.list_entry (app_id, list_name, seq, label, icon, target_page, authz) values ($1, $2, $3, $4, $5, $6, $7)', [appId, 'HOME_PAGES', (n + 1) * 10, e.label, e.icon, e.target_page, e.authz]);
   await c.query(
     `insert into meta.region (page_id, seq, title, type, template, config)
      select p.id, 20, 'Pages', 'list', 'plain', '{"list": "HOME_PAGES", "template": "cards"}' from meta.page p join meta.app a on a.id = p.app_id and p.page_no = a.home_page where a.id = $1`,
@@ -93,6 +161,11 @@ export interface NewAppInput {
   description?: string;
   /** (097) the application's icon (a name from icons.svg) */
   icon?: string;
+  /** (sprint 73) appearance: base style, menu position, accent colour; the primary language */
+  base?: string;
+  nav?: string;
+  accent?: string;
+  language?: string;
 }
 
 export interface CheckedApp {
@@ -110,6 +183,12 @@ export interface CheckedApp {
   description?: string | null;
   /** (097) the home page's icon */
   icon?: string | null;
+  /** (sprint 73) the theme: base style (Iris when not given), menu at the top, own accent colour */
+  base?: 'iris' | 'lavender' | 'standard';
+  topNav?: boolean;
+  accent?: string | null;
+  /** (sprint 73) the primary language (default en) */
+  language?: string;
 }
 
 /** pgkiln's and the system's schemas never become an application's parsing schema. */
@@ -138,7 +217,14 @@ export async function checkNewApp(b: NewAppInput, workspaceId: number): Promise<
   const description = (b.description ?? '').trim().slice(0, 300) || null;
   const appIcon = (b.icon ?? '').trim();
   if (appIcon && !isIcon(appIcon)) throw new Error('Choose one of the icons in the list.');
-  return { name, alias, schema, role: `app_${alias.replace(/-/g, '_')}`, authentication, adminUser, adminPassword, workspaceId, description, icon: appIcon || null };
+  const base = b.base === 'lavender' || b.base === 'standard' ? b.base : 'iris';
+  const accent = /^#[0-9a-f]{6}$/i.test(b.accent ?? '') && b.accent!.toLowerCase() !== BASE_STYLES[base].accent ? b.accent!.toLowerCase() : null;
+  const language = (b.language ?? '').trim() || 'en';
+  if (!(language in LANGUAGE_NAMES)) throw new Error('Choose one of the languages in the list.');
+  return {
+    name, alias, schema, role: `app_${alias.replace(/-/g, '_')}`, authentication, adminUser, adminPassword, workspaceId, description, icon: appIcon || null,
+    base, topNav: b.nav === 'top', accent, language,
+  };
 }
 
 /** Create the schema, the role and the application (inside the caller's owner transaction). */
@@ -176,7 +262,13 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   await c.query(`alter default privileges in schema ${S} grant execute on functions to ${R}`);
 
   // new applications start with the newest base style (Iris), light (users may switch to dark); existing ones keep theirs
-  const r = await c.query('insert into meta.app (alias, name, authentication, db_role, theme) values ($1, $2, $3, $4, $5) returning id', [a.alias, a.name, a.authentication, a.role, { base: NEW_APP_BASE, mode: 'light' }]);
+  // (sprint 73) the wizard's appearance: base style, menu at the top, an own accent colour
+  const theme: Record<string, string> = { mode: 'light' };
+  const base = a.base ?? NEW_APP_BASE;
+  if (base !== 'standard') theme.base = base;
+  if (a.topNav) theme.nav = 'top';
+  if (a.accent) theme.accent = a.accent;
+  const r = await c.query('insert into meta.app (alias, name, authentication, db_role, theme, language) values ($1, $2, $3, $4, $5, $6) returning id', [a.alias, a.name, a.authentication, a.role, theme, a.language ?? 'en']);
   const appId = r.rows[0].id as number;
   await placeApp(c, appId, a.workspaceId);
   const p = await c.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appId]);

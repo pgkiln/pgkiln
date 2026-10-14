@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { APP_COLORS, BASE, csrf, developer, input, region, select, send, shell, type Req } from './ui.ts';
+import { APP_COLORS, BASE, csrf, developer, input, region, send, shell, type Req } from './ui.ts';
 import { crossAppLinks } from './cross-app.ts';
 import type { Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
@@ -190,37 +190,7 @@ export async function homeRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- create and import
-  app.get(`${BASE}/create`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const schemas = await owner.query(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`);
-    const boilerplates = (await owner.query(`select id, name from meta.app a where app_type = 'boilerplate' and ${inWorkspaceSql('a', 1)} order by lower(name), id`, [currentWorkspace(s)])).rows;
-    const main = html`<div class="ab-narrow">
-      <h1>Create an application</h1>
-      <p class="muted">A blank application with a Home page, its own database role and a parsing schema. Add pages with the page wizards afterwards.</p>
-      <p><a class="btn" href="${BASE}/create/file">${icon('upload')} From a file</a> <span class="muted small">Or start from a spreadsheet (CSV, Excel, JSON or XML): a table per sheet with its rows, a report and form per table, foreign keys, a dashboard and a faceted search.</span></p>
-      <p><a class="btn" href="${BASE}/create/paste">${icon('file')} From pasted data</a> <span class="muted small">Paste rows copied from a spreadsheet, or CSV or TSV text.</span></p>
-      <p><a class="btn" href="${BASE}/blueprints">${icon('layers')} From a blueprint</a> <span class="muted small">Describe tables, pages, menu and sample rows as a blueprint (or let AI draft one), review it, create it.</span></p>
-      <p><a class="btn" href="${BASE}/create/tables">${icon('table')} From existing tables</a> <span class="muted small">Pick the tables and views of a schema: a report and form per table, navigation and a dashboard.</span></p>
-      ${region('Application', html`<form method="post" action="${BASE}/apps">${csrf(s)}
-        <div class="form-grid">
-          ${input('name', 'Name', '', { required: true })}
-          ${input('alias', 'Alias (URL)', '', { required: true, help: 'lowercase, e.g. inventory → /a/inventory' })}
-          ${boilerplates.length
-            ? select('boilerplate', 'Start from', /^\d{1,9}$/.test(String(req.query?.boilerplate ?? '')) ? String(req.query!.boilerplate) : '', [['', '- a blank application (a Home page) -'], ...boilerplates.map((x): [string, string] => [String(x.id), `${x.name} (boilerplate)`])],
-                'A boilerplate application\'s pages, shared components and settings are copied; the new application keeps its own name, alias, role and authentication.')
-            : ''}
-          ${select('schema', 'Parsing schema', '', [['', '- new schema named after the alias -'], ...schemas.rows.map((r): [string, string] => [r.nspname, r.nspname])],
-            'A database role app_<alias> is created with access to this schema only; the app runs as that role.')}
-          ${select('authentication', 'Authentication', 'app_users', [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
-          ${input('admin_user', 'First user', '', { placeholder: 'e.g. your name', help: 'Gets the admin role. An existing account in Users is reused.' })}
-          ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password', help: 'For a new account; at least 8 characters.' })}
-        </div>
-        <div class="buttons"><a class="btn" href="${BASE}">Cancel</a><button class="btn btn-hot">Create application</button></div>
-      </form>`)}
-    </div>`;
-    return send(reply, s, shell(s, 'Create application', [['App Builder', BASE], ['Create']], main));
-  });
+  // (sprint 73) GET /create, the Create Application wizard, is in appwizard.ts
 
   app.get(`${BASE}/import`, async (req: Req, reply) => {
     const s = await developer(req, reply);

@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 73: the Create Application wizard on one page, like APEX's.
+
+### Added
+- **Create Application on one page** (APEX: the Create Application wizard): name, description and icon; appearance
+  (theme style, side or top menu, accent colour); a **page type per table and view** of the chosen schema (interactive
+  report with form, faceted search, cards, calendar, master detail, interactive grid, report, or none; only the types
+  a table can have are offered; tables of more than 100,000 rows are proposed as an interactive grid); **features**
+  (About page, access control, activity reporting, feedback, theme style selection, install as an app, push
+  notifications); settings with the primary language; a boilerplate under Advanced. The other sources (a file,
+  pasted data, a blueprint, the App Gallery) are links at the top.
+- **Activity reporting** (migration 098): `meta.app_activity(days)` gives an application's administrators its page
+  views, sign-ins and errors; the feature adds an Activity page for them (page 9010).
+
+### Changed
+- After **Create application** the builder opens the new application (a progress message while it works), with
+  what was created as a message, instead of a result page. "From existing tables" is part of the Create page
+  (`/builder/create/tables` shows the same page).
+- The proposed application name is selected when clicked, so typing replaces it.
+
 Sprint 72: the application's chrome like APEX 26.2's: the developer toolbar, the Iris look, the header's Help menu and
 Install button.
 

@@ -246,23 +246,33 @@ The list is `examples/gallery/gallery.json`; add your own starters there as blue
 
 ### Creating an application
 
-**Create** (a tile, or `/builder/create`):
+**Create** (a tile, or `/builder/create`) is one page, like APEX's Create Application wizard. Links at the top
+start from a file, pasted data, a blueprint or the App Gallery instead. Then:
 
-| Field | Meaning |
-|---|---|
-| Name | Display name, shown in the header |
-| Alias | Lowercase URL name: `inventory` gives `/a/inventory` |
-| Parsing schema | The database schema the app works with. Choose an existing schema, or leave it on "new schema" to create one named after the alias |
-| Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)), *Custom* (your own PL/pgSQL function, see [chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) or *None* (a public app) |
-| First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
-| Start from | Shown when there are **boilerplate** applications (Settings → Application type): their pages, shared components and settings are copied into the new application, which keeps its own name, alias, role and authentication ([application types](#application-types-and-subscriptions)) |
+| Section | Field | Meaning |
+|---|---|---|
+| Data | Pages on the tables of | The parsing schema: an existing schema (*Show its tables* lists them under Pages), or a new, empty one named after the alias |
+| Application | Name | Display name, shown in the header. Proposed from the schema and selected when you click it, so typing replaces it |
+| | Description, Icon | Shown on the home page's hero and the About page |
+| Appearance | Theme style, Navigation, Accent colour | Iris, Lavender or Standard; a side or top menu; an own accent colour |
+| Pages | a page type per table | *Interactive report with form*, *Faceted search*, *Cards*, *Calendar* (a table with a date column), *Master detail* (a table another table refers to), *Interactive grid*, *Report* or *No page*. Tables with a single-column primary key get a modal form with their report, faceted search, cards and calendar; views and tables without such a key can't have a form or a grid. Proposed: a report with form, an interactive grid for a table of more than 100,000 rows, a report for a view. *Dashboard*: a chart per table |
+| Features | | *About page* (in a Help menu), *Access control* (authorization schemes `CONTRIBUTOR` and `READER` next to `ADMIN`, for the roles admin, contributor and reader), *Activity reporting* (page 9010 for administrators: page views per day and the latest activity, from `meta.app_activity`), *Feedback*, *Theme style selection* (users may choose light or dark), *Install as an app* (PWA) and *Push notifications* (needs `PGKILN_SECRET_KEY`) |
+| Settings | Alias | Lowercase URL name: `inventory` gives `/a/inventory` |
+| | Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)), *Custom* (your own PL/pgSQL function, see [chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) or *None* (a public app) |
+| | First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed) |
+| | Language | The application's primary language |
+| Advanced | Start from | Shown when there are **boilerplate** applications (Settings → Application type): their pages, shared components and settings are copied into the new application, which keeps its own name, alias, role and authentication ([application types](#application-types-and-subscriptions)) |
 
 Creating the app also:
 
 - creates the database role `app_<alias>` with `SELECT/INSERT/UPDATE/DELETE` on all tables,
   `USAGE` on sequences and `EXECUTE` on functions in the schema, plus **default privileges**,
   so tables you create later (as the owner, e.g. in the SQL Workshop) are usable by the app straight away;
-- creates page 1 *Home*, a navigation entry, and an authorization scheme `ADMIN` (role `admin`).
+- creates page 1 *Home*, a navigation entry, and an authorization scheme `ADMIN` (role `admin`);
+- shows a progress message while it works and then opens the new application's page in the builder,
+  with what was created (and anything left out) as a message.
+
+Everything is created in one transaction: when a page can't be made, nothing is.
 
 The parsing schema can't be `meta`, `information_schema` or a `pg_*` schema.
 
@@ -334,13 +344,12 @@ most 4 MB of text; upload larger data as a file.
 
 ### Creating an application from existing tables
 
-**Create → From existing tables** (`/builder/create/tables`): choose a schema (pgkiln's `meta`,
-`information_schema` and the `pg_*` schemas aren't offered), then tick its tables and views (tables
-are ticked by default). The application gets that schema as its parsing schema and a role
+**Create**, then a schema under *Data* (`/builder/create?schema=…`; pgkiln's `meta`,
+`information_schema` and the `pg_*` schemas aren't offered): each table and view gets a page type
+under *Pages* (above), or *No page*. The application gets that schema as its parsing schema and a role
 `app_<alias>` with the grants of a blank application on the schema (so **all** tables of the schema,
-not only the ticked ones). For each ticked table with a single-column primary key, an interactive
-report with a modal form (`meta.generate_page` *report_form*); for views and tables without such a
-key, a report page; a navigation entry each; and optionally a dashboard (a chart per table, as above;
+not only the ones with pages). The pages are made with `meta.generate_page`, with a navigation entry
+each; and optionally a dashboard (a chart per table, as above;
 for existing tables the repeating values come from the planner statistics, so `ANALYZE` a table that
 was never analyzed). Everything is created in one transaction. Foreign keys to tables in another
 schema show in forms as select lists that the app's role may not be allowed to read: grant it, or
