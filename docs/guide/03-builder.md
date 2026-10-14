@@ -92,6 +92,32 @@ Links), added on the workspace's page by administrators and the workspace's admi
 `https://` URL, an optional description and an order. While the workspace is current an **Extensions** icon in the
 rail opens them, each in a new tab (`rel="noopener noreferrer"`).
 
+### Export and import
+
+Workspace utilities → **Export and import** (`/builder/workspace-export`; APEX: Workspace Utilities → Export), for
+administrators and the workspace's administrators: the current workspace's components as one JSON file (format
+`pgkiln-workspace/1`), to copy them to another workspace or installation or keep them in version control next to the
+applications' files. Choose what goes in:
+
+| Component | In the file |
+|---|---|
+| Settings | Description, [workspace message, environment banner](#workspace-message-and-environment-banner) and [preferences](#workspace-preferences) |
+| Developers | User names and who is a workspace administrator (never passwords) |
+| Application groups | Names, descriptions and the aliases of their applications |
+| Extension links | Label, URL, description, order |
+| REST source catalogs | Every [catalog](19-rest-data-sources.md#rest-source-catalogs) with its services |
+| SQL scripts, blueprints, data generators | The SQL Workshop's saved work |
+
+Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, passwords and
+secrets, script runs and other history. **Applications are exported on their own** (an application's *Export*).
+
+**Import** reads such a file into the current workspace, for the components you choose. Components with a name the
+workspace already has are kept, or replaced with *Replace components with the same name*; nothing is deleted. A
+developer is added only when this installation has a developer of that name (add them under *Developers* first); an
+application group takes the workspace's applications with those aliases. The import is one transaction: a value the
+installation refuses (an invalid URL, a catalog service that doesn't pass the checks) changes nothing, and the page
+says what was added, kept and replaced.
+
 ### Workspace utilization
 
 Administration menu → **Workspace utilization** (`/builder/workspaces/<id>/utilization`; APEX: Workspace

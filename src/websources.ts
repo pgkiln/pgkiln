@@ -41,6 +41,8 @@ export interface RestParam {
   in: ParamLocation;
   default?: string;
   required?: boolean;
+  /** (095) the name the service uses, when it isn't a valid parameter name (e.g. pageSize, X-Request-ID): query, header and body parameters */
+  key?: string;
 }
 export type ColumnType = 'text' | 'number' | 'integer' | 'boolean' | 'date' | 'timestamp' | 'json';
 export interface RestColumn {
@@ -90,6 +92,8 @@ export const COLUMN_TYPES: Record<ColumnType, string> = {
 const PARAM_IN = ['query', 'path', 'header', 'body'];
 const NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 const HEADER = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/;
+// (095) a parameter's name at the service: printable, no spaces
+const KEY = /^[\x21-\x7e]{1,100}$/;
 /** headers a source may not set itself (the credential and the transport own them) */
 const RESERVED_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'host', 'content-length', 'transfer-encoding', 'connection']);
 
@@ -118,7 +122,11 @@ export function sourceProblems(s: { url?: unknown; params?: unknown; columns?: u
       else seen.add(p.name);
       if (p && !PARAM_IN.includes(p.in)) out.push(`Parameter ${p?.name}: "in" is one of ${PARAM_IN.join(', ')}.`);
       if (p?.in === 'header' && !HEADER.test(p.name.replace(/_/g, '-'))) out.push(`Parameter ${p.name}: not a valid header name.`);
+      else if (p?.in === 'header' && RESERVED_HEADERS.has(String(p.key ?? p.name.replace(/_/g, '-')).toLowerCase()))
+        out.push(`Parameter ${p.name}: the header ${p.key ?? p.name.replace(/_/g, '-')} can't be a parameter (use a web credential for authorization).`);
       if (p?.default !== undefined && typeof p.default !== 'string') out.push(`Parameter ${p.name}: "default" is a string.`);
+      if (p?.key !== undefined && (typeof p.key !== 'string' || !KEY.test(p.key) || (p.in === 'header' && !HEADER.test(p.key))))
+        out.push(`Parameter ${p.name}: "key" is the service's name for it (at most 100 characters${p.in === 'header' ? ', a valid header name' : ''}).`);
     }
     if (typeof s.url === 'string')
       for (const m of s.url.matchAll(/\{([a-z_][a-z0-9_]*)\}/gi))
@@ -624,12 +632,12 @@ export function buildRequest(s: RestSource, values: Record<string, string | null
   for (const p of s.params) {
     if (p.in === 'query') {
       const v = val(p);
-      if (v !== '') u.searchParams.set(p.name, v);
+      if (v !== '') u.searchParams.set(p.key ?? p.name, v);
     } else if (p.in === 'header') {
       const v = val(p);
       if (/[\r\n]/.test(v)) throw new WebError(`Parameter ${p.name}: a header value is one line.`);
-      if (v !== '') headers[p.name.replace(/_/g, '-')] = v;
-    } else if (p.in === 'body') bodyParams[p.name] = val(p);
+      if (v !== '') headers[(p.key ?? p.name.replace(/_/g, '-')).toLowerCase()] = v;
+    } else if (p.in === 'body') bodyParams[p.key ?? p.name] = val(p);
   }
   url = u.toString();
   for (const [k, v] of Object.entries(s.headers ?? {})) if (!RESERVED_HEADERS.has(k.toLowerCase())) headers[k.toLowerCase()] = String(v);

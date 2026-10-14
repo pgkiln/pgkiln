@@ -168,7 +168,7 @@ body.ide { margin: 0; min-height: 100vh; min-height: 100dvh; padding-left: var(-
 .ide-page { max-width: 1680px; margin: 0 auto; padding: 14px 18px 48px; }
 .ide .region-standard, .ide .region-collapsible { border-radius: var(--radius); box-shadow: none; }
 .ide .region-header { min-height: 38px; padding: 0.35rem 0.85rem; background: var(--surface-2); border-radius: var(--radius) var(--radius) 0 0; }
-.ide .region-header h2 { font-size: 13px; font-weight: 650; }
+.ide .region-header h2 { font-size: 13px; font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
 .ide .region-body { padding: 0.85rem; }
 .ide .btn { font-size: 13px; padding: 0.34rem 0.8rem; border-radius: 4px; }
 .ide input:not([type=checkbox]):not([type=radio]), .ide select, .ide textarea { padding: 0.32rem 0.5rem; border-radius: 3px; font-size: 13px; }

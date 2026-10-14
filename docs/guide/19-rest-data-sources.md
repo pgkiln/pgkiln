@@ -111,7 +111,7 @@ Shared Components → **REST data sources** → ＋ Add.
 | URL | `https://api.example.com/v1/cities/{city}/weather`: `{name}` is a path parameter. The host is fixed: parameters can only come after it |
 | Method | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
 | Web credential | The name of a web credential, or empty |
-| Parameters | JSON: `[{"name": "city", "in": "path", "default": "&P1_CITY.", "required": true}, {"name": "units", "in": "query", "default": "metric"}]`. `in` is `path`, `query`, `header` or `body`. Defaults may use `&ITEM.` substitutions |
+| Parameters | JSON: `[{"name": "city", "in": "path", "default": "&P1_CITY.", "required": true}, {"name": "units", "in": "query", "default": "metric"}]`. `in` is `path`, `query`, `header` or `body`. Defaults may use `&ITEM.` substitutions. `key`: the service's own name for a query, header or body parameter when it isn't lower case with `_`, e.g. `{"name": "page_size", "in": "query", "key": "pageSize"}`; `Authorization`, `Cookie`, `Host` and the transport headers can't be header parameters |
 | Headers | JSON: extra request headers, e.g. `{"Accept-Language": "en"}`. Not for secrets (use a web credential); `Authorization`, `Cookie`, `Host` and the transport headers can't be set |
 | Body | For `POST`, `PUT`, `PATCH`: a JSON template, `{name}` becomes the parameter's value as a JSON string. Empty: the `body` parameters as a JSON object |
 | Row selector | Where the rows are in the response: `items`, `data.results`, `$.list[*]`. Empty: the response itself (an array, or one object as one row) |
@@ -237,6 +237,44 @@ level security apply) with `meta.app_user()` = `rest_sync:<SOURCE>`; a failing r
 nothing. Two runs of one source never overlap. The last 100 runs per source are kept. An imported
 application's synchronisations start switched off. `AUTOMATIONS=off` stops scheduled and queued
 runs on that server.
+
+## REST source catalogs
+
+Workspace utilities → **REST Source Catalogs** (APEX: REST Source Catalogs) describes a web service once for the
+workspace: a **base URL** (e.g. `https://api.example.com/v1`) and its **services**, each an endpoint with a path after
+the base URL (`/pets/{pet_id}`), a method, and the same parameters, headers, body, row selector, columns, key columns
+and operations as a [REST data source](#rest-data-sources). Every developer of the workspace manages its catalogs.
+
+A catalog comes from:
+
+- an **OpenAPI 3.x or Swagger 2.0 document** in JSON (*Import a catalog*: upload `openapi.json`, paste it, or give its
+  URL, which the server reads, so the host must be on the [allow-list](#server-configuration-and-the-allow-list));
+- a **catalog file** downloaded from another workspace or installation (*Download* on the catalog's page);
+- **by hand**: a name and base URL, then *Add a service*.
+
+Reading an OpenAPI document, pgkiln takes for each `GET`, `POST`, `PUT`, `PATCH` and `DELETE` operation:
+
+| From the document | Becomes |
+|---|---|
+| `operationId` (or the method and path) | The service's name, e.g. `listPets` → `LIST_PETS` |
+| `servers[0].url` (variables at their defaults; Swagger 2: `schemes`, `host`, `basePath`) | The base URL. A relative one is read against the document's URL; or type the base URL |
+| `path`, `query` and `header` parameters (also the path's own) | Parameters: `petId` → `pet_id`, with `"key": "petId"` when the service's name differs; a schema `default` (or an `example`) as the default |
+| The scalar properties of a JSON request body | `body` parameters (nested objects and lists need a body template) |
+| The JSON schema of the `200`/`201` (or `default`) response | The row selector (a list, or the list property of an object such as `items`, `data` or `results`) and the columns with their types (`integer`, `number`, `boolean`, `date`, `date-time` → `timestamp`, objects and lists → `json`) |
+| A collection `GET /pets` with `GET`, `PUT`/`PATCH`, `DELETE /pets/{petId}` and `POST /pets` | Key columns and [write-back operations](#writing-back-from-forms-and-grids) on the collection's service, when the item's parameter names a column (`pet_id`, else `id`) |
+
+`$ref`s inside the document and `allOf` are followed. What a data source can't use (cookie and form parameters, the
+`Authorization` header, external `$ref`s, `HEAD` and `OPTIONS`) is listed after the import, never dropped silently.
+YAML documents: convert them to JSON first (most services offer `openapi.json` too).
+
+**Making a data source from a catalog**: an application's Shared Components → REST data sources → ＋ Add shows *From a
+REST source catalog* when the application's workspace has catalogs: pick a service, optionally another name and one
+of the application's web credentials. The data source is a **copy** (URL = base URL + path): changing or deleting the
+catalog later doesn't change it, and *Replace from a document* on a catalog's page replaces only the catalog's
+services. Credentials never belong to a catalog: each application signs in with its own web credential.
+
+Catalogs belong to the workspace (migration 095): they are not part of an application's export, but of the
+[workspace export](03-builder.md#export-and-import).
 
 ## The `invoke_api` process
 
