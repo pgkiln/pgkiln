@@ -148,6 +148,7 @@ export const ar: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} نموذج في انتظار الإرسال",
   'pwa.send_now': "إرسال الآن",
   'pwa.discard': "تجاهل",
+  'pwa.install': "تثبيت التطبيق",
   'pwa.status.waiting': "في الانتظار",
   'pwa.status.signin': "سجّل الدخول للإرسال",
   'pwa.status.invalid': "مرفوض: افتح الصفحة وصحّحه",

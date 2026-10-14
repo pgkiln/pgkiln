@@ -148,6 +148,7 @@ export const ru: Record<MessageKey, string> = {
   'pwa.queue_waiting': "Форм ожидают отправки: {n}",
   'pwa.send_now': "Отправить сейчас",
   'pwa.discard': "Отменить",
+  'pwa.install': "Установить приложение",
   'pwa.status.waiting': "ожидает",
   'pwa.status.signin': "войдите, чтобы отправить",
   'pwa.status.invalid': "отклонено: откройте страницу и исправьте",

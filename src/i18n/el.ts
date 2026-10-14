@@ -148,6 +148,7 @@ export const el: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} φόρμα(-ες) περιμένουν αποστολή",
   'pwa.send_now': "Αποστολή τώρα",
   'pwa.discard': "Απόρριψη",
+  'pwa.install': "Εγκατάσταση εφαρμογής",
   'pwa.status.waiting': "σε αναμονή",
   'pwa.status.signin': "συνδεθείτε για αποστολή",
   'pwa.status.invalid': "απορρίφθηκε: ανοίξτε τη σελίδα και διορθώστε την",

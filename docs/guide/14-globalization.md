@@ -212,7 +212,7 @@ Under **Settings → Theme**, *Theme style* is **Automatic** (follow the device,
 has the same choice. The choice is saved on the account, so it applies in every application that
 allows it. For public applications it's kept in a cookie.
 
-## Base styles: Iris and Standard
+## Base styles: Iris, Lavender and Standard
 
 Every application has a **base style** (Settings → Theme → *Base style*; APEX: the Universal Theme's theme style,
 whose default in 26.1 is *Iris*). It sets the colours of the light and the dark theme, the corners, the font and the
@@ -220,12 +220,16 @@ shadows of the whole application:
 
 | Base style | Look |
 |---|---|
-| **Iris** (the default for new applications) | Indigo accent (`#5146d8`, `#a59cff` in dark mode), a deep indigo header, cool light greys, larger corners (12 px), softer shadows, rounded navigation items and pill-shaped primary buttons |
+| **Iris** (the default for new applications) | (0.42, like APEX 26's Iris) A white body, a dark warm-grey header (`#3a3632`) with a thin accent strip and a dark menu, a blue accent (`#2b62c4`, `#84aef2` in dark mode), 4 px corners, regions with a rule under their header, a dark primary button and a large bold page title on the body (no title band) |
+| **Lavender** | pgkiln's Iris until 0.41: indigo accent (`#5146d8`), a deep indigo header, cool light greys, 12 px corners, softer shadows, rounded navigation items and pill-shaped primary buttons |
 | **Standard** | pgkiln's look until 0.28: blue accent, navy header, 8 px corners. Applications created before 0.29 keep it until you change it |
 
 The accent and header colours under Settings → Theme, and the style variants below, change the base style's
 colours (in the light theme). Choosing a colour equal to a base style's own stores nothing, so switching the base
-style later changes it too. All text colours of both base styles meet WCAG AA contrast in light and dark mode.
+style later changes it too. All text colours of the base styles meet WCAG AA contrast in light and dark mode.
+
+New applications start in the **light** theme (Settings → Theme → *Mode*), with *Users may choose light or dark*
+on, as in APEX.
 
 ## Style variants (Theme Roller)
 

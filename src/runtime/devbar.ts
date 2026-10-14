@@ -22,6 +22,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { hashToken, newToken } from '../security.ts';
 import { saveState, sessionLimits, type Session } from '../session.ts';
 import { documentShell } from '../layout.ts';
+import { icon } from '../icons.ts';
 import type { PageContext } from './context.ts';
 
 export const DEVBAR_COOKIE = 'pgkiln_devbar';
@@ -73,30 +74,50 @@ export const sessionDebugLevel = (s: Session) => {
   return DEBUG_LEVELS.some(([level]) => level === n) ? n : 0;
 };
 
-/** The toolbar at the bottom of a page (not in dialogs). */
+/**
+ * The toolbar (not in dialogs): (sprint 72) a compact bar of icons with tooltips,
+ * centred at the bottom like APEX's. Debug, Info and Settings open small panels
+ * (<details>, so they work without JavaScript). With JavaScript (app.js) the bar
+ * shrinks to a slim tab after a few seconds without use and can be docked at the
+ * top, left or right (Settings; kept in the browser).
+ */
 export function devbarHtml(ctx: PageContext): Raw | '' {
   if (!ctx.devbar || ctx.dialog) return '';
   const level = sessionDebugLevel(ctx.session);
   const appLevel = Number(ctx.app.debug_level ?? 0);
   const page = ctx.page.page_no;
-  return html`<details class="devbar" open>
-    <summary><span>Developer</span></summary>
-    <nav aria-label="Developer toolbar"><ul>
-      <li><a href="${BUILDER}">App Builder</a></li>
-      <li><a href="${BUILDER}/apps/${ctx.app.id}">Application ${ctx.app.id}</a></li>
-      <li><a href="${BUILDER}/pages/${ctx.page.id}">Edit page ${page}</a></li>
-      <li><button type="button" class="devbar-quick" data-quick-edit="${BUILDER}/pages/${ctx.page.id}" aria-pressed="false" hidden>Quick edit</button></li>
-      <li><a href="${ctx.base}/${page}/devbar/session">Session</a></li>
-      <li><form method="post" action="${ctx.base}/${page}/devbar/debug" class="devbar-debug">
+  const tool = (href: string, label: string, name: string) =>
+    html`<li><a class="devbar-tool" href="${href}" title="${label}" aria-label="${label}">${icon(name)}</a></li>`;
+  const menu = (label: string, name: string, cls: string, body: Raw, hidden = false) =>
+    html`<li${hidden ? raw(' hidden') : ''}><details class="devbar-menu ${cls}"><summary class="devbar-tool" title="${label}" aria-label="${label}">${icon(name)}</summary>
+      <div class="devbar-pop" role="group" aria-label="${label}">${body}</div></details></li>`;
+  return html`<div class="devbar" data-dock="bottom">
+    <nav aria-label="Developer toolbar"><ul class="devbar-tools">
+      ${tool(BUILDER, 'App Builder', 'home')}
+      ${tool(`${BUILDER}/apps/${ctx.app.id}`, `Application ${ctx.app.id}`, 'grid')}
+      ${tool(`${BUILDER}/pages/${ctx.page.id}`, `Edit page ${page}`, 'edit')}
+      ${tool(`${ctx.base}/${page}/devbar/session`, 'Session', 'database')}
+      ${menu('Debug', 'bolt', `devbar-debug-menu${level || appLevel ? ' is-on' : ''}`, html`<form method="post" action="${ctx.base}/${page}/devbar/debug" class="devbar-debug">
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">
-        <label for="devbar-debug">Debug</label>
+        <label for="devbar-debug">Debug messages</label>
         <select id="devbar-debug" name="level">${DEBUG_LEVELS.map(([n, label]) =>
           html`<option value="${n}"${n === level ? raw(' selected') : ''}>${n === 0 ? (appLevel ? `Application (${appLevel})` : 'Off') : label}</option>`)}</select>
         <button>Set</button>
-      </form></li>
-      ${level || appLevel ? html`<li><a href="${BUILDER}/apps/${ctx.app.id}/debug">View debug</a></li>` : ''}
+      </form>${level || appLevel ? html`<a href="${BUILDER}/apps/${ctx.app.id}/debug">View debug</a>` : ''}`)}
+      <li><button type="button" class="devbar-tool devbar-quick" data-quick-edit="${BUILDER}/pages/${ctx.page.id}" aria-pressed="false" title="Quick edit" aria-label="Quick edit" hidden>${icon('scan')}</button></li>
+      ${tool(`${BUILDER}/apps/${ctx.app.id}/theme`, 'Customize (Theme Roller)', 'sliders')}
+      ${menu('Info', 'info', 'devbar-info', html`<dl class="devbar-facts">
+        <dt>Application</dt><dd>${ctx.app.name} (${ctx.app.id})</dd>
+        <dt>Page</dt><dd>${page}: ${ctx.page.name}</dd>
+        <dt>User</dt><dd>${ctx.user ?? 'nobody'}</dd>
+        <dt>Developer</dt><dd>${ctx.devbar.username}</dd>
+      </dl>`)}
+      ${menu('Settings', 'settings', 'devbar-settings', html`<fieldset class="devbar-dock"><legend>Position</legend>
+        ${(['bottom', 'top', 'left', 'right'] as const).map((d) => html`<label><input type="radio" name="devbar-dock" value="${d}"${d === 'bottom' ? raw(' checked') : ''}> ${d[0].toUpperCase() + d.slice(1)}</label>`)}
+      </fieldset>
+      <label class="devbar-autohide"><input type="checkbox" name="devbar-autohide" checked> Hide when not used</label>`, true)}
     </ul></nav>
-  </details>`;
+  </div>`;
 }
 
 const INTERNAL = /^__/;

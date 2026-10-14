@@ -32,13 +32,16 @@ const MAX_CONDITION = 2000;
  */
 export const BASE_STYLES = {
   standard: { label: 'Standard', accent: '#0b63c5', header: '#13294b' },
-  iris: { label: 'Iris', accent: '#5146d8', header: '#1e1a4d' },
+  iris: { label: 'Iris', accent: '#2b62c4', header: '#3a3632' },
+  /** (sprint 72) pgkiln's Iris until 0.41: lavender, rounded */
+  lavender: { label: 'Lavender', accent: '#5146d8', header: '#1e1a4d' },
 } as const;
 export type BaseStyle = keyof typeof BASE_STYLES;
 /** New applications start with this base style. */
 export const NEW_APP_BASE: BaseStyle = 'iris';
 /** The application's base style (anything else than a known key: Standard). */
-export const baseStyleOf = (theme: { base?: unknown } | undefined): BaseStyle => (theme?.base === 'iris' ? 'iris' : 'standard');
+export const baseStyleOf = (theme: { base?: unknown } | undefined): BaseStyle =>
+  theme?.base === 'iris' || theme?.base === 'lavender' ? theme.base : 'standard';
 export const STYLE_NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,29}$/;
 export const MAX_STYLES = 10;
 

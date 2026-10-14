@@ -125,7 +125,7 @@ describe('blueprints in the builder', () => {
     assert.equal(created.statusCode, 303, /No application was created: ([^<]*)/.exec(created.body)?.[1] ?? '');
     const a = await owner.one('select id, name, db_role, authentication from meta.app where alias = $1', [ALIAS]);
     assert.deepEqual({ name: a.name, role: a.db_role, auth: a.authentication }, { name: 'Projects', role: 'app_bp_s36', auth: 'app_users' });
-    assert.deepEqual((await owner.query(`select page_no from meta.page where app_id = $1 order by 1`, [a.id])).rows.map((r) => r.page_no), [1, 2, 3, 4, 5, 6, 7]);
+    assert.deepEqual((await owner.query(`select page_no from meta.page where app_id = $1 order by 1`, [a.id])).rows.map((r) => r.page_no), [1, 2, 3, 4, 5, 6, 7, 9000]);
     assert.deepEqual((await owner.query(`select name, status from bp_s36.project order by id`)).rows, [{ name: 'Website', status: 'Active' }, { name: 'Office move', status: 'Planned' }]);
     assert.equal((await owner.one(`select count(*)::int as n from bp_s36.task where project_id = 1`)).n, 2);
     await owner.query(`insert into bp_s36.project (name, status) values ('Third', 'Done')`);

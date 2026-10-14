@@ -77,11 +77,99 @@
 }
 
 /* ---------- base style "Iris" (theme.base = 'iris'; the default for new
+   applications, like APEX 26's Iris theme style): (sprint 72) a light body,
+   a dark warm-grey header and menu with a thin accent strip, square-ish
+   regions with a rule under their header, 4 px corners, a dark primary button
+   and a large page title on the body. Selectors are html[data-style="iris"]:
+   they beat the Standard values above, and the application's own colours
+   (src/runtime/styles.ts, html:root, later in the page) beat them in turn.
+   Contrast: text ≥ 15:1, muted ≥ 5.8:1, accent ≥ 5.5:1, menu text ≥ 10:1. */
+html[data-style="iris"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f7f6f5;
+  --surface-3: #efedeb;
+  --text: #1f1c1a;
+  --muted: #645e59;
+  --border: #e2dfdc;
+  --accent: #2b62c4;
+  --accent-text: #ffffff;
+  --accent-soft: #e9f0fb;
+  --header: #3a3632;
+  --header-text: #f7f5f3;
+  --nav-bg: #2f2b28;
+  --nav-text: #ece8e4;
+  --nav-muted: #b9b2ab;
+  --nav-hover: #403b37;
+  --nav-active: #4a443f;
+  --nav-current: #ffffff;
+  --hot: #2f2b28;
+  --hot-text: #ffffff;
+  --radius: 4px;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-style="iris"]:not([data-theme="light"]) {
+    --bg: #1a1817;
+    --surface: #232120;
+    --surface-2: #2a2826;
+    --surface-3: #33302d;
+    --text: #ece9e6;
+    --muted: #aaa49e;
+    --border: #3a3633;
+    --accent: #84aef2;
+    --accent-text: #10131a;
+    --accent-soft: #23324a;
+    --header: #121110;
+    --header-text: #ece9e6;
+    --nav-bg: #1d1b1a;
+    --nav-text: #e2ded9;
+    --nav-muted: #a39c95;
+    --nav-hover: #2c2927;
+    --nav-active: #36322f;
+    --nav-current: #ffffff;
+    --hot: #ece9e6;
+    --hot-text: #1a1817;
+  }
+}
+html[data-style="iris"][data-theme="dark"] {
+  --bg: #1a1817;
+  --surface: #232120;
+  --surface-2: #2a2826;
+  --surface-3: #33302d;
+  --text: #ece9e6;
+  --muted: #aaa49e;
+  --border: #3a3633;
+  --accent: #84aef2;
+  --accent-text: #10131a;
+  --accent-soft: #23324a;
+  --header: #121110;
+  --header-text: #ece9e6;
+  --nav-bg: #1d1b1a;
+  --nav-text: #e2ded9;
+  --nav-muted: #a39c95;
+  --nav-hover: #2c2927;
+  --nav-active: #36322f;
+  --nav-current: #ffffff;
+  --hot: #ece9e6;
+  --hot-text: #1a1817;
+}
+html[data-style="iris"] .t-header { box-shadow: inset 0 3px 0 var(--accent); }
+html[data-style="iris"] .t-nav { border-right-color: transparent; }
+html[data-style="iris"] .t-titlebar { background: transparent; border-bottom: 0; padding: 1.25rem 1.5rem 0.25rem; }
+html[data-style="iris"] .t-titlebar h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+html[data-style="iris"] .region-header h2 { font-size: 1.05rem; }
+html[data-style="iris"] .btn-hot { background: var(--hot); border-color: var(--hot); color: var(--hot-text); }
+html[data-style="iris"] .btn-hot:hover { background: color-mix(in srgb, var(--hot) 82%, var(--bg)); }
+html[data-style="iris"] .btn-hot .btn-badge { background: var(--hot-text); color: var(--hot); }
+
+/* ---------- base style "Iris" (theme.base = 'iris'; the default for new
    applications, like APEX 26.1's Iris theme style). Selectors are
-   html[data-style="iris"]: they beat the Standard values above, and the
+   html[data-style="lavender"]: they beat the Standard values above, and the
    application's own colours (src/runtime/styles.ts, html:root, later in the
    page) beat them in turn. Contrast: text ≥ 15:1, muted ≥ 5.8:1, accent ≥ 6.5:1. */
-html[data-style="iris"] {
+html[data-style="lavender"] {
   --bg: #f6f6fb;
   --surface: #ffffff;
   --surface-2: #f8f8fc;
@@ -101,7 +189,7 @@ html[data-style="iris"] {
   --shadow: 0 1px 2px rgb(30 27 75 / 5%), 0 2px 8px rgb(30 27 75 / 6%);
 }
 @media (prefers-color-scheme: dark) {
-  html[data-style="iris"]:not([data-theme="light"]) {
+  html[data-style="lavender"]:not([data-theme="light"]) {
     --bg: #121120;
     --surface: #1a1930;
     --surface-2: #201f38;
@@ -119,7 +207,7 @@ html[data-style="iris"] {
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 8px rgb(0 0 0 / 25%);
   }
 }
-html[data-style="iris"][data-theme="dark"] {
+html[data-style="lavender"][data-theme="dark"] {
   --bg: #121120;
   --surface: #1a1930;
   --surface-2: #201f38;
@@ -136,13 +224,13 @@ html[data-style="iris"][data-theme="dark"] {
   --nav-active: #2a2752;
   --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 8px rgb(0 0 0 / 25%);
 }
-/* Iris: rounded navigation pills instead of an edge bar, quieter region headers, pill-shaped primary buttons */
-html[data-style="iris"] .t-nav a[aria-current="page"] { box-shadow: none; border-radius: calc(var(--radius) * 0.75); }
-html[data-style="iris"] .t-nav a, html[data-style="iris"] .t-nav summary { border-radius: calc(var(--radius) * 0.75); }
-html[data-style="iris"] .region-header { border-bottom-color: transparent; }
-html[data-style="iris"] .region-header h2 { letter-spacing: -0.01em; }
-html[data-style="iris"] .btn-hot { border-radius: 999px; }
-html[data-style="iris"] :focus-visible { outline-color: var(--accent); }
+/* Lavender: rounded navigation pills instead of an edge bar, quieter region headers, pill-shaped primary buttons */
+html[data-style="lavender"] .t-nav a[aria-current="page"] { box-shadow: none; border-radius: calc(var(--radius) * 0.75); }
+html[data-style="lavender"] .t-nav a, html[data-style="lavender"] .t-nav summary { border-radius: calc(var(--radius) * 0.75); }
+html[data-style="lavender"] .region-header { border-bottom-color: transparent; }
+html[data-style="lavender"] .region-header h2 { letter-spacing: -0.01em; }
+html[data-style="lavender"] .btn-hot { border-radius: 999px; }
+html[data-style="lavender"] :focus-visible { outline-color: var(--accent); }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -225,17 +313,18 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .t-nav ul ul { padding: 0 0 0 1.4rem; }
 .t-nav a, .t-nav summary {
   display: flex; align-items: center; gap: 0.65rem; padding: 0.5rem 0.65rem; border-radius: 6px;
-  color: var(--text); text-decoration: none; cursor: pointer; white-space: nowrap; font-size: 0.93rem;
+  color: var(--nav-text, var(--text)); text-decoration: none; cursor: pointer; white-space: nowrap; font-size: 0.93rem;
 }
 .t-nav summary { list-style: none; }
 .t-nav summary::-webkit-details-marker { display: none; }
-.t-nav summary::after { content: "›"; margin-left: auto; color: var(--muted); transition: transform 0.15s; }
+.t-nav summary::after { content: "›"; margin-left: auto; color: var(--nav-muted, var(--muted)); transition: transform 0.15s; }
 .t-nav details[open] > summary::after { transform: rotate(90deg); }
-.t-nav a:hover, .t-nav summary:hover { background: var(--surface-3); }
-.t-nav a[aria-current="page"] { background: var(--nav-active); color: var(--accent); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
-.t-nav .in-trail { color: var(--accent); }
-.t-nav .icon { color: var(--muted); }
-.t-nav a[aria-current="page"] .icon, .t-nav .in-trail .icon { color: var(--accent); }
+.t-nav a:hover, .t-nav summary:hover { background: var(--nav-hover, var(--surface-3)); }
+/* (sprint 72) --nav-* let a style have a dark menu (Iris); without them the menu takes the page's colours */
+.t-nav a[aria-current="page"] { background: var(--nav-active); color: var(--nav-current, var(--accent)); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+.t-nav .in-trail { color: var(--nav-current, var(--accent)); }
+.t-nav .icon { color: var(--nav-muted, var(--muted)); }
+.t-nav a[aria-current="page"] .icon, .t-nav .in-trail .icon { color: var(--nav-current, var(--accent)); }
 
 /* ---------- main ---------- */
 .t-main { min-width: 0; }
@@ -1710,19 +1799,51 @@ dialog.crop-dialog::backdrop { background: rgb(15 20 30 / 55%); }
 .crop-dialog .buttons { display: flex; justify-content: flex-end; gap: 0.5rem; }
 
 /* (079) Developer toolbar: shown to developers with a builder session in the same browser.
-   Fixed at the bottom left, collapsible (a <details>, so it works without JavaScript). */
-.devbar { position: fixed; left: 0.75rem; bottom: 0.75rem; z-index: 900; max-width: calc(100vw - 1.5rem);
-  background: #1b2330; color: #fff; border-radius: var(--radius); box-shadow: 0 4px 16px rgb(0 0 0 / 25%); font-size: 0.8125rem; }
-.devbar summary { cursor: pointer; padding: 0.4rem 0.75rem; font-weight: 600; list-style: none; }
-.devbar summary::-webkit-details-marker { display: none; }
-.devbar summary::before { content: '▸ '; }
-.devbar[open] summary::before { content: '▾ '; }
-.devbar ul { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; list-style: none; margin: 0; padding: 0 0.75rem 0.5rem; }
-.devbar a { color: #9cc8ff; }
-.devbar a:focus-visible, .devbar button:focus-visible, .devbar select:focus-visible { outline: 2px solid #9cc8ff; outline-offset: 2px; }
-.devbar-debug { display: flex; align-items: center; gap: 0.35rem; margin: 0; }
+   (sprint 72) A compact bar of icons centred at the bottom (APEX's runtime developer toolbar);
+   app.js docks it at the top, left or right and shrinks it to a slim tab when it is not used.
+   The page keeps room for it, so it never covers the menu's last entry or a report's pager. */
+.devbar { --devbar-size: 2.75rem; position: fixed; z-index: 900; left: 50%; bottom: 0.5rem; transform: translateX(-50%);
+  background: #1b2330; color: #fff; border-radius: 10px; box-shadow: 0 4px 16px rgb(0 0 0 / 25%); font-size: 0.8125rem;
+  transition: transform 0.2s ease, opacity 0.2s ease; }
+.devbar-tools { display: flex; align-items: center; gap: 0.15rem; list-style: none; margin: 0; padding: 0.25rem; }
+.devbar .devbar-tool { display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 7px; color: #dbe7ff;
+  background: none; border: 0; cursor: pointer; list-style: none; padding: 0; }
+.devbar-tool::-webkit-details-marker { display: none; }
+.devbar .devbar-tool:hover, .devbar-menu[open] > .devbar-tool, .devbar-quick[aria-pressed="true"] { background: #2f3b4f; color: #fff; }
+.devbar-debug-menu.is-on > .devbar-tool { color: #ffd166; }
+.devbar a, .devbar-pop a { color: #9cc8ff; }
+.devbar a:focus-visible, .devbar button:focus-visible, .devbar select:focus-visible, .devbar summary:focus-visible, .devbar input:focus-visible { outline: 2px solid #9cc8ff; outline-offset: 2px; }
+.devbar-menu { position: relative; }
+.devbar-pop { position: absolute; bottom: calc(100% + 0.6rem); left: 50%; transform: translateX(-50%); min-width: 14rem; max-width: min(22rem, calc(100vw - 2rem));
+  background: #1b2330; border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / 30%); padding: 0.6rem 0.75rem; display: grid; gap: 0.5rem; }
+.devbar-debug { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0; }
+.devbar-debug label { flex-basis: 100%; }
 .devbar-debug select, .devbar-debug button { font: inherit; font-size: 0.8125rem; padding: 0.1rem 0.3rem; border-radius: 4px; border: 1px solid #5e6a7a; background: #2b3340; color: #fff; }
 .devbar-debug button { cursor: pointer; }
+.devbar-dock { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 0.75rem; }
+.devbar-dock legend { padding: 0; margin-bottom: 0.25rem; font-weight: 600; }
+.devbar-pop .devbar-facts { color: #fff; }
+/* docked at the top, or on the left or right edge (a column of icons) */
+.devbar[data-dock="top"] { bottom: auto; top: 0.5rem; }
+.devbar[data-dock="top"] .devbar-pop { bottom: auto; top: calc(100% + 0.6rem); }
+.devbar[data-dock="left"], .devbar[data-dock="right"] { left: 0.5rem; bottom: auto; top: 50%; transform: translateY(-50%); }
+.devbar[data-dock="right"] { left: auto; right: 0.5rem; }
+.devbar[data-dock="left"] .devbar-tools, .devbar[data-dock="right"] .devbar-tools { flex-direction: column; }
+.devbar[data-dock="left"] .devbar-pop { bottom: auto; top: 0; left: calc(100% + 0.6rem); transform: none; }
+.devbar[data-dock="right"] .devbar-pop { bottom: auto; top: 0; left: auto; right: calc(100% + 0.6rem); transform: none; }
+/* not used for a while: a slim tab at the edge; pointing at it or focusing it brings it back */
+.devbar.is-idle { opacity: 0.85; }
+.devbar.is-idle[data-dock="bottom"] { transform: translate(-50%, calc(100% - 6px)); }
+.devbar.is-idle[data-dock="top"] { transform: translate(-50%, calc(-100% + 6px)); }
+.devbar.is-idle[data-dock="left"] { transform: translate(calc(-100% + 6px), -50%); }
+.devbar.is-idle[data-dock="right"] { transform: translate(calc(100% - 6px), -50%); }
+.devbar.is-idle .devbar-tools { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .devbar { transition: none; } }
+/* room for the bar: the menu and the page end above it */
+body:has(.devbar[data-dock="bottom"]) .t-main, body:has(.devbar[data-dock="bottom"]) .t-nav > ul { padding-bottom: 3.75rem; }
+body:has(.devbar[data-dock="top"]) .t-body { padding-top: 3.25rem; }
+body:has(.devbar[data-dock="left"]) .t-body { padding-left: 3.25rem; }
+body:has(.devbar[data-dock="right"]) .t-main { padding-right: 3.5rem; }
 .devbar-page .t-main { max-width: 72rem; margin: 0 auto; padding: 1rem; }
 .devbar-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
 .devbar-facts dd { margin: 0; overflow-wrap: anywhere; }

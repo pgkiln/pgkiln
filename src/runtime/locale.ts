@@ -26,7 +26,7 @@ export interface Locale {
   languages: string[];
   theme: ThemeMode;
   /** the app's base style when not Standard (html data-style) */
-  style?: 'iris';
+  style?: 'iris' | 'lavender';
   /** whether users may pick light/dark themselves */
   themeChoice: boolean;
   /** dates and timestamps for display (undefined: not a date) */
@@ -199,7 +199,7 @@ export async function resolveLocale(req: FastifyRequest, app: App, session?: Ses
     messages,
     languages,
     theme: themeFor(app, session, req),
-    style: baseStyleOf(app.theme) === 'iris' ? 'iris' : undefined,
+    style: baseStyleOf(app.theme) === 'standard' ? undefined : (baseStyleOf(app.theme) as 'iris' | 'lavender'),
     themeChoice: app.theme?.user_choice !== false,
     format,
     number,

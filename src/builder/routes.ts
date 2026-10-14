@@ -425,7 +425,7 @@ export async function builderRoutes(app: FastifyInstance) {
               : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
             <h3>Theme</h3>
             <div class="form-grid">
-              ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['standard', 'Standard (pgkiln until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
+              ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['lavender', 'Lavender (Iris until pgkiln 0.41)'], ['standard', 'Standard (pgkiln until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
               ${input('accent', 'Accent colour', a.theme?.accent ?? BASE_STYLES[baseStyleOf(a.theme)].accent, { type: 'color' })}
               ${input('header', 'Header colour', a.theme?.header ?? BASE_STYLES[baseStyleOf(a.theme)].header, { type: 'color' })}
               ${(['accent_dark', 'header_dark'] as const).map((k) => html`<div class="field"><label class="label" for="f_${k}">${k === 'accent_dark' ? 'Accent colour in dark mode' : 'Header colour in dark mode'}</label>
@@ -516,7 +516,7 @@ export async function builderRoutes(app: FastifyInstance) {
                 app_type = $28, session_group = $29, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
-           base: baseStyleOf({ base: b.base }) === 'iris' ? 'iris' : undefined,
+           base: baseStyleOf({ base: b.base }) === 'standard' ? undefined : baseStyleOf({ base: b.base }),
            accent_dark: b.accent_dark_own === 'true' && /^#[0-9a-f]{6}$/i.test(b.accent_dark ?? '') ? b.accent_dark!.toLowerCase() : undefined,
            header_dark: b.header_dark_own === 'true' && /^#[0-9a-f]{6}$/i.test(b.header_dark ?? '') ? b.header_dark!.toLowerCase() : undefined,
            // a colour equal to a base style's own is not stored, so changing the base style changes it too

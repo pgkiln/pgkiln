@@ -7,7 +7,7 @@ import { LoadError } from '../dataload.ts';
 import type { Session } from '../session.ts';
 import { aliasFor, check, createdHtml, ITEM, type Created } from './appfromfile.ts';
 import { addDashboard, parseBook } from './appsheets.ts';
-import { addHomeCards, checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
+import { finishGeneratedApp, checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { BASE, csrf, developer, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 
@@ -106,7 +106,7 @@ export async function buildAppFromTables(checked: CheckedApp, relations: Relatio
       if (skipped.length)
         notes.push(`Not on the dashboard: ${skipped.map((t) => t.replace(/^.*\./, '').replace(/"/g, '')).join(', ')} (row level security: the application's role may see none of the rows).`);
     }
-    await addHomeCards(c, app.id);
+    await finishGeneratedApp(c, app.id, { description: checked.description });
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, pages, notes };
   });
 }

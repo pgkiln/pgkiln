@@ -148,6 +148,7 @@ export const ko: Record<MessageKey, string> = {
   'pwa.queue_waiting': "전송 대기 중인 양식 {n}개",
   'pwa.send_now': "지금 보내기",
   'pwa.discard': "버리기",
+  'pwa.install': "앱 설치",
   'pwa.status.waiting': "대기 중",
   'pwa.status.signin': "보내려면 로그인하세요",
   'pwa.status.invalid': "거부됨: 페이지를 열어 수정하세요",

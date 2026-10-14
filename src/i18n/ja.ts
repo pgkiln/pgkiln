@@ -148,6 +148,7 @@ export const ja: Record<MessageKey, string> = {
   'pwa.queue_waiting': "送信待ちのフォーム: {n} 件",
   'pwa.send_now': "今すぐ送信",
   'pwa.discard': "破棄",
+  'pwa.install': "アプリをインストール",
   'pwa.status.waiting': "待機中",
   'pwa.status.signin': "送信するにはサインイン",
   'pwa.status.invalid': "拒否: ページを開いて修正してください",

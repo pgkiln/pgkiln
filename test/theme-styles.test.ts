@@ -269,22 +269,30 @@ describe('base style Iris', () => {
     return Object.fromEntries([...body.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6})/g)].map((m) => [m[1], m[2]]));
   };
 
-  test('only "iris" is a base style other than Standard', () => {
+  test('only "iris" and "lavender" are base styles other than Standard', () => {
     assert.equal(baseStyleOf({ base: 'iris' }), 'iris');
+    assert.equal(baseStyleOf({ base: 'lavender' }), 'lavender');
     for (const v of [undefined, '', 'Iris', '"><script>', 42]) assert.equal(baseStyleOf({ base: v }), 'standard');
     assert.equal(baseStyleOf(undefined), 'standard');
   });
 
   test('app.css defines Iris for light and dark with readable contrast', () => {
     const css = readFileSync(new URL('../public/app.css', import.meta.url), 'utf8');
-    for (const v of [block(css, 'html[data-style="iris"]'), block(css, 'html[data-style="iris"][data-theme="dark"]')]) {
+    for (const v of ['iris', 'lavender'].flatMap((st) => [block(css, `html[data-style="${st}"]`), block(css, `html[data-style="${st}"][data-theme="dark"]`)])) {
       assert.ok(ratio(v.text, v.bg) >= 7, 'text');
       assert.ok(ratio(v.muted, v.surface) >= 4.5 && ratio(v.muted, v.bg) >= 4.5, 'muted');
       assert.ok(ratio(v.accent, v.surface) >= 4.5, 'accent on surface');
       assert.ok(ratio(v['accent-text'], v.accent) >= 4.5, 'text on accent');
       assert.ok(ratio(v.accent, v['accent-soft']) >= 4.5, 'accent on its soft background');
       assert.ok(ratio(v['header-text'], v.header) >= 7, 'header');
+      // (sprint 72) a dark menu has its own text colours
+      if (v['nav-text']) {
+        assert.ok(ratio(v['nav-text'], v['nav-bg']) >= 7 && ratio(v['nav-text'], v['nav-active']) >= 7, 'menu text');
+        assert.ok(ratio(v['nav-muted'], v['nav-bg']) >= 4.5, 'menu icons');
+        assert.ok(ratio(v['hot-text'], v.hot) >= 7, 'primary button');
+      }
     }
+    assert.equal(block(css, 'html[data-style="lavender"]').accent, BASE_STYLES.lavender.accent);
     assert.equal(block(css, 'html[data-style="iris"]').accent, BASE_STYLES.iris.accent);
     assert.equal(block(css, 'html[data-style="iris"]').header, BASE_STYLES.iris.header);
   });
@@ -317,16 +325,17 @@ describe('base style Iris', () => {
       await dev.get('/builder/create');
       assert.equal((await dev.submit('/builder/apps', { name: 'Iris test', alias: 'ts-iris', authentication: 'none' })).statusCode, 303);
       const id = (await owner.one(`select id, theme from meta.app where alias = 'ts-iris'`)).id;
-      assert.deepEqual((await owner.one('select theme from meta.app where id = $1', [id])).theme, { base: 'iris' });
+      // (sprint 72) light, users may switch
+      assert.deepEqual((await owner.one('select theme from meta.app where id = $1', [id])).theme, { base: 'iris', mode: 'light' });
       const settings = (await dev.get(`/builder/apps/${id}/settings`)).body;
       assert.match(settings, /<option value="iris" selected/);
-      assert.match(settings, /name="accent"[^>]*value="#5146d8"/);
+      assert.match(settings, /name="accent"[^>]*value="#2b62c4"/);
       const form = { name: 'Iris test', alias: 'ts-iris', home_page: '1', authentication: 'none', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' };
-      await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'standard', accent: '#5146d8', header: '#1e1a4d' });
+      await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'standard', accent: '#2b62c4', header: '#3a3632' });
       assert.equal((await owner.one('select theme from meta.app where id = $1', [id])).theme.base, undefined);
       assert.equal((await owner.one('select theme from meta.app where id = $1', [id])).theme.accent, undefined, 'a base style\'s own colour is not stored');
       await dev.get(`/builder/apps/${id}/settings`);
-      await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'iris', accent: '#aa3366', header: '#1e1a4d' });
+      await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'iris', accent: '#aa3366', header: '#3a3632' });
       const t = (await owner.one('select theme from meta.app where id = $1', [id])).theme;
       assert.equal(t.base, 'iris');
       assert.equal(t.accent, '#aa3366');

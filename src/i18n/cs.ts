@@ -148,6 +148,7 @@ export const cs: Record<MessageKey, string> = {
   'pwa.queue_waiting': "Formuláře čekající na odeslání: {n}",
   'pwa.send_now': "Odeslat hned",
   'pwa.discard': "Zahodit",
+  'pwa.install': "Nainstalovat aplikaci",
   'pwa.status.waiting': "čeká",
   'pwa.status.signin': "pro odeslání se přihlaste",
   'pwa.status.invalid': "odmítnuto: otevřete stránku a opravte ho",

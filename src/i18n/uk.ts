@@ -148,6 +148,7 @@ export const uk: Record<MessageKey, string> = {
   'pwa.queue_waiting': "Форм очікують надсилання: {n}",
   'pwa.send_now': "Надіслати зараз",
   'pwa.discard': "Відкинути",
+  'pwa.install': "Встановити застосунок",
   'pwa.status.waiting': "очікує",
   'pwa.status.signin': "увійдіть, щоб надіслати",
   'pwa.status.invalid': "відхилено: відкрийте сторінку й виправте",

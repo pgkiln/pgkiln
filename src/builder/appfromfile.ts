@@ -21,7 +21,7 @@ import type { Session } from '../session.ts';
 import { MAX_MB, preview, resultHtml } from './dataload.ts';
 import { buildAppFromSheets, MAX_SHEETS, parseBook, sheetsForm, type BuiltBook, type NamedSheet } from './appsheets.ts';
 import { appWizardRoutes, PASTED } from './appwizard.ts';
-import { addHomeCards, checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
+import { finishGeneratedApp, checkNewApp, createApp, createAppError, reservedSchema, type CheckedApp } from './newapp.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { BASE, csrf, developer, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 
@@ -178,7 +178,7 @@ export async function buildAppFromFile(checked: CheckedApp, sheet: Sheet, b: Bod
         pages.push({ page: next++, label: `Faceted search (${facets.join(', ')})` });
       }
     }
-    await addHomeCards(c, app.id);
+    await finishGeneratedApp(c, app.id, { description: checked.description });
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, table: T, result, pages, notes };
   });
 }

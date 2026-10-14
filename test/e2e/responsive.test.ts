@@ -171,8 +171,23 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       // (sprint 50) the developer toolbar and the session state viewer, with a builder session in the same browser
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
       await page.goto(`${base}/a/hr/2`);
-      assert.equal(await page.locator('details.devbar').count(), 1);
+      assert.equal(await page.locator('.devbar').count(), 1);
       await check(page, 'app-2-devbar', vp);
+      // (sprint 72) the bar covers neither the menu's last entry nor the report's pager; unused, it shrinks to a slim tab
+      const bar = (await page.locator('.devbar').boundingBox())!;
+      const pager = page.locator('.pager, .report-footer, nav.pagination').last();
+      if (await pager.count()) {
+        await pager.scrollIntoViewIfNeeded();
+        const p = (await pager.boundingBox())!;
+        const b2 = (await page.locator('.devbar').boundingBox())!;
+        assert.ok(p.y + p.height <= b2.y + 1 || p.x + p.width <= b2.x || p.x >= b2.x + b2.width, `pager ${JSON.stringify(p)} under the bar ${JSON.stringify(b2)}`);
+      }
+      assert.ok(bar.width < size.width, 'a compact bar');
+      await page.waitForSelector('.devbar.is-idle', { timeout: 6000 });
+      const tab = (await page.locator('.devbar').boundingBox())!;
+      assert.ok(tab.y > size.height - 20, `the tab stays at the bottom edge (${tab.y})`);
+      await page.mouse.move(tab.x + tab.width / 2, size.height - 3);
+      await page.waitForSelector('.devbar:not(.is-idle)');
       await page.goto(`${base}/a/hr/2/devbar/session`);
       await check(page, 'app-2-session-state', vp);
       await page.context().close();

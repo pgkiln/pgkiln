@@ -148,6 +148,7 @@ export const da: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} formular(er) venter på at blive sendt",
   'pwa.send_now': "Send nu",
   'pwa.discard': "Kassér",
+  'pwa.install': "Installér appen",
   'pwa.status.waiting': "venter",
   'pwa.status.signin': "log ind for at sende",
   'pwa.status.invalid': "afvist: åbn siden og ret den",
