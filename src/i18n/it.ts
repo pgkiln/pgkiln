@@ -148,6 +148,7 @@ export const it: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} modulo/i in attesa di invio",
   'pwa.send_now': "Invia ora",
   'pwa.discard': "Scarta",
+  'pwa.install': "Installa l'app",
   'pwa.status.waiting': "in attesa",
   'pwa.status.signin': "accedi per inviare",
   'pwa.status.invalid': "rifiutato: apri la pagina e correggilo",

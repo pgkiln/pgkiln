@@ -148,6 +148,7 @@ export const nb: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} skjema(er) venter på å bli sendt",
   'pwa.send_now': "Send nå",
   'pwa.discard': "Forkast",
+  'pwa.install': "Installer appen",
   'pwa.status.waiting': "venter",
   'pwa.status.signin': "logg inn for å sende",
   'pwa.status.invalid': "avvist: åpne siden og rett det",

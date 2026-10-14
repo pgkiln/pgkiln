@@ -375,6 +375,9 @@ The wizards (every *Create application* flow and the page wizards) make pages th
   their rows); the result page says which.
 - The **Home** page has a hero with the application's icon and name, and a card per page of the menu
   (a list `HOME_PAGES`, Shared Components → Lists). A blank application gets the hero only.
+- An **About** page (page 9000: the application's description, or the pages of its menu) in a **Help**
+  menu of the header's navigation bar (a list `NAVBAR`, the application's navigation bar list).
+- New applications use the **Iris** base style in the **light** theme; users may switch to dark.
 
 ### Creating an application from a blueprint
 
@@ -665,8 +668,12 @@ Chapters 4–7 describe every component type and property.
 ## Developer toolbar
 
 While you are signed in to the builder, the pages of your applications show the **developer
-toolbar** at the bottom left when you run them in the same browser (APEX: the Runtime Developer
-Toolbar). It isn't shown to anyone else, nor inside dialogs, and it can be folded away. It has:
+toolbar** when you run them in the same browser (APEX: the Runtime Developer Toolbar): a compact bar
+of icons, centred at the bottom, each with a tooltip. It isn't shown to anyone else, nor inside
+dialogs. The page keeps room for it, so it never covers the menu's last entry or a report's pager.
+After a few seconds without use it shrinks to a slim tab at the edge; point at it or Tab to it to
+bring it back. **Settings** (the last icon) docks it at the bottom, top, left or right and turns the
+hiding off (kept in your browser). It has:
 
 | Entry | Does |
 |---|---|
@@ -675,6 +682,8 @@ Toolbar). It isn't shown to anyone else, nor inside dialogs, and it can be folde
 | **Edit page *n*** | This page in the Page Designer |
 | **Quick edit** | (with JavaScript) Point at a region, item or button of the page (it is outlined) and click it: it opens selected in the Page Designer, in the builder's tab (APEX: Quick Edit). Click the button again or press Esc to stop |
 | **Session** | The **session state viewer**: the user, roles, session id, language, time zone and debug level; the values of this page's items, the application items and the items of other pages in the session. A password item's value is never shown. *Clear the items of page n* empties this page's items in the session (APEX: Clear Cache) |
+| **Customize** | The application's Theme Roller in the builder |
+| **Info** | The application, the page, the user and the developer |
 | **Debug** | Records [debug messages](06-processing.md#debug-messages) for **this session only**, at the chosen level, while the application itself stays out of debug (*Application (n)* when the application has a level of its own). *View debug* opens the recorded requests |
 
 How it knows you: signing in to the builder gives the browser a second, separate random token for

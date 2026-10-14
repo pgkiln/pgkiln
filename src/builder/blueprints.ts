@@ -9,7 +9,7 @@ import { icon } from '../icons.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { builderService } from './ai-builder.ts';
 import { addDashboard } from './appsheets.ts';
-import { addHomeCards, checkNewApp, createApp, createAppError } from './newapp.ts';
+import { finishGeneratedApp, checkNewApp, createApp, createAppError } from './newapp.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { blueprintFromApp } from '../blueprint-from-app.ts';
 import { devDbForApp } from '../workspace-db.ts';
@@ -284,7 +284,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
           throw new Error(createAppError(e, checked.alias));
         });
         const r = await buildBlueprint(c, blueprint, checked.role, { dashboard: (tables, no) => addDashboard(c, checked.alias, tables, no) });
-        await addHomeCards(c, a.id);
+        await finishGeneratedApp(c, a.id, { description: checked.description });
         if (o.id) await c.query('update meta.blueprint set app_id = $2, spec = $3, updated_at = now() where id = $1 and workspace_id = $4', [o.id, a.id, JSON.stringify(json), currentWorkspace(s)]);
         else await c.query('insert into meta.blueprint (name, spec, created_by, app_id, workspace_id) values ($1, $2, $3, $4, $5)', [o.name, JSON.stringify(json), s.username, a.id, currentWorkspace(s)]);
         return { ...r, existing: a.existingAccount };

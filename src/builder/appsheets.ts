@@ -19,7 +19,7 @@ import {
   type Sheet,
 } from '../dataload.ts';
 import { preview } from './dataload.ts';
-import { addHomeCards, createApp, createAppError, type CheckedApp } from './newapp.ts';
+import { finishGeneratedApp, createApp, createAppError, type CheckedApp } from './newapp.ts';
 import { groupColumn } from './appfromfile.ts';
 import { region, type Body } from './ui.ts';
 
@@ -394,7 +394,7 @@ export async function buildAppFromSheets(checked: CheckedApp, sheets: NamedSheet
       if (dash) pages.push(dash);
       else notes.push('No dashboard: no table has a foreign key or a text, yes/no or date column with a few values that repeat, to count the rows by.');
     }
-    await addHomeCards(c, app.id);
+    await finishGeneratedApp(c, app.id, { description: checked.description });
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, tables, foreignKeys, pages, notes };
   });
 }

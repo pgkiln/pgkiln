@@ -63,7 +63,8 @@ export const ICON_MODIFIERS = Object.keys(MODIFIERS);
 export function iconParts(value: string | null | undefined): { name: string; set: 'pgkiln' | 'lucide'; classes: string[] } | null {
   if (!value) return null;
   const tokens = String(value).trim().toLowerCase().split(/\s+/).slice(0, 8).map((t) => (t.startsWith('fa-') ? t.slice(3) : t)).filter((t) => t && t !== 'fa');
-  const name = tokens.find((t) => !(t in MODIFIERS));
+  // (sprint 72) "info" is a modifier and an icon: alone, it is the icon
+  const name = tokens.find((t) => !(t in MODIFIERS)) ?? (tokens.length === 1 && (ICONS as readonly string[]).includes(tokens[0]) ? tokens[0] : undefined);
   if (!name) return null;
   const set = (ICONS as readonly string[]).includes(name) ? 'pgkiln' : lucideNames().has(name) ? 'lucide' : null;
   if (!set) return null;

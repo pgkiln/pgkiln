@@ -7,13 +7,13 @@ export interface RootAttrs {
   dir?: 'ltr' | 'rtl';
   theme?: 'auto' | 'light' | 'dark';
   /** a base style other than Standard (src/runtime/styles.ts BASE_STYLES) */
-  style?: 'iris';
+  style?: 'iris' | 'lavender';
 }
 
 export function documentShell(title: string, body: Raw, bodyClass = '', data: Record<string, string> = {}, head: Raw | '' = '', root: RootAttrs = {}) {
   const attrs = Object.entries(data).map(([k, v]) => html` ${k}="${v}"`);
   return html`<!doctype html>
-<html lang="${root.lang ?? 'en'}"${root.dir === 'rtl' ? html` dir="rtl"` : ''}${root.theme && root.theme !== 'auto' ? html` data-theme="${root.theme}"` : ''}${root.style === 'iris' ? html` data-style="iris"` : ''}>
+<html lang="${root.lang ?? 'en'}"${root.dir === 'rtl' ? html` dir="rtl"` : ''}${root.theme && root.theme !== 'auto' ? html` data-theme="${root.theme}"` : ''}${root.style === 'iris' || root.style === 'lavender' ? html` data-style="${root.style}"` : ''}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

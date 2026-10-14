@@ -148,6 +148,7 @@ export const zh: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} 个表单等待发送",
   'pwa.send_now': "立即发送",
   'pwa.discard': "放弃",
+  'pwa.install': "安装应用",
   'pwa.status.waiting': "等待中",
   'pwa.status.signin': "登录后发送",
   'pwa.status.invalid': "被拒绝：请打开页面并更正",

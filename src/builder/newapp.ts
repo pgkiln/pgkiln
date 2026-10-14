@@ -10,6 +10,45 @@ import { isIcon } from '../icons.ts';
 export const DEFAULT_APP_ICON = 'layers';
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
+/** (sprint 72) The page number of a generated application's About page. */
+export const ABOUT_PAGE = 9000;
+
+/**
+ * (sprint 72) The About page of a generated application (APEX: the About Page
+ * feature): the application's name, its description or the pages of its menu,
+ * and a Help menu with it in the header's navigation bar (a list NAVBAR, unless
+ * the application has a navigation bar list already). Nothing when the page
+ * number is taken.
+ */
+export async function addAboutPage(c: Client, appId: number, description?: string | null) {
+  const app = (await c.query<{ name: string; navbar_list: string | null; home_page: number }>('select name, navbar_list, home_page from meta.app where id = $1', [appId])).rows[0];
+  if ((await c.query('select 1 from meta.page where app_id = $1 and page_no = $2', [appId, ABOUT_PAGE])).rowCount) return;
+  const pages = (
+    await c.query<{ label: string }>(
+      `select e.label from meta.nav_entry e where e.app_id = $1 and e.parent_id is null and e.target_page is not null and e.target_page <> $2 order by e.seq, e.id`,
+      [appId, app.home_page],
+    )
+  ).rows.map((r) => r.label);
+  const text = description
+    ? `<p>${escapeHtml(description)}</p>`
+    : pages.length
+      ? `<p>${escapeHtml(app.name)} has these pages:</p><ul>${pages.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`
+      : `<p>${escapeHtml(app.name)}</p>`;
+  const page = (await c.query(`insert into meta.page (app_id, page_no, name, title, parent_page) values ($1, $2, 'About', $3, $4) returning id`, [appId, ABOUT_PAGE, `About ${app.name}`.slice(0, 200), app.home_page])).rows[0].id;
+  await c.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, $2, 'static', $3)`, [page, app.name, text]);
+  if (app.navbar_list) return;
+  await c.query(`insert into meta.list (app_id, name, description) values ($1, 'NAVBAR', 'The navigation bar: the Help menu') on conflict (app_id, name) do nothing`, [appId]);
+  const help = (await c.query(`insert into meta.list_entry (app_id, list_name, seq, label, icon) values ($1, 'NAVBAR', 10, 'Help', 'help') returning id`, [appId])).rows[0].id;
+  await c.query(`insert into meta.list_entry (app_id, list_name, parent_id, seq, label, icon, target_page) values ($1, 'NAVBAR', $2, 10, 'About', 'info', $3)`, [appId, help, ABOUT_PAGE]);
+  await c.query(`update meta.app set navbar_list = 'NAVBAR' where id = $1`, [appId]);
+}
+
+/** (sprint 72) After a wizard generated the pages: the home page's cards and, unless turned off, the About page. */
+export async function finishGeneratedApp(c: Client, appId: number, o: { about?: boolean; description?: string | null } = {}) {
+  await addHomeCards(c, appId);
+  if (o.about !== false) await addAboutPage(c, appId, o.description);
+}
+
 /**
  * (097) A card per page of the navigation menu on the home page (a static list
  * HOME_PAGES shown by a list region with the cards template), after the pages
@@ -136,8 +175,8 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   await c.query(`alter default privileges in schema ${S} grant usage, select on sequences to ${R}`);
   await c.query(`alter default privileges in schema ${S} grant execute on functions to ${R}`);
 
-  // new applications start with the newest base style (Iris); existing ones keep theirs
-  const r = await c.query('insert into meta.app (alias, name, authentication, db_role, theme) values ($1, $2, $3, $4, $5) returning id', [a.alias, a.name, a.authentication, a.role, { base: NEW_APP_BASE }]);
+  // new applications start with the newest base style (Iris), light (users may switch to dark); existing ones keep theirs
+  const r = await c.query('insert into meta.app (alias, name, authentication, db_role, theme) values ($1, $2, $3, $4, $5) returning id', [a.alias, a.name, a.authentication, a.role, { base: NEW_APP_BASE, mode: 'light' }]);
   const appId = r.rows[0].id as number;
   await placeApp(c, appId, a.workspaceId);
   const p = await c.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appId]);

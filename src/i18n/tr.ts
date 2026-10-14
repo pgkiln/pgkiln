@@ -148,6 +148,7 @@ export const tr: Record<MessageKey, string> = {
   'pwa.queue_waiting': "Gönderilmeyi bekleyen {n} form",
   'pwa.send_now': "Şimdi gönder",
   'pwa.discard': "At",
+  'pwa.install': "Uygulamayı yükle",
   'pwa.status.waiting': "bekliyor",
   'pwa.status.signin': "göndermek için oturum açın",
   'pwa.status.invalid': "reddedildi: sayfayı açıp düzeltin",

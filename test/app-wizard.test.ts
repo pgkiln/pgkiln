@@ -151,7 +151,7 @@ describe('create an application from a workbook with several sheets', () => {
     assert.equal((await owner.one(`select count(*)::int as n from aw35_company.assignments where hours_worked > 0`)).n, 3);
     const a = await owner.one(`select id from meta.app where alias = 'aw35-company'`);
     const pages = (await owner.query('select page_no, name, mode from meta.page where app_id = $1 order by page_no', [a.id])).rows;
-    assert.deepEqual(pages.map((p) => p.page_no), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(pages.map((p) => p.page_no), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9000]);
     const nav = (await owner.query('select label, target_page from meta.nav_entry where app_id = $1 order by seq', [a.id])).rows;
     // (097) the Dashboard right after Home
     assert.deepEqual(nav.map((n) => n.label), ['Home', 'Dashboard', 'Departments', 'Employees', 'Projects', 'Assignments']);
@@ -186,7 +186,7 @@ describe('create an application from a workbook with several sheets', () => {
     assert.equal((await owner.query(`select 1 from pg_class where relname = 'assignments' and relnamespace = 'aw35_some'::regnamespace`)).rowCount, 0);
     assert.equal((await owner.query(`select 1 from pg_constraint where contype = 'f' and connamespace = 'aw35_some'::regnamespace`)).rowCount, 0);
     const a = await owner.one(`select id from meta.app where alias = 'aw35-some'`);
-    assert.deepEqual((await owner.query('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows.map((p) => p.page_no), [1, 2, 3, 4, 5, 6, 7]);
+    assert.deepEqual((await owner.query('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows.map((p) => p.page_no), [1, 2, 3, 4, 5, 6, 7, 9000]);
   });
 
   test('a foreign key whose values are missing: nothing is created and the reason is shown', async () => {
@@ -285,7 +285,7 @@ describe('create an application from existing tables', () => {
     assert.equal(a.db_role, 'app_aw35_tables');
     const pages = (await owner.query('select page_no, name, mode from meta.page where app_id = $1 order by page_no', [a.id])).rows;
     assert.deepEqual(pages.map((p) => [p.page_no, p.name]), [
-      [1, 'Home'], [2, 'Regions'], [3, 'Region Form'], [4, 'Stock Logs'], [5, 'Stores'], [6, 'Store Form'], [7, 'Store Lists'], [8, 'Dashboard'],
+      [1, 'Home'], [2, 'Regions'], [3, 'Region Form'], [4, 'Stock Logs'], [5, 'Stores'], [6, 'Store Form'], [7, 'Store Lists'], [8, 'Dashboard'], [9000, 'About'],
     ]);
     const nav = (await owner.query('select label from meta.nav_entry where app_id = $1 order by seq', [a.id])).rows.map((n) => n.label);
     assert.deepEqual(nav, ['Home', 'Dashboard', 'Regions', 'Stock Logs', 'Stores', 'Store Lists']);
@@ -301,6 +301,13 @@ describe('create an application from existing tables', () => {
     assert.deepEqual(home.map((r) => `${r.type}/${r.template}`), ['static/hero', 'list/plain']);
     const cards = (await owner.query(`select label from meta.list_entry where app_id = $1 and list_name = 'HOME_PAGES' order by seq`, [a.id])).rows.map((r) => r.label);
     assert.deepEqual(cards, ['Dashboard', 'Regions', 'Stock Logs', 'Stores', 'Store Lists']);
+    // (sprint 72) an About page in a Help menu of the navigation bar, light Iris
+    const about = await owner.one(`select p.name, r.source from meta.page p join meta.region r on r.page_id = p.id where p.app_id = $1 and p.page_no = 9000`, [a.id]);
+    assert.equal(about.name, 'About');
+    assert.match(about.source, /<li>Stores<\/li>/);
+    const navbar = (await owner.query(`select e.label, e.target_page, e.parent_id is null as top from meta.list_entry e where e.app_id = $1 and e.list_name = 'NAVBAR' order by e.parent_id nulls first`, [a.id])).rows;
+    assert.deepEqual(navbar, [{ label: 'Help', target_page: null, top: true }, { label: 'About', target_page: 9000, top: false }]);
+    assert.deepEqual((await owner.one('select navbar_list, theme from meta.app where id = $1', [a.id])), { navbar_list: 'NAVBAR', theme: { base: 'iris', mode: 'light' } });
     const v = new Browser(app);
     for (const page of [2, 4, 5, 7, 8]) assert.equal((await v.get(`/a/aw35-tables/${page}`)).statusCode, 200, `page ${page}`);
     assert.match((await v.get('/a/aw35-tables/7')).body, /South/);

@@ -14,7 +14,7 @@ import type { NavEntry } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { stripSemicolon, dbg, bindValues, substitute, type PageContext } from './context.ts';
 import { applyBinds } from '../binds.ts';
-import { savepoint } from '../db.ts';
+import { runtime, savepoint } from '../db.ts';
 import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
@@ -266,6 +266,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
   const feedback = feedbackNode(ctx);
   const navbarNodes = listNodes || feedback ? [...(listNodes ?? []), ...(feedback ? [feedback] : [])] : null;
   const navbar = navbarNodes ? navbarMarkup(navbarNodes, t('list.navbar')) : '';
+  // (sprint 72) the account's display name in the user menu
+  const shown = signedIn ? ((await displayName(ctx.user)) ?? ctx.user) : ctx.user;
   return documentShell(
     `${title} · ${ctx.app.name}`,
     html`<a class="skip-link" href="#main">${t('common.skip')}</a>
@@ -273,13 +275,14 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="${t('common.toggle_nav')}" aria-controls="t-nav">${icon('menu')}</a>
       <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
       <span class="t-spacer"></span>
+      ${ctx.app.pwa ? html`<button type="button" class="icon-button t-install" data-pwa-install hidden title="${t('pwa.install')}" aria-label="${t('pwa.install')}">${icon('download')}</button>` : ''}
       ${navbar}
       ${ctx.app.authentication !== 'none'
         ? signedIn
           ? html`<details class="menu t-user">
-              <summary>${icon('user')}<span>${ctx.user}</span></summary>
+              <summary>${icon('user')}<span>${shown}</span></summary>
               <div class="menu-panel align-right">
-                <div class="menu-section"><strong>${ctx.user}</strong>${ctx.roles.length ? html`<div class="muted">${t('account.roles')}: ${ctx.roles.join(', ')}</div>` : ''}</div>
+                <div class="menu-section"><strong>${shown}</strong>${shown !== ctx.user ? html`<div class="muted">${ctx.user}</div>` : ''}${ctx.roles.length ? html`<div class="muted">${t('account.roles')}: ${ctx.roles.join(', ')}</div>` : ''}</div>
                 <div class="menu-section"><a href="${ctx.base}/account">${icon('user')} ${t('account.menu')}</a></div>
                 ${themeSwitch(ctx, here(ctx))}
                 ${styleSwitch(ctx, here(ctx))}
@@ -410,4 +413,14 @@ export function dialogClosePage(ctx: PageContext) {
     '',
     { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style },
   );
+}
+
+/** (sprint 72) An account's display name (null when it has none, or for users outside the user directory). */
+async function displayName(username: string): Promise<string | null> {
+  try {
+    const r = await runtime.query<{ display_name: string | null }>('select display_name from meta.account where lower(username) = lower($1)', [username]);
+    return r.rows[0]?.display_name?.trim() || null;
+  } catch {
+    return null;
+  }
 }

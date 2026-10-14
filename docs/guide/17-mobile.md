@@ -10,7 +10,7 @@ the home screen with its own icon, full screen, and working on when the network 
 
 | Setting | What it does |
 |---|---|
-| Installable | Adds a web app manifest and a service worker to the application. Phones offer "Add to home screen" / "Install"; the app then opens full screen, without the browser bar |
+| Installable | Adds a web app manifest and a service worker to the application. Phones offer "Add to home screen" / "Install"; the app then opens full screen, without the browser bar. (0.42) Where the browser offers the installation (Chrome, Edge), the header shows an **Install app** button (APEX: the navigation bar's Install App entry) |
 | Name under the icon | The short name on the home screen (the application's name when empty) |
 | Keep visited pages on the device | Pages a user opened are shown again when there is no connection (with a notice that they may be out of date) |
 | Keep forms sent without a connection | Forms submitted offline are kept on the device and sent when the connection is back |

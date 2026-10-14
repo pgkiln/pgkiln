@@ -122,7 +122,7 @@ describe('create an application from a CSV file', () => {
     );
     assert.deepEqual(priv, { t: true, m: false });
     const pages = (await owner.query('select page_no, name, mode from meta.page where app_id = $1 order by page_no', [a.id])).rows;
-    assert.deepEqual(pages.map((p) => p.page_no), [1, 2, 3, 4, 5]);
+    assert.deepEqual(pages.map((p) => p.page_no), [1, 2, 3, 4, 5, 9000], 'with the About page (sprint 72)');
     assert.equal(pages[2].mode, 'modal');
     const nav = (await owner.query('select label, target_page from meta.nav_entry where app_id = $1 order by seq', [a.id])).rows;
     assert.deepEqual(nav.map((n) => n.target_page), [1, 2, 4, 5]);
@@ -157,7 +157,7 @@ describe('create an application from a CSV file', () => {
     assert.deepEqual(cols.map((c) => c.column_name), ['id', 'emp_no', 'ename', 'job', 'hiredate', 'sal']);
     assert.equal(cols[5].data_type, 'text');
     const a = await owner.one(`select id from meta.app where alias = 'ff32-xlsx'`);
-    assert.deepEqual((await owner.query('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows.map((p) => p.page_no), [1, 2, 3]);
+    assert.deepEqual((await owner.query('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows.map((p) => p.page_no), [1, 2, 3, 9000]);
   });
 
   test('a row that does not fit: nothing is created and the rows are listed; skipping loads the others', async () => {

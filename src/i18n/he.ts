@@ -148,6 +148,7 @@ export const he: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} טפסים ממתינים לשליחה",
   'pwa.send_now': "שליחה עכשיו",
   'pwa.discard': "ביטול",
+  'pwa.install': "התקנת האפליקציה",
   'pwa.status.waiting': "ממתין",
   'pwa.status.signin': "יש להיכנס כדי לשלוח",
   'pwa.status.invalid': "נדחה: פתחו את הדף ותקנו",

@@ -148,6 +148,7 @@ export const de: Record<MessageKey, string> = {
   'pwa.queue_waiting': '{n} Formular(e) warten auf den Versand',
   'pwa.send_now': 'Jetzt senden',
   'pwa.discard': 'Verwerfen',
+  'pwa.install': "App installieren",
   'pwa.status.waiting': 'wartet',
   'pwa.status.signin': 'zum Senden anmelden',
   'pwa.status.invalid': 'abgelehnt: Öffnen Sie die Seite und korrigieren Sie es',

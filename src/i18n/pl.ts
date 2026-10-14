@@ -148,6 +148,7 @@ export const pl: Record<MessageKey, string> = {
   'pwa.queue_waiting': "Formularze czekające na wysłanie: {n}",
   'pwa.send_now': "Wyślij teraz",
   'pwa.discard': "Odrzuć",
+  'pwa.install': "Zainstaluj aplikację",
   'pwa.status.waiting': "oczekuje",
   'pwa.status.signin': "zaloguj się, aby wysłać",
   'pwa.status.invalid': "odrzucony: otwórz stronę i popraw go",

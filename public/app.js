@@ -3615,6 +3615,77 @@ function areaFilter(map, f) {
   check();
 })();
 
+// (sprint 72) Install app (PWA): the header's button appears when the browser offers the installation.
+(() => {
+  const button = document.querySelector('[data-pwa-install]');
+  if (!button) return;
+  let offer = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    offer = e;
+    button.hidden = false;
+  });
+  button.addEventListener('click', async () => {
+    if (!offer) return;
+    offer.prompt();
+    await offer.userChoice.catch(() => null);
+    offer = null;
+    button.hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { button.hidden = true; });
+})();
+
+// (sprint 72) The developer toolbar: docked where the developer chose (bottom, top, left, right;
+// kept in this browser), shrunk to a slim tab after a few seconds without use (unless turned off),
+// back when pointed at or focused. Its panels close when another opens or on Escape.
+(() => {
+  const bar = document.querySelector('.devbar');
+  if (!bar) return;
+  const KEY = 'pgkiln.devbar';
+  let prefs = { dock: 'bottom', autohide: true };
+  try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch {}
+  if (!['bottom', 'top', 'left', 'right'].includes(prefs.dock)) prefs.dock = 'bottom';
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch {} };
+  const settings = bar.querySelector('.devbar-settings');
+  settings?.closest('li')?.removeAttribute('hidden');
+  const apply = () => {
+    bar.dataset.dock = prefs.dock;
+    bar.querySelectorAll('input[name="devbar-dock"]').forEach((r) => { r.checked = r.value === prefs.dock; });
+    const auto = bar.querySelector('input[name="devbar-autohide"]');
+    if (auto) auto.checked = !!prefs.autohide;
+  };
+  apply();
+  bar.addEventListener('change', (e) => {
+    if (e.target.name === 'devbar-dock') prefs.dock = e.target.value;
+    else if (e.target.name === 'devbar-autohide') prefs.autohide = e.target.checked;
+    else return;
+    save();
+    apply();
+  });
+  const menus = [...bar.querySelectorAll('details.devbar-menu')];
+  menus.forEach((m) => m.addEventListener('toggle', () => { if (m.open) menus.forEach((o) => { if (o !== m) o.open = false; }); }));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menus.some((m) => m.open)) {
+      const open = menus.find((m) => m.open);
+      open.open = false;
+      open.querySelector('summary')?.focus();
+    }
+  });
+  document.addEventListener('click', (e) => { if (!bar.contains(e.target)) menus.forEach((m) => { m.open = false; }); });
+  let timer = 0;
+  const busy = () => bar.matches(':hover') || bar.contains(document.activeElement) || menus.some((m) => m.open) || !!bar.querySelector('[aria-pressed="true"]');
+  const later = () => {
+    clearTimeout(timer);
+    if (prefs.autohide) timer = setTimeout(() => { if (!busy()) bar.classList.add('is-idle'); else later(); }, 3000);
+  };
+  const wake = () => { bar.classList.remove('is-idle'); later(); };
+  bar.addEventListener('pointerenter', wake);
+  bar.addEventListener('focusin', wake);
+  bar.addEventListener('pointerleave', later);
+  bar.addEventListener('change', wake);
+  later();
+})();
+
 // (sprint 59) Quick edit from the developer toolbar (APEX: Quick Edit): while it is on, pointing at a
 // region, item or button outlines it and a click opens it in the Page Designer (in the builder's tab);
 // Esc or the button again turns it off. The toolbar is only there for developers of the application.

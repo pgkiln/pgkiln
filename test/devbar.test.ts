@@ -45,11 +45,14 @@ describe('developer toolbar', () => {
     assert.ok(token, 'a toolbar cookie');
     assert.notEqual(token, b.cookies.get('pgkiln_dev'), 'not the builder session\'s token');
     const page = (await b.get('/a/hr/1')).body;
-    assert.match(page, /<details class="devbar" open>/);
+    // (sprint 72) a bar of icons with tooltips
+    assert.match(page, /<div class="devbar" data-dock="bottom">/);
     const pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
-    assert.match(page, new RegExp(`href="/builder/pages/${pageId}">Edit page 1</a>`));
-    assert.match(page, new RegExp(`href="/builder/apps/${appId}">Application ${appId}</a>`));
-    assert.match(page, /href="\/a\/hr\/1\/devbar\/session">Session<\/a>/);
+    assert.match(page, new RegExp(`href="/builder/pages/${pageId}" title="Edit page 1" aria-label="Edit page 1"`));
+    assert.match(page, new RegExp(`href="/builder/apps/${appId}" title="Application ${appId}"`));
+    assert.match(page, /href="\/a\/hr\/1\/devbar\/session" title="Session"/);
+    assert.match(page, new RegExp(`href="/builder/apps/${appId}/theme" title="Customize \\(Theme Roller\\)"`));
+    assert.match(page, /<summary class="devbar-tool" title="Info"[\s\S]*<dt>Page<\/dt><dd>1: /);
     // not in a dialog
     assert.doesNotMatch((await b.get('/a/hr/7?dialog=1')).body, /class="devbar"/);
   });
@@ -138,7 +141,7 @@ describe('Quick edit and the Page Designer\'s help pane (sprint 59)', () => {
   test('the toolbar offers Quick edit; an item or button is found by its name', async () => {
     const b = await developerBrowser();
     const page3 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 3', [appId])).id;
-    assert.match((await b.get('/a/hr/1')).body, /<button type="button" class="devbar-quick" data-quick-edit="\/builder\/pages\/\d+" aria-pressed="false" hidden>Quick edit<\/button>/);
+    assert.match((await b.get('/a/hr/1')).body, /<button type="button" class="devbar-tool devbar-quick" data-quick-edit="\/builder\/pages\/\d+" aria-pressed="false" title="Quick edit" aria-label="Quick edit" hidden>/);
     const item = (await owner.one(`select id from meta.item where page_id = $1 and name = 'P3_SAL'`, [page3])).id;
     const toItem = await b.get(`/builder/pages/${page3}/quick?item=p3_sal`);
     assert.equal(toItem.headers.location, `/builder/pages/${page3}?c=item-${item}`);

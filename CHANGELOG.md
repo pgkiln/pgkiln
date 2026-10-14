@@ -5,6 +5,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 72: the application's chrome like APEX 26.2's: the developer toolbar, the Iris look, the header's Help menu and
+Install button.
+
+### Added
+- **Developer toolbar as a bar of icons** (APEX: the Runtime Developer Toolbar): App Builder, Application, Edit page,
+  Session, Debug, Quick edit, **Customize** (the Theme Roller) and **Info** as icons with tooltips, centred at the
+  bottom. It shrinks to a slim tab after a few seconds without use and comes back when pointed at or focused;
+  **Settings** docks it at the bottom, top, left or right and turns the hiding off (kept in the browser). The page
+  keeps room for it: it no longer covers the menu's last entry or a report's pager.
+- **Lavender** base style: pgkiln's Iris until 0.41, for applications that want to keep it.
+- **About page and Help menu** in generated applications (page 9000, list `NAVBAR` with Help → About).
+- **Install app** button in the header of an installable application, where the browser offers the installation.
+- The user menu shows the account's **display name** (the user name under it).
+- Menu colour tokens (`--nav-text`, `--nav-muted`, `--nav-hover`, `--nav-current`) for styles with a dark menu.
+
+### Changed
+- **Iris looks like APEX 26's Iris**: a white body, a dark warm-grey header with a thin accent strip and a dark menu,
+  a blue accent, 4 px corners, a rule under region headers, a dark primary button and a large bold page title on
+  the body instead of a title band. Applications on Iris change with it; choose Lavender for the earlier look.
+- New applications start in the light theme (users may still choose dark).
+- The icon `info` works on its own (it was taken as the *info* colour modifier).
+
 Sprint 71: generated applications read like APEX's (from a comparison of a pgkiln application made from existing
 tables with one made by APEX 26.2 on the same HR data).
 

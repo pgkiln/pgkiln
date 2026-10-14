@@ -148,6 +148,7 @@ export const fi: Record<MessageKey, string> = {
   'pwa.queue_waiting': "{n} lomaketta odottaa lähetystä",
   'pwa.send_now': "Lähetä nyt",
   'pwa.discard': "Hylkää",
+  'pwa.install': "Asenna sovellus",
   'pwa.status.waiting': "odottaa",
   'pwa.status.signin': "kirjaudu lähettääksesi",
   'pwa.status.invalid': "hylätty: avaa sivu ja korjaa",

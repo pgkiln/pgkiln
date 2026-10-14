@@ -768,7 +768,12 @@ button.is-busy { opacity: 0.7; cursor: progress; }
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --font-size: 15px; --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 6%);
   color-scheme: light; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
   background: var(--bg); color: var(--text); font: var(--font-size)/1.5 var(--font); }
-.tr-preview-iris { --bg: #f6f6fb; --surface-2: #f8f8fc; --surface-3: #eeeef6; --text: #1d1b2e; --muted: #5f5d75; --border: #e3e2ef;
+.tr-preview-iris { --bg: #ffffff; --surface-2: #f7f6f5; --surface-3: #efedeb; --text: #1f1c1a; --muted: #645e59; --border: #e2dfdc;
+  --accent: #2b62c4; --accent-soft: #e9f0fb; --header: #3a3632; --header-text: #f7f5f3; --radius: 4px; --shadow: none;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+.tr-preview-iris .tr-preview-header { box-shadow: inset 0 3px 0 var(--accent); }
+.tr-preview-iris .btn-hot { background: #2f2b28; border-color: #2f2b28; color: #fff; }
+.tr-preview-lavender { --bg: #f6f6fb; --surface-2: #f8f8fc; --surface-3: #eeeef6; --text: #1d1b2e; --muted: #5f5d75; --border: #e3e2ef;
   --accent: #5146d8; --accent-soft: #eeedfd; --header: #1e1a4d; --header-text: #f1f0ff; --radius: 12px;
   --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; --shadow: 0 1px 2px rgb(30 27 75 / 5%), 0 2px 8px rgb(30 27 75 / 6%); }
 .tr-preview-header { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1rem; background: var(--header); color: var(--header-text); font-weight: 700; }
@@ -779,7 +784,7 @@ button.is-busy { opacity: 0.7; cursor: progress; }
 .tr-preview input { background: var(--surface); color: var(--text); border-color: var(--border); }
 .tr-preview .btn { background: var(--surface); color: var(--text); border-color: var(--border); border-radius: calc(var(--radius) * 0.75); font: inherit; }
 .tr-preview .btn-hot { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-.tr-preview-iris .btn-hot { border-radius: 999px; }
+.tr-preview-lavender .btn-hot { border-radius: 999px; }
 
 /* icon picker (forms.ts iconPicker) */
 .icon-picker > summary { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 34px; padding: 0.3rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; list-style: none; background: var(--surface); }
