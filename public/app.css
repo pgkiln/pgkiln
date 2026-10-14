@@ -624,9 +624,10 @@ a.drill > .polar-sector:hover { fill-opacity: 1; }
 .treemap { position: relative; aspect-ratio: 16 / 10; max-height: 26rem; width: 100%; font-size: 0.78rem; }
 .tm-group, .tm-cell { position: absolute; box-sizing: border-box; overflow: hidden; }
 .tm-group { border: 1px solid var(--surface); }
-.tm-title { position: absolute; top: 0; left: 0; right: 0; padding: 0.1rem 0.35rem; font-weight: 650; color: #fff; background: var(--c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; }
-.tm-cell { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.2rem 0.35rem; border: 1px solid var(--surface); background: color-mix(in srgb, var(--c) 72%, var(--surface)); color: #fff; text-decoration: none; }
-.tm-leaf { background: var(--c); }
+.tm-title { position: absolute; top: 0; left: 0; right: 0; padding: 0.1rem 0.35rem; font-weight: 650; color: var(--text); background: color-mix(in srgb, var(--c) 42%, var(--surface)); box-shadow: inset 0 -2px 0 var(--c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; }
+/* tinted, with the page's text colour: contrast holds in light and dark */
+.tm-cell { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.2rem 0.35rem 0.2rem 0.5rem; border: 1px solid var(--surface); background: color-mix(in srgb, var(--c) 24%, var(--surface)); box-shadow: inset 3px 0 0 var(--c); color: var(--text); text-decoration: none; }
+.tm-leaf { background: color-mix(in srgb, var(--c) 32%, var(--surface)); }
 .tm-cell:hover, .tm-cell:focus-visible { filter: brightness(1.12); }
 .tm-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tm-value { opacity: 0.9; font-variant-numeric: tabular-nums; }
