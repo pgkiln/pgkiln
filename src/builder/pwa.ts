@@ -74,7 +74,7 @@ export async function pwaBuilderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const id = req.params.id;
-    const target = `${BASE}/apps/${id}/settings`;
+    const target = `${BASE}/apps/${id}/settings?tab=pwa`;
     const a = /^\d+$/.test(id) ? await owner.one('select id from meta.app where id = $1', [id]) : undefined;
     if (!a) return reply.code(404).send('Not found');
     const b = req.body ?? {};
@@ -111,7 +111,7 @@ export async function pwaBuilderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const id = req.params.id;
-    const target = `${BASE}/apps/${id}/settings`;
+    const target = `${BASE}/apps/${id}/settings?tab=pwa`;
     const a = /^\d+$/.test(id) ? await owner.one<{ id: number; name: string }>('select id, name from meta.app where id = $1', [id]) : undefined;
     if (!a) return reply.code(404).send('Not found');
     const user = String(req.body?.push_user ?? '').trim();
@@ -137,6 +137,6 @@ export async function pwaBuilderRoutes(app: FastifyInstance) {
     if (!/^\d+$/.test(id) || !(await owner.one('select 1 from meta.app where id = $1', [id]))) return reply.code(404).send('Not found');
     await newAppKeys(Number(id));
     flash(s, 'New keys made. Users have to turn notifications on again on each device.');
-    return back(reply, s, `${BASE}/apps/${id}/settings`);
+    return back(reply, s, `${BASE}/apps/${id}/settings?tab=pwa`);
   });
 }

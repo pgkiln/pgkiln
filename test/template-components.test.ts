@@ -271,7 +271,7 @@ describe('builder', () => {
   });
 
   test('Shared Components: list, editor with attributes and preview, where used', async () => {
-    assert.match((await b.get(`/builder/apps/${appId}/shared`)).body, /Template components/);
+    assert.match((await b.get(`/builder/apps/${appId}/shared?view=tree`)).body, /Template components/);
     const page = (await b.get(`/builder/apps/${appId}/shared?c=template_component-${cardId}`)).body;
     for (const s of ['Custom attributes', 'Preview', 'Download plug-in file', '<code>#INITIALS#</code>', 'class="tc-preview"']) assert.ok(page.includes(s), s);
     assert.match(page, /Used in/);

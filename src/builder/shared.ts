@@ -32,7 +32,70 @@ function listExtras(appId: number, list: any, entries: any[]): Raw {
     <p><a class="btn" href="?new=list_entry&amp;list=${encodeURIComponent(list.name)}">＋ Add entry</a></p>`;
 }
 
+/** (sprint 74) A row's second column in a component list. */
+function detailOf(kind: string, r: any): string {
+  switch (kind) {
+    case 'nav_entry': return r.target_page ? `page ${r.target_page}` : r.target_url ?? '';
+    case 'authz_scheme': return r.type;
+    case 'app_process': return r.point;
+    case 'automation': return r.enabled ? r.schedule ?? '' : 'off';
+    case 'list': return r.type;
+    case 'list_entry': return `${r.list_name}${r.target_page ? `, page ${r.target_page}` : ''}`;
+    case 'web_credential': return r.type;
+    case 'rest_source': return `${r.method ?? ''} ${r.url ?? ''}`.trim();
+    case 'supporting_script': return r.kind;
+    case 'search_config': return r.source_type;
+    case 'lov': return r.type ?? '';
+    case 'app_item': return r.scope ?? '';
+    default: return r.description ?? '';
+  }
+}
+
+interface ScItem { label: string; href: string; kind?: string }
+/**
+ * (sprint 74) The groups of the Shared Components page, like APEX's. Component types pgkiln keeps in Settings
+ * open the right Settings tab; a few APEX types have no counterpart (docs/apex-feature-parity.md says why).
+ */
+export function sharedGroups(appId: number): { key: string; title: string; icon: string; items: ScItem[] }[] {
+  const t = (kind: string, label = COMPONENTS[kind].plural): ScItem => ({ label, href: `${BASE}/apps/${appId}/shared?type=${kind}`, kind });
+  const settings = (tab: string, label: string): ScItem => ({ label, href: `${BASE}/apps/${appId}/settings?tab=${tab}` });
+  const page = (path: string, label: string): ScItem => ({ label, href: `${BASE}/apps/${appId}/${path}` });
+  return [
+    { key: 'logic', title: 'Application Logic', icon: 'code', items: [t('app_item', 'Application Items'), t('app_process', 'Application Processes'), t('app_setting', 'Application Settings'), t('build_option', 'Build Options'), page('settings?tab=definition', 'Application Definition')] },
+    { key: 'security', title: 'Security', icon: 'shield', items: [{ label: 'Access Control', href: `${BASE}/apps/${appId}/shared?view=tree`, kind: 'access' }, settings('security', 'Authentication'), t('authz_scheme', 'Authorization Schemes'), settings('security', 'Security Attributes'), settings('signin', 'Sign-in and Session Management')] },
+    { key: 'other', title: 'Other Components', icon: 'layers', items: [t('lov', 'Lists of Values'), t('list', 'Lists'), t('list_entry', 'List Entries'), t('email_template', 'Email Templates'), t('supporting_script', 'Supporting Objects'), page('subscriptions', 'Subscriptions')] },
+    { key: 'navigation', title: 'Navigation and Search', icon: 'compass', items: [t('nav_entry', 'Navigation Menu'), settings('ui', 'Navigation Bar List'), page('breadcrumbs', 'Breadcrumbs'), t('page_group', 'Page Groups'), t('search_config', 'Search Configurations')] },
+    { key: 'ui', title: 'User Interface', icon: 'grid', items: [page('theme', 'Themes and Theme Roller'), settings('ui', 'User Interface Attributes'), t('template_component', 'Template Components'), page('plugins', 'Plug-ins'), settings('pwa', 'Progressive Web App')] },
+    { key: 'files', title: 'Files and Reports', icon: 'file', items: [page('static-files', 'Static Application Files'), t('report_layout', 'Report Layouts'), t('document_template', 'Document Templates')] },
+    { key: 'data', title: 'Data Sources', icon: 'database', items: [t('rest_source', 'REST Data Sources'), t('web_credential', 'Web Credentials'), t('rest_module', 'RESTful Services'), t('data_load_def', 'Data Load Definitions')] },
+    { key: 'workflows', title: 'Workflows and Automations', icon: 'activity', items: [t('workflow_definition', 'Workflows'), t('task_definition', 'Task Definitions'), t('automation', 'Automations')] },
+    { key: 'globalization', title: 'Globalization', icon: 'globe', items: [page('globalization', 'Translations and Text Messages'), t('dynamic_translation', 'Dynamic Translations'), settings('globalization', 'Globalization Attributes')] },
+    { key: 'ai', title: 'Generative AI', icon: 'lightbulb', items: [page('ai', 'AI Services')] },
+  ];
+}
+
 export async function sharedRoutes(app: FastifyInstance) {
+  // (sprint 74) Breadcrumbs (APEX: a breadcrumb component): the pages by their breadcrumb parent
+  app.get(`${BASE}/apps/:id/breadcrumbs`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await appOr404(req.params.id);
+    if (!a) return reply.code(404).send('Not found');
+    const pages = (await owner.query<{ id: number; page_no: number; name: string; parent_page: number | null }>('select id, page_no, name, parent_page from meta.page where app_id = $1 order by page_no', [a.id])).rows;
+    const known = new Set(pages.map((p) => p.page_no));
+    const tree = (parent: number | null, seen: Set<number>): Raw => {
+      const kids = pages.filter((p) => (parent === null ? p.parent_page === null || !known.has(p.parent_page) || p.parent_page === p.page_no : p.parent_page === parent && p.page_no !== parent) && !seen.has(p.page_no));
+      if (!kids.length) return html``;
+      return html`<ul class="tree">${kids.map((p) => {
+        const next = new Set(seen).add(p.page_no);
+        return html`<li><a href="${BASE}/pages/${p.id}">${icon('file')}<span>${p.name}</span><span class="kind">p${p.page_no}</span></a>${tree(p.page_no, next)}</li>`;
+      })}</ul>`;
+    };
+    const main = html`${appHeader(a, 'shared')}
+      ${region('Breadcrumbs', html`<p class="muted u-mt0">A page's breadcrumb lists the pages above it: each page names its breadcrumb parent (Page Designer → page → Breadcrumb parent). Pages without one show Home.</p>${tree(null, new Set())}`)}`;
+    return send(reply, s, shell(s, 'Breadcrumbs', [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Breadcrumbs']], main));
+  });
+
   // ---------------------------------------------------------------- shared components
   const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'page_group', 'lov', 'app_item', 'app_process', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config', 'email_template', 'app_setting', 'dynamic_translation'];
 
@@ -61,6 +124,44 @@ export async function sharedRoutes(app: FastifyInstance) {
 
     const [selKind, selId] = (req.query.c ?? '').split('-');
     const newKind = req.query.new;
+    const type = typeof req.query.type === 'string' ? req.query.type : '';
+    const crumbsBase: [string, string?][] = [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`]];
+    // (sprint 74) APEX's Shared Components: a grid of component types in groups, with counts
+    if (!selKind && !newKind && !type && req.query.view !== 'tree') {
+      const counts: Record<string, number> = Object.fromEntries(SHARED.map((k) => [k, rows[k].length]));
+      counts.access = users.length;
+      const main = html`${appHeader(a, 'shared')}
+        <div class="sc-head"><p class="muted u-m0">The components the pages of ${a.name} share.</p><a class="btn" href="?view=tree">${icon('list')} Tree view</a></div>
+        <div class="sc-grid">${sharedGroups(a.id).map((g) => html`<section class="region region-standard sc-group" aria-labelledby="sc-${g.key}">
+          <header class="region-header"><h2 id="sc-${g.key}">${icon(g.icon)} ${g.title}</h2></header>
+          <ul class="sc-links">${g.items.map((it) => html`<li><a href="${it.href}">${it.label}</a>${it.kind && counts[it.kind] !== undefined ? html`<span class="sc-count" aria-label="${counts[it.kind]} ${it.label}">${counts[it.kind]}</span>` : ''}</li>`)}</ul>
+        </section>`)}</div>`;
+      return send(reply, s, shell(s, 'Shared Components', [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components']], main));
+    }
+    // (sprint 74) one component type: a searchable, sortable list with Create; a row opens its editor
+    if (type && SHARED.includes(type)) {
+      const spec = COMPONENTS[type];
+      const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
+      const desc = req.query.sort === 'desc';
+      const shown = rows[type]
+        .map((r) => ({ r, name: String(spec.summary(r)) }))
+        .filter((x) => !q || x.name.toLowerCase().includes(q.toLowerCase()))
+        .sort((x, y) => (desc ? -1 : 1) * x.name.localeCompare(y.name, 'en', { numeric: true }));
+      const main = html`${appHeader(a, 'shared')}
+        <div class="sc-list-head"><h1>${spec.plural}</h1><a class="btn btn-hot" href="?new=${type}">${icon('plus')} Create</a></div>
+        <form method="get" class="search u-mwnone u-mb1" role="search"><input type="hidden" name="type" value="${type}">
+          <div class="field"><label class="label" for="f_q">Search</label><input id="f_q" name="q" type="search" value="${q}" placeholder="Name" data-filter-rows="sc-rows"></div>
+          <button class="btn u-selfend">${icon('search')} Go</button></form>
+        <div class="table-wrap"><table class="report"><thead><tr>
+          <th scope="col" aria-sort="${desc ? 'descending' : 'ascending'}"><a href="?type=${type}${q ? `&q=${encodeURIComponent(q)}` : ''}${desc ? '' : '&sort=desc'}">Name ${desc ? '▼' : '▲'}</a></th>
+          <th scope="col">Details</th></tr></thead>
+          <tbody id="sc-rows">${shown.length
+            ? shown.map(({ r, name }) => html`<tr><td data-label="Name"><a href="?c=${type}-${r.id}">${icon(type === 'nav_entry' ? (r.icon ?? 'chevron') : spec.icon)} ${r.parent_id ? '↳ ' : ''}${name}</a></td>
+                <td data-label="Details">${detailOf(type, r)}</td></tr>`)
+            : html`<tr><td colspan="2" class="empty">${q ? 'Nothing matches.' : `No ${spec.plural.toLowerCase()} yet.`}</td></tr>`}</tbody></table></div>
+        <p class="muted">${shown.length} of ${rows[type].length}</p>`;
+      return send(reply, s, shell(s, spec.plural, [...crumbsBase, [spec.plural]], main));
+    }
     let editor: Raw;
     if (newKind && SHARED.includes(newKind)) {
       const spec = COMPONENTS[newKind];
@@ -153,7 +254,8 @@ export async function sharedRoutes(app: FastifyInstance) {
 
     const main = html`${appHeader(a, 'shared')}
       <div class="designer"><aside class="region region-standard">${tree}</aside><div>${editor}</div></div>`;
-    return send(reply, s, shell(s, 'Shared Components', [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components']], main));
+    const kindShown = selKind && SHARED.includes(selKind) ? selKind : newKind && SHARED.includes(newKind) ? newKind : '';
+    return send(reply, s, shell(s, 'Shared Components', kindShown ? [...crumbsBase, [COMPONENTS[kindShown].plural, `${BASE}/apps/${a.id}/shared?type=${kindShown}`], [selKind ? 'Edit' : 'Create']] : [...crumbsBase.slice(0, 2), ['Shared Components']], main));
   });
 
   app.post(`${BASE}/apps/:id/shared/:kind/:cid?`, async (req: Req, reply) => {

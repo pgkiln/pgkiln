@@ -900,3 +900,42 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .progress-spinner { width: 1.25rem; height: 1.25rem; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: progress-spin 0.8s linear infinite; }
 @keyframes progress-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .progress-spinner { animation: none; } }
+
+/* (sprint 74) the default-password warning: dismissible; a dot on the avatar */
+.alert-dismissible { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.alert-dismissible form { margin: 0; }
+.rail-avatar.has-dot { position: relative; }
+.rail-avatar.has-dot::after { content: ""; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--danger, #c23028); box-shadow: 0 0 0 2px var(--rail-bg, #1b2330); }
+.weak-note { color: var(--danger, #c23028) !important; }
+
+/* (sprint 74) Shared Components: groups of component types with counts; a list per type */
+.sc-head, .sc-list-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.sc-list-head h1 { margin: 0; }
+.sc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1rem; align-items: start; }
+.sc-group .region-header h2 { display: flex; align-items: center; gap: 0.5rem; }
+.sc-links { list-style: none; margin: 0; padding: 0.4rem 0; }
+.sc-links li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.3rem 1rem; }
+.sc-links a { overflow-wrap: anywhere; min-width: 0; }
+.sc-count { font-size: 0.78rem; font-weight: 600; color: var(--muted); background: var(--surface-3); border-radius: 99px; padding: 0.05rem 0.5rem; }
+
+/* (sprint 74) application Settings in tabs */
+.settings-tabs { display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--border); margin: 0 0 1rem; }
+.settings-tabs a { padding: 0.5rem 0.85rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.settings-tabs a:hover { color: var(--text); }
+.settings-tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.settings-body { display: grid; gap: 1rem; max-width: 64rem; }
+.settings-form { display: grid; gap: 1rem; }
+
+/* (sprint 74) the application home: search, view and Create page above the pages; Tasks on the right */
+.app-home { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: 1rem; align-items: start; }
+@media (max-width: 1100px) { .app-home { grid-template-columns: 1fr; } }
+.app-home-main { display: grid; gap: 1rem; min-width: 0; }
+.pages-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.pages-bar .search { flex: 1 1 16rem; margin: 0; }
+.pages-bar .search input { flex: 1; min-width: 0; }
+.view-toggle a { display: inline-flex; align-items: center; gap: 0.3rem; }
+.page-icons { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.6rem; }
+.page-icon { display: grid; gap: 0.15rem; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+.page-icon:hover, .page-icon:focus-visible { border-color: var(--accent); }
+.page-icon-no { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+.app-tasks .sc-links a { display: inline-flex; align-items: center; gap: 0.45rem; }

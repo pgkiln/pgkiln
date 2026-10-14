@@ -890,3 +890,33 @@ document.addEventListener('submit', (e) => {
   // back from the browser's cache (the back button): no overlay
   window.addEventListener('pageshow', (ev) => { if (ev.persisted) overlay.remove(); }, { once: true });
 });
+
+// (sprint 74) a search box that filters a list's rows while typing (data-filter-rows="tbody id"); the form still works without it
+document.querySelectorAll('input[data-filter-rows]').forEach((el) => {
+  const body = document.getElementById(el.dataset.filterRows);
+  if (!body) return;
+  el.addEventListener('input', () => {
+    const q = el.value.trim().toLowerCase();
+    body.querySelectorAll(':scope > tr, :scope > li').forEach((tr) => { tr.hidden = !!q && !tr.textContent.toLowerCase().includes(q); });
+  });
+});
+
+// (sprint 74) Settings tabs without a reload; the form remembers the tab for the redirect after Save.
+// The authentication type shows only its own fields.
+(() => {
+  const links = [...document.querySelectorAll('[data-tab-link]')];
+  if (!links.length) return;
+  const show = (tab) => {
+    document.querySelectorAll('.settings-panel').forEach((p) => { p.hidden = p.dataset.tab !== tab; });
+    links.forEach((l) => (l.dataset.tabLink === tab ? l.setAttribute('aria-current', 'page') : l.removeAttribute('aria-current')));
+    document.querySelectorAll('[data-settings-tab]').forEach((i) => { i.value = tab; });
+    const save = document.querySelector('.settings-save');
+    if (save) save.hidden = tab === 'errors' || tab === 'pwa';
+    history.replaceState(null, '', `?tab=${tab}`);
+  };
+  links.forEach((l) => l.addEventListener('click', (e) => { e.preventDefault(); show(l.dataset.tabLink); }));
+  const auth = document.querySelector('.settings-form select[name="authentication"]');
+  auth?.addEventListener('change', () => {
+    document.querySelectorAll('.auth-part').forEach((p) => { p.hidden = p.dataset.auth !== auth.value; });
+  });
+})();
