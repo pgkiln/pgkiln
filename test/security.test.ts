@@ -7382,3 +7382,114 @@ describe('sprint 66 blueprint from an application', () => {
     assert.ok(spec.tables.every((t) => !['app', 'page', 'region', 'account', 'developer', 'session'].includes(t.name)));
   });
 });
+
+describe('sprint 67 REST source catalogs', () => {
+  const DEV = 'sec67_dev';
+  const DEV_PW = 'Sec67-dev-password!';
+  let otherWs: number;
+  let defaultCatalog: number;
+  let defaultService: number;
+  const doc = (title: string) => JSON.stringify({
+    openapi: '3.0.0', info: { title, version: '1' }, servers: [{ url: 'https://sec67.example.com' }],
+    paths: { '/things': { get: { operationId: 'listThings', responses: { 200: { content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { id: { type: 'integer' } } } } } } } } } } },
+  });
+  const signIn = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username, password });
+    await b.get('/builder/rest-catalogs');
+    return b;
+  };
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec67 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+    defaultCatalog = (await owner.one(`insert into meta.rest_catalog (workspace_id, name, base_url) values (1, 'Sec67 Default', 'https://sec67.example.com') returning id`)).id;
+    defaultService = (await owner.one(`insert into meta.rest_catalog_service (catalog_id, name, path) values ($1, 'SEC67_LIST', '/things') returning id`, [defaultCatalog])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.rest_catalog where name like 'Sec67%'`);
+    await owner.query(`delete from meta.workspace where name = 'Sec67 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.rest_source where name like 'SEC67%'`);
+  });
+
+  test('another workspace\'s catalog doesn\'t exist for a developer: pages, posts, download and "from a catalog"', async () => {
+    const d = await signIn(DEV, DEV_PW);
+    assert.doesNotMatch((await d.get('/builder/rest-catalogs')).body, /Sec67 Default/);
+    for (const url of [`/builder/rest-catalogs/${defaultCatalog}`, `/builder/rest-catalogs/${defaultCatalog}/download`])
+      assert.equal((await d.get(url)).statusCode, 404, url);
+    for (const url of [`/builder/rest-catalogs/${defaultCatalog}`, `/builder/rest-catalogs/${defaultCatalog}/delete`, `/builder/rest-catalogs/${defaultCatalog}/services`,
+      `/builder/rest-catalogs/${defaultCatalog}/services/${defaultService}`, `/builder/rest-catalogs/${defaultCatalog}/services/${defaultService}/delete`])
+      assert.equal((await d.submit(url, { name: 'SEC67_X', base_url: 'https://evil.example', path: '/x', method: 'GET' })).statusCode, 404, url);
+    assert.deepEqual(await owner.one('select name, base_url from meta.rest_catalog where id = $1', [defaultCatalog]), { name: 'Sec67 Default', base_url: 'https://sec67.example.com' });
+    assert.ok(await owner.one('select 1 as ok from meta.rest_catalog_service where id = $1', [defaultService]));
+    // an application of the Default workspace can't use the other workspace's catalog, and vice versa
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const otherCatalog = (await owner.one(`insert into meta.rest_catalog (workspace_id, name, base_url) values ($1, 'Sec67 Theirs', 'https://sec67.example.com') returning id`, [otherWs])).id;
+    const otherService = (await owner.one(`insert into meta.rest_catalog_service (catalog_id, name, path) values ($1, 'SEC67_THEIRS', '/things') returning id`, [otherCatalog])).id;
+    const a = await signIn('admin', 'admin');
+    await a.get(`/builder/apps/${hr}/shared?new=rest_source`);
+    for (const service of [String(otherService), `${defaultService} or 1=1`, '-1', ''])
+      await a.submit(`/builder/apps/${hr}/rest-sources/from-catalog`, { service, name: 'SEC67_SRC' });
+    assert.equal(await owner.one(`select 1 as ok from meta.rest_source where name = 'SEC67_SRC'`), undefined);
+    assert.equal((await d.submit(`/builder/apps/${hr}/rest-sources/from-catalog`, { service: String(otherService), name: 'SEC67_SRC' })).statusCode, 404, 'not their application');
+  });
+
+  test('CSRF on every post; app users never reach the pages', async () => {
+    const a = await signIn('admin', 'admin');
+    a.lastCsrf = 'wrong';
+    assert.equal((await a.upload('/builder/rest-catalogs/import', { text: doc('Sec67 Nope') }, {})).statusCode, 403);
+    for (const url of ['/builder/rest-catalogs', `/builder/rest-catalogs/${defaultCatalog}/delete`, `/builder/rest-catalogs/${defaultCatalog}/services`])
+      assert.equal((await a.post(url, { name: 'Sec67 Nope', base_url: 'https://x.example', path: '/x' })).statusCode, 403, url);
+    assert.equal(await owner.one(`select 1 as ok from meta.rest_catalog where name = 'Sec67 Nope'`), undefined);
+    const king = await as('king');
+    for (const url of ['/builder/rest-catalogs', `/builder/rest-catalogs/${defaultCatalog}`]) assert.notEqual((await king.get(url)).statusCode, 200, url);
+  });
+
+  test('reading a document from a URL obeys the allow-list and private addresses; secrets never become parameters', async () => {
+    const saved = [process.env.PGKILN_REST_ALLOWED_HOSTS, process.env.PGKILN_REST_PRIVATE_HOSTS];
+    process.env.PGKILN_REST_ALLOWED_HOSTS = 'sec67.example.com,169.254.169.254';
+    delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+    try {
+      const a = await signIn('admin', 'admin');
+      for (const url of ['http://169.254.169.254/latest/meta-data/', 'http://127.0.0.1:5432/', 'file:///etc/passwd']) {
+        const res = await a.upload('/builder/rest-catalogs/import', { url }, {});
+        const page = (await a.get(res.headers.location as string)).body;
+        assert.match(page, /Import failed/, url);
+      }
+      assert.equal(await owner.one(`select 1 as ok from meta.rest_catalog where workspace_id = 1 and name <> 'Sec67 Default' and base_url like '%169.254%'`), undefined);
+    } finally {
+      process.env.PGKILN_REST_ALLOWED_HOSTS = saved[0];
+      if (saved[1] === undefined) delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      else process.env.PGKILN_REST_PRIVATE_HOSTS = saved[1];
+    }
+    const { sourceProblems } = await import('../src/websources.ts');
+    for (const p of [{ name: 'auth', in: 'header', key: 'Authorization' }, { name: 'authorization', in: 'header' }, { name: 'c', in: 'header', key: 'Cookie' }, { name: 'h', in: 'header', key: 'Host' }, { name: 'x', in: 'query', key: 'a b' }])
+      assert.ok(sourceProblems({ url: 'https://x.example/', params: [p], columns: [] }).length, JSON.stringify(p));
+    // the catalog's checks refuse the same as a data source's
+    const { serviceProblems, serviceUrl } = await import('../src/restcatalog.ts');
+    assert.ok(serviceProblems('https://x.example', { name: 'S', path: '/x', method: 'GET', params: [{ name: 'a', in: 'header', key: 'Proxy-Authorization' }] as never }).length);
+    // a service's path never changes the catalog's host
+    for (const path of ['//evil.example/x', '/@evil.example', '/.@evil.example/', '/..//evil.example'])
+      assert.equal(new URL(serviceUrl('https://x.example/v1', path)).host, 'x.example', path);
+    assert.ok(serviceProblems('https://x.example', { name: 'S', path: 'evil.example/x', method: 'GET' }).length, 'a path starts with /');
+  });
+
+  test('names, descriptions and base URLs are escaped; the database refuses what the checks refuse', async () => {
+    await assert.rejects(owner.query(`insert into meta.rest_catalog (workspace_id, name, base_url) values (1, 'Sec67 js', 'javascript:alert(1)')`));
+    await assert.rejects(owner.query(`insert into meta.rest_catalog (workspace_id, name, base_url) values (1, 'Sec67 q', 'https://x.example/"onmouseover=alert(1)')`));
+    await assert.rejects(owner.query(`insert into meta.rest_catalog_service (catalog_id, name, path) values ($1, 'SEC67_P', 'https://evil.example/')`, [defaultCatalog]));
+    const a = await signIn('admin', 'admin');
+    const evil = JSON.parse(doc('Sec67 <img src=x onerror=alert(1)>'));
+    evil.info.description = '"><script>alert(1)</script>';
+    evil.paths['/things'].get.summary = '<script>alert(2)</script>';
+    const res = await a.upload('/builder/rest-catalogs/import', { text: JSON.stringify(evil) }, {});
+    for (const url of [res.headers.location as string, '/builder/rest-catalogs']) {
+      const page = (await a.get(url)).body;
+      assert.match(page, /Sec67 &lt;img src=x onerror=alert\(1\)&gt;/, url);
+      assert.doesNotMatch(page, /<script>alert|<img src=x/, url);
+    }
+  });
+});

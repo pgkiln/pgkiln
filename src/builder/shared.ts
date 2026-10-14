@@ -16,6 +16,7 @@ import { dataLoadDefExtras } from './dataload.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
+import { catalogPicker } from './rest-catalogs.ts';
 
 // Shared Components: navigation, authorization schemes, LOVs, application
 // items and processes, report layouts, and access control.
@@ -67,6 +68,7 @@ export async function sharedRoutes(app: FastifyInstance) {
       const prefill = newKind === 'list_entry' && req.query.list ? { list_name: String(req.query.list).toUpperCase() } : newKind === 'automation_action' && req.query.automation ? actionPrefill(String(req.query.automation), rows.automation_action) : {};
       editor = region(`New ${spec.label.toLowerCase()}`, componentForm(spec, newKind, { seq: 10, ...spec.defaults, ...prefill }, lk, `${BASE}/apps/${a.id}/shared/${newKind}`, s, 'Create'));
       if (newKind === 'template_component') editor = html`${editor}${templateImport(a.id, s)}`;
+      if (newKind === 'rest_source') editor = html`${editor}${await catalogPicker(a.id, s)}`;
     } else if (selKind && SHARED.includes(selKind)) {
       const spec = COMPONENTS[selKind];
       const row = rows[selKind].find((r) => String(r.id) === selId);

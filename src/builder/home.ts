@@ -298,6 +298,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
         ${s.workspace?.sql_workshop === false ? '' : card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
         ${card(`${BASE}/backups`, icon('archive'), 'Manage backups', 'The backups of every application of this workspace; back them all up at once.')}
+        ${card(`${BASE}/rest-catalogs`, icon('globe'), 'REST Source Catalogs', 'Web services described once for the workspace (e.g. from an OpenAPI document); applications make REST data sources from them.')}
         ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
         ${(await isAdmin(s.username)) ? card(`${BASE}/instance`, icon('settings'), 'Instance settings', 'Session length, sign-in throttling and the server\'s configuration (administrators).') : ''}
         ${(await isAdmin(s.username))
