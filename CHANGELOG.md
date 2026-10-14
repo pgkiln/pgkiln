@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-14
+
 Sprint 67: REST source catalogs and a workspace's export and import. Sprint 68: the Data Reporter's welcome
 page and Find my workspace. Sprint 69: dragging tasks on a Gantt chart. Sprint 70: treemap, sunburst and timeline
 charts.
