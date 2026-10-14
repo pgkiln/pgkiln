@@ -7547,5 +7547,68 @@ describe('sprint 67 workspace export and import', () => {
     await b.upload('/builder/workspace-import', { part: 'extension_links' }, file({ extension_links: [{ label: 'Sec67x <img src=x onerror=alert(1)>', url: 'https://x.example/' }] }));
     const page = (await b.get('/builder')).body;
     assert.doesNotMatch(page, /<img src=x/);
+describe('sprint 68 find my workspace and the data reporter welcome page', () => {
+  const logged: string[] = [];
+  const realLog = console.log;
+  const mails = async () => {
+    await new Promise((r) => setTimeout(r, 300));
+    return logged.splice(0).filter((l) => l.startsWith('mail (log only)'));
+  };
+  before(async () => {
+    await owner.query(`insert into meta.mail_service (name, provider, senders) values ('SEC68_LOG', 'log', '{@example.com}') on conflict do nothing`);
+    await owner.query(`insert into meta.setting (name, value) values ('builder_mail_service', 'SEC68_LOG'), ('builder_mail_from', 'pgkiln@example.com') on conflict (name) do update set value = excluded.value`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin, email) values ('sec68_dev', meta.hash_password('Sec68-dev-password!'), false, 'sec68@example.com') on conflict do nothing`);
+    await owner.query(`delete from meta.activity_log where event = 'find_workspace'`);
+    console.log = (...a: unknown[]) => (logged.push(a.map(String).join(' ')), undefined);
+  });
+  after(async () => {
+    console.log = realLog;
+    await owner.query(`delete from meta.setting where name in ('builder_mail_service', 'builder_mail_from')`);
+    await owner.query(`delete from meta.mail_service where name = 'SEC68_LOG'`);
+    await owner.query(`delete from meta.developer where username = 'sec68_dev'`);
+    await owner.query(`delete from meta.activity_log where event = 'find_workspace'`);
+  });
+
+  test('find my workspace: CSRF, no header injection, a limit per IP address', async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/find-workspace');
+    await b.post('/builder/find-workspace', { email: 'sec68@example.com' });
+    assert.deepEqual(await mails(), [], 'no CSRF token: nothing');
+    for (const email of ['sec68@example.com\r\nBcc: victim@example.com', 'sec68@example.com,victim@example.com', '<sec68@example.com>', 'a@b'])
+      await b.submit('/builder/find-workspace', { email });
+    assert.deepEqual(await mails(), []);
+    // ten requests an hour from one address, whatever they ask for
+    for (let i = 0; i < 10; i++) await b.submit('/builder/find-workspace', { email: `nobody${i}@example.com` });
+    await b.submit('/builder/find-workspace', { email: 'sec68@example.com' });
+    assert.deepEqual(await mails(), [], 'limited per IP address');
+  });
+
+  test('only administrators set the builder\'s mail; another developer\'s address stays theirs; addresses are escaped', async () => {
+    const d = new FileBrowser(app);
+    await d.get('/builder/login');
+    await d.submit('/builder/login', { username: 'sec68_dev', password: 'Sec68-dev-password!' });
+    await d.get('/builder/developers');
+    assert.equal((await d.submit('/builder/mail/builder', { service: '' })).statusCode, 403);
+    assert.equal((await owner.one(`select value from meta.setting where name = 'builder_mail_service'`)).value, 'SEC68_LOG');
+    await d.get('/builder/developers');
+    assert.equal((await d.submit('/builder/developers/email', { username: 'admin', email: 'x@example.com' })).statusCode, 403);
+    await assert.rejects(owner.query(`update meta.developer set email = 'a@example.com"><script>' where username = 'sec68_dev'`));
+    await owner.query(`update meta.developer set email = $1 where username = 'sec68_dev'`, [`o'neil&co@example.com`]);
+    assert.doesNotMatch((await d.get('/builder/developers')).body, /o'neil&co/, 'escaped');
+    assert.equal((await new FileBrowser(app).get('/builder/developers')).statusCode, 302, 'not signed in');
+  });
+
+  test('the data reporter search is a value, never SQL; another user\'s private reports never show', async () => {
+    const b = new Browser();
+    await b.login('blake');
+    const rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 36 and r.type = 'data_reporter'`)).id;
+    await owner.query(`insert into meta.data_report (app_id, region_id, username, name, definition) select p.app_id, $1, 'king', 'Sec68 private', '{"source": "employees"}' from meta.region r join meta.page p on p.id = r.page_id where r.id = $1`, [rid]);
+    try {
+      for (const q of [`') or true --`, '%', '_', 'Sec68'])
+        assert.doesNotMatch((await b.get(`/a/hr/36?dr${rid}_q=${encodeURIComponent(q)}`)).body, /Sec68 private/, q);
+      assert.match((await b.get(`/a/hr/36?dr${rid}_q=${encodeURIComponent('<script>x')}`)).body, /value="&lt;script&gt;x"/);
+    } finally {
+      await owner.query(`delete from meta.data_report where name = 'Sec68 private'`);
+    }
   });
 });

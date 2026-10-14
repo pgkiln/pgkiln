@@ -652,6 +652,13 @@ export const zh: Record<MessageKey, string> = {
   'reporter.name_required': "请为报表命名。",
   'reporter.not_found': "该报表不可用。",
   'reporter.unknown_source': "此数据源已不可用。",
+  'reporter.welcome_title': "创建自己的报表",
+  'reporter.welcome_text': "选择数据开始一个报表：选择列、筛选、按合计分组、添加图表，然后保存或共享。",
+  'reporter.columns_count': "{n} 列",
+  'reporter.search': "搜索报表",
+  'reporter.changed': "修改于 {date}",
+  'reporter.no_match': "没有与搜索匹配的报表。",
+  'reporter.chart_tag': "图表",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "对话",
   'assistant.you': "您",

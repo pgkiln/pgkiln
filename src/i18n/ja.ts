@@ -652,6 +652,13 @@ export const ja: Record<MessageKey, string> = {
   'reporter.name_required': "レポートに名前を付けてください。",
   'reporter.not_found': "そのレポートは利用できません。",
   'reporter.unknown_source': "このデータソースはもう利用できません。",
+  'reporter.welcome_title': "自分のレポートを作成",
+  'reporter.welcome_text': "データを選んでレポートを始めます。列の選択、フィルター、合計付きのグループ化、グラフの追加を行い、保存または共有できます。",
+  'reporter.columns_count': "{n} 列",
+  'reporter.search': "レポートを検索",
+  'reporter.changed': "{date} に変更",
+  'reporter.no_match': "検索に一致するレポートはありません。",
+  'reporter.chart_tag': "グラフ",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "会話",
   'assistant.you': "あなた",

@@ -24,6 +24,7 @@ import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { checkNewApp, createApp, createAppError, startFromBoilerplate } from './newapp.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
+import { EMAIL } from './find-workspace.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -79,6 +80,7 @@ export async function builderRoutes(app: FastifyInstance) {
               <button class="btn btn-hot signin-submit">Sign in</button>
               <p class="muted small signin-hint">Leave the workspace empty to open your last one; you can switch later in your account menu.</p>
               <nav class="signin-actions" aria-label="Quick actions">
+                <a href="${BASE}/find-workspace">${icon('search')} Find my workspace</a>
                 <a href="${BASE}/login?next=${encodeURIComponent(`${BASE}/utilities`)}">${icon('settings')} Administration</a>
                 <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">${icon('help')} About workspaces</a>
               </nav>
@@ -619,8 +621,9 @@ export async function builderRoutes(app: FastifyInstance) {
   app.get(`${BASE}/developers`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const devs = (await owner.query('select username, is_admin from meta.developer order by 1')).rows;
+    const devs = (await owner.query('select username, is_admin, email from meta.developer order by 1')).rows;
     const admin = devs.some((d) => d.username === s.username && d.is_admin);
+    const me = devs.find((d) => d.username === s.username);
     const main = html`<h1 class="u-mb1">Developers</h1>
       <div class="columns">
         ${region('Change your password', html`<form method="post" action="${BASE}/developers/password">${csrf(s)}
@@ -629,17 +632,23 @@ export async function builderRoutes(app: FastifyInstance) {
             ${input('password', 'New password', '', { type: 'password', required: true, auto: 'new-password', help: 'At least 8 characters.' })}
           </div>
           <div class="buttons"><button class="btn btn-hot">Change password</button></div></form>`)}
+        ${region('Your e-mail address', html`<form method="post" action="${BASE}/developers/email">${csrf(s)}<input type="hidden" name="username" value="${s.username}">
+          <div class="form-grid">${input('email', 'E-mail address', me?.email ?? '', { type: 'email', auto: 'email', help: '"Find my workspace" on the sign-in page sends your workspaces to it. Empty: none.' })}</div>
+          <div class="buttons"><button class="btn">Save</button></div></form>`)}
         ${region('Developer accounts', html`
           <p class="muted u-mt0">Administrators add and remove developers and can break other developers' page and application locks.</p>
-          <table class="report"><thead><tr><th>Username</th><th>Role</th><th></th></tr></thead><tbody>
-            ${devs.map((d) => html`<tr><td>${d.username}${d.username === s.username ? ' (you)' : ''}</td><td>${d.is_admin ? 'Administrator' : 'Developer'}</td><td>${d.username === s.username || !admin ? '' : html`
+          <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Username</th><th>Role</th><th>E-mail</th><th></th></tr></thead><tbody>
+            ${devs.map((d) => html`<tr><td data-label="Username">${d.username}${d.username === s.username ? ' (you)' : ''}</td><td data-label="Role">${d.is_admin ? 'Administrator' : 'Developer'}</td>
+              <td data-label="E-mail">${admin && d.username !== s.username
+                ? html`<form method="post" action="${BASE}/developers/email" class="search u-m0 u-mwnone">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input name="email" type="email" value="${d.email ?? ''}" aria-label="E-mail address of ${d.username}" placeholder="none"><button class="btn">Save</button></form>`
+                : html`<span class="wrap-anywhere">${d.email ?? ''}</span>`}</td><td>${d.username === s.username || !admin ? '' : html`
               <form method="post" action="${BASE}/developers/admin" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="is_admin" value="${d.is_admin ? 'false' : 'true'}"><button class="link-button">${d.is_admin ? 'Make developer' : 'Make administrator'}</button></form>
               · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="Remove developer ${d.username}?">Remove</button></form>`}</td></tr>`)}
-          </tbody></table>
+          </tbody></table></div>
           ${admin
             ? html`<h3>Add developer</h3>
               <form method="post" action="${BASE}/developers">${csrf(s)}
-                <div class="form-grid">${input('username', 'Username', '', { required: true })}${input('password', 'Password', '', { type: 'password', required: true, auto: 'new-password' })}</div>
+                <div class="form-grid">${input('username', 'Username', '', { required: true })}${input('password', 'Password', '', { type: 'password', required: true, auto: 'new-password' })}${input('email', 'E-mail address', '', { type: 'email', help: 'Optional: for "Find my workspace".' })}</div>
                 <div class="field"><label class="check"><input type="checkbox" name="is_admin" value="true"> Administrator</label></div>
                 <div class="buttons"><button class="btn btn-hot">Add developer</button></div>
               </form>`
@@ -657,7 +666,9 @@ export async function builderRoutes(app: FastifyInstance) {
       if (problem) throw new Error(problem);
       const ws = currentWorkspace(s);
       await owner.tx(async (c) => {
-        await c.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), $3)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true']);
+        const email = String(req.body?.email ?? '').trim();
+        if (email && !EMAIL.test(email)) throw new Error('The e-mail address is not valid.');
+        await c.query('insert into meta.developer (username, password_hash, is_admin, email) values ($1, meta.hash_password($2), $3, $4)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true', email || null]);
         // (064) a new developer works in the current workspace; more on Workspace utilities → Workspaces
         // (the insert trigger put them in Default)
         if (ws > 0 && ws !== 1) {
@@ -690,6 +701,21 @@ export async function builderRoutes(app: FastifyInstance) {
       flash(s, 'Password changed.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
+    }
+    return back(reply, s, `${BASE}/developers`);
+  });
+
+  // (096) a developer's own e-mail address; administrators set anyone's
+  app.post(`${BASE}/developers/email`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const who = String(req.body?.username ?? s.username);
+    if (who !== s.username && !(await isAdmin(s.username))) return reply.code(403).send('Only administrators change other developers\' addresses.');
+    const email = String(req.body?.email ?? '').trim();
+    if (email && (!EMAIL.test(email) || email.length > 254)) flash(s, 'The e-mail address is not valid.', 'error');
+    else {
+      const r = await owner.query('update meta.developer set email = $2 where username = $1', [who, email || null]);
+      flash(s, r.rowCount ? 'E-mail address saved.' : 'Not found.', r.rowCount ? 'ok' : 'error');
     }
     return back(reply, s, `${BASE}/developers`);
   });

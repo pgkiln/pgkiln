@@ -652,6 +652,13 @@ export const fi: Record<MessageKey, string> = {
   'reporter.name_required': "Anna raportille nimi.",
   'reporter.not_found': "Raportti ei ole saatavilla.",
   'reporter.unknown_source': "Tämä tietolähde ei ole enää saatavilla.",
+  'reporter.welcome_title': "Tee omia raportteja",
+  'reporter.welcome_text': "Valitse tiedot uutta raporttia varten: sarakkeet, suodattimet, ryhmittely summineen ja kaavio, ja tallenna tai jaa raportti.",
+  'reporter.columns_count': "{n} saraketta",
+  'reporter.search': "Hae raportteja",
+  'reporter.changed': "muutettu {date}",
+  'reporter.no_match': "Haulla ei löytynyt raportteja.",
+  'reporter.chart_tag': "kaavio",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Keskustelu",
   'assistant.you': "Sinä",

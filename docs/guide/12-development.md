@@ -197,6 +197,8 @@ src/
     rest-catalogs.ts       Workspace utilities → REST Source Catalogs (095): list, import (file, pasted, URL), a catalog and its
                            services, download; catalogPicker and "from a catalog" for an application's REST data sources
     workspace-transfer.ts  Workspace utilities → Export and import (sprint 67, workspace administrators)
+    find-workspace.ts      (096) Find my workspace: builderMail (Mail services → Builder mail), workspacesMail, the page (same answer
+                           for every address, mail after the answer, limits per address and IP)
     availability.ts        Application → Availability (migration 083): status, message, users, build status (Run only is
                            enforced by locks.ts blockingLock); availabilityBadge() in the application header
     feedback.ts            Application → Feedback (migration 084): the setting, the list with filters, status and answers
@@ -323,6 +325,7 @@ test/
   blueprint-from-app.test.ts  a blueprint of HR: checks clean, pages and menu, notes, a working copy with sample rows, workspaces
   rest-catalogs.test.ts    OpenAPI/Swagger reading, parameter keys, catalog files, the builder's pages, a data source from a service
   workspace-transfer.test.ts  a workspace's export, import into another workspace (added, kept, replaced, all or nothing), groups, access
+  find-workspace.test.ts   developers' addresses, builder mail, the workspaces mail, the same answer, limits
   ai-builder.test.ts       App Builder AI: the builder's service, SQL from a question, explain, describe tables, pages with AI
   ai-script-mock.ts        a scripted mock of Claude (SSE, tool_use with a thinking block) and OpenAI (tool calls), reply by reply
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions

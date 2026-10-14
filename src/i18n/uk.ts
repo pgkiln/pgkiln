@@ -652,6 +652,13 @@ export const uk: Record<MessageKey, string> = {
   'reporter.name_required': "Дайте звіту назву.",
   'reporter.not_found': "Цей звіт недоступний.",
   'reporter.unknown_source': "Це джерело даних більше недоступне.",
+  'reporter.welcome_title': "Створюйте власні звіти",
+  'reporter.welcome_text': "Виберіть дані для нового звіту: стовпці, фільтри, групування з підсумками та діаграму, потім збережіть його або поділіться ним.",
+  'reporter.columns_count': "Стовпців: {n}",
+  'reporter.search': "Пошук звітів",
+  'reporter.changed': "змінено {date}",
+  'reporter.no_match': "Немає звітів, що відповідають пошуку.",
+  'reporter.chart_tag': "діаграма",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Розмова",
   'assistant.you': "Ви",

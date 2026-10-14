@@ -15,10 +15,20 @@ workspace and switch in your account menu. **Remember workspace and username** k
 HttpOnly cookie for `/builder`, no password); signing in without the tick forgets them. *Administration* under the
 form signs in and opens Workspace utilities.
 
+**Find my workspace** under the form (APEX: Find My Workspace) asks for an e-mail address and mails the developer
+accounts with that address their user name and the workspaces they belong to. It needs a mail service for the
+builder: Workspace utilities → Mail services → **Builder mail** (a service and a From address among its senders);
+without one the page says to ask an administrator. The page answers the same whether or not an account has the
+address, the mail leaves after the answer, and it sends at most three mails an hour to an address and handles ten
+requests an hour from an IP address. Developers set their own address on the Developers page (migration 096);
+administrators set anyone's.
+
 On the **Developers** page you can:
 
 - change your own password (minimum 8 characters; other builder sessions of yours end);
-- as an **administrator**: add developer accounts (developers or administrators), make a developer
+- set your **e-mail address** (optional; *Find my workspace* sends your workspaces to it);
+- as an **administrator**: add developer accounts (developers or administrators, with an e-mail address), change
+  their e-mail addresses, make a developer
   an administrator or the other way round, and remove other developers (their sessions end
   immediately).
 

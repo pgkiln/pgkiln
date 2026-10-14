@@ -652,6 +652,13 @@ export const he: Record<MessageKey, string> = {
   'reporter.name_required': "תנו שם לדוח.",
   'reporter.not_found': "הדוח הזה אינו זמין.",
   'reporter.unknown_source': "מקור הנתונים הזה כבר אינו זמין.",
+  'reporter.welcome_title': "בנו דוחות משלכם",
+  'reporter.welcome_text': "בחרו את הנתונים כדי להתחיל דוח: עמודות, סינון, קיבוץ עם סיכומים ותרשים, ואז שמרו או שתפו אותו.",
+  'reporter.columns_count': "{n} עמודות",
+  'reporter.search': "חיפוש דוחות",
+  'reporter.changed': "שונה ב-{date}",
+  'reporter.no_match': "אין דוחות התואמים לחיפוש.",
+  'reporter.chart_tag': "תרשים",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "שיחה",
   'assistant.you': "את/ה",

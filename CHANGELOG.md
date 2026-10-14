@@ -31,6 +31,18 @@ Sprint 67: REST source catalogs and a workspace's export and import.
   pgkiln's static files got neither `app.js` nor `app.css` offline once the service worker had cached the newer ones;
   it now gets the cached copy of the other version. (This was also the cause of the intermittent CI failure of the
   e2e test "a form sent offline …".)
+Sprint 68: the Data Reporter's welcome page and Find my workspace.
+
+### Added
+- **The Data Reporter's welcome page** (APEX 26.1): a greeting, the data sources as cards that start a report (label,
+  description, number of columns), the user's own reports with the latest changed first, shared reports, and a search
+  over names and descriptions. `welcome_title` / `welcome_text` replace the greeting; `"welcome": false` keeps the
+  compact start. New texts in all 22 languages.
+- **Find my workspace** (migration 096; APEX: the sign-in page's Find My Workspace): developers' e-mail addresses
+  (their own on the Developers page; administrators set anyone's), Workspace utilities → Mail services → **Builder
+  mail**, and a page under the builder's sign-in form that mails an address's accounts their workspaces. The same
+  answer for every address, the mail after the answer, at most three mails an hour per address and ten requests an
+  hour per IP address.
 
 ## [0.40.0] - 2026-10-14
 

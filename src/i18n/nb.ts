@@ -652,6 +652,13 @@ export const nb: Record<MessageKey, string> = {
   'reporter.name_required': "Gi rapporten et navn.",
   'reporter.not_found': "Den rapporten er ikke tilgjengelig.",
   'reporter.unknown_source': "Denne datakilden er ikke lenger tilgjengelig.",
+  'reporter.welcome_title': "Lag dine egne rapporter",
+  'reporter.welcome_text': "Velg data for å starte en rapport: velg kolonner, filtrer, grupper med summer, legg til et diagram, og lagre eller del den.",
+  'reporter.columns_count': "{n} kolonner",
+  'reporter.search': "Søk i rapporter",
+  'reporter.changed': "endret {date}",
+  'reporter.no_match': "Ingen rapporter samsvarer med søket.",
+  'reporter.chart_tag': "diagram",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Samtale",
   'assistant.you': "Du",

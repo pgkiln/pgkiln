@@ -284,42 +284,74 @@ export async function renderDataReporter(ctx: PageContext, r: Region): Promise<R
   return reportView(ctx, r, source, cols, def, saved, edited);
 }
 
-/** The reports the user may open, and a form to start a new one. */
+/**
+ * The Data Reporter's welcome page (APEX 26.1): a greeting, the data sources as
+ * cards that start a report, a search over the reports, the user's own reports
+ * (latest changed first) and the ones others shared. config.welcome = false
+ * keeps the compact form (a list of sources and a Start button); welcome_title
+ * and welcome_text replace the greeting.
+ */
 async function home(ctx: PageContext, r: Region, sources: Source[]): Promise<Raw> {
   const t = ctx.locale.t;
   const c = ctx.client!;
   const prefix = prefixOf(r);
+  const q = (ctx.params.get(`${prefix}q`) ?? '').trim().slice(0, 100);
   const reports = (
     await savepoint(c, () =>
-      c.query<Saved>('select id, name, description, username, shared, own, definition from meta.data_reports where region_id = $1 order by own desc, lower(name), id', [r.id]),
+      c.query<Saved & { updated_at: string }>(
+        `select id, name, description, username, shared, own, definition, updated_at from meta.data_reports
+          where region_id = $1 and ($2 = '' or position(lower($2) in lower(name || ' ' || coalesce(description, ''))) > 0)
+          order by own desc, case when own then updated_at end desc, lower(name), id`, [r.id, q]),
     )
   ).rows;
   const labelOf = (id: string) => {
     const s = sources.find((x) => x.id === id);
     return s ? ctx.locale.tr(s.label || heading(s.table)) : id;
   };
-  const list = (rows: Saved[]) =>
+  const list = (rows: (Saved & { updated_at: string })[]) =>
     html`<ul class="reporter-list">${rows.map((x) => html`<li>
       <a href="${url(ctx, r, new URLSearchParams([[`${prefix}open`, String(x.id)]]))}">${x.name}</a>
-      <span class="muted">${labelOf(str(x.definition?.source))}${x.own ? '' : html` · ${t('reporter.by', { user: x.username })}`}</span>${x.own && x.shared ? html` <span class="tag">${t('reporter.shared_tag')}</span>` : ''}
+      <span class="muted">${labelOf(str(x.definition?.source))}${x.own ? html` · ${t('reporter.changed', { date: String(x.updated_at).slice(0, 10) })}` : html` · ${t('reporter.by', { user: x.username })}`}</span>${x.definition?.chart ? html` <span class="tag">${t('reporter.chart_tag')}</span>` : ''}${x.own && x.shared ? html` <span class="tag">${t('reporter.shared_tag')}</span>` : ''}
       ${x.description ? html`<p class="muted reporter-desc">${x.description}</p>` : ''}
     </li>`)}</ul>`;
   const mine = reports.filter((x) => x.own);
   const others = reports.filter((x) => !x.own);
-  const form = `drn${r.id}`;
   const keep = [...ctx.params.entries()].filter(([k]) => !k.startsWith(prefix) && !['clear', 'cs'].includes(k));
-  ctx.detached.push(html`<form id="${form}" method="get" action="${ctx.base}/${ctx.page.page_no}">${keep.map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}</form>`);
-  return html`<div class="reporter">
-    <div class="reporter-new">
-      <label class="label" for="${form}_src">${t('reporter.new')}</label>
-      <div class="reporter-row">
-        ${sel(`${prefix}src`, form, t('reporter.source'), sources.map((s) => [s.id, ctx.locale.tr(s.label || heading(s.table))]), sources[0].id, `${form}_src`)}
-        <button class="btn btn-hot" form="${form}">${t('reporter.create')}</button>
+  const hidden = keep.map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`);
+  const lists = html`${ctx.user !== 'nobody' ? html`<h3 class="reporter-h">${t('reporter.my_reports')}</h3>${mine.length ? list(mine) : html`<p class="muted">${q ? t('reporter.no_match') : t('reporter.no_reports')}</p>`}` : ''}
+    ${others.length ? html`<h3 class="reporter-h">${t('reporter.shared_reports')}</h3>${list(others)}` : ''}`;
+
+  if (r.config.welcome === false) {
+    const form = `drn${r.id}`;
+    ctx.detached.push(html`<form id="${form}" method="get" action="${ctx.base}/${ctx.page.page_no}">${hidden}</form>`);
+    return html`<div class="reporter">
+      <div class="reporter-new">
+        <label class="label" for="${form}_src">${t('reporter.new')}</label>
+        <div class="reporter-row">
+          ${sel(`${prefix}src`, form, t('reporter.source'), sources.map((s) => [s.id, ctx.locale.tr(s.label || heading(s.table))]), sources[0].id, `${form}_src`)}
+          <button class="btn btn-hot" form="${form}">${t('reporter.create')}</button>
+        </div>
+        ${sources.some((s) => s.description) ? html`<dl class="reporter-sources">${sources.filter((s) => s.description).map((s) => html`<dt>${ctx.locale.tr(s.label || heading(s.table))}</dt><dd>${ctx.locale.tr(s.description!)}</dd>`)}</dl>` : ''}
       </div>
-      ${sources.some((s) => s.description) ? html`<dl class="reporter-sources">${sources.filter((s) => s.description).map((s) => html`<dt>${ctx.locale.tr(s.label || heading(s.table))}</dt><dd>${ctx.locale.tr(s.description!)}</dd>`)}</dl>` : ''}
-    </div>
-    ${ctx.user !== 'nobody' ? html`<h3 class="reporter-h">${t('reporter.my_reports')}</h3>${mine.length ? list(mine) : html`<p class="muted">${t('reporter.no_reports')}</p>`}` : ''}
-    ${others.length ? html`<h3 class="reporter-h">${t('reporter.shared_reports')}</h3>${list(others)}` : ''}
+      ${lists}
+    </div>`;
+  }
+
+  const title = typeof r.config.welcome_title === 'string' && r.config.welcome_title.trim() ? ctx.locale.tr(r.config.welcome_title) : t('reporter.welcome_title');
+  const text = typeof r.config.welcome_text === 'string' && r.config.welcome_text.trim() ? ctx.locale.tr(r.config.welcome_text) : t('reporter.welcome_text');
+  // the search: a GET form of its own (detached: the region may sit inside the page's form)
+  const search = `drq${r.id}`;
+  const searchable = q !== '' || reports.length > 6;
+  if (searchable) ctx.detached.push(html`<form id="${search}" method="get" action="${ctx.base}/${ctx.page.page_no}" role="search">${hidden}</form>`);
+  return html`<div class="reporter reporter-welcome">
+    <div class="reporter-hello"><h3 class="reporter-title">${title}</h3><p class="muted">${text}</p></div>
+    <h3 class="reporter-h">${t('reporter.new')}</h3>
+    <ul class="reporter-cards">${sources.map((s) => html`<li><a class="reporter-card" href="${url(ctx, r, new URLSearchParams([[`${prefix}src`, s.id]]))}">
+      <strong>${ctx.locale.tr(s.label || heading(s.table))}</strong>
+      ${s.description ? html`<span class="muted">${ctx.locale.tr(s.description)}</span>` : ''}
+      <span class="reporter-card-meta">${t('reporter.columns_count', { n: s.columns.length })}</span></a></li>`)}</ul>
+    ${searchable ? html`<div class="reporter-row reporter-search"><input type="search" name="${prefix}q" value="${q}" form="${search}" aria-label="${t('reporter.search')}" placeholder="${t('reporter.search')}"><button class="btn" form="${search}">${t('reporter.search')}</button></div>` : ''}
+    ${lists}
   </div>`;
 }
 

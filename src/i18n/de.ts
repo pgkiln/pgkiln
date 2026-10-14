@@ -652,6 +652,13 @@ export const de: Record<MessageKey, string> = {
   'reporter.name_required': "Geben Sie dem Bericht einen Namen.",
   'reporter.not_found': "Dieser Bericht ist nicht verfügbar.",
   'reporter.unknown_source': "Diese Datenquelle ist nicht mehr verfügbar.",
+  'reporter.welcome_title': "Eigene Berichte erstellen",
+  'reporter.welcome_text': "Wählen Sie die Daten für einen neuen Bericht: Spalten auswählen, filtern, mit Summen gruppieren, ein Diagramm hinzufügen und den Bericht speichern oder teilen.",
+  'reporter.columns_count': "{n} Spalten",
+  'reporter.search': "Berichte suchen",
+  'reporter.changed': "geändert {date}",
+  'reporter.no_match': "Keine Berichte gefunden.",
+  'reporter.chart_tag': "Diagramm",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Unterhaltung",
   'assistant.you': "Sie",

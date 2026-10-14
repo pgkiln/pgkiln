@@ -652,6 +652,13 @@ export const es: Record<MessageKey, string> = {
   'reporter.name_required': "Dé un nombre al informe.",
   'reporter.not_found': "Ese informe no está disponible.",
   'reporter.unknown_source': "Este origen de datos ya no está disponible.",
+  'reporter.welcome_title': "Cree sus propios informes",
+  'reporter.welcome_text': "Elija los datos para empezar un informe: columnas, filtros, agrupaciones con totales y un gráfico; después guárdelo o compártalo.",
+  'reporter.columns_count': "{n} columnas",
+  'reporter.search': "Buscar informes",
+  'reporter.changed': "modificado el {date}",
+  'reporter.no_match': "Ningún informe coincide con la búsqueda.",
+  'reporter.chart_tag': "gráfico",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Conversación",
   'assistant.you': "Usted",

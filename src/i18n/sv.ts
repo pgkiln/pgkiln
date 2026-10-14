@@ -652,6 +652,13 @@ export const sv: Record<MessageKey, string> = {
   'reporter.name_required': "Ge rapporten ett namn.",
   'reporter.not_found': "Den rapporten är inte tillgänglig.",
   'reporter.unknown_source': "Datakällan är inte längre tillgänglig.",
+  'reporter.welcome_title': "Skapa egna rapporter",
+  'reporter.welcome_text': "Välj data för att börja en rapport: välj kolumner, filtrera, gruppera med summor, lägg till ett diagram och spara eller dela den.",
+  'reporter.columns_count': "{n} kolumner",
+  'reporter.search': "Sök rapporter",
+  'reporter.changed': "ändrad {date}",
+  'reporter.no_match': "Inga rapporter matchar sökningen.",
+  'reporter.chart_tag': "diagram",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Konversation",
   'assistant.you': "Du",

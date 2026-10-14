@@ -1060,8 +1060,11 @@ and dates, a [format mask](14-globalization.md). New sources offer all columns e
 ones at first. A view that shows exactly what business users may see is often the best source;
 the builder warns when the application's database role may not read it.
 
-**Users** choose a source and *Start*, then, in the report's editor (a plain form: it works
-without JavaScript, and the URL of a result can be bookmarked or sent):
+**Users** start on the region's **welcome page** (APEX 26.1: the Data Reporter's welcome page): a greeting, the data
+sources as cards (label, description, number of columns), their own reports with the latest changed first, and the
+reports others shared; with more than six reports (or a search term) a **search** over names and descriptions. A
+source's card opens a new report in the editor (a plain form: it works without JavaScript, and the URL of a result
+can be bookmarked or sent):
 
 - **Columns** to show (all offered columns when none are ticked);
 - up to five **filters** (column, operator, value; the operators of interactive report filters);
@@ -1098,6 +1101,8 @@ Attributes (written by the region's **Settings**):
 | `sharing` | `true` | `false`: reports stay private |
 | `share_authz` | | An authorization scheme: only users that pass it may share reports |
 | `page_size` | `25` | Rows per page of a detail report (5 to 200) |
+| `welcome` | `true` | `false`: the compact start (a list of sources and *Start*) instead of the welcome page |
+| `welcome_title`, `welcome_text` | | The welcome page's greeting instead of pgkiln's (translated like other application texts) |
 | `empty` | `No data found.` | Text when there are no rows |
 
 The sources travel with the application export (they are the region's attributes); users'

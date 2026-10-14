@@ -652,6 +652,13 @@ export const tr: Record<MessageKey, string> = {
   'reporter.name_required': "Rapora bir ad verin.",
   'reporter.not_found': "Bu rapor kullanılamıyor.",
   'reporter.unknown_source': "Bu veri kaynağı artık kullanılamıyor.",
+  'reporter.welcome_title': "Kendi raporlarınızı oluşturun",
+  'reporter.welcome_text': "Bir rapora başlamak için verileri seçin: sütunlar, filtreler, toplamlarla gruplama ve bir grafik ekleyin, sonra kaydedin veya paylaşın.",
+  'reporter.columns_count': "{n} sütun",
+  'reporter.search': "Raporlarda ara",
+  'reporter.changed': "{date} tarihinde değişti",
+  'reporter.no_match': "Aramayla eşleşen rapor yok.",
+  'reporter.chart_tag': "grafik",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Sohbet",
   'assistant.you': "Siz",

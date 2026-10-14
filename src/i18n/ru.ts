@@ -652,6 +652,13 @@ export const ru: Record<MessageKey, string> = {
   'reporter.name_required': "Дайте отчёту название.",
   'reporter.not_found': "Этот отчёт недоступен.",
   'reporter.unknown_source': "Этот источник данных больше недоступен.",
+  'reporter.welcome_title': "Создавайте свои отчёты",
+  'reporter.welcome_text': "Выберите данные для нового отчёта: столбцы, фильтры, группировку с итогами и диаграмму, затем сохраните его или поделитесь им.",
+  'reporter.columns_count': "Столбцов: {n}",
+  'reporter.search': "Поиск отчётов",
+  'reporter.changed': "изменён {date}",
+  'reporter.no_match': "Нет отчётов, подходящих под поиск.",
+  'reporter.chart_tag': "диаграмма",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Беседа",
   'assistant.you': "Вы",

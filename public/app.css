@@ -1609,6 +1609,15 @@ td.to-col-center, th.to-col-center { text-align: center; }
 .reporter-checks { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
 .reporter-chart { margin-bottom: 0.75rem; }
 .reporter-save { margin-top: 1rem; }
+.reporter-hello { margin-bottom: 0.5rem; }
+.reporter-hello p { margin: 0.2rem 0 0; }
+.reporter-cards { list-style: none; margin: 0 0 0.75rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); gap: 0.6rem; }
+.reporter-card { display: flex; flex-direction: column; gap: 0.25rem; height: 100%; padding: 0.7rem 0.85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; text-decoration: none; }
+.reporter-card:hover, .reporter-card:focus-visible { border-color: var(--accent); }
+.reporter-card strong { color: var(--accent); }
+.reporter-card .muted { font-size: 0.85rem; }
+.reporter-card-meta { margin-top: auto; font-size: 0.78rem; color: var(--muted); }
+.reporter-search { max-width: 30rem; margin: 0.25rem 0 0; }
 @media (max-width: 600px) {
   .reporter-row > .label { flex-basis: 100%; }
 }

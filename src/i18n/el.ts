@@ -652,6 +652,13 @@ export const el: Record<MessageKey, string> = {
   'reporter.name_required': "Δώστε όνομα στην αναφορά.",
   'reporter.not_found': "Αυτή η αναφορά δεν είναι διαθέσιμη.",
   'reporter.unknown_source': "Αυτή η πηγή δεδομένων δεν είναι πλέον διαθέσιμη.",
+  'reporter.welcome_title': "Δημιουργήστε τις δικές σας αναφορές",
+  'reporter.welcome_text': "Επιλέξτε τα δεδομένα για μια νέα αναφορά: στήλες, φίλτρα, ομαδοποίηση με σύνολα, ένα γράφημα, και αποθηκεύστε ή μοιραστείτε την.",
+  'reporter.columns_count': "{n} στήλες",
+  'reporter.search': "Αναζήτηση αναφορών",
+  'reporter.changed': "άλλαξε {date}",
+  'reporter.no_match': "Καμία αναφορά δεν ταιριάζει με την αναζήτηση.",
+  'reporter.chart_tag': "γράφημα",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Συνομιλία",
   'assistant.you': "Εσείς",

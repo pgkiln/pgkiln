@@ -652,6 +652,13 @@ export const ar: Record<MessageKey, string> = {
   'reporter.name_required': "أعطِ التقرير اسمًا.",
   'reporter.not_found': "هذا التقرير غير متاح.",
   'reporter.unknown_source': "مصدر البيانات هذا لم يعد متاحًا.",
+  'reporter.welcome_title': "أنشئ تقاريرك الخاصة",
+  'reporter.welcome_text': "اختر البيانات لبدء تقرير: حدد الأعمدة، صفِّ، جمّع مع المجاميع، أضف مخططًا، ثم احفظه أو شاركه.",
+  'reporter.columns_count': "{n} أعمدة",
+  'reporter.search': "البحث في التقارير",
+  'reporter.changed': "عُدِّل في {date}",
+  'reporter.no_match': "لا توجد تقارير مطابقة للبحث.",
+  'reporter.chart_tag': "مخطط",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "المحادثة",
   'assistant.you': "أنت",

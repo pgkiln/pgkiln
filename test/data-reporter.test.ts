@@ -107,7 +107,10 @@ describe('data reporter region', () => {
     const king = await as('king');
     const home = (await king.get('/a/hr/36')).body;
     assert.match(home, /Salary by department/);
-    assert.match(home, /<option value="employees" selected>Employees<\/option><option value="leave">Leave requests<\/option>/);
+    // (sprint 68) the welcome page: each source a card that starts a report
+    assert.match(home, /<h3 class="reporter-title">Build your own reports<\/h3>/);
+    assert.deepEqual([...home.matchAll(/<a class="reporter-card" href="[^"]*dr\d+_src=(\w+)"[^>]*>\s*<strong>([^<]+)<\/strong>/g)].map((m) => `${m[1]}:${m[2]}`), ['employees:Employees', 'leave:Leave requests']);
+    assert.match(home, /<span class="tag">chart<\/span>/, 'a report with a chart says so');
     const id = (await owner.one(`select id from meta.data_report where region_id = $1 and name = 'Salary by department'`, [rid])).id;
     const page = (await king.get(`/a/hr/36?${P()}open=${id}`)).body;
     assert.deepEqual(heads(page), ['Department', 'Number of rows', 'Sum: Salary', 'Average: Salary']);
@@ -115,6 +118,38 @@ describe('data reporter region', () => {
     assert.match(tbody(page), /^<tr><td class="" data-label="Department">RESEARCH<\/td>/, 'sorted by the salary sum, descending');
     assert.match(page, /<figure class="chart chart-bar" aria-label="Salary by department">/);
     assert.match(page, /€10,875\.00/, 'the column\'s format mask applies to its totals');
+  });
+
+  test('the welcome page: a source card opens its editor; search; own title and text; the compact form when turned off', async () => {
+    const king = await as('king');
+    const home = (await king.get('/a/hr/36')).body;
+    const href = /<a class="reporter-card" href="([^"]+)"/.exec(home)![1].replace(/&amp;/g, '&');
+    assert.match((await king.get(href)).body, /reporter-editor/, 'the card opens a new report');
+    assert.match(home, /\d+ columns<\/span>/);
+    // search: shown with more than six reports, or with a search term; matches name and description
+    await owner.query(`insert into meta.data_report (app_id, region_id, username, name, description, definition)
+      select p.app_id, $1, 'king', 'S68 report ' || g, case when g = 3 then 'about the needle' end, '{"source": "employees"}'
+        from meta.region r join meta.page p on p.id = r.page_id, generate_series(1, 7) g where r.id = $1`, [rid]);
+    const many = (await king.get('/a/hr/36')).body;
+    assert.match(many, new RegExp(`<input type="search" name="${P()}q"`));
+    const found = (await king.get(`/a/hr/36?${P()}q=NEEDLE`)).body;
+    assert.match(found, /S68 report 3/);
+    assert.doesNotMatch(found, /S68 report 4|Salary by department/);
+    assert.match((await king.get(`/a/hr/36?${P()}q=nothing-like-this`)).body, /No reports match the search\./);
+    // the developer's own greeting; welcome: false keeps the compact form
+    const config = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+    try {
+      await owner.query(`update meta.region set config = config || '{"welcome_title": "Our numbers", "welcome_text": "Ask <b>away</b>"}' where id = $1`, [rid]);
+      const own = (await king.get('/a/hr/36')).body;
+      assert.match(own, /<h3 class="reporter-title">Our numbers<\/h3><p class="muted">Ask &lt;b&gt;away&lt;\/b&gt;<\/p>/);
+      await owner.query(`update meta.region set config = config || '{"welcome": false}' where id = $1`, [rid]);
+      const compact = (await king.get('/a/hr/36')).body;
+      assert.match(compact, /<option value="employees" selected>Employees<\/option><option value="leave">Leave requests<\/option>/);
+      assert.doesNotMatch(compact, /reporter-card/);
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [rid, config]);
+      await owner.query(`delete from meta.data_report where region_id = $1 and name like 'S68 %'`, [rid]);
+    }
   });
 
   test('the editor\'s parameters pick columns, filter and sort; columns that are not offered are ignored', async () => {

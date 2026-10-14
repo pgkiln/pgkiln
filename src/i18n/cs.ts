@@ -652,6 +652,13 @@ export const cs: Record<MessageKey, string> = {
   'reporter.name_required': "Pojmenujte sestavu.",
   'reporter.not_found': "Tato sestava není k dispozici.",
   'reporter.unknown_source': "Tento zdroj dat už není k dispozici.",
+  'reporter.welcome_title': "Vytvořte si vlastní sestavy",
+  'reporter.welcome_text': "Vyberte data pro novou sestavu: sloupce, filtry, seskupení se součty a graf, potom ji uložte nebo sdílejte.",
+  'reporter.columns_count': "{n} sloupců",
+  'reporter.search': "Hledat sestavy",
+  'reporter.changed': "změněno {date}",
+  'reporter.no_match': "Hledání neodpovídá žádná sestava.",
+  'reporter.chart_tag': "graf",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "Konverzace",
   'assistant.you': "Vy",

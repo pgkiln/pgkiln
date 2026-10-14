@@ -652,6 +652,13 @@ export const ko: Record<MessageKey, string> = {
   'reporter.name_required': "보고서 이름을 입력하세요.",
   'reporter.not_found': "그 보고서는 사용할 수 없습니다.",
   'reporter.unknown_source': "이 데이터 원본은 더 이상 사용할 수 없습니다.",
+  'reporter.welcome_title': "나만의 보고서 만들기",
+  'reporter.welcome_text': "데이터를 선택해 보고서를 시작하세요. 열 선택, 필터, 합계가 있는 그룹, 차트를 추가한 뒤 저장하거나 공유할 수 있습니다.",
+  'reporter.columns_count': "열 {n}개",
+  'reporter.search': "보고서 검색",
+  'reporter.changed': "{date} 변경됨",
+  'reporter.no_match': "검색과 일치하는 보고서가 없습니다.",
+  'reporter.chart_tag': "차트",
   // AI assistant region and natural-language report filters (assistant.ts, ai-filter.ts)
   'assistant.conversation': "대화",
   'assistant.you': "나",
