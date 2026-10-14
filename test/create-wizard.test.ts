@@ -119,7 +119,7 @@ describe('the Create Application wizard', () => {
       assert.equal(res.statusCode, 422, `${rel} ${kind}`);
       assert.match(res.body, /can&#39;t have the page type/);
     }
-    for (const [field, value, message] of [['language', 'xx', /Choose one of the languages/], ['icon', '"><script>', /Choose one of the icons/]]) {
+    for (const [field, value, message] of [['language', 'xx', /Choose one of the languages/], ['icon', '"><script>', /Choose one of the icons/]] as [string, string, RegExp][]) {
       const res = await b.submit('/builder/apps', { ...blank, name: 'Bad', alias: 'cw73-bad', authentication: 'none', [field]: value });
       assert.equal(res.statusCode, 422, field);
       assert.match(res.body, message);
