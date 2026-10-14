@@ -361,7 +361,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await check(page, 'app-36-saved', vp);
       // the editor without JavaScript-only parts: pick the source, open the editor, filter and run
       await page.goto(`${base}/a/hr/36`);
-      await Promise.all([page.waitForNavigation(), page.locator('.reporter-new button').click()]);
+      // (sprint 68) the welcome page: a card per source starts a report
+      await check(page, 'app-36-welcome', vp);
+      await Promise.all([page.waitForNavigation(), page.locator('.reporter-card').first().click()]);
       await page.locator(`select[name="dr${r.id}_fc"]`).first().selectOption('job');
       await page.locator(`input[name="dr${r.id}_fv"]`).first().fill('CLERK');
       await Promise.all([page.waitForNavigation(), page.locator('.reporter-editor button.btn-hot').click()]);
@@ -555,6 +557,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       // (sprint 61) the sign-in page itself
       await page.goto(`${base}/builder/login`);
       await check(page, 'builder-login', vp);
+      // (sprint 68) Find my workspace, before signing in
+      await page.goto(`${base}/builder/find-workspace`);
+      await check(page, 'builder-find-workspace', vp);
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
       const appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
       const pageId = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 3`, [appId])).id;

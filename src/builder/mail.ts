@@ -207,8 +207,35 @@ export async function mailRoutes(app: FastifyInstance) {
             <td data-label="Status">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
             : html`<tr><td colspan="6" class="empty">No mail services yet.</td></tr>`}</tbody></table></div>`,
         html`<a class="btn btn-sm btn-hot" href="${BASE}/mail/new">${icon('plus')} Add service</a>`)}
+      ${await builderMailRegion(s, services)}
       ${region('Recent mail', mailTable(recent, true))}`;
     return send(reply, s, shell(s, 'Mail services', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Mail services']], main));
+  });
+
+  // (096) the builder's own mail ("Find my workspace"): a service and a From address it may send as
+  app.post(`${BASE}/mail/builder`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await adminOnly(s, reply, 'Mail services'))) return;
+    const name = String(req.body?.service ?? '');
+    const from = String(req.body?.from ?? '').trim();
+    try {
+      if (!name) await owner.query(`delete from meta.setting where name in ('builder_mail_service', 'builder_mail_from')`);
+      else {
+        const svc = await owner.one<{ senders: string[] }>('select senders from meta.mail_service where name = $1', [name]);
+        if (!svc) throw new Error('Choose one of the mail services.');
+        if (!/^[^@\s<>"]+@[^@\s<>"]+$/.test(from)) throw new Error('The From address is an e-mail address, e.g. pgkiln@example.com.');
+        if (!senderAllowed(svc.senders, from)) throw new Error(`The service ${name} may not send as ${from}: add it to its senders first.`);
+        await owner.tx(async (c) => {
+          for (const [k, v] of [['builder_mail_service', name], ['builder_mail_from', from]])
+            await c.query('insert into meta.setting (name, value) values ($1, $2) on conflict (name) do update set value = excluded.value', [k, v]);
+        });
+      }
+      await logActivity({ appId: null, username: s.username, event: 'mail_service', ip: clientIp(req), detail: name ? `builder mail: ${name} as ${from}` : 'builder mail: none' });
+      flash(s, name ? 'Builder mail saved: "Find my workspace" sends through it.' : 'The builder sends no mail now.');
+    } catch (e) {
+      flash(s, (e as Error).message, 'error');
+    }
+    return back(reply, s, `${BASE}/mail#builder-mail`);
   });
 
   // a new service: choose the provider, then its settings only
@@ -422,4 +449,16 @@ export async function mailRoutes(app: FastifyInstance) {
   };
   app.post(`${BASE}/apps/:id(^\\d+$)/mail/:mid(^\\d+$)/retry`, change('queued', ['error', 'cancelled']));
   app.post(`${BASE}/apps/:id(^\\d+$)/mail/:mid(^\\d+$)/cancel`, change('cancelled', ['queued']));
+}
+
+/** (096) Mail services → Builder mail: the service and From address of the builder's own mail. */
+async function builderMailRegion(s: Session, services: { name: string; enabled: boolean }[]) {
+  const set = Object.fromEntries((await owner.query<{ name: string; value: string }>(`select name, value from meta.setting where name in ('builder_mail_service', 'builder_mail_from')`)).rows.map((r) => [r.name, r.value]));
+  return region('Builder mail', html`<form method="post" action="${BASE}/mail/builder">${csrf(s)}
+    <p class="muted u-mt0">The service the builder itself sends through: <b>Find my workspace</b> on the sign-in page mails developers their workspaces (to the address on their account). None: the builder sends no mail.</p>
+    <div class="form-grid">
+      ${select('service', 'Service', set.builder_mail_service ?? '', [['', 'None'], ...services.map((x) => [x.name, `${x.name}${x.enabled ? '' : ' (disabled)'}`] as [string, string])])}
+      ${input('from', 'From address', set.builder_mail_from ?? '', { type: 'email', placeholder: 'pgkiln@example.com', help: 'One of the service\'s senders.' })}
+    </div>
+    <div class="buttons"><button class="btn">Save</button></div></form>`, '', 'builder-mail');
 }

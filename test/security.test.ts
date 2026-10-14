@@ -4056,7 +4056,7 @@ describe('sprint 33 item 1: Gantt, pyramid and polar charts', () => {
          union all select '<script>alert(2)</script>', '2026-01-03', null, null, 2, '1,"><x'`]);
       const allen = await as('allen');
       const page = (await allen.get('/a/hr/32')).body;
-      assert.ok(!page.includes('<img src=x') && !page.includes('<script>alert') && !page.includes('<svg onload') && !page.includes('"><b>'));
+      for (const bad of ['<img src=x', '<script>alert', '<svg onload', '50"><b>']) assert.ok(!page.includes(bad), bad);
       assert.match(page, /&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
       assert.doesNotMatch(page, /\sstyle=/, 'geometry goes into the nonce stylesheet');
       assert.doesNotMatch(page, /\/a\/hr\/3\?/, 'page 3 needs MANAGER: no drill-down for allen');
@@ -7547,5 +7547,110 @@ describe('sprint 67 workspace export and import', () => {
     await b.upload('/builder/workspace-import', { part: 'extension_links' }, file({ extension_links: [{ label: 'Sec67x <img src=x onerror=alert(1)>', url: 'https://x.example/' }] }));
     const page = (await b.get('/builder')).body;
     assert.doesNotMatch(page, /<img src=x/);
+  });
+});
+
+describe('sprint 68 find my workspace and the data reporter welcome page', () => {
+  const logged: string[] = [];
+  const realLog = console.log;
+  const mails = async () => {
+    await new Promise((r) => setTimeout(r, 300));
+    return logged.splice(0).filter((l) => l.startsWith('mail (log only)'));
+  };
+  before(async () => {
+    await owner.query(`insert into meta.mail_service (name, provider, senders) values ('SEC68_LOG', 'log', '{@example.com}') on conflict do nothing`);
+    await owner.query(`insert into meta.setting (name, value) values ('builder_mail_service', 'SEC68_LOG'), ('builder_mail_from', 'pgkiln@example.com') on conflict (name) do update set value = excluded.value`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin, email) values ('sec68_dev', meta.hash_password('Sec68-dev-password!'), false, 'sec68@example.com') on conflict do nothing`);
+    await owner.query(`delete from meta.activity_log where event = 'find_workspace'`);
+    console.log = (...a: unknown[]) => (logged.push(a.map(String).join(' ')), undefined);
+  });
+  after(async () => {
+    console.log = realLog;
+    await owner.query(`delete from meta.setting where name in ('builder_mail_service', 'builder_mail_from')`);
+    await owner.query(`delete from meta.mail_service where name = 'SEC68_LOG'`);
+    await owner.query(`delete from meta.developer where username = 'sec68_dev'`);
+    await owner.query(`delete from meta.activity_log where event = 'find_workspace'`);
+  });
+
+  test('find my workspace: CSRF, no header injection, a limit per IP address', async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/find-workspace');
+    await b.post('/builder/find-workspace', { email: 'sec68@example.com' });
+    assert.deepEqual(await mails(), [], 'no CSRF token: nothing');
+    for (const email of ['sec68@example.com\r\nBcc: victim@example.com', 'sec68@example.com,victim@example.com', '<sec68@example.com>', 'a@b'])
+      await b.submit('/builder/find-workspace', { email });
+    assert.deepEqual(await mails(), []);
+    // ten requests an hour from one address, whatever they ask for
+    for (let i = 0; i < 10; i++) await b.submit('/builder/find-workspace', { email: `nobody${i}@example.com` });
+    await b.submit('/builder/find-workspace', { email: 'sec68@example.com' });
+    assert.deepEqual(await mails(), [], 'limited per IP address');
+  });
+
+  test('only administrators set the builder\'s mail; another developer\'s address stays theirs; addresses are escaped', async () => {
+    const d = new FileBrowser(app);
+    await d.get('/builder/login');
+    await d.submit('/builder/login', { username: 'sec68_dev', password: 'Sec68-dev-password!' });
+    await d.get('/builder/developers');
+    assert.equal((await d.submit('/builder/mail/builder', { service: '' })).statusCode, 403);
+    assert.equal((await owner.one(`select value from meta.setting where name = 'builder_mail_service'`)).value, 'SEC68_LOG');
+    await d.get('/builder/developers');
+    assert.equal((await d.submit('/builder/developers/email', { username: 'admin', email: 'x@example.com' })).statusCode, 403);
+    await assert.rejects(owner.query(`update meta.developer set email = 'a@example.com"><script>' where username = 'sec68_dev'`));
+    await owner.query(`update meta.developer set email = $1 where username = 'sec68_dev'`, [`o'neil&co@example.com`]);
+    assert.doesNotMatch((await d.get('/builder/developers')).body, /o'neil&co/, 'escaped');
+    assert.equal((await new FileBrowser(app).get('/builder/developers')).statusCode, 302, 'not signed in');
+  });
+
+  test('the data reporter search is a value, never SQL; another user\'s private reports never show', async () => {
+    const b = new Browser();
+    await b.login('blake');
+    const rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 36 and r.type = 'data_reporter'`)).id;
+    await owner.query(`insert into meta.data_report (app_id, region_id, username, name, definition) select p.app_id, $1, 'king', 'Sec68 private', '{"source": "employees"}' from meta.region r join meta.page p on p.id = r.page_id where r.id = $1`, [rid]);
+    try {
+      for (const q of [`') or true --`, '%', '_', 'Sec68'])
+        assert.doesNotMatch((await b.get(`/a/hr/36?dr${rid}_q=${encodeURIComponent(q)}`)).body, /Sec68 private/, q);
+      assert.match((await b.get(`/a/hr/36?dr${rid}_q=${encodeURIComponent('<script>x')}`)).body, /value="&lt;script&gt;x"/);
+    } finally {
+      await owner.query(`delete from meta.data_report where name = 'Sec68 private'`);
+    }
+  });
+});
+
+describe('sprint 69 gantt drag and drop', () => {
+  let rid: number;
+  let saved: { id: number; starts: string; ends: string | null }[];
+  before(async () => {
+    rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 32 and r.title = 'Office move'`)).id;
+    saved = (await owner.query('select id, starts::text, ends::text from hr.project_task')).rows;
+  });
+  after(async () => {
+    for (const t of saved) await owner.query('update hr.project_task set starts = $2, ends = $3 where id = $1', [t.id, t.starts, t.ends]);
+  });
+
+  test('CSRF, the region\'s authorization, a numeric region, dates as dates; the SQL sees only checked values', async () => {
+    const b = new Browser();
+    await b.login('scott');
+    await b.get('/a/hr/32');
+    const before = (await owner.query('select id, starts, ends from hr.project_task order by id')).rows;
+    assert.equal((await b.post(`/a/hr/32/chart/${rid}/move`, { __csrf: b.lastCsrf, task: '3', start: '2031-01-01', end: '2031-01-02' })).statusCode, 403, 'not a manager');
+    const k = new Browser();
+    await k.login('king');
+    await k.get('/a/hr/32');
+    assert.equal((await k.post(`/a/hr/32/chart/${rid}/move`, { task: '3', start: '2031-01-01', end: '2031-01-02' })).statusCode, 403, 'no CSRF token');
+    for (const id of [`${rid} or 1=1`, '-1', 'x'])
+      assert.notEqual((await k.post(`/a/hr/32/chart/${encodeURIComponent(id)}/move`, { __csrf: k.lastCsrf, task: '3', start: '2031-01-01', end: '2031-01-02' })).statusCode, 200, id);
+    for (const [start, end] of [['2031-01-01', "2031-01-02'::date, ends = null where true; --"], ["now()", '2031-01-02'], ['2031-01-01T10:00:00Z', '2031-01-02']])
+      assert.equal((await k.post(`/a/hr/32/chart/${rid}/move`, { __csrf: k.lastCsrf, task: '3', start, end })).statusCode, 400, `${start} ${end}`);
+    assert.deepEqual((await owner.query('select id, starts, ends from hr.project_task order by id')).rows, before);
+    // a task outside the region's query (here: a row the query doesn't return) can't be moved
+    await owner.query(`insert into hr.project_task (id, name, starts) values (9069, 'Sec69 hidden', '2031-01-01')`);
+    try {
+      await owner.query(`update meta.region set source = replace(source, 'from hr.project_task t', 'from hr.project_task t where t.id < 9000') where id = $1`, [rid]);
+      assert.equal((await k.post(`/a/hr/32/chart/${rid}/move`, { __csrf: k.lastCsrf, task: '9069', start: '2031-02-01', end: '2031-02-01' })).statusCode, 403);
+      assert.equal((await owner.one(`select starts::text from hr.project_task where id = 9069`)).starts, '2031-01-01');
+    } finally {
+      await owner.query(`update meta.region set source = replace(source, ' where t.id < 9000', '') where id = $1`, [rid]);
+      await owner.query('delete from hr.project_task where id = 9069');
+    }
   });
 });

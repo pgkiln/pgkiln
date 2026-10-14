@@ -30,6 +30,7 @@ import { cleanRichText } from '../richtext.ts';
 import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { downloadHeaders, type Download } from './processes.ts';
+import { moveGanttTask } from './gantt-move.ts';
 import { moveCalendarEvent } from './calendar.ts';
 import { openDownload, reportParams, normaliseReportParams, selectionOf } from './report.ts';
 import { invalidatePage, lazyOf } from './region-cache.ts';
@@ -1035,6 +1036,44 @@ export async function runtimeRoutes(app: FastifyInstance) {
       }
       if (e instanceof RangeError) return reply.code(400).send({ error: e.message });
       return reply.code(400).send({ error: await publicError(ctx, e, 'calendar move') });
+    }
+  });
+
+  // (sprint 69) Gantt drag and drop (gantt-move.ts): new dates for a task, answer with the re-rendered region.
+  app.post('/a/:alias/:page/chart/:id/move', async (req: Req, reply) => {
+    const ctx = await loadContext(req, reply, { json: true });
+    if (!ctx) return;
+    const body = req.body ?? {};
+    if (body.__csrf !== ctx.session.csrf_token) return reply.code(403).send({ error: ctx.locale.t('error.session_reload') });
+    ctx.params = new URLSearchParams(typeof body.__url_params === 'string' ? body.__url_params : '');
+    const task = typeof body.task === 'string' ? body.task : '';
+    const start = typeof body.start === 'string' ? body.start : '';
+    const end = typeof body.end === 'string' ? body.end : '';
+    try {
+      const out = await appTx(txContext(ctx), async (c) => {
+        ctx.client = c;
+        await checkPageAccess(ctx);
+        const vis = await computeVisibility(ctx);
+        const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'chart');
+        if (!r || !vis.regions.has(r.id) || !task || task.length > 200) throw new Forbidden(ctx.locale.t('chart.gantt_cannot_move'));
+        const moved = await moveGanttTask(ctx, r, task, start, end);
+        await computeVisibility(ctx);
+        return {
+          region: (await renderRegion(ctx, r)).toString(),
+          css: ctx.css.text,
+          message: ctx.locale.t('chart.gantt_moved', { task: moved.label, start: start.replace('T', ' '), end: end.replace('T', ' ') }),
+        };
+      });
+      await saveState(ctx.session);
+      await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'gantt_move', ip: ctx.ip, detail: `region ${req.params.id}, task ${task}: ${start} – ${end}` });
+      return reply.send(out);
+    } catch (e) {
+      if (e instanceof Forbidden) {
+        await logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail: `gantt move: region ${req.params.id}` });
+        return reply.code(403).send({ error: e.message });
+      }
+      if (e instanceof RangeError) return reply.code(400).send({ error: e.message });
+      return reply.code(400).send({ error: await publicError(ctx, e, 'gantt move') });
     }
   });
 

@@ -5,7 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Sprint 67: REST source catalogs and a workspace's export and import.
+Sprint 67: REST source catalogs and a workspace's export and import. Sprint 68: the Data Reporter's welcome
+page and Find my workspace. Sprint 69: dragging tasks on a Gantt chart. Sprint 70: treemap, sunburst and timeline
+charts.
 
 ### Added
 - **REST source catalogs** (migration 095; APEX: Workspace Utilities → REST Source Catalogs): a workspace's web
@@ -21,6 +23,26 @@ Sprint 67: REST source catalogs and a workspace's export and import.
   scripts, blueprints and data generators to one file (`pgkiln-workspace/1`) and imports such a file into the current
   workspace in one transaction, keeping or replacing components with the same name. For administrators and the
   workspace's administrators.
+- **The Data Reporter's welcome page** (APEX 26.1): a greeting, the data sources as cards that start a report (label,
+  description, number of columns), the user's own reports with the latest changed first, shared reports, and a search
+  over names and descriptions. `welcome_title` / `welcome_text` replace the greeting; `"welcome": false` keeps the
+  compact start. New texts in all 22 languages.
+- **Find my workspace** (migration 096; APEX: the sign-in page's Find My Workspace): developers' e-mail addresses
+  (their own on the Developers page; administrators set anyone's), Workspace utilities → Mail services → **Builder
+  mail**, and a page under the builder's sign-in form that mails an address's accounts their workspaces. The same
+  answer for every address, the mail after the answer, at most three mails an hour per address and ten requests an
+  hour per IP address.
+- **Gantt editing by drag and drop** (APEX: Gantt task dragging): a Gantt chart with `gantt_move` (SQL with
+  `:TASK_ID`, `:NEW_START`, `:NEW_END`) and a `task_id` column lets users who pass `gantt_move_authz` drag a task to
+  new dates, drag a bar's end to change its length, or do both with the arrow keys (Shift: the end; Enter saves). The
+  server checks the dates and that the task is in the chart's query, runs the SQL as the application's role and
+  sends the chart back. Builder: Chart settings → *Gantt: drag and drop*. HR example part 59 makes the office move on
+  page 32 editable for managers.
+- **Treemap, sunburst and timeline charts** (APEX: Oracle JET treemap, sunburst and timeline): a treemap and a
+  sunburst read `label, value` and optional `node_id` / `parent_id` columns for a hierarchy (squarified rectangles;
+  rings with the total in the centre); a timeline reads `label, start, end` with an optional `series` column for
+  lanes (points and periods, overlaps in rows). Tooltips, drill-down links and data tables like the other charts.
+  HR example part 60 adds one of each to page 32.
 
 ### Security
 - Reserved headers (`Authorization`, `Cookie`, `Host`, the transport headers) can't be REST data source header

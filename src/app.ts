@@ -72,6 +72,7 @@ import { crossAppRoutes } from './builder/cross-app.ts';
 import { workspaceBackupRoutes } from './builder/workspace-backups.ts';
 import { restCatalogRoutes } from './builder/rest-catalogs.ts';
 import { workspaceTransferRoutes } from './builder/workspace-transfer.ts';
+import { findWorkspaceRoutes } from './builder/find-workspace.ts';
 import { runtimeScope } from './db.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -183,6 +184,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(workspaceBackupRoutes);
   await app.register(restCatalogRoutes);
   await app.register(workspaceTransferRoutes);
+  await app.register(findWorkspaceRoutes);
   await app.register(sharedRoutes);
   await app.register(designerRoutes);
   await app.register(lockRoutes);

@@ -620,6 +620,41 @@ a.drill > .polar-sector:hover { fill-opacity: 1; }
 .gantt-bar:hover, .gantt-bar:focus-visible, .gantt-milestone:hover, .gantt-milestone:focus-visible { filter: brightness(1.12); }
 .gantt-deps { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
 .gantt-dep { fill: none; stroke: var(--muted); stroke-width: 1.25px; }
+/* (sprint 70) treemap, sunburst and timeline */
+.treemap { position: relative; aspect-ratio: 16 / 10; max-height: 26rem; width: 100%; font-size: 0.78rem; }
+.tm-group, .tm-cell { position: absolute; box-sizing: border-box; overflow: hidden; }
+.tm-group { border: 1px solid var(--surface); }
+.tm-title { position: absolute; top: 0; left: 0; right: 0; padding: 0.1rem 0.35rem; font-weight: 650; color: var(--text); background: color-mix(in srgb, var(--c) 42%, var(--surface)); box-shadow: inset 0 -2px 0 var(--c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; }
+/* tinted, with the page's text colour: contrast holds in light and dark */
+.tm-cell { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.2rem 0.35rem 0.2rem 0.5rem; border: 1px solid var(--surface); background: color-mix(in srgb, var(--c) 24%, var(--surface)); box-shadow: inset 3px 0 0 var(--c); color: var(--text); text-decoration: none; }
+.tm-leaf { background: color-mix(in srgb, var(--c) 32%, var(--surface)); }
+.tm-cell:hover, .tm-cell:focus-visible { filter: brightness(1.12); }
+.tm-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-value { opacity: 0.9; font-variant-numeric: tabular-nums; }
+.sb { fill: var(--c); stroke: var(--surface); stroke-width: 0.25; }
+.sb.d2 { fill-opacity: 0.78; } .sb.d3 { fill-opacity: 0.58; } .sb.d4 { fill-opacity: 0.4; }
+a.drill > .sb:hover { filter: brightness(1.12); }
+.timeline { font-size: 0.8rem; }
+.timeline-axis { position: relative; height: 1.5rem; border-bottom: 1px solid var(--chart-axis); font-size: 0.72rem; color: var(--muted); }
+.timeline-axis span { position: absolute; bottom: 0.3rem; padding-left: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.timeline-axis span.skip { visibility: hidden; }
+@media (max-width: 640px) { .timeline-axis span.odd { visibility: hidden; } }
+.timeline-lane { border-bottom: 1px solid var(--chart-grid); padding-top: 0.25rem; }
+.timeline-name { display: block; font-size: 0.75rem; font-weight: 650; color: var(--muted); }
+.timeline-plot { position: relative; overflow: hidden; }
+.tl-item, .tl-point { position: absolute; display: flex; align-items: center; height: 1.4rem; color: inherit; text-decoration: none; z-index: 2; outline-offset: 2px; }
+.tl-item { min-width: 3px; border-radius: 4px; background: color-mix(in srgb, var(--c) 30%, var(--surface)); box-shadow: inset 3px 0 0 var(--c); }
+.tl-item .tl-label { padding: 0 0.35rem 0 0.5rem; white-space: nowrap; }
+.tl-point { gap: 0.3rem; margin-left: -0.35rem; white-space: nowrap; }
+.tl-dot { width: 0.7rem; height: 0.7rem; flex: none; border-radius: 50%; background: var(--c); }
+.tl-item:hover, .tl-item:focus-visible, .tl-point:hover .tl-dot, .tl-point:focus-visible .tl-dot { filter: brightness(1.12); }
+.gantt-editable [data-task] { cursor: grab; touch-action: none; }
+.gantt-editable .gantt-dragging { cursor: grabbing; z-index: 3; }
+.gantt-editable .gantt-moving { box-shadow: 0 0 0 2px var(--accent); }
+.gantt-handle { position: absolute; top: 0; right: 0; bottom: 0; width: 8px; cursor: ew-resize; background: color-mix(in srgb, var(--surface) 45%, transparent); }
+.gantt-editable [aria-busy="true"], .gantt-editable[aria-busy="true"] { opacity: 0.7; }
+.gantt-status { min-height: 1.3em; margin: 0.4rem 0 0; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.gantt-hint { margin: 0.2rem 0 0; font-size: 0.8rem; }
 .gantt-arrow { position: absolute; width: 0; height: 0; margin: -4px 0 0 -6px; border: 4px solid transparent; border-left: 6px solid var(--muted); border-right-width: 0; pointer-events: none; z-index: 1; }
 
 /* data table + tooltip */
@@ -1609,6 +1644,15 @@ td.to-col-center, th.to-col-center { text-align: center; }
 .reporter-checks { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
 .reporter-chart { margin-bottom: 0.75rem; }
 .reporter-save { margin-top: 1rem; }
+.reporter-hello { margin-bottom: 0.5rem; }
+.reporter-hello p { margin: 0.2rem 0 0; }
+.reporter-cards { list-style: none; margin: 0 0 0.75rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); gap: 0.6rem; }
+.reporter-card { display: flex; flex-direction: column; gap: 0.25rem; height: 100%; padding: 0.7rem 0.85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; text-decoration: none; }
+.reporter-card:hover, .reporter-card:focus-visible { border-color: var(--accent); }
+.reporter-card strong { color: var(--accent); }
+.reporter-card .muted { font-size: 0.85rem; }
+.reporter-card-meta { margin-top: auto; font-size: 0.78rem; color: var(--muted); }
+.reporter-search { max-width: 30rem; margin: 0.25rem 0 0; }
 @media (max-width: 600px) {
   .reporter-row > .label { flex-basis: 100%; }
 }
