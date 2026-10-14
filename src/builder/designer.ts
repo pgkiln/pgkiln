@@ -11,7 +11,7 @@ import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
-import { arrangeRoutes, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, REGION_LABELS, REGION_TYPES, undoState } from './arrange.ts';
+import { arrangeRoutes, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
 
 // Page designer, laid out like APEX's Page Designer: the component tree on
 // the left (Rendering / Dynamic actions / Processing / Shared components),
@@ -162,8 +162,15 @@ export async function designerRoutes(app: FastifyInstance) {
     // ------------------------------------------------------------ center: layout + gallery
     const chip = (k: 'item' | 'button', r: any) =>
       html`<a class="pd-chip pd-chip-${k}${isSel(`${k}-${r.id}`) ? ' is-selected' : ''}${k === 'button' && r.hot ? ' is-hot' : ''}" href="${url(`c=${k}-${r.id}`)}" draggable="true" data-kind="${k}" data-id="${r.id}"${cur(`${k}-${r.id}`)} aria-describedby="pd-kbd">${k === 'item' ? bicon(itemIcon(r.type)) : ''}<span>${r.label || r.name}</span>${k === 'item' ? html`<small>${r.name}</small>` : ''}</a>`;
-    const slot = (k: 'item' | 'button', regionId: number | null, list: any[]) =>
-      html`<div class="pd-slot pd-slot-${k}" data-drop="${k}" data-region="${regionId ?? ''}">${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? 'Items' : 'Buttons'}</span>`}</div>`;
+    const slot = (k: 'item' | 'button', regionId: number | null, list: any[], buttonSlot = '') =>
+      html`<div class="pd-slot pd-slot-${k}${buttonSlot && buttonSlot !== 'region' && !list.length ? ' pd-slot-spare' : ''}" data-drop="${k}" data-region="${regionId ?? ''}"${buttonSlot ? raw(` data-slot="${buttonSlot}"`) : ''}${buttonSlot && buttonSlot !== 'region' ? raw(` title="Button position: ${SLOT_LABELS[buttonSlot]}"`) : ''}>${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? 'Items' : buttonSlot && buttonSlot !== 'region' ? SLOT_LABELS[buttonSlot] : 'Buttons'}</span>`}</div>`;
+    // (sprint 77, APEX: region slots) a region's buttons by position: the header's, the region's own, the bottom bar's
+    const buttonSlots = (r: any) => {
+      const mine = rows.button.filter((b) => b.region_id === r.id);
+      const at = (sl: string) => mine.filter((b) => (b.slot ?? 'region') === sl);
+      const row = (list: string[], cls: string) => html`<div class="pd-slots ${cls}">${list.map((sl) => slot('button', r.id, at(sl), sl))}</div>`;
+      return html`${row(TOP_SLOTS, 'pd-slots-top')}${slot('button', r.id, at('region'), 'region')}${row(BOTTOM_SLOTS, 'pd-slots-bottom')}`;
+    };
     const block = (r: any) => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}">
         <div class="pd-region-head" draggable="true" data-kind="region" data-id="${r.id}">
           <span class="pd-grip" title="Drag to move">${bicon('grip')}</span>
@@ -171,13 +178,32 @@ export async function designerRoutes(app: FastifyInstance) {
           <span class="pd-region-meta">${r.columns}/12</span>
         </div>
         <div class="pd-region-body">
-          <div class="pd-region-type">${REGION_LABELS[r.type]?.[0] ?? r.type}${r.template !== 'standard' ? ` · ${r.template}` : ''}${r.position && r.position !== 'body' ? ` · position ${r.position}` : ''}</div>
+          <div class="pd-region-type">${REGION_LABELS[r.type]?.[0] ?? r.type}${r.template !== 'standard' ? ` · ${r.template}` : ''}</div>
           ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
           ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
-          ${slot('button', r.id, rows.button.filter((b) => b.region_id === r.id))}
+          ${buttonSlots(r)}
         </div>
         <span class="pd-resize" title="Drag to change the column span" aria-hidden="true"></span>
       </div>`;
+    // (sprint 77, APEX: the page template's display positions) a drop zone per position of the page template, and
+    // for any other position that has regions (they show in the body when the page runs)
+    const side = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
+    const byPos = (pos: string) => rows.region.filter((r) => (r.position ?? 'body') === pos);
+    const zone = (pos: string) => {
+      const list = byPos(pos);
+      const off = (pos === 'left' || pos === 'right') && pos !== side;
+      return html`<section class="pd-zone pd-zone-${pos}${list.length ? '' : ' is-empty'}" aria-label="${POSITION_LABELS[pos]}">
+        <div class="pd-zone-label">${POSITION_LABELS[pos]}${off ? html` <small>(not in this page template: shown in the body)</small>` : ''}</div>
+        <div class="pd-grid" data-drop="region" data-position="${pos}">
+          ${list.map(block)}
+          <div class="pd-grid-end" data-end><a href="${url(`new=region${pos === 'body' ? '' : `&position=${pos}`}`)}">${icon('plus')} Region${pos === 'body' ? '' : html`<span class="sr-only"> in ${POSITION_LABELS[pos]}</span>`}</a></div>
+        </div></section>`;
+    };
+    const extra = (pos: string) => pos !== side && byPos(pos).length > 0;
+    const zones = html`${zone('banner')}${zone('breadcrumb')}
+      <div class="pd-columns${side ? ` pd-columns-${side}` : ''}">
+        ${side === 'left' || extra('left') ? zone('left') : ''}${zone('body')}${side === 'right' || extra('right') ? zone('right') : ''}
+      </div>${zone('footer')}`;
     const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>) =>
       html`<ul class="pd-gallery-list" aria-label="${COMPONENTS[k].plural}">${types.map((t) => html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="Drag onto the layout, or open to create">${bicon(labels[t]?.[1] ?? k)}<span>${labels[t]?.[0] ?? t}</span></a></li>`)}</ul>`;
     const layout = html`
@@ -189,10 +215,7 @@ export async function designerRoutes(app: FastifyInstance) {
       </div>
       <div class="pd-canvas" id="pd-layout" data-page-id="${p.id}">
         <div class="pd-page-label">${icon('file')} Page ${p.page_no}: ${p.name}${p.mode === 'modal' ? ' (modal dialog)' : ''}</div>
-        <div class="pd-grid" data-drop="region">
-          ${rows.region.map(block)}
-          <div class="pd-grid-end" data-end><a href="${url('new=region')}">${icon('plus')} Region</a></div>
-        </div>
+        ${zones}
         <div class="pd-pagelevel">
           <div class="pd-pagelevel-title">Page level (no region)</div>
           ${slot('item', null, pageItems)}
@@ -256,7 +279,8 @@ export async function designerRoutes(app: FastifyInstance) {
       const lastSeq = Math.max(0, ...rows[newKind].map((r) => r.seq));
       const typeField = newKind === 'button' ? 'action' : 'type';
       const presetType = spec.fields.find((f) => f.name === typeField)?.options?.includes(req.query.type ?? '') ? { [typeField]: req.query.type } : {};
-      const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
+      const presetPlace = newKind === 'region' && POSITIONS().includes(req.query.position ?? '') ? { position: req.query.position } : {};
+      const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, ...presetPlace, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
       heading = html`${icon(spec.icon)}<span>New ${spec.label.toLowerCase()}</span>`;
       props = peTabs([tab('pd-r-props', spec.label, componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, `Create ${spec.label.toLowerCase()}`, { id: formId }), true)]);
     } else if (kind && kind !== 'page' && PAGE_KINDS.includes(kind)) {

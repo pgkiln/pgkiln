@@ -364,13 +364,15 @@ export async function renderPage(ctx: PageContext) {
   const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);
   // (099) regions by display position; the side column of a side-column page template, else its regions in the body
   const side = ctx.page.page_template === 'left_side_column' ? 'left' : ctx.page.page_template === 'right_side_column' ? 'right' : null;
-  const at: Record<string, (Raw | '')[]> = { banner: [], breadcrumb: [], side: [], body: [], footer: [] };
+  const at: Record<string, Raw[]> = { banner: [], breadcrumb: [], side: [], body: [], footer: [] };
   for (const r of ctx.page.regions) {
     const pos = r.position ?? 'body';
     const into = pos === 'left' || pos === 'right' ? (pos === side ? 'side' : 'body') : pos in at ? pos : 'body';
-    at[into].push(await renderRegion(ctx, r, hidden));
+    // a region its condition or authorization leaves out ('') leaves no empty position behind
+    const out = await renderRegion(ctx, r, hidden);
+    if (out) at[into].push(out);
   }
-  const area = (cls: string, list: (Raw | '')[]) => (list.length ? html`<div class="t-regions ${cls}">${list}</div>` : '');
+  const area = (cls: string, list: Raw[]) => (list.length ? html`<div class="t-regions ${cls}">${list}</div>` : '');
   const regions = side && at.side.length
     ? html`<div class="t-columns t-columns-${side}"><aside class="t-side" aria-label="${side === 'left' ? 'Left column' : 'Right column'}"><div class="t-regions t-pos-side">${at.side}</div></aside>
         <div class="t-regions t-pos-body">${at.body}</div></div>`

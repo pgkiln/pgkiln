@@ -360,9 +360,12 @@
       e.dataTransfer.effectAllowed = drag.isNew ? 'copy' : 'move';
       e.dataTransfer.setData('text/plain', drag.isNew ? `new ${drag.kind} ${drag.type}` : `${drag.kind} ${drag.id}`);
       (drag.kind === 'region' && !drag.isNew ? src.closest('.pd-region') : src).classList.add('is-dragging');
+      // (sprint 77) empty display positions and button positions show while something can drop there
+      canvas.classList.add(`pd-dragging-${drag.kind}`);
     });
     document.addEventListener('dragend', () => {
       for (const el of document.querySelectorAll('.is-dragging')) el.classList.remove('is-dragging');
+      canvas.classList.remove('pd-dragging-region', 'pd-dragging-item', 'pd-dragging-button');
       clear();
       drag = null;
     });
@@ -411,8 +414,10 @@
       clear();
       const before = t.before ? t.before.dataset.id : '';
       const region = d.kind === 'region' ? '' : t.zone.dataset.region;
-      if (d.isNew) post('create', { kind: d.kind, type: d.type, region, before });
-      else if (before !== d.id) post('move', { kind: d.kind, id: d.id, region, before });
+      // a region's display position, a button's position in its region
+      const place = d.kind === 'region' ? { position: t.zone.dataset.position ?? '' } : d.kind === 'button' ? { slot: t.zone.dataset.slot ?? '' } : {};
+      if (d.isNew) post('create', { kind: d.kind, type: d.type, region, before, ...place });
+      else if (before !== d.id || t.zone !== canvas.querySelector(`[data-kind="${d.kind}"][data-id="${d.id}"]`)?.closest('.pd-grid, .pd-slot')) post('move', { kind: d.kind, id: d.id, region, before, ...place });
     });
 
     // ------------------------------------------------ resizing a region (drag its right edge)
