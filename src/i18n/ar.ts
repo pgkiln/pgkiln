@@ -63,6 +63,7 @@ export const ar: Record<MessageKey, string> = {
   'common.back': "رجوع",
   'common.home': "الانتقال إلى الصفحة الرئيسية",
   'common.skip': "تخطَّ إلى المحتوى",
+  'common.back_to_top': "العودة إلى الأعلى",
   'common.toggle_nav': "إظهار التنقل أو إخفاؤه",
   'common.dismiss': "إغلاق",
   // messages and errors

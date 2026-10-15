@@ -273,7 +273,9 @@ Creating the app also:
 - creates the database role `app_<alias>` with `SELECT/INSERT/UPDATE/DELETE` on all tables,
   `USAGE` on sequences and `EXECUTE` on functions in the schema, plus **default privileges**,
   so tables you create later (as the owner, e.g. in the SQL Workshop) are usable by the app straight away;
-- creates page 1 *Home*, a navigation entry, and an authorization scheme `ADMIN` (role `admin`);
+- creates page 1 *Home*, a navigation entry, and an authorization scheme `ADMIN` (role `admin`); (sprint 88) the home
+  page is a hero with the name and icon on the page background and a card per page, each with a colour band and its
+  icon in a round badge; the version is *Release 1.0*;
 - shows a progress message while it works and then opens the new application's page in the builder,
   with what was created (and anything left out) as a message.
 
@@ -1022,7 +1024,9 @@ on Definition (`?tab=…` opens another). *Save settings* saves the first five t
 you were on. The Security tab shows only the fields of the chosen authentication type (HTTP header, database
 accounts or custom).
 
-- **Application**: name, alias, home page.
+- **Application**: name, alias, home page, and (sprint 88) the **version** (APEX: Version, e.g. *Release 1.0*): shown
+  at the bottom of the application's pages, next to *Back to top*. New applications start at *Release 1.0*; empty: no
+  version in the footer.
 - **Security**: authentication (*App users*, *HTTP header*, *Database accounts*, *Custom* or
   *None*), the database role, and **debug mode** (shows full database errors to users; development
   only). The state of the [debug messages](06-processing.md#debug-messages) is shown below it,

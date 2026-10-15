@@ -2015,3 +2015,30 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .fd-form { margin: 0.75rem 0; }
 .fd-radios { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.25rem; }
 .fd-new { margin-top: 1rem; }
+
+/* (sprint 88, GEN-4; APEX: the Cards list template and the hero region) a list's cards each get a colour band
+   and their icon in a round badge, in the chart palette's order; the hero sits on the page background */
+.list-cards > li { --card-color: var(--series-1); }
+.list-cards > li:nth-child(8n+2) { --card-color: var(--series-2); }
+.list-cards > li:nth-child(8n+3) { --card-color: var(--series-3); }
+.list-cards > li:nth-child(8n+4) { --card-color: var(--series-4); }
+.list-cards > li:nth-child(8n+5) { --card-color: var(--series-5); }
+.list-cards > li:nth-child(8n+6) { --card-color: var(--series-6); }
+.list-cards > li:nth-child(8n+7) { --card-color: var(--series-7); }
+.list-cards > li:nth-child(8n+8) { --card-color: var(--series-8); }
+.list-card { border-top: 4px solid var(--card-color); }
+.list-card-icon { flex: none; display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: 50%;
+  background: color-mix(in srgb, var(--card-color) 16%, transparent); color: var(--card-color); }
+.list-card-icon .icon { width: 1.3rem; height: 1.3rem; }
+.list-card-head { gap: 0.75rem; }
+.region-hero { background: transparent; padding-left: 0; padding-right: 0; }
+
+/* (sprint 88, GEN-4; APEX: the page footer) the application's version and Back to top, under the content */
+.t-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem 1rem;
+  margin: 0 1.5rem 1rem; max-width: calc(1500px - 3rem); padding: 0.75rem 0 0.25rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 640px) { .t-footer { margin: 0 0.75rem 1rem; } }
+.t-footer .t-top { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; color: inherit; }
+.t-footer .t-top:hover, .t-footer .t-top:focus-visible { color: var(--accent); }
+.t-footer .icon { width: 1rem; height: 1rem; }
+@media print { .t-footer { display: none; } }
+.list-card:hover { border-top-color: var(--card-color); }

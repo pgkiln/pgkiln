@@ -63,6 +63,7 @@ export const sv: Record<MessageKey, string> = {
   'common.back': "Tillbaka",
   'common.home': "Gå till startsidan",
   'common.skip': "Hoppa till innehållet",
+  'common.back_to_top': "Till toppen",
   'common.toggle_nav': "Visa eller dölj navigeringen",
   'common.dismiss': "Stäng",
   // messages and errors

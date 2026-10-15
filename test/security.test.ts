@@ -8095,3 +8095,23 @@ describe('sprint 86 builder addresses and error pages', () => {
     assert.doesNotMatch(out.body, /HR Demo|hr\b/);
   });
 });
+
+describe('sprint 88 the application version', () => {
+  after(async () => {
+    await owner.query('update meta.app set version = null where id = $1', [appId]);
+  });
+  test('the version is escaped in the footer; changing it needs a developer and the CSRF token', async () => {
+    await owner.query(`update meta.app set version = '<img src=x onerror=alert(1)>' where id = $1`, [appId]);
+    const king = await as('king');
+    const page = (await king.get('/a/hr/1')).body;
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.match(page, /<span class="t-version">&lt;img src=x onerror=alert\(1\)&gt;<\/span>/);
+    // a signed-in application user is no developer; a developer without the token is refused
+    assert.equal((await king.post(`/builder/apps/${appId}/settings`, { __csrf: king.lastCsrf, version: 'hacked' })).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal((await dev.post(`/builder/apps/${appId}/settings`, { __csrf: 'forged', version: 'hacked' })).statusCode, 403);
+    assert.notEqual((await owner.one('select version from meta.app where id = $1', [appId])).version, 'hacked');
+  });
+});

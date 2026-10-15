@@ -225,7 +225,7 @@ export async function renderListRegion(ctx: PageContext, r: Region): Promise<Raw
     case 'badges':
       return html`<ul class="list-badges">${flat(nodes).map((n) => html`<li><a ${linkAttrs(n, 'list-badge')}><span class="list-badge-value">${n.badge ?? icon(n.icon ?? 'chevron')}</span><span class="list-badge-label">${n.label}</span></a></li>`)}</ul>`;
     case 'cards':
-      return html`<ul class="cards list-cards">${flat(nodes).map((n) => html`<li><a ${linkAttrs(n, 'card list-card')}><span class="list-card-head">${icon(n.icon ?? 'chevron')}<h3>${n.label}</h3>${badge(n)}</span>${n.description ? html`<p class="muted">${n.description}</p>` : ''}</a></li>`)}</ul>`;
+      return html`<ul class="cards list-cards">${flat(nodes).map((n) => html`<li><a ${linkAttrs(n, 'card list-card')}><span class="list-card-head"><span class="list-card-icon">${icon(n.icon ?? 'chevron')}</span><h3>${n.label}</h3>${badge(n)}</span>${n.description ? html`<p class="muted">${n.description}</p>` : ''}</a></li>`)}</ul>`;
     case 'tabs':
       return html`<nav class="list-tabs" aria-label="${label}"><ul class="rds-list">${nodes.filter((n) => n.href).map((n) => html`<li><a ${linkAttrs(n, `rds-tab${n.inTrail ? ' is-current' : ''}`)}>${icon(n.icon)}<span>${n.label}</span>${badge(n)}</a></li>`)}</ul></nav>`;
     case 'wizard_progress': {

@@ -90,6 +90,7 @@ const en = {
   'common.back': 'Go back',
   'common.home': 'Go to the home page',
   'common.skip': 'Skip to content',
+  'common.back_to_top': "Back to top",
   'common.toggle_nav': 'Toggle navigation',
   'common.dismiss': 'Dismiss',
   // messages and errors
@@ -860,6 +861,7 @@ const nl: Record<MessageKey, string> = {
   'common.back': 'Terug',
   'common.home': 'Naar de startpagina',
   'common.skip': 'Naar de inhoud',
+  'common.back_to_top': "Naar boven",
   'common.toggle_nav': 'Navigatie tonen of verbergen',
   'common.dismiss': 'Sluiten',
   'error.not_found': 'Niet gevonden',

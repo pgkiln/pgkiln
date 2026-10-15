@@ -55,6 +55,18 @@ Sprint 87: the Create Application wizard (parity handoff WIZ-4).
 - **The alias follows the name until you change it** (WIZ-4), and **First user / Password hide for authentication
   None** (WIZ-4).
 
+Sprint 88: the generated home page and the page footer (migration 107; parity handoff GEN-4).
+
+### Added
+- **An application's version** (GEN-4; APEX: Version, migration 107): Settings → Definition; new applications start at
+  *Release 1.0*. It travels with the export.
+- **A page footer** (GEN-4): the version (translated like other application texts) and *Back to top*, under the
+  content of every page.
+
+### Changed
+- **Home page cards** (GEN-4): a list's *cards* template gives each card a colour band and its icon in a round badge,
+  in the chart palette's order; the **hero** region sits on the page background instead of a tinted panel.
+
 ## [0.45.0] - 2026-10-15
 
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).

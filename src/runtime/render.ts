@@ -268,10 +268,11 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
   const navbar = navbarNodes ? navbarMarkup(navbarNodes, t('list.navbar')) : '';
   // (sprint 72) the account's display name in the user menu
   const shown = signedIn ? ((await displayName(ctx.user)) ?? ctx.user) : ctx.user;
+  // (sprint 88, GEN-4; APEX: the page footer) under the content: the application's version and "Back to top" (to the header, #top)
   return documentShell(
     `${title} · ${ctx.app.name}`,
     html`<a class="skip-link" href="#main">${t('common.skip')}</a>
-    <header class="t-header">
+    <header class="t-header" id="top">
       <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="${t('common.toggle_nav')}" aria-controls="t-nav">${icon('menu')}</a>
       <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
       <span class="t-spacer"></span>
@@ -306,7 +307,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     <div class="t-body">
       <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
       <a href="#" class="t-nav-backdrop" tabindex="-1" aria-hidden="true"></a>
-      <main class="t-main" id="main">${main}</main>
+      <main class="t-main" id="main">${main}
+        <footer class="t-footer">${ctx.app.version ? html`<span class="t-version">${ctx.locale.tr(ctx.app.version)}</span>` : ''}<a class="t-top" href="#top">${icon('arrow-up')} ${t('common.back_to_top')}</a></footer></main>
     </div>
     ${devbarHtml(ctx)}`,
     `t-app${topNav ? ' nav-top' : ''}`,

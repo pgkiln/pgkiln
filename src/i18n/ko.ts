@@ -63,6 +63,7 @@ export const ko: Record<MessageKey, string> = {
   'common.back': "돌아가기",
   'common.home': "홈페이지로 이동",
   'common.skip': "본문으로 건너뛰기",
+  'common.back_to_top': "맨 위로",
   'common.toggle_nav': "탐색 메뉴 표시/숨기기",
   'common.dismiss': "닫기",
   // messages and errors
