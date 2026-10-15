@@ -15,9 +15,25 @@ Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
   mask (*2,850.00*, was the raw *2850*) or the list's display value, until it is clicked, or Enter, F2 or typing
   edits it; the arrow keys move between cells, Escape leaves the cell's editor and Enter moves to the cell below.
 
+## [0.44.0] - 2026-10-15
+
+Sprint 78: generated reports and grids read the same (migration 100; parity handoff GEN-2, GEN-1, GEN-7, GEN-9).
 Sprint 79: the runtime chrome, the report toolbar and the dashboard like APEX's (migration 101; parity handoff UI-2, UI-3, UI-4, IR-3, GEN-6).
 
 ### Changed
+- **Faceted search pages** made by the wizards show one column per foreign key: the parent's name under
+  the key's label (*Manager*: KING). The key is hidden (still in the query for filters and links); before,
+  both showed and the report had two *Manager* and two *Department* columns. Its number columns get
+  format masks (*2,850.00*), like the report and form pages.
+- **Interactive grids** made by the wizards (the grid page, both grids of a master-detail page) get friendly
+  headings (*Department Number*, *Hire Date*, not *Deptno*, *Hiredate*) and number format masks;
+  a map page's list report gets the masks too. `meta.wizard_grid_labels(table)` returns both.
+- The **Create Application** wizard's page list names each table's pages (*Employees*), with the table's
+  name as secondary text.
+- **Faceted search** (GEN-9): the panel starts with the *Total row count* the filters leave; a checkbox facet
+  shows seven values and the rest under *Show all (n)*; a boolean's values read *Yes* and *No*, not
+  *true* and *false*; with the panel's search field the report shows no search field of its own (its
+  Actions menu stays), so the page has one.
 - **Light or dark** (UI-2): until a user chooses, an application opens in its own mode (a new Iris
   application light, also when the device is dark). Accounts started with *Automatic* as their choice, so
   at sign-in every Iris application followed the device; `meta.account.theme_pref` is now null until the
@@ -36,23 +52,6 @@ Sprint 79: the runtime chrome, the report toolbar and the dashboard like APEX's 
   Department*), else counts rows; six groups or fewer make a donut, a date a line, else a sorted bar; a
   grouping that says nothing (one group, or every group the same) is left out (the next foreign key or
   repeating column is tried).
-
-Sprint 78: generated reports and grids read the same (migration 100; parity handoff GEN-2, GEN-1, GEN-7, GEN-9).
-
-### Changed
-- **Faceted search pages** made by the wizards show one column per foreign key: the parent's name under
-  the key's label (*Manager*: KING). The key is hidden (still in the query for filters and links); before,
-  both showed and the report had two *Manager* and two *Department* columns. Its number columns get
-  format masks (*2,850.00*), like the report and form pages.
-- **Interactive grids** made by the wizards (the grid page, both grids of a master-detail page) get friendly
-  headings (*Department Number*, *Hire Date*, not *Deptno*, *Hiredate*) and number format masks;
-  a map page's list report gets the masks too. `meta.wizard_grid_labels(table)` returns both.
-- The **Create Application** wizard's page list names each table's pages (*Employees*), with the table's
-  name as secondary text.
-- **Faceted search** (GEN-9): the panel starts with the *Total row count* the filters leave; a checkbox facet
-  shows seven values and the rest under *Show all (n)*; a boolean's values read *Yes* and *No*, not
-  *true* and *false*; with the panel's search field the report shows no search field of its own (its
-  Actions menu stays), so the page has one.
 
 ### Fixed
 - The pager's *Rows per page* label stays on one line (IR-3).
