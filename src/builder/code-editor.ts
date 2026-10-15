@@ -41,7 +41,9 @@ const CHECK_SWITCH: Record<string, string> = {
   'process.code': 'type:sql=statements,*=none',
   'region.source': 'type:static=none,form=none,facets=none,smart_filters=none,display_selector=none,tasks=none,workflows=none,list=none,data_reporter=none,ai_assistant=none,*=select',
   'computation.expression': 'type:sql_query=select,*=none',
+  'app_computation.expression': 'type:sql_query=select,*=none',
   'computation.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
+  'app_computation.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
   'branch.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
 };
 /** Fields whose language follows the component's type select: "type:value=lang,…" (other values: SQL). */
@@ -51,7 +53,10 @@ const SWITCH: Record<string, string> = {
   'authz_scheme.value': 'type:role=text',
   'dynamic_action.code': 'action:set_value=sql',
   'computation.expression': 'type:static=text,item=text,function_body=plpgsql',
+  'app_computation.expression': 'type:static=text,item=text,function_body=plpgsql',
+  'shortcut.value': 'type:text=text,html=html,function_body=plpgsql',
   'computation.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
+  'app_computation.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
   'branch.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
 };
 /** Language when no SWITCH value matches. */

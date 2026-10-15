@@ -65,6 +65,8 @@ hr/
     app-items/ai_ename.json
     app-processes/0010-link-user-to-employee.json
     app-processes/0010-link-user-to-employee.code.sql
+    app-computations/0010-ai_region-after_authentication.json   (by sequence, item and point)
+    shortcuts/delete_confirm_msg.json   (a long value in .value.txt, .html or .sql by its type)
     lovs/jobs.json
     lovs/jobs.query.sql
     report-layouts/hr_directory.json   (a logo as hr_directory.logo.png)

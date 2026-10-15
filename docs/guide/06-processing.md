@@ -503,6 +503,28 @@ savepoint. A failing computation before the page is shown leaves the item as it 
 error on the page; after a submit it stops the submit (everything is rolled back) and shows the
 error, like a failing process.
 
+### Application computations
+
+**Shared Components → Application Computations** (APEX: Application Computations) are
+computations for every page of the application, with the same types, conditions, authorization
+and build option as a page's (migration 102, `meta.app_computation`). Their `point`:
+
+| `point` | When |
+|---|---|
+| `after_authentication` | Once, when a user signs in (after the application processes `after_login`) |
+| `before_header` | Every page shown, before the page's own `before_header` computations |
+| `after_submit` | Every page submitted, before the page's own `after_submit` computations (and the validations) |
+
+They usually set **application items**, e.g. a user's sales region once at sign-in:
+
+```sql
+select region from sales.rep where lower(username) = lower(:APP_USER)   -- AI_REGION, sql_query, after_authentication
+```
+
+An application computation of a page item runs on that item's page only (elsewhere it is skipped,
+without the *unknown item* error a page's computation gives). A failing one behaves like a page
+computation at the same point.
+
 ## Branches
 
 After a successful submit pgkiln redirects (POST-redirect-GET). **Branches** decide where to: the

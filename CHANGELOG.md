@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 81: Application Computations and Shortcuts in Shared Components (migrations 102–103; parity handoff BLD-2).
+
+### Added
+- **Application Computations** (Shared Components → Application Logic; APEX: Application Computations):
+  computations of items for every page, at sign-in (`after_authentication`), before every page (`before_header`)
+  or after every submit (`after_submit`), before the page's own computations; the types, conditions,
+  authorization and build option of a page computation (`meta.app_computation`, migration 102).
+- **Shortcuts** (Shared Components → Other Components; APEX: Shortcuts): named texts (text, HTML, or a PL/pgSQL
+  function body); `"NAME"` in a static region's content, an item's help and a button's or menu entry's confirm
+  message is replaced by the shortcut, before `&ITEM.` substitutions (`meta.shortcut`, migration 103).
+- Both are exported with the application, as files in `shared/app-computations/` and `shared/shortcuts/`.
+
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
 
 ### Changed

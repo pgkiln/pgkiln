@@ -867,6 +867,8 @@ is the earlier page: every component in one rail, with **Access control** next t
 | **Lists of values** | Reusable queries for select lists, referenced as `LOV:NAME` |
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
+| **Shortcuts** | Named texts: `"NAME"` in static content, help texts and confirm messages ([chapter 2](02-concepts.md#shortcuts-name)) |
+| **Application computations** | Computations of (application) items for every page: at sign-in, before every page, after every submit ([chapter 6](06-processing.md#application-computations)) |
 | **REST modules** | REST endpoints (method, path, SQL) served by pgkiln, with an OpenAPI description ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)) |
 | **Workflows** | Multi-step processes of tasks, SQL, web service calls (invoke API), decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
 | **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
@@ -1325,7 +1327,7 @@ imports as empty. Import refuses other formats.
 | Section | Contents |
 |---|---|
 | `app` | the application's settings (name, alias, home page, authentication, theme, languages, …) |
-| `authz_schemes`, `app_items`, `app_processes`, `lovs` | shared components |
+| `authz_schemes`, `app_items`, `app_processes`, `app_computations`, `shortcuts`, `lovs` | shared components |
 | `group_roles` | identity-provider group → role mappings |
 | `text_messages`, `translations` | globalization |
 | `report_layouts` | report layouts; the logo as base64 |

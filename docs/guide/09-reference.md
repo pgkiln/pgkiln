@@ -387,6 +387,13 @@ runtime role, never exported) ([chapter 19](19-rest-data-sources.md#web-credenti
 
 **`app_process`**: `app_id`, `seq`, `name`, `point` (`after_login` / `before_page`), `code`, `authz`.
 
+**`app_computation`** (102): `app_id`, `seq`, `item_name`, `point` (`after_authentication` / `before_header` /
+`after_submit`), `type`, `expression`, `condition_type`, `condition_expr`, `condition_value`, `authz`, `build_option`,
+`comments` ([chapter 6](06-processing.md#application-computations)).
+
+**`shortcut`** (103): `app_id`, `name` (uppercase, unique per app), `type` (`text` / `html` / `function_body`), `value`,
+`comments` ([chapter 2](02-concepts.md#shortcuts-name)).
+
 **`build_option`**: `app_id`, `name` (uppercase, unique per app), `status` (`include` / `exclude`),
 `description` ([chapter 6](06-processing.md#build-options)). `meta.build_option_on(app_id, ref)`
 tells whether a component with that `build_option` value is part of the application.

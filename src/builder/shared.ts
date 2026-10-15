@@ -61,9 +61,9 @@ export function sharedGroups(appId: number): { key: string; title: string; icon:
   const settings = (tab: string, label: string): ScItem => ({ label, href: `${BASE}/apps/${appId}/settings?tab=${tab}` });
   const page = (path: string, label: string): ScItem => ({ label, href: `${BASE}/apps/${appId}/${path}` });
   return [
-    { key: 'logic', title: 'Application Logic', icon: 'code', items: [t('app_item', 'Application Items'), t('app_process', 'Application Processes'), t('app_setting', 'Application Settings'), t('build_option', 'Build Options'), page('settings?tab=definition', 'Application Definition')] },
+    { key: 'logic', title: 'Application Logic', icon: 'code', items: [t('app_item', 'Application Items'), t('app_process', 'Application Processes'), t('app_computation', 'Application Computations'), t('app_setting', 'Application Settings'), t('build_option', 'Build Options'), page('settings?tab=definition', 'Application Definition')] },
     { key: 'security', title: 'Security', icon: 'shield', items: [{ label: 'Access Control', href: `${BASE}/apps/${appId}/shared?view=tree`, kind: 'access' }, settings('security', 'Authentication'), t('authz_scheme', 'Authorization Schemes'), settings('security', 'Security Attributes'), settings('signin', 'Sign-in and Session Management')] },
-    { key: 'other', title: 'Other Components', icon: 'layers', items: [t('lov', 'Lists of Values'), t('list', 'Lists'), t('list_entry', 'List Entries'), t('email_template', 'Email Templates'), t('supporting_script', 'Supporting Objects'), page('subscriptions', 'Subscriptions')] },
+    { key: 'other', title: 'Other Components', icon: 'layers', items: [t('lov', 'Lists of Values'), t('list', 'Lists'), t('list_entry', 'List Entries'), t('email_template', 'Email Templates'), t('shortcut', 'Shortcuts'), t('supporting_script', 'Supporting Objects'), page('subscriptions', 'Subscriptions')] },
     { key: 'navigation', title: 'Navigation and Search', icon: 'compass', items: [t('nav_entry', 'Navigation Menu'), settings('ui', 'Navigation Bar List'), page('breadcrumbs', 'Breadcrumbs'), t('page_group', 'Page Groups'), t('search_config', 'Search Configurations')] },
     { key: 'ui', title: 'User Interface', icon: 'grid', items: [page('theme', 'Themes and Theme Roller'), settings('ui', 'User Interface Attributes'), t('template_component', 'Template Components'), page('plugins', 'Plug-ins'), settings('pwa', 'Progressive Web App')] },
     { key: 'files', title: 'Files and Reports', icon: 'file', items: [page('static-files', 'Static Application Files'), t('report_layout', 'Report Layouts'), t('document_template', 'Document Templates')] },
@@ -97,11 +97,11 @@ export async function sharedRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'page_group', 'lov', 'app_item', 'app_process', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config', 'email_template', 'app_setting', 'dynamic_translation'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'page_group', 'lov', 'app_item', 'app_process', 'app_computation', 'shortcut', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config', 'email_template', 'app_setting', 'dynamic_translation'];
 
   const ORDER: Record<string, string> = {
     search_config: 'seq, name', dynamic_translation: 'language, source',
-    nav_entry: 'parent_id nulls first, seq, id', app_process: 'seq, id', list_entry: 'list_name, parent_id nulls first, seq, id', automation_action: 'automation_name, seq, name', supporting_script: 'kind, seq, name',
+    nav_entry: 'parent_id nulls first, seq, id', app_process: 'seq, id', app_computation: 'seq, id', list_entry: 'list_name, parent_id nulls first, seq, id', automation_action: 'automation_name, seq, name', supporting_script: 'kind, seq, name',
   };
 
   app.get(`${BASE}/apps/:id/shared`, async (req: Req, reply) => {

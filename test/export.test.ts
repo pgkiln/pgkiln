@@ -52,6 +52,8 @@ const SECTIONS: Record<string, string> = {
   authz_scheme: 'authz_schemes',
   app_item: 'app_items',
   app_process: 'app_processes',
+  app_computation: 'app_computations',
+  shortcut: 'shortcuts',
   lov: 'lovs',
   app_group_role: 'group_roles',
   text_message: 'text_messages',

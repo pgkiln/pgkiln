@@ -141,7 +141,8 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   if (shared) s.state.__SHARED = shared;
   await saveState(s);
 
-  if (a.app_processes.some((p) => p.point === 'after_login')) {
+  // the application processes "after login", then (102) the application computations "after authentication"
+  if (a.app_processes.some((p) => p.point === 'after_login') || (a.app_computations ?? []).some((c) => c.point === 'after_authentication')) {
     const home = (await loadPage(a.id, a.home_page)) ?? ({ page_no: a.home_page, items: [], regions: [], buttons: [], dynamic_actions: [], validations: [], processes: [], computations: [], branches: [] } as unknown as Page);
     const ctx: PageContext = {
       app: a, page: home, session: s, base, params: new URLSearchParams(), request: '', user: username,
@@ -151,6 +152,7 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
     await appTx(txContext(ctx), async (c) => {
       ctx.client = c;
       await runAppProcesses(ctx, 'after_login');
+      await runComputations(ctx, 'after_authentication');
     });
     await saveState(s);
   }

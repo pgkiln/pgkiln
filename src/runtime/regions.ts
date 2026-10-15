@@ -8,6 +8,7 @@ import type { Button, Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
+import { expandShortcuts } from './shortcuts.ts';
 import { fillItems, linkAttrs, linkColumns } from './links.ts';
 import { renderCalendar } from './calendar.ts';
 import { CHART_KINDS, renderChartBody, wallClockIn, type GaugeConfig } from './charts.ts';
@@ -66,7 +67,7 @@ async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw |
   for (const e of b.menu ?? []) {
     if (!(await isAuthorized(ctx, e.authz))) continue;
     const ic = e.icon ? html`${icon(e.icon)} ` : '';
-    const confirm = e.confirm ? raw(` data-confirm="${esc(e.confirm)}"`) : '';
+    const confirm = e.confirm ? raw(` data-confirm="${esc(await expandShortcuts(ctx, e.confirm, 'text'))}"`) : '';
     if (e.page) {
       if (!(await pageAllowed(ctx, e.page))) continue;
       entries.push(html`<a ${linkAttrs(ctx, e.page, e.items ?? {})}${confirm}>${ic}${e.label}</a>`);
@@ -82,7 +83,7 @@ async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw |
 
 export async function renderButton(ctx: PageContext, b: Button) {
   const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}${templateClasses('button', b.template_options)}`;
-  const confirm = b.confirm ? raw(` data-confirm="${esc(b.confirm)}"`) : '';
+  const confirm = b.confirm ? raw(` data-confirm="${esc(await expandShortcuts(ctx, b.confirm, 'text'))}"`) : '';
   const badge = b.badge || b.badge_query ? await badgeOf(ctx, b) : '';
   if (b.action === 'menu') return renderMenu(ctx, b, cls, badge);
   if (b.action === 'redirect') {
@@ -401,7 +402,7 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'static': {
       const itemsHtml = await renderItems(ctx, items, hidden);
-      body = html`${raw(substitute(r.source ?? '', ctx, esc))}${itemsHtml.length ? html`<div class="form-grid">${itemsHtml}</div>` : ''}`;
+      body = html`${raw(substitute(await expandShortcuts(ctx, r.source ?? '', 'html'), ctx, esc))}${itemsHtml.length ? html`<div class="form-grid">${itemsHtml}</div>` : ''}`;
       break;
     }
   }

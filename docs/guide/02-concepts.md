@@ -28,6 +28,8 @@ meta.app ─┬─ meta.page ─┬─ meta.region        (reports, forms, grids
           ├─ meta.lov           (shared lists of values)
           ├─ meta.app_item      (application items)
           ├─ meta.app_process   (application processes)
+          ├─ meta.app_computation (application computations)
+          ├─ meta.shortcut      (shortcuts: "NAME" texts)
           ├─ meta.build_option  (build options: include / exclude switches)
           └─ meta.app_user      (users of this application)
 
@@ -187,6 +189,26 @@ trailing dot) is replaced by the item's value, **HTML-escaped**:
 ```html
 <p>Welcome back, <b>&AI_ENAME.</b>!</p>
 ```
+
+### Shortcuts: `"NAME"`
+
+**Shared Components → Shortcuts** (APEX: Shortcuts, migration 103) are named texts an application
+reuses. `"NAME"`, the shortcut's upper-case name in double quotes, is replaced by it in a static
+region's content, an item's help text and a button's or menu entry's confirm message, before the
+`&NAME.` substitutions (so a shortcut may contain them). A quoted word that is not the name of one
+of the application's shortcuts stays as it is.
+
+| `type` | Replaced by |
+|---|---|
+| `text` | The value, HTML-escaped in a static region |
+| `html` | The value as HTML (in a help text or a confirm message, which are text, its tags show as text) |
+| `function_body` | What the PL/pgSQL function body returns, run as the application's role once per request; an error shows on the page and leaves it empty |
+
+```html
+<p>"SUPPORT_CONTACT"</p>     <!-- a shortcut SUPPORT_CONTACT, type html -->
+```
+
+A *Delete* button's confirm message `"DELETE_CONFIRM_MSG"` then reads the same on every page.
 
 ## The application's database role
 

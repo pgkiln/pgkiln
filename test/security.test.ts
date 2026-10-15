@@ -7841,3 +7841,32 @@ describe('sprint 77 display positions, duplicate and copy to other page', () => 
     }
   });
 });
+
+describe('sprint 81 application computations and shortcuts', () => {
+  test('the runtime role reads them only; a text shortcut is escaped; the builder takes them from developers only', async () => {
+    for (const sql of [`insert into meta.app_computation (app_id, item_name) values (${appId}, 'X_SEC')`, `update meta.app_computation set expression = 'x'`,
+      `insert into meta.shortcut (app_id, name, value) values (${appId}, 'X_SEC', 'x')`, `update meta.shortcut set value = 'x'`, `delete from meta.shortcut`])
+      await assert.rejects(runtime.query(sql), /permission denied/, sql);
+    const p = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 9113, 'Shortcuts') returning id`, [appId])).id;
+    try {
+      await owner.query(`insert into meta.shortcut (app_id, name, type, value) values ($1, 'SEC_SC_TEXT', 'text', '"><img src=x onerror=alert(1)>')`, [appId]);
+      await owner.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'S', 'static', '<p id="sec-sc">"SEC_SC_TEXT"</p>')`, [p]);
+      await owner.query(`insert into meta.button (page_id, seq, name, label, action, confirm) values ($1, 10, 'GO', 'Go', 'submit', '"SEC_SC_TEXT"')`, [p]);
+      const body = (await (await as('king')).get('/a/hr/9113')).body;
+      assert.match(body, /<p id="sec-sc">&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt;<\/p>/);
+      assert.match(body, /data-confirm="&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt;"/);
+      assert.doesNotMatch(body, /<img src=x/);
+      // only developers make them
+      const king = await as('king');
+      for (const kind of ['app_computation', 'shortcut']) {
+        const res = await king.post(`/builder/apps/${appId}/shared/${kind}`, { __csrf: king.lastCsrf, name: 'SEC_SC_KING', item_name: 'SEC_SC_KING', value: 'x', expression: 'x' });
+        assert.equal(res.statusCode, 302, `${kind}: an application user is sent to the builder's sign-in`);
+      }
+      assert.equal((await owner.one(`select count(*)::int as n from meta.shortcut where name = 'SEC_SC_KING'`)).n, 0);
+      assert.equal((await owner.one(`select count(*)::int as n from meta.app_computation where item_name = 'SEC_SC_KING'`)).n, 0);
+    } finally {
+      await owner.query('delete from meta.page where id = $1', [p]);
+      await owner.query(`delete from meta.shortcut where app_id = $1 and name like 'SEC\\_SC\\_%'`, [appId]);
+    }
+  });
+});
