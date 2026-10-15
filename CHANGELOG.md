@@ -5,23 +5,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-10-15
+
 Sprint 84: facet menus and the date picker (parity handoff GEN-9, IR-4).
+Sprint 85: the Form Designer (migration 106).
+Sprint 86: builder addresses and error pages (parity handoff BLD-6).
+Sprint 87: the Create Application wizard (parity handoff WIZ-4).
+Sprint 88: the generated home page and the page footer (migration 107; parity handoff GEN-4).
+Sprint 89: the Object Browser (parity handoff SQL-4).
+Sprint 90: the page designer's Comment Out and gallery labels (parity handoff PD-4).
 
 ### Added
 - **A checkbox facet's ⋮ menu** (GEN-9; APEX: the facet's menu): *Clear*, and the values *Sort by count* (the
   default) or *Sort by name* (`r<report id>_fo_<column>=name`, kept by Apply and Reset).
 - **The date picker** (IR-4; APEX: the date picker): pgkiln's own month of days under a date field, with keys
   (arrows, Page Up/Down, Home/End, Enter, Escape), the language's first day of the week, *Today* and *Clear*.
-
-### Changed
-- **Dates in the date format everywhere** (IR-4): date range items, interactive grid date cells, a faceted search's
-  custom date range and the task list's vacation rule are text in the application's date format with the date picker, like date items; without a date
-  format, `YYYY-MM-DD`. No browser date fields are left for dates (timestamps keep the browser's date and time field).
-  The calendar button no longer opens the browser's picker.
-
-Sprint 85: the Form Designer (migration 106).
-
-### Added
 - **The Form Designer region** (`form_designer`; beyond APEX): the application's administrators build data entry
   forms in the running application. The developer offers tables and views in the region's settings (columns with
   labels and lists of values, the key column, whether forms may add, change or delete rows) and names the
@@ -31,62 +29,40 @@ Sprint 85: the Form Designer (migration 106).
   the region's settings before they run. Forms are kept in `meta.user_form` (the view `meta.user_forms`,
   `meta.save_user_form`, `meta.delete_user_form`): installation data, not exported, kept when an application is
   replaced. HR example page 45 (*Forms*).
-
-Sprint 86: builder addresses and error pages (parity handoff BLD-6).
-
-### Added
 - **The page designer by the page's number** (BLD-6): `/builder/apps/<app id>/pages/<page number>` (with
   `?c=…` for the selected component); the builder's links, the developer toolbar's *Edit page* and *Quick edit*
   use it, and a browser that opens the internal `/builder/pages/<id>` is redirected there.
 - **HTML error pages in the builder** (BLD-6): *Page not found* and *Something went wrong* for a browser under
   `/builder`, in the builder's theme, instead of JSON or plain text (scripts keep the plain answers).
+- **An application's version** (GEN-4; APEX: Version, migration 107): Settings → Definition; new applications start at
+  *Release 1.0*. It travels with the export.
+- **A page footer** (GEN-4): the version (translated like other application texts) and *Back to top*, under the
+  content of every page.
+- **Modify column** (SQL-4; APEX: the Columns toolbar): a new type, nulls allowed or not, a default or none, written as
+  one ALTER TABLE into SQL Commands to review; the column actions are a toolbar above the columns (Add, Modify,
+  Rename, Drop).
+- **Comment out / Uncomment** in the page designer tree's menu (PD-4; APEX: Comment Out): the component gets the build
+  option `COMMENTED_OUT` (status *Exclude*, made when first needed) and is struck through in the tree.
 
 ### Changed
+- **Dates in the date format everywhere** (IR-4): date range items, interactive grid date cells, a faceted search's
+  custom date range and the task list's vacation rule are text in the application's date format with the date picker, like date items; without a date
+  format, `YYYY-MM-DD`. No browser date fields are left for dates (timestamps keep the browser's date and time field).
+  The calendar button no longer opens the browser's picker.
 - Values a browser kept under pgkiln's old name (`pgapex.*` in localStorage and sessionStorage, `pgapex-push:*`)
   move to `pgkiln.*` once, and the service worker deletes its old `pgapex-*` caches (BLD-6).
-
-Sprint 87: the Create Application wizard (parity handoff WIZ-4).
-
-### Changed
 - **Choosing a schema reloads the Pages list in place** (WIZ-4): the tables of the schema, with the name and alias
   proposed for it while you haven't typed them; *Show its tables* stays for pages without JavaScript.
 - **Row level security before Create** (WIZ-4): a table with RLS shows *RLS · n* (its policies), or *RLS, no
   policies* in red (the application's role would see no rows).
 - **The alias follows the name until you change it** (WIZ-4), and **First user / Password hide for authentication
   None** (WIZ-4).
-
-Sprint 88: the generated home page and the page footer (migration 107; parity handoff GEN-4).
-
-### Added
-- **An application's version** (GEN-4; APEX: Version, migration 107): Settings → Definition; new applications start at
-  *Release 1.0*. It travels with the export.
-- **A page footer** (GEN-4): the version (translated like other application texts) and *Back to top*, under the
-  content of every page.
-
-### Changed
 - **Home page cards** (GEN-4): a list's *cards* template gives each card a colour band and its icon in a round badge,
   in the chart palette's order; the **hero** region sits on the page background instead of a tinted panel.
-
-Sprint 89: the Object Browser (parity handoff SQL-4).
-
-### Added
-- **Modify column** (SQL-4; APEX: the Columns toolbar): a new type, nulls allowed or not, a default or none, written as
-  one ALTER TABLE into SQL Commands to review; the column actions are a toolbar above the columns (Add, Modify,
-  Rename, Drop).
-
-### Changed
 - **The Object Browser's schema** (SQL-4): the one chosen last (per session), else the session's schema, else the
   parsing schema of the application changed last in the workspace.
 - **A table's tabs on one row** (SQL-4): Columns, Data, Indexes, Constraints, DDL and the current tab; the rest under
   *More*. **NULL is a blank cell** in the Object Browser, not an italic *null*.
-
-Sprint 90: the page designer's Comment Out and gallery labels (parity handoff PD-4).
-
-### Added
-- **Comment out / Uncomment** in the page designer tree's menu (PD-4; APEX: Comment Out): the component gets the build
-  option `COMMENTED_OUT` (status *Exclude*, made when first needed) and is struck through in the tree.
-
-### Changed
 - **The gallery's labels in title case** (PD-4; APEX's): *Interactive Report*, *Faceted Search*, *Login*, *Text Field*, …; long
   labels wrap instead of being cut off, and the full name is the tooltip.
 
