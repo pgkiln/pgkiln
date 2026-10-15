@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-15
+
+Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
+Sprint 81: Application Computations and Shortcuts in Shared Components (migrations 102–103; parity handoff BLD-2).
+Sprint 82: Report Queries in Shared Components (migration 104; parity handoff BLD-2).
 Sprint 83: Component Settings and Component Groups in Shared Components (migration 105; parity handoff BLD-2).
 
 ### Added
@@ -14,23 +19,10 @@ Sprint 83: Component Settings and Component Groups in Shared Components (migrati
 - **Component Groups** (Shared Components → Other Components; APEX: Component Groups): a library or theme
   application's set of components (`kind:name`); another application subscribes to all of them at once on its
   Subscriptions page (`meta.component_group`, exported, `shared/component-groups/`).
-
-Sprint 82: Report Queries in Shared Components (migration 104; parity handoff BLD-2).
-
-### Added
 - **Report Queries** (Shared Components → Files and Reports; APEX: Report Queries): a named query printed as PDF
   (with a report layout), Excel, CSV, JSON, XML or HTML; any page downloads it with `?doc=NAME` (a document template
   of that name wins), a *document* button names it; its own authorization (`meta.report_query`, migration 104).
   Exported with the application, as files in `shared/report-queries/`.
-
-### Fixed
-- An HTML file a download process or report query sends keeps its own `Content-Security-Policy` (`default-src
-  'none'; sandbox`); the page's policy replaced it.
-- `meta.data_export` refused a query with a column named `q` or `x` (the names of its own aliases).
-
-Sprint 81: Application Computations and Shortcuts in Shared Components (migrations 102–103; parity handoff BLD-2).
-
-### Added
 - **Application Computations** (Shared Components → Application Logic; APEX: Application Computations):
   computations of items for every page, at sign-in (`after_authentication`), before every page (`before_header`)
   or after every submit (`after_submit`), before the page's own computations; the types, conditions,
@@ -40,8 +32,6 @@ Sprint 81: Application Computations and Shortcuts in Shared Components (migratio
   message is replaced by the shortcut, before `&ITEM.` substitutions (`meta.shortcut`, migration 103).
 - Both are exported with the application, as files in `shared/app-computations/` and `shared/shortcuts/`.
 
-Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
-
 ### Changed
 - **Master-detail** (GEN-8): the page opens with the master grid's first row selected, so the details show its
   rows (they said *Select a row above*); a search or filter that leaves the selected row out selects the first
@@ -49,6 +39,11 @@ Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
 - **Interactive grid cells** (GEN-8): with JavaScript an editable cell reads as text, with its column's format
   mask (*2,850.00*, was the raw *2850*) or the list's display value, until it is clicked, or Enter, F2 or typing
   edits it; the arrow keys move between cells, Escape leaves the cell's editor and Enter moves to the cell below.
+
+### Fixed
+- An HTML file a download process or report query sends keeps its own `Content-Security-Policy` (`default-src
+  'none'; sandbox`); the page's policy replaced it.
+- `meta.data_export` refused a query with a column named `q` or `x` (the names of its own aliases).
 
 ## [0.44.0] - 2026-10-15
 
