@@ -9,6 +9,7 @@ import { bindValues, publicError, stripSemicolon, toState, type PageContext } fr
 import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, maxFiles, removals } from './files.ts';
 import { restSql } from './rest-sources.ts';
 import { expandShortcuts } from './shortcuts.ts';
+import { componentSetting, type ComponentSettings } from './component-settings.ts';
 import { markdownHtml, sanitizeHtml } from '../richtext.ts';
 import { qrSvg, type Ecc } from '../qrcode.ts';
 import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
@@ -78,9 +79,10 @@ async function lovColumns(ctx: PageContext, sql: string) {
 
 /** Rows of a popup LOV's dialog: at most 100 per page. */
 export const POPUP_PAGE_MAX = 100;
-export const popupPageSize = (item: Item, asked?: unknown) => {
-  const n = Math.floor(Number(asked ?? item.config?.page_size ?? 25));
-  return Number.isFinite(n) && n >= 1 ? Math.min(n, POPUP_PAGE_MAX) : 25;
+export const popupPageSize = (item: Item, asked?: unknown, settings?: ComponentSettings) => {
+  const def = componentSetting(settings, 'popup_lov_rows');
+  const n = Math.floor(Number(asked ?? item.config?.page_size ?? def));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, POPUP_PAGE_MAX) : def;
 };
 
 export interface LovPage {
@@ -161,9 +163,9 @@ export const LOV_CHECKED = new Set(['select', 'radio', 'checkbox_group', 'multis
 
 /** Rows a list of values reads when its item sets no config.max_rows (1 to 50,000). */
 export const LOV_MAX_ROWS = 5000;
-export const lovMax = (item: Item) => {
+export const lovMax = (item: Item, settings?: ComponentSettings) => {
   const n = Math.floor(Number(item.config?.max_rows));
-  return Number.isFinite(n) && n >= 1 ? Math.min(n, 50_000) : LOV_MAX_ROWS;
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 50_000) : settings ? componentSetting(settings, 'lov_max_rows') : LOV_MAX_ROWS;
 };
 
 const LOV_TYPES = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov', 'combobox']);
@@ -175,7 +177,7 @@ export const splitValues = (v: string) => (v ? v.split(':') : []);
 /** A combobox holds several values (colon-separated) unless {"multiple": false}. */
 export const comboMultiple = (item: Item) => item.config?.multiple !== false;
 /** The highest star of a rating item ({"max": 5}, 3 to 10). */
-export const ratingMax = (item: Item) => Math.min(Math.max(Math.round(Number(item.config?.max)) || 5, 3), 10);
+export const ratingMax = (item: Item, settings?: ComponentSettings) => Math.min(Math.max(Math.round(Number(item.config?.max)) || componentSetting(settings, 'rating_max'), 3), 10);
 /** A date range item's value "from:to" (ISO dates, either may be empty). */
 export const splitRange = (v: string | null | undefined): [string, string] => {
   const [from = '', to = ''] = (v ?? '').split(':');
@@ -227,7 +229,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   let lovError: Raw | '' = '';
   if (hasLov(item)) {
     try {
-      options = await lovOptions(ctx, item.lov, lovMax(item));
+      options = await lovOptions(ctx, item.lov, lovMax(item, ctx.app.component_settings));
     } catch (e) {
       lovError = html`<small class="error">${await publicError(ctx, e, `list of values of ${item.name}`)}</small>`;
     }
@@ -250,9 +252,9 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     // rebuilt from the allow-list every time: the value may come from the table, not from this form
     control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value)) || ' ')}</div>`;
   } else if (!editable && item.type === 'rating') {
-    const n = /^\d+$/.test(value) ? Math.min(Number(value), ratingMax(item)) : 0;
+    const n = /^\d+$/.test(value) ? Math.min(Number(value), ratingMax(item, ctx.app.component_settings)) : 0;
     control = n
-      ? html`<div class="display-value rating-value" id="${id}"><span aria-hidden="true">${'★'.repeat(n)}<span class="rating-off">${'★'.repeat(ratingMax(item) - n)}</span></span><span class="sr-only">${ctx.locale.t('item.rating_of', { n, max: ratingMax(item) })}</span></div>`
+      ? html`<div class="display-value rating-value" id="${id}"><span aria-hidden="true">${'★'.repeat(n)}<span class="rating-off">${'★'.repeat(ratingMax(item, ctx.app.component_settings) - n)}</span></span><span class="sr-only">${ctx.locale.t('item.rating_of', { n, max: ratingMax(item, ctx.app.component_settings) })}</span></div>`
       : html`<div class="display-value" id="${id}"> </div>`;
   } else if (!editable && item.type === 'combobox') {
     const values = comboMultiple(item) ? splitValues(value) : value ? [value] : [];
@@ -353,7 +355,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       case 'rating': {
         // radio buttons (keyboard and screen readers as usual); CSS draws them as stars
         useLegend = true;
-        const max = ratingMax(item);
+        const max = ratingMax(item, ctx.app.component_settings);
         const stars = [];
         for (let n = 1; n <= max; n++)
           stars.push(

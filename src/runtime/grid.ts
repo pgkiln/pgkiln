@@ -1,3 +1,4 @@
+import { componentSetting } from './component-settings.ts';
 import pg from 'pg';
 import { literal } from '../binds.ts';
 import { savepoint, type Client } from '../db.ts';
@@ -180,7 +181,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const base = reportState(ctx, r);
   const views = gridViews(r);
   const view: View = views.includes(base.view) ? base.view : 'report';
-  const pageSize = Math.max(1, Math.min(200, Number(r.config.page_size) || 25));
+  const pageSize = Math.max(1, Math.min(200, Number(r.config.page_size) || componentSetting(ctx.app.component_settings, 'grid_rows')));
   // the single row view: one row of the search at a time (r<id>_row=N from 1), or a new row (r<id>_row=new)
   const rowParam = ctx.params.get(key(r, 'row'));
   const adding = view === 'row' && rowParam === 'new';

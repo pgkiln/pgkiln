@@ -173,8 +173,8 @@ export async function validate(ctx: PageContext) {
     const v = state[i.name];
     if (!v || !vis.editable.has(i.name) || errors.items[i.name]) continue;
     const label = i.label ?? i.name;
-    if (i.type === 'rating' && !(/^\d{1,2}$/.test(v) && Number(v) >= 1 && Number(v) <= ratingMax(i)))
-      fail(i.name, ctx.locale.t('error.rating', { label, max: ratingMax(i) }));
+    if (i.type === 'rating' && !(/^\d{1,2}$/.test(v) && Number(v) >= 1 && Number(v) <= ratingMax(i, ctx.app.component_settings)))
+      fail(i.name, ctx.locale.t('error.rating', { label, max: ratingMax(i, ctx.app.component_settings) }));
     // a list item posts return values: each must be one its list of values returns (config.any_value: true allows others)
     if (LOV_CHECKED.has(i.type) && i.lov && i.config?.any_value !== true && !(await lovContains(ctx, i.lov, MULTI_VALUE.has(i.type) ? splitValues(v) : [v])))
       fail(i.name, ctx.locale.t('error.lov_value', { label }));

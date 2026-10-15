@@ -200,6 +200,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   // (103) shortcuts, (104) report queries
   ['shortcuts', 'shared/shortcuts', 'shortcut'],
   ['report_queries', 'shared/report-queries', 'report_query'],
+  // (105) component groups
+  ['component_groups', 'shared/component-groups', 'component_group'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
