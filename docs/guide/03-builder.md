@@ -579,8 +579,12 @@ choosing a component opens the Properties tab.
   *Create dynamic action*, *Create region below*, **Duplicate** (a copy right after it; a region comes with its
   items and buttons, names get `_2`), **Copy to other page…** (to the end of a page of the same application; items
   named `P<n>_` get that page's number, a region's buttons and items come along, references in SQL are not changed),
-  *Expand all below*, *Collapse all below* and *Delete*. The arrow keys move through the menu, Escape closes it.
-  APEX's *Create Sub Region* (pgkiln has no nested regions) and *Comment Out* (use a build option) are not there.
+  *Expand all below*, *Collapse all below*, (sprint 90) **Comment out** and *Delete*. The arrow keys move through the
+  menu, Escape closes it. **Comment out** (APEX's) leaves a component (a region, item, button, dynamic action,
+  validation, process, computation or branch) out of the page without deleting it: it gets the
+  [build option](#shared-components) `COMMENTED_OUT`, made with the status *Exclude* when first needed, and is struck
+  through in the tree; **Uncomment** takes it off again (another build option of the component is left alone).
+  APEX's *Create Sub Region* is not there: pgkiln has no nested regions.
 - **Middle: the Layout**: the page template's display positions as labelled zones (Banner, Breadcrumb bar,
   the side column of a side-column template beside the Body, Footer), each with its regions on the 12-column
   grid, each region with its items and its buttons in their button positions, as they will be placed on the page; under it a **gallery** of region types, item types

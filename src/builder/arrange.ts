@@ -17,6 +17,8 @@ import { BASE, developer, flash, type Req } from './ui.ts';
 export const LAYOUT_KINDS = ['region', 'item', 'button'] as const;
 export type LayoutKind = (typeof LAYOUT_KINDS)[number];
 const isKind = (k: unknown): k is LayoutKind => (LAYOUT_KINDS as readonly unknown[]).includes(k);
+/** (sprint 90) The components with a build option, which can be commented out. */
+const COMMENTABLE = new Set(['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch']);
 
 const options = (kind: string, field: string) => COMPONENTS[kind].fields.find((f) => f.name === field)!.options!.filter(Boolean);
 export const REGION_TYPES = () => options('region', 'type');
@@ -38,22 +40,22 @@ export const BOTTOM_SLOTS = ['previous', 'close', 'delete', 'next'];
 
 /** Gallery names and icons. */
 export const REGION_LABELS: Record<string, [string, string]> = {
-  report: ['Interactive report', 'table'], grid: ['Interactive grid', 'grid'], form: ['Form', 'file'], chart: ['Chart', 'chart'],
-  cards: ['Cards', 'layers'], calendar: ['Calendar', 'calendar'], facets: ['Faceted search', 'filter'], smart_filters: ['Smart filters', 'search'], display_selector: ['Region display selector', 'menu'], tasks: ['Task list', 'inbox'],
-  workflows: ['Workflow console', 'activity'], map: ['Map', 'map'], tree: ['Tree', 'org'], static: ['Static content', 'region'], dynamic: ['Dynamic content', 'code'],
-  template_component: ['Template component', 'layers'], list: ['List', 'list'], data_reporter: ['Data Reporter', 'table'], form_designer: ['Form Designer', 'file'],
-  ai_assistant: ['AI assistant', 'bolt'], url: ['URL', 'link'], search: ['Search', 'search'],
+  report: ['Interactive Report', 'table'], grid: ['Interactive Grid', 'grid'], form: ['Form', 'file'], chart: ['Chart', 'chart'],
+  cards: ['Cards', 'layers'], calendar: ['Calendar', 'calendar'], facets: ['Faceted Search', 'filter'], smart_filters: ['Smart Filters', 'search'], display_selector: ['Region Display Selector', 'menu'], tasks: ['Task List', 'inbox'],
+  workflows: ['Workflow Console', 'activity'], map: ['Map', 'map'], tree: ['Tree', 'org'], static: ['Static Content', 'region'], dynamic: ['Dynamic Content', 'code'],
+  template_component: ['Template Component', 'layers'], list: ['List', 'list'], data_reporter: ['Data Reporter', 'table'], form_designer: ['Form Designer', 'file'],
+  ai_assistant: ['AI Assistant', 'bolt'], url: ['URL', 'link'], search: ['Search', 'search'],
 };
 export const ITEM_LABELS: Record<string, [string, string]> = {
-  text: ['Text field', 'item'], textarea: ['Text area', 'item'], number: ['Number field', 'item'], date: ['Date picker', 'calendar'],
-  datetime: ['Date and time', 'clock'], select: ['Select list', 'list'], popup_lov: ['Popup LOV', 'search'], radio: ['Radio group', 'check'],
-  checkbox: ['Checkbox', 'check'], switch: ['Switch', 'check'], checkbox_group: ['Checkbox group', 'check'], multiselect: ['Multi select', 'list'],
-  email: ['E-mail', 'inbox'], tel: ['Phone number', 'item'], url: ['URL', 'item'], color: ['Color picker', 'item'], file: ['File upload', 'upload'],
-  location: ['Location', 'map'], richtext: ['Rich text editor', 'edit'], markdown: ['Markdown editor', 'code'], rating: ['Star rating', 'check'],
-  combobox: ['Combobox (tags)', 'list'], daterange: ['Date range', 'calendar'], qrcode: ['QR code', 'scan'], image: ['Display image', 'file'], address: ['Geocoded address', 'map'], hidden: ['Hidden', 'item'], display: ['Display only', 'file'], password: ['Password', 'key'],
+  text: ['Text Field', 'item'], textarea: ['Text Area', 'item'], number: ['Number Field', 'item'], date: ['Date Picker', 'calendar'],
+  datetime: ['Date and Time', 'clock'], select: ['Select List', 'list'], popup_lov: ['Popup LOV', 'search'], radio: ['Radio Group', 'check'],
+  checkbox: ['Checkbox', 'check'], switch: ['Switch', 'check'], checkbox_group: ['Checkbox Group', 'check'], multiselect: ['Multi Select', 'list'],
+  email: ['E-mail', 'inbox'], tel: ['Phone Number', 'item'], url: ['URL', 'item'], color: ['Color Picker', 'item'], file: ['File Upload', 'upload'],
+  location: ['Location', 'map'], richtext: ['Rich Text Editor', 'edit'], markdown: ['Markdown Editor', 'code'], rating: ['Star Rating', 'check'],
+  combobox: ['Combobox (Tags)', 'list'], daterange: ['Date Range', 'calendar'], qrcode: ['QR Code', 'scan'], image: ['Display Image', 'file'], address: ['Geocoded Address', 'map'], hidden: ['Hidden', 'item'], display: ['Display Only', 'file'], password: ['Password', 'key'],
 };
 export const BUTTON_LABELS: Record<string, [string, string]> = {
-  submit: ['Submit page', 'button'], redirect: ['Redirect to page', 'button'], da: ['Dynamic action', 'bolt'], document: ['Download document', 'download'],
+  submit: ['Submit Page', 'button'], redirect: ['Redirect to Page', 'button'], da: ['Dynamic Action', 'bolt'], document: ['Download Document', 'download'],
 };
 
 /** A working starting point per region type, so a new region renders straight away. */
@@ -351,6 +353,25 @@ export async function arrangeRoutes(app: FastifyInstance) {
   });
 
   // (sprint 77) the rendering tree's menu: Duplicate, Copy to other Page
+  // (sprint 90, PD-4; APEX: Comment Out) a component left out of the page by the build option COMMENTED_OUT (made with
+  // the status Exclude when first needed); Uncomment takes it off again. Not a layout change: the undo history stays.
+  route('comment', async (_s, pid, b) => {
+    const kind = b.kind ?? '';
+    const id = int(b.id);
+    if (!COMMENTABLE.has(kind) || id === null) throw new LayoutError(400, 'Unknown component.');
+    const on = b.on !== 'false';
+    const done = await owner.tx(async (c) => {
+      if (on)
+        await c.query(
+          `insert into meta.build_option (app_id, name, status, description)
+           select app_id, 'COMMENTED_OUT', 'exclude', 'Components commented out in the page designer' from meta.page where id = $1
+           on conflict (app_id, name) do nothing`, [pid]);
+      return (await c.query(`update ${COMPONENTS[kind].table} set build_option = $3 where id = $1 and page_id = $2 and ${on ? 'true' : `build_option = 'COMMENTED_OUT'`}`, [id, pid, on ? 'COMMENTED_OUT' : null])).rowCount;
+    });
+    if (!done) throw new LayoutError(404, 'Unknown component.');
+    return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} ${on ? 'commented out: it stays in the page designer and is left out of the page (build option COMMENTED_OUT)' : 'back on the page'}.` };
+  });
+
   route('duplicate', async (s, pid, b) => {
     const kind = b.kind;
     const id = int(b.id);

@@ -270,6 +270,11 @@
       list.push(['Duplicate', () => submit(`${base}/layout/duplicate`, { kind, id })], ['Copy to other page…', copyDialog]);
       if (kind !== 'region') list.push(['Create dynamic action', go('new=dynamic_action')]);
       if (node.classList.contains('has-kids')) list.push(null, ['Expand all below', () => setAll(node, true)], ['Collapse all below', () => setAll(node, false)]);
+      // (sprint 90; APEX: Comment Out) leave a component out of the page without deleting it (build option COMMENTED_OUT)
+      if (['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'].includes(kind))
+        list.push(null, node.hasAttribute('data-commented')
+          ? ['Uncomment', () => submit(`${base}/layout/comment`, { kind, id, on: 'false' })]
+          : ['Comment out', () => submit(`${base}/layout/comment`, { kind, id, on: 'true' })]);
       list.push(null, ['Delete', () => submit(`${base}/c/${kind}/${id}/delete`, {}, `Delete ${kind} ${label}?`), 'danger']);
       return list;
     };

@@ -80,6 +80,16 @@ Sprint 89: the Object Browser (parity handoff SQL-4).
 - **A table's tabs on one row** (SQL-4): Columns, Data, Indexes, Constraints, DDL and the current tab; the rest under
   *More*. **NULL is a blank cell** in the Object Browser, not an italic *null*.
 
+Sprint 90: the page designer's Comment Out and gallery labels (parity handoff PD-4).
+
+### Added
+- **Comment out / Uncomment** in the page designer tree's menu (PD-4; APEX: Comment Out): the component gets the build
+  option `COMMENTED_OUT` (status *Exclude*, made when first needed) and is struck through in the tree.
+
+### Changed
+- **The gallery's labels in title case** (PD-4; APEX's): *Interactive Report*, *Faceted Search*, *Text Field*, …; long
+  labels wrap instead of being cut off.
+
 ## [0.45.0] - 2026-10-15
 
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
