@@ -1256,17 +1256,22 @@ others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compar
   statements are allowed; the result of the last one is shown (up to 500 rows). Press
   **Ctrl/Cmd + Enter** to run. The [code editor](#the-code-editor) suggests every schema, table,
   column and function the owner sees.
-- **Object Browser** (APEX's): the **schema** in the header (the session's schema by default) and a tree with a
+- **Object Browser** (APEX's): the **schema** in the header and a tree with a
   folder per object type (tables, views, materialized views, indexes, sequences, types, functions, procedures,
   triggers) and a **filter** by name. pgkiln's own schemas (`meta`, `pgkiln_plugins`) and objects that belong to an
   extension show only with **Show system objects**. **Create** (and the tiles shown when nothing is selected) opens
   SQL Commands with a CREATE TABLE, VIEW, FUNCTION, SEQUENCE or INDEX statement to fill in. A table opens in tabs:
-  **Columns** (with comments; *Add*, *Rename* and *Drop column* write the ALTER TABLE statement into SQL Commands to
-  review and run: nothing changes until you press Run), **Data** (25 rows a page), **Indexes**, **Constraints**
+  **Columns** (with comments; the toolbar's *Add*, *Modify* (type, nulls, default), *Rename* and *Drop column* write
+  the ALTER TABLE statement into SQL Commands to review and run: nothing changes until you press Run), **Data** (25
+  rows a page; NULL is a blank cell), **Indexes**, **Constraints**
   (primary key, foreign keys with the table they refer to, unique, check), **Triggers**, **Grants**, **Row level
   security** (on or off, the policies), **Dependencies** (views and foreign keys that use it, and what it uses),
   **Statistics** (rows, sizes, analyze and vacuum times) and **DDL**. A view has the same tabs where they apply; a
-  function or procedure shows its source, a trigger, index, sequence or type its definition.
+  function or procedure shows its source, a trigger, index, sequence or type its definition. (sprint 89) The tabs stay
+  on one row: Columns, Data, Indexes, Constraints and DDL (and the current one), the others under **More**. The
+  schema shown is the one you chose last (remembered for the session), else the session's schema of SQL Commands,
+  else the **parsing schema** of the application changed last in your workspace (the schema its database role
+  uses).
 - **SQL Scripts**: saved scripts, shared by the developers of the workspace. Create one in the editor, upload a
   `.sql` file (UTF-8, up to 5 MB) or save one from Quick SQL; download it again as `.sql`. **Run**
   splits the script into statements at semicolons (outside strings, comments, quoted identifiers,

@@ -126,3 +126,57 @@ describe('Object Browser', () => {
     assert.match(quick, /<a class="ide-tab" href="\/builder\/sql\/quick" aria-current="page">/, 'the open tool from More is a tab too');
   });
 });
+
+describe('Object Browser (sprint 89, SQL-4)', () => {
+  test('the schema: the one asked for is remembered; otherwise the parsing schema of the last changed application', async () => {
+    const b = await builder();
+    const shown = async (url: string) => /<select id="ob-schema" name="schema" data-autosubmit>[\s\S]*?<option value="([^"]+)" selected>/.exec((await b.get(url)).body)?.[1];
+    // a new session without a schema of its own: the HR application's (its role uses hr), when HR changed last
+    await owner.query(`update meta.app set updated_at = now() + interval '1 minute' where alias = 'hr'`);
+    assert.equal(await shown('/builder/sql/objects'), 'hr');
+    assert.equal(await shown(`/builder/sql/objects?schema=${S}`), S);
+    assert.equal(await shown('/builder/sql/objects'), S, 'remembered');
+    assert.equal(await shown('/builder/sql/objects?schema=nope_not_there'), S, 'an unknown schema: the remembered one');
+  });
+
+  test('a table\'s tabs on one row with More; NULL is a blank cell', async () => {
+    const b = await builder();
+    const page = (await b.get(`/builder/sql/objects?schema=${S}&k=table&o=${S}.emp&tab=data`)).body;
+    const nav = /<nav class="settings-tabs ob-tabs"[^>]*>([\s\S]*?)<\/nav>/.exec(page)![1];
+    const main = [...nav.replace(/<details[\s\S]*<\/details>/, '').matchAll(/>([A-Za-z ]+)<\/a>/g)].map((m) => m[1]);
+    assert.deepEqual(main, ['Columns', 'Data', 'Indexes', 'Constraints', 'DDL']);
+    assert.match(nav, /<details class="menu ob-more"><summary>More[\s\S]*>Triggers<\/a>[\s\S]*>Row level security<\/a>/);
+    // a tab under More, when current, is shown in the row too
+    const grants = /<nav class="settings-tabs ob-tabs"[^>]*>([\s\S]*?)<\/nav>/.exec((await b.get(`/builder/sql/objects?schema=${S}&k=table&o=${S}.emp&tab=grants`)).body)![1];
+    assert.match(grants.replace(/<details[\s\S]*<\/details>/, ''), /aria-current="page">Grants<\/a>/);
+    // boss is null in every row: blank, not an italic "null"
+    assert.doesNotMatch(page, /<span class="null">null<\/span>/);
+    assert.match(page, /<td>E1<\/td><td>1<\/td><td><\/td>/);
+  });
+
+  test('the Columns toolbar: Add, Modify, Rename, Drop; Modify writes type, nulls and default in one statement', async () => {
+    const b = await builder();
+    const page = (await b.get(`/builder/sql/objects?schema=${S}&k=table&o=${S}.emp&tab=columns`)).body;
+    assert.match(page, /<div class="ob-toolbar" role="toolbar" aria-label="Columns">/);
+    for (const label of ['Add column', 'Modify column', 'Rename column', 'Drop column']) assert.match(page, new RegExp(`<summary class="btn btn-sm"><svg[^>]*>[\\s\\S]*?</svg> ${label}</summary>`));
+    let res = await b.submit('/builder/sql/objects/alter', { schema: S, table: `${S}.emp`, action: 'modify', column: 'name', type: 'varchar(80)', nullable: 'null', default_action: 'set', default: "'unknown'" });
+    assert.equal(res.headers.location, '/builder/sql/commands');
+    assert.match((await b.get('/builder/sql/commands')).body,
+      /alter table ob75\.emp\n {2}alter column &quot;name&quot; type varchar\(80\) using &quot;name&quot;::varchar\(80\),\n {2}alter column &quot;name&quot; drop not null,\n {2}alter column &quot;name&quot; set default &#39;unknown&#39;;<\/textarea>/);
+    assert.equal((await owner.one(`select attnotnull from pg_attribute where attrelid = '${S}.emp'::regclass and attname = 'name'`)).attnotnull, true, 'nothing ran');
+    await b.submit('/builder/sql/objects/alter', { schema: S, table: `${S}.emp`, action: 'modify', column: 'dept_id', default_action: 'drop' });
+    assert.match((await b.get('/builder/sql/commands')).body, /alter table ob75\.emp\n {2}alter column &quot;dept_id&quot; drop default;/);
+    // refused: nothing to change, a statement as a default, a column the table hasn't, a type that isn't one
+    for (const [bad, message] of [
+      [{ column: 'name' }, /Nothing to change/],
+      [{ column: 'name', default_action: 'set', default: '0; drop table ob75.dept' }, /A default is one expression/],
+      [{ column: 'name', default_action: 'set', default: '0 -- x' }, /A default is one expression/],
+      [{ column: 'nope', nullable: 'null' }, /Choose a column of the table/],
+      [{ column: 'name', type: 'text; drop table x' }, /A type is a name/],
+    ] as const) {
+      res = await b.submit('/builder/sql/objects/alter', { schema: S, table: `${S}.emp`, action: 'modify', ...bad });
+      assert.match((await b.get(res.headers.location as string)).body, message);
+    }
+    assert.ok(await owner.one(`select to_regclass('${S}.dept') is not null as ok`));
+  });
+});
