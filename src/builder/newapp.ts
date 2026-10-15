@@ -268,7 +268,8 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   if (base !== 'standard') theme.base = base;
   if (a.topNav) theme.nav = 'top';
   if (a.accent) theme.accent = a.accent;
-  const r = await c.query('insert into meta.app (alias, name, authentication, db_role, theme, language) values ($1, $2, $3, $4, $5, $6) returning id', [a.alias, a.name, a.authentication, a.role, theme, a.language ?? 'en']);
+  // (107) a new application starts at Release 1.0, like APEX's
+  const r = await c.query(`insert into meta.app (alias, name, authentication, db_role, theme, language, version) values ($1, $2, $3, $4, $5, $6, 'Release 1.0') returning id`, [a.alias, a.name, a.authentication, a.role, theme, a.language ?? 'en']);
   const appId = r.rows[0].id as number;
   await placeApp(c, appId, a.workspaceId);
   const p = await c.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appId]);

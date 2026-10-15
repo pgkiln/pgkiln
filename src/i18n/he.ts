@@ -63,6 +63,7 @@ export const he: Record<MessageKey, string> = {
   'common.back': "חזרה",
   'common.home': "מעבר לדף הבית",
   'common.skip': "דילוג לתוכן",
+  'common.back_to_top': "חזרה למעלה",
   'common.toggle_nav': "הצגה או הסתרה של הניווט",
   'common.dismiss': "סגירה",
   // messages and errors

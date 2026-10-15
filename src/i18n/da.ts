@@ -63,6 +63,7 @@ export const da: Record<MessageKey, string> = {
   'common.back': "Tilbage",
   'common.home': "Gå til forsiden",
   'common.skip': "Gå til indholdet",
+  'common.back_to_top': "Til toppen",
   'common.toggle_nav': "Vis eller skjul navigationen",
   'common.dismiss': "Luk",
   // messages and errors

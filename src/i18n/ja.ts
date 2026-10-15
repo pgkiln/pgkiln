@@ -63,6 +63,7 @@ export const ja: Record<MessageKey, string> = {
   'common.back': "戻る",
   'common.home': "ホームページへ",
   'common.skip': "本文へスキップ",
+  'common.back_to_top': "ページの先頭へ",
   'common.toggle_nav': "ナビゲーションの表示切替",
   'common.dismiss': "閉じる",
   // messages and errors

@@ -63,6 +63,7 @@ export const nb: Record<MessageKey, string> = {
   'common.back': "Tilbake",
   'common.home': "Gå til forsiden",
   'common.skip': "Gå til innholdet",
+  'common.back_to_top': "Til toppen",
   'common.toggle_nav': "Vis eller skjul navigasjonen",
   'common.dismiss': "Lukk",
   // messages and errors

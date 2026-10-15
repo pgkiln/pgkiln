@@ -63,6 +63,7 @@ export const el: Record<MessageKey, string> = {
   'common.back': "Επιστροφή",
   'common.home': "Μετάβαση στην αρχική σελίδα",
   'common.skip': "Μετάβαση στο περιεχόμενο",
+  'common.back_to_top': "Επιστροφή στην αρχή",
   'common.toggle_nav': "Εμφάνιση ή απόκρυψη πλοήγησης",
   'common.dismiss': "Κλείσιμο",
   // messages and errors

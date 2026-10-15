@@ -63,6 +63,7 @@ export const uk: Record<MessageKey, string> = {
   'common.back': "Назад",
   'common.home': "На головну сторінку",
   'common.skip': "Перейти до вмісту",
+  'common.back_to_top': "Угору",
   'common.toggle_nav': "Показати або сховати навігацію",
   'common.dismiss': "Закрити",
   // messages and errors

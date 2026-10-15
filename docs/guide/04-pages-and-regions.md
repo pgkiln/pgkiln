@@ -1129,7 +1129,7 @@ Attributes (the region's **Settings** in the page designer):
 | Key | Meaning |
 |---|---|
 | `list` | The list's name (upper case) |
-| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description), `tabs` (the top-level entries as tabs) or `wizard_progress` (numbered steps: the entry of the current page is the current step, the ones before it are done and link back; APEX: Wizard Progress) |
+| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description; (sprint 88) a colour band and the icon in a round badge, in the chart palette's order), `tabs` (the top-level entries as tabs) or `wizard_progress` (numbered steps: the entry of the current page is the current step, the ones before it are done and link back; APEX: Wizard Progress) |
 
 The HR example's page 31 (Shortcuts) shows a static list with each template (with a badge from an
 item, child entries, a manager-only entry and one of an excluded build option) and a department

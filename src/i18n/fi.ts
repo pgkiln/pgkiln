@@ -63,6 +63,7 @@ export const fi: Record<MessageKey, string> = {
   'common.back': "Takaisin",
   'common.home': "Siirry etusivulle",
   'common.skip': "Siirry sisältöön",
+  'common.back_to_top': "Takaisin ylös",
   'common.toggle_nav': "Näytä tai piilota navigointi",
   'common.dismiss': "Sulje",
   // messages and errors

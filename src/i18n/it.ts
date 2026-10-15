@@ -63,6 +63,7 @@ export const it: Record<MessageKey, string> = {
   'common.back': "Indietro",
   'common.home': "Vai alla pagina iniziale",
   'common.skip': "Vai al contenuto",
+  'common.back_to_top': "Torna su",
   'common.toggle_nav': "Mostra o nascondi la navigazione",
   'common.dismiss': "Chiudi",
   // messages and errors

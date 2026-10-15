@@ -401,6 +401,7 @@ export async function builderRoutes(app: FastifyInstance) {
             <div class="form-grid">
               ${input('name', 'Name', a.name, { required: true })}
               ${input('alias', 'Alias', a.alias, { required: true })}
+              ${input('version', 'Version', a.version ?? '', { placeholder: 'Release 1.0', help: 'Shown in the footer of the application\'s pages; empty: none.' })}
               ${input('home_page', 'Home page', a.home_page, { type: 'number' })}
               ${select('app_type', 'Application type', a.app_type ?? 'standard', APP_TYPES.map((t): [string, string] => [t, APP_TYPE_LABELS[t]]),
                 'Theme and library applications offer their theme or shared components to other applications (Shared Components → Subscriptions); Create application can start from a boilerplate application.')}
@@ -546,7 +547,7 @@ export async function builderRoutes(app: FastifyInstance) {
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
                 header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
                 custom_auth_function = $23, custom_auth_code = $24, custom_auth_post_code = $25, nav_list = $26, navbar_list = $27,
-                app_type = $28, session_group = $29, updated_at = now() where id = $1`,
+                app_type = $28, session_group = $29, version = $30, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            base: baseStyleOf({ base: b.base }) === 'standard' ? undefined : baseStyleOf({ base: b.base }),
@@ -579,7 +580,8 @@ export async function builderRoutes(app: FastifyInstance) {
          b.nav_list?.trim().toUpperCase() || null,
          b.navbar_list?.trim().toUpperCase() || null,
          (APP_TYPES as readonly string[]).includes(b.app_type ?? '') ? b.app_type : 'standard',
-         /^[a-z][a-z0-9_]{0,29}$/.test(b.session_group?.trim().toLowerCase() ?? '') ? b.session_group!.trim().toLowerCase() : null],
+         /^[a-z][a-z0-9_]{0,29}$/.test(b.session_group?.trim().toLowerCase() ?? '') ? b.session_group!.trim().toLowerCase() : null,
+         (b.version ?? '').trim().slice(0, 40) || null],
       );
       await saveTimeZoneSettings(req.params.id, b);
       await saveLoginSettings(req.params.id, b);

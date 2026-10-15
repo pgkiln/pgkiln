@@ -63,6 +63,7 @@ export const zh: Record<MessageKey, string> = {
   'common.back': "返回",
   'common.home': "转到首页",
   'common.skip': "跳到内容",
+  'common.back_to_top': "返回顶部",
   'common.toggle_nav': "显示或隐藏导航",
   'common.dismiss': "关闭",
   // messages and errors

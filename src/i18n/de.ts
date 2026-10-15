@@ -63,6 +63,7 @@ export const de: Record<MessageKey, string> = {
   'common.back': 'Zurück',
   'common.home': 'Zur Startseite',
   'common.skip': 'Zum Inhalt springen',
+  'common.back_to_top': "Nach oben",
   'common.toggle_nav': 'Navigation ein-/ausblenden',
   'common.dismiss': 'Schließen',
   // messages and errors

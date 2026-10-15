@@ -63,6 +63,7 @@ export const cs: Record<MessageKey, string> = {
   'common.back': "Zpět",
   'common.home': "Na úvodní stránku",
   'common.skip': "Přejít na obsah",
+  'common.back_to_top': "Zpět nahoru",
   'common.toggle_nav': "Zobrazit nebo skrýt navigaci",
   'common.dismiss': "Zavřít",
   // messages and errors

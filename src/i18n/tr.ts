@@ -63,6 +63,7 @@ export const tr: Record<MessageKey, string> = {
   'common.back': "Geri dön",
   'common.home': "Ana sayfaya git",
   'common.skip': "İçeriğe atla",
+  'common.back_to_top': "Başa dön",
   'common.toggle_nav': "Gezintiyi göster veya gizle",
   'common.dismiss': "Kapat",
   // messages and errors

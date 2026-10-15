@@ -63,6 +63,7 @@ export const fr: Record<MessageKey, string> = {
   'common.back': 'Retour',
   'common.home': 'Aller à la page d’accueil',
   'common.skip': 'Aller au contenu',
+  'common.back_to_top': "Haut de page",
   'common.toggle_nav': 'Afficher ou masquer la navigation',
   'common.dismiss': 'Fermer',
   // messages and errors

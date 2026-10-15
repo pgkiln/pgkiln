@@ -63,6 +63,7 @@ export const ru: Record<MessageKey, string> = {
   'common.back': "Назад",
   'common.home': "На главную страницу",
   'common.skip': "Перейти к содержимому",
+  'common.back_to_top': "Наверх",
   'common.toggle_nav': "Показать или скрыть навигацию",
   'common.dismiss': "Закрыть",
   // messages and errors
