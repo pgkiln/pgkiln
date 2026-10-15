@@ -130,3 +130,29 @@ describe('the Create Application wizard', () => {
     assert.equal((await owner.query(`select 1 from meta.app where alias = 'cw73-bad'`)).rowCount, 0);
   });
 });
+
+describe('the Create Application wizard (sprint 87, WIZ-4)', () => {
+  test('row level security is shown per table before Create; the alias says it follows the name', async () => {
+    await owner.query(`
+      alter table ${SRC}.emp enable row level security;
+      create policy emp_mine on ${SRC}.emp using (true);
+      alter table ${SRC}.note enable row level security;`);
+    try {
+      const b = await builder();
+      const page = (await b.get(`/builder/create?schema=${SRC}`)).body;
+      const row = (rel: string) => new RegExp(`name="t_\\d+" value="${rel}">[\\s\\S]*?</li>`).exec(page)![0];
+      assert.match(row('emp'), /<span class="tag aw-rls" title="Row level security is on \(1 policy\)[^"]*">[\s\S]*? RLS · 1<\/span>/);
+      assert.match(row('note'), /<span class="tag tag-error aw-rls" title="Row level security is on without policies[^"]*">[\s\S]*?RLS, no policies<\/span>/);
+      assert.doesNotMatch(row('dept'), /aw-rls/);
+      // the page list and the schema's hidden fields can be swapped by the script
+      assert.match(page, /<section class="region region-standard" id="aw-pages">/);
+      assert.match(page, new RegExp(`<div id="aw-schema-fields"><input type="hidden" name="schema" value="${SRC}"><input type="hidden" name="tables" value="1"></div>`));
+      assert.match(page, /<input id="f_alias" name="alias" value="cw73-src" required pattern="[^"]+" maxlength="50" data-derive-from="f_name">/);
+      // after a refused submit the alias the developer typed stays theirs
+      const res = await b.submit('/builder/apps', { name: 'X', alias: 'Not valid!', schema: SRC, features: '1' });
+      assert.match(res.body, /data-derive-from="f_name" data-edited>/);
+    } finally {
+      await owner.query(`drop policy emp_mine on ${SRC}.emp; alter table ${SRC}.emp disable row level security; alter table ${SRC}.note disable row level security`);
+    }
+  });
+});
