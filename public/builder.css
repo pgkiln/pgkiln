@@ -368,7 +368,7 @@ a.pd-node:hover { background: var(--surface-3); }
 .js .pd-gal { cursor: grab; }
 .pd-gal:hover { background: var(--surface-3); }
 .pd-gal .icon { width: 22px; height: 22px; color: var(--muted); stroke-width: 1.5; }
-.pd-gal span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-gal span { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
 
 /* ------------------------------------------------------------ help and search tabs */
 .pd-help, .pd-search { padding: 12px 16px; max-width: 60rem; }
@@ -1029,3 +1029,6 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .ob-tool .ob-action input:not([type=checkbox]), .ob-tool .ob-action select { width: 100%; }
 .ob-toolbar-note { font-size: 0.85rem; }
 @media (max-width: 640px) { .ob-tabs { overflow-x: auto; } .ob-tool .menu-panel { min-width: min(18rem, 90vw); } }
+
+/* (sprint 90, PD-4) a commented-out component in the tree (APEX: Comment Out): struck through and muted */
+.pd-node[data-commented] .pd-label { text-decoration: line-through; color: var(--muted); }

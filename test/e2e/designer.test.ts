@@ -242,6 +242,14 @@ describe('page designer interaction (desktop)', () => {
     await Promise.all([page.waitForNavigation(), page.click('.tb-save')]);
     const copy = await owner.one(`select template_options from meta.region where page_id = $1 and title = 'First region' order by id desc limit 1`, [ids.p]);
     assert.deepEqual(copy.template_options, ['to-accent'], 'saved with the form');
+    // (sprint 90, PD-4) Comment out: struck through in the tree, Uncomment in its menu
+    await page.locator(`.pd-tree a.pd-node[data-kind="region"][data-id="${ids.r2}"]`).click({ button: 'right' });
+    await Promise.all([page.waitForURL(/c=region-/), page.click('.pd-menu [role=menuitem]:text-is("Comment out")')]);
+    assert.equal((await owner.one('select build_option from meta.region where id = $1', [ids.r2])).build_option, 'COMMENTED_OUT');
+    assert.equal(await page.locator(`.pd-tree a.pd-node[data-id="${ids.r2}"][data-commented]`).count(), 1);
+    await page.locator(`.pd-tree a.pd-node[data-kind="region"][data-id="${ids.r2}"]`).click({ button: 'right' });
+    await Promise.all([page.waitForURL(/c=region-/), page.click('.pd-menu [role=menuitem]:text-is("Uncomment")')]);
+    assert.equal((await owner.one('select build_option from meta.region where id = $1', [ids.r2])).build_option, null);
     assert.deepEqual(errors, []);
     await page.context().close();
   });

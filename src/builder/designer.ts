@@ -104,8 +104,10 @@ export async function designerRoutes(app: FastifyInstance) {
 
     // ------------------------------------------------------------ left: component tree
     // (sprint 77) data-kind and data-id: the node's context menu (Duplicate, Copy to other page, Delete…) and icon colour
+    // (sprint 90) a commented-out component: struck through in the tree, Uncomment in its menu
+    const commented = (r: any) => (r.build_option === 'COMMENTED_OUT' ? raw(' data-commented') : '');
     const leaf = (k: string, r: any, ic: Raw | '', label: string, note = '') =>
-      html`<li><a class="pd-node" href="${url(`c=${k}-${r.id}`)}"${cur(`${k}-${r.id}`)} data-kind="${k}" data-id="${r.id}">${ic}<span class="pd-label">${label}</span>${badges(r)}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
+      html`<li><a class="pd-node" href="${url(`c=${k}-${r.id}`)}"${cur(`${k}-${r.id}`)} data-kind="${k}" data-id="${r.id}"${commented(r)}>${ic}<span class="pd-label">${label}</span>${badges(r)}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
     const folder = (label: string, children: Raw[] | Raw, open = true) =>
       html`<li${open ? '' : raw(' data-collapsed')}><span class="pd-node pd-folder"><span class="pd-label">${label}</span></span><ul>${children}</ul></li>`;
     const none = (text: string) => html`<li class="pd-empty">${text}</li>`;
@@ -118,7 +120,7 @@ export async function designerRoutes(app: FastifyInstance) {
       const bySlot = ['region', ...TOP_SLOTS, ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
       const kids = [...(items.length ? [folder('Items', items.map(itemLeaf))] : []),
         ...bySlot.map(([sl, list]) => folder(sl === 'region' ? 'Buttons' : `Buttons: ${SLOT_LABELS[sl]}`, list.map(buttonLeaf)))];
-      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-next="${next?.id ?? ''}">${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
+      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-next="${next?.id ?? ''}"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
     // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
     const treeSide = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
@@ -249,7 +251,7 @@ export async function designerRoutes(app: FastifyInstance) {
         ${side === 'left' || extra('left') ? zone('left') : ''}${zone('body')}${side === 'right' || extra('right') ? zone('right') : ''}
       </div>${zone('footer')}`;
     const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>) =>
-      html`<ul class="pd-gallery-list" aria-label="${COMPONENTS[k].plural}">${types.map((t) => html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="Drag onto the layout, or open to create">${bicon(labels[t]?.[1] ?? k)}<span>${labels[t]?.[0] ?? t}</span></a></li>`)}</ul>`;
+      html`<ul class="pd-gallery-list" aria-label="${COMPONENTS[k].plural}">${types.map((t) => html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="${labels[t]?.[0] ?? t}: drag onto the layout, or open to create">${bicon(labels[t]?.[1] ?? k)}<span>${labels[t]?.[0] ?? t}</span></a></li>`)}</ul>`;
     const layout = html`
       <div class="pd-canvas-bar" role="toolbar" aria-label="Layout">
         <button type="button" class="tb-btn" data-zoom="-1" title="Zoom out" hidden>${bicon('zoom-out')}<span class="sr-only">Zoom out</span></button>
