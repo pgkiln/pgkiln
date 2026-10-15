@@ -1,3 +1,4 @@
+import { appDateReader } from './items.ts';
 import { existsSync } from 'node:fs';
 import PDFDocument from 'pdfkit';
 import type pg from 'pg';
@@ -192,7 +193,7 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
         ...st.filters.map((f) => `${headingOf(r, f.column, ctx.locale.tr)} ${OPERATORS[f.op]?.label ?? f.op} ${OPERATORS[f.op]?.noValue ? '' : f.value}`.trim()),
         ...(() => {
           const defs = reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions);
-          return facetFilters(ctx.params, r.id, defs).map((f) => describeFacetFilter(f, defs.get(f.column)?.label ?? headingOf(r, f.column, ctx.locale.tr), t, defs.get(f.column)));
+          return facetFilters(ctx.params, r.id, defs, undefined, appDateReader(ctx)).map((f) => describeFacetFilter(f, defs.get(f.column)?.label ?? headingOf(r, f.column, ctx.locale.tr), t, defs.get(f.column)));
         })(),
         ...(st.search ? [`${t('report.search')}: "${st.search}"`] : []),
       ].map((s) => printable(oneLine(s)))

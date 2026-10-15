@@ -1152,6 +1152,13 @@ td[data-add]:hover > .cal-add, .cal-add:focus-visible { opacity: 1; }
 .facet { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .facet legend { font-weight: 650; font-size: 0.85rem; margin-bottom: 0.3rem; padding: 0; display: flex; gap: 0.5rem; }
 .facet-clear { font-weight: 400; font-size: 0.8rem; }
+.facet:has(> .facet-menu) { position: relative; }
+.facet:has(> .facet-menu) > legend { padding-right: 1.6rem; }
+.facet-menu { position: absolute; top: 0; right: 0; }
+.facet-menu > summary { cursor: pointer; padding: 0 0.35rem; border-radius: 4px; color: var(--muted); }
+.facet-menu > summary:hover, .facet-menu[open] > summary { background: var(--surface-3); color: inherit; }
+.facet-menu .menu-panel { left: auto; right: 0; min-width: 11rem; }
+.facet-menu .menu-links a[aria-current] { font-weight: 650; }
 .facet-value { font-weight: 400; font-size: 0.9rem; }
 /* (sprint 65) a facet's chart of its counts, collapsed under the legend */
 .facet-chart { margin: 0.1rem 0 0.4rem; }
@@ -1965,9 +1972,25 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .th-menu-values li.muted { padding: 0.35rem 0.9rem; }
 .js th[data-col] > a { cursor: pointer; }
 
-/* (sprint 76) a date item in the application's date format: the browser's picker on a hidden date field */
+/* (sprint 76) a date item in the application's date format */
 .date-field { position: relative; }
-.date-native { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+/* (sprint 84; APEX: the date picker) a month of days under a date field (app.js) */
+.date-picker { position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgb(16 24 40 / 18%); padding: 0.5rem; min-width: 17rem; }
+.date-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
+.date-picker-title { font-weight: 650; text-transform: capitalize; }
+.date-picker-grid { border-collapse: collapse; width: 100%; }
+.date-picker-grid th { font-size: 0.75rem; font-weight: 600; color: var(--muted); padding: 0.2rem 0; text-align: center; }
+.date-picker-grid td { padding: 1px; text-align: center; }
+.date-picker-grid button { width: 2.2rem; height: 2.1rem; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.date-picker-grid button:hover { background: var(--surface-3); }
+.date-picker-grid button.date-other { color: var(--muted); }
+.date-picker-grid button.date-today { box-shadow: inset 0 0 0 1px var(--accent); }
+.date-picker-grid button.date-selected { background: var(--accent); color: var(--accent-text); }
+.date-picker-grid button:disabled { opacity: 0.35; cursor: not-allowed; }
+.date-picker-grid button:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.date-picker-foot { display: flex; justify-content: space-between; margin-top: 0.4rem; }
+.js .grid-table tbody td[data-col]:not(:focus-within) .date-field > .btn { visibility: hidden; }
 
 /* (sprint 77) display positions: banner, breadcrumb bar, a side column, footer; button positions in a region */
 .t-pos-banner, .t-pos-breadcrumb { margin-bottom: 1rem; }

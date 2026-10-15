@@ -11,7 +11,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `text` | text field | text |
 | `textarea` | multi-line text (always full width) | text |
 | `number` | number field (numeric keyboard on phones) | e.g. `1250.50` |
-| `date` | date picker: the browser's, or (sprint 76) with an application date format or a date format mask on the item a text field in that format with a calendar button; typed dates are read back in the format | `YYYY-MM-DD` |
+| `date` | a text field in the item's date format mask, else the application's date format, else `YYYY-MM-DD`, with pgkiln's [date picker](#the-date-picker) (sprint 84; was the browser's); typed dates are read back in the format | `YYYY-MM-DD` |
 | `datetime` | date-time picker | `YYYY-MM-DDTHH:MM` |
 | `email`, `tel`, `url` | typed fields with the matching phone keyboard | text |
 | `password` | password field; never shown back, empty = unchanged | text |
@@ -31,7 +31,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `markdown` | Markdown textarea with a toolbar; shown formatted when read-only | the Markdown text |
 | `rating` | star rating (radio buttons drawn as stars) | `1` … `max` (default 5) |
 | `combobox` | free text with suggestions from the list of values; several values become tags | **colon-separated** values, e.g. `SQL:Sales` |
-| `daterange` | two date pickers, *From* and *To* | `from:to`, e.g. `2026-01-01:2026-06-30` |
+| `daterange` | two date fields, *From* and *To*, in the date format with the date picker (the picker keeps *From* on or before *To*) | `from:to`, e.g. `2026-01-01:2026-06-30` |
 | `qrcode` | display only: the value as a QR code (SVG drawn on the server) | whatever was set |
 | `image` | display only: a picture from a URL in the value, or a BLOB from a query ([Display image](#display-image-and-geocoded-address)) | a URL, or nothing |
 | `address` | a text field with *Check address*: the installation's geocoder offers matching addresses ([Geocoded address](#display-image-and-geocoded-address)) | the address as text |
@@ -51,6 +51,18 @@ where hiredate between nullif(split_part(:P20_PERIOD, ':', 1), '')::date
                    and coalesce(nullif(split_part(:P20_PERIOD, ':', 2), '')::date, 'infinity')
 ```
 
+
+### The date picker
+
+(sprint 84; APEX: the date picker) A date item, a date range item, an interactive grid's date cell and a
+faceted search's own date range and the task list's vacation rule are text in the date format: the item's date format mask, else the
+application's date format (Settings → Globalization), else `YYYY-MM-DD`. The calendar button next to the
+field (or Alt+↓ in it) opens a month of days under it: the chosen day marked, today outlined, the week
+starting on the language's first day. Arrow keys move a day or a week, Page Up and Page Down a month
+(with Shift a year), Home and End to the week's first and last day, Enter or Space choose, Escape
+closes; *Today* and *Clear* below. Typed dates are read back in the format (and `YYYY-MM-DD` always
+works), so the field works without JavaScript. Timestamp items and grid timestamp cells still use the
+browser's date and time field.
 ## Properties
 
 | Property | Meaning |

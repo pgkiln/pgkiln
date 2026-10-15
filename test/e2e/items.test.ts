@@ -4,6 +4,7 @@
 // breaking the Content-Security-Policy; and the page works without JavaScript.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 import '../../src/env.ts';
@@ -78,8 +79,26 @@ describe('sprint 26 item types', () => {
     assert.deepEqual((await page.locator('.tag-list .tag').allInnerTexts()).map((t) => t.replace(/\s*×$/, '')), ['Planning', 'Brand new']);
     // rating and dates
     await page.click('label[for="P20_RATING_5"]');
+    // (sprint 84) pgkiln's date picker: the to date can't be before the from date; keys move and choose
+    await page.fill('#P20_PERIOD', '2025-12-15');
+    await page.click('[data-date-pick="P20_PERIOD_TO"]');
+    const picker = page.locator('.date-picker[role="dialog"]');
+    assert.equal(await picker.isVisible(), true);
+    assert.equal(await picker.locator('button[data-iso="2025-12-14"]').isDisabled(), true);
+    assert.equal(await picker.locator('button[data-iso="2025-12-20"]').isDisabled(), false);
+    assert.equal(await page.evaluate(() => (document.activeElement as HTMLElement)?.dataset.iso), '2025-12-31', 'the chosen day has the focus');
+    await page.evaluate(readFileSync(new URL('../../node_modules/axe-core/axe.min.js', import.meta.url), 'utf8'));
+    const axe = await page.evaluate(() => (window as any).axe.run(document.querySelector('.date-picker'), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }));
+    assert.deepEqual(axe.violations.map((v: { id: string }) => v.id), []);
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Enter');
+    assert.equal(await picker.count(), 0, 'closed');
+    assert.equal(await page.inputValue('#P20_PERIOD_TO'), '2025-12-30');
+    await page.click('[data-date-pick="P20_PERIOD"]');
+    await page.keyboard.press('Escape');
+    assert.equal(await picker.count(), 0);
+    assert.equal(await page.evaluate(() => (document.activeElement as HTMLElement)?.dataset.datePick), 'P20_PERIOD', 'the focus back on its button');
     await page.fill('#P20_PERIOD', '2025-07-01');
-    assert.equal(await page.getAttribute('#P20_PERIOD_TO', 'min'), '2025-07-01');
     // password reveal
     await page.fill('#P20_PIN', 'abc');
     await page.click('[data-reveal="P20_PIN"]');
@@ -91,7 +110,7 @@ describe('sprint 26 item types', () => {
     await Promise.all([page.waitForNavigation(), page.click('button:has-text("Apply changes")')]);
     assert.equal(await page.locator('.alert-error').count(), 0);
     const row = await owner.one('select * from hr.review where id = $1', [id]);
-    assert.equal(row.period, '2025-07-01:2025-12-31');
+    assert.equal(row.period, '2025-07-01:2025-12-30');
     assert.equal(row.rating, 5);
     assert.equal(row.skills, 'Planning:Brand new');
     assert.match(row.summary, /^<p>Start<\/p>.*<b>Bold<\/b>/);

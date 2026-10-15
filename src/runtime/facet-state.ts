@@ -174,7 +174,10 @@ export const isFacetParam = (reportId: number, name: string) => Object.values(fa
  * The facet filters on a report that its facets allow (except those on one
  * column: a facet's own counts ignore its own selection).
  */
-export function facetFilters(params: URLSearchParams, reportId: number, defs: Map<string, FacetDef>, except?: string): FacetFilter[] {
+/** (sprint 84) Reads a custom range's bound typed in the application's date format as YYYY-MM-DD (null: not a date in it). */
+export type DateReader = (text: string) => string | null;
+
+export function facetFilters(params: URLSearchParams, reportId: number, defs: Map<string, FacetDef>, except?: string, readDate?: DateReader): FacetFilter[] {
   const k = facetKeys(reportId);
   const out: FacetFilter[] = [];
   for (const def of defs.values()) {
@@ -194,8 +197,10 @@ export function facetFilters(params: URLSearchParams, reportId: number, defs: Ma
       const r = parseRange(chosen);
       if (r && def.ranges.some((x) => x.from === r.from && x.to === r.to)) out.push({ column, kind: 'range', from: r.from, to: r.to, custom: false });
     } else if (def.custom) {
-      const from = (params.get(k.from + column) ?? '').trim();
-      const to = (params.get(k.to + column) ?? '').trim();
+      // (sprint 84) a date bound in the date format is read as YYYY-MM-DD; a number stays as it is
+      const bound = (v: string) => (v && readDate && !/^-?\d+(\.\d+)?$/.test(v) ? (readDate(v) ?? v) : v);
+      const from = bound((params.get(k.from + column) ?? '').trim());
+      const to = bound((params.get(k.to + column) ?? '').trim());
       if ((from || to) && anyBound(from) && anyBound(to)) out.push({ column, kind: 'range', from, to, custom: true });
     }
   }
@@ -235,8 +240,8 @@ export function rangeSql(c: string, oid: number | undefined, r: { from: string; 
 }
 
 /** The conditions of all applicable filters. */
-export function facetWhere(params: URLSearchParams, reportId: number, defs: Map<string, FacetDef>, cols: Map<string, number>, p: SqlParams, except?: string): string[] {
-  return facetFilters(params, reportId, defs, except)
+export function facetWhere(params: URLSearchParams, reportId: number, defs: Map<string, FacetDef>, cols: Map<string, number>, p: SqlParams, except?: string, readDate?: DateReader): string[] {
+  return facetFilters(params, reportId, defs, except, readDate)
     .map((f) => facetFilterSql(f, cols, p))
     .filter((s): s is string => s !== null);
 }

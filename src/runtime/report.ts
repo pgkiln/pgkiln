@@ -8,7 +8,7 @@ import { esc, html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext } from './context.ts';
-import { heading, splitValues } from './items.ts';
+import { appDateReader, heading, splitValues } from './items.ts';
 import { linkAttrs } from './links.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
@@ -421,7 +421,7 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   // the search term, facet values and range bounds are query parameters
   const p = new SqlParams();
   const hides = hidesColumns(r);
-  const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions));
+  const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions), undefined, appDateReader(ctx));
   const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort)) || (st.search && st.searchCol);
   // column name → type oid
   const fields = needCols ? await fieldsOf(ctx, src) : [];

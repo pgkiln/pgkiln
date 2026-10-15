@@ -3492,23 +3492,10 @@ function areaFilter(map, f) {
     draw();
   }
 
-  // Date range: the end date can't be before the start date
-  function range(box) {
-    const [from, to] = box.querySelectorAll('input[type=date]');
-    if (!from || !to) return;
-    const limit = () => {
-      to.min = from.value;
-      from.max = to.value;
-    };
-    from.addEventListener('change', limit);
-    to.addEventListener('change', limit);
-  }
-
   function enhance(root) {
     root.querySelectorAll('[data-richtext]').forEach(richText);
     root.querySelectorAll('[data-markdown]').forEach(markdown);
     root.querySelectorAll('[data-tags]').forEach(tags);
-    root.querySelectorAll('[data-range]').forEach(range);
     root.querySelectorAll('[data-reveal]').forEach((b) => (b.hidden = false));
   }
   enhance(document);
@@ -3931,11 +3918,42 @@ document.addEventListener('change', (e) => {
   if (e.target.matches?.('select[data-go]')) e.target.form?.submit();
 });
 
-// (sprint 76) A date item in the application's date format: the calendar button opens the browser's date
-// picker on a hidden date field; the chosen date is written into the text field in the mask.
+// (sprint 76, 84; APEX: the date picker) A date field in a date mask (items.ts dateField): its calendar button
+// opens pgkiln's date picker, a month of days under the field; the chosen date is written into the text field
+// in the mask. Keys: arrows (a day, a week), Page Up/Down (a month; with Shift a year), Home/End (the week),
+// Enter or Space (choose), Escape (close).
 (() => {
+  const meta = (() => { try { return JSON.parse(document.getElementById('pgkiln-meta')?.textContent || '{}'); } catch { return {}; } })();
+  const t = (k, d) => (meta.texts && meta.texts[k]) || d;
+  const lang = document.documentElement.lang || 'en';
   const pad = (n) => String(n).padStart(2, '0');
-  const TOKEN = /"[^"]*"|YYYY|YY|MONTH|MON|MM|DD/gi;
+  const isoOf = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  const dateOf = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const addDays = (iso, n) => { const d = dateOf(iso); d.setUTCDate(d.getUTCDate() + n); return isoOf(d); };
+  const addMonths = (iso, n) => {
+    const d = dateOf(iso);
+    const day = d.getUTCDate();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + n);
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    d.setUTCDate(Math.min(day, last));
+    return isoOf(d);
+  };
+  const today = () => { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; };
+  // the week starts on the language's first day (Monday where the browser doesn't say)
+  const weekStart = (() => {
+    try {
+      const l = new Intl.Locale(lang);
+      const w = (l.getWeekInfo && l.getWeekInfo()) || l.weekInfo;
+      if (w && w.firstDay) return w.firstDay % 7;
+    } catch {}
+    return /^en-US$|^(ja|ko|zh|he|ar|pt-BR)/i.test(lang) ? 0 : 1;
+  })();
+  const fmt = (o) => { try { return new Intl.DateTimeFormat(lang, { ...o, timeZone: 'UTC' }); } catch { return new Intl.DateTimeFormat('en', { ...o, timeZone: 'UTC' }); } };
+  const dayShort = fmt({ weekday: 'short' }), dayLong = fmt({ weekday: 'long' }), full = fmt({ dateStyle: 'full' }), title = fmt({ month: 'long', year: 'numeric' });
+
+  const TOKEN = /"[^"]*"|YYYY|YY|MONTH|MON|MM|DD|DAY|DY/gi;
+  const monthsOf = (field) => { try { return JSON.parse(field.dataset.months || '{}'); } catch { return {}; } };
   const format = (iso, mask, months) => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
     if (!m) return '';
@@ -3948,31 +3966,205 @@ document.addEventListener('change', (e) => {
       if (up === 'YY') return pad(y % 100);
       if (up === 'MM') return pad(mo);
       if (up === 'DD') return pad(d);
-      if (up === 'MONTH') return cased(months.long[mo - 1]);
-      if (up === 'MON') return cased(months.short[mo - 1]);
+      if (up === 'MONTH') return cased((months.long || [])[mo - 1] || '');
+      if (up === 'MON') return cased((months.short || [])[mo - 1] || '');
+      if (up === 'DAY') return cased(dayLong.format(dateOf(iso)));
+      if (up === 'DY') return cased(dayShort.format(dateOf(iso)));
       return tok;
     });
   };
+  // the text read back in the mask (as format.ts parseDateMask does), or as YYYY-MM-DD; null when it isn't a date
+  const parse = (text, mask, months) => {
+    const v = (text || '').trim();
+    let y, mo, d;
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    if (iso) [y, mo, d] = iso.slice(1).map(Number);
+    else {
+      const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const names = (list) => `(${(list || []).map(esc).join('|') || '\\p{L}+'})`;
+      const groups = [];
+      let last = 0, re = '';
+      for (const m of mask.matchAll(TOKEN)) {
+        re += esc(mask.slice(last, m.index));
+        last = m.index + m[0].length;
+        if (m[0].startsWith('"')) { re += esc(m[0].slice(1, -1)); continue; }
+        const up = m[0].toUpperCase();
+        re += { YYYY: '(\\d{4})', YY: '(\\d{2})', MM: '(\\d{1,2})', DD: '(\\d{1,2})', MONTH: names(months.long), MON: names(months.short), DAY: '(\\p{L}+)', DY: '(\\p{L}+)' }[up];
+        groups.push(up);
+      }
+      re += esc(mask.slice(last));
+      const m = new RegExp(`^${re}$`, 'iu').exec(v);
+      if (!m) return null;
+      groups.forEach((g, i) => {
+        const x = m[i + 1];
+        if (g === 'YYYY') y = Number(x);
+        else if (g === 'YY') y = 2000 + Number(x);
+        else if (g === 'MM') mo = Number(x);
+        else if (g === 'DD') d = Number(x);
+        else if (g === 'MONTH' || g === 'MON') mo = ((g === 'MONTH' ? months.long : months.short) || []).findIndex((n) => n.toLowerCase() === x.toLowerCase()) + 1;
+      });
+    }
+    if (!y || !mo || !d) return null;
+    const out = `${String(y).padStart(4, '0')}-${pad(mo)}-${pad(d)}`;
+    return isoOf(dateOf(out)) === out ? out : null;
+  };
+
+  let open = null; // { box, field, btn, focus, view }
+  function close(back) {
+    if (!open) return;
+    const { box, btn } = open;
+    open = null;
+    box.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    if (back) btn.focus();
+  }
+  function choose(iso) {
+    const { field } = open;
+    field.value = iso ? format(iso, field.dataset.dateMask || 'YYYY-MM-DD', monthsOf(field)) : '';
+    close(false);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    field.focus();
+  }
+  // a date range's to is on or after its from (and the from on or before the to)
+  const allowed = (iso) => {
+    const { field } = open;
+    if (!field.closest('.date-range')) return true;
+    const isTo = field.id.endsWith('_TO');
+    const other = document.getElementById(isTo ? field.id.slice(0, -3) : `${field.id}_TO`);
+    const bound = other ? parse(other.value, other.dataset.dateMask || 'YYYY-MM-DD', monthsOf(other)) : null;
+    return !bound || (isTo ? iso >= bound : iso <= bound);
+  };
+  function render() {
+    const { box, field } = open;
+    const sel = parse(field.value, field.dataset.dateMask || 'YYYY-MM-DD', monthsOf(field));
+    const now = today();
+    const view = open.view;
+    const first = dateOf(`${view.slice(0, 7)}-01`);
+    const start = addDays(isoOf(first), -((first.getUTCDay() - weekStart + 7) % 7));
+    box.textContent = '';
+    const head = document.createElement('div');
+    head.className = 'date-picker-head';
+    const nav = (label, n, glyph) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-sm';
+      b.setAttribute('aria-label', label);
+      b.textContent = glyph;
+      b.addEventListener('click', () => { open.focus = addMonths(open.focus, n); open.view = open.focus; render(); });
+      return b;
+    };
+    const caption = document.createElement('div');
+    caption.className = 'date-picker-title';
+    caption.setAttribute('aria-live', 'polite');
+    caption.id = `${field.id}_dp_title`;
+    caption.textContent = title.format(first);
+    head.append(nav(t('calendar.previous', 'Previous month'), -1, '‹'), caption, nav(t('calendar.next', 'Next month'), 1, '›'));
+    const table = document.createElement('table');
+    table.className = 'date-picker-grid';
+    table.setAttribute('role', 'grid');
+    table.setAttribute('aria-labelledby', caption.id);
+    const hr = table.createTHead().insertRow();
+    for (let i = 0; i < 7; i++) {
+      const th = document.createElement('th');
+      const day = addDays(start, i);
+      th.scope = 'col';
+      th.abbr = dayLong.format(dateOf(day));
+      th.textContent = dayShort.format(dateOf(day));
+      hr.append(th);
+    }
+    const body = table.createTBody();
+    for (let w = 0; w < 6; w++) {
+      const tr = body.insertRow();
+      for (let i = 0; i < 7; i++) {
+        const iso = addDays(start, w * 7 + i);
+        const td = tr.insertCell();
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.iso = iso;
+        b.textContent = String(Number(iso.slice(8)));
+        b.setAttribute('aria-label', full.format(dateOf(iso)));
+        b.tabIndex = iso === open.focus ? 0 : -1;
+        if (iso.slice(0, 7) !== view.slice(0, 7)) b.classList.add('date-other');
+        if (iso === now) { b.classList.add('date-today'); b.setAttribute('aria-current', 'date'); }
+        if (iso === sel) { b.classList.add('date-selected'); b.setAttribute('aria-pressed', 'true'); }
+        if (!allowed(iso)) b.disabled = true;
+        td.append(b);
+      }
+    }
+    const foot = document.createElement('div');
+    foot.className = 'date-picker-foot';
+    const act = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm'; b.textContent = label; b.addEventListener('click', fn); return b; };
+    foot.append(act(t('calendar.today', 'Today'), () => (allowed(now) ? choose(now) : null)), act(t('facets.clear_short', 'Clear'), () => choose('')));
+    box.append(head, table, foot);
+    box.querySelector('button[tabindex="0"]')?.focus({ preventScroll: true });
+  }
+  // fixed under the field (above it when there is no room), so a scrolling table or grid cell doesn't clip it
+  function place() {
+    if (!open) return;
+    const { box, field } = open;
+    const r = field.getBoundingClientRect();
+    const h = box.offsetHeight, w = box.offsetWidth;
+    box.style.position = 'fixed';
+    box.style.top = `${Math.round(r.bottom + 4 + h > window.innerHeight - 8 && r.top - h - 4 > 8 ? r.top - h - 4 : r.bottom + 4)}px`;
+    box.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - w - 8)))}px`;
+  }
+  window.addEventListener('scroll', place, { passive: true, capture: true });
+  window.addEventListener('resize', place);
+  function show(field, btn) {
+    close(false);
+    const box = document.createElement('div');
+    box.className = 'date-picker';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', t('item.choose_date', 'Choose a date'));
+    const sel = parse(field.value, field.dataset.dateMask || 'YYYY-MM-DD', monthsOf(field));
+    open = { box, field, btn, focus: sel || today(), view: sel || today() };
+    btn.setAttribute('aria-expanded', 'true');
+    (field.closest('.date-field') || field.parentElement).append(box);
+    render();
+    place();
+    box.addEventListener('keydown', (e) => {
+      const day = e.target.dataset?.iso;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); return; }
+      if (!day) return;
+      const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+      let next = null;
+      if (step) next = addDays(day, step);
+      else if (e.key === 'PageUp' || e.key === 'PageDown') next = addMonths(day, (e.key === 'PageUp' ? -1 : 1) * (e.shiftKey ? 12 : 1));
+      else if (e.key === 'Home') next = addDays(day, -((dateOf(day).getUTCDay() - weekStart + 7) % 7));
+      else if (e.key === 'End') next = addDays(day, 6 - ((dateOf(day).getUTCDay() - weekStart + 7) % 7));
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (allowed(day)) choose(day); return; }
+      if (!next) return;
+      e.preventDefault();
+      open.focus = next;
+      if (next.slice(0, 7) !== open.view.slice(0, 7)) { open.view = next; render(); }
+      else {
+        box.querySelectorAll('button[data-iso]').forEach((b) => (b.tabIndex = b.dataset.iso === next ? 0 : -1));
+        box.querySelector(`button[data-iso="${next}"]`)?.focus({ preventScroll: true });
+      }
+    });
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-iso]');
+      if (b && !b.disabled) choose(b.dataset.iso);
+    });
+  }
   document.addEventListener('click', (e) => {
     const btn = e.target.closest?.('[data-date-pick]');
-    if (!btn) return;
-    const native = document.querySelector(`input[data-date-for="${CSS.escape(btn.dataset.datePick)}"]`);
-    if (!native) return;
-    try {
-      native.showPicker();
-    } catch {
-      native.focus();
+    if (btn) {
+      const field = document.getElementById(btn.dataset.datePick);
+      if (!field) return;
+      e.preventDefault();
+      if (open && open.btn === btn) close(true);
+      else show(field, btn);
+      return;
     }
+    if (open && !e.target.closest?.('.date-picker')) close(false);
   });
-  document.addEventListener('change', (e) => {
-    const native = e.target;
-    if (!native.matches?.('input[data-date-for]')) return;
-    const text = document.getElementById(native.dataset.dateFor);
-    if (!text) return;
-    let months = { long: [], short: [] };
-    try { months = JSON.parse(text.dataset.months || '{}'); } catch {}
-    text.value = format(native.value, text.dataset.dateMask || 'YYYY-MM-DD', months);
-    text.dispatchEvent(new Event('change', { bubbles: true }));
-    text.focus();
+  // Alt+Down in the field opens the picker (as a native date field does)
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && e.key === 'ArrowDown' && e.target.matches?.('input[data-date-mask]')) {
+      const btn = e.target.parentElement?.querySelector('[data-date-pick]');
+      if (btn) { e.preventDefault(); show(e.target, btn); }
+    }
   });
 })();

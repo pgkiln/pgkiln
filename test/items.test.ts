@@ -121,8 +121,11 @@ describe('item types on page 20', () => {
     const { page } = await openReview();
     const body = page.body;
     assert.match(body, /<fieldset class="field field-daterange[^"]*"/);
-    assert.match(body, /<input type="date" id="P20_PERIOD" name="P20_PERIOD" value="2026-01-01" max="2026-06-30"/);
-    assert.match(body, /<input type="date" id="P20_PERIOD_TO" name="P20_PERIOD" value="2026-06-30" min="2026-01-01"/);
+    // (sprint 84) text in the date format (YYYY-MM-DD without one) with pgkiln's date picker, not the browser's date fields
+    assert.match(body, /<input type="text" id="P20_PERIOD" name="P20_PERIOD"[^>]* value="2026-01-01" placeholder="YYYY-MM-DD" autocomplete="off" inputmode="numeric" data-date-mask="YYYY-MM-DD"/);
+    assert.match(body, /<input type="text" id="P20_PERIOD_TO" name="P20_PERIOD"[^>]* value="2026-06-30" placeholder="YYYY-MM-DD"/);
+    assert.match(body, /<button type="button" class="btn" data-date-pick="P20_PERIOD_TO" aria-label="Choose a date"/);
+    assert.doesNotMatch(body, /type="date"/);
     assert.match(body, /<input type="radio" id="P20_RATING_3" name="P20_RATING" value="3" checked/);
     assert.doesNotMatch(body, /id="P20_RATING_0"/, 'a required rating has no "no rating" choice');
     assert.match(body, /<input type="text" id="P20_SKILLS" name="P20_SKILLS" value="Sales" list="P20_SKILLS_list"/);

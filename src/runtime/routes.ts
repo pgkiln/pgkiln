@@ -360,7 +360,9 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
     }
     if (item.type === 'daterange') {
       // two date inputs with the item's name (or "from:to" from a dynamic action); format checked in validate()
-      const parts = (Array.isArray(raw) ? raw : raw ? String(raw).split(':') : []).map((v) => String(v).trim());
+      // (sprint 84) each part typed in the date format (or YYYY-MM-DD) → YYYY-MM-DD; other text is kept, and validate() reports it
+      const mask = itemDateMask(ctx, item)!;
+      const parts = (Array.isArray(raw) ? raw : raw ? String(raw).split(':') : []).map((v) => String(v).trim()).map((v) => (v ? (parseDateMask(v, mask, ctx.locale.lang) ?? v) : v));
       ctx.session.state[item.name] = parts.some(Boolean) ? (parts.length === 1 ? `${parts[0]}:` : parts.join(':')) : null;
       continue;
     }

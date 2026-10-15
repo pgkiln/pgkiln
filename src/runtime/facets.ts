@@ -4,7 +4,7 @@ import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
-import { heading } from './items.ts';
+import { appDateMask, appDateReader, dateField, heading } from './items.ts';
 import { fieldsOf, regionUrl } from './report.ts';
 import { renderChartBody } from './charts.ts';
 import {
@@ -54,7 +54,7 @@ const col = (name: string) => `"__q".${pg.escapeIdentifier(name)}`;
 
 /** The search and every other facet's filter, as conditions (their values in p). */
 function othersWhere(ctx: PageContext, fs: FacetSource, except: string, p: SqlParams, withSearch = true) {
-  const where = facetWhere(ctx.params, fs.report.id, fs.all, fs.cols, p, except);
+  const where = facetWhere(ctx.params, fs.report.id, fs.all, fs.cols, p, except, appDateReader(ctx));
   if (withSearch && fs.search) where.unshift(searchSql(fs.search, p, hidesColumns(fs.report) ? userColumnNames(fs.report, [...fs.cols.keys()]) : undefined));
   return where;
 }
@@ -99,6 +99,9 @@ export async function rangeCounts(ctx: PageContext, fs: FacetSource, f: FacetDef
   return res.rows[0] as number[];
 }
 
+/** (sprint 84) The URL parameter of a checkbox facet's order: "name", else by count. Not a filter: Apply and Reset keep it. */
+export const facetSortKey = (reportId: number, column: string) => `r${reportId}_fo_${column}`;
+
 /** (sprint 78) Checkbox facet values shown before "Show all" (APEX shows seven). */
 export const FACET_SHOWN = 7;
 
@@ -141,12 +144,27 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
   const k = facetKeys(report.id);
   const formId = `ff${r.id}`;
   const defs = facetDefs(r.config).filter((f) => fs.cols.has(f.column));
-  const active = new Set(facetFilters(ctx.params, report.id, fs.all).map((f) => f.column));
+  const active = new Set(facetFilters(ctx.params, report.id, fs.all, undefined, appDateReader(ctx)).map((f) => f.column));
   const groups: Raw[] = [];
   const clearLink = (f: FacetDef) =>
     active.has(f.column)
       ? html` <a class="facet-clear" href="${regionUrl(ctx, report, (p) => { for (const n of facetParamNames(report.id, f.column)) p.delete(n); p.delete(`r${report.id}_p`); })}" aria-label="${t('facets.clear_one', { facet: facetLabel(ctx, f) })}">${t('facets.clear_short')}</a>`
       : '';
+
+  // (sprint 84; APEX: a facet's ⋮ menu) Clear, and the values sorted by count or by name; links, so it works without JavaScript
+  const facetMenu = (f: FacetDef, label: string, byName: boolean) => {
+    const sortHref = (by: 'count' | 'name') => regionUrl(ctx, report, (p) => {
+      if (by === 'name') p.set(facetSortKey(report.id, f.column), 'name');
+      else p.delete(facetSortKey(report.id, f.column));
+    });
+    const current = (on: boolean) => (on ? raw(' aria-current="true"') : '');
+    return html`<details class="menu facet-menu"><summary aria-label="${t('facets.menu', { facet: label })}"><span aria-hidden="true">⋮</span></summary>
+      <div class="menu-panel"><div class="menu-section menu-links">
+        ${active.has(f.column) ? html`<a href="${regionUrl(ctx, report, (p) => { for (const n of facetParamNames(report.id, f.column)) p.delete(n); p.delete(`r${report.id}_p`); })}">${t('facets.clear_short')}</a>` : ''}
+        <a href="${sortHref('count')}"${current(!byName)}>${t('facets.sort_count')}</a>
+        <a href="${sortHref('name')}"${current(byName)}>${t('facets.sort_name')}</a>
+      </div></div></details>`;
+  };
 
   // the search facet: the report's own search, in the facet panel
   if (r.config.search === true) {
@@ -169,10 +187,13 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
       const selected = new Set(ctx.params.getAll(k.values + f.column));
       // keep selected values visible even when their count dropped to 0
       for (const s of selected) if (s && !values.some((x) => x.v === s)) values.push({ v: s, n: 0 });
+      // (sprint 84; APEX: the facet's menu) the values by count (the query's order) or by name
+      const byName = ctx.params.get(facetSortKey(report.id, f.column)) === 'name';
       const excluded = f.exclude && ctx.params.get(k.exclude + f.column) === '1';
       // (sprint 78) a boolean's values as Yes and No, not true and false
       const bool = fs.cols.get(f.column) === 16;
       const shown = (v: string) => (bool && (v === 'true' || v === 'false') ? t(v === 'true' ? 'item.yes' : 'item.no') : (toState(v) ?? ''));
+      if (byName) values.sort((a, b) => shown(a.v).localeCompare(shown(b.v), ctx.locale.lang, { numeric: true, sensitivity: 'base' }));
       const chart = facetChart(ctx, report, f, label, values.map((x) => ({
         label: shown(x.v), n: x.n,
         apply: (p) => { p.delete(k.values + f.column); p.delete(k.exclude + f.column); p.append(k.values + f.column, x.v); },
@@ -181,7 +202,7 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
         html`<label class="check facet-value"><input type="checkbox" form="${formId}" name="${k.values}${f.column}" value="${x.v}"${selected.has(x.v) ? raw(' checked') : ''} data-facet>
             <span class="facet-label">${shown(x.v)}</span><span class="facet-count">${x.n}</span></label>`;
       groups.push(html`<fieldset class="facet${excluded ? ' facet-excluded' : ''}">
-        <legend>${label}${clearLink(f)}</legend>
+        <legend>${label}${clearLink(f)}</legend>${facetMenu(f, label, byName)}
         ${chart}
         ${values.slice(0, FACET_SHOWN).map(value)}
         ${values.length > FACET_SHOWN
@@ -219,7 +240,10 @@ export async function renderFacets(ctx: PageContext, r: Region): Promise<Raw> {
     const fid = `${formId}_${f.column.replace(/[^A-Za-z0-9_]/g, '_')}`;
     const input = (which: 'from' | 'to', value: string) =>
       html`<label class="sr-only" for="${fid}_${which}">${label}: ${t(`facets.${which}`)}</label>
-        <input id="${fid}_${which}" type="${kind === 'date' ? 'date' : 'number'}"${kind === 'number' ? raw(' step="any"') : ''} form="${formId}" name="${which === 'from' ? k.from : k.to}${f.column}" value="${isCustom ? value : ''}" placeholder="${t(`facets.${which}`)}">`;
+        ${kind === 'date'
+          // (sprint 84) a date in the application's date format, with pgkiln's date picker
+          ? dateField(ctx, { id: `${fid}_${which}`, iso: isCustom ? value : '', mask: appDateMask(ctx), attrs: html` form="${formId}" name="${which === 'from' ? k.from : k.to}${f.column}"` })
+          : html`<input id="${fid}_${which}" type="number" step="any" form="${formId}" name="${which === 'from' ? k.from : k.to}${f.column}" value="${isCustom ? value : ''}" placeholder="${t(`facets.${which}`)}">`}`;
     const rangeChart = facetChart(ctx, report, f, label, f.ranges.map((x, i) => ({
       label: f.type === 'star' ? ctx.locale.t(Number(x.from) === 1 ? 'facets.star_up' : 'facets.stars_up', { n: String(x.from) }) : rangeLabel(x, t),
       n: counts![i],

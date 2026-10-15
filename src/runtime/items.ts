@@ -14,7 +14,7 @@ import { markdownHtml, sanitizeHtml } from '../richtext.ts';
 import { qrSvg, type Ecc } from '../qrcode.ts';
 import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
 import { addressControl, imageControl } from './data-items.ts';
-import { applyMask, formatMaskError, monthNames } from './format.ts';
+import { applyMask, formatMaskError, monthNames, parseDateMask } from './format.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
@@ -184,15 +184,36 @@ export const splitRange = (v: string | null | undefined): [string, string] => {
   return [from, to];
 };
 
+/** (sprint 84) The application's date format, else ISO: every date field is text in it, with pgkiln's date picker. */
+export const appDateMask = (ctx: PageContext) => ctx.locale.dateMask?.trim() || 'YYYY-MM-DD';
+/** (sprint 84) A date typed in the application's date format (or YYYY-MM-DD) as YYYY-MM-DD; null when it isn't one. */
+export const appDateReader = (ctx: PageContext) => (text: string) => parseDateMask(text, appDateMask(ctx), ctx.locale.lang);
+
 /**
- * (sprint 76) The date mask a date item shows its value in: its own format mask (a date mask), else the
- * application's date format; null: the browser's date field (in the browser's notation).
+ * (sprint 76) The date mask a date or date range item shows its value in: its own format mask (a date mask),
+ * else the application's date format, else YYYY-MM-DD; null for other items.
  */
 export function itemDateMask(ctx: PageContext, item: Item): string | null {
-  if (item.type !== 'date') return null;
+  if (item.type !== 'date' && item.type !== 'daterange') return null;
   const own = typeof item.config?.format_mask === 'string' ? item.config.format_mask.trim() : '';
   if (own && /(YYYY|YY|MM|DD|MON)/i.test(own) && !formatMaskError(own)) return own;
-  return ctx.locale.dateMask?.trim() || null;
+  return appDateMask(ctx);
+}
+
+/**
+ * (sprint 84; APEX: the date picker) A date as text in a date mask, with a calendar button that opens pgkiln's
+ * date picker (app.js). Without JavaScript the text is typed (in the mask, or as YYYY-MM-DD) and read back on
+ * submit. `attrs`: extra attributes of the text field (name, form, min/max, aria).
+ */
+export function dateField(ctx: PageContext, o: { id: string; iso: string; mask: string; attrs?: Raw | string; editable?: boolean; typed?: string }) {
+  const iso = /^\d{4}-\d{2}-\d{2}/.test(o.iso) ? o.iso.slice(0, 10) : '';
+  const shown = iso ? applyMask(iso, o.mask, ctx.locale.lang) : (o.typed ?? o.iso);
+  const editable = o.editable !== false;
+  const t = ctx.locale.t;
+  // a number pad on phones, unless the mask has month or day names
+  const numeric = /MON|DAY|DY/i.test(o.mask.replace(/"[^"]*"/g, '')) ? '' : raw(' inputmode="numeric"');
+  return html`<span class="input-with-button date-field"><input type="text" id="${o.id}"${o.attrs ?? ''} value="${shown}" placeholder="${o.mask}" autocomplete="off"${numeric} data-date-mask="${o.mask}" data-months="${JSON.stringify(monthNames(ctx.locale.lang))}"${editable ? '' : raw(' readonly')}>${
+    editable ? html`<button type="button" class="btn" data-date-pick="${o.id}" aria-label="${t('item.choose_date')}" title="${t('item.choose_date')}" aria-haspopup="dialog">${icon('calendar')}</button>` : ''}</span>`;
 }
 
 /** A number or display item's number format mask ({"format_mask": "999G990D00"}), when it is a valid one. */
@@ -384,9 +405,11 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         useLegend = true;
         const [from, to] = splitRange(value);
         const t = ctx.locale.t;
+        // (sprint 84) each part in the date format with the date picker; the picker keeps the from on or before the to
+        const mask = itemDateMask(ctx, item)!;
         control = html`<div class="date-range" data-range="${id}">
-          <span class="range-part"><label class="sub" for="${id}">${t('item.range_from')}</label><input type="date" id="${id}" name="${id}" value="${from}"${to ? html` max="${to}"` : ''}${aria}></span>
-          <span class="range-part"><label class="sub" for="${id}_TO">${t('item.range_to')}</label><input type="date" id="${id}_TO" name="${id}" value="${to}"${from ? html` min="${from}"` : ''}${aria}></span>
+          <span class="range-part"><label class="sub" for="${id}">${t('item.range_from')}</label>${dateField(ctx, { id, iso: from, mask, attrs: html` name="${id}"${aria}` })}</span>
+          <span class="range-part"><label class="sub" for="${id}_TO">${t('item.range_to')}</label>${dateField(ctx, { id: `${id}_TO`, iso: to, mask, attrs: html` name="${id}"${aria}` })}</span>
         </div>`;
         break;
       }
@@ -398,21 +421,10 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         control = html`<div class="input-with-button"><input type="text" id="${id}" name="${id}" value="${value}" inputmode="decimal" placeholder="52.01160,4.35710"${aria}>
           <button type="button" class="btn" data-locate="${id}">${icon('map')} ${ctx.locale.t('item.locate')}</button></div>`;
         break;
-      case 'date': {
-        // (sprint 76) in the application's date format: a text field and a calendar button (app.js), read back on submit
-        const mask = itemDateMask(ctx, item);
-        if (!mask) {
-          control = html`<input type="date" id="${id}" name="${id}" value="${value}"${aria}${editable ? '' : raw(' readonly')}>`;
-          break;
-        }
-        const iso = /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : '';
-        const shown = iso ? applyMask(iso, mask, ctx.locale.lang) : value;
-        const months = monthNames(ctx.locale.lang);
-        control = html`<div class="input-with-button date-field"><input type="text" id="${id}" name="${id}" value="${shown}" placeholder="${mask}" autocomplete="off" data-date-mask="${mask}" data-months="${JSON.stringify(months)}"${aria}${editable ? '' : raw(' readonly')}>
-          ${editable ? html`<input type="date" class="date-native" value="${iso}" tabindex="-1" aria-hidden="true" data-date-for="${id}">
-          <button type="button" class="btn" data-date-pick="${id}" aria-label="${ctx.locale.t('item.choose_date')}" title="${ctx.locale.t('item.choose_date')}">${icon('calendar')}</button>` : ''}</div>`;
+      case 'date':
+        // (sprint 76, 84) in the date format: a text field and pgkiln's date picker (app.js), read back on submit
+        control = dateField(ctx, { id, iso: value, mask: itemDateMask(ctx, item)!, attrs: html` name="${id}"${aria}`, editable });
         break;
-      }
       default: {
         const typed: Record<string, string> = { number: 'number', date: 'date', password: 'password', email: 'email', tel: 'tel', url: 'url' };
         // a number with a format mask is text in the language's notation (1.234,50), read back on submit

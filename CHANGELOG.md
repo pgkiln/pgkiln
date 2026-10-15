@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 84: facet menus and the date picker (parity handoff GEN-9, IR-4).
+
+### Added
+- **A checkbox facet's ⋮ menu** (GEN-9; APEX: the facet's menu): *Clear*, and the values *Sort by count* (the
+  default) or *Sort by name* (`r<report id>_fo_<column>=name`, kept by Apply and Reset).
+- **The date picker** (IR-4; APEX: the date picker): pgkiln's own month of days under a date field, with keys
+  (arrows, Page Up/Down, Home/End, Enter, Escape), the language's first day of the week, *Today* and *Clear*.
+
+### Changed
+- **Dates in the date format everywhere** (IR-4): date range items, interactive grid date cells, a faceted search's
+  custom date range and the task list's vacation rule are text in the application's date format with the date picker, like date items; without a date
+  format, `YYYY-MM-DD`. No browser date fields are left for dates (timestamps keep the browser's date and time field).
+  The calendar button no longer opens the browser's picker.
+
 ## [0.45.0] - 2026-10-15
 
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
