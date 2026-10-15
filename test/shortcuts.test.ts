@@ -31,7 +31,7 @@ before(async () => {
   await cleanUp();
   regionId = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 999, 'SC test', 'static', $2) returning id`,
     [page22, '<p id="sc-test">"SC_TEST_HTML" | "SC_TEST_TEXT" | "SC_TEST_FN" | "SC_TEST_NONE" | <span class="SC_TEST_CLASS">&APP_USER.</span></p>'])).id;
-  button = await owner.one(`select id, confirm from meta.button where page_id = $1 and action = 'submit' order by seq, id limit 1`, [page22]);
+  button = (await owner.one(`select id, confirm from meta.button where page_id = $1 and action = 'submit' order by seq, id limit 1`, [page22]))!;
 });
 after(async () => {
   await owner.query('delete from meta.region where id = $1', [regionId]);
