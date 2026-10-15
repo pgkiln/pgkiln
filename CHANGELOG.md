@@ -67,6 +67,19 @@ Sprint 88: the generated home page and the page footer (migration 107; parity ha
 - **Home page cards** (GEN-4): a list's *cards* template gives each card a colour band and its icon in a round badge,
   in the chart palette's order; the **hero** region sits on the page background instead of a tinted panel.
 
+Sprint 89: the Object Browser (parity handoff SQL-4).
+
+### Added
+- **Modify column** (SQL-4; APEX: the Columns toolbar): a new type, nulls allowed or not, a default or none, written as
+  one ALTER TABLE into SQL Commands to review; the column actions are a toolbar above the columns (Add, Modify,
+  Rename, Drop).
+
+### Changed
+- **The Object Browser's schema** (SQL-4): the one chosen last (per session), else the session's schema, else the
+  parsing schema of the application changed last in the workspace.
+- **A table's tabs on one row** (SQL-4): Columns, Data, Indexes, Constraints, DDL and the current tab; the rest under
+  *More*. **NULL is a blank cell** in the Object Browser, not an italic *null*.
+
 ## [0.45.0] - 2026-10-15
 
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).

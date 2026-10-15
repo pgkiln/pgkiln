@@ -8115,3 +8115,27 @@ describe('sprint 88 the application version', () => {
     assert.notEqual((await owner.one('select version from meta.app where id = $1', [appId])).version, 'hacked');
   });
 });
+
+describe('sprint 89 Object Browser column toolbar', () => {
+  test('Modify only writes a statement to review: a default is one expression; nothing runs; developers only, with the token', async () => {
+    await owner.query(`drop schema if exists sec89 cascade; create schema sec89; create table sec89.t (id int primary key, name text not null)`);
+    try {
+      const dev = new Browser();
+      await dev.get('/builder/login');
+      await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+      await dev.get('/builder/sql/objects?schema=sec89&k=table&o=sec89.t&tab=columns');
+      for (const expr of ["0); drop table sec89.t; select (1", "0 /* x */", "now() -- x", 'x'.repeat(201)]) {
+        const res = await dev.post('/builder/sql/objects/alter', { __csrf: dev.lastCsrf, schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', default_action: 'set', default: expr });
+        assert.notEqual(res.headers.location, '/builder/sql/commands', expr.slice(0, 20));
+      }
+      const ok = await dev.post('/builder/sql/objects/alter', { __csrf: dev.lastCsrf, schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', nullable: 'null' });
+      assert.equal(ok.headers.location, '/builder/sql/commands');
+      assert.equal((await owner.one(`select attnotnull from pg_attribute where attrelid = 'sec89.t'::regclass and attname = 'name'`)).attnotnull, true, 'nothing ran');
+      assert.equal((await dev.post('/builder/sql/objects/alter', { __csrf: 'forged', schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', nullable: 'null' })).statusCode, 403);
+      const king = await as('king');
+      assert.equal((await king.post('/builder/sql/objects/alter', { __csrf: king.lastCsrf, table: 'sec89.t', action: 'modify', column: 'name', nullable: 'null' })).headers.location, '/builder/login');
+    } finally {
+      await owner.query('drop schema if exists sec89 cascade');
+    }
+  });
+});

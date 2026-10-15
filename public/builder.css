@@ -1012,3 +1012,20 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .pd-goto-no input { width: 5.5em; font-variant-numeric: tabular-nums; }
 /* on narrower screens the previous / next arrows and the page list do it */
 @media (max-width: 1279px) { .pd-goto-no { display: none; } }
+
+/* (sprint 89, SQL-4) the Object Browser: a table's tabs on one row with More, and the Columns toolbar */
+.ob-tabs { flex-wrap: nowrap; align-items: stretch; }
+.ob-tabs > a { white-space: nowrap; }
+.ob-more { position: relative; }
+.ob-more > summary { display: flex; align-items: center; gap: 0.25rem; height: 100%; padding: 0.5rem 0.85rem; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.ob-more > summary:hover, .ob-more[open] > summary { color: var(--text); }
+.ob-more .menu-panel { right: 0; left: auto; min-width: 12rem; }
+.ob-more .icon { width: 0.9rem; height: 0.9rem; }
+.ob-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+.ob-tool { position: relative; }
+.ob-tool > summary { list-style: none; }
+.ob-tool .menu-panel { left: 0; min-width: 18rem; padding: 0.75rem; }
+.ob-tool .ob-action { flex-direction: column; align-items: stretch; }
+.ob-tool .ob-action input:not([type=checkbox]), .ob-tool .ob-action select { width: 100%; }
+.ob-toolbar-note { font-size: 0.85rem; }
+@media (max-width: 640px) { .ob-tabs { overflow-x: auto; } .ob-tool .menu-panel { min-width: min(18rem, 90vw); } }

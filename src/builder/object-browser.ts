@@ -4,7 +4,9 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { readSchema } from '../ddl.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
-import { sessionSchema, workshopDb } from './workspaces.ts';
+import { currentWorkspace, inWorkspaceSql, sessionSchema, workshopDb } from './workspaces.ts';
+import { owner } from '../db.ts';
+import type { Session } from '../session.ts';
 
 // (sprint 75) The SQL Workshop's Object Browser like APEX's: a schema in the header (the session's
 // schema by default), a tree with a folder per object type, a filter, a + menu that starts a CREATE
@@ -61,6 +63,23 @@ export function createTemplate(kind: string, schema: string): string | null {
 }
 
 const PAGE_SIZE = 25;
+
+/**
+ * (sprint 89, SQL-4) The parsing schema of the application changed last in the developer's workspace: the
+ * schema its database role may use (not public, pgkiln's or the system's). APEX opens the Object Browser
+ * on the workspace's parsing schema.
+ */
+async function parsingSchema(s: Session): Promise<string | null> {
+  const row = await owner.one<{ n: string }>(
+    `select n.nspname as n
+       from meta.app a join pg_roles r on r.rolname = a.db_role
+       join pg_namespace n on has_schema_privilege(r.oid, n.oid, 'USAGE')
+      where ${inWorkspaceSql('a', 1)} and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'public') and not (n.nspname = any ($2))
+      order by a.updated_at desc, a.id desc, n.nspname limit 1`,
+    [currentWorkspace(s), SYSTEM_SCHEMAS],
+  ).catch(() => undefined);
+  return row?.n ?? null;
+}
 /** A column type in an action: a type name with an optional size and array brackets. */
 const TYPE_RE = /^[a-z][a-z0-9_ ]{0,40}(\(\d{1,4}(,\s?\d{1,4})?\))?(\[\])?$/i;
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
@@ -81,8 +100,15 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         [system, SYSTEM_SCHEMAS],
       )
     ).rows.map((r) => r.n);
-    const own = await sessionSchema(s, db);
-    const schema = typeof q.schema === 'string' && schemas.includes(q.schema) ? q.schema : own && schemas.includes(own) ? own : (schemas[0] ?? '');
+    // (sprint 89, SQL-4) the schema asked for, else the last one shown (remembered per session), else the session's
+    // schema of SQL Commands, else the parsing schema of the application changed last, else the first
+    const usable = (v: unknown): v is string => typeof v === 'string' && schemas.includes(v);
+    const asked = usable(q.schema) ? q.schema : null;
+    const last = s.state.__OBSCHEMA;
+    const own = asked || usable(last) ? null : await sessionSchema(s, db);
+    const parsing = asked || usable(last) || usable(own) ? null : await parsingSchema(s);
+    const schema = asked ?? (usable(last) ? last : usable(own) ? own : usable(parsing) ? parsing : (schemas[0] ?? ''));
+    if (schema && schema !== last) s.state.__OBSCHEMA = schema;
     const filter = typeof q.q === 'string' ? q.q.trim().slice(0, 100) : '';
     const objects = schema ? await listObjects(db, schema, system) : [];
     const shown = objects.filter((o) => !filter || o.name.toLowerCase().includes(filter.toLowerCase()));
@@ -161,6 +187,24 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
       if (!cols.includes(col)) problem = 'Choose a column of the table.';
       else if (!NAME_RE.test(to) || cols.includes(to)) problem = 'The new name must be a valid name that the table doesn\'t have yet.';
       else sql = `alter table ${table.q} rename column ${ident(col)} to ${ident(to)};`;
+    } else if (b.action === 'modify') {
+      // (sprint 89, SQL-4) type, nulls and default in one ALTER TABLE; a default is one expression, never a statement
+      const type = String(b.type ?? '').trim();
+      const expr = String(b.default ?? '').trim();
+      const parts: string[] = [];
+      const c = ident(col);
+      if (!cols.includes(col)) problem = 'Choose a column of the table.';
+      else if (type && !TYPE_RE.test(type)) problem = 'A type is a name with an optional size, e.g. text, numeric(9,2), varchar(40), int[].';
+      else if (b.default_action === 'set' && (!expr || expr.length > 200 || /;|--|\/\*/.test(expr))) problem = 'A default is one expression (at most 200 characters, without ; or comments), e.g. now(), 0 or \'new\'.';
+      else {
+        if (type) parts.push(`alter column ${c} type ${type} using ${c}::${type}`);
+        if (b.nullable === 'not_null') parts.push(`alter column ${c} set not null`);
+        else if (b.nullable === 'null') parts.push(`alter column ${c} drop not null`);
+        if (b.default_action === 'set') parts.push(`alter column ${c} set default ${expr}`);
+        else if (b.default_action === 'drop') parts.push(`alter column ${c} drop default`);
+        if (!parts.length) problem = 'Nothing to change: choose a new type, nulls or a default.';
+        else sql = `alter table ${table.q}\n  ${parts.join(',\n  ')};`;
+      }
     } else if (b.action === 'drop') {
       if (!cols.includes(col)) problem = 'Choose a column of the table.';
       else sql = `alter table ${table.q} drop column ${ident(col)};`;
@@ -210,7 +254,7 @@ async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csr
   const table = (rows: Record<string, unknown>[], empty = 'None.') =>
     rows.length
       ? html`<div class="table-wrap"><table class="report"><thead><tr>${Object.keys(rows[0]).map((k) => html`<th scope="col">${k}</th>`)}</tr></thead>
-        <tbody>${rows.map((r) => html`<tr>${Object.values(r).map((v) => html`<td>${v === null ? html`<span class="null">null</span>` : typeof v === 'object' ? JSON.stringify(v) : String(v)}</td>`)}</tr>`)}</tbody></table></div>`
+        <tbody>${rows.map((r) => html`<tr>${Object.values(r).map((v) => html`<td>${v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)}</td>`)}</tr>`)}</tbody></table></div>`
       : html`<p class="muted">${empty}</p>`;
   const ddlOf = async (match: (x: { kind: string; name: string; table?: string }) => boolean) => {
     const objects = await readSchema(db.pool as pg.Pool, schema).catch(() => []);
@@ -247,7 +291,14 @@ async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csr
   const isTable = o.type === 'table';
   const tabs = TABLE_TABS.filter(([k]) => isTable || !['indexes', 'constraints', 'triggers', 'rls'].includes(k) || (o.type === 'matview' && k === 'indexes'));
   const tab = tabs.some(([k]) => k === tabAsked) ? tabAsked : 'columns';
-  const nav = html`<nav class="settings-tabs ob-tabs" aria-label="${o.name}">${tabs.map(([k, label]) => html`<a href="${link({ k: o.type, o: o.ref, tab: k })}"${k === tab ? raw(' aria-current="page"') : ''}>${label}</a>`)}</nav>`;
+  // (sprint 89, SQL-4) the tabs on one row: the main ones and the current one, the rest under More
+  const MAIN = ['columns', 'data', 'indexes', 'constraints', 'ddl'];
+  const tabLink = ([k, label]: readonly [string, string]) => html`<a href="${link({ k: o.type, o: o.ref, tab: k })}"${k === tab ? raw(' aria-current="page"') : ''}>${label}</a>`;
+  const shownTabs = tabs.filter(([k]) => MAIN.includes(k) || k === tab);
+  const moreTabs = tabs.filter(([k]) => !shownTabs.some(([x]) => x === k));
+  const nav = html`<nav class="settings-tabs ob-tabs" aria-label="${o.name}">${shownTabs.map(tabLink)}${moreTabs.length
+    ? html`<details class="menu ob-more"><summary>More ${icon('chevron-down')}</summary><div class="menu-panel"><div class="menu-section menu-links">${moreTabs.map(tabLink)}</div></div></details>`
+    : ''}</nav>`;
   let body: Raw;
   switch (tab) {
     case 'columns': {
@@ -262,20 +313,32 @@ async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csr
       ).rows;
       const names = cols.map((c) => String(c.column));
       const hidden = html`${raw(`<input type="hidden" name="__csrf" value="${s.csrf_token}">`)}<input type="hidden" name="table" value="${o.ref}"><input type="hidden" name="schema" value="${schema}">`;
-      const pick = (id: string) => html`<label class="sr-only" for="${id}">Column</label><select id="${id}" name="column">${names.map((n) => html`<option>${n}</option>`)}</select>`;
-      body = html`${table(cols)}${isTable
-        ? html`<div class="ob-actions">
-            <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="add">
-              <b>Add column</b><label class="sr-only" for="ob-add-name">Name</label><input id="ob-add-name" name="column" placeholder="name" required>
-              <label class="sr-only" for="ob-add-type">Type</label><input id="ob-add-type" name="type" placeholder="text" required>
-              <label class="check"><input type="checkbox" name="not_null" value="true"> not null</label><button class="btn btn-sm">Show the SQL</button></form>
-            <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="rename">
-              <b>Rename column</b>${pick('ob-ren-col')}<label class="sr-only" for="ob-ren-to">New name</label><input id="ob-ren-to" name="new_name" placeholder="new name" required><button class="btn btn-sm">Show the SQL</button></form>
-            <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="drop">
-              <b>Drop column</b>${pick('ob-drop-col')}<button class="btn btn-sm">Show the SQL</button></form>
-            <p class="muted u-m0">Each action writes the ALTER TABLE statement into SQL Commands: review it there and press Run.</p>
+      const pick = (id: string) => html`<label class="label" for="${id}">Column</label><select id="${id}" name="column">${names.map((n) => html`<option>${n}</option>`)}</select>`;
+      // (sprint 89, SQL-4; APEX: the Columns toolbar) Add, Modify, Rename and Drop above the columns, each a small form
+      body = html`${isTable
+        ? html`<div class="ob-toolbar" role="toolbar" aria-label="Columns">
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('plus')} Add column</summary><div class="menu-panel">
+              <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="add">
+                <label class="label" for="ob-add-name">Name</label><input id="ob-add-name" name="column" placeholder="name" required>
+                <label class="label" for="ob-add-type">Type</label><input id="ob-add-type" name="type" placeholder="text" required>
+                <label class="check"><input type="checkbox" name="not_null" value="true"> not null</label><button class="btn btn-sm btn-hot">Show the SQL</button></form></div></details>
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('edit')} Modify column</summary><div class="menu-panel">
+              <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="modify">
+                ${pick('ob-mod-col')}
+                <label class="label" for="ob-mod-type">New type</label><input id="ob-mod-type" name="type" placeholder="the same">
+                <label class="label" for="ob-mod-null">Nulls</label><select id="ob-mod-null" name="nullable"><option value="">the same</option><option value="null">allowed</option><option value="not_null">not null</option></select>
+                <label class="label" for="ob-mod-def">Default</label><select id="ob-mod-def" name="default_action"><option value="">the same</option><option value="set">set to</option><option value="drop">none</option></select>
+                <label class="sr-only" for="ob-mod-expr">Default expression</label><input id="ob-mod-expr" name="default" placeholder="now(), 0, 'x'">
+                <button class="btn btn-sm btn-hot">Show the SQL</button></form></div></details>
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('tag')} Rename column</summary><div class="menu-panel">
+              <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="rename">
+                ${pick('ob-ren-col')}<label class="label" for="ob-ren-to">New name</label><input id="ob-ren-to" name="new_name" placeholder="new name" required><button class="btn btn-sm btn-hot">Show the SQL</button></form></div></details>
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('trash')} Drop column</summary><div class="menu-panel">
+              <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="drop">
+                ${pick('ob-drop-col')}<button class="btn btn-sm btn-danger">Show the SQL</button></form></div></details>
+            <span class="muted ob-toolbar-note">Each writes the ALTER TABLE statement into SQL Commands: review it there and press Run.</span>
           </div>`
-        : ''}`;
+        : ''}${table(cols)}`;
       break;
     }
     case 'data': {
