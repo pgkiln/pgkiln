@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { applyBinds } from '../binds.ts';
 import { runtime, savepoint } from '../db.ts';
-import type { Branch, Computation, Condition } from '../metadata.ts';
+import type { AppComputation, Branch, Computation, Condition } from '../metadata.ts';
 import { isAuthorized, sqlTrue } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type PageContext } from './context.ts';
 import { pageHref } from './links.ts';
@@ -112,19 +112,24 @@ export class ComputationFailed extends Error {}
  * items only. Before the page is shown, an error becomes a message on the
  * page; after a submit, it stops the submit (ComputationFailed).
  */
-export async function runComputations(ctx: PageContext, point: Computation['point']) {
+export async function runComputations(ctx: PageContext, point: AppComputation['point']) {
   const names = new Set([...ctx.app.app_items, ...ctx.page.items.map((i) => i.name)]);
-  for (const comp of ctx.page.computations ?? []) {
-    if (comp.point !== point) continue;
-    const where = `computation of ${comp.item_name}`;
+  // (102) the application's computations of the point first (as in APEX), then the page's
+  const comps: { comp: Computation | AppComputation; app: boolean }[] = [
+    ...(ctx.app.app_computations ?? []).filter((c) => c.point === point).map((comp) => ({ comp, app: true })),
+    ...(ctx.page.computations ?? []).filter((c) => c.point === point).map((comp) => ({ comp, app: false })),
+  ];
+  for (const { comp, app } of comps) {
+    const where = `${app ? 'application computation' : 'computation'} of ${comp.item_name}`;
     if (!names.has(comp.item_name)) {
-      ctx.errors.page.push(ctx.locale.t('logic.unknown_item', { item: comp.item_name }));
+      // an application computation of a page item computes it on that item's page only
+      if (!app) ctx.errors.page.push(ctx.locale.t('logic.unknown_item', { item: comp.item_name }));
       continue;
     }
     if (!(await isAuthorized(ctx, comp.authz))) continue;
     if (!(await conditionHolds(ctx, comp, `condition of the ${where}`))) continue;
     try {
-      ctx.session.state[comp.item_name] = await timed(ctx, 6, 'computation', `computation of ${comp.item_name} (${comp.type})`, () => computeValue(ctx, comp));
+      ctx.session.state[comp.item_name] = await timed(ctx, 6, 'computation', `${where} (${comp.type})`, () => computeValue(ctx, comp));
       dbg(ctx, 9, 'computation', () => `${comp.item_name} := ${ctx.page.items.some((i) => i.name === comp.item_name && i.type === 'password') ? '(password, not shown)' : JSON.stringify((ctx.session.state[comp.item_name] ?? '').slice(0, 200))}`);
     } catch (e) {
       const message = await publicError(ctx, e, where);

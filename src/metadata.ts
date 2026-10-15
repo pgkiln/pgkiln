@@ -106,6 +106,10 @@ export interface App {
   authz_schemes: AuthzScheme[];
   app_items: string[];
   app_processes: AppProcess[];
+  /** (102) application computations: run for every page at their point, before the page's own */
+  app_computations: AppComputation[];
+  /** (103) shortcuts: "NAME" in static content, help texts and confirm messages (runtime/shortcuts.ts) */
+  shortcuts?: { name: string; type: 'text' | 'html' | 'function_body'; value: string }[];
   lovs: { name: string; query: string; rest_source?: string | null }[];
   theme: {
     accent?: string; header?: string; nav?: 'side' | 'top'; mode?: 'auto' | 'light' | 'dark'; user_choice?: boolean;
@@ -238,6 +242,11 @@ export interface Computation extends Condition {
   authz: string | null;
 }
 
+/** (102) An application computation: like a page's, for every page of the application. */
+export interface AppComputation extends Omit<Computation, 'point'> {
+  point: 'after_authentication' | 'before_header' | 'after_submit';
+}
+
 export interface Branch extends Condition {
   id: number;
   seq: number;
@@ -361,6 +370,8 @@ export async function loadApp(alias: string) {
                         from meta.authz_scheme s where s.app_id = a.id), '[]') as authz_schemes,
             coalesce((select jsonb_agg(i.name) from meta.app_item i where i.app_id = a.id), '[]') as app_items,
             ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes,
+            ${agg('meta.app_computation', 'app_id', 'a', 'a.id')} as app_computations,
+            coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value)) from meta.shortcut s where s.app_id = a.id), '[]') as shortcuts,
             ${includes('a.static_includes', 'a.id')} as static_includes,
             coalesce((select jsonb_agg(to_jsonb(x) - 'id' - 'app_id' - 'install_sql') from meta.plugin x where x.app_id = a.id), '[]') as plugins,
             coalesce((select jsonb_agg(jsonb_build_object('name', f.name, 'v', floor(extract(epoch from f.updated_at))::bigint))

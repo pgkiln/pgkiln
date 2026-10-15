@@ -116,6 +116,9 @@ const CODE: Record<string, Record<string, string>> = {
   computation: { expression: 'sql', condition_expr: 'sql' },
   branch: { condition_expr: 'sql' },
   app_process: { code: 'sql' },
+  app_computation: { expression: 'sql', condition_expr: 'sql' },
+  // (103) a shortcut's value: text, HTML or PL/pgSQL (see codeExt)
+  shortcut: { value: 'txt' },
   authz_scheme: { value: 'sql' },
   lov: { query: 'sql' },
   automation: { query: 'sql', code: 'sql' },
@@ -134,7 +137,9 @@ const CODE: Record<string, Record<string, string>> = {
 };
 const isLong = (v: unknown): v is string => typeof v === 'string' && (v.includes('\n') || v.length > 60);
 const codeExt = (table: string, column: string, row: any) =>
-  table === 'region' && column === 'source' && row.type === 'static' ? 'html' : CODE[table][column];
+  table === 'region' && column === 'source' && row.type === 'static' ? 'html'
+  : table === 'shortcut' ? (row.type === 'html' ? 'html' : row.type === 'function_body' ? 'sql' : 'txt')
+  : CODE[table][column];
 
 export type Style = 'json' | 'text';
 
@@ -191,6 +196,8 @@ const NAMED: [section: string, dir: string, table: string][] = [
   // (086) application settings
   ['app_settings', 'shared/app-settings', 'app_setting'],
   ['page_groups', 'shared/page-groups', 'page_group'],
+  // (103) shortcuts
+  ['shortcuts', 'shared/shortcuts', 'shortcut'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
@@ -214,10 +221,11 @@ const SINGLE: [section: string, path: string, sort: string[]][] = [
 ];
 
 const ACTIONS_DIR = 'shared/automation-actions';
+const APP_COMPUTATIONS_DIR = 'shared/app-computations';
 const STATIC_DIR = 'static';
 const STATIC_INDEX = `${STATIC_DIR}/files.json`;
 
-const KNOWN = new Set(['format', 'app', 'static_files', 'app_processes', 'translations', 'nav', 'list_entries', 'automation_actions', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
+const KNOWN = new Set(['format', 'app', 'static_files', 'app_processes', 'app_computations', 'translations', 'nav', 'list_entries', 'automation_actions', 'pages', ...NAMED.map((n) => n[0]), ...SINGLE.map((s) => s[0])]);
 
 const byColumns = (cols: string[]) => (a: any, b: any) => {
   for (const c of cols) {
@@ -258,6 +266,9 @@ export function docToFiles(doc: Doc, style: Style = 'json'): FileMap {
 
   const procs: any[] = doc.app_processes ?? [];
   uniqueKeys(procs, (r) => r.name, 'process').forEach((k, i) => w.record('shared/app-processes', `${seqPrefix(procs[i].seq)}-${k}`, 'app_process', procs[i]));
+  // (102) application computations, by sequence, item and point
+  const comps: any[] = doc.app_computations ?? [];
+  uniqueKeys(comps, (r) => `${r.item_name ?? ''} ${r.point ?? ''}`, 'computation').forEach((k, i) => w.record(APP_COMPUTATIONS_DIR, `${seqPrefix(comps[i].seq)}-${k}`, 'app_computation', comps[i]));
 
   for (const [section, path, sort] of SINGLE) w.json(path, [...(doc[section] ?? [])].sort(byColumns(sort)));
 
@@ -453,6 +464,7 @@ export function filesToDoc(files: FileMap): Doc {
       });
   }
   doc.app_processes = readRecords(files, 'shared/app-processes').sort(SEQ_SORT).map(mergeCode);
+  doc.app_computations = readRecords(files, APP_COMPUTATIONS_DIR).sort(SEQ_SORT).map(mergeCode);
   for (const [section, path] of SINGLE) doc[section] = read(path);
   doc.translations = [...files.keys()]
     .filter((p) => /^globalization\/translations\/[^/]+\.(json|yaml)$/.test(p))

@@ -66,6 +66,8 @@ export interface PageContext {
   cacheRefresh?: boolean;
   /** the lazy region the request renders (GET …/region/:id), not as a placeholder */
   loadNow?: number;
+  /** (103) the values of the function-body shortcuts this request used */
+  shortcutValues?: Map<string, string>;
   /** the whole page is rendered (renderPage), not one region on its own */
   wholePage?: boolean;
   /** a download process's file, sent instead of the page (processes.ts) */

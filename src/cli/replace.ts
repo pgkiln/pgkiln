@@ -26,8 +26,10 @@ export const REPLACED = [
   'search_config', 'email_template',
   // (086) application settings (installed values kept, see below), dynamic translations
   'app_setting', 'dynamic_translation',
-  // (089) page groups
-  'page_group',
+  // (089) page groups, (102) application computations
+  'page_group', 'app_computation',
+  // (103) shortcuts
+  'shortcut',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',

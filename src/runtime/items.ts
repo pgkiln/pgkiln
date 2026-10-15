@@ -8,6 +8,7 @@ import type { Item } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
 import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, maxFiles, removals } from './files.ts';
 import { restSql } from './rest-sources.ts';
+import { expandShortcuts } from './shortcuts.ts';
 import { markdownHtml, sanitizeHtml } from '../richtext.ts';
 import { qrSvg, type Ecc } from '../qrcode.ts';
 import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
@@ -461,7 +462,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   const tag = useLegend ? 'fieldset' : 'div';
   return html`${raw(`<${tag}`)} class="field field-${item.type}${error ? ' has-error' : ''}${editable ? '' : ' readonly'}${templateClasses('item', item.template_options)}" data-item="${item.name}"${attrs}${pluginAttrs}>
     ${labelHtml}${control}${lovError}
-    ${item.help ? html`<small class="help" id="${id}_help">${item.help}</small>` : ''}
+    ${item.help ? html`<small class="help" id="${id}_help">${await expandShortcuts(ctx, item.help, 'text')}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}
   ${raw(`</${tag}>`)}`;
 }

@@ -114,7 +114,8 @@ src/
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
-    logic.ts               computations, branches (page, URL, function returning a URL, another application) and their conditions
+    logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
+    shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
     styles.ts              base styles (BASE_STYLES: Iris, Lavender, Standard; baseStyleOf → html data-style), Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
                            style (user choice, default), themeCss() (only hex values and constants reach the CSS)
