@@ -604,3 +604,26 @@ name.
 The standard PDF fonts cover Western European text; set `PDF_FONT` (and `PDF_FONT_BOLD`) for other
 scripts, as for report PDFs. APEX's Word and Excel templates and outputs have no equivalent: the
 templates here are HTML and the output is PDF.
+
+### Report queries
+
+**Shared Components → Report Queries** (APEX: Report Queries, migration 104) are named queries an
+application prints, without a template: the query's rows as a table.
+
+| Property | Meaning |
+|---|---|
+| `name` | Pages download it with `?doc=NAME` (a document template of that name wins); a button with the action *document* names it |
+| `query` | A SELECT with `:ITEM` binds (the page's session state), run as the application's role; its columns' names are the headings |
+| `format` | `pdf` (with the report layout), `xlsx`, `csv`, `json`, `xml` or `html` |
+| `layout` | A report layout for the PDF; empty: the default layout |
+| `file_name`, `title` | The file's name without extension and the PDF's or HTML file's title (`&ITEM.` allowed); empty: the name, and the description or the name |
+| `authz` | Who may download it, besides access to the page |
+
+```
+/a/sales/3?doc=ORDERS_BY_REGION        the file, with page 3's session state
+```
+
+The files are made like a download process's [data export](06-processing.md#data-export) (Excel and
+PDF hold at most 100,000 rows) and are sent as attachments that a browser never shows as a page
+(`Content-Security-Policy: sandbox`). Signed out, on a public page of an application with sign-in,
+`?doc=` serves only the report queries and document templates of the page's own buttons.

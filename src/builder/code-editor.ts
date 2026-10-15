@@ -32,7 +32,7 @@ const CHECKS: Record<string, SqlShape> = {
   'region.source': 'select', 'region.condition': 'boolean', 'item.lov': 'select', 'item.readonly_condition': 'boolean',
   'button.condition': 'boolean', 'validation.expression': 'boolean', 'process.code': 'statements', 'authz_scheme.value': 'boolean',
   'lov.query': 'select', 'app_process.code': 'statements', 'automation.query': 'select', 'automation_action.code': 'statements', 'automation_action.condition': 'boolean',
-  'document_template.query': 'select', 'task_definition.action_code': 'statements', 'dynamic_action.code': 'statements',
+  'document_template.query': 'select', 'report_query.query': 'select', 'task_definition.action_code': 'statements', 'dynamic_action.code': 'statements',
   'button.badge_query': 'select', 'list.query': 'select', 'list_entry.condition': 'boolean',
 };
 /** Fields whose check follows the component's type select, like SWITCH ("none": no check). */

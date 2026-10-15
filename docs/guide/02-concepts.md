@@ -30,6 +30,7 @@ meta.app ─┬─ meta.page ─┬─ meta.region        (reports, forms, grids
           ├─ meta.app_process   (application processes)
           ├─ meta.app_computation (application computations)
           ├─ meta.shortcut      (shortcuts: "NAME" texts)
+          ├─ meta.report_query  (report queries: ?doc=NAME files)
           ├─ meta.build_option  (build options: include / exclude switches)
           └─ meta.app_user      (users of this application)
 

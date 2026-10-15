@@ -28,8 +28,8 @@ export const REPLACED = [
   'app_setting', 'dynamic_translation',
   // (089) page groups, (102) application computations
   'page_group', 'app_computation',
-  // (103) shortcuts
-  'shortcut',
+  // (103) shortcuts, (104) report queries
+  'shortcut', 'report_query',
 ];
 /** Tables of an application that belong to the installation: kept. */
 export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',

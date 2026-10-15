@@ -394,6 +394,9 @@ runtime role, never exported) ([chapter 19](19-rest-data-sources.md#web-credenti
 **`shortcut`** (103): `app_id`, `name` (uppercase, unique per app), `type` (`text` / `html` / `function_body`), `value`,
 `comments` ([chapter 2](02-concepts.md#shortcuts-name)).
 
+**`report_query`** (104): `app_id`, `name` (uppercase, unique per app), `description`, `query`, `format` (`pdf` / `xlsx` /
+`csv` / `json` / `xml` / `html`), `layout`, `file_name`, `title`, `authz`, `comments` ([chapter 16](16-files.md#report-queries)).
+
 **`build_option`**: `app_id`, `name` (uppercase, unique per app), `status` (`include` / `exclude`),
 `description` ([chapter 6](06-processing.md#build-options)). `meta.build_option_on(app_id, ref)`
 tells whether a component with that `build_option` value is part of the application.

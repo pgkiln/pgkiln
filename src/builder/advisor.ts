@@ -57,6 +57,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
     case 'button':
       return [{ name: 'condition', shape: 'boolean' }, { name: 'badge_query', shape: 'select' }];
     case 'computation':
+    case 'app_computation':
       return [
         ...(row.type === 'sql_query' ? [{ name: 'expression', shape: 'select' as const }] : []),
         ...conditionSql(row),
@@ -83,6 +84,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
     case 'automation_action':
       return [{ name: 'code', shape: 'statements' }, { name: 'condition', shape: 'boolean' }];
     case 'document_template':
+    case 'report_query':
       return [{ name: 'query', shape: 'select' }];
     case 'task_definition':
       return [{ name: 'action_code', shape: 'statements' }];
@@ -286,7 +288,8 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
   const buildOptions = new Set(all.filter((x) => x.kind === 'build_option').map((x) => x.row.name));
   const layouts = new Set(all.filter((x) => x.kind === 'report_layout').map((x) => x.row.name.toUpperCase()));
   const regionIds = new Set(all.filter((x) => x.kind === 'region').map((x) => x.row.id));
-  const documents = new Set(all.filter((x) => x.kind === 'document_template').map((x) => x.row.name.toUpperCase()));
+  // (104) a document button names a document template or a report query
+  const documents = new Set(all.filter((x) => x.kind === 'document_template' || x.kind === 'report_query').map((x) => x.row.name.toUpperCase()));
   const missing = (entry: Entry | null, field: string, message: string, severity: Severity = 'error') => findings.push({ severity, entry, field, message });
 
   for (const e of entries) {
@@ -353,7 +356,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
         && !(await one('select 1 as ok from meta.app a join meta.page p on p.app_id = a.id where a.alias = $1 and p.page_no = $2', [row.target_app, row.target_page])))
       missing(e, 'Application (app)', `Application ${row.target_app} has no page ${row.target_page}.`);
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
-      missing(e, 'Document template', row.document ? `Document template ${row.document} doesn't exist.` : 'A document button needs a document template.');
+      missing(e, 'Document template', row.document ? `Document template or report query ${row.document} doesn't exist.` : 'A document button needs a document template or a report query.');
     if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);
     if (kind === 'workflow_definition') {
       const tasks = new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase()));
@@ -376,6 +379,8 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
         for (const problem of [...devRefs.errors, ...devRefs.warnings]) missing(e, field, problem, 'warning');
       }
     }
+    if (kind === 'report_query' && row.layout && !layouts.has(String(row.layout).toUpperCase())) missing(e, 'Report layout', `Report layout ${row.layout} doesn't exist (the default layout is used).`, 'warning');
+    if (kind === 'app_computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
     if (kind === 'document_template') {
       const problem = templateProblem(row.template ?? '');
       if (problem) missing(e, 'Template (HTML)', problem);

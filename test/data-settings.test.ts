@@ -180,6 +180,10 @@ describe('data export', () => {
     assert.match(out.html, /<title>Staff &lt;list&gt;<\/title>[\s\S]*<th>ename<\/th>[\s\S]*<td>KING<\/td>/);
     // with no rows: the header only
     assert.equal(await asApp(async (q) => (await q(`select convert_from(meta.data_export('select 1 as a where false', 'csv', '{"bom": false}'), 'UTF8') as f`))[0].f), 'a\r\n');
+    // (104) columns named like the function's own aliases once were (q, x): each format reads them
+    for (const [fmt, want] of [['csv', 'x\r\n1\r\n'], ['json', '[{"x":1}]']] as const)
+      assert.equal(await asApp(async (q) => (await q(`select convert_from(meta.data_export('select 1 as x', $1, '{"bom": false}'), 'UTF8') as f`, [fmt]))[0].f), want, fmt);
+    assert.match(await asApp(async (q) => (await q(`select convert_from(meta.data_export('select 1 as q', 'html'), 'UTF8') as f`))[0].f), /<th>q<\/th>[\s\S]*<td>1<\/td>/);
     await assert.rejects(asApp((q) => q(`select meta.data_export('select 1', 'docx')`)), /the format is csv, json, xml or html/);
     // as the application's role: no access to pgkiln's own tables through it
     await assert.rejects(asApp((q) => q(`select meta.data_export('select * from meta.account', 'csv')`)), /permission denied/);

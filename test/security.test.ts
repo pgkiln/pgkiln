@@ -7870,3 +7870,31 @@ describe('sprint 81 application computations and shortcuts', () => {
     }
   });
 });
+
+describe('sprint 82 report queries', () => {
+  test('?doc= serves a report query only with its authorization, on a public page only through the page\'s own button; HTML stays sandboxed', async () => {
+    await assert.rejects(runtime.query(`insert into meta.report_query (app_id, name, query) values (${appId}, 'SEC_RQ_X', 'select 1')`), /permission denied/);
+    const p = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 9114, 'Report queries', false) returning id`, [appId])).id;
+    try {
+      await owner.query(`insert into meta.report_query (app_id, name, query, format) values
+                           ($1, 'SEC_RQ_HTML', $$select '<img src=x onerror=alert(1)>' as note$$, 'html'),
+                           ($1, 'SEC_RQ_ADMIN', 'select ename from hr.emp', 'csv')`, [appId]);
+      await owner.query(`update meta.report_query set authz = '!MUST_NOT_BE_PUBLIC_USER' where app_id = $1 and name = 'SEC_RQ_ADMIN'`, [appId]);
+      const king = await as('king');
+      const html = await king.get('/a/hr/9114?doc=SEC_RQ_HTML');
+      assert.equal(html.statusCode, 200);
+      assert.match(String(html.headers['content-security-policy']), /default-src 'none'.*sandbox/, 'the file\'s own policy, not the page\'s');
+      assert.match(String(html.headers['content-disposition']), /^attachment/);
+      assert.doesNotMatch(html.body, /<img src=x/);
+      assert.equal((await king.get('/a/hr/9114?doc=SEC_RQ_ADMIN')).statusCode, 403, 'its authorization');
+      // signed out on a public page: only a report query the page offers with a button
+      const anon = new FileBrowser(app);
+      assert.equal((await anon.get('/a/hr/9114?doc=SEC_RQ_HTML')).statusCode, 403);
+      await owner.query(`insert into meta.button (page_id, seq, name, label, action, document) values ($1, 10, 'PRINT', 'Print', 'document', 'SEC_RQ_HTML')`, [p]);
+      assert.equal((await anon.get('/a/hr/9114?doc=SEC_RQ_HTML')).statusCode, 200);
+    } finally {
+      await owner.query('delete from meta.page where id = $1', [p]);
+      await owner.query(`delete from meta.report_query where app_id = $1 and name like 'SEC\\_RQ\\_%'`, [appId]);
+    }
+  });
+});
