@@ -19,6 +19,19 @@ Sprint 84: facet menus and the date picker (parity handoff GEN-9, IR-4).
   format, `YYYY-MM-DD`. No browser date fields are left for dates (timestamps keep the browser's date and time field).
   The calendar button no longer opens the browser's picker.
 
+Sprint 85: the Form Designer (migration 106).
+
+### Added
+- **The Form Designer region** (`form_designer`; beyond APEX): the application's administrators build data entry
+  forms in the running application. The developer offers tables and views in the region's settings (columns with
+  labels and lists of values, the key column, whether forms may add, change or delete rows) and names the
+  authorization scheme designers pass; designers pick fields (order, label, help, required, display, default for new
+  rows) and the columns of the row list, and publish the form. Rows are read and written as the application's
+  database role (grants and row level security apply), with lost update detection; definitions are checked against
+  the region's settings before they run. Forms are kept in `meta.user_form` (the view `meta.user_forms`,
+  `meta.save_user_form`, `meta.delete_user_form`): installation data, not exported, kept when an application is
+  replaced. HR example page 45 (*Forms*).
+
 ## [0.45.0] - 2026-10-15
 
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).

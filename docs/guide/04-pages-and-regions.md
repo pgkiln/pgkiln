@@ -1200,6 +1200,76 @@ region when an application is replaced. The HR example's page 36 (*My reports*) 
 (a view without the user name and photo columns) and leave requests (row level security: an
 employee sees only their own), with King's shared report *Salary by department*.
 
+### `form_designer` (Form Designer)
+
+A **Form Designer** region (sprint 85; pgkiln's own, APEX has no counterpart) lets the application's
+administrators build their own data entry forms in the running application, without a developer
+and without a new release. Like the [Data Reporter](#data_reporter-data-reporter), the developer
+decides *what* may be edited; the administrators decide *how* the forms look and who uses them.
+
+**The developer** places the region (page designer gallery: *Form Designer*) and, in its
+**Settings**, chooses **who may design forms** (an [authorization scheme](08-security.md); without
+one nobody can) and adds **data sources**: a table or view each (pgkiln's own `meta` schema and the
+system schemas are never offered), with a static id, a label and a description. Per source:
+
+- the **columns** forms may show and change, with a label and, for a select list or radio group,
+  a **list of values**: a shared one of the application (`LOV:NAME`) or `STATIC:Display;value,…`
+  (never SQL: designers can't write queries);
+- the **key column** that identifies a row (the primary key of a new table; choose one for a view),
+  needed to change and delete rows;
+- what forms on it **may** do at most: **add**, **change** and **delete** rows.
+
+A new source offers all its columns except binary and JSON ones, allows adding and (with a key)
+changing rows, never deleting. Untick generated keys and audit columns; the builder warns when the
+application's database role lacks a privilege a source needs.
+
+**Designers** (users that pass the scheme) see *New form* and a *Design form* link under each
+form. The designer is a plain form (it works without JavaScript): a name, a description, what
+users may do (within what the source allows) and a row per offered column: *On the form*,
+*Order*, *Label*, *Help text*, *Required*, *Display* (a field by the column's type; a text area for
+text; a select list or radio group for a column with a list of values) and a *Default* for new
+rows, and *In the list* for the columns of the form's list of rows. A form is a **draft** until
+*Published* is ticked: only designers see drafts.
+
+**Users** see the published forms as cards. A form with list columns opens on its rows (newest
+first, paged, `page_size`) with *Add* and an *Edit* link per row; a form without list columns
+only adds rows: it opens on an empty form, and after *Save* on the next empty one. Fields follow
+the column's type: a number field, the [date picker](05-items.md#the-date-picker) in the
+application's date format for dates, the browser's date and time field for timestamps, a
+checkbox for booleans.
+
+How it stays safe:
+
+- rows are read and written as the **application's database role**: grants and [row level
+  security](08-security.md) apply (in the HR example an employee changes only their own meetings);
+- a form's definition is checked against the region's settings before it renders or saves: only
+  offered columns that exist and can be read, displays the column's type allows, actions the
+  source allows; anything else is dropped. Only the form's fields are written; identifiers are
+  only the developer's schema, table and column names, always quoted; values and row keys are
+  always parameters; a value of a list of values must be in the list;
+- **lost updates** are refused: a row changed since its form was opened is not overwritten (the
+  user sees what they typed, with a message);
+- forms are stored in `meta.user_form`, reached by applications only through the view
+  `meta.user_forms` (the forms of the application) and the functions `meta.save_user_form` /
+  `meta.delete_user_form`; saving rows and forms needs the CSRF token and a region the user can
+  see, designing also the region's authorization scheme. Every saved, changed or deleted row and
+  form is in the activity log (event `form_designer`).
+
+Attributes (written by the region's **Settings**):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `sources` | | `[{"id": "orders", "label": "Orders", "description": "…", "schema": "sales", "table": "orders", "key": "id", "columns": [{"name": "customer", "label": "Customer"}, {"name": "status", "lov": "LOV:ORDER_STATUS"}], "insert": true, "update": true, "delete": false}]` |
+| `design_authz` | | The authorization scheme designers pass; none: nobody designs |
+| `page_size` | `25` | Rows per page of a form's list (5 to 200) |
+| `empty` | `No data found.` | Text when a form's list has no rows |
+
+The sources travel with the application export (they are the region's attributes); the forms are
+data of the installation, like Data Reporter reports: not exported, and they stay with their
+region when an application is replaced. The HR example's page 45 (*Forms*, under Administration)
+offers departments, meetings and employees (changing only) to administrators, with the published
+forms *Departments* and *Book a meeting*.
+
 ### `ai_assistant` (AI assistant)
 
 An **AI assistant** region (APEX: AI Assistant, AI agents and tools) is a chat with an

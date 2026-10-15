@@ -692,6 +692,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
 | `report` (also) | *Ask in your own words (AI)*: the AI service and placeholder of the [natural-language filters](04-pages-and-regions.md#natural-language-filters-ask-in-your-own-words) |
 | `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks), who may share reports, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
+| `form_designer` | Who may design forms (an authorization scheme), data sources (a table or view each: static id, label, description, key column, may add / change / delete rows, offered columns with labels and lists of values), rows per page ([Form Designer](04-pages-and-regions.md#form_designer-form-designer)) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to
 pages and shared lists of values of the same application, and to report regions on the same page.

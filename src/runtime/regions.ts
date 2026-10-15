@@ -21,6 +21,7 @@ import { renderGrid } from './grid.ts';
 import { masterItemOf, mastersOf } from './master-detail.ts';
 import { renderTasks } from './tasks.ts';
 import { renderDataReporter } from './data-reporter.ts';
+import { renderFormDesigner } from './form-designer.ts';
 import { renderAssistant } from './assistant.ts';
 import { renderAiFilter } from './ai-filter.ts';
 import { renderWorkflows } from './workflows.ts';
@@ -377,6 +378,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'data_reporter':
       body = await renderDataReporter(ctx, r);
+      break;
+    case 'form_designer':
+      body = await renderFormDesigner(ctx, r);
       break;
     case 'ai_assistant':
       body = await renderAssistant(ctx, r);

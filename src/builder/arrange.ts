@@ -41,7 +41,7 @@ export const REGION_LABELS: Record<string, [string, string]> = {
   report: ['Interactive report', 'table'], grid: ['Interactive grid', 'grid'], form: ['Form', 'file'], chart: ['Chart', 'chart'],
   cards: ['Cards', 'layers'], calendar: ['Calendar', 'calendar'], facets: ['Faceted search', 'filter'], smart_filters: ['Smart filters', 'search'], display_selector: ['Region display selector', 'menu'], tasks: ['Task list', 'inbox'],
   workflows: ['Workflow console', 'activity'], map: ['Map', 'map'], tree: ['Tree', 'org'], static: ['Static content', 'region'], dynamic: ['Dynamic content', 'code'],
-  template_component: ['Template component', 'layers'], list: ['List', 'list'], data_reporter: ['Data Reporter', 'table'],
+  template_component: ['Template component', 'layers'], list: ['List', 'list'], data_reporter: ['Data Reporter', 'table'], form_designer: ['Form Designer', 'file'],
   ai_assistant: ['AI assistant', 'bolt'], url: ['URL', 'link'], search: ['Search', 'search'],
 };
 export const ITEM_LABELS: Record<string, [string, string]> = {
