@@ -1,3 +1,4 @@
+import { componentSetting } from './component-settings.ts';
 import { icon } from '../icons.ts';
 import pg from 'pg';
 import { templateClasses } from './template-options.ts';
@@ -237,7 +238,7 @@ export function selectionOf(page: { items: { name: string }[] }, r: Region) {
 
 export function reportState(ctx: PageContext, r: Region): ReportState {
   const p = ctx.params;
-  const size = parseInt(p.get(key(r, 'n')) ?? '', 10) || Number(r.config.page_size) || 15;
+  const size = parseInt(p.get(key(r, 'n')) ?? '', 10) || Number(r.config.page_size) || componentSetting(ctx.app.component_settings, 'report_rows');
   const st: ReportState = {
     search: (p.get(key(r, 'q')) ?? '').trim(),
     searchCol: (p.get(key(r, 'qc')) ?? '').trim() || null,

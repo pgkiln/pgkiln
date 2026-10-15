@@ -17,6 +17,7 @@ import { appHeader, back, BASE, csrf, developer, flash, input, region, select, s
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
 import { catalogPicker } from './rest-catalogs.ts';
+import { COMPONENT_SETTINGS, componentSetting, componentSettingsFrom, type ComponentSettings } from '../runtime/component-settings.ts';
 
 // Shared Components: navigation, authorization schemes, LOVs, application
 // items and processes, report layouts, and access control.
@@ -63,9 +64,9 @@ export function sharedGroups(appId: number): { key: string; title: string; icon:
   return [
     { key: 'logic', title: 'Application Logic', icon: 'code', items: [t('app_item', 'Application Items'), t('app_process', 'Application Processes'), t('app_computation', 'Application Computations'), t('app_setting', 'Application Settings'), t('build_option', 'Build Options'), page('settings?tab=definition', 'Application Definition')] },
     { key: 'security', title: 'Security', icon: 'shield', items: [{ label: 'Access Control', href: `${BASE}/apps/${appId}/shared?view=tree`, kind: 'access' }, settings('security', 'Authentication'), t('authz_scheme', 'Authorization Schemes'), settings('security', 'Security Attributes'), settings('signin', 'Sign-in and Session Management')] },
-    { key: 'other', title: 'Other Components', icon: 'layers', items: [t('lov', 'Lists of Values'), t('list', 'Lists'), t('list_entry', 'List Entries'), t('email_template', 'Email Templates'), t('shortcut', 'Shortcuts'), t('supporting_script', 'Supporting Objects'), page('subscriptions', 'Subscriptions')] },
+    { key: 'other', title: 'Other Components', icon: 'layers', items: [t('lov', 'Lists of Values'), t('list', 'Lists'), t('list_entry', 'List Entries'), t('email_template', 'Email Templates'), t('shortcut', 'Shortcuts'), t('component_group', 'Component Groups'), t('supporting_script', 'Supporting Objects'), page('subscriptions', 'Subscriptions')] },
     { key: 'navigation', title: 'Navigation and Search', icon: 'compass', items: [t('nav_entry', 'Navigation Menu'), settings('ui', 'Navigation Bar List'), page('breadcrumbs', 'Breadcrumbs'), t('page_group', 'Page Groups'), t('search_config', 'Search Configurations')] },
-    { key: 'ui', title: 'User Interface', icon: 'grid', items: [page('theme', 'Themes and Theme Roller'), settings('ui', 'User Interface Attributes'), t('template_component', 'Template Components'), page('plugins', 'Plug-ins'), settings('pwa', 'Progressive Web App')] },
+    { key: 'ui', title: 'User Interface', icon: 'grid', items: [page('theme', 'Themes and Theme Roller'), settings('ui', 'User Interface Attributes'), t('template_component', 'Template Components'), page('plugins', 'Plug-ins'), page('component-settings', 'Component Settings'), settings('pwa', 'Progressive Web App')] },
     { key: 'files', title: 'Files and Reports', icon: 'file', items: [page('static-files', 'Static Application Files'), t('report_layout', 'Report Layouts'), t('report_query', 'Report Queries'), t('document_template', 'Document Templates')] },
     { key: 'data', title: 'Data Sources', icon: 'database', items: [t('rest_source', 'REST Data Sources'), t('web_credential', 'Web Credentials'), t('rest_module', 'RESTful Services'), t('data_load_def', 'Data Load Definitions')] },
     { key: 'workflows', title: 'Workflows and Automations', icon: 'activity', items: [t('workflow_definition', 'Workflows'), t('task_definition', 'Task Definitions'), t('automation', 'Automations')] },
@@ -96,8 +97,40 @@ export async function sharedRoutes(app: FastifyInstance) {
     return send(reply, s, shell(s, 'Breadcrumbs', [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Breadcrumbs']], main));
   });
 
+  // (105) Component Settings (APEX): the application's defaults of its built-in component types
+  app.get(`${BASE}/apps/:id/component-settings`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await appOr404(req.params.id);
+    if (!a) return reply.code(404).send('Not found');
+    const cur = (a.component_settings ?? {}) as ComponentSettings;
+    const groups = [...new Set(COMPONENT_SETTINGS.map((x) => x.group))];
+    const main = html`${appHeader(a, 'shared')}
+      ${region('Component Settings', html`<p class="muted u-mt0">Defaults for the application's built-in component types, used where a component sets nothing itself. Empty: pgkiln's default.</p>
+        <form method="post" action="${BASE}/apps/${a.id}/component-settings">${csrf(s)}
+          ${groups.map((g) => html`<fieldset class="u-mb1"><legend>${g}</legend>${COMPONENT_SETTINGS.filter((x) => x.group === g).map((x) =>
+            input(x.key, x.label, cur[x.key] ?? '', { type: 'number', placeholder: String(x.def), help: `${x.help} ${x.min}–${x.max.toLocaleString('en')}; now ${componentSetting(cur, x.key).toLocaleString('en')}.` }))}</fieldset>`)}
+          <div class="buttons"><button class="btn btn-hot">Save</button></div>
+        </form>`)}`;
+    return send(reply, s, shell(s, 'Component Settings', [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Component Settings']], main));
+  });
+
+  app.post(`${BASE}/apps/:id/component-settings`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await appOr404(req.params.id);
+    if (!a) return reply.code(404).send('Not found');
+    const { settings, problems } = componentSettingsFrom(req.body ?? {});
+    if (problems.length) flash(s, problems.join(' '), 'error');
+    else {
+      await owner.query('update meta.app set component_settings = $2 where id = $1', [a.id, JSON.stringify(settings)]);
+      flash(s, 'Component settings saved.');
+    }
+    return back(reply, s, `${BASE}/apps/${a.id}/component-settings`);
+  });
+
   // ---------------------------------------------------------------- shared components
-  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'page_group', 'lov', 'app_item', 'app_process', 'app_computation', 'shortcut', 'report_query', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config', 'email_template', 'app_setting', 'dynamic_translation'];
+  const SHARED = ['nav_entry', 'authz_scheme', 'build_option', 'page_group', 'lov', 'app_item', 'app_process', 'app_computation', 'shortcut', 'report_query', 'component_group', 'automation', 'automation_action', 'report_layout', 'document_template', 'task_definition', 'workflow_definition', 'rest_module', 'template_component', 'web_credential', 'rest_source', 'data_load_def', 'list', 'list_entry', 'supporting_script', 'search_config', 'email_template', 'app_setting', 'dynamic_translation'];
 
   const ORDER: Record<string, string> = {
     search_config: 'seq, name', dynamic_translation: 'language, source',

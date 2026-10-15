@@ -55,6 +55,7 @@ const SECTIONS: Record<string, string> = {
   app_computation: 'app_computations',
   shortcut: 'shortcuts',
   report_query: 'report_queries',
+  component_group: 'component_groups',
   lov: 'lovs',
   app_group_role: 'group_roles',
   text_message: 'text_messages',

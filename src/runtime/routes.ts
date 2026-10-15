@@ -1027,7 +1027,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (!item || !vis.editable.has(item.name)) throw new Forbidden(ctx.locale.t('error.unknown_item'));
         if (item.config?.cascade_parents) applyPostedItems(ctx, body, list(item.config.cascade_parents));
         const page = Math.min(Math.max(Math.floor(Number(body.p)) || 0, 0), 10_000);
-        return searchLov(ctx, item, String(body.q ?? '').slice(0, 200), page, popupPageSize(item, body.n));
+        return searchLov(ctx, item, String(body.q ?? '').slice(0, 200), page, popupPageSize(item, body.n, ctx.app.component_settings));
       });
       return reply.send(out);
     } catch (e) {

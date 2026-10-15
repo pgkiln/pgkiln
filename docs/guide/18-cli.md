@@ -66,6 +66,7 @@ hr/
     app-processes/0010-link-user-to-employee.json
     app-processes/0010-link-user-to-employee.code.sql
     app-computations/0010-ai_region-after_authentication.json   (by sequence, item and point)
+    component-groups/sales_lookups.json
     report-queries/orders_by_region.json   (the query in .query.sql)
     shortcuts/delete_confirm_msg.json   (a long value in .value.txt, .html or .sql by its type)
     lovs/jobs.json

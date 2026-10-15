@@ -20,6 +20,7 @@ import { aiProblems } from '../runtime/ai.ts';
 import { DATA_LOAD_DEF_SPEC } from './dataload.ts';
 import { processProblems } from '../runtime/processes.ts';
 import { BUTTON_OPTIONS, ITEM_OPTIONS, REGION_OPTIONS } from '../runtime/template-options.ts';
+import { checkGroupMembers } from '../subscriptions.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -68,8 +69,8 @@ export interface ComponentSpec {
   defaults?: Record<string, unknown>;
   /** checks the parsed values before saving; returns a message when they're not valid */
   validate?: (values: Record<string, any>) => string | null;
-  /** adjusts the parsed values before they are saved (cid: the row being edited); throws when they can't be */
-  beforeSave?: (values: Record<string, unknown>, cid: string | undefined) => Promise<void>;
+  /** adjusts the parsed values before they are saved (cid: the row being edited; parentId: its page or application); throws when they can't be */
+  beforeSave?: (values: Record<string, unknown>, cid: string | undefined, parentId: string) => Promise<void>;
 }
 
 const AUTHZ_HELP = 'Authorization scheme; prefix with ! to negate. MUST_NOT_BE_PUBLIC_USER is built in.';
@@ -475,6 +476,27 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
       { name: 'comments', label: 'Comments', kind: 'textarea', wide: true, group: 'Comments' },
+    ],
+  },
+  // (105) component groups (APEX: Shared Components → Component Groups)
+  component_group: {
+    table: 'meta.component_group',
+    scope: 'app',
+    label: 'Component group',
+    plural: 'Component groups',
+    icon: 'layers',
+    summary: (g) => `${g.name} (${(g.members ?? []).length})`,
+    defaults: {},
+    beforeSave: async (v, _cid, appId) => {
+      const { members, problems } = await checkGroupMembers(Number(appId), (v.members as string[] | null) ?? []);
+      if (problems.length) throw new Error(problems.join(' '));
+      v.members = members;
+    },
+    fields: [
+      { name: 'name', label: 'Name', kind: 'text', help: 'e.g. Sales lookups. Other applications subscribe to all of its components at once (Subscriptions), when this is a library or theme application.' },
+      { name: 'description', label: 'Description', kind: 'text', wide: true },
+      { name: 'members', label: 'Components', kind: 'list', wide: true,
+        help: 'Comma separated kind:name, e.g. lov:JOBS, authz_scheme:MANAGER, build_option:FEATURE_EXPORT, template_component:status_badge, list:SHORTCUTS.' },
     ],
   },
   // (103) shortcuts (APEX: Shared Components → Shortcuts)

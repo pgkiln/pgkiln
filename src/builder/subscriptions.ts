@@ -4,8 +4,8 @@ import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import {
-  APP_TYPE_LABELS, inSync, isKind, KINDS, offers, publish, refresh, subscribe, subscribersOf, subscriptionOf, subscriptionsOf,
-  SubscriptionError, unsubscribe, type AppType, type Kind,
+  APP_TYPE_LABELS, groupsOffered, inSync, isKind, KINDS, offers, publish, refresh, subscribe, subscribersOf, subscriptionOf, subscriptionsOf,
+  SubscriptionError, subscribeGroup, unsubscribe, type AppType, type Kind,
 } from '../subscriptions.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 
@@ -59,7 +59,7 @@ export async function subscriptionRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await appRow(req.params.id);
     if (!a) return reply.code(404).send('Not found');
-    const [subs, subscribers, offered] = await Promise.all([subscriptionsOf(a.id), subscribersOf(a.id), offers(a.id)]);
+    const [subs, subscribers, offered, groupList] = await Promise.all([subscriptionsOf(a.id), subscribersOf(a.id), offers(a.id), groupsOffered(a.id)]);
     const sync = await Promise.all(subs.map((x) => inSync(x)));
     const subSync = await Promise.all(subscribers.map((x) => inSync(x)));
     const hidden = (kind: string, name: string) => html`<input type="hidden" name="kind" value="${kind}"><input type="hidden" name="name" value="${name}">`;
@@ -93,7 +93,17 @@ export async function subscriptionRoutes(app: FastifyInstance) {
                 </select>
                 <small class="help">The component is copied now. A component of this application with the same name is replaced.</small></div>
               <div class="buttons"><button class="btn btn-hot">Subscribe</button></div></form>`
-          : html`<p class="muted">No theme or library applications offer components. Set an application's type under its Settings.</p>`}`)}
+          : html`<p class="muted">No theme or library applications offer components. Set an application's type under its Settings.</p>`}
+        ${groupList.length
+          ? html`<h3>Subscribe to a component group</h3>
+            <form method="post" action="${BASE}/apps/${a.id}/subscriptions/group">${csrf(s)}
+              <div class="field"><label class="label" for="f_group">Component group</label>
+                <select id="f_group" name="group" required><option value="">- choose -</option>
+                  ${groupList.map((g) => html`<option value="${g.master_id}|${g.name}">${g.master_name}: ${g.name} (${g.members.length})</option>`)}
+                </select>
+                <small class="help">Every component of the group is copied now and subscribed (Shared Components → Component Groups of a theme or library application).</small></div>
+              <div class="buttons"><button class="btn btn-hot">Subscribe to the group</button></div></form>`
+          : ''}`)}
       ${a.app_type === 'theme' || a.app_type === 'library' || subscribers.length
         ? region('Subscribers', subscribers.length
             ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Component</th><th>Application</th><th>Refreshed</th><th>State</th></tr></thead><tbody>
@@ -135,6 +145,22 @@ export async function subscriptionRoutes(app: FastifyInstance) {
       await subscribe(a.id, Number(m[1]), m[2], m[3], s.username!);
       await logActivity({ appId: a.id, username: s.username, event: 'subscription', ip: clientIp(req), detail: `subscribed ${m[2]} ${m[3]} from application ${m[1]}` });
       return `Subscribed: ${isKind(m[2]) ? what(m[2], m[3]) : m[2]} copied.`;
+    });
+  });
+
+  // (105) all the components of a master's component group
+  app.post(`${BASE}/apps/:id/subscriptions/group`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await appRow(req.params.id);
+    if (!a) return reply.code(404).send('Not found');
+    const m = /^(\d{1,9})\|(.{1,60})$/s.exec(String(req.body?.group ?? ''));
+    return handle(req, reply, s, a.id, async () => {
+      if (!m) throw new SubscriptionError('Choose a component group.');
+      if (!(await groupsOffered(a.id)).some((g) => g.master_id === Number(m[1]) && g.name === m[2])) throw new SubscriptionError('Choose a component group.');
+      const { done, skipped } = await subscribeGroup(a.id, Number(m[1]), m[2], s.username!);
+      await logActivity({ appId: a.id, username: s.username, event: 'subscription', ip: clientIp(req), detail: `subscribed component group ${m[2]} from application ${m[1]}: ${done.join(', ')}` });
+      return `Subscribed to ${m[2]}: ${done.length} component${done.length === 1 ? '' : 's'} copied${skipped.length ? `; skipped ${skipped.join(', ')}` : ''}.`;
     });
   });
 

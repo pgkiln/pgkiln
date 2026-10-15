@@ -7898,3 +7898,39 @@ describe('sprint 82 report queries', () => {
     }
   });
 });
+
+describe('sprint 83 component settings and component groups', () => {
+  const devLogin = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    return dev;
+  };
+  test('only developers change them; a stored setting out of bounds is not used; a group from another workspace is refused', async () => {
+    const before = (await owner.one('select component_settings from meta.app where id = $1', [appId])).component_settings;
+    const ws = (await owner.one(`insert into meta.workspace (name) values ('SEC83 other') returning id`)).id;
+    const lib = (await owner.one(`insert into meta.app (alias, name, app_type) values ('sec83-lib', 'SEC83 library', 'library') returning id`)).id;
+    try {
+      const king = await as('king');
+      assert.equal((await king.post(`/builder/apps/${appId}/component-settings`, { __csrf: king.lastCsrf, report_rows: '1' })).statusCode, 302, 'an application user goes to the builder sign-in');
+      const dev = await devLogin();
+      await dev.get(`/builder/apps/${appId}/component-settings`);
+      assert.equal((await dev.post(`/builder/apps/${appId}/component-settings`, { __csrf: 'forged', report_rows: '1' })).statusCode, 403);
+      assert.deepEqual((await owner.one('select component_settings from meta.app where id = $1', [appId])).component_settings, before);
+      // a hand-edited or imported value without bounds: the default
+      await owner.query(`update meta.app set component_settings = '{"report_rows": 100000000, "lov_max_rows": -1}' where id = $1`, [appId]);
+      assert.match((await king.get('/a/hr/2')).body, /1–\d+ of \d+/);
+      assert.doesNotMatch((await king.get('/a/hr/2')).body, /1–100000000/);
+      // a library application of another workspace: its groups are not offered and can't be subscribed to
+      await owner.query(`insert into meta.workspace_app (workspace_id, app_id) values ($2, $1) on conflict (app_id) do update set workspace_id = excluded.workspace_id`, [lib, ws]);
+      await owner.query(`insert into meta.component_group (app_id, name, members) values ($1, 'Theirs', '{}')`, [lib]);
+      await dev.get(`/builder/apps/${appId}/subscriptions`);
+      await dev.post(`/builder/apps/${appId}/subscriptions/group`, { __csrf: dev.lastCsrf, group: `${lib}|Theirs` });
+      assert.match((await dev.get(`/builder/apps/${appId}/subscriptions`)).body, /Choose a component group/);
+    } finally {
+      await owner.query('update meta.app set component_settings = $2 where id = $1', [appId, JSON.stringify(before)]);
+      await owner.query('delete from meta.app where id = $1', [lib]);
+      await owner.query('delete from meta.workspace where id = $1', [ws]);
+    }
+  });
+});

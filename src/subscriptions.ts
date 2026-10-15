@@ -219,3 +219,70 @@ export async function publish(masterId: number, kind: string, name: string, user
 
 export const unsubscribe = async (appId: number, kind: string, name: string) =>
   ((await owner.query('delete from meta.subscription where app_id = $1 and kind = $2 and name = $3', [appId, kind, name])).rowCount ?? 0) > 0;
+
+// ------------------------------------------------------------------ (105) component groups
+// A component group names some of an application's subscribable components
+// ("kind:name"); another application subscribes to all of them at once.
+
+/** The kinds a component group can hold: every subscribable kind but the theme. */
+export const GROUP_KINDS = (Object.keys(KINDS) as Kind[]).filter((k) => k !== 'theme');
+
+/** Members as the application has them ("lov:JOBS"), and a message for each that it doesn't have. */
+export async function checkGroupMembers(appId: number, members: string[]) {
+  const ok: string[] = [];
+  const problems: string[] = [];
+  for (const m of members.map((x) => x.trim()).filter(Boolean)) {
+    const at = m.indexOf(':');
+    const kind = m.slice(0, at).trim();
+    const name = m.slice(at + 1).trim();
+    if (at < 1 || !isKind(kind) || kind === 'theme') {
+      problems.push(`${m}: write kind:name, the kind one of ${GROUP_KINDS.join(', ')}.`);
+      continue;
+    }
+    const k = KINDS[kind];
+    const row = await owner.one<{ n: string }>(`select ${k.key} as n from ${k.table} where app_id = $1 and lower(${k.key}) = lower($2)`, [appId, name]);
+    if (!row) problems.push(`${m}: the application has no ${k.label.toLowerCase()} ${name}.`);
+    else if (!ok.includes(`${kind}:${row.n}`)) ok.push(`${kind}:${row.n}`);
+  }
+  return { members: ok, problems };
+}
+
+/** Component groups of the theme and library applications appId can subscribe to. */
+export async function groupsOffered(appId: number) {
+  return (
+    await owner.query<{ master_id: number; master_name: string; name: string; description: string | null; members: string[] }>(
+      `select m.id as master_id, m.name as master_name, g.name, g.description, g.members
+         from meta.component_group g join meta.app m on m.id = g.app_id
+        where m.app_type in ('theme', 'library') and m.id <> $1 and meta.app_workspace(m.id) = meta.app_workspace($1)
+        order by lower(m.name), m.id, lower(g.name)`,
+      [appId],
+    )
+  ).rows;
+}
+
+/** Subscribe appId to every member of a master's component group; members the master no longer has are skipped. */
+export async function subscribeGroup(appId: number, masterId: number, group: string, username: string) {
+  const g = await owner.one<{ members: string[] }>('select members from meta.component_group where app_id = $1 and name = $2', [masterId, group]);
+  if (!g) throw new SubscriptionError('Choose a component group.');
+  const done: string[] = [];
+  const skipped: string[] = [];
+  for (const m of g.members) {
+    const at = m.indexOf(':');
+    const kind = m.slice(0, at);
+    const name = m.slice(at + 1);
+    if (!isKind(kind) || kind === 'theme') continue;
+    const k = KINDS[kind];
+    if (!(await owner.one(`select 1 as ok from ${k.table} where app_id = $1 and ${k.key} = $2`, [masterId, name]))) {
+      skipped.push(m);
+      continue;
+    }
+    try {
+      await subscribe(appId, masterId, kind, name, username);
+      done.push(m);
+    } catch (e) {
+      if (!(e instanceof SubscriptionError)) throw e;
+      skipped.push(m);
+    }
+  }
+  return { done, skipped };
+}

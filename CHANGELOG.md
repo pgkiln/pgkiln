@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 83: Component Settings and Component Groups in Shared Components (migration 105; parity handoff BLD-2).
+
+### Added
+- **Component Settings** (Shared Components → User Interface; APEX: Component Settings): an application's defaults
+  for reports' and interactive grids' rows per page, popup lists of values' rows per page, the rows a list of values
+  reads and a star rating's stars, used where a component sets nothing itself (`meta.app.component_settings`).
+- **Component Groups** (Shared Components → Other Components; APEX: Component Groups): a library or theme
+  application's set of components (`kind:name`); another application subscribes to all of them at once on its
+  Subscriptions page (`meta.component_group`, exported, `shared/component-groups/`).
+
 Sprint 82: Report Queries in Shared Components (migration 104; parity handoff BLD-2).
 
 ### Added

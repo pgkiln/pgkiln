@@ -397,6 +397,9 @@ runtime role, never exported) ([chapter 19](19-rest-data-sources.md#web-credenti
 **`report_query`** (104): `app_id`, `name` (uppercase, unique per app), `description`, `query`, `format` (`pdf` / `xlsx` /
 `csv` / `json` / `xml` / `html`), `layout`, `file_name`, `title`, `authz`, `comments` ([chapter 16](16-files.md#report-queries)).
 
+**`component_group`** (105): `app_id`, `name`, `description`, `members` (`text[]` of `kind:name`) ([chapter 3](03-builder.md#component-groups)).
+`meta.app.component_settings` (105): `report_rows`, `grid_rows`, `popup_lov_rows`, `lov_max_rows`, `rating_max` ([chapter 3](03-builder.md#component-settings)).
+
 **`build_option`**: `app_id`, `name` (uppercase, unique per app), `status` (`include` / `exclude`),
 `description` ([chapter 6](06-processing.md#build-options)). `meta.build_option_on(app_id, ref)`
 tells whether a component with that `build_option` value is part of the application.

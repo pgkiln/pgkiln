@@ -179,7 +179,7 @@ export async function saveComponent(kind: string, parentCol: 'page_id' | 'app_id
   const values = parseFields(spec, body);
   const problem = spec.validate?.(values);
   if (problem) throw new Error(problem);
-  await spec.beforeSave?.(values, cid);
+  await spec.beforeSave?.(values, cid, parentId);
   // region fields only take regions of the same page
   if (parentCol === 'page_id')
     for (const f of spec.fields)

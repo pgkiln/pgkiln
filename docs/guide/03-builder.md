@@ -867,6 +867,8 @@ is the earlier page: every component in one rail, with **Access control** next t
 | **Lists of values** | Reusable queries for select lists, referenced as `LOV:NAME` |
 | **Application items** | Session variables not on any page, set only by server-side code |
 | **Application processes** | Code that runs *after login* or *before every page* |
+| **Component groups** | Sets of a library application's components that other applications subscribe to at once ([below](#component-groups)) |
+| **Component settings** | Defaults of built-in component types: rows per page, list of values rows, stars ([below](#component-settings)) |
 | **Report queries** | Named queries printed as PDF, Excel, CSV, JSON, XML or HTML with `?doc=NAME` ([chapter 16](16-files.md#report-queries)) |
 | **Shortcuts** | Named texts: `"NAME"` in static content, help texts and confirm messages ([chapter 2](02-concepts.md#shortcuts-name)) |
 | **Application computations** | Computations of (application) items for every page: at sign-in, before every page, after every submit ([chapter 6](06-processing.md#application-computations)) |
@@ -909,6 +911,33 @@ skipped and named in the message). Subscribing, refreshing and publishing are lo
 log (`subscription`). A subscribed list of values that uses a REST data source needs a data source
 with the same name in the subscribing application. Subscriptions are links between the
 applications of this installation and are not exported (the type is).
+
+#### Component groups
+
+**Shared Components → Component Groups** (APEX: Component Groups, migration 105) names a set of a
+theme or library application's components, as `kind:name`: `lov:JOBS, authz_scheme:MANAGER,
+build_option:FEATURE_EXPORT, template_component:status_badge, list:SHORTCUTS`. Saving checks that
+the application has each one (and keeps its name as the application spells it). Another
+application of the same workspace subscribes to the whole group on its Subscriptions page
+(*Subscribe to a component group*): each component is copied and subscribed as above, and a member
+the library no longer has is skipped and named in the message. Groups are exported with the
+application (`shared/component-groups/`).
+
+### Component settings
+
+**Shared Components → Component Settings** (APEX: Component Settings, migration 105) are the
+application's defaults for its built-in component types, used where a component sets nothing itself
+(`meta.app.component_settings`, exported with the application):
+
+| Setting | pgkiln's default | Bounds |
+|---|---|---|
+| Reports: rows per page (`report_rows`) | 15 | 1–1,000 |
+| Interactive grids: rows per page (`grid_rows`) | 25 | 1–200 |
+| Popup lists of values: rows per page (`popup_lov_rows`) | 25 | 1–100 |
+| Lists of values: maximum rows (`lov_max_rows`) | 5,000 | 1–50,000 |
+| Star ratings: stars (`rating_max`) | 5 | 3–10 |
+
+A value out of its bounds (an edited export, say) is ignored: the default applies.
 
 ### Supporting objects
 
@@ -1328,7 +1357,7 @@ imports as empty. Import refuses other formats.
 | Section | Contents |
 |---|---|
 | `app` | the application's settings (name, alias, home page, authentication, theme, languages, …) |
-| `authz_schemes`, `app_items`, `app_processes`, `app_computations`, `shortcuts`, `report_queries`, `lovs` | shared components |
+| `authz_schemes`, `app_items`, `app_processes`, `app_computations`, `shortcuts`, `report_queries`, `component_groups`, `lovs` | shared components |
 | `group_roles` | identity-provider group → role mappings |
 | `text_messages`, `translations` | globalization |
 | `report_layouts` | report layouts; the logo as base64 |
