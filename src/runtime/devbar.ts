@@ -97,7 +97,7 @@ export function devbarHtml(ctx: PageContext): Raw | '' {
     <nav aria-label="Developer toolbar"><ul class="devbar-tools">
       ${tool(BUILDER, 'App Builder', 'home', 'Home')}
       ${tool(`${BUILDER}/apps/${ctx.app.id}`, `Application ${ctx.app.id}`, 'grid', `App ${ctx.app.id}`)}
-      ${tool(`${BUILDER}/pages/${ctx.page.id}`, `Edit page ${page}`, 'edit', `Page ${page}`)}
+      ${tool(`${BUILDER}/apps/${ctx.app.id}/pages/${page}`, `Edit page ${page}`, 'edit', `Page ${page}`)}
       ${tool(`${ctx.base}/${page}/devbar/session`, 'Session', 'database', 'Session')}
       ${menu(`Debug: ${level || appLevel ? 'on' : 'off'}`, 'bolt', `devbar-debug-menu${level || appLevel ? ' is-on' : ''}`, html`<form method="post" action="${ctx.base}/${page}/devbar/debug" class="devbar-debug">
         <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">

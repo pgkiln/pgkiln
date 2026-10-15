@@ -7170,7 +7170,7 @@ describe('sprint 59 quick edit', () => {
     await dev.get('/builder/login');
     await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
     const r = await dev.get(`/builder/pages/${page3}/quick?item=${encodeURIComponent("x' or 1=1 --")}`);
-    assert.equal(r.headers.location, `/builder/pages/${page3}`);
+    assert.equal(r.headers.location, `/builder/apps/${appId}/pages/3`);
     assert.equal((await dev.get(`/builder/pages/abc/quick?item=X`)).statusCode, 404);
     // the toolbar (and so Quick edit) is not on the pages of a signed-in user without a builder session
     assert.doesNotMatch((await king.get('/a/hr/1')).body, /data-quick-edit/);
@@ -8058,5 +8058,40 @@ describe('sprint 85 form designer', () => {
     } finally {
       await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify(config)]);
     }
+  });
+});
+
+describe('sprint 86 builder addresses and error pages', () => {
+  const developer = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    dev.headers.accept = 'text/html';
+    return dev;
+  };
+  test('the redirect from the internal id stays in the builder; the page number is a number', async () => {
+    const dev = await developer();
+    const page3 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 3', [appId])).id;
+    for (const q of ['//evil.example/x', 'next=https://evil.example', '%0d%0aSet-Cookie:%20x=1']) {
+      const res = await dev.get(`/builder/pages/${page3}?${q}`);
+      assert.equal(res.statusCode, 302, q);
+      assert.ok(String(res.headers.location).startsWith(`/builder/apps/${appId}/pages/3?`), q);
+      assert.equal(res.headers['set-cookie']?.toString().includes('x=1') ?? false, false, q);
+    }
+    for (const no of ["3' or 1=1 --", '-1', '1e3', '99999999999']) assert.equal((await dev.get(`/builder/apps/${appId}/pages/${encodeURIComponent(no)}`)).statusCode, 404, no);
+  });
+
+  test('error pages escape the address and say nothing about the server', async () => {
+    const dev = await developer();
+    const res = await dev.get('/builder/x%22%3E%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E');
+    assert.equal(res.statusCode, 404);
+    assert.doesNotMatch(res.body, /<img src=x/);
+    assert.match(String(res.headers['content-security-policy'] ?? ''), /script-src/, 'the page keeps the CSP');
+    // signed out: the same page, nothing about the builder's applications
+    const anon = new Browser();
+    anon.headers.accept = 'text/html';
+    const out = await anon.get('/builder/apps/1/nope');
+    assert.equal(out.statusCode, 404);
+    assert.doesNotMatch(out.body, /HR Demo|hr\b/);
   });
 });

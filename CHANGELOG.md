@@ -32,6 +32,19 @@ Sprint 85: the Form Designer (migration 106).
   `meta.save_user_form`, `meta.delete_user_form`): installation data, not exported, kept when an application is
   replaced. HR example page 45 (*Forms*).
 
+Sprint 86: builder addresses and error pages (parity handoff BLD-6).
+
+### Added
+- **The page designer by the page's number** (BLD-6): `/builder/apps/<app id>/pages/<page number>` (with
+  `?c=…` for the selected component); the builder's links, the developer toolbar's *Edit page* and *Quick edit*
+  use it, and a browser that opens the internal `/builder/pages/<id>` is redirected there.
+- **HTML error pages in the builder** (BLD-6): *Page not found* and *Something went wrong* for a browser under
+  `/builder`, in the builder's theme, instead of JSON or plain text (scripts keep the plain answers).
+
+### Changed
+- Values a browser kept under pgkiln's old name (`pgapex.*` in localStorage and sessionStorage, `pgapex-push:*`)
+  move to `pgkiln.*` once, and the service worker deletes its old `pgapex-*` caches (BLD-6).
+
 ## [0.45.0] - 2026-10-15
 
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).

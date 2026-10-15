@@ -12,6 +12,8 @@ import { ensureDevbar } from '../runtime/devbar.ts';
 // Shared building blocks of the builder UI.
 
 export const BASE = '/builder';
+/** (sprint 86) The page designer's address: the application's id and the page's number (/builder/pages/:id redirects here). */
+export const designerUrl = (appId: number, pageNo: number, query = '') => `${BASE}/apps/${appId}/pages/${pageNo}${query ? `?${query}` : ''}`;
 
 /** pgkiln's version and the database name, for the builder's status bar. */
 const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;

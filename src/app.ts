@@ -51,6 +51,7 @@ import { dataReporterRoutes } from './runtime/data-reporter.ts';
 import { reporterBuilderRoutes } from './builder/reporter.ts';
 import { formDesignerRoutes } from './runtime/form-designer.ts';
 import { formDesignerBuilderRoutes } from './builder/form-designer.ts';
+import { builderErrorPages, builderServerError } from './builder/errors.ts';
 import { workflowRoutes } from './runtime/workflows.ts';
 import { pwaRoutes } from './runtime/pwa.ts';
 import { pushRoutes } from './runtime/push.ts';
@@ -140,10 +141,13 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   });
   // An id in the URL that isn't a number (or is too big) fails in PostgreSQL:
   // that's a page that doesn't exist, not a server error.
-  app.setErrorHandler((err: Error & { code?: string }, _req, reply) => {
+  app.setErrorHandler((err: Error & { code?: string }, req, reply) => {
     if (err.code === '22P02' || err.code === '22003') return reply.code(404).type('text/plain').send('Not found');
+    // (sprint 86) a browser on a builder page gets an HTML error page
+    if (builderServerError(req, reply, err)) return reply;
     return reply.send(err);
   });
+  builderErrorPages(app);
   await app.register(cookie);
   await app.register(formbody, { bodyLimit: 5 * 1024 * 1024 });
   // file upload items; oversized files are cut off and reported, not thrown

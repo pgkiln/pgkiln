@@ -211,7 +211,9 @@ src/
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
                            applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel)
     shared.ts              Shared Components and access control
-    designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar
+    designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar;
+                           (sprint 86) GET /builder/apps/:app/pages/:no, /builder/pages/:id redirects browsers there (designerUrl in ui.ts)
+    errors.ts              (sprint 86) the builder's HTML 404 and 500 pages for browsers (wantsHtml, a not-found handler and an onSend hook)
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: the home and SQL commands (templates and drafts to review)
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review

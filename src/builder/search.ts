@@ -3,7 +3,7 @@ import { owner } from '../db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { COMPONENTS, type FieldKind } from './components.ts';
-import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
+import { appHeader, BASE, designerUrl, developer, region, send, shell, type Req } from './ui.ts';
 
 // App Builder → Search and "Where used": every component of an application
 // (pages, regions, items, buttons, dynamic actions, validations, processes
@@ -46,7 +46,7 @@ export async function appEntries(appId: number, query: (sql: string, params?: un
   const pageById = new Map(pages.map((p) => [p.id, p]));
   const out: Entry[] = pages.map((p) => ({
     kind: 'page', id: p.id, label: `Page ${p.page_no}: ${p.name}`, kindLabel: 'Page', icon: 'file', pageNo: p.page_no,
-    url: `${BASE}/pages/${p.id}?c=page`,
+    url: designerUrl(appId, p.page_no, 'c=page'),
     fields: PAGE_FIELDS.map((f) => ({ ...f, value: asText(p[f.name]) })),
   }));
   for (const [kind, spec] of Object.entries(COMPONENTS)) {
@@ -57,7 +57,7 @@ export async function appEntries(appId: number, query: (sql: string, params?: un
       const page = spec.scope === 'page' ? pageById.get(row.page_id) : null;
       out.push({
         kind, id: row.id, label: spec.summary(row), kindLabel: spec.label, icon: spec.icon, pageNo: page?.page_no ?? null,
-        url: page ? `${BASE}/pages/${page.id}?c=${kind}-${row.id}` : `${BASE}/apps/${appId}/shared?c=${kind}-${row.id}`,
+        url: page ? designerUrl(appId, page.page_no, `c=${kind}-${row.id}`) : `${BASE}/apps/${appId}/shared?c=${kind}-${row.id}`,
         fields: spec.fields.filter((f) => TEXT_KINDS.has(f.kind)).map((f) => ({ name: f.name, label: f.label, kind: f.kind, value: asText(row[f.name]) })),
       });
     }

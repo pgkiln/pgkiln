@@ -13,7 +13,7 @@ import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
 import { loginSettingsFields, saveLoginSettings } from './login-page.ts';
-import { APP_COLORS, appHeader, back, BASE, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, designerUrl, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
@@ -278,11 +278,11 @@ export async function builderRoutes(app: FastifyInstance) {
               <select id="f_group" name="group">${[['', 'All pages'], ...groups.map((g) => [g, g]), ['-', 'Without a group']].map(([v, l]) => html`<option value="${v}"${v === groupFilter ? raw(' selected') : ''}>${l}</option>`)}</select></div>
               <button class="btn u-selfend">Show</button></form>`
           : ''}${icons
-          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${BASE}/pages/${p.id}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${p.mode}, ${p.regions} region${p.regions === 1 ? '' : 's'}</small></a></li>`)}</ul>`
+          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${designerUrl(a.id, p.page_no)}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${p.mode}, ${p.regions} region${p.regions === 1 ? '' : 's'}</small></a></li>`)}</ul>`
           : html`<div class="table-wrap"><table class="report">
           <thead><tr><th class="num">Page</th><th>Name</th>${grouped ? html`<th>Group</th>` : ''}<th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th>Lock</th><th></th></tr></thead>
           <tbody id="pages-rows">${shownPages.map((p) => html`<tr>
-            <td class="num">${p.page_no}</td><td><a href="${BASE}/pages/${p.id}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
+            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
             <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
             <td>${p.requires_auth ? (p.authz ?? '—') : 'public'}</td><td>${p.protection}</td>
             <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? 'you' : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>

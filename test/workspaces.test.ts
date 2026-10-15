@@ -121,7 +121,9 @@ describe('workspaces', () => {
   test('applications outside the developer\'s workspaces are refused (GET and POST, apps and pages)', async () => {
     const a = (await owner.one(`select id from meta.app where alias = 'ws-test-a'`)).id;
     const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [a])).id;
-    for (const url of [`/builder/apps/${a}`, `/builder/apps/${a}/shared`, `/builder/apps/${a}/settings`, `/builder/pages/${page}`, `/builder/pages/${page}?c=page`]) {
+    for (const url of [`/builder/apps/${a}`, `/builder/apps/${a}/shared`, `/builder/apps/${a}/settings`, `/builder/pages/${page}`, `/builder/pages/${page}?c=page`,
+      // (sprint 86) the page designer by the page's number
+      `/builder/apps/${a}/pages/1`, `/builder/apps/${a}/pages/1?c=page`]) {
       assert.equal((await dev.get(url)).statusCode, 404, url);
     }
     await dev.get('/builder');
