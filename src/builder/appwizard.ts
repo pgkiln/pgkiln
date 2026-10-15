@@ -50,6 +50,9 @@ interface Relation {
   calendar: boolean;
   /** (sprint 73) a table with a foreign key to this one, for master-detail */
   detail: boolean;
+  /** (sprint 87) row level security is on, with this many policies */
+  rls: boolean;
+  policies: number;
 }
 
 /** The tables, partitioned tables, views and materialized views of a schema (not partitions). */
@@ -59,7 +62,8 @@ export async function schemaRelations(schema: string): Promise<Relation[]> {
       `select c.relname, meta.wizard_table_label(c.oid) as label, case when c.relkind in ('v', 'm') then 'view' else 'table' end as kind,
               meta.wizard_pk(c.oid) as pk, case when c.reltuples >= 0 then c.reltuples::bigint end as rows,
               meta.wizard_defaults('calendar', c.oid) ->> 'start' is not null as calendar,
-              meta.wizard_pk(c.oid) is not null and meta.wizard_defaults('master_detail', c.oid) ->> 'detail' is not null as detail
+              meta.wizard_pk(c.oid) is not null and meta.wizard_defaults('master_detail', c.oid) ->> 'detail' is not null as detail,
+              c.relrowsecurity as rls, (select count(*)::int from pg_policy p where p.polrelid = c.oid) as policies
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
         where n.nspname = $1 and c.relkind in ('r', 'p', 'v', 'm') and not c.relispartition
         order by c.relkind in ('v', 'm'), c.relname`,
@@ -311,6 +315,16 @@ const SOURCES: [string, string, string, string][] = [
   ['gallery', 'grid', 'From the App Gallery', 'A starter application'],
 ];
 
+/**
+ * (sprint 87) A table's row level security, before the application is created: on with its number
+ * of policies, or on without any (the application's role then sees no rows unless it owns the table).
+ */
+const rlsBadge = (r: Relation) =>
+  !r.rls ? ''
+  : r.policies > 0
+    ? html` <span class="tag aw-rls" title="Row level security is on (${r.policies} ${r.policies === 1 ? 'policy' : 'policies'}): each user sees only the rows the policies allow">${icon('shield')} RLS · ${r.policies}</span>`
+    : html` <span class="tag tag-error aw-rls" title="Row level security is on without policies: the application's role sees no rows (unless it owns the table or bypasses row level security)">${icon('shield')} RLS, no policies</span>`;
+
 async function createPage(s: Session, reply: FastifyReply, schema: string, b: Body | null, message: Raw | '' = '') {
   const schemas = await appSchemas();
   const known = schemas.includes(schema);
@@ -334,8 +348,8 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
         'The application\'s parsing schema. Choose a schema to get a page per table and view; a new schema is named after the alias.')}</div>
       <div class="buttons"><button class="btn">${icon('search')} Show its tables</button></div></form>`)}
     <form method="post" action="${BASE}/apps" data-progress="Creating the application and its pages…">${csrf(s)}
-      <input type="hidden" name="schema" value="${known ? schema : ''}"><input type="hidden" name="features" value="1">
-      ${known ? html`<input type="hidden" name="tables" value="1">` : ''}
+      <input type="hidden" name="features" value="1">
+      <div id="aw-schema-fields"><input type="hidden" name="schema" value="${known ? schema : ''}">${known ? html`<input type="hidden" name="tables" value="1">` : ''}</div>
       ${region('Application', html`<div class="form-grid">
         <div class="field"><label class="label" for="f_name">Name</label>
           <input id="f_name" name="name" value="${v('name', suggested)}" required data-select-once></div>
@@ -354,14 +368,16 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
             ? relations.map((r, i) => html`<li><input type="hidden" name="t_${i}" value="${r.relname}">
                 <label class="aw-page-kind" for="f_k_${i}">${icon(r.kind === 'view' ? 'eye' : 'table')} ${r.label}</label>
                 <select id="f_k_${i}" name="k_${i}">${kindsFor(r).map((k) => html`<option value="${k}"${k === kindOf(r, i) ? raw(' selected') : ''}>${PAGE_KINDS[k]}</option>`)}</select>
-                <small class="muted"><code>${r.relname}</code> · ${r.kind === 'view' ? 'view' : rows(r)}${r.kind === 'table' && !r.pk ? ', no single-column key: no form' : ''}${Number(r.rows ?? 0) > LARGE_TABLE ? ': a paged grid' : ''}</small></li>`)
+                <small class="muted"><code>${r.relname}</code> · ${r.kind === 'view' ? 'view' : rows(r)}${r.kind === 'table' && !r.pk ? ', no single-column key: no form' : ''}${Number(r.rows ?? 0) > LARGE_TABLE ? ': a paged grid' : ''}</small>${rlsBadge(r)}</li>`)
             : html`<li class="muted">${schema} has no tables or views.</li>`
           : html`<li class="muted">Choose a schema under Data for a page per table, or add pages with the page wizards later.</li>`}
       </ul>
-      ${known ? check('chart', 'Dashboard: a chart per table with the number of rows per parent row (a foreign key) or per value of a column whose values repeat', b ? b.chart === 'true' : true) : ''}`)}
+      ${known ? check('chart', 'Dashboard: a chart per table with the number of rows per parent row (a foreign key) or per value of a column whose values repeat', b ? b.chart === 'true' : true) : ''}`, '', 'aw-pages')}
       ${region('Features', html`<div class="aw-features">${FEATURES.map(([k, label, help]) => check(`f_${k}`, label, features[k], help))}</div>`)}
       ${region('Settings', html`<div class="form-grid">
-        ${input('alias', 'Alias (URL)', v('alias', known ? await aliasFor(schema) : ''), { required: true, help: 'lowercase, e.g. inventory → /a/inventory' })}
+        <div class="field"><label class="label" for="f_alias">Alias (URL)</label>
+          <input id="f_alias" name="alias" value="${v('alias', known ? await aliasFor(schema) : '')}" required pattern="[a-z][a-z0-9_\-]*" maxlength="50" data-derive-from="f_name"${b && b.alias ? raw(' data-edited') : ''}>
+          <small class="help">lowercase, e.g. inventory → /a/inventory; follows the name until you change it</small></div>
         ${select('authentication', 'Authentication', v('authentication', 'app_users'), [['app_users', 'App users (login page)'], ['none', 'None (public)']])}
         ${input('admin_user', 'First user', v('admin_user', ''), { placeholder: 'e.g. your name', help: 'Gets the admin role. An existing account in Users is reused.' })}
         ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password', help: 'For a new account; at least 8 characters.' })}

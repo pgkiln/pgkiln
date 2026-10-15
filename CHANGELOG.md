@@ -45,6 +45,16 @@ Sprint 86: builder addresses and error pages (parity handoff BLD-6).
 - Values a browser kept under pgkiln's old name (`pgapex.*` in localStorage and sessionStorage, `pgapex-push:*`)
   move to `pgkiln.*` once, and the service worker deletes its old `pgapex-*` caches (BLD-6).
 
+Sprint 87: the Create Application wizard (parity handoff WIZ-4).
+
+### Changed
+- **Choosing a schema reloads the Pages list in place** (WIZ-4): the tables of the schema, with the name and alias
+  proposed for it while you haven't typed them; *Show its tables* stays for pages without JavaScript.
+- **Row level security before Create** (WIZ-4): a table with RLS shows *RLS · n* (its policies), or *RLS, no
+  policies* in red (the application's role would see no rows).
+- **The alias follows the name until you change it** (WIZ-4), and **First user / Password hide for authentication
+  None** (WIZ-4).
+
 ## [0.45.0] - 2026-10-15
 
 Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).

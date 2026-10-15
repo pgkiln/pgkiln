@@ -1167,3 +1167,65 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
     });
   });
 });
+
+// (sprint 87) The create application wizard:
+// - an alias follows its name (data-derive-from) until the developer types in it, like aliasFor() on the server;
+// - choosing a schema under Data reloads the Pages list (and the proposed name and alias, while untouched)
+//   without leaving the page; without JavaScript, "Show its tables" does the same with a reload;
+// - First user and Password are hidden while Authentication is None (the server ignores them then).
+(() => {
+  const slug = (v) => {
+    let a = v.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    if (a && !/^[a-z]/.test(a)) a = `app-${a}`;
+    return a;
+  };
+  document.querySelectorAll('input[data-derive-from]').forEach((alias) => {
+    const name = document.getElementById(alias.dataset.deriveFrom);
+    if (!name) return;
+    alias.addEventListener('input', () => alias.setAttribute('data-edited', ''));
+    name.addEventListener('input', () => {
+      if (!alias.hasAttribute('data-edited')) alias.value = slug(name.value);
+    });
+  });
+
+  document.querySelectorAll('select[name="authentication"]').forEach((auth) => {
+    const form = auth.form;
+    const fields = ['admin_user', 'admin_password'].map((n) => form?.elements.namedItem(n)?.closest?.('.field')).filter(Boolean);
+    if (!fields.length) return;
+    const sync = () => fields.forEach((f) => (f.hidden = auth.value === 'none'));
+    auth.addEventListener('change', sync);
+    sync();
+  });
+
+  const picker = document.querySelector('form.create-schema select[name="schema"]');
+  const pages = document.getElementById('aw-pages');
+  const hidden = document.getElementById('aw-schema-fields');
+  if (!picker || !pages || !hidden) return;
+  const name = document.getElementById('f_name');
+  let nameTouched = false;
+  name?.addEventListener('input', () => (nameTouched = true));
+  picker.addEventListener('change', async () => {
+    const url = `${picker.form.action}?schema=${encodeURIComponent(picker.value)}`;
+    pages.setAttribute('aria-busy', 'true');
+    try {
+      const res = await fetch(url, { headers: { accept: 'text/html' }, credentials: 'same-origin' });
+      if (!res.ok) throw new Error(String(res.status));
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const nextPages = doc.getElementById('aw-pages');
+      const nextHidden = doc.getElementById('aw-schema-fields');
+      if (!nextPages || !nextHidden) throw new Error('unexpected page');
+      pages.replaceWith(nextPages);
+      hidden.replaceWith(nextHidden);
+      // the proposals for the new schema, unless the developer already typed a name or alias
+      const alias = document.querySelector('input[data-derive-from]');
+      if (!nameTouched && name) name.value = doc.getElementById('f_name')?.value ?? name.value;
+      if (alias && !alias.hasAttribute('data-edited')) alias.value = doc.getElementById('f_alias')?.value ?? alias.value;
+      history.replaceState(null, '', url);
+      document.getElementById('aw-pages')?.removeAttribute('aria-busy');
+    } catch {
+      picker.form.submit();
+    }
+  });
+  // the button is for pages without JavaScript
+  picker.form.querySelector('button')?.setAttribute('hidden', '');
+})();
