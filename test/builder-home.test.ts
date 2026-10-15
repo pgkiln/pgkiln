@@ -72,7 +72,7 @@ describe('App Builder home', () => {
     const bad = await dev.submit('/builder/apps', { name: 'x', alias: '1 bad alias', authentication: 'none' });
     assert.equal(bad.statusCode, 422);
     assert.match(bad.body, /The alias must start with a letter/);
-    assert.match(bad.body, /name="alias" type="text" value="1 bad alias"/);
+    assert.match(bad.body, /name="alias" value="1 bad alias"/);
     await dev.get('/builder/import');
     const broken = await dev.submit('/builder/import', { doc: '{not json' });
     assert.equal(broken.headers.location, '/builder/import');
