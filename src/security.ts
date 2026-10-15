@@ -96,7 +96,8 @@ export function securityHeaders(app: FastifyInstance) {
     // the app's own pages may use the camera (photos, scanning) and the position (location items); nothing else may
     reply.header('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
     const type = String(reply.getHeader('content-type') ?? '');
-    if (type.startsWith('text/html')) {
+    // a file's own stricter policy (downloads, uploaded files: default-src 'none'; sandbox) is kept
+    if (type.startsWith('text/html') && !reply.hasHeader('content-security-policy')) {
       // No inline scripts and no inline styles: behaviour lives in /static/app.js,
       // styling in /static/app.css. The only <style> a page has (theme colours,
       // chart geometry) carries this response's nonce; style="" attributes are refused.

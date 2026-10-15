@@ -119,6 +119,7 @@ const CODE: Record<string, Record<string, string>> = {
   app_computation: { expression: 'sql', condition_expr: 'sql' },
   // (103) a shortcut's value: text, HTML or PL/pgSQL (see codeExt)
   shortcut: { value: 'txt' },
+  report_query: { query: 'sql' },
   authz_scheme: { value: 'sql' },
   lov: { query: 'sql' },
   automation: { query: 'sql', code: 'sql' },
@@ -196,8 +197,9 @@ const NAMED: [section: string, dir: string, table: string][] = [
   // (086) application settings
   ['app_settings', 'shared/app-settings', 'app_setting'],
   ['page_groups', 'shared/page-groups', 'page_group'],
-  // (103) shortcuts
+  // (103) shortcuts, (104) report queries
   ['shortcuts', 'shared/shortcuts', 'shortcut'],
+  ['report_queries', 'shared/report-queries', 'report_query'],
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
