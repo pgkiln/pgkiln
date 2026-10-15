@@ -16,6 +16,7 @@ import { LIST_TEMPLATES } from '../runtime/lists.ts';
 import { MAX_EXTRA_LAYERS } from '../runtime/maps.ts';
 import { postgis } from '../runtime/spatial.ts';
 import { reporterSettingsForm } from './reporter.ts';
+import { formDesignerSettingsForm } from './form-designer.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
 // for grid, chart, cards, calendar and faceted search regions (report
@@ -732,6 +733,7 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
   if (r.type === 'ai_assistant') return assistantSettingsForm(pageId, appId, r, s);
   if (r.type === 'template_component') return templateRegionForm(pageId, appId, r, s);
   if (r.type === 'data_reporter') return reporterSettingsForm(pageId, appId, r, s);
+  if (r.type === 'form_designer') return formDesignerSettingsForm(pageId, appId, r, s);
   if (!(SETTINGS_TYPES as readonly string[]).includes(r.type)) return '';
   const cfg = r.config ?? {};
   const id = (n: string) => `rg_${r.id}_${n}`;

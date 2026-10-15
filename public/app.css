@@ -2005,3 +2005,13 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 @media (max-width: 900px) { .t-columns-left, .t-columns-right { grid-template-columns: 1fr; } .t-columns-right > .t-side { order: 0; } }
 .region-footer-split { display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
 .region-footer-split > div { display: flex; gap: 0.5rem; }
+
+/* (sprint 85) the Form Designer region (form-designer.ts): forms as cards with a Design link, the designer's field table, a row's form */
+.fd-cards > li { display: flex; flex-direction: column; gap: 0.25rem; }
+.fd-design-link { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.3rem; }
+.fd-fields input.fd-seq { width: 4.5rem; }
+.fd-fields td select { min-width: 8rem; }
+.fd-fields td input:not([type=checkbox]):not(.fd-seq) { min-width: 6rem; width: 100%; }
+.fd-form { margin: 0.75rem 0; }
+.fd-radios { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.fd-new { margin-top: 1rem; }

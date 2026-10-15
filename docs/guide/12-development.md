@@ -154,6 +154,8 @@ src/
     tasks.ts               task list region and task actions (approvals); (094) the vacation rule panel and route
     data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
                            reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report)
+    form-designer.ts       Form Designer region (migration 106): sources from the region's config, checkFormDef (offered columns, displays,
+                           actions), forms as cards, a form's rows, a row's form (lost update hash), the designer; row/design/delete routes
     workflows.ts           workflow console region and its actions
     ai.ts                  Generate text with AI: the ai_generate process (config checks, &ITEM. as delimited escaped data,
                            schemas from items, answers into items), aiInputs/aiOutputs for its dynamic action (route in routes.ts)
@@ -241,6 +243,7 @@ src/
     themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
     subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
     reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing)
+    form-designer.ts       page designer: Form Designer settings (designers' scheme; sources: key, actions, offered columns, labels, lists of values)
     workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
     rest.ts                REST module endpoints list and curl example (Shared Components)
     workflows.ts           workflow versions, diagram and instances (Shared Components)

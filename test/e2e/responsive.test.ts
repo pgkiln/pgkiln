@@ -395,6 +395,25 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.context().close();
     });
 
+    test('form designer (page 45): the forms, a form\'s rows, a row\'s form and the designer', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      const r = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 45 and r.type = 'form_designer'`);
+      const form = (await owner.one(`select id from meta.user_form where region_id = $1 and name = 'Departments'`, [r.id])).id;
+      await page.goto(`${base}/a/hr/45`);
+      await check(page, 'app-45-forms', vp);
+      await page.goto(`${base}/a/hr/45?fd${r.id}_form=${form}`);
+      assert.ok((await page.locator('.fd-rows tbody tr').count()) >= 4);
+      await check(page, 'app-45-rows', vp);
+      await Promise.all([page.waitForNavigation(), page.locator('.fd-rows tbody a').first().click()]);
+      assert.equal(await page.locator('.fd-form input[name="c:dname"]').count(), 1);
+      await check(page, 'app-45-row', vp);
+      await page.goto(`${base}/a/hr/45?fd${r.id}_design=${form}`);
+      assert.ok((await page.locator('.fd-fields tbody tr').count()) >= 2);
+      await check(page, 'app-45-design', vp);
+      await page.context().close();
+    });
+
     test('page logic (page 22): the menu button opens and fits; the badge shows', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');

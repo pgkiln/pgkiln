@@ -49,6 +49,8 @@ import { accountRoutes } from './runtime/account.ts';
 import { taskRoutes } from './runtime/tasks.ts';
 import { dataReporterRoutes } from './runtime/data-reporter.ts';
 import { reporterBuilderRoutes } from './builder/reporter.ts';
+import { formDesignerRoutes } from './runtime/form-designer.ts';
+import { formDesignerBuilderRoutes } from './builder/form-designer.ts';
 import { workflowRoutes } from './runtime/workflows.ts';
 import { pwaRoutes } from './runtime/pwa.ts';
 import { pushRoutes } from './runtime/push.ts';
@@ -223,6 +225,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(codeEditorRoutes);
   await app.register(dataReporterRoutes);
   await app.register(reporterBuilderRoutes);
+  await app.register(formDesignerRoutes);
+  await app.register(formDesignerBuilderRoutes);
   await app.register(sampleDataRoutes);
   await app.register(assistantRoutes);
   await app.register(aiFilterRoutes);

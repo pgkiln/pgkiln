@@ -7952,3 +7952,111 @@ describe('sprint 84 dates in the date format, facet order', () => {
     assert.doesNotMatch(odd.body, /<script>alert\(1\)/);
   });
 });
+
+describe('sprint 85 form designer', () => {
+  let rid: number;
+  let pageId: number;
+  let deptForm: number;
+  const P = () => `fd${rid}_`;
+  const row = (b: Browser, form: Record<string, string>) => b.post(`/a/hr/45/formdesigner/${rid}/row`, { __csrf: b.lastCsrf, ...form });
+  before(async () => {
+    const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 45 and r.type = 'form_designer'`, [appId]);
+    rid = r.id;
+    pageId = r.page_id;
+    deptForm = (await owner.one(`select id from meta.user_form where region_id = $1 and name = 'Departments'`, [rid])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from hr.dept where dname like 'Sec85%'`);
+    await owner.query(`delete from meta.user_form where region_id = $1 and name like 'Sec85%'`, [rid]);
+  });
+
+  test('saving a row needs the CSRF token and a region on the page; only the form\'s fields are written', async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/45');
+    assert.equal((await allen.post(`/a/hr/45/formdesigner/${rid}/row`, { __csrf: 'forged', form: String(deptForm), row: '', mode: 'save', 'c:dname': 'Sec85 forged' })).statusCode, 403);
+    assert.equal((await allen.post(`/a/hr/1/formdesigner/${rid}/row`, { __csrf: allen.lastCsrf, form: String(deptForm), row: '', 'c:dname': 'Sec85 elsewhere' })).statusCode, 403, 'not a region of that page');
+    assert.equal(await owner.one(`select 1 from hr.dept where dname in ('Sec85 forged', 'Sec85 elsewhere')`), undefined);
+    // columns that are not on the form (or not offered) are ignored; values are parameters
+    await allen.get('/a/hr/45');
+    await row(allen, { form: String(deptForm), row: '', mode: 'save', 'c:dname': "Sec85 '); drop table hr.dept; --", 'c:deptno': '9999', 'c:lat': '1', 'c:"lat" = 1, "lng"': '2' });
+    const d = await owner.one(`select deptno, lat, lng from hr.dept where dname like 'Sec85 ''%'`);
+    assert.ok(d && d.deptno !== 9999 && d.lat === null && d.lng === null);
+  });
+
+  test('a row key is a parameter; a forged definition reaches only offered columns; drafts are for designers', async () => {
+    const allen = await as('allen');
+    for (const key of ['1 or 1=1', "10'; --", 'x'.repeat(300)]) {
+      const page = (await allen.get(`/a/hr/45?${P()}form=${deptForm}&${P()}row=${encodeURIComponent(key)}`)).body;
+      assert.match(page, /This row does not exist/, key.slice(0, 20));
+    }
+    // a definition written past the designer (e.g. by the application's own SQL) is checked before it runs
+    const forged = (await owner.one(`insert into meta.user_form (app_id, region_id, name, published, definition, created_by, updated_by)
+      values ($1, $2, 'Sec85 forged', true, $3, 'x', 'x') returning id`, [appId, rid, JSON.stringify({
+      source: 'departments', fields: [{ column: 'dname' }, { column: 'lat' }, { column: '"lat"; drop table hr.dept' }, { column: 'dname', display: '<script>' }],
+      list: ['dname', 'lng'], actions: { insert: true, update: true, delete: true },
+    })])).id;
+    const list = (await allen.get(`/a/hr/45?${P()}form=${forged}`)).body;
+    assert.doesNotMatch(list, /fdr\d+_1|value="delete"|<script>/);
+    assert.ok(await owner.one('select 1 from hr.dept limit 1'));
+    const res = await row(allen, { form: String(forged), row: '10', mode: 'delete' });
+    assert.equal(res.statusCode, 303);
+    assert.ok(await owner.one('select 1 from hr.dept where deptno = 10'), 'the source does not delete');
+    await owner.query(`update meta.user_form set published = false where id = $1`, [forged]);
+    await allen.get('/a/hr/45');
+    await row(allen, { form: String(forged), row: '', mode: 'save', 'c:dname': 'Sec85 via draft' });
+    assert.equal(await owner.one(`select 1 from hr.dept where dname = 'Sec85 via draft'`), undefined, 'a draft is not used by non-designers');
+  });
+
+  test('designing needs the region\'s authorization scheme; without one nobody designs', async () => {
+    const blake = await as('blake');
+    await blake.get('/a/hr/45');
+    assert.equal((await blake.post(`/a/hr/45/formdesigner/${rid}/design`, { __csrf: blake.lastCsrf, src: 'departments', name: 'Sec85 manager', col_0: 'dname', on_0: 'true' })).statusCode, 403);
+    assert.equal((await blake.post(`/a/hr/45/formdesigner/${rid}/delete`, { __csrf: blake.lastCsrf, form: String(deptForm) })).statusCode, 403);
+    const config = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+    try {
+      await owner.query(`update meta.region set config = config - 'design_authz' where id = $1`, [rid]);
+      const king = await as('king');
+      assert.doesNotMatch((await king.get('/a/hr/45')).body, /New form/);
+      assert.equal((await king.post(`/a/hr/45/formdesigner/${rid}/design`, { __csrf: king.lastCsrf, src: 'departments', name: 'Sec85 admin', col_0: 'dname', on_0: 'true' })).statusCode, 403);
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify(config)]);
+    }
+    assert.equal(await owner.one(`select 1 from meta.user_form where name like 'Sec85 %a%' and region_id = $1 and name in ('Sec85 manager', 'Sec85 admin')`, [rid]), undefined);
+  });
+
+  test('labels and help texts are escaped; applications reach forms only through the view and functions', async () => {
+    const f = (await owner.one(`insert into meta.user_form (app_id, region_id, name, description, published, definition, created_by, updated_by)
+      values ($1, $2, 'Sec85 <b>x</b>', '<img src=x onerror=alert(1)>', true, $3, 'x', 'x') returning id`, [appId, rid, JSON.stringify({
+      source: 'departments', fields: [{ column: 'dname', label: '<script>alert(1)</script>', help: '<i onmouseover=alert(1)>' }], list: [], actions: { insert: true },
+    })])).id;
+    const page = (await (await as('allen')).get(`/a/hr/45?${P()}form=${f}`)).body;
+    assert.doesNotMatch(page, /<script>alert|<img src=x|<i onmouseover|<b>x<\/b>/);
+    assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    await assert.rejects(runtime.query('select * from meta.user_form'), /permission denied/);
+    await assert.rejects(runtime.query(`insert into meta.user_form (app_id, region_id, name, definition, created_by, updated_by) values (${appId}, ${rid}, 'x', '{}', 'x', 'x')`), /permission denied/);
+    assert.equal((await runtime.query('select * from meta.user_forms')).rowCount, 0, 'no application context: nothing');
+    await assert.rejects(runtime.query(`select meta.save_user_form(${rid}, null, 'x', null, '{}'::jsonb, true)`), /sign in|unknown/);
+    assert.equal((await runtime.query(`select meta.delete_user_form(${rid}, ${f}) as d`)).rows[0].d, false);
+  });
+
+  test('the builder settings need a developer and the CSRF token, and refuse pgkiln\'s own tables', async () => {
+    const anon = new FileBrowser(app);
+    assert.equal((await anon.post(`/builder/pages/${pageId}/region/${rid}/form-designer`, { __csrf: 'x', new_object: '1' })).statusCode, 302);
+    const dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.get(`/builder/pages/${pageId}?c=region-${rid}`);
+    assert.equal((await dev.post(`/builder/pages/${pageId}/region/${rid}/form-designer`, { __csrf: 'forged', new_object: '1' })).statusCode, 403);
+    const config = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+    const account = (await owner.one(`select 'meta.account'::regclass::oid::int as oid`)).oid;
+    try {
+      await dev.submit(`/builder/pages/${pageId}/region/${rid}/form-designer`, { new_object: String(account), new_id: 'accounts', design_authz: 'ADMIN',
+        s0_key: 'departments', s0_insert: 'true', s0_col_0: 'dname', s0_on_0: 'true', s0_lov_0: "select password_hash, username from meta.app_user" });
+      const cfg = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+      assert.ok(!(cfg.sources ?? []).some((s: any) => s.schema === 'meta'));
+      assert.equal(cfg.sources.find((s: any) => s.id === 'departments')?.columns[0].lov, undefined, 'a list of values is a shared one, never SQL');
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [rid, JSON.stringify(config)]);
+    }
+  });
+});

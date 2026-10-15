@@ -43,7 +43,7 @@ async function objectByOid(oid: number): Promise<DbObject | null> {
 }
 
 /** The tables and views to choose from, with whether the application's role may read them. */
-async function objectList(dbRole: string | null) {
+export async function objectList(dbRole: string | null) {
   return (
     await owner.query<{ oid: number; name: string; access: boolean }>(
       `select c.oid::int as oid, format('%I.%I', n.nspname, c.relname) as name,
