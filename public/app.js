@@ -1666,6 +1666,69 @@ const pgkilnUnsaved = (() => {
       data[i].forEach((v, j) => cells[c0 + j] && setCell(cells[c0 + j], v));
     }
   });
+
+  // ------------------------------------------------------------ cell navigation and edit mode (APEX)
+  // An editable cell reads as text (app.css) until it is edited: a click in it, Enter or F2 or typing
+  // edits it. On a cell the arrow keys move to the next one; while editing, Escape goes back to the
+  // cell and Enter to the cell below. Tab moves through the cells' controls as usual.
+  const cellSel = '[data-grid] table.grid-table > tbody:not(.grid-template) > tr > td[data-col]';
+  function focusCell(td, edit) {
+    if (!td) return;
+    const el = control(td);
+    if (edit && el && !el.disabled) {
+      el.focus();
+      if (el.type !== 'checkbox' && el.tagName !== 'SELECT') el.select?.();
+      return;
+    }
+    if (!td.hasAttribute('tabindex')) td.tabIndex = -1;
+    td.focus();
+  }
+  function neighbour(td, dr, dc) {
+    const rows = rowsOf(td.closest('[data-grid]'));
+    const { r, c } = at(td);
+    return rows[r + dr] ? shownCells(rows[r + dr])[c + dc] : undefined;
+  }
+  const MOVES = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = e.target;
+    if (t.matches?.(cellSel)) {
+      const el = control(t);
+      if (MOVES[e.key]) {
+        e.preventDefault();
+        focusCell(neighbour(t, ...MOVES[e.key]), false);
+      } else if (el && (e.key === 'Enter' || e.key === 'F2')) {
+        e.preventDefault();
+        focusCell(t, true);
+      } else if (el?.type === 'checkbox' && e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      } else if (el && e.key.length === 1) focusCell(t, true); // the key types into the control
+      return;
+    }
+    const td = t.closest?.(cellSel);
+    if (!td || !t.matches('input, select')) return;
+    if (e.key === 'Escape') focusCell(td, false);
+    else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const below = neighbour(td, 1, 0);
+      focusCell(below ?? td, !!below);
+    } else if (e.key === 'F2') focusCell(td, false);
+  });
+  // a click in a cell beside its control edits it
+  document.addEventListener('click', (e) => {
+    if (!e.shiftKey && e.target.matches?.(cellSel)) focusCell(e.target, true);
+  });
+  // an edited value shows as itself (a list's display value)
+  const syncText = (e) => {
+    const span = e.target.closest?.('td[data-col]')?.querySelector(':scope > .grid-text');
+    if (!span) return;
+    const el = e.target;
+    if (el.tagName === 'SELECT') span.textContent = el.selectedIndex > 0 ? el.options[el.selectedIndex].text : '';
+    else span.remove();
+  };
+  document.addEventListener('input', syncText);
+  document.addEventListener('change', syncText);
 })();
 
 // Faceted search: apply on change. A range facet's own from/to: typing picks

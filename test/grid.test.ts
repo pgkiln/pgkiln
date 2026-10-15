@@ -94,13 +94,23 @@ describe('grid layout (pure)', () => {
 });
 
 describe('grid regions on HR page 27', () => {
-  test('without a selection the details wait for one; selecting a row fills them', async () => {
+  test('the first master row is selected (also after a search); selecting a row fills the details', async () => {
     const page = (await king.get('/a/hr/27')).body;
-    // a fresh session: nothing selected yet
+    // a fresh session: as in APEX, the first master row is selected and the details follow it
     const fresh = new Browser(app);
     await fresh.login('king');
     const first = (await fresh.get('/a/hr/27')).body;
-    assert.match(sectionOf(first, R.Staff), /Select a row above/);
+    const firstDept = /<tr class="is-selected"[^]*?r\d+_sel=(\d+)&amp;/.exec(sectionOf(first, R.Departments))?.[1];
+    assert.ok(firstDept, 'a master row is selected');
+    assert.doesNotMatch(sectionOf(first, R.Staff), /Select a row above/);
+    const firstNames = (await owner.query(`select ename from hr.emp where deptno = $1`, [firstDept])).rows.map((x) => x.ename);
+    for (const n of firstNames) assert.match(sectionOf(first, R.Staff), new RegExp(`value="${n}"`));
+    // a search that leaves the selected row out selects the first row it shows
+    const other = firstDept === '30' ? { loc: 'DALLAS', deptno: 20 } : { loc: 'CHICAGO', deptno: 30 };
+    const searched = (await fresh.get(`/a/hr/27?r${R.Departments}_q=${other.loc}`)).body;
+    assert.match(sectionOf(searched, R.Departments), new RegExp(`<tr class="is-selected"[^]*?_sel=${other.deptno}&amp;`));
+    const otherNames = (await owner.query(`select ename from hr.emp where deptno = $1`, [other.deptno])).rows.map((x) => x.ename);
+    for (const n of otherNames) assert.match(sectionOf(searched, R.Staff), new RegExp(`value="${n}"`));
     const res = await fresh.get(selectLink(page, '20'));
     assert.equal(res.statusCode, 200);
     const staff = sectionOf(res.body, R.Staff);

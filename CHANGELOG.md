@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 80: master-detail and grid cells like APEX's (parity handoff GEN-8).
+
+### Changed
+- **Master-detail** (GEN-8): the page opens with the master grid's first row selected, so the details show its
+  rows (they said *Select a row above*); a search or filter that leaves the selected row out selects the first
+  row it shows.
+- **Interactive grid cells** (GEN-8): with JavaScript an editable cell reads as text, with its column's format
+  mask (*2,850.00*, was the raw *2850*) or the list's display value, until it is clicked, or Enter, F2 or typing
+  edits it; the arrow keys move between cells, Escape leaves the cell's editor and Enter moves to the cell below.
+
 ## [0.44.0] - 2026-10-15
 
 Sprint 78: generated reports and grids read the same (migration 100; parity handoff GEN-2, GEN-1, GEN-7, GEN-9).

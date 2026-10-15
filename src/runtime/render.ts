@@ -364,6 +364,7 @@ const timeZoneMeta = (ctx: PageContext) =>
 
 export async function renderPage(ctx: PageContext) {
   const t = ctx.locale.t;
+  ctx.wholePage = true;
   const hidden = initiallyHidden(ctx);
   const defaultButton = [...ctx.vis!.buttons.values()].find((b) => b.hot && b.action === 'submit');
   const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);

@@ -63,7 +63,11 @@ async function pick(page: Page, deptno: number) {
 describe('interactive grid (HR page 27)', () => {
   test('selecting a master row refreshes the details without reloading the page', async () => {
     const page = await open();
-    assert.match(await page.locator(staff()).innerText(), /Select a row above/);
+    // as in APEX, the first master row is selected when the page opens
+    const first = page.locator(`#R${R.Departments} table.grid-table > tbody:not(.grid-template) tr`).first();
+    assert.equal(await first.evaluate((tr) => tr.classList.contains('is-selected')), true);
+    const firstDept = Number(/_sel=(\d+)&/.exec((await first.locator('a.grid-pick-link').getAttribute('href'))!)![1]);
+    assert.equal(await page.locator(`${staff()} table.grid-table > tbody:not(.grid-template) tr[data-row]`).count(), Number((await owner.one(`select count(*) from hr.emp where deptno = $1`, [firstDept])).count));
     await page.evaluate(() => ((window as any).__marker = 1));
     await pick(page, 20);
     assert.equal(await page.evaluate(() => (window as any).__marker), 1, 'no reload');
@@ -177,6 +181,36 @@ describe('interactive grid (HR page 27)', () => {
       await owner.query('update hr.emp set sal = $2 where empno = $1', [first.empno, first.sal]);
       await page.context().close();
     }
+  });
+
+  test('cells read as text with their format mask until edited; arrow keys, Enter and Escape', async () => {
+    const page = await open();
+    await pick(page, 20);
+    const row = page.locator(`${staff()} table.grid-table > tbody:not(.grid-template) tr[data-row]`).first();
+    const salCol = await page.locator(`${staff()} thead th[data-col-name="sal"]`).getAttribute('data-col');
+    const sal = row.locator(`td[data-col="${salCol}"]`);
+    const raw = await sal.locator('input').inputValue();
+    // the cell shows the masked value as text, the control keeps the raw value
+    const text = sal.locator('.grid-text');
+    assert.equal(await text.isVisible(), true);
+    assert.match(await text.innerText(), /^[\d,]+\.\d\d$/);
+    assert.equal(await sal.locator('input').evaluate((el) => getComputedStyle(el).color), 'rgba(0, 0, 0, 0)');
+    // Enter edits the cell, Escape goes back to it, the arrow keys move
+    await sal.evaluate((td) => ((td as HTMLElement).tabIndex = -1, (td as HTMLElement).focus()));
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'INPUT');
+    assert.equal(await text.isVisible(), false);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-col')), salCol);
+    await page.keyboard.press('ArrowDown');
+    const second = page.locator(`${staff()} table.grid-table > tbody:not(.grid-template) tr[data-row]`).nth(1);
+    assert.equal(await second.locator(`td[data-col="${salCol}"]`).evaluate((td) => td === document.activeElement), true);
+    // typing replaces the value; the text gives way to the control
+    await page.keyboard.type('1234');
+    assert.equal(await second.locator(`td[data-col="${salCol}"] input`).inputValue(), '1234');
+    assert.equal(await second.locator(`td[data-col="${salCol}"] .grid-text`).count(), 0);
+    assert.notEqual(raw, '', 'the control keeps the raw value');
+    await page.context().close();
   });
 
   test('copy a range of cells and paste it into other rows; the grid save stores it', async () => {
