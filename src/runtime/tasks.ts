@@ -6,6 +6,7 @@ import type { Region } from '../metadata.ts';
 import { logActivity, saveState } from '../session.ts';
 import { pageAllowed } from './authz.ts';
 import { publicError, stripSemicolon, type PageContext } from './context.ts';
+import { appDateMask, appDateReader, dateField } from './items.ts';
 import { linkAttrs } from './links.ts';
 import { cell } from './report.ts';
 import { loadContext, safeNext, txContext, type Req } from './routes.ts';
@@ -158,8 +159,8 @@ async function vacationPanel(ctx: PageContext, r: Region): Promise<Raw | ''> {
     : html`<p class="muted">${t('tasks.vacation_help')}</p>
       <div class="vacation-fields">
         <label>${t('tasks.vacation_to')} <input name="to" form="${f}" maxlength="100" required autocomplete="off"></label>
-        <label>${t('tasks.vacation_from')} <input type="date" name="from" form="${f}" required></label>
-        <label>${t('tasks.vacation_until')} <input type="date" name="until" form="${f}" required></label>
+        <label>${t('tasks.vacation_from')} ${dateField(ctx, { id: `${f}_from`, iso: '', mask: appDateMask(ctx), attrs: html` name="from" form="${f}" required` })}</label>
+        <label>${t('tasks.vacation_until')} ${dateField(ctx, { id: `${f}_until`, iso: '', mask: appDateMask(ctx), attrs: html` name="until" form="${f}" required` })}</label>
         <button class="btn" form="${f}" name="action" value="set">${t('tasks.vacation_save')}</button></div>`}
   </details>`;
 }
@@ -173,7 +174,9 @@ export async function taskRoutes(app: FastifyInstance) {
     const next = safeNext(ctx.app, b.next);
     if (b.__csrf !== ctx.session.csrf_token || !['set', 'clear'].includes(String(b.action))) return reply.redirect(next, 303);
     const t = ctx.locale.t;
-    const date = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    // (sprint 84) typed in the application's date format (or YYYY-MM-DD)
+    const readDate = appDateReader(ctx);
+    const date = (v: unknown) => (typeof v === 'string' && v.length <= 100 ? readDate(v) : null);
     try {
       await appTx(txContext(ctx), async (c) => {
         if (b.action === 'clear') await c.query('select meta.clear_vacation_rule()');

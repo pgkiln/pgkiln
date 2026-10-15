@@ -7934,3 +7934,21 @@ describe('sprint 83 component settings and component groups', () => {
     }
   });
 });
+
+describe('sprint 84 dates in the date format, facet order', () => {
+  test('typed dates are parameters or refused, never SQL; a facet order is only "name"', async () => {
+    const king = await as('king');
+    const r = await owner.one(`select (r.config->>'report')::int as report from meta.region r join meta.page p on p.id = r.page_id
+                                where p.app_id = $1 and p.page_no = 21 and r.type = 'facets'`, [appId]);
+    for (const bad of ["1981-01-01'; drop table hr.emp; --", '31-31-1981', 'x'.repeat(500), '1e9']) {
+      const res = await king.get(`/a/hr/21?r${r.report}_rg_hiredate=~&r${r.report}_rf_hiredate=${encodeURIComponent(bad)}`);
+      assert.equal(res.statusCode, 200, bad);
+      assert.doesNotMatch(res.body, /alert-error/, `${bad}: ignored, not an error`);
+    }
+    assert.ok(await owner.one(`select 1 from hr.emp limit 1`), 'still there');
+    // a facet's order parameter: anything but "name" is the default order, and is not reflected unescaped
+    const odd = await king.get(`/a/hr/21?r${r.report}_fo_job=${encodeURIComponent('"><script>alert(1)</script>')}`);
+    assert.equal(odd.statusCode, 200);
+    assert.doesNotMatch(odd.body, /<script>alert\(1\)/);
+  });
+});

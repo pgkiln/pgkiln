@@ -338,7 +338,9 @@ const CLIENT_TEXTS = ['pwa.offline_banner', 'pwa.queued', 'pwa.queue_waiting', '
   'push.turn_on', 'push.turn_off', 'push.on', 'push.off', 'push.blocked', 'push.unsupported', 'push.failed', 'page.unsaved_changes', 'page.link_copied',
   'session.warning', 'session.stay', 'session.max', 'session.ended', 'login.sign_in_link',
   // (sprint 76) a report column heading's menu
-  'report.sort_asc', 'report.sort_desc', 'report.hide', 'report.break', 'report.filter_values', 'report.no_values'] as const;
+  'report.sort_asc', 'report.sort_desc', 'report.hide', 'report.break', 'report.filter_values', 'report.no_values',
+  // (sprint 84) the date picker
+  'item.choose_date', 'calendar.previous', 'calendar.next', 'calendar.today', 'facets.clear_short'] as const;
 export const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS.map((k) => [k, ctx.locale.t(k)]));
 
 /**

@@ -1,3 +1,4 @@
+import { appDateReader } from './items.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Region } from '../metadata.ts';
@@ -34,7 +35,7 @@ export async function renderSmartFilters(ctx: PageContext, r: Region): Promise<R
   const formId = `sf${r.id}`;
   const defs = facetDefs(r.config).filter((f) => fs.cols.has(f.column));
   const per = Number.isInteger(r.config.suggestions) ? Math.max(0, Math.min(MAX_SUGGESTIONS, r.config.suggestions)) : 3;
-  const filters = facetFilters(ctx.params, report.id, fs.all);
+  const filters = facetFilters(ctx.params, report.id, fs.all, undefined, appDateReader(ctx));
   const own = new Map<string, FacetFilter>(filters.filter((f) => defs.some((d) => d.column === f.column)).map((f) => [f.column, f]));
 
   // ---- chips: the search term and each filter of this region's facets, each with a remove link

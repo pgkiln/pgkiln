@@ -130,7 +130,7 @@ describe('date items in the application\'s date format', () => {
     try {
       const b = new Browser(app);
       const body = (await b.get(`/a/${alias}/2`)).body;
-      assert.match(body, /<input type="text" id="P2_HIRED" name="P2_HIRED" value="" placeholder="DD.MM.YYYY" autocomplete="off" data-date-mask="DD.MM.YYYY"/);
+      assert.match(body, /<input type="text" id="P2_HIRED" name="P2_HIRED" value="" placeholder="DD.MM.YYYY" autocomplete="off" inputmode="numeric" data-date-mask="DD.MM.YYYY"/);
       assert.match(body, /data-date-pick="P2_HIRED"/);
       const bad = await b.post(`/a/${alias}/2`, { ...formFields(body), P2_HIRED: '31.02.2021', __request: 'CREATE' });
       assert.match(bad.body, /must be a valid date/);

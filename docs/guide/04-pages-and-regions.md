@@ -819,7 +819,9 @@ Counts take the search and all *other* facets into account. Three kinds of facet
 
 - **checkbox** (the default): the most frequent values of a column, each with a checkbox; after the seventh
   the rest sit under *Show all (n)* (open when one of them is chosen), and a boolean's values read *Yes* and
-  *No*. With
+  *No*. Its ⋮ menu (APEX: the facet's menu) has *Clear* (when values are chosen) and *Sort by count* (the
+  default) or *Sort by name*; the order is a URL parameter (`r<report id>_fo_<column>=name`) that Apply and
+  Reset keep. With
   `"exclude": true` the facet gets an *Exclude the selected values* switch: the chosen values are
   then left out instead (rows where the column is empty stay).
 - **range**: a number or date column in ranges, as radio buttons ("Any", then each range). A

@@ -169,7 +169,8 @@ Tips:
   together.
 - **Errors are hidden by default**: unexpected errors show a reference number unless the app is in
   debug mode.
-- **Dates**: date items use ISO format (`2026-10-01`) and the browser's date picker; format masks
+- **Dates**: date items, date ranges, grid date cells and facet ranges are text in the application's date format
+  (else ISO, `2026-10-01`) with pgkiln's date picker; format masks
   apply to report, grid and cards columns and to number and display items
   ([number formats](14-globalization.md#number-formats)).
 - **Modal pages** open over the calling page, and close and refresh it after a successful submit,

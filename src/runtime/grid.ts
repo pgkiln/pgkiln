@@ -9,7 +9,8 @@ import { checksumValid, urlChecksum } from '../security.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { publicError, toState, type PageContext } from './context.ts';
 import { arrange, cleanLayout, currentLayout, defaultLayout, layoutJson, layoutParam, MAX_FROZEN, MAX_WIDTH, MIN_WIDTH, parseLayout, type GridLayout, type Placed } from './grid-layout.ts';
-import { lovContains, lovOptions, type LovOption } from './items.ts';
+import { appDateMask, dateField, lovContains, lovOptions, type LovOption } from './items.ts';
+import { parseDateMask } from './format.ts';
 import { resolveRestRegion, restAllows, restGridCall, restWritable } from './rest-sources.ts';
 import { fillItems, linkAttrs } from './links.ts';
 import { detailsOf, masterColumnOf, masterItemOf, selectHref, selectRowOf } from './master-detail.ts';
@@ -102,7 +103,7 @@ const rowToken = (ctx: PageContext, r: Region, pk: string) => urlChecksum(ctx.ap
 
 // ---------------------------------------------------------------- render
 
-function control(col: GridColumn, name: string, value: string, label: string) {
+function control(ctx: PageContext, col: GridColumn, name: string, value: string, label: string) {
   const aria = raw(` aria-label="${label.replace(/"/g, '&quot;')}"`);
   if (col.options)
     return html`<select name="${name}"${aria}><option value=""></option>${col.options.map(
@@ -111,7 +112,8 @@ function control(col: GridColumn, name: string, value: string, label: string) {
   if (col.typeOid === 16)
     return html`<input type="checkbox" name="${name}" value="true"${value === 'true' ? raw(' checked') : ''}${aria}>`;
   if (NUMERIC.has(col.typeOid)) return html`<input type="number" step="any" inputmode="decimal" name="${name}" value="${value}"${aria}>`;
-  if (col.typeOid === 1082) return html`<input type="date" name="${name}" value="${value}"${aria}>`;
+  // (sprint 84) a date in the application's date format, with pgkiln's date picker
+  if (col.typeOid === 1082) return dateField(ctx, { id: `f_${name}`, iso: value, mask: appDateMask(ctx), attrs: html` name="${name}"${aria}` });
   if (col.typeOid === 1114 || col.typeOid === 1184)
     return html`<input type="datetime-local" name="${name}" value="${value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
   return html`<input type="text" name="${name}" value="${value}"${aria}>`;
@@ -329,7 +331,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       if (!col.editable) return html`<td class="${colCls(p, pIdx, NUMERIC.has(col.typeOid) ? 'num' : null)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${cell(row[col.idx], col.typeOid, fmtOf(col.name))}</td>`;
       const name = `${g}_${i}_c${col.ci}`;
       const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${col.ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${col.ci}`) ?? dbValue)) : dbValue;
-      return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${cellText(col, value, value === dbValue ? cell(row[col.idx], col.typeOid, fmtOf(col.name)) : value)}${control(col, name, value, `${lbl}, row ${i + 1}`)}</td>`;
+      return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${cellText(col, value, value === dbValue ? cell(row[col.idx], col.typeOid, fmtOf(col.name)) : value)}${control(ctx, col, name, value, `${lbl}, row ${i + 1}`)}</td>`;
     });
     const deleted = pi !== undefined && pv(`${g}_${pi}_del`) === 'true';
     const selValue = selIdx >= 0 ? toState(row[selIdx]) ?? '' : null;
@@ -366,7 +368,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
         const lbl = label(col.name);
         if (masterCol && col.name === masterCol) return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${masterValue}</td>`;
         return writable.has(col.name)
-          ? html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${control({ ...col, editable: true }, `${g}_n${j}_c${col.ci}`, values[col.ci] ?? '', `${lbl}, new row`)}</td>`
+          ? html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${control(ctx, { ...col, editable: true }, `${g}_n${j}_c${col.ci}`, values[col.ci] ?? '', `${lbl}, new row`)}</td>`
           : html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}></td>`;
       })}
     </tr>`;
@@ -417,7 +419,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       orig[col.ci] = dbValue;
       if (!col.editable) return field(p, cell(row[col.idx], col.typeOid, fmtOf(col.name)), false);
       const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${col.ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${col.ci}`) ?? dbValue)) : dbValue;
-      return field(p, control(col, `${g}_0_c${col.ci}`, value, label(col.name)), true);
+      return field(p, control(ctx, col, `${g}_0_c${col.ci}`, value, label(col.name)), true);
     });
     const deleted = pi !== undefined && pv(`${g}_${pi}_del`) === 'true';
     const links = [
@@ -438,7 +440,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       const col = p.col;
       if (masterCol && col.name === masterCol) return [field(p, masterValue, false)];
       if (!writable.has(col.name)) return [];
-      return [field(p, control({ ...col, editable: true }, `${g}_n0_c${col.ci}`, pv(`${g}_n0_c${col.ci}`) ?? '', label(col.name)), true)];
+      return [field(p, control(ctx, { ...col, editable: true }, `${g}_n0_c${col.ci}`, pv(`${g}_n0_c${col.ci}`) ?? '', label(col.name)), true)];
     });
     return html`<div class="grid-record grid-new" data-new-row="0"><div class="form-grid">${fieldsHtml}</div></div>
     ${recordNav()}`;
@@ -718,7 +720,12 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
     const lov = r.config.columns?.[name]?.lov;
     return !lov || v === '' || (await lovContains(ctx, lov, [v]));
   };
-  const norm = (ci: number, v: string | undefined) => (cols[ci].dataTypeID === 16 ? (v === 'true' ? 'true' : 'false') : v ?? '');
+  // (sprint 84) a date typed in the date format (or YYYY-MM-DD) → YYYY-MM-DD; other text goes to the database as it is (which refuses it)
+  const dateMask = appDateMask(ctx);
+  const norm = (ci: number, v: string | undefined) =>
+    cols[ci].dataTypeID === 16 ? (v === 'true' ? 'true' : 'false')
+    : cols[ci].dataTypeID === 1082 && v?.trim() ? (parseDateMask(v, dateMask, ctx.locale.lang) ?? v)
+    : v ?? '';
 
   const errors: string[] = [];
   let inserted = 0, updated = 0, deleted = 0;
