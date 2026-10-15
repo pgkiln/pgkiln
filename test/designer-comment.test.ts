@@ -85,7 +85,8 @@ describe('the gallery', () => {
   test('labels in title case, like APEX\'s', async () => {
     const b = await developer();
     const page = (await b.get(`/builder/apps/${appId}/pages/${PAGE_NO}`)).body;
-    for (const label of ['Interactive Report', 'Faceted Search', 'Region Display Selector', 'Text Field', 'Select List', 'Popup LOV', 'Submit Page'])
+    for (const label of ['Interactive Report', 'Faceted Search', 'Region Display Selector', 'Login', 'Text Field', 'Select List', 'Popup LOV', 'Submit Page'])
       assert.match(page, new RegExp(`class="pd-gal"[^>]*>[\\s\\S]{0,400}?<span>${label.replace(/[()]/g, '\\$&')}</span>`), label);
+    assert.match(page, /title="Region Display Selector: drag onto the layout, or open to create"/, 'the full name as a tooltip');
   });
 });

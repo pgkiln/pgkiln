@@ -87,8 +87,8 @@ Sprint 90: the page designer's Comment Out and gallery labels (parity handoff PD
   option `COMMENTED_OUT` (status *Exclude*, made when first needed) and is struck through in the tree.
 
 ### Changed
-- **The gallery's labels in title case** (PD-4; APEX's): *Interactive Report*, *Faceted Search*, *Text Field*, …; long
-  labels wrap instead of being cut off.
+- **The gallery's labels in title case** (PD-4; APEX's): *Interactive Report*, *Faceted Search*, *Login*, *Text Field*, …; long
+  labels wrap instead of being cut off, and the full name is the tooltip.
 
 ## [0.45.0] - 2026-10-15
 
