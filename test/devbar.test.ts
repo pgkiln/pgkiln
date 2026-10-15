@@ -48,7 +48,7 @@ describe('developer toolbar', () => {
     // (sprint 72) a bar of icons with tooltips
     assert.match(page, /<div class="devbar" data-dock="bottom">/);
     const pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
-    assert.match(page, new RegExp(`href="/builder/pages/${pageId}" title="Edit page 1" aria-label="Edit page 1"`));
+    assert.match(page, new RegExp(`href="/builder/apps/${appId}/pages/1" title="Edit page 1" aria-label="Edit page 1"`));
     assert.match(page, new RegExp(`href="/builder/apps/${appId}" title="Application ${appId}"`));
     assert.match(page, /href="\/a\/hr\/1\/devbar\/session" title="Session"/);
     assert.match(page, new RegExp(`href="/builder/apps/${appId}/theme" title="Customize \\(Theme Roller\\)"`));
@@ -149,10 +149,11 @@ describe('Quick edit and the Page Designer\'s help pane (sprint 59)', () => {
     assert.match((await b.get('/a/hr/1')).body, /<button type="button" class="devbar-tool devbar-quick" data-quick-edit="\/builder\/pages\/\d+" aria-pressed="false" title="Quick edit" aria-label="Quick edit" hidden>/);
     const item = (await owner.one(`select id from meta.item where page_id = $1 and name = 'P3_SAL'`, [page3])).id;
     const toItem = await b.get(`/builder/pages/${page3}/quick?item=p3_sal`);
-    assert.equal(toItem.headers.location, `/builder/pages/${page3}?c=item-${item}`);
+    // (sprint 86) to the page designer by the page's number
+    assert.equal(toItem.headers.location, `/builder/apps/${appId}/pages/3?c=item-${item}`);
     const button = (await owner.one(`select id, name from meta.button where page_id = $1 order by id limit 1`, [page3]));
-    assert.equal((await b.get(`/builder/pages/${page3}/quick?button=${button.name}`)).headers.location, `/builder/pages/${page3}?c=button-${button.id}`);
-    assert.equal((await b.get(`/builder/pages/${page3}/quick?item=NOPE`)).headers.location, `/builder/pages/${page3}`);
+    assert.equal((await b.get(`/builder/pages/${page3}/quick?button=${button.name}`)).headers.location, `/builder/apps/${appId}/pages/3?c=button-${button.id}`);
+    assert.equal((await b.get(`/builder/pages/${page3}/quick?item=NOPE`)).headers.location, `/builder/apps/${appId}/pages/3`);
   });
 
   test('the property editor has a help pane, every property is named, the guide section follows the type', async () => {

@@ -41,6 +41,12 @@ const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|l
 /** The application (and page) a builder URL under /apps/:id or /pages/:pid is about, or null. */
 export async function appOfPath(path: string): Promise<{ appId: number; pageNo: number | null; pageId: number | null } | null> {
   const rel = path.split('?')[0].slice(BASE.length);
+  // (sprint 86) the page designer by the page's number
+  const byNo = /^\/apps\/(\d{1,9})\/pages\/(\d{1,9})(\/|$)/.exec(rel);
+  if (byNo) {
+    const p = await owner.one<{ id: number }>('select id from meta.page where app_id = $1 and page_no = $2', [Number(byNo[1]), Number(byNo[2])]);
+    return { appId: Number(byNo[1]), pageNo: Number(byNo[2]), pageId: p?.id ?? null };
+  }
   const app = /^\/apps\/(\d{1,9})(\/|$)/.exec(rel);
   if (app) return { appId: Number(app[1]), pageNo: null, pageId: null };
   const page = /^\/pages\/(\d{1,9})(\/|$)/.exec(rel);

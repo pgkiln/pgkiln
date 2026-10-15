@@ -4,6 +4,23 @@
 // inline scripts.
 document.documentElement.classList.add('js');
 
+// (sprint 86) Values a browser kept under pgkiln's old name (pgapex.*, pgapex-push:*) move to
+// pgkiln.* / pgkiln-push:* once: the navigation drawer, the builder's tabs and panes, the region
+// display selector's tab, a device's push notifications. A value already kept under the new name wins.
+for (const store of ['localStorage', 'sessionStorage']) {
+  try {
+    const s = window[store];
+    for (const k of Object.keys(s)) {
+      if (!/^pgapex[.-]/.test(k)) continue;
+      const neu = `pgkiln${k.slice(6)}`;
+      if (s.getItem(neu) === null) s.setItem(neu, s.getItem(k));
+      s.removeItem(k);
+    }
+  } catch {
+    /* storage off (private mode, a blocked cookie setting): nothing kept, nothing to move */
+  }
+}
+
 // Push notifications (migration 074): the page of an app with notifications on carries
 // the app's public key (data-push) and the user (data-push-user). Subscribing needs a
 // click (My account → Notifications, or the dynamic action push_subscribe); the

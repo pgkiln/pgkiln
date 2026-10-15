@@ -58,8 +58,8 @@ describe('Shared Components', () => {
     const b = await builder();
     const page = (await b.get(`/builder/apps/${hr}/breadcrumbs`)).body;
     assert.match(page, /<h2[^>]*>Breadcrumbs<\/h2>/);
-    const child = await owner.one(`select p.id, p.name from meta.page p where p.app_id = $1 and p.parent_page is not null and p.parent_page <> p.page_no order by p.page_no limit 1`, [hr]);
-    assert.match(page, new RegExp(`<ul class="tree">[\\s\\S]*<ul class="tree">[\\s\\S]*href="/builder/pages/${child.id}"`));
+    const child = await owner.one(`select p.id, p.page_no, p.name from meta.page p where p.app_id = $1 and p.parent_page is not null and p.parent_page <> p.page_no order by p.page_no limit 1`, [hr]);
+    assert.match(page, new RegExp(`<ul class="tree">[\\s\\S]*<ul class="tree">[\\s\\S]*href="/builder/apps/${hr}/pages/${child.page_no}"`));
   });
 });
 

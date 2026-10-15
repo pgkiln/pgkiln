@@ -13,7 +13,7 @@ import { layoutExtras } from './layouts.ts';
 import { templateExtras, templateImport } from './templates.ts';
 import { credentialExtras, needsSecret, restSourceExtras } from './websources.ts';
 import { dataLoadDefExtras } from './dataload.ts';
-import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { appHeader, back, BASE, designerUrl, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { endSessions, grantAccess, roleHints, roleHintsHtml, splitRoles } from './users.ts';
 import { appOr404, componentForm, lookups, saveComponent } from './forms.ts';
 import { catalogPicker } from './rest-catalogs.ts';
@@ -89,7 +89,7 @@ export async function sharedRoutes(app: FastifyInstance) {
       if (!kids.length) return html``;
       return html`<ul class="tree">${kids.map((p) => {
         const next = new Set(seen).add(p.page_no);
-        return html`<li><a href="${BASE}/pages/${p.id}">${icon('file')}<span>${p.name}</span><span class="kind">p${p.page_no}</span></a>${tree(p.page_no, next)}</li>`;
+        return html`<li><a href="${designerUrl(a.id, p.page_no)}">${icon('file')}<span>${p.name}</span><span class="kind">p${p.page_no}</span></a>${tree(p.page_no, next)}</li>`;
       })}</ul>`;
     };
     const main = html`${appHeader(a, 'shared')}

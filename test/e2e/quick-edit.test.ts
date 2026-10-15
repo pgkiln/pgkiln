@@ -47,7 +47,7 @@ describe('quick edit and the help pane (browser)', () => {
     const context = await developer();
     const page = await context.newPage();
     await page.goto(`${base}/a/hr/44`);
-    const region = (await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+    const region = (await owner.one(`select r.id, r.page_id, p.app_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
                                        where a.alias = 'hr' and p.page_no = 44 and r.title = 'Welcome to HR'`));
     const toggle = page.locator('[data-quick-edit]');
     await toggle.click();
@@ -56,7 +56,7 @@ describe('quick edit and the help pane (browser)', () => {
     assert.match((await page.locator(`#R${region.id}`).getAttribute('class')) ?? '', /qe-target/);
     const [designer] = await Promise.all([context.waitForEvent('page'), page.click(`#R${region.id} .region-hero-text`)]);
     await designer.waitForLoadState();
-    assert.equal(new URL(designer.url()).pathname + new URL(designer.url()).search, `/builder/pages/${region.page_id}?c=region-${region.id}`);
+    assert.equal(new URL(designer.url()).pathname + new URL(designer.url()).search, `/builder/apps/${region.app_id}/pages/44?c=region-${region.id}`, '(sprint 86) the page designer by the page\'s number');
     assert.match(page.url(), /\/a\/hr\/44$/, 'the page itself stays');
     // an item, on a page with items
     await page.goto(`${base}/a/hr/43`);
@@ -82,6 +82,30 @@ describe('quick edit and the help pane (browser)', () => {
     assert.match(await pane.innerText(), /hero: a large banner/);
     assert.match(await pane.innerText(), /Stored as template/);
     assert.equal(await pane.locator('a', { hasText: 'This component in the guide' }).getAttribute('href'), 'https://pgkiln.vargar.eu/docs/pages-and-regions#static-and-dynamic-content');
+    await context.close();
+  });
+});
+
+describe('values kept under pgkiln\'s old name (browser)', () => {
+  test('(sprint 86) pgapex.* in localStorage moves to pgkiln.* once; a value under the new name wins', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${base}/a/hr/login`);
+    await page.evaluate(() => {
+      localStorage.clear();
+      localStorage.setItem('pgapex.nav', 'closed');
+      localStorage.setItem('pgapex.builder.pd-tab', 'tree');
+      localStorage.setItem('pgapex.devbar', '{"dock":"top"}');
+      localStorage.setItem('pgkiln.devbar', '{"dock":"left"}');
+      sessionStorage.setItem('pgapex.rds./a/hr/1.x', 'R1_tab');
+    });
+    await page.reload();
+    const kept = await page.evaluate(() => ({ ...localStorage, ...Object.fromEntries(Object.entries(sessionStorage).map(([k, v]) => [`s:${k}`, v])) }));
+    assert.equal(kept['pgkiln.nav'], 'closed');
+    assert.equal(kept['pgkiln.builder.pd-tab'], 'tree');
+    assert.equal(kept['pgkiln.devbar'], '{"dock":"left"}', 'the newer value wins');
+    assert.equal(kept['s:pgkiln.rds./a/hr/1.x'], 'R1_tab');
+    assert.deepEqual(Object.keys(kept).filter((k) => /pgapex/.test(k)), []);
     await context.close();
   });
 });

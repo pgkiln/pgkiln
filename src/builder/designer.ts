@@ -1,9 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { COMPONENTS } from './components.ts';
-import { back, BASE, bicon, csrf, developer, flash, input, select, send, shell, type Req } from './ui.ts';
+import { back, BASE, bicon, csrf, designerUrl, developer, flash, input, select, send, shell, type Req } from './ui.ts';
+import { wantsHtml } from './errors.ts';
+import type { Session } from '../session.ts';
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
 import { regionConfigHelp } from './region-help.ts';
 import { parseIncludes } from './static-files.ts';
@@ -47,16 +49,35 @@ export async function designerRoutes(app: FastifyInstance) {
     const appId = /^\d{1,9}$/.test(req.params.id) ? Number(req.params.id) : null;
     const no = /^\d{1,9}$/.test(req.query.page ?? '') ? Number(req.query.page) : -1;
     const p = appId === null ? null : await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, no]);
-    if (p) return reply.redirect(`${BASE}/pages/${p.id}`, 303);
+    if (p) return reply.redirect(designerUrl(appId!, no), 303);
     flash(s, `There is no page ${req.query.page ?? ''}.`, 'error');
     return back(reply, s, appId === null ? BASE : `${BASE}/apps/${appId}`);
   });
 
   // ---------------------------------------------------------------- page designer
+  // (sprint 86) its address is the application's id and the page's number; a browser that opens the
+  // internal id (an old bookmark, a redirect after saving) is sent there with the same query
+  app.get(`${BASE}/apps/:app/pages/:no`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const page = /^\d{1,9}$/.test(req.params.app) && /^\d{1,9}$/.test(req.params.no)
+      ? await owner.one<{ id: number }>('select id from meta.page where app_id = $1 and page_no = $2', [req.params.app, req.params.no])
+      : undefined;
+    if (!page) return reply.code(404).send('Not found');
+    return pageDesigner(req, reply, s, page.id);
+  });
   app.get(`${BASE}/pages/:pid`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const p = await owner.one('select p.*, a.alias, a.name as app_name from meta.page p join meta.app a on a.id = p.app_id where p.id = $1', [req.params.pid]);
+    if (wantsHtml(req) && /^\d{1,9}$/.test(req.params.pid)) {
+      const p = await owner.one<{ app_id: number; page_no: number }>('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
+      if (p) return reply.redirect(designerUrl(p.app_id, p.page_no, req.url.split('?')[1] ?? ''), 302);
+    }
+    return pageDesigner(req, reply, s, req.params.pid);
+  });
+
+  async function pageDesigner(req: Req, reply: FastifyReply, s: Session, pid: number | string) {
+    const p = await owner.one('select p.*, a.alias, a.name as app_name from meta.page p join meta.app a on a.id = p.app_id where p.id = $1', [pid]);
     if (!p) return reply.code(404).send('Not found');
     const rows: Record<string, any[]> = {};
     for (const kind of PAGE_KINDS) rows[kind] = (await owner.query(`select * from ${COMPONENTS[kind].table} where page_id = $1 order by seq, id`, [p.id])).rows;
@@ -73,7 +94,9 @@ export async function designerRoutes(app: FastifyInstance) {
     const sel = req.query.c ?? '';
     const newKind = PAGE_KINDS.includes(req.query.new ?? '') ? req.query.new : '';
     const [kind, cid] = sel.split('-');
-    const url = (q: string) => `${BASE}/pages/${p.id}${q ? `?${q}` : ''}`;
+    const url = (q: string) => designerUrl(p.app_id, p.page_no, q);
+    // the page's forms post to its internal id (a page number can change)
+    const post = `${BASE}/pages/${p.id}`;
     const isSel = (key: string) => sel === key || (key === 'page' && !sel && !newKind);
     const cur = (key: string) => (isSel(key) ? raw(' aria-current="true"') : '');
     const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="Authorization: ${r.authz}">${icon('shield')}<span class="sr-only">Authorization ${r.authz}</span></span>` : ''}${r.condition || r.readonly_condition || r.condition_type ? html`<span class="pd-tag" title="Has a condition">${icon('filter')}<span class="sr-only">Has a condition</span></span>` : ''}${r.build_option ? html`<span class="pd-tag" title="Build option: ${r.build_option}">${icon('settings')}<span class="sr-only">Build option ${r.build_option}</span></span>` : ''}`;
@@ -129,7 +152,7 @@ export async function designerRoutes(app: FastifyInstance) {
           </ul></li>
       </ul>
       <dialog class="pd-dialog" id="pd-copy-dialog" aria-labelledby="pd-copy-title">
-        <form method="post" action="${url('')}/layout/copy">${csrf(s)}<input type="hidden" name="kind" value=""><input type="hidden" name="id" value="">
+        <form method="post" action="${post}/layout/copy">${csrf(s)}<input type="hidden" name="kind" value=""><input type="hidden" name="id" value="">
           <h2 id="pd-copy-title">Copy to other page</h2>
           <p class="muted" data-copy-what></p>
           <div class="field"><label class="label" for="pd-copy-page">Page</label>
@@ -294,7 +317,7 @@ export async function designerRoutes(app: FastifyInstance) {
     let hasForm = true;
     const peTabs = (panels: Raw[]) => html`<div class="pd-tabs" data-tabs="pd-right" data-tabs-remember aria-label="Properties">${panels}</div>`;
     const moveForm = (k: string, id: number, fields: Raw, button: Raw, title: string) =>
-      html`<form method="post" action="${url('')}/layout/move" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="kind" value="${k}"><input type="hidden" name="id" value="${id}">${fields}<button class="tb-btn" title="${title}">${button}</button></form>`;
+      html`<form method="post" action="${post}/layout/move" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="kind" value="${k}"><input type="hidden" name="id" value="${id}">${fields}<button class="tb-btn" title="${title}">${button}</button></form>`;
     if (newKind) {
       const spec = COMPONENTS[newKind];
       const lastSeq = Math.max(0, ...rows[newKind].map((r) => r.seq));
@@ -325,9 +348,9 @@ export async function designerRoutes(app: FastifyInstance) {
             ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="up">`, html`${bicon('arrow-up')}<span class="sr-only">Move up</span>`, 'Move up (earlier in the sequence)')}
             ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="down">`, html`${bicon('arrow-down')}<span class="sr-only">Move down</span>`, 'Move down (later in the sequence)')}
             ${kind === 'region'
-              ? html`<form method="post" action="${url('')}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="-1"><button class="tb-btn" title="Narrower (one column less)"${row.columns <= 1 ? raw(' disabled') : ''}>${bicon('narrow')}<span class="sr-only">Narrower</span></button></form>
+              ? html`<form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="-1"><button class="tb-btn" title="Narrower (one column less)"${row.columns <= 1 ? raw(' disabled') : ''}>${bicon('narrow')}<span class="sr-only">Narrower</span></button></form>
                 <span class="pe-span" title="Column span">${row.columns}/12</span>
-                <form method="post" action="${url('')}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="1"><button class="tb-btn" title="Wider (one column more)"${row.columns >= 12 ? raw(' disabled') : ''}>${bicon('wide')}<span class="sr-only">Wider</span></button></form>`
+                <form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="1"><button class="tb-btn" title="Wider (one column more)"${row.columns >= 12 ? raw(' disabled') : ''}>${bicon('wide')}<span class="sr-only">Wider</span></button></form>`
               : moveForm(kind, row.id, html`<label class="sr-only" for="pe-move-region">Move to region</label><select id="pe-move-region" name="region">${regionOptions}</select>`, html`<span>Move</span>`, 'Move to the end of this region')}
           </div>`;
         }
@@ -395,7 +418,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const next = pages[idx + 1];
     const h = undoState(s, p.id);
     const tbForm = (op: string, ic: string, label: string, title: string | null) =>
-      html`<form method="post" action="${url('')}/layout/${op}" class="tb-form">${csrf(s)}<button class="tb-btn" title="${title ? `${label}: ${title}` : `Nothing to ${label.toLowerCase()}`}"${title ? '' : raw(' disabled')}>${bicon(ic)}<span class="sr-only">${label}</span></button></form>`;
+      html`<form method="post" action="${post}/layout/${op}" class="tb-form">${csrf(s)}<button class="tb-btn" title="${title ? `${label}: ${title}` : `Nothing to ${label.toLowerCase()}`}"${title ? '' : raw(' disabled')}>${bicon(ic)}<span class="sr-only">${label}</span></button></form>`;
     const createMenu = html`<details class="menu tb-menu">
         <summary class="tb-btn" title="Create">${icon('plus')}${bicon('down', 'icon tb-caret')}<span class="sr-only">Create</span></summary>
         <div class="menu-panel align-right"><div class="menu-section menu-links">
@@ -415,7 +438,7 @@ export async function designerRoutes(app: FastifyInstance) {
         </div></div></details>`;
     const toolbar = html`
       <div class="tb-group pd-pagenav" role="group" aria-label="Page">
-        ${prev ? html`<a class="tb-btn" href="${BASE}/pages/${prev.id}" title="Previous page: ${prev.page_no}. ${prev.name}">${bicon('left')}<span class="sr-only">Previous page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
+        ${prev ? html`<a class="tb-btn" href="${designerUrl(p.app_id, prev.page_no)}" title="Previous page: ${prev.page_no}. ${prev.name}">${bicon('left')}<span class="sr-only">Previous page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
         <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto-no">
           <label class="sr-only" for="pd-goto-no">Page number (Enter goes there)</label>
           <input id="pd-goto-no" name="page" type="number" min="0" max="999999999" step="1" value="${p.page_no}" inputmode="numeric" title="Page number: type or step to a number, then Enter">
@@ -425,7 +448,7 @@ export async function designerRoutes(app: FastifyInstance) {
           <select id="pd-goto" name="page" data-autosubmit>${pages.map((x) => html`<option value="${x.page_no}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no} · ${x.name}</option>`)}</select>
           <button class="tb-btn tb-text pd-goto-go">Go</button>
         </form>
-        ${next ? html`<a class="tb-btn" href="${BASE}/pages/${next.id}" title="Next page: ${next.page_no}. ${next.name}">${bicon('right')}<span class="sr-only">Next page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('right')}</span>`}
+        ${next ? html`<a class="tb-btn" href="${designerUrl(p.app_id, next.page_no)}" title="Next page: ${next.page_no}. ${next.name}">${bicon('right')}<span class="sr-only">Next page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('right')}</span>`}
       </div>
       <div class="tb-group tb-undo" role="group" aria-label="History">${tbForm('undo', 'undo', 'Undo', h.undo)}${tbForm('redo', 'redo', 'Redo', h.redo)}</div>
       <div class="tb-group tb-menus">${createMenu}${utilMenu}</div>
@@ -442,7 +465,7 @@ export async function designerRoutes(app: FastifyInstance) {
         <section class="pd-pane pd-right tab-panel" id="pd-p-props" data-tab${pane === 'pd-p-props' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>Properties</span></h2>${right}</section>
       </div>`;
     return send(reply, s, shell(s, `Page ${p.page_no}`, [['App Builder', BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [`Page ${p.page_no}: ${p.name}`]], main, 'apps', { toolbar, full: true }));
-  });
+  }
 
   // (sprint 59) Quick edit from the developer toolbar: an item or button of the page by its name
   app.get(`${BASE}/pages/:pid/quick`, async (req: Req, reply) => {
@@ -452,7 +475,9 @@ export async function designerRoutes(app: FastifyInstance) {
     const q = req.query ?? {};
     const [kind, table, name] = q.item ? ['item', 'meta.item', String(q.item).toUpperCase()] : q.button ? ['button', 'meta.button', String(q.button).toUpperCase()] : [null, null, null];
     const row = kind ? await owner.one(`select id from ${table} where page_id = $1 and name = $2 order by id limit 1`, [req.params.pid, name]) : null;
-    return reply.redirect(`${BASE}/pages/${req.params.pid}${row ? `?c=${kind}-${row.id}` : ''}`);
+    const page = await owner.one<{ app_id: number; page_no: number }>('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
+    if (!page) return reply.code(404).send('Not found');
+    return reply.redirect(designerUrl(page.app_id, page.page_no, row ? `c=${kind}-${row.id}` : ''));
   });
 
   app.post(`${BASE}/pages/:pid`, async (req: Req, reply) => {

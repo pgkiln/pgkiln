@@ -199,6 +199,11 @@ Every builder page has the same frame, modelled on an IDE:
 
 On phones the rail gets narrower and the breadcrumb shows only the current page.
 
+(sprint 86) An address under `/builder` that leads nowhere (a deleted application or page, a typo, an
+application of a workspace you are not a member of) shows a **Page not found** page in the builder's
+theme with a link to the App Builder home; a server error shows **Something went wrong** (the error
+is in the server log, not on the page). Scripts get the plain answers they always got.
+
 ## App Builder home
 
 The home page is laid out like APEX's App Builder:
@@ -538,6 +543,11 @@ application (export, import, working copies) and change nothing when it runs. Th
 its pages in four groups.
 
 ## The page designer
+
+(sprint 86) A page's address in the page designer is its application's id and its number:
+`/builder/apps/<app id>/pages/<page number>`, with `?c=region-<id>` (and so on) for the selected
+component, so a link names the page you mean. The older `/builder/pages/<internal id>` still works:
+a browser that opens it is sent to the page's number.
 
 The page designer has three panes, as in APEX's Page Designer. From 1024 pixels wide they sit
 side by side; on phones and portrait tablets they are tabs (**Tree**, **Layout**, **Properties**):

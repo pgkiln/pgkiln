@@ -15,11 +15,12 @@ self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(STATIC).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
+// older versions' static files, and (sprint 86) the caches of pgkiln's old name (pgapex-*)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('pgkiln-static-') && k !== STATIC).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => (k.startsWith('pgkiln-static-') && k !== STATIC) || k.startsWith('pgapex-')).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
