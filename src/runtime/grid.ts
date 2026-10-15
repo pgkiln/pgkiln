@@ -116,6 +116,17 @@ function control(col: GridColumn, name: string, value: string, label: string) {
   return html`<input type="text" name="${name}" value="${value}"${aria}>`;
 }
 
+/**
+ * (APEX: cell navigation mode) An editable cell's value as text, with its column's format mask or the
+ * option's display value: with JavaScript the cell reads as this text until it is edited (app.css,
+ * app.js); the control holds the raw value. Not for a checkbox, which reads as itself.
+ */
+function cellText(col: GridColumn, value: string, shown: string) {
+  if (col.typeOid === 16 || value === '') return '';
+  const text = col.options ? col.options.find((o) => o.value === value)?.display ?? value : shown;
+  return html`<span class="grid-text${NUMERIC.has(col.typeOid) && !col.options ? ' num' : ''}" aria-hidden="true">${text}</span>`;
+}
+
 /** Width of each leading column (master selection, delete, row actions), see app.css .grid-lead. */
 const LEAD_WIDTH = 44;
 
@@ -240,7 +251,13 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   // master-detail: this grid selects rows for detail regions; or it follows a master
   const select = selectRowOf(ctx.page, r);
   const selIdx = select ? fields.findIndex((f) => f.name.toLowerCase() === select.column.toLowerCase()) : -1;
-  const selected = select ? ctx.session.state[select.item] ?? null : null;
+  let selected = select ? ctx.session.state[select.item] ?? null : null;
+  // as in APEX, a page shows the first master row selected: when nothing is selected, or the
+  // selected row is not among the rows shown (after a search or filter); the regions below follow it
+  if (select && selIdx >= 0 && ctx.wholePage && view === 'report' && info.rows.length) {
+    const shown = info.rows.map((row) => toState(row[selIdx]) ?? '');
+    if (selected === null || !shown.includes(selected)) ctx.session.state[select.item] = selected = shown[0];
+  }
   const details = select ? detailsOf(ctx.page, r, ctx.vis!.regions) : [];
   const masterCol = masterColumnOf(r);
   const masterValue = masterItemOf(r) ? ctx.session.state[masterItemOf(r)!] ?? '' : '';
@@ -297,7 +314,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       return i === -1 ? undefined : (toState(row[i]) ?? '');
     });
 
-  // read-only cells show their column's format mask; editable cells keep the raw value
+  // read-only cells show their column's format mask; an editable cell's control keeps the raw value
   const fmtOf = columnFormats(ctx, r);
   const rows = info.rows.map((row, i) => {
     const pk = toState(row[pkIdx]) ?? '';
@@ -311,7 +328,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       if (!col.editable) return html`<td class="${colCls(p, pIdx, NUMERIC.has(col.typeOid) ? 'num' : null)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${cell(row[col.idx], col.typeOid, fmtOf(col.name))}</td>`;
       const name = `${g}_${i}_c${col.ci}`;
       const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${col.ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${col.ci}`) ?? dbValue)) : dbValue;
-      return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${control(col, name, value, `${lbl}, row ${i + 1}`)}</td>`;
+      return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${cellText(col, value, value === dbValue ? cell(row[col.idx], col.typeOid, fmtOf(col.name)) : value)}${control(col, name, value, `${lbl}, row ${i + 1}`)}</td>`;
     });
     const deleted = pi !== undefined && pv(`${g}_${pi}_del`) === 'true';
     const selValue = selIdx >= 0 ? toState(row[selIdx]) ?? '' : null;

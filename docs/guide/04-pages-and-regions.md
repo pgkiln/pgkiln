@@ -456,7 +456,9 @@ page). Regions with `"master": {"item": …}` are its details: they use the item
 select empno, ename, job, sal from hr.emp where deptno = :P27_DEPTNO::int
 ```
 
-and show *"Select a row above"* until a row is selected. With JavaScript the details are
+and show *"Select a row above"* until a row is selected. As in APEX, the page opens with the
+master's first row selected, and a search or filter that leaves the selected row out selects the
+first row it shows (a region placed above its master still waits for a selection). With JavaScript the details are
 refreshed in place (`GET …/region/:id`, no page reload); without, the link reloads the page.
 The selection is a signed link (bound to the application, page, user, region and value), so a
 user can only select a row the server showed them; the item is not taken from the URL or a
@@ -479,6 +481,13 @@ on its new rows (and never lets users edit it); saving new rows without a select
 
 The developer's `hidden` columns can't be grouped, charted or shown in the single row view.
 After **Save** the grid comes back as it was: its search, page, sort and view.
+
+**Navigation and edit mode** (APEX). With JavaScript an editable cell reads as text, with its
+column's format mask (*2,850.00*) or the list's display value, until it is edited: click it, or
+press Enter or F2 on it, or start typing (which replaces the value). On a cell the arrow keys move
+to the next cell; while editing, Escape goes back to the cell and Enter moves to the cell below.
+The control keeps the raw value; Tab moves through the controls as before. On a phone, where the
+rows are cards, the fields show as fields.
 
 **Copy and paste.** Click a cell and Shift+click another to select a range; Ctrl+C copies it
 as tab-separated text (which spreadsheets paste as cells). Ctrl+V pastes such text (from a
