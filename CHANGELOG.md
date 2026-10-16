@@ -51,9 +51,21 @@ Sprint 104: RESTful Services modules, templates and handlers (migration 117; par
 
 ### Changed
 - The Utilities' *Database Monitor* is replaced by the SQL Monitor; its address redirects.
-- REST module handlers refuse to run (403) as a role that is a superuser, bypasses row level security or is a member
-  of pgkiln's owner, e.g. on the owner connection when `RUNTIME_DATABASE_URL` is not set. The Advisor compiles
-  PL/pgSQL handlers.
+- **Builder: refreshed look** (sprint 105): a design token layer in `public/builder.css` (colour, surface elevation,
+  radius, shadows, type scale and motion as CSS custom properties, a full light and dark set) with a warm "stone"
+  palette and the kiln's ember as the brand and primary colour. A flame brand mark replaces "pg" in the rail and on the
+  sign-in pages; the rail has rounded items with an ember marker for the current section and smoother tooltips; the
+  toolbar has a dark search field with its icon. Regions, tiles and cards have rounder corners, subtle shadows and a
+  lift on hover; buttons, fields (a focus ring), selects (one chevron in both themes), segmented controls, tabs,
+  menus and reports (quiet uppercase headers that stick inside a scrolling table, row hover, neutral links) are
+  restyled; the page designer's canvas has a dot grid and softer selections. Transitions are off under
+  `prefers-reduced-motion`. No markup contracts change; system fonts (Inter when installed), no new dependencies.
+- **Upgrade note:** REST module handlers refuse to run (403) when the role they would run as is a superuser, bypasses
+  row level security or is a member of pgkiln's owner. This affects an application without its own database role on an
+  installation where `RUNTIME_DATABASE_URL` is not set (or points at a privileged role): such handlers ran with full
+  rights and ignored row level security. Fix: give the application its own database role, or set
+  `RUNTIME_DATABASE_URL` to the least-privilege runtime role. AutoREST (sprint 100) already refused this. The Advisor
+  compiles PL/pgSQL handlers.
 
 ## [0.48.0] - 2026-10-16
 

@@ -341,9 +341,10 @@ public/
   data-modeler.js, .css    (sprint 98) the Data Modeler: drag boxes, undo/redo, save, zoom/fit, auto layout, mini-map, SVG/PNG export, print
   worksheet.js, .css       (sprint 91) the SQL Worksheet: run keys with the cursor, output tabs, navigator swap and search, drag and drop, splitters;
                            (92) grid sort, value dialog, history filter; (93) worksheet tabs in localStorage, Files, binds dialog, format, find, case
-  builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
+  builder.css              builder only: IDE look (dark chrome, icon rail, panes); design tokens at the top (colour,
+                           elevation, radius, type, motion; light and dark sets, sprint 105), then the shared controls
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
-  builder-icons.svg        builder only: icons of the rail, toolbar and designer (b-*)
+  builder-icons.svg        builder only: icons of the rail, toolbar and designer (b-*); b-kiln is the brand mark (brandMark() in ui.ts)
 test/
   binds.test.ts            unit tests
   security.test.ts         security regression tests (in-process, against the database)
