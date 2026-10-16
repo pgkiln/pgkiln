@@ -153,6 +153,7 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
         ${tile('/sql/compare', 'layers', 'Schema Comparison', 'The differences between two schemas, and the SQL to align them.')}
         ${tile('/sql/utilities/reports', 'list', 'Object Reports', 'Tables without a primary key, foreign keys without an index, row-level security, grants, sizes.')}
         ${tile('/sql/utilities/about', 'help', 'About Database', 'The PostgreSQL version, settings, extensions and sizes.')}
+        ${admin ? tile('/sql/data-pump', 'archive', 'Schema Export / Import', 'A schema to a file with pg_dump, a file into a schema with pg_restore (administrators).') : ''}
         ${admin ? tile('/sql/scheduling', 'clock', 'Scheduling', 'pg_cron jobs: SQL on a schedule, next runs and run history (administrators).') : ''}
         ${admin ? tile('/sql/monitor', 'activity', 'SQL Monitor', 'Sessions, running and blocked queries, wait events and Top SQL (administrators).') : ''}
       </div>`;

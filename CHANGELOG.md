@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 
 Sprint 101: Scheduling with pg_cron (parity handoff DA-12).
 Sprint 102: the SQL Monitor (parity handoff DA-14).
+Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
 
 ### Added
 - **Scheduling** (DA-12; Database Actions: Scheduling; administrators only): SQL Workshop → *Scheduling* lists
@@ -24,6 +25,18 @@ Sprint 102: the SQL Monitor (parity handoff DA-14).
   the whole database from `pg_stat_statements` with total and mean time as bars, sort by any column, search and
   *Reset statistics*. A statement's page shows its totals per role, its Explain Plan as a tree (`EXPLAIN` only, in a
   read-only transaction; a generic plan for `$1` parameters on PostgreSQL 16+) and *Open in worksheet*.
+- **Schema Export / Import** (DA-16; Database Actions: Data Pump; administrators only): SQL Workshop › *Schema
+  Export / Import* runs `pg_dump` of one schema (custom or plain format, definitions and / or data, grants, tables
+  included or excluded) as a background job with its log, size, duration, Download, Cancel and Delete, and imports a
+  one-schema custom or tar archive (uploaded, or a kept export) into a new or existing schema. The import is
+  previewed from `pg_restore --list` and run by pgkiln on one connection in one transaction; every statement must
+  stay inside the dump's schema (roles, `SET ROLE`, `OWNER TO`, `DO`, extensions, COPY to files or programs are
+  refused). Importing under another name renames the original aside and back before commit; names inside
+  PL/pgSQL bodies keep the old schema. Jobs are kept in `meta.dump_job` (migration 116), files in
+  `PGKILN_DUMP_DIR` for `PGKILN_DUMP_KEEP_DAYS` days (default 7), uploads up to `PGKILN_DUMP_MAX_MB` (2048);
+  `PGKILN_PG_BIN` points at the client programs, which must be at least as new as the server. A dump's functions
+  and triggers run as pgkiln's owner role: import only dumps you trust.
+- The Docker image includes PostgreSQL 17's client programs (`pg_dump`, `pg_restore`) and a `dumps` volume.
 
 ### Changed
 - The Utilities' *Database Monitor* is replaced by the SQL Monitor; its address redirects.

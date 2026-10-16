@@ -1513,8 +1513,10 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     the old address `/builder/sql/utilities/monitor` redirects).
   - **Database Users** (administrators only; Administration menu → *Database users*, `/builder/db-users`; sprint 99,
     Database Actions: Database Users): see [Database users](#database-users).
-- **Scheduling** (administrators only; `/builder/sql/scheduling`, on the Launchpad under *Administration*, the
-  Utilities page and the search; sprint 101, Database Actions: Scheduling): [pg_cron](#scheduling-with-pg_cron) jobs.
+  - **Schema Export / Import** (administrators only; `/builder/sql/data-pump`; sprint 103, Database Actions: Data
+    Pump): see [Schema export and import](#schema-export-and-import).
+  - **Scheduling** (administrators only; `/builder/sql/scheduling`, on the Launchpad under *Administration*, the
+    Utilities page and the search; sprint 101, Database Actions: Scheduling): [pg_cron](#scheduling-with-pg_cron) jobs.
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 
@@ -1586,6 +1588,82 @@ pgkiln's **own roles** are marked *pgkiln* and are read only here: the owner and
 schema, REST API role) or an isolated workspace can be changed but not dropped. New names can't start with `pg_` or
 `pgkiln`. The owner connection needs `CREATEROLE` (and, on PostgreSQL 16 and later, ADMIN on roles it didn't create)
 for these changes; PostgreSQL's own error says so otherwise.
+
+### Schema export and import
+
+(sprint 103; Database Actions: Data Pump) **SQL Workshop → Schema Export / Import** (administrators only; on the
+Launchpad under *Administration* and on the Utilities page) dumps a schema to a file with **pg_dump** and loads a
+file into a schema with **pg_restore**, as background jobs. The list shows every job: export or import, the schema,
+its status (*running*, *succeeded*, *failed*, *cancelled*, or *uploaded* for a file waiting for its options), the
+file's size, when it started, how long it took and who ran it. A job's page has its options, pg_dump's or the
+import's **log**, and **Download**, **Import…**, **Cancel** (while it runs) and **Delete** (the job and its file).
+
+**Export a schema**: pick a schema (not pgkiln's own `meta`, PostgreSQL's or an extension's), then
+
+- the **format**: *custom* (compressed, `pg_dump -Fc`; what Import reads) or *plain SQL* (for `psql`; not imported
+  here; owners are left out);
+- the **content**: definitions and data, definitions only (`--schema-only`) or data only (`--data-only`), with or
+  without **grants**;
+- the **tables, views and sequences**: the whole schema, only the checked ones (`--table`: the file then has no
+  CREATE SCHEMA and no functions or types), or all but the checked ones (`--exclude-table`).
+
+pg_dump runs with an argument list (no shell) on the owner connection (`DATABASE_URL`); the password goes in
+`PGPASSWORD`, never on the command line. The file is kept in the dump directory for `PGKILN_DUMP_KEEP_DAYS` days
+(default 7); then the scheduler removes it and the job stays in the list.
+
+**Import**: upload a custom or tar archive of **one schema** (`pg_dump -Fc -n <schema>`, up to `PGKILN_DUMP_MAX_MB`,
+default 2048 MB; the file is streamed to the dump directory), or pick a kept export. The next page shows what the
+archive holds (`pg_restore --list`): the schema, the tables, the object types and how many of each, the server and
+pg_dump versions. Then choose
+
+- the **schema** to import into: the dump's own name or another one, **new or existing**. Another name renames the
+  dump's schema in the same transaction (*create schema as*);
+- the **content** (definitions and data, definitions only, data only: data goes into the tables that are there, in
+  foreign key order, parents first);
+- **Drop the dump's objects in the schema first** (`pg_restore --clean --if-exists`, to replace what an earlier import
+  made) and **Grants**.
+
+pg_restore writes the script (`pg_restore -f -`, without a connection of its own) and pgkiln runs it on one
+connection in **one transaction**, so an error rolls everything back:
+
+```sql
+begin;
+alter schema hr rename to pgkiln_dump_42;   -- importing hr as hr_copy while hr exists: the original steps aside
+alter schema hr_copy rename to hr;          -- only when hr_copy exists: the dump's names now mean it
+-- the dump's statements and COPY data (CREATE SCHEMA left out when the schema exists)
+alter schema hr rename to hr_copy;
+alter schema pgkiln_dump_42 rename to hr;
+commit;
+```
+
+Other sessions keep seeing the original schema until the commit. Views, column defaults, triggers, policies and
+SQL-standard function bodies refer to objects, so they follow the rename; **names inside PL/pgSQL bodies** and other
+text (dynamic SQL, a function's `SET search_path`) still say the dump's schema after a rename. Objects are owned by
+pgkiln's owner role (`--no-owner`); security labels, tablespaces, publications and subscriptions are left out.
+
+Every statement is checked before it runs: the settings pg_dump writes, CREATE / ALTER / COMMENT / GRANT / DROP of
+objects **in the dump's schema**, `COPY … FROM stdin` into its tables and `setval` of its sequences. Anything else is
+refused and rolls the import back: objects in other schemas (`meta` among them), roles and role memberships, `SET
+ROLE`, `OWNER TO`, `SET SCHEMA`, `DO`, `COPY` from or to files and programs, extensions, and psql meta-commands (other
+than pg_dump's `\restrict`). An archive with several schemas, extensions or large objects is refused at the preview.
+A dump is still code: its functions and triggers run as pgkiln's owner role. **Import only dumps you trust.**
+
+**The client programs.** pg_dump can't dump a server newer than itself, so pgkiln looks for pg_dump and pg_restore of
+the server's major version or newer, the newest it finds: `PGKILN_PG_BIN` (a directory), else
+`/usr/lib/postgresql/<n>/bin` (Debian, Ubuntu), `/usr/pgsql-<n>/bin` (RHEL), Homebrew's `postgresql@<n>`, else `PATH`.
+Without them the page says what to install (`postgresql-client-17` for a PostgreSQL 17 server). The Docker image
+includes PostgreSQL 17's client programs and keeps the files in `/app/dumps` (a volume in `deploy/compose.yaml`).
+
+| Variable | Default | |
+|---|---|---|
+| `PGKILN_PG_BIN` | (searched) | the directory of pg_dump and pg_restore |
+| `PGKILN_DUMP_DIR` | `<temp>/pgkiln-dumps` | where the files are kept; one server's directory: with several pgkiln servers, a job's file is on the server that ran it |
+| `PGKILN_DUMP_KEEP_DAYS` | 7 | days a file is kept |
+| `PGKILN_DUMP_MAX_MB` | 2048 | the largest upload |
+
+A job runs in the server that started it: when that server stops, the scheduler marks its running jobs *failed
+(interrupted)* within two minutes. Exports, uploads, imports and downloads go to the activity log (`schema_export`,
+`schema_upload`, `schema_import`, `schema_download`).
 
 ## Export and import
 

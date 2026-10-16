@@ -8932,3 +8932,120 @@ describe('sprint 101 scheduling', () => {
     }
   });
 });
+
+describe('sprint 103 dump', () => {
+  const DEV = 'sec103dev';
+  let job = 0;
+  let file = '';
+  before(async () => {
+    const { DUMP_DIR } = await import('../src/datapump.ts');
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    await mkdir(DUMP_DIR, { recursive: true });
+    file = `upload-sec103-${Date.now()}.dump`;
+    await writeFile(`${DUMP_DIR}/${file}`, 'not really an archive');
+    job = (await owner.one(`insert into meta.dump_job (kind, status, username, file_name, original_name, bytes, expires_at)
+      values ('import', 'uploaded', 'admin', $1, 'sec103.dump', 21, now() + interval '1 day') returning id::int`, [file])).id;
+  });
+  after(async () => {
+    const { DUMP_DIR } = await import('../src/datapump.ts');
+    const { rm } = await import('node:fs/promises');
+    await rm(`${DUMP_DIR}/${file}`, { force: true });
+    await owner.query(`delete from meta.dump_job where username in ('admin', $1) and (original_name like 'sec103%' or schema_name like 'sec103%' or id = $2)`, [DEV, job]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.activity_log where event like 'schema_%' and detail like '%sec103%'`);
+    delete process.env.PGKILN_DUMP_MAX_MB;
+  });
+  const signIn = async (username: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/sql/data-pump/import');
+    return b;
+  };
+  const jobs = async () => (await owner.one(`select count(*)::int as n from meta.dump_job`)).n as number;
+
+  test('administrators only: another developer gets 403 on every page and action, and no menu entry', async () => {
+    const d = await signIn(DEV);
+    for (const url of ['/builder/sql/data-pump', '/builder/sql/data-pump/export?schema=hr', '/builder/sql/data-pump/import',
+      `/builder/sql/data-pump/job/${job}`, `/builder/sql/data-pump/job/${job}/import`, `/builder/sql/data-pump/job/${job}/download`])
+      assert.equal((await d.get(url)).statusCode, 403, url);
+    await d.get('/builder/sql');
+    const n = await jobs();
+    for (const [url, form] of [['/builder/sql/data-pump/export', { schema: 'hr', mode: 'all' }], [`/builder/sql/data-pump/job/${job}/import`, { target: 'sec103_x' }],
+      [`/builder/sql/data-pump/job/${job}/cancel`, {}], [`/builder/sql/data-pump/job/${job}/delete`, {}]] as [string, Record<string, string>][])
+      assert.equal((await d.submit(url, form)).statusCode, 403, url);
+    const up = await d.upload('/builder/sql/data-pump/upload', {}, { file: { name: 'sec103-dev.dump', type: 'application/octet-stream', data: Buffer.from('PGDMP') } });
+    assert.equal(up.statusCode, 403);
+    assert.equal(await jobs(), n);
+    assert.ok(await getJobRow(job), 'the job is still there');
+    assert.doesNotMatch((await d.get('/builder/sql')).body, /href="\/builder\/sql\/data-pump"/, 'not on a developer\'s Launchpad');
+  });
+  const getJobRow = async (id: number) => (await owner.one('select id from meta.dump_job where id = $1', [id])) ?? null;
+
+  test('CSRF: a forged token starts, uploads and deletes nothing', async () => {
+    const a = await signIn('admin');
+    const n = await jobs();
+    for (const url of ['/builder/sql/data-pump/export', `/builder/sql/data-pump/job/${job}/import`, `/builder/sql/data-pump/job/${job}/delete`, `/builder/sql/data-pump/job/${job}/cancel`])
+      assert.equal((await a.post(url, { __csrf: 'forged', schema: 'hr', mode: 'all', target: 'sec103_x' })).statusCode, 403, url);
+    a.lastCsrf = 'forged';
+    assert.equal((await a.upload('/builder/sql/data-pump/upload', {}, { file: { name: 'sec103-forged.dump', type: 'application/octet-stream', data: Buffer.from('PGDMP') } })).statusCode, 403);
+    assert.equal(await jobs(), n);
+    assert.ok(await getJobRow(job));
+  });
+
+  test('uploads over PGKILN_DUMP_MAX_MB are refused and their file removed', async () => {
+    process.env.PGKILN_DUMP_MAX_MB = '1';
+    const a = await signIn('admin');
+    const n = await jobs();
+    const res = await a.upload('/builder/sql/data-pump/upload', {}, { file: { name: 'sec103-big.dump', type: 'application/octet-stream', data: Buffer.alloc(1536 * 1024, 65) } });
+    assert.equal(res.statusCode, 303);
+    assert.match((await a.get(res.headers.location as string)).body, /larger than 1 MB/);
+    assert.equal(await jobs(), n);
+    const { DUMP_DIR } = await import('../src/datapump.ts');
+    const { readdir } = await import('node:fs/promises');
+    for (const f of await readdir(DUMP_DIR)) if (f.startsWith('upload-') && f !== file) {
+      const { stat } = await import('node:fs/promises');
+      assert.ok((await stat(`${DUMP_DIR}/${f}`)).size < 1024 * 1024, `no cut-off upload left: ${f}`);
+    }
+    delete process.env.PGKILN_DUMP_MAX_MB;
+  });
+
+  test('schema names: quotes and pgkiln\'s own schemas are refused; names are escaped in pages and pg_dump arguments', async () => {
+    const a = await signIn('admin');
+    const n = await jobs();
+    for (const schema of ['hr"; drop schema hr cascade; --', 'meta', 'pg_catalog', '--help', '*'])
+      assert.equal((await a.submit('/builder/sql/data-pump/export', { schema, mode: 'all', format: 'custom', content: 'all' })).statusCode, 422, schema);
+    const tbl = await a.submit('/builder/sql/data-pump/export', { schema: 'hr', mode: 'only', t: ['emp", "meta.account'], format: 'custom', content: 'all' });
+    assert.equal(tbl.statusCode, 422);
+    assert.match(tbl.body, /Not in hr: emp&quot;, &quot;meta.account|Export and import need pg_dump/);
+    assert.equal(await jobs(), n);
+    for (const target of ['x"; drop schema hr cascade; --', 'sec103 x', '1abc', '']) {
+      const res = await a.submit(`/builder/sql/data-pump/job/${job}/import`, { target, content: 'all' });
+      assert.equal(res.statusCode, 422, target);
+      assert.doesNotMatch(res.body, /drop schema hr cascade; --"/);
+    }
+    for (const target of ['meta', 'pg_toast', 'pgkiln_x', 'information_schema'])
+      assert.equal((await a.submit(`/builder/sql/data-pump/job/${job}/import`, { target, content: 'all' })).statusCode, 422, target);
+    assert.equal((await owner.one(`select status from meta.dump_job where id = $1`, [job])).status, 'uploaded');
+    assert.equal((await owner.one(`select count(*)::int as n from pg_namespace where nspname = 'hr'`)).n, 1);
+  });
+
+  test('jobs by id only; an upload is not downloadable; file names can\'t leave the dump directory', async () => {
+    const a = await signIn('admin');
+    for (const url of ['/builder/sql/data-pump/job/..%2F..%2Fetc%2Fpasswd', '/builder/sql/data-pump/job/1e9', '/builder/sql/data-pump/job/999999999/download'])
+      assert.equal((await a.get(url)).statusCode, 404, url);
+    assert.equal((await a.get(`/builder/sql/data-pump/job/${job}/download`)).statusCode, 404, 'uploads are not served back');
+    await assert.rejects(owner.query(`update meta.dump_job set file_name = '../../etc/passwd' where id = $1`, [job]), /check constraint/);
+    const { filePath } = await import('../src/datapump.ts');
+    assert.throws(() => filePath('../x'));
+    assert.throws(() => filePath('.hidden'));
+  });
+
+  test('an import refuses statements outside the dump\'s schema before they reach the server', async () => {
+    const { checkStatement } = await import('../src/dumpscript.ts');
+    for (const sql of [`CREATE TABLE meta.sec103 (id int);`, `ALTER TABLE meta.developer ALTER COLUMN is_admin SET DEFAULT true;`, `COPY meta.developer (username) FROM stdin;`,
+      `COPY hr.emp FROM PROGRAM 'id';`, `SET ROLE postgres;`, `GRANT pg_write_server_files TO hr_app;`, `DO $$ begin end $$;`, `ALTER TABLE hr.emp OWNER TO postgres;`])
+      assert.notEqual(checkStatement(sql, 'hr'), null, sql);
+  });
+});

@@ -331,6 +331,12 @@ export function startScheduler() {
       console.error('AI requests:', (e as Error).message);
     }
     try {
+      // (116) schema export / import: interrupted jobs, files past PGKILN_DUMP_KEEP_DAYS (src/datapump.ts)
+      await (await import('./datapump.ts')).dumpTick();
+    } catch (e) {
+      console.error('schema export / import:', (e as Error).message);
+    }
+    try {
       // debug messages past their retention (at most once an hour; src/debug.ts)
       await (await import('./debug.ts')).purgeDebug();
     } catch (e) {

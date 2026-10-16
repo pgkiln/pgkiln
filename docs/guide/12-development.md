@@ -87,6 +87,12 @@ src/
   mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
   yamltext.ts              the text style of the directory export: a strict YAML subset, written and read
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
+  datapump.ts              (sprint 103, DA-16) Schema Export / Import jobs (meta.dump_job): findTools (pg_dump/pg_restore ≥ the
+                           server's major), startExport (pg_dump, argument array, PGPASSWORD), readToc/parseToc (pg_restore --list),
+                           startImport (pg_restore -f - run in one transaction between schema renames; data-only in FK order),
+                           cancel, delete, dumpTick (interrupted jobs, expired files; called by the scheduler)
+  dumpscript.ts            (sprint 103) the import's script runner: ScriptLexer (psql-style split, COPY data, \restrict),
+                           checkStatement (only the dump's schema; no roles, DO, COPY to/from files…), COPY FROM STDIN as a pg submittable
   dbroles.ts               (sprint 99, DA-13) Database Users' SQL: roleSql (CREATE/ALTER ROLE, memberships, search path, schema
                            and default privileges: only what differs from the catalog), dropSql, checkRole/checkPassword,
                            scramVerifier (SCRAM-SHA-256, SASLprep) and the password slot (maskSql for review and log, withVerifier to run)
@@ -250,6 +256,8 @@ src/
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
     querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
     users.ts               user directory and identity providers
+    datapump.ts            (sprint 103, DA-16) SQL Workshop → Schema Export / Import (/builder/sql/data-pump, administrators only):
+                           jobs, export form, upload (streamed to PGKILN_DUMP_DIR), archive preview and import options, job log, download
     db-users.ts            (sprint 99, DA-13) Administration → Database Users (/builder/db-users, administrators only): PostgreSQL
                            roles with highlights, create/edit (review the masked SQL, then Apply in one transaction), drop with
                            reassigning; pgkiln's own roles read-only, roles of applications and workspaces not dropped

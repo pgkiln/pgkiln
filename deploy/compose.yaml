@@ -43,6 +43,9 @@ services:
       # fixed inside the container (ports, Caddy); PGKILN_PORT sets the published port
       HOST: 0.0.0.0
       PORT: "3100"
+    volumes:
+      # Schema Export / Import files (PGKILN_DUMP_DIR), kept PGKILN_DUMP_KEEP_DAYS days
+      - dumps:/app/dumps
     extra_hosts:
       # a PostgreSQL on the Docker host itself: DATABASE_URL=postgres://…@host.docker.internal:5432/…
       - host.docker.internal:host-gateway
@@ -65,5 +68,6 @@ services:
 
 volumes:
   pgdata:
+  dumps:
   caddy_data:
   caddy_config:
