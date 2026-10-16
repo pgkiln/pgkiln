@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-10-16
+
 Sprint 96: the SQL Workshop's Launchpad and the builder's search (migration 109; parity handoff DA-15).
 Sprint 97: charts of a query (migration 110; parity handoff DA-6).
 Sprint 98: the Data Modeler (migration 111; parity handoff DA-10).
