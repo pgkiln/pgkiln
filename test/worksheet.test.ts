@@ -7,7 +7,8 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
-import { commandTag, pickStatements, textTable, usesClientCopy } from '../src/sqlworksheet.ts';
+import { applySubstitutions, commandTag, pickStatements, substitutionNames, textTable, usesClientCopy } from '../src/sqlworksheet.ts';
+import { formatSql } from '../src/sqlformat.ts';
 import { objectStatements } from '../src/builder/worksheet.ts';
 import { parsePlan, planText } from '../src/sqlplan.ts';
 import { Browser } from './helpers.ts';
@@ -84,6 +85,22 @@ describe('plans as a tree (sprint 92)', () => {
     assert.match(text, /Buffers: shared hit=2/);
     assert.match(text, /Execution Time: 5\.10 ms$/);
     assert.equal(parsePlan(json, false).root.selfMs, undefined);
+  });
+});
+
+describe('formatting and substitution variables (sprint 93)', () => {
+  test('Format puts each clause on its line, keeps strings, comments and dollar quotes', () => {
+    assert.equal(
+      formatSql("select e.ename, d.dname from hr.emp e join hr.dept d on d.deptno = e.deptno where e.sal between 1 and 2 and e.job = 'A;  B' order by 1"),
+      "select e.ename,\n       d.dname\nfrom hr.emp e\n  join hr.dept d on d.deptno = e.deptno\nwhere e.sal between 1 and 2\n   and e.job = 'A;  B'\norder by 1");
+    assert.equal(formatSql('SELECT a FROM t WHERE x::text = $1', 'lower'), 'select a\nfrom t\nwhere x::text = $1');
+    assert.equal(formatSql('select a from t', 'upper'), 'SELECT a\nFROM t');
+    assert.equal(formatSql("do $$ begin   raise notice 'x'; end $$;"), "do $$ begin   raise notice 'x'; end $$;\n");
+    assert.equal(formatSql('select left(name, 3), -1 from t -- why\nwhere id in (select id from u)'), 'select left(name, 3),\n       -1\nfrom t -- why\nwhere id in (select id\n             from u)');
+  });
+  test('&NAME. substitution variables outside strings and comments', () => {
+    assert.deepEqual(substitutionNames("select &col. from &tab. where a = '&no.' -- &nope.\n and b & c"), ['COL', 'TAB']);
+    assert.equal(applySubstitutions("select &col. from t where x = '&col.'", { COL: 'ename' }), "select ename from t where x = '&col.'");
   });
 });
 
@@ -266,5 +283,63 @@ describe('the SQL Worksheet page', () => {
     } finally {
       await owner.query(`delete from meta.developer where username = 'ws92dev'`);
     }
+  });
+
+  test('(sprint 93) Save, Save as new, Rename and Download; Files lists the workspace\'s scripts', async () => {
+    const b = await builder();
+    await owner.query(`delete from meta.sql_script where name like 'ws93%'`);
+    await b.get('/builder/sql/worksheet');
+    assert.match((await b.submit('/builder/sql/worksheet', { sql: 'select 93', mode: 'save', ws_name: '' })).body, /Name the worksheet to save it as a script/);
+    const saved = await b.submit('/builder/sql/worksheet', { sql: 'select 93', mode: 'save', ws_name: 'ws93 first', ws_tab: 'k93' });
+    assert.equal(saved.statusCode, 303);
+    const id = (await owner.one<{ id: number }>(`select id from meta.sql_script where name = 'ws93 first'`))!.id;
+    assert.equal(saved.headers.location, `/builder/sql/worksheet?script=${id}&wstab=k93`);
+    const page = (await b.get(saved.headers.location as string)).body;
+    assert.match(page, /data-source="script" data-script-id="\d+" data-script-name="ws93 first" data-tab="k93"/);
+    assert.match(page, />select 93<\/textarea>/);
+    assert.match(page, /Saved as the script “ws93 first”/);
+    assert.match(page, new RegExp(`<a href="/builder/sql/worksheet\\?script=${id}" aria-current="true">.*?<span>ws93 first</span>`));
+    // Save again updates it; Rename; Save as new; a name taken is refused
+    await b.submit('/builder/sql/worksheet', { sql: 'select 93, 2', mode: 'save', script_id: String(id) });
+    assert.equal((await owner.one(`select content from meta.sql_script where id = $1`, [id]))!.content, 'select 93, 2');
+    await b.submit('/builder/sql/worksheet', { sql: 'select 93, 2', mode: 'rename', script_id: String(id), ws_name: 'ws93 renamed' });
+    assert.equal((await owner.one(`select name from meta.sql_script where id = $1`, [id]))!.name, 'ws93 renamed');
+    await b.submit('/builder/sql/worksheet', { sql: 'select 93, 3', mode: 'save_as', script_id: String(id), ws_name: 'ws93 copy' });
+    assert.equal((await owner.one(`select content from meta.sql_script where name = 'ws93 copy'`))!.content, 'select 93, 3');
+    assert.match((await b.submit('/builder/sql/worksheet', { sql: 'x', mode: 'save_as', script_id: String(id), ws_name: 'ws93 copy' })).body, /A script named “ws93 copy” already exists/);
+    const dl = await b.submit('/builder/sql/worksheet', { sql: 'select 93;\n', mode: 'download', script_id: String(id) });
+    assert.equal(dl.headers['content-disposition'], 'attachment; filename="ws93_renamed.sql"');
+    assert.equal(dl.body, 'select 93;\n');
+    // SQL Scripts opens a script in the worksheet
+    assert.match((await b.get('/builder/sql/scripts')).body, new RegExp(`href="/builder/sql/worksheet\\?script=${id}"`));
+    await owner.query(`delete from meta.sql_script where name like 'ws93%'`);
+  });
+
+  test('(sprint 93) bind and substitution variables: asked for, remembered, bound as literals', async () => {
+    const b = await builder();
+    await b.get('/builder/sql/worksheet');
+    const sql = `select name from ${S}.dept where id = :ID and name <> &OTHER.`;
+    const ask = (await b.submit('/builder/sql/worksheet', { sql, mode: 'statement' })).body;
+    assert.match(ask, /<dialog class="ws-binds" id="ws-binds" open/);
+    assert.match(ask, /<input name="bind_ID" value=""/);
+    assert.match(ask, /<input name="sub_OTHER" value=""/);
+    assert.match(ask, /<button class="btn btn-hot" name="mode" value="statement">/);
+    assert.doesNotMatch(ask, /<td>Sales<\/td>/, 'nothing ran yet');
+    const out = (await b.submit('/builder/sql/worksheet', { sql, mode: 'statement', binds_given: '1', bind_ID: '1', sub_OTHER: "'x'" })).body;
+    assert.match(out, /<td>Sales<\/td>/);
+    // a value is a literal, never SQL
+    const evil = (await b.submit('/builder/sql/worksheet', { sql, mode: 'statement', binds_given: '1', bind_ID: "1 or 1=1", sub_OTHER: "'x'" })).body;
+    assert.match(evil, /invalid input syntax for type integer: &quot;1 or 1=1&quot;/);
+    // remembered for the next time; the history keeps the statement as written
+    assert.match((await b.submit('/builder/sql/worksheet', { sql, mode: 'statement' })).body, /<input name="bind_ID" value="1 or 1=1"/);
+    assert.ok(await owner.one(`select 1 as ok from meta.sql_history where username = 'admin' and sql = $1`, [sql]));
+  });
+
+  test('(sprint 93) Format as a service for the page', async () => {
+    const b = await builder();
+    await b.get('/builder/sql/worksheet');
+    const res = await b.submit('/builder/sql/worksheet/format', { sql: 'SELECT a FROM t', case: 'upper' });
+    assert.deepEqual(res.json(), { sql: 'SELECT a\nFROM t' });
+    assert.equal((await b.post('/builder/sql/worksheet/format', { __csrf: 'forged', sql: 'select 1' })).statusCode, 403);
   });
 });

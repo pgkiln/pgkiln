@@ -139,11 +139,11 @@ export async function scriptRoutes(app: FastifyInstance) {
     ).rows;
     const runs = (await owner.query('select * from meta.sql_script_run where workspace_id = $1 order by id desc limit 20', [currentWorkspace(s)])).rows;
     const list = scripts.length
-      ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Script</th><th>Updated</th><th class="num">Size</th><th>Last run</th><th>File</th></tr></thead><tbody>
+      ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Script</th><th>Updated</th><th class="num">Size</th><th>Last run</th><th>Open</th></tr></thead><tbody>
           ${scripts.map((x) => html`<tr><td><a href="${BASE}/sql/scripts/${x.id}">${x.name}</a>${x.description ? html`<br><span class="muted small">${x.description}</span>` : ''}</td>
             <td>${when(x.updated_at)}${x.updated_by ? html` <span class="muted small">by ${x.updated_by}</span>` : ''}</td><td class="num">${bytes(Number(x.size))}</td>
             <td>${x.last_run ? html`${when(x.last_run)} ${x.last_failed ? html`<span class="tag tag-error">Errors</span>` : html`<span class="tag tag-ok">OK</span>`}` : html`<span class="muted">never</span>`}</td>
-            <td><a class="btn btn-sm" href="${BASE}/sql/scripts/${x.id}/download">${icon('download')} Download</a></td></tr>`)}
+            <td><a class="btn btn-sm" href="${BASE}/sql/worksheet?script=${x.id}">${icon('code')} Worksheet</a> <a class="btn btn-sm" href="${BASE}/sql/scripts/${x.id}/download">${icon('download')} Download</a></td></tr>`)}
         </tbody></table></div>`
       : html`<p class="muted">No scripts yet. Create one, upload a .sql file, or generate one with Quick SQL.</p>`;
     return page(

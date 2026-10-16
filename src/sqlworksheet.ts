@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { isNumeric } from './runtime/report.ts';
 import { parsePlan, planText, type Plan } from './sqlplan.ts';
 import { splitScript, type ScriptStatement } from './sqlscript.ts';
+import { skipQuoted } from './binds.ts';
 import type { Client } from './db.ts';
 
 // (sprint 91, Database Actions DA-1/DA-2) The SQL Workshop's worksheet: which statements a run takes
@@ -233,4 +234,45 @@ export async function explainStatement(c: Client, s: ScriptStatement, analyze: b
   }
   r.ms = Math.round(performance.now() - started);
   return { results: [r], notices: [], failed: r.status === 'error' ? 1 : 0, ms: r.ms, plan, tree };
+}
+
+// ---------------------------------------------------------------- (sprint 93, DA-9) substitution variables
+
+/** The &NAME. substitution variables of `sql` (outside strings and comments), upper-cased. */
+export function substitutionNames(sql: string): string[] {
+  const names = new Set<string>();
+  substituteAmp(sql, (n) => {
+    names.add(n);
+    return '';
+  });
+  return [...names];
+}
+
+/** Replace each &NAME. by its value as text (SQL*Plus and APEX style: the value goes into the statement as it is). */
+export function applySubstitutions(sql: string, values: Record<string, string | undefined>): string {
+  return substituteAmp(sql, (n) => values[n] ?? '');
+}
+
+function substituteAmp(sql: string, f: (name: string) => string): string {
+  let out = '';
+  let i = 0;
+  while (i < sql.length) {
+    const prev = i > 0 ? sql[i - 1] : '';
+    if (!(sql[i] === '$' && /[A-Za-z0-9_]/.test(prev))) {
+      const end = skipQuoted(sql, i);
+      if (end !== null && end > i) {
+        out += sql.slice(i, end);
+        i = end;
+        continue;
+      }
+    }
+    const m = sql[i] === '&' ? /^&([A-Za-z_][A-Za-z0-9_]{0,62})\./.exec(sql.slice(i, i + 66)) : null;
+    if (m) {
+      out += f(m[1].toUpperCase());
+      i += m[0].length;
+      continue;
+    }
+    out += sql[i++];
+  }
+  return out;
 }

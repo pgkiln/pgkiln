@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 
 Sprint 91: the SQL Worksheet like Database Actions' SQL (parity handoff DA-1, DA-2).
 Sprint 92: the worksheet's Query Result, plans and history (migration 108; parity handoff DA-3, DA-4, DA-5).
+Sprint 93: worksheets as files and tabs, editing tools and bind variables (parity handoff DA-7, DA-9).
 
 ### Added
 - **The SQL Worksheet** (DA-1; Database Actions: SQL): SQL Commands becomes one screen with a **navigator** (schema,
@@ -31,6 +32,14 @@ Sprint 92: the worksheet's Query Result, plans and history (migration 108; parit
   it ended, its rows and time; a repeat counts on its row; search, filter by status, run again, copy. Notices show
   their time.
 - **SQL inserts** as an Unload Data format.
+- **Worksheets as files** (DA-7): Save (Ctrl+S), Save as new, Rename and Download a worksheet as a script of SQL
+  Scripts; New and Open; a **Files** tab in the navigator; several worksheets as **tabs** whose unsaved text survives
+  a reload (kept in the browser); SQL Scripts opens a script in the worksheet.
+- **Editing tools** (DA-9): Format (Ctrl+F7, keywords in lower or UPPER case), Convert case (Ctrl+B), find and
+  replace with regular expressions (Ctrl+F, Ctrl+H), Go to line (Ctrl+G), comment lines (Ctrl+/), a list of the keys,
+  Help (F1), and Load Data for the navigator's schema.
+- **Bind variables** (`:NAME`, bound as quoted literals) and **substitution variables** (`&NAME.`) are asked for in a
+  dialog before a run, and remembered for the session.
 
 ### Changed
 - Unload Data puts the session's schema first in the search path, like the worksheet.

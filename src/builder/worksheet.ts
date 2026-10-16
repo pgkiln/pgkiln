@@ -5,11 +5,13 @@ import { icon } from '../icons.ts';
 import { owner } from '../db.ts';
 import { devDbForApp } from '../workspace-db.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
-import { bicon, BASE, csrf, developer, send, shell, workshopTabs, type Req } from './ui.ts';
+import { back, bicon, BASE, csrf, developer, flash, send, shell, workshopTabs, type Req } from './ui.ts';
 import { clearCompletions } from './code-editor.ts';
 import { createTemplate, listObjects, OB_TYPES, pickSchema, SYSTEM_SCHEMAS, type Obj } from './object-browser.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
-import { explainStatement, pickStatements, runStatements, textTable, type RunMode, type WorksheetRun } from '../sqlworksheet.ts';
+import { applySubstitutions, explainStatement, pickStatements, runStatements, substitutionNames, textTable, type RunMode, type WorksheetRun } from '../sqlworksheet.ts';
+import { applyBinds, bindNames } from '../binds.ts';
+import { formatSql } from '../sqlformat.ts';
 import type { Plan, PlanNode } from '../sqlplan.ts';
 import { unloadStatement } from '../unload.ts';
 
@@ -245,16 +247,74 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const isPost = req.method === 'POST';
   // a browser posts line breaks as CRLF; the cursor's offsets count LF
   let text: string = isPost ? String(body.sql ?? '').replace(/\r\n?/g, '\n') : '';
+  // (sprint 93, DA-7) where the editor's text came from, for the page's worksheet tabs: a run, a saved script, a
+  // statement to insert (history, a template, a draft from the Object Browser) or nothing (restore the tabs)
+  let source: 'run' | 'script' | 'insert' | 'blank' = isPost ? 'run' : 'blank';
+  const scriptOf = (id: unknown) => /^\d{1,9}$/.test(String(id ?? ''))
+    ? owner.one<{ id: number; name: string; content: string }>('select id, name, content from meta.sql_script where id = $1 and workspace_id = $2', [String(id), currentWorkspace(s)])
+    : Promise.resolve(undefined);
+  let script: { id: number; name: string } | null = null;
+  if (isPost) {
+    const r = await scriptOf(body.script_id);
+    if (r) script = { id: r.id, name: r.name };
+  } else {
+    const r = await scriptOf(req.query?.script);
+    if (req.query?.new === '1') source = 'insert'; // a new, empty worksheet
+    if (r) {
+      script = { id: r.id, name: r.name };
+      text = r.content;
+      source = 'script';
+    }
+  }
+  const tabKey = /^[a-z0-9]{1,20}$/.test(String((isPost ? body.ws_tab : req.query?.wstab) ?? '')) ? String(isPost ? body.ws_tab : req.query!.wstab) : '';
+
+  // (sprint 93, DA-7) the worksheet as a file: Save, Save As, Rename (SQL Scripts of the workspace), Download
+  let fileError = '';
+  if (isPost && ['save', 'save_as', 'rename', 'download'].includes(String(body.mode ?? ''))) {
+    const name = String(body.ws_name ?? '').trim();
+    if (body.mode === 'download') {
+      const file = (script?.name ?? (name || 'worksheet')).replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'worksheet';
+      return reply.header('content-disposition', `attachment; filename="${file}.sql"`).header('cache-control', 'private, no-store').type('application/sql; charset=utf-8').send(text);
+    }
+    try {
+      if (name.length > 200) fileError = 'A name has at most 200 characters.';
+      else if (text.length > 5_000_000) fileError = 'A script holds at most 5 MB.';
+      else if (body.mode === 'save' && script) {
+        await owner.query('update meta.sql_script set content = $2, updated_by = $3, updated_at = now() where id = $1 and workspace_id = $4', [script.id, text, s.username, currentWorkspace(s)]);
+      } else if (body.mode === 'rename' && script) {
+        if (!name) fileError = 'Enter the new name.';
+        else await owner.query('update meta.sql_script set name = $2, updated_by = $3, updated_at = now() where id = $1 and workspace_id = $4', [script.id, name, s.username, currentWorkspace(s)]);
+      } else if (!name) fileError = 'Name the worksheet to save it as a script.';
+      else {
+        const r = await owner.one<{ id: number }>(
+          `insert into meta.sql_script (name, content, created_by, updated_by, workspace_id) values ($1, $2, $3, $3, $4) returning id`, [name, text, s.username, currentWorkspace(s)]);
+        script = { id: r!.id, name };
+      }
+    } catch (e) {
+      if ((e as { code?: string }).code !== '23505') throw e;
+      fileError = `A script named “${name}” already exists.`;
+    }
+    if (!fileError && script) {
+      flash(s, body.mode === 'rename' ? `Renamed to “${name}”.` : `Saved as the script “${body.mode === 'save' ? script.name : name}”.`);
+      return back(reply, s, `${BASE}/sql/worksheet?${new URLSearchParams({ script: String(script.id), ...(tabKey ? { wstab: tabKey } : {}) })}`);
+    }
+  }
   if (!isPost) {
     // a command from SQL History or the home page's Recent SQL Commands (the developer's own)
     if (/^\d{1,18}$/.test(String(req.query?.recent ?? ''))) {
       const r = await owner.one<{ detail: string }>(`select detail from meta.activity_log where id = $1 and username = $2 and event = 'sql_command'`, [req.query!.recent, s.username]);
-      if (r) text = r.detail;
+      if (r) {
+        text = r.detail;
+        source = 'insert';
+      }
     }
     // (sprint 92) a statement from SQL History (one's own, in this workspace)
     if (/^\d{1,18}$/.test(String(req.query?.history ?? ''))) {
       const r = await owner.one<{ sql: string }>(`select sql from meta.sql_history where id = $1 and username = $2 and workspace_id = $3`, [req.query!.history, s.username, currentWorkspace(s)]);
-      if (r) text = r.sql;
+      if (r) {
+        text = r.sql;
+        source = 'insert';
+      }
     }
   }
   const [schemas, searchSchema, apps] = await Promise.all([usableSchemas(db), sessionSchema(s, db), runAsApps(s)]);
@@ -263,9 +323,14 @@ async function worksheet(req: Req, reply: FastifyReply) {
     if (typeof s.state.__SQLDRAFT === 'string') {
       text = s.state.__SQLDRAFT;
       delete s.state.__SQLDRAFT;
+      source = 'insert';
     } else if (typeof req.query?.template === 'string') {
       const into = typeof req.query.schema === 'string' && schemas.includes(req.query.schema) ? req.query.schema : (searchSchema ?? 'public');
-      text = createTemplate(req.query.template, into) ?? text;
+      const t = createTemplate(req.query.template, into);
+      if (t) {
+        text = t;
+        source = 'insert';
+      }
     }
   }
   // the navigator: schema and object type
@@ -279,12 +344,38 @@ async function worksheet(req: Req, reply: FastifyReply) {
   let mode: RunMode | null = null;
   let ran: { start: number; end: number } | null = null;
   const continueOnError = body.continue_on_error === 'on';
-  if (isPost && text.trim() && body.mode !== 'nav') {
+  // (sprint 93, DA-9) bind variables (:NAME) and substitution variables (&NAME.) asked for before a run
+  let askValues: { binds: string[]; subs: string[]; mode: string } | null = null;
+  const remembered: Record<string, string> = (() => {
+    try {
+      const v = JSON.parse(s.state.__WSBINDS ?? '{}');
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch {
+      return {};
+    }
+  })();
+  if (isPost && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download'].includes(String(body.mode ?? ''))) {
     const m: RunMode = MODES.find((x) => x === body.mode) ?? 'statement';
     const allRows = body.mode === 'statement_all';
     mode = m;
     const sel = /^\d{1,9}$/.test(String(body.sel_start ?? '')) && /^\d{1,9}$/.test(String(body.sel_end ?? '')) ? { start: Number(body.sel_start), end: Number(body.sel_end) } : undefined;
-    const statements = pickStatements(text, m, sel);
+    const picked = pickStatements(text, m, sel);
+    const binds = [...new Set(picked.flatMap((x) => (x.psql ? [] : bindNames(x.sql))))].slice(0, 50);
+    const subs = [...new Set(picked.flatMap((x) => (x.psql ? [] : substitutionNames(x.sql))))].slice(0, 50);
+    if (picked.length && (binds.length || subs.length) && body.binds_given !== '1') {
+      askValues = { binds, subs, mode: String(body.mode ?? 'statement') };
+      ran = { start: picked[0].start, end: picked[picked.length - 1].end };
+    }
+    const value = (prefix: string, n: string) => String(body[`${prefix}_${n}`] ?? '').slice(0, 4000);
+    if (!askValues && (binds.length || subs.length)) {
+      for (const n of binds) remembered[`:${n}`] = value('bind', n);
+      for (const n of subs) remembered[`&${n}`] = value('sub', n);
+      s.state.__WSBINDS = JSON.stringify(Object.fromEntries(Object.entries(remembered).slice(-100)));
+    }
+    const statements = askValues ? [] : picked.map((x) => (x.psql ? x : {
+      ...x,
+      sql: applyBinds(applySubstitutions(x.sql, Object.fromEntries(subs.map((n) => [n, value('sub', n)]))), Object.fromEntries(binds.map((n) => [n, value('bind', n)]))),
+    }));
     if (statements.length) {
       ran = { start: statements[0].start, end: statements[statements.length - 1].end };
       // a connection of its own, closed afterwards: the SQL may SET ROLE or change settings, which must not
@@ -305,10 +396,12 @@ async function worksheet(req: Req, reply: FastifyReply) {
       } finally {
         c.release(true);
       }
+      // the log and history show the statements as written (with :NAME), not with the values
+      if (run) for (const r of run.results) r.sql = picked[r.n - 1]?.sql ?? r.sql;
       if (mode === 'statement' || mode === 'script') {
         clearCompletions(); // the statements may have changed tables or grants
         if (run) await recordHistory(s, run);
-        const detail = statements.map((x) => x.sql).join(';\n');
+        const detail = picked.map((x) => x.sql).join(';\n');
         await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), elapsedMs: Math.round(performance.now() - started), detail: detail.length > 2000 ? `${detail.slice(0, 2000)}…` : detail });
       }
     }
@@ -326,6 +419,15 @@ async function worksheet(req: Req, reply: FastifyReply) {
     }
   })();
   const firstError = run?.results.find((r) => r.status === 'error');
+  const files = (await owner.query<{ id: number; name: string; updated_at: string }>(
+    'select id, name, updated_at from meta.sql_script where workspace_id = $1 order by lower(name) limit 300', [currentWorkspace(s)])).rows;
+  const bindDialog = askValues ? html`<dialog class="ws-binds" id="ws-binds" open aria-labelledby="ws-binds-title" data-ws-binds>
+      <h2 id="ws-binds-title">Values for the run</h2>
+      <p class="muted small">Bind variables (<code>:NAME</code>) get a value as a quoted literal; substitution variables (<code>&amp;NAME.</code>) put the text into the statement as it is. Empty is NULL for a bind variable.</p>
+      <input type="hidden" name="binds_given" value="1">
+      <div class="ws-binds-fields">${askValues.binds.map((n) => html`<label class="field"><span class="label"><code>:${n}</code></span><input name="bind_${n}" value="${remembered[`:${n}`] ?? ''}" autocomplete="off"></label>`)}${askValues.subs.map((n) => html`<label class="field"><span class="label"><code>&amp;${n}.</code></span><input name="sub_${n}" value="${remembered[`&${n}`] ?? ''}" autocomplete="off"></label>`)}</div>
+      <div class="buttons"><button class="btn btn-hot" name="mode" value="${askValues.mode}">${icon('play')} Run</button><button class="btn" name="mode" value="nav" data-ws-binds-cancel>Cancel</button></div>
+    </dialog>` : '';
   const runsAs = asApp ? `the role ${asApp.db_role} of ${asApp.name}` : workshopRunsAs(db);
 
   const toolBtn = (m: RunMode, ic: string, label: string, key: string, hot = false) =>
@@ -333,10 +435,18 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const main = html`<div class="ws-page">
     <h1 class="sr-only">SQL Worksheet</h1>
     ${workshopTabs('sql')}
-    <form method="post" action="${BASE}/sql/worksheet" class="ws" id="ws" data-ran="${ran ? `${ran.start},${ran.end}` : ''}" data-error-line="${firstError?.errorLine ?? ''}">${csrf(s)}
+    <form method="post" action="${BASE}/sql/worksheet" class="ws" id="ws" data-ran="${ran ? `${ran.start},${ran.end}` : ''}" data-error-line="${firstError?.errorLine ?? ''}"
+      data-source="${source}" data-script-id="${script?.id ?? ''}" data-script-name="${script?.name ?? ''}" data-tab="${tabKey}">${csrf(s)}
       <button class="ws-default" name="mode" value="nav" tabindex="-1">Refresh the navigator</button>
       <input type="hidden" name="sel_start" value=""><input type="hidden" name="sel_end" value="">
+      <input type="hidden" name="script_id" value="${script?.id ?? ''}"><input type="hidden" name="ws_tab" value="${tabKey}">
+      ${bindDialog}
       <aside class="ws-nav" id="ws-nav" aria-label="Navigator">
+        <div class="ws-nav-switch" role="tablist" aria-label="Navigator" hidden>
+          <button type="button" role="tab" aria-selected="true" aria-controls="ws-nav-objects" data-ws-navtab="objects">Objects</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="ws-files" data-ws-navtab="files">Files</button>
+        </div>
+        <div id="ws-nav-objects" class="ws-nav-panel">
         <div class="ws-nav-head">
           <label class="sr-only" for="ws-schema">Schema</label>
           <select id="ws-schema" name="nav_schema" data-ws-nav>${navSchemas.map((n) => html`<option value="${n}"${n === navSchema ? raw(' selected') : ''}>${n}</option>`)}</select>
@@ -349,17 +459,45 @@ async function worksheet(req: Req, reply: FastifyReply) {
           </div>
         </div>
         <div class="ws-nav-body" id="ws-nav-body">${await navigatorTree(db, navSchema, navType)}</div>
+        </div>
+        <section id="ws-files" class="ws-nav-panel ws-files" aria-label="Files">
+          <h2 class="ws-files-title">Files <small class="muted">(SQL Scripts)</small></h2>
+          ${files.length ? html`<ul>${files.map((f) => html`<li><a href="${BASE}/sql/worksheet?script=${f.id}"${script?.id === f.id ? raw(' aria-current="true"') : ''}>${icon('file')}<span>${f.name}</span></a></li>`)}</ul>` : html`<p class="muted small">No scripts yet: Save a worksheet to make one.</p>`}
+        </section>
       </aside>
       <div class="ws-split ws-split-v" role="separator" aria-orientation="vertical" aria-label="Resize the navigator" tabindex="0" data-ws-split="nav" hidden></div>
       <section class="ws-main" aria-label="Worksheet">
         <div class="ws-toolbar" role="toolbar" aria-label="Worksheet">
           <button type="button" class="btn btn-sm btn-icon" data-ws-toggle-nav title="Hide or show the navigator" hidden>${bicon('left')}<span class="sr-only">Navigator</span></button>
+          <details class="menu ws-file"><summary class="btn btn-sm" title="Save, open, rename or download the worksheet (Ctrl+S saves)">${icon('file')}<span class="ws-file-name">${script?.name ?? 'Untitled'}</span></summary>
+            <div class="menu-panel"><div class="menu-section ws-file-panel">
+              <label class="label" for="ws-name">Name</label>
+              <input id="ws-name" name="ws_name" value="${script?.name ?? ''}" maxlength="200" autocomplete="off">
+              <div class="ws-file-actions">
+                <button class="btn btn-sm btn-hot" name="mode" value="save" title="Save (Ctrl+S)">${icon('save')} Save</button>
+                ${script ? html`<button class="btn btn-sm" name="mode" value="save_as">Save as new</button><button class="btn btn-sm" name="mode" value="rename">Rename</button>` : ''}
+                <button class="btn btn-sm" name="mode" value="download">${icon('download')} Download</button>
+              </div>
+              <div class="ws-file-actions"><a class="btn btn-sm" href="${BASE}/sql/worksheet?new=1" data-ws-new>${icon('plus')} New</a><a class="btn btn-sm" href="#ws-files" data-ws-open>Open…</a></div>
+            </div></div></details>
           ${toolBtn('statement', 'play', 'Run Statement', 'Ctrl+Enter', true)}
           ${toolBtn('script', 'file', 'Run Script', 'F5')}
           ${toolBtn('explain', 'route', 'Explain Plan', 'F10')}
           ${toolBtn('autotrace', 'activity', 'Autotrace', 'F6')}
           <label class="ws-check"><input type="checkbox" name="continue_on_error"${continueOnError ? raw(' checked') : ''}> Continue on error</label>
           <span class="ws-spacer"></span>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-format title="Format (Ctrl+F7)" hidden>${icon('sliders')}<span class="sr-only">Format</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-case title="Convert case of the selection (Ctrl+B)" hidden><span aria-hidden="true" class="ws-aa">Aa</span><span class="sr-only">Convert case</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-find title="Find and replace (Ctrl+F, Ctrl+H)" hidden>${icon('search')}<span class="sr-only">Find</span></button>
+          <a class="btn btn-sm btn-icon" href="${BASE}/sql/load?schema=${encodeURIComponent(navSchema)}" title="Load data into a table">${icon('upload')}<span class="sr-only">Load data</span></a>
+          <details class="menu ws-keys"><summary class="btn btn-sm btn-icon" title="Keyboard shortcuts">?<span class="sr-only">Keyboard shortcuts</span></summary>
+            <div class="menu-panel align-right"><div class="menu-section"><dl class="ws-keylist">
+              <dt>Ctrl+Enter</dt><dd>Run Statement</dd><dt>F5</dt><dd>Run Script</dd><dt>F10</dt><dd>Explain Plan</dd><dt>F6</dt><dd>Autotrace</dd>
+              <dt>Ctrl+S</dt><dd>Save</dd><dt>Ctrl+F7</dt><dd>Format</dd><dt>Ctrl+B</dt><dd>Convert case</dd><dt>Ctrl+F / Ctrl+H</dt><dd>Find / replace</dd>
+              <dt>Ctrl+G</dt><dd>Go to line</dd><dt>Ctrl+/</dt><dd>Comment the lines</dd><dt>Ctrl+Space</dt><dd>Suggestions</dd><dt>F1</dt><dd>Help</dd><dt>Escape</dt><dd>Leave fullscreen</dd>
+            </dl>
+            <label class="ws-kwcase" hidden>Format keywords in <select data-ws-kwcase><option value="lower">lower case</option><option value="upper">UPPER CASE</option></select></label>
+            <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>Help on the SQL Worksheet</a></div></div></details>
           <label class="ws-runas"><span>Run as</span>
             <select name="as_app" title="Who the statements run as">
               <option value="">${db === owner ? 'Owner connection' : 'Workspace login'}</option>
@@ -369,6 +507,20 @@ async function worksheet(req: Req, reply: FastifyReply) {
           <button type="button" class="btn btn-sm btn-icon" data-ws-fullscreen title="Fullscreen (Escape leaves)" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">Fullscreen</span></button>
         </div>
         <p class="ws-runs-as muted small">Runs as ${runsAs}${searchSchema ? html`; <code>${searchSchema}</code> first in the search path (<a href="${BASE}/sql">change</a>)` : ''}. Each statement commits on its own.</p>
+        ${fileError ? html`<p class="alert alert-error ws-file-error" role="alert">${fileError}</p>` : ''}
+        <div class="ws-wtabs" role="tablist" aria-label="Worksheets" hidden></div>
+        <div class="ws-findbar" hidden>
+          <label class="sr-only" for="ws-find-q">Find</label><input id="ws-find-q" type="search" placeholder="Find" autocomplete="off" data-ws-find-q>
+          <label class="sr-only" for="ws-find-r">Replace with</label><input id="ws-find-r" placeholder="Replace with" autocomplete="off" data-ws-find-r>
+          <label class="ws-check"><input type="checkbox" data-ws-find-re> Regex</label>
+          <label class="ws-check"><input type="checkbox" data-ws-find-cs> Match case</label>
+          <button type="button" class="btn btn-sm" data-ws-find-next>Next</button>
+          <button type="button" class="btn btn-sm" data-ws-find-replace>Replace</button>
+          <button type="button" class="btn btn-sm" data-ws-find-all>Replace all</button>
+          <label class="sr-only" for="ws-goto">Go to line</label><input id="ws-goto" type="number" min="1" placeholder="Line" class="ws-goto" data-ws-goto>
+          <span class="muted small" data-ws-find-msg></span>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-find-close title="Close (Escape)">${icon('x-circle')}<span class="sr-only">Close</span></button>
+        </div>
         <div class="ws-editor">
           <textarea id="ws-sql" name="sql" aria-label="SQL" class="code sql-editor" rows="14" spellcheck="false" data-code="plpgsql">${text || (isPost ? '' : 'select current_user, version();')}</textarea>
         </div>
@@ -392,6 +544,15 @@ export async function worksheetRoutes(app: FastifyInstance) {
   }
   // (before sprint 61 SQL Commands was /builder/sql: a post there still runs)
   app.post(`${BASE}/sql`, worksheet);
+
+  // (sprint 93, DA-9) Format: the worksheet's text laid out, keywords in the case asked for
+  app.post(`${BASE}/sql/worksheet/format`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const sql = String(req.body?.sql ?? '');
+    if (sql.length > 1_000_000) return reply.code(413).send({ error: 'Too long to format.' });
+    return reply.header('Cache-Control', 'no-store').send({ sql: formatSql(sql, req.body?.case === 'upper' ? 'upper' : 'lower') });
+  });
 
   // the navigator for another schema or object type (the page swaps it in without a reload)
   app.get(`${BASE}/sql/worksheet/navigator`, async (req: Req, reply) => {
