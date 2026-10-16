@@ -233,6 +233,13 @@ Every builder page has the same frame, modelled on an IDE:
 
 On phones the rail gets narrower and the breadcrumb shows only the current page.
 
+The builder's look comes from design tokens at the top of `public/builder.css` (sprint 105): CSS custom properties
+for colours (a warm neutral palette with the kiln's ember for primary buttons, links, focus rings and selections),
+surfaces and their shadows, corner radii, the type scale and transitions, in a light and a dark set. The rail, the
+toolbar and the status bar stay dark in both themes. Transitions are switched off when the operating system asks
+for reduced motion. The builder uses the system's fonts (Inter when it is installed); it loads nothing from
+other sites.
+
 (sprint 86) An address under `/builder` that leads nowhere (a deleted application or page, a typo, an
 application of a workspace you are not a member of) shows a **Page not found** page in the builder's
 theme with a link to the App Builder home; a server error shows **Something went wrong** (the error

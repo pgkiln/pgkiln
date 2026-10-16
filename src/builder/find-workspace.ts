@@ -6,7 +6,7 @@ import { documentShell } from '../layout.ts';
 import { senderAllowed, sendWith, type MailService } from '../mail/mail.ts';
 import { clientIp, getSession, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { publicUrl } from '../sso.ts';
-import { back, BASE, builderHead, csrf, flash, THEME_COOKIE, validTheme, type Req } from './ui.ts';
+import { back, BASE, brandMark, builderHead, csrf, flash, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 
 // "Find my workspace" on the builder's sign-in page (migration 096; APEX: Find
 // My Workspace): a developer who forgot which workspace to sign in to enters
@@ -50,7 +50,7 @@ const page = (s: Session, theme: ReturnType<typeof validTheme>, body: Raw) =>
     'Find my workspace · Builder',
     html`<main class="signin">
       <section class="signin-hero" aria-label="pgkiln">
-        <span class="signin-logo" aria-hidden="true">pg</span>
+        <span class="signin-logo" aria-hidden="true">${brandMark()}</span>
         <h1 class="signin-title">pgkiln</h1>
         <p class="signin-tagline">Build data applications on PostgreSQL, in SQL you can trust</p>
       </section>
