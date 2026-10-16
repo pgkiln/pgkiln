@@ -687,6 +687,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_commands: '/builder/sql/commands',
         // (sprint 91) the SQL Worksheet
         sql_worksheet: '/builder/sql/worksheet?schema=hr',
+        // (sprint 95) Table Properties
+        table_editor: '/builder/sql/objects/table?o=hr.emp',
         gallery: '/builder/gallery',
         gallery_starters: '/builder/gallery?tab=starters',
         app_groups: '/builder/app-groups',

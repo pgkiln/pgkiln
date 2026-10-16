@@ -603,3 +603,63 @@
     load(a.dataset.objOpen);
   });
 })();
+
+// (sprint 95) Table Properties: sections as tabs, rows added, moved and removed without a round trip.
+(() => {
+  'use strict';
+  const form = document.querySelector('form.te');
+  if (!form) return;
+  for (const el of form.querySelectorAll('[hidden]')) el.hidden = false;
+  const show = (key) => {
+    for (const b of form.querySelectorAll('[data-te-show]')) b.setAttribute('aria-selected', String(b.dataset.teShow === key));
+    for (const sct of form.querySelectorAll('[data-te-section]')) sct.hidden = sct.dataset.teSection !== key;
+  };
+  show(form.dataset.teTab || 'columns');
+  form.querySelector('.te-tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-te-show]'); if (b) show(b.dataset.teShow); });
+  // a preview opens on the DDL tab: Enter in a field previews instead of applying
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('input:not([type=checkbox])')) { e.preventDefault(); form.requestSubmit(form.querySelector('button[value=preview]')); }
+  });
+  // spare rows: one shows, the others come with Add
+  for (const grid of form.querySelectorAll('[data-te-grid]')) {
+    // an empty list keeps one empty row to fill in; the others wait for Add
+    const real = grid.querySelectorAll('tr.te-row:not(.te-spare)').length;
+    [...grid.querySelectorAll('tr.te-spare')].forEach((r, i) => { r.hidden = real > 0 || i > 0; });
+    if (grid.dataset.teGrid !== 'col' && !grid.parentElement.parentElement.querySelector(`[data-te-add="${grid.dataset.teGrid}"]`)) {
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-sm', textContent: '+ Add' });
+      b.dataset.teAdd = grid.dataset.teGrid;
+      grid.closest('.table-wrap').after(b);
+    }
+  }
+  const renumber = (row, prefix, i) => {
+    for (const el of row.querySelectorAll('[name]')) el.name = el.name.replace(new RegExp(`^${prefix}\\.\\d+\\.`), `${prefix}.${i}.`);
+    for (const el of row.querySelectorAll('[id]')) el.id = `${el.id.replace(/-n\d+$/, '')}-n${i}`;
+    for (const el of row.querySelectorAll('label[for]')) el.htmlFor = `${el.htmlFor.replace(/-n\d+$/, '')}-n${i}`;
+  };
+  form.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-te-add]');
+    if (add) {
+      const grid = form.querySelector(`[data-te-grid="${add.dataset.teAdd}"]`);
+      const hidden = grid.querySelector('tr.te-spare[hidden]');
+      if (hidden) { hidden.hidden = false; hidden.querySelector('input:not([type=hidden])')?.focus(); return; }
+      const rows = grid.tBodies[0].rows;
+      const copy = rows[rows.length - 1].cloneNode(true);
+      for (const el of copy.querySelectorAll('input')) { if (el.type === 'checkbox') el.checked = false; else el.value = ''; }
+      renumber(copy, add.dataset.teAdd, rows.length);
+      grid.tBodies[0].append(copy);
+      copy.querySelector('input:not([type=hidden])')?.focus();
+    }
+    const up = e.target.closest('[data-te-up], [data-te-down]');
+    if (up) {
+      const row = up.closest('tr');
+      const other = up.matches('[data-te-up]') ? row.previousElementSibling : row.nextElementSibling;
+      if (!other) return;
+      if (up.matches('[data-te-up]')) other.before(row); else other.after(row);
+      // the order of the fields is the order of the columns: number the rows again
+      [...row.parentElement.rows].forEach((r, i) => renumber(r, 'col', i));
+      up.focus();
+    }
+    const drop = e.target.closest('.te-drop input');
+    if (drop) drop.closest('tr').classList.toggle('te-removed', drop.checked);
+  });
+})();

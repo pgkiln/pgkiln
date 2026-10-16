@@ -282,4 +282,35 @@ describe('SQL Worksheet', () => {
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
+
+  test('(sprint 95) Table Properties: tabs, add and move a column, preview, apply', async () => {
+    await owner.query(`drop table if exists ${S}.e2e95`);
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/objects/table?schema=${S}`);
+    assert.equal(await page.locator('[data-te-section]:not([hidden])').count(), 1, 'one section at a time');
+    await page.fill('#te-name', 'e2e95');
+    const rows = page.locator('[data-te-grid=col] tbody tr:not([hidden])');
+    assert.equal(await rows.count(), 1, 'one empty row to start');
+    await rows.nth(0).locator('input[name$=".name"]').fill('title');
+    await rows.nth(0).locator('input[name$=".type"]').fill('text');
+    await page.locator('[data-te-add=col]').click();
+    await rows.nth(1).locator('input[name$=".name"]').fill('id');
+    await rows.nth(1).locator('input[name$=".type"]').fill('bigint');
+    await rows.nth(1).locator('input[name$=".pk"]').check();
+    await rows.nth(1).locator('[data-te-up]').click();
+    assert.equal(await rows.nth(0).locator('input[name$=".name"]').inputValue(), 'id', 'moved up');
+    await page.locator('[data-te-show=checks]').click();
+    await page.locator('[data-te-grid=ck] input[name$=".name"]').first().fill('e2e95_title_ck');
+    await page.locator('[data-te-grid=ck] input[name$=".expr"]').first().fill('length(title) > 0');
+    await Promise.all([page.waitForNavigation(), page.locator('button[value=preview]').click()]);
+    assert.equal(await page.locator('[data-te-show=ddl]').getAttribute('aria-selected'), 'true');
+    assert.match(await page.locator('.te-ddl').textContent() ?? '', /create table ws91e2e\.e2e95 \(\n {2}id bigint,\n {2}title text,\n {2}primary key \(id\),\n {2}constraint e2e95_title_ck check \(length\(title\) > 0\)\n\);/);
+    await Promise.all([page.waitForNavigation(), page.locator('button[value=apply]').click()]);
+    assert.match(await page.locator('h1').textContent() ?? '', /Table ws91e2e\.e2e95/);
+    assert.ok(await owner.one(`select to_regclass('${S}.e2e95') as t`));
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `no page overflow (${overflow}px)`);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
 });

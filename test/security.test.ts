@@ -8307,3 +8307,30 @@ describe('sprint 94 object menus', () => {
     assert.equal((await king.get(`/builder/sql/objects/panel?${new URLSearchParams({ schema: 'sec94<i>', k: 'table', o: ref })}`)).headers.location, '/builder/login');
   });
 });
+
+describe('sprint 95 Table Properties', () => {
+  after(async () => {
+    await owner.query(`drop schema if exists sec95 cascade`);
+  });
+  test('CSRF, developers only, expressions are one expression, names are escaped', async () => {
+    await owner.query(`drop schema if exists sec95 cascade; create schema sec95; create table sec95."<img src=x onerror=alert(95)>" (a int)`);
+    const a = new Browser();
+    await a.get('/builder/login');
+    await a.post('/builder/login', { __csrf: a.lastCsrf, username: 'admin', password: 'admin' });
+    const page = (await a.get(`/builder/sql/objects/table?${new URLSearchParams({ o: 'sec95."<img src=x onerror=alert(95)>"' })}`)).body;
+    assert.doesNotMatch(page, /<img src=x/);
+    const form = { schema: 'sec95', name: 't', 'col.0.name': 'a', 'col.0.type': 'int', mode: 'apply' };
+    assert.equal((await a.post('/builder/sql/objects/table', { __csrf: 'forged', ...form })).statusCode, 403);
+    for (const evil of <Record<string, string>[]>[
+      { 'col.0.def': '1); drop schema sec95 cascade; --' }, { 'ck.0.name': 'c', 'ck.0.expr': 'true) /* x */' }, { 'ix.0.name': 'i', 'ix.0.cols': 'a); drop table x; --' },
+      { part_by: 'range', part_key: 'a); drop table x' }, { 'col.0.type': 'int) ; drop table x; --' },
+    ]) {
+      const res = await a.post('/builder/sql/objects/table', { __csrf: a.lastCsrf, ...form, ...evil });
+      assert.equal(res.statusCode, 200, JSON.stringify(evil));
+      assert.match(res.body, /class="alert alert-error"/, JSON.stringify(evil));
+    }
+    assert.equal((await owner.one(`select to_regclass('sec95.t') as t`))!.t, null);
+    const king = await as('king');
+    assert.equal((await king.post('/builder/sql/objects/table', { __csrf: king.lastCsrf, ...form })).headers.location, '/builder/login');
+  });
+});
