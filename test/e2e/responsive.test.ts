@@ -895,6 +895,19 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           return { data_pump: '/builder/sql/data-pump', data_pump_export: '/builder/sql/data-pump/export?schema=hr', data_pump_import: '/builder/sql/data-pump/import',
             data_pump_job: `/builder/sql/data-pump/job/${ids[0]}`, data_pump_import_form: `/builder/sql/data-pump/job/${ids[1]}/import` };
         })()),
+        // (sprint 101) SQL Workshop › Scheduling: pg_cron (or test/pgcron-mock.ts) with a job, a long one and runs
+        ...(await (async () => {
+          const { mockPgCron, addRun } = await import('../pgcron-mock.ts');
+          await mockPgCron();
+          await owner.query(`select cron.unschedule(jobid) from cron.job where jobname like 'e2e %'`);
+          const id = (await owner.one(`select cron.schedule_in_database('e2e nightly vacuum', '0 2 * * *', 'vacuum analyze', current_database()) as id`)).id;
+          await owner.query(`select cron.schedule_in_database($1, '*/15 8-18 * jan-mar 1-5', $2, current_database(), active := false)`,
+            ['e2e a job with a rather long name to see how it wraps on a phone ' + 'x'.repeat(60), 'select ' + 'a_long_column_name_without_spaces, '.repeat(12) + '1']);
+          await addRun(String(id), 'succeeded', 'VACUUM');
+          await addRun(String(id), 'failed', 'ERROR: a long error message without spaces ' + 'e'.repeat(120));
+          return { scheduling: '/builder/sql/scheduling', scheduling_new: '/builder/sql/scheduling/new', scheduling_job: `/builder/sql/scheduling/job/${id}`,
+            scheduling_history: '/builder/sql/scheduling/history', scheduling_purge: '/builder/sql/scheduling/history/purge' };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -916,6 +929,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query(`delete from meta.ai_usage where service = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.ai_service where name = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like 'E2E %'`, [appId]);
+        await owner.query(`select cron.unschedule(jobid) from cron.job where jobname like 'e2e %'`);
+        await (await import('../pgcron-mock.ts')).dropMockPgCron();
       }
       // (sprint 35) Sample Data: a preview (inserted and rolled back) of the HR example's saved generator
       {

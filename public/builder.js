@@ -1234,3 +1234,51 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
   // the button is for pages without JavaScript
   picker.form.querySelector('button')?.setAttribute('hidden', '');
 })();
+
+// (sprint 101, DA-12) SQL Workshop › Scheduling: the schedule builder's five fields and the common schedules fill the
+// schedule; the preview (in words, next five runs) follows as you type. Without JavaScript the Use / Preview buttons
+// post the form and it comes back with the same.
+(() => {
+  const form = document.querySelector('form[data-cron-form]');
+  const input = form?.querySelector('[data-cron-schedule]');
+  const preview = form?.querySelector('[data-cron-preview]');
+  if (!form || !input || !preview) return;
+  const fields = [...form.querySelectorAll('[data-cron-field]')];
+  let timer = 0;
+  let seq = 0;
+  const refresh = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const mine = ++seq;
+      try {
+        const res = await fetch(`${preview.dataset.cronPreview}?schedule=${encodeURIComponent(input.value)}`, { headers: { accept: 'text/html' }, credentials: 'same-origin' });
+        if (!res.ok || mine !== seq) return;
+        const doc = new DOMParser().parseFromString(`<div>${await res.text()}</div>`, 'text/html');
+        preview.replaceChildren(...doc.body.firstElementChild.childNodes);
+      } catch {
+        /* the Preview button still works */
+      }
+    }, 250);
+  };
+  const split = () => {
+    const parts = input.value.trim().split(/\s+/);
+    if (parts.length === 5) fields.forEach((f, i) => (f.value = parts[i] === '*' ? '' : parts[i]));
+  };
+  input.addEventListener('input', () => {
+    split();
+    refresh();
+  });
+  for (const f of fields) {
+    f.addEventListener('input', () => {
+      input.value = fields.map((x) => x.value.trim() || '*').join(' ');
+      refresh();
+    });
+  }
+  form.querySelector('[data-cron-preset]')?.addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    input.value = e.target.value;
+    split();
+    refresh();
+  });
+  for (const b of form.querySelectorAll('[data-cron-nojs]')) b.hidden = true;
+})();

@@ -102,7 +102,41 @@ Links), added on the workspace's page by administrators and the workspace's admi
 `https://` URL, an optional description and an order. While the workspace is current an **Extensions** icon in the
 rail opens them, each in a new tab (`rel="noopener noreferrer"`).
 
-### Export and import
+#### Scheduling with pg_cron
+
+(sprint 101; Database Actions: Scheduling) **SQL Workshop → Scheduling** (administrators only) manages the jobs of
+[pg_cron](https://github.com/citusdata/pg_cron), the PostgreSQL extension that runs SQL on a schedule inside the
+database server. pgkiln needs pg_cron 1.4 or later, created in pgkiln's database; the page says what is missing when
+it isn't (the package, `shared_preload_libraries = 'pg_cron'`, `cron.database_name`, `create extension pg_cron`).
+Without pg_cron it lists **pgkiln's own scheduled work** read-only: every application's automations (Shared Components
+→ Automations, [chapter 6](06-processing.md)) with their schedule, next and last run, and the latest background process
+jobs. With pg_cron that list is behind a toggle under the jobs.
+
+- **Jobs** (`cron.job`): name, the command, the schedule with its meaning in words (*At 02:00, every day*), the **next
+  run**, the last run's status and time (and how many of the last ten failed), database and the role it runs as;
+  a search field. Times are in pg_cron's time zone (`cron.timezone`, GMT unless set). pg_cron shows each role only its
+  own jobs: when pgkiln's owner connection is neither a superuser nor `BYPASSRLS`, the page says so.
+- **Create job** / **Edit**: name (unique per role), database, *Run as* (a role that can sign in; only a superuser
+  schedules for another role), *Active*, the command (SQL, run outside a transaction block as pg_cron runs it, so
+  `vacuum` works) and the **schedule**: five cron fields, `n seconds` (1 to 59) or `@hourly` … `@yearly`, `@reboot`.
+  A **schedule builder** (one field each for minute, hour, day of month, month and day of week, `$` for the last day
+  of the month) and **common schedules** fill it in; the **preview** shows it in words with the **next five runs**,
+  as you type (without JavaScript: the *Use* and *Preview* buttons). pgkiln explains schedules as pg_cron reads them:
+  lists, ranges, steps, month and day names, 7 for Sunday, and a day matching either the day of month or the day of
+  week when both are restricted.
+- **Review SQL** shows the statements (`cron.schedule_in_database`, `cron.alter_job` with only what changed, an
+  `update cron.job` for a new name; the command dollar-quoted); **Apply** runs them in one transaction and only if they
+  are still what was reviewed. **Disable / Enable** (`cron.alter_job(…, active := …)`) applies at once and shows the
+  statement; **Unschedule…** (`cron.unschedule`) after a review. Every change goes to the activity log (event `cron_job`).
+- **Run now**: pg_cron has no run-now, so pgkiln runs the job's stored command once itself: a new connection to the
+  job's database with the owner connection's login, `SET ROLE` to the job's role (the owner must be allowed to), no
+  transaction block around it, a 10-minute statement timeout. The page shows the result, the duration and notices.
+  The run is not in pg_cron's history; the activity log has it (event `cron_run_now`).
+- **Run history** (`cron.job_run_details`, newest first, 200 at most): status, start, duration and message, filtered
+  by job, status or a text in the message or command. **Purge…** deletes runs older than 7, 30 or 90 days, or all
+  (of every job or one), after showing the `delete` and how many runs it removes: pg_cron keeps every run until then.
+
+## Export and import
 
 Workspace utilities → **Export and import** (`/builder/workspace-export`; APEX: Workspace Utilities → Export), for
 administrators and the workspace's administrators: the current workspace's components as one JSON file (format
@@ -1481,6 +1515,8 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     Database Actions: Database Users): see [Database users](#database-users).
   - **Schema Export / Import** (administrators only; `/builder/sql/data-pump`; sprint 103, Database Actions: Data
     Pump): see [Schema export and import](#schema-export-and-import).
+  - **Scheduling** (administrators only; `/builder/sql/scheduling`, on the Launchpad under *Administration*, the
+    Utilities page and the search; sprint 101, Database Actions: Scheduling): [pg_cron](#scheduling-with-pg_cron) jobs.
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
 

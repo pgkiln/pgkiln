@@ -96,6 +96,10 @@ src/
   dbroles.ts               (sprint 99, DA-13) Database Users' SQL: roleSql (CREATE/ALTER ROLE, memberships, search path, schema
                            and default privileges: only what differs from the catalog), dropSql, checkRole/checkPassword,
                            scramVerifier (SCRAM-SHA-256, SASLprep) and the password slot (maskSql for review and log, withVerifier to run)
+  cron-schedule.ts         (sprint 101, DA-12) pg_cron schedules without a database: parseSchedule (cron fields, $, n seconds, macros),
+                           nextRuns in a time zone, describeSchedule in words, the builder's presets and fields
+  pgcron.ts                (sprint 101, DA-12) pg_cron for SQL Workshop → Scheduling: cronState (installed, loaded, cron.database_name,
+                           access), jobs and runs, jobSql/activeSql/unscheduleSql/purgeSql (reviewed, then applySql), runNow
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGKILN_SECRET_KEY
   websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
                            tokens) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
@@ -257,6 +261,9 @@ src/
     db-users.ts            (sprint 99, DA-13) Administration → Database Users (/builder/db-users, administrators only): PostgreSQL
                            roles with highlights, create/edit (review the masked SQL, then Apply in one transaction), drop with
                            reassigning; pgkiln's own roles read-only, roles of applications and workspaces not dropped
+    scheduling.ts          (sprint 101, DA-12) SQL Workshop → Scheduling (/builder/sql/scheduling, administrators only): pg_cron jobs
+                           with next runs, create/edit with a schedule builder and preview (review the SQL, then Apply), disable,
+                           run now, unschedule, run history and purge; without pg_cron the install note and pgkiln's automations
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
@@ -347,6 +354,9 @@ test/
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
   app-from-file.test.ts    Create → From a file: proposed names and types, app + table + rows + pages, row errors, login, validation
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
+  cron-schedule.test.ts    (sprint 101) pg_cron schedules: parsing and errors, next runs across time zones and daylight saving, words
+  scheduling.test.ts       (sprint 101) SQL Workshop → Scheduling: the SQL, the no-pg_cron page, create/edit/disable/run now/unschedule,
+                           history and purge; against pg_cron when the test database has it, else test/pgcron-mock.ts (a stand-in)
   sql-charts.test.ts       (sprint 97) the worksheet's Chart tab, saving a chart, the Charts dashboard, a chart's page, read-only runs
   launchpad.test.ts        (sprint 96) Launchpad groups, pins (builder pages only, at most 24), the search (JSON and page)
   tabledef.test.ts         (sprint 95) table definitions round trip: CREATE, read, ALTER, read again; mistakes
