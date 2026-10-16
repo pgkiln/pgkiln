@@ -232,7 +232,7 @@ function reviewForm(s: Session, spec: RoleSpec, stmts: string[], o: { isNew: boo
         <div class="field"><label class="label" for="f_confirm">Confirm password</label><input id="f_confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></div>
       </div><small class="help">At least 8 characters. It is hashed by pgkiln before it reaches the database, and it is not kept.</small>`) : ''}
       <div class="buttons">${stmts.length ? html`<button class="btn btn-hot" name="mode" value="apply">${icon('check')} Apply</button>` : ''}
-        <button class="btn" name="mode" value="edit" formnovalidate>${icon('back')} Back to the form</button></div>
+        <button class="btn" name="mode" value="edit" formnovalidate>Back to the form</button></div>
     </form>`;
 }
 

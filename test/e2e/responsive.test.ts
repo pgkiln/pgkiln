@@ -868,6 +868,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
             backups: `/builder/apps/${appId}/backups`, availability: `/builder/apps/${appId}/availability`, feedback: `/builder/apps/${appId}/feedback`,
           };
         })()),
+        // (sprint 99) Administration → Database Users: the list, a new role's form and a role
+        db_users: '/builder/db-users', db_user_new: '/builder/db-users/new', db_user: '/builder/db-users/role/hr_app',
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
