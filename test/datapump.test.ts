@@ -214,6 +214,10 @@ describe('schema export and import', { skip: noTools }, () => {
     const list = await b.get('/builder/sql/data-pump');
     assert.equal(list.statusCode, 200);
     assert.match(list.body, /Schema Export \/ Import/);
+    // on the Launchpad (Administration) and in the search (Ctrl+K) for administrators
+    assert.match((await b.get('/builder/sql')).body, /<a href="\/builder\/sql\/data-pump">/);
+    const found = JSON.parse((await b.get('/builder/palette?q=pg_dump&format=json')).body);
+    assert.ok(found.results.some((r: { href: string }) => r.href === '/builder/sql/data-pump'));
     assert.match((await b.get(`/builder/sql/data-pump/export?schema=${S}`)).body, /name="t" value="dept"/);
     const res = await b.submit('/builder/sql/data-pump/export', { schema: S, format: 'custom', content: 'all', privileges: '1', mode: 'all' });
     assert.equal(res.statusCode, 303);
