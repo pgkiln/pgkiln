@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 Sprint 96: the SQL Workshop's Launchpad and the builder's search (migration 109; parity handoff DA-15).
 Sprint 97: charts of a query (migration 110; parity handoff DA-6).
 Sprint 98: the Data Modeler (migration 111; parity handoff DA-10).
+Sprint 99: Administration → Database Users (parity handoff DA-13).
 
 ### Added
 - **The Launchpad** (DA-15; Database Actions: the Launchpad): the SQL Workshop home starts with *Pinned & recently
@@ -23,6 +24,14 @@ Sprint 98: the Data Modeler (migration 111; parity handoff DA-10).
   lines with crow's feet (dashed when optional). Add objects by search (`*` for all), drag and save positions,
   undo / redo, zoom, fit, auto layout, a mini-map; export SVG or PNG, print; Generate DDL of the shown objects and a
   data dictionary (HTML); a box opens Table Properties. Without JavaScript the diagram is a server-drawn SVG.
+- **Database Users** (DA-13; Database Actions: Database Users; administrators only): Administration → *Database
+  users* lists the PostgreSQL roles with sign-in, attributes, connection limit, expiry, memberships and what they
+  own, with filters for passwords expiring within 30 days, BYPASSRLS roles and group roles that own objects. Create
+  and change roles (login, password, valid until, connection limit, member of, search path, schema usage and create,
+  default and existing-table privileges): the SQL is reviewed with the password masked, then applied in one
+  transaction. Passwords become SCRAM-SHA-256 verifiers in pgkiln and are never shown or logged. Drop a role after
+  reassigning or dropping what it owns. pgkiln's own roles are read-only; roles used by applications or workspaces
+  can't be dropped.
 - **Search** (**Ctrl/Cmd + K**, or the header's field on every builder page): tools, applications, pages and
   database objects by name; a page of results without JavaScript.
 
