@@ -702,6 +702,10 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_object_report: '/builder/sql/utilities/reports?r=unindexed-foreign-keys',
         sql_about: '/builder/sql/utilities/about',
         sql_monitor: '/builder/sql/utilities/monitor',
+        // (sprint 100) RESTful Services: the list and a published object
+        sql_rest: '/builder/sql/rest',
+        sql_rest_object: `/builder/sql/rest/${(await owner.one(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, roles)
+          values ($1, 'hr', 'dept', 'dept', '{GET,POST,PUT,DELETE}', '{manager}') on conflict (app_id, schema_name, object_name) do update set enabled = true returning id`, [appId])).id}`,
         // (sprint 67) REST source catalogs, a data source from one, the workspace's export and import
         rest_catalogs: '/builder/rest-catalogs',
         ...(await (async () => {
