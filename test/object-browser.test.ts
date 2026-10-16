@@ -90,7 +90,7 @@ describe('Object Browser', () => {
     const b = await builder();
     await b.get(`/builder/sql/objects?schema=${S}&k=table&o=${S}.emp&tab=columns`);
     const res = await b.submit('/builder/sql/objects/alter', { schema: S, table: `${S}.emp`, action: 'add', column: 'hired', type: 'date', not_null: '' });
-    assert.equal(res.headers.location, '/builder/sql/commands');
+    assert.equal(res.headers.location, '/builder/sql/worksheet');
     assert.match((await b.get('/builder/sql/commands')).body, /alter table ob75\.emp add column &quot;hired&quot; date;<\/textarea>/);
     assert.equal((await owner.query(`select 1 from information_schema.columns where table_schema = '${S}' and table_name = 'emp' and column_name = 'hired'`)).rowCount, 0);
     // the draft is shown once
@@ -106,7 +106,7 @@ describe('Object Browser', () => {
     ]) {
       await b.get('/builder/sql/objects');
       const r = await b.submit('/builder/sql/objects/alter', { schema: S, table: `${S}.emp`, ...bad });
-      assert.notEqual(r.headers.location, '/builder/sql/commands', JSON.stringify(bad));
+      assert.notEqual(r.headers.location, '/builder/sql/worksheet', JSON.stringify(bad));
     }
     await b.get('/builder/sql/objects');
     assert.equal((await b.submit('/builder/sql/objects/alter', { schema: S, table: 'pg_catalog.pg_authid', action: 'drop', column: 'rolname' })).headers.location, '/builder/sql/objects');
@@ -160,7 +160,7 @@ describe('Object Browser (sprint 89, SQL-4)', () => {
     assert.match(page, /<div class="ob-toolbar" role="toolbar" aria-label="Columns">/);
     for (const label of ['Add column', 'Modify column', 'Rename column', 'Drop column']) assert.match(page, new RegExp(`<summary class="btn btn-sm"><svg[^>]*>[\\s\\S]*?</svg> ${label}</summary>`));
     let res = await b.submit('/builder/sql/objects/alter', { schema: S, table: `${S}.emp`, action: 'modify', column: 'name', type: 'varchar(80)', nullable: 'null', default_action: 'set', default: "'unknown'" });
-    assert.equal(res.headers.location, '/builder/sql/commands');
+    assert.equal(res.headers.location, '/builder/sql/worksheet');
     assert.match((await b.get('/builder/sql/commands')).body,
       /alter table ob75\.emp\n {2}alter column &quot;name&quot; type varchar\(80\) using &quot;name&quot;::varchar\(80\),\n {2}alter column &quot;name&quot; drop not null,\n {2}alter column &quot;name&quot; set default &#39;unknown&#39;;<\/textarea>/);
     assert.equal((await owner.one(`select attnotnull from pg_attribute where attrelid = '${S}.emp'::regclass and attname = 'name'`)).attnotnull, true, 'nothing ran');

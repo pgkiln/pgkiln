@@ -20,7 +20,7 @@ Then open http://127.0.0.1:3100/a/tasks and sign in as `ann` / `ann-password` or
 
 ## Step 1: the table and the business logic
 
-Open **SQL Workshop → SQL Commands** and run:
+Open **SQL Workshop → SQL Worksheet**, paste this and press **Run Script** (F5):
 
 ```sql
 create schema tasks;

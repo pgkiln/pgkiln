@@ -213,7 +213,7 @@ function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; r
   const check = (name: string, on: boolean, label: string, help: string) =>
     html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
   return region('Workspace preferences', html`<form method="post" action="${BASE}/workspaces/${w.id}/preferences">${csrf(s)}
-      ${check('sql_workshop', w.sql_workshop, 'Enable the SQL Workshop', 'Off: SQL Commands, the Object Browser, SQL scripts, data loading and unloading, Quick SQL, the query builder, DDL, Compare and AI are refused while this workspace is current, for every developer.')}
+      ${check('sql_workshop', w.sql_workshop, 'Enable the SQL Workshop', 'Off: the SQL Worksheet, the Object Browser, SQL scripts, data loading and unloading, Quick SQL, the query builder, DDL, Compare and AI are refused while this workspace is current, for every developer.')}
       ${check('rest_services', w.rest_services, 'Enable RESTful services', 'Off: the REST modules of this workspace\'s applications answer 404 (Not found) at /a/<alias>/rest/…; they can still be edited.')}
       <div class="buttons"><button class="btn">Save preferences</button></div></form>`, '', 'preferences');
 }

@@ -507,7 +507,7 @@ matures. Privileges show up in **SQL Workshop → Object Browser**.
 A `data_load` process loads files as the app role too, also with a data load definition: a
 definition naming a table the role can't write fails like any other insert, and a process only
 finds the definitions of its own application. XML files with a document type declaration are
-refused ([chapter 16](16-files.md#data-loading)). The SQL Workshop (SQL Commands, SQL Scripts,
+refused ([chapter 16](16-files.md#data-loading)). The SQL Workshop (the SQL Worksheet, SQL Scripts,
 Quick SQL, Load Data, Unload Data, Sample Data) runs as the owner instead, so every developer can change any table: keep
 developer accounts to people you trust with the database.
 

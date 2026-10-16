@@ -7,6 +7,7 @@ import { owner } from '../db.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { clearCompletions } from './code-editor.ts';
 import { scriptRoutes } from './scripts.ts';
+import { worksheetRoutes } from './worksheet.ts';
 import { quickSqlRoutes } from './quicksql.ts';
 import { queryBuilderRoutes } from './querybuilder.ts';
 import { unloadRoutes } from './unload.ts';
@@ -60,22 +61,22 @@ async function workshopHome(req: Req, reply: FastifyReply) {
       <h1 class="sr-only">SQL Workshop</h1>
       ${workshopTabs('home')}
       <div class="ab-tiles sw-tiles">
+        ${tile('/sql/worksheet', 'code', 'SQL Worksheet', 'Run statements and scripts, with a navigator, plans and history.')}
         ${tile('/sql/objects', 'search', 'Object Browser', 'Browse tables, views and functions, their policies, grants and data.')}
-        ${tile('/sql/commands', 'code', 'SQL Commands', 'Run SQL statements against your schemas.')}
         ${tile('/sql/scripts', 'file', 'SQL Scripts', 'Create, upload and run stored SQL scripts.')}
         ${tile('/sql/utilities', 'wrench', 'Utilities', 'Load and unload data, sample data, DDL, schema comparison, object reports and the database.')}
         ${tile('/sql/quick', 'bolt', 'Quick SQL', 'Write a data model in shorthand and get the DDL.')}
       </div>
       <div class="sw-recents">
         ${list('Recently created tables', tables.rows.map((t) => html`<li><a href="${BASE}/sql/objects?o=${encodeURIComponent(t.qname)}">${t.qname}</a><span class="muted">~${Number(t.rows).toLocaleString('en')} rows</span></li>`), 'No tables you can read.')}
-        ${list('Recent SQL commands', commands.rows.map((c) => html`<li><a href="${BASE}/sql/commands?recent=${c.id}" title="${c.detail.slice(0, 500)}">${c.detail.replace(/\s+/g, ' ').slice(0, 60)}</a><span class="muted">${ago(c.at)}</span></li>`), 'You haven\'t run SQL commands yet.')}
+        ${list('Recent SQL commands', commands.rows.map((c) => html`<li><a href="${BASE}/sql/worksheet?recent=${c.id}" title="${c.detail.slice(0, 500)}">${c.detail.replace(/\s+/g, ' ').slice(0, 60)}</a><span class="muted">${ago(c.at)}</span></li>`), 'You haven\'t run SQL commands yet.')}
         ${list('Recent SQL scripts', scripts.rows.map((x) => html`<li><a href="${BASE}/sql/scripts/${x.id}">${x.name}</a><span class="muted">${ago(x.updated_at)}</span></li>`), 'No scripts in this workspace yet.')}
       </div>
     </div>
     <aside class="ab-side" aria-label="About, schema and tasks">
       <section><h2>About</h2><p>The SQL Workshop is a collection of tools to manage database objects. It runs as ${workshopRunsAs(db)}.</p>
         <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener">Learn more …</a></section>
-      <section><h2>Schema</h2><p>The default schema of this session: first in the search path of SQL Commands and SQL Scripts.</p>
+      <section><h2>Schema</h2><p>The default schema of this session: first in the search path of the SQL Worksheet and SQL Scripts.</p>
         <form method="post" action="${BASE}/sql/schema" class="sw-schema">${csrf(s)}
           <label class="sr-only" for="f_schema">Schema</label>
           <select id="f_schema" name="schema" data-autosubmit><option value="">(the default search path)</option>${schemas.map((n) => html`<option value="${n}"${n === schema ? raw(' selected') : ''}>${n}</option>`)}</select>
@@ -102,76 +103,11 @@ export async function sqlRoutes(app: FastifyInstance) {
   // Generate DDL and Schema Comparison (sprint 56)
   await app.register(ddlToolRoutes);
   await app.register(sqlUtilityRoutes);
-  // ---------------------------------------------------------------- SQL workshop
-  const resultTable = (res: pg.QueryResult<any[]>, limit = 500) => {
-    const rows = (res.rows ?? []).slice(0, limit);
-    return html`<div class="table-wrap"><table class="report"><thead><tr>${res.fields.map((f) => html`<th>${f.name}</th>`)}</tr></thead>
-      <tbody>${rows.map((r) => html`<tr>${r.map((v) => html`<td>${v === null ? html`<span class="null">null</span>` : typeof v === 'object' ? JSON.stringify(v) : String(v)}</td>`)}</tr>`)}</tbody></table></div>`;
-  };
-
-  const sqlWorkshop = async (req: Req, reply: FastifyReply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const sql = req.body?.sql ?? '';
-    let result: Raw | '' = '';
-    const db = await workshopDb(s);
-    // (sprint 61) a command from the home page's Recent SQL Commands (the developer's own)
-    let text = sql;
-    if (req.method === 'GET' && /^\d{1,18}$/.test(String(req.query?.recent ?? ''))) {
-      const r = await owner.one<{ detail: string }>(`select detail from meta.activity_log where id = $1 and username = $2 and event = 'sql_command'`, [req.query!.recent, s.username]);
-      if (r) text = r.detail;
-    }
-    const schema = await sessionSchema(s, db);
-    if (req.method === 'GET') {
-      // (sprint 75) a statement to review: from the Object Browser's column actions, or a CREATE template
-      if (typeof s.state.__SQLDRAFT === 'string') {
-        text = s.state.__SQLDRAFT;
-        delete s.state.__SQLDRAFT;
-      } else if (typeof req.query?.template === 'string') {
-        const into = typeof req.query.schema === 'string' && (await usableSchemas(db)).includes(req.query.schema) ? req.query.schema : (schema ?? 'public');
-        text = createTemplate(req.query.template, into) ?? text;
-      }
-    }
-    if (req.method === 'POST' && sql.trim()) {
-      const started = performance.now();
-      try {
-        // a connection of its own, closed afterwards: the SQL may SET ROLE or change settings,
-        // which must not leak into the builder's pooled owner connections
-        const c = await db.pool.connect();
-        let out;
-        try {
-          if (schema) await c.query(`select set_config('search_path', $1, false)`, [`${pg.escapeIdentifier(schema)}, public`]);
-          out = await c.query({ text: sql, rowMode: 'array' });
-        } finally {
-          c.release(true);
-        }
-        const res = Array.isArray(out) ? out[out.length - 1] : out;
-        const ms = (performance.now() - started).toFixed(0);
-        result = res.fields?.length
-          ? html`<p class="muted">${res.rowCount} row(s) in ${ms} ms${res.rows.length > 500 ? ' (showing 500)' : ''}</p>${resultTable(res)}`
-          : html`<div class="alert alert-success">${res.command ?? 'Statement'} completed${res.rowCount !== null ? `, ${res.rowCount} row(s)` : ''} in ${ms} ms.</div>`;
-      } catch (e) {
-        result = html`<div class="alert alert-error"><strong>Error:</strong> ${(e as Error).message}</div>`;
-      }
-      clearCompletions(); // the script may have changed tables or grants
-      await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), elapsedMs: Math.round(performance.now() - started), detail: sql.length > 2000 ? `${sql.slice(0, 2000)}…` : sql });
-    }
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sql')}
-      <p class="muted">Runs as ${workshopRunsAs(db)} (not as an application role)${schema ? html`, schema <code>${schema}</code> first in the search path (<a href="${BASE}/sql">change</a>)` : ''}. Multiple statements are allowed; results of the last one are shown.</p>
-      <form method="post" action="${BASE}/sql/commands">${csrf(s)}
-        <textarea name="sql" class="code sql-editor" rows="12" spellcheck="false" aria-label="SQL" data-code="plpgsql">${text || 'select current_user, version();'}</textarea>
-        <div class="buttons"><button class="btn btn-hot">${icon('play')} Run (Ctrl+Enter)</button></div>
-      </form>
-      <div class="u-mt1">${result}</div>`;
-    return send(reply, s, shell(s, 'SQL Workshop', [['SQL Workshop']], main, 'sql'));
-  };
-  app.get(`${BASE}/sql/commands`, sqlWorkshop);
-  app.post(`${BASE}/sql/commands`, sqlWorkshop);
-  // (before sprint 61 SQL Commands was /builder/sql: a post there still runs)
-  app.post(`${BASE}/sql`, sqlWorkshop);
+  // (sprint 91) the SQL Worksheet (was SQL Commands; /sql/commands and a post to /sql are the same page)
+  await app.register(worksheetRoutes);
   app.get(`${BASE}/sql`, workshopHome);
 
-  // (sprint 61) the session's default schema: first in the search path of SQL Commands and SQL Scripts
+  // (sprint 61) the session's default schema: first in the search path of the SQL Worksheet and SQL Scripts
   app.post(`${BASE}/sql/schema`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
@@ -180,7 +116,7 @@ export async function sqlRoutes(app: FastifyInstance) {
     if (wanted && !usable.includes(wanted)) return reply.code(404).send('Not found');
     if (wanted) s.state.__SQLSCHEMA = wanted;
     else delete s.state.__SQLSCHEMA;
-    flash(s, wanted ? `Schema ${wanted} first in the search path of SQL Commands and SQL Scripts.` : 'The default search path again.');
+    flash(s, wanted ? `Schema ${wanted} first in the search path of the SQL Worksheet and SQL Scripts.` : 'The default search path again.');
     return back(reply, s, `${BASE}/sql`);
   });
 

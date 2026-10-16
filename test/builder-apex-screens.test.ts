@@ -144,7 +144,7 @@ describe('the SQL Workshop home', () => {
     const home = (await admin.get('/builder/sql')).body;
     assert.match(home, /Recently created tables/);
     assert.match(home, /Recent SQL commands[\s\S]*select 61 as apex_sprint/);
-    const id = /href="\/builder\/sql\/commands\?recent=(\d+)"/.exec(home)![1];
+    const id = /href="\/builder\/sql\/worksheet\?recent=(\d+)"/.exec(home)![1];
     assert.match((await admin.get(`/builder/sql/commands?recent=${id}`)).body, />select 61 as apex_sprint</);
     // another developer's command isn't loaded
     assert.doesNotMatch((await dev.get(`/builder/sql/commands?recent=${id}`)).body, /apex_sprint/);

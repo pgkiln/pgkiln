@@ -10,7 +10,7 @@ import type { Session } from '../session.ts';
 
 // (sprint 75) The SQL Workshop's Object Browser like APEX's: a schema in the header (the session's
 // schema by default), a tree with a folder per object type, a filter, a + menu that starts a CREATE
-// statement in SQL Commands, and create tiles when nothing is selected. pgkiln's own schemas (meta,
+// statement in the SQL Worksheet, and create tiles when nothing is selected. pgkiln's own schemas (meta,
 // pgkiln_plugins) and objects that belong to an extension are left out unless "Show system objects" is
 // on. A table opens in tabs: Columns, Data, Indexes, Constraints, Triggers, Grants, Row level security,
 // Dependencies, Statistics and DDL; the column actions write the ALTER TABLE statement into SQL
@@ -19,7 +19,7 @@ import type { Session } from '../session.ts';
 // in the catalog before it is used, quoted.
 
 /** pgkiln's own schemas: shown with "Show system objects" only. */
-const SYSTEM_SCHEMAS = ['meta', 'pgkiln_plugins'];
+export const SYSTEM_SCHEMAS = ['meta', 'pgkiln_plugins'];
 
 export const OB_TYPES = [
   ['table', 'Tables', 'table'],
@@ -32,9 +32,9 @@ export const OB_TYPES = [
   ['procedure', 'Procedures', 'code'],
   ['trigger', 'Triggers', 'bolt'],
 ] as const;
-type ObType = (typeof OB_TYPES)[number][0];
+export type ObType = (typeof OB_TYPES)[number][0];
 
-interface Obj {
+export interface Obj {
   type: ObType;
   name: string;
   /** the object as SQL can name it: regclass, regprocedure or regtype text; a trigger: "table" */
@@ -49,7 +49,7 @@ const TABLE_TABS = [
   ['grants', 'Grants'], ['rls', 'Row level security'], ['dependencies', 'Dependencies'], ['statistics', 'Statistics'], ['ddl', 'DDL'],
 ] as const;
 
-/** CREATE statements the + menu and the tiles start with (SQL Commands shows them; nothing runs until Run). */
+/** CREATE statements the + menu and the tiles start with (the SQL Worksheet shows them; nothing runs until Run). */
 export function createTemplate(kind: string, schema: string): string | null {
   const S = pg.escapeIdentifier(schema);
   switch (kind) {
@@ -80,6 +80,26 @@ async function parsingSchema(s: Session): Promise<string | null> {
   ).catch(() => undefined);
   return row?.n ?? null;
 }
+/**
+ * (sprint 89, SQL-4) The schema to show: the one asked for, else the last one shown (remembered per session, shared
+ * by the Object Browser and the worksheet's navigator), else the session's schema of the SQL Worksheet, else the parsing
+ * schema of the application changed last, else the first of `schemas`.
+ */
+export async function pickSchema(s: Session, db: Awaited<ReturnType<typeof workshopDb>>, schemas: string[], asked: unknown): Promise<string> {
+  const usable = (v: unknown): v is string => typeof v === 'string' && schemas.includes(v);
+  if (usable(asked)) {
+    s.state.__OBSCHEMA = asked;
+    return asked;
+  }
+  const last = s.state.__OBSCHEMA;
+  if (usable(last)) return last;
+  const own = await sessionSchema(s, db);
+  const parsing = usable(own) ? null : await parsingSchema(s);
+  const schema = usable(own) ? own : usable(parsing) ? parsing : (schemas[0] ?? '');
+  if (schema) s.state.__OBSCHEMA = schema;
+  return schema;
+}
+
 /** A column type in an action: a type name with an optional size and array brackets. */
 const TYPE_RE = /^[a-z][a-z0-9_ ]{0,40}(\(\d{1,4}(,\s?\d{1,4})?\))?(\[\])?$/i;
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
@@ -100,15 +120,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         [system, SYSTEM_SCHEMAS],
       )
     ).rows.map((r) => r.n);
-    // (sprint 89, SQL-4) the schema asked for, else the last one shown (remembered per session), else the session's
-    // schema of SQL Commands, else the parsing schema of the application changed last, else the first
-    const usable = (v: unknown): v is string => typeof v === 'string' && schemas.includes(v);
-    const asked = usable(q.schema) ? q.schema : null;
-    const last = s.state.__OBSCHEMA;
-    const own = asked || usable(last) ? null : await sessionSchema(s, db);
-    const parsing = asked || usable(last) || usable(own) ? null : await parsingSchema(s);
-    const schema = asked ?? (usable(last) ? last : usable(own) ? own : usable(parsing) ? parsing : (schemas[0] ?? ''));
-    if (schema && schema !== last) s.state.__OBSCHEMA = schema;
+    const schema = await pickSchema(s, db, schemas, q.schema);
     const filter = typeof q.q === 'string' ? q.q.trim().slice(0, 100) : '';
     const objects = schema ? await listObjects(db, schema, system) : [];
     const shown = objects.filter((o) => !filter || o.name.toLowerCase().includes(filter.toLowerCase()));
@@ -133,7 +145,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
     else
       detail = region(`Create database objects in ${schema}`, html`<div class="ob-tiles">${[
         ['table', 'table', 'Table'], ['view', 'layers', 'View'], ['function', 'code', 'Function'], ['sequence', 'hash', 'Sequence'], ['index', 'list', 'Index'],
-      ].map(([k, ic, label]) => html`<a class="create-source" href="${BASE}/sql/commands?${new URLSearchParams({ template: k, schema })}">${icon(ic)}<span><b>${label}</b><small class="muted">Start a CREATE ${label.toUpperCase()} statement</small></span></a>`)}
+      ].map(([k, ic, label]) => html`<a class="create-source" href="${BASE}/sql/worksheet?${new URLSearchParams({ template: k, schema })}">${icon(ic)}<span><b>${label}</b><small class="muted">Start a CREATE ${label.toUpperCase()} statement</small></span></a>`)}
         <a class="create-source" href="${BASE}/sql/quick">${icon('bolt')}<span><b>Quick SQL</b><small class="muted">A data model in shorthand</small></span></a>
         <a class="create-source" href="${BASE}/sql/load">${icon('upload')}<span><b>Load data</b><small class="muted">A table from a file</small></span></a></div>
         <p class="muted">Select an object in the tree, or filter it by name.</p>`);
@@ -147,13 +159,13 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
           <button class="btn btn-sm">Show</button></form>
         <details class="menu ob-create"><summary class="btn btn-hot">${icon('plus')} Create</summary>
           <div class="menu-panel align-right"><div class="menu-section menu-links">${['table', 'view', 'function', 'sequence', 'index'].map((k) =>
-            html`<a href="${BASE}/sql/commands?${new URLSearchParams({ template: k, schema })}">${icon('plus')} ${k[0].toUpperCase() + k.slice(1)}</a>`)}</div></div></details>
+            html`<a href="${BASE}/sql/worksheet?${new URLSearchParams({ template: k, schema })}">${icon('plus')} ${k[0].toUpperCase() + k.slice(1)}</a>`)}</div></div></details>
       </div>
       <div class="designer"><aside class="region region-standard ob-tree" aria-label="Database objects">${tree}</aside><div>${detail}</div></div>`;
     return send(reply, s, shell(s, 'Object Browser', [['SQL Workshop', `${BASE}/sql`], ['Object Browser']], main, 'sql'));
   });
 
-  // column actions: the ALTER TABLE statement, into SQL Commands to review and run
+  // column actions: the ALTER TABLE statement, into the SQL Worksheet to review and run
   app.post(`${BASE}/sql/objects/alter`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
@@ -215,11 +227,11 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
     }
     s.state.__SQLDRAFT = sql;
     flash(s, 'Review the statement and press Run: nothing has been changed yet.');
-    return back(reply, s, `${BASE}/sql/commands`);
+    return back(reply, s, `${BASE}/sql/worksheet`);
   });
 }
 
-async function listObjects(db: Awaited<ReturnType<typeof workshopDb>>, schema: string, system: boolean): Promise<Obj[]> {
+export async function listObjects(db: Awaited<ReturnType<typeof workshopDb>>, schema: string, system: boolean): Promise<Obj[]> {
   const ext = (cls: string, oid: string) => `exists (select 1 from pg_depend d where d.classid = '${cls}'::regclass and d.objid = ${oid} and d.deptype = 'e')`;
   const rows = (
     await db.query<Obj>(
@@ -336,7 +348,7 @@ async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csr
             <details class="menu ob-tool"><summary class="btn btn-sm">${icon('trash')} Drop column</summary><div class="menu-panel">
               <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="drop">
                 ${pick('ob-drop-col')}<button class="btn btn-sm btn-danger">Show the SQL</button></form></div></details>
-            <span class="muted ob-toolbar-note">Each writes the ALTER TABLE statement into SQL Commands: review it there and press Run.</span>
+            <span class="muted ob-toolbar-note">Each writes the ALTER TABLE statement into the SQL Worksheet: review it there and run it.</span>
           </div>`
         : ''}${table(cols)}`;
       break;
@@ -351,7 +363,7 @@ async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csr
         const p = offset / PAGE_SIZE + 1;
         body = html`${table(rows, 'No rows.')}<nav class="pager" aria-label="Pages">${p > 1 ? html`<a href="${link({ k: o.type, o: o.ref, tab: 'data', p: String(p - 1) })}">‹ Previous</a>` : ''}
           <span>Rows ${rows.length ? offset + 1 : 0}–${offset + rows.length}</span>${more ? html`<a href="${link({ k: o.type, o: o.ref, tab: 'data', p: String(p + 1) })}">Next ›</a>` : ''}</nav>
-          <p class="muted">To change rows, use SQL Commands, or an interactive grid on the table in an application.</p>`;
+          <p class="muted">To change rows, use the SQL Worksheet, or an interactive grid on the table in an application.</p>`;
       }
       break;
     }

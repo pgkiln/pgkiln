@@ -1,0 +1,114 @@
+/* pgkiln builder: the SQL Worksheet (sprint 91, src/builder/worksheet.ts, public/worksheet.js).
+   Narrow screens and pages without script: the panes stack and the page scrolls. With script on wide
+   screens: navigator | editor over output tabs, filling the window, with a status bar at the bottom. */
+.ws-page { display: flex; flex-direction: column; padding: 8px 10px 0; background: var(--bg); }
+.ws-page > .sw-tabs { margin-bottom: 6px; }
+.ws { --ws-nav: 280px; --ws-out: 42vh; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.ws-default { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); border: 0; padding: 0; }
+.ws-nav { display: flex; flex-direction: column; min-width: 0; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.ws-nav-head { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+.ws-nav-head select { min-width: 0; font-size: 13px; }
+.ws-nav-search { grid-column: 1 / -1; display: flex; gap: 6px; }
+.ws-nav-search input { flex: 1; min-width: 0; font-size: 13px; }
+.ws-nav-body { min-height: 0; max-height: 40vh; overflow: auto; padding: 4px 0; font-size: 13px; }
+.ws-nav-body[aria-busy=true] { opacity: 0.6; }
+.ws-nav-empty { padding: 8px 12px; margin: 0; }
+.ws-tree, .ws-cols { list-style: none; margin: 0; padding: 0; }
+.ws-obj > a, .ws-obj summary { display: flex; align-items: center; gap: 6px; padding: 3px 10px; color: var(--text); text-decoration: none; cursor: pointer; min-width: 0; }
+.ws-obj summary { list-style: none; }
+.ws-obj summary::-webkit-details-marker { display: none; }
+.ws-obj summary::before { content: '▸'; color: var(--muted); width: 0.8em; flex: none; }
+.ws-obj details[open] > summary::before { content: '▾'; }
+.ws-obj > a { padding-left: calc(10px + 0.8em + 6px); }
+.ws-obj > a:hover, .ws-obj summary:hover { background: var(--surface-3); }
+.ws-obj span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-obj .icon { width: 14px; height: 14px; flex: none; color: var(--muted); }
+.ws-obj .tag { margin-left: auto; font-size: 10px; }
+.ws-obj summary[draggable=true] { cursor: grab; }
+.ws-cols li { display: flex; align-items: center; gap: 6px; padding: 1px 10px 1px 34px; min-width: 0; }
+.ws-cols small { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50%; }
+.ws-cols .icon { width: 12px; height: 12px; }
+.ws-obj-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px 8px 34px; }
+.ws-obj-actions .btn { font-size: 11px; padding: 1px 6px; }
+
+.ws-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ws-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.ws-toolbar .btn { display: inline-flex; align-items: center; gap: 4px; }
+.ws-toolbar .icon { width: 15px; height: 15px; }
+.ws-check, .ws-runas { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.ws-runas select { max-width: 16rem; font-size: 13px; }
+.ws-spacer { flex: 1; }
+.ws-runs-as { margin: 0; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.ws-editor { min-height: 0; display: flex; flex-direction: column; }
+.ws-editor textarea { width: 100%; min-height: 12rem; border: 0; border-radius: 0; }
+.ws-editor > :is(textarea, .ce) { flex: 1 1 auto; }
+
+.ws-output { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
+.ws-tabs { display: none; gap: 0; border-bottom: 1px solid var(--border); overflow-x: auto; background: var(--surface-2); }
+.js .ws-tabs { display: flex; }
+.ws-tabs [role=tab] { flex: none; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.ws-tabs [role=tab][aria-selected=true] { color: var(--text); border-bottom-color: var(--hot); }
+.ws-tabs [role=tab]:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
+.ws-pane { padding: 8px; min-height: 0; overflow: auto; }
+.ws-pane-title { font-size: 14px; margin: 0 0 6px; }
+.js .ws-pane-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ws-info { margin: 0 0 6px; }
+.ws-grid { max-height: none; }
+.ws-grid td, .ws-grid th { padding: 3px 8px; font-size: 12.5px; }
+.ws-grid .ws-rownum { color: var(--muted); text-align: right; width: 1%; }
+.ws-grid .null { color: var(--muted); font-style: italic; }
+.ws-log { margin: 0; padding: 8px; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12.5px; line-height: 1.45; white-space: pre; overflow: auto; }
+.ws-log-sql { color: var(--muted); }
+.ws-log-ok { color: #2f7d32; font-weight: 600; }
+.ws-log-err { color: #c0392b; white-space: pre-wrap; }
+.ws-log-warn { color: var(--warn); white-space: pre-wrap; }
+.ws-notices, .ws-history { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.ws-notices li, .ws-history li { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.ws-notices .tag-warn { color: var(--warn); }
+.ws-history a { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+.ws-history small { flex: none; }
+
+.ws-status { display: flex; align-items: center; gap: 12px; padding: 4px 10px; border-top: 1px solid var(--border); background: var(--surface-2); font-size: 12.5px; min-width: 0; }
+.ws-status .icon { width: 13px; height: 13px; vertical-align: -2px; }
+.ws-count { color: var(--muted); white-space: nowrap; }
+.ws-count.is-err { color: #c0392b; }
+.ws-count.is-warn { color: var(--warn); }
+.ws-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-time { margin-left: auto; }
+.ws-split { display: none; }
+
+@media (min-width: 900px) {
+  .ws { grid-template-columns: var(--ws-nav) auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .ws-nav { grid-row: 1; grid-column: 1; border-bottom: 0; }
+  .ws-split-v { grid-row: 1; grid-column: 2; }
+  .ws-nav-body { max-height: none; flex: 1 1 auto; }
+  .ws-main { grid-row: 1; grid-column: 3; }
+  .ws-status { grid-column: 1 / -1; }
+  .ws-nav-hidden { grid-template-columns: 0 auto minmax(0, 1fr); }
+  .ws-nav-hidden .ws-nav { visibility: hidden; }
+  .js .ws-split { display: block; background: var(--border); }
+  .js .ws-split-v { width: 5px; cursor: col-resize; }
+  .js .ws-split-h { height: 5px; cursor: row-resize; flex: none; }
+  .ws-split:hover, .ws-split:focus-visible { background: var(--hot); outline: none; }
+  /* with script the worksheet fills the window and each pane scrolls on its own */
+  .js .ide-full .ws-page { height: 100%; min-height: 0; }
+  .js .ide-full .ws { flex: 1 1 auto; min-height: 0; }
+  .js .ide-full .ws-main { overflow: hidden; }
+  .js .ide-full .ws-editor { flex: 1 1 auto; overflow: hidden; }
+  .js .ide-full .ws-editor .ce { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; border: 0; border-radius: 0; }
+  .js .ide-full .ws-editor .ce-main { min-height: 0; }
+  .js .ide-full .ws-editor .ce textarea.ce-input { height: 100%; min-height: 0; resize: none; }
+  .js .ide-full .ws-output { flex: 0 0 var(--ws-out); }
+  .js .ide-full .ws-pane { flex: 1 1 auto; }
+  .js .ide-full .ws-nav { overflow: hidden; }
+}
+@media (max-width: 899px) {
+  .ws-toolbar .btn span:not(.sr-only) { display: none; }
+  .ws-toolbar .btn-hot span:not(.sr-only) { display: inline; }
+}
+/* fullscreen: only the editor and its toolbar */
+body.ws-fullscreen .ide-rail, body.ws-fullscreen .ide-bar, body.ws-fullscreen .ide-status, body.ws-fullscreen .ide-banner, body.ws-fullscreen .ws-page > .sw-tabs,
+body.ws-fullscreen .ws-nav, body.ws-fullscreen .ws-split, body.ws-fullscreen .ws-output, body.ws-fullscreen .ws-runs-as { display: none; }
+body.ws-fullscreen .ws { grid-template-columns: minmax(0, 1fr); }
+body.ide.ws-fullscreen { padding-left: 0; }

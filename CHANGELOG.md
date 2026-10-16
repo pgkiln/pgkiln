@@ -5,6 +5,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 91: the SQL Worksheet like Database Actions' SQL (parity handoff DA-1, DA-2).
+
+### Added
+- **The SQL Worksheet** (DA-1; Database Actions: SQL): SQL Commands becomes one screen with a **navigator** (schema,
+  object type, search; tables and views open to their columns, drag one into the editor for a SELECT, or insert its
+  SELECT / INSERT / UPDATE / DELETE), the editor with a toolbar, **output tabs** (Query Result, Script Output,
+  Notices, Explain Plan, Autotrace, SQL History) and a **status bar** with error and warning counts. The panes fill
+  the window and resize (mouse or arrow keys, remembered), the navigator hides, and Fullscreen shows only the editor.
+  `/builder/sql/worksheet`; `/builder/sql/commands` is the same page, and the SQL Workshop's tabs start with it.
+- **Run Statement and Run Script** (DA-2): Ctrl+Enter runs the statement at the cursor (or the selection) and
+  selects it again; F5 runs every statement with a log per statement (psql's command tags such as `CREATE TABLE`
+  and `INSERT 0 2`, the rows as text, notices, an error's line and column), stopping at an error unless *Continue on
+  error* is on. `COPY … FROM STDIN` and psql commands are skipped. F10 shows the statement's plan, F6 runs it with
+  `EXPLAIN ANALYZE` and rolls it back.
+- **Run as** an application of the workspace: the worksheet's statements run as its database role with
+  `pgkiln.app_id` set, so its row level security applies.
+
+### Changed
+- The SQL Workshop's "SQL Commands" is called the **SQL Worksheet** everywhere (tiles, tabs, *Run in the SQL
+  Worksheet* in the Query Builder and AI). Each statement now commits on its own; before, several statements ran
+  in one implicit transaction.
+
 ## [0.46.0] - 2026-10-15
 
 Sprint 84: facet menus and the date picker (parity handoff GEN-9, IR-4).

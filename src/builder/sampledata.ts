@@ -40,7 +40,7 @@ import { currentWorkspace, workshopDb } from './workspaces.ts';
 // nulls, all proposed from the catalog. The form posts (CSRF) to preview
 // (insert and roll back), insert (one transaction, parents first), download
 // as SQL or CSV, or save the definition (meta.data_generator) to rerun.
-// Runs on a connection of its own as the owner, like SQL Commands, with a
+// Runs on a connection of its own as the owner, like the SQL Worksheet, with a
 // statement timeout; the connection is closed afterwards. No JavaScript needed.
 
 /** The statement timeout of a run (PostgreSQL interval syntax). */
@@ -109,7 +109,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
 
   const intro = html`<p class="muted">Generate realistic rows for the tables of a schema: names, e-mail addresses, dates and numbers in a range, values from a list,
     foreign keys that pick existing parent rows. Preview them, insert them in one transaction (parents first) or download them as SQL or CSV.
-    Runs as the builder's owner connection (an isolated workspace's developer login for its developers), like <a href="${BASE}/sql">SQL Commands</a>.</p>`;
+    Runs as the builder's owner connection (an isolated workspace's developer login for its developers), like the <a href="${BASE}/sql/worksheet">SQL Worksheet</a>.</p>`;
 
   // ------------------------------------------------------------ step 1 and 2: schema and tables
   const start = async (s: Session, reply: FastifyReply, schema: string | undefined) => {

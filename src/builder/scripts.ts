@@ -12,7 +12,7 @@ import { currentWorkspace, sessionSchema, workshopDb } from './workspaces.ts';
 // SQL Workshop → SQL Scripts: saved scripts (create, edit, upload, download,
 // delete), run with a result per statement (stop at the first error or go on,
 // optionally in one transaction), and the run history. Scripts run on the
-// owner connection, like SQL Commands, on a connection of their own that is
+// owner connection, like the SQL Worksheet, on a connection of their own that is
 // closed afterwards (a script may SET ROLE or change settings). Scripts and runs belong
 // to the current workspace; an isolated workspace's run on its developer login (090).
 
