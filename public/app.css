@@ -416,7 +416,7 @@ dialog.region-inline_drawer:target { inset: 0 0 0 auto; }
 .req { color: var(--danger); margin-left: 0.2em; }
 input:not([type=checkbox]):not([type=radio]), select, textarea {
   font: inherit; color: var(--text); background: var(--surface);
-  border: 1px solid var(--border); border-radius: calc(var(--radius) * 0.75); padding: 0.45rem 0.6rem; width: 100%; min-width: 0;
+  border: 1px solid var(--field-border, var(--border)); border-radius: calc(var(--radius) * 0.75); padding: 0.45rem 0.6rem; width: 100%; min-width: 0;
 }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.6; }
 textarea.code { font-family: var(--mono); font-size: 0.84rem; line-height: 1.45; tab-size: 2; }
