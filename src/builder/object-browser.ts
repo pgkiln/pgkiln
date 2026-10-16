@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { readSchema } from '../ddl.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, workshopDb } from './workspaces.ts';
+import { objectMenu } from './object-actions.ts';
 import { owner } from '../db.ts';
 import type { Session } from '../session.ts';
 
@@ -135,7 +136,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         if (!list.length && filter) return '';
         return html`<details class="ob-folder"${list.length && (filter || list.length <= 50 || selected?.type === t) ? raw(' open') : ''}>
           <summary>${icon(ic)}<span>${label}</span><span class="kind">${list.length}</span></summary>
-          <ul class="tree">${list.map((o) => html`<li><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">extension</span>` : ''}</a></li>`)}</ul>
+          <ul class="tree">${list.map((o) => html`<li class="ob-item"><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">extension</span>` : ''}</a>${objectMenu(schema, o)}</li>`)}</ul>
         </details>`;
       })}</div>`;
 
@@ -262,7 +263,7 @@ export async function listObjects(db: Awaited<ReturnType<typeof workshopDb>>, sc
   return system ? rows : rows.filter((o) => !o.ext);
 }
 
-async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csrf_token: string }, schema: string, o: Obj, tabAsked: string, page: number, link: (x: Record<string, string>) => string): Promise<Raw> {
+export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csrf_token: string }, schema: string, o: Obj, tabAsked: string, page: number, link: (x: Record<string, string>) => string): Promise<Raw> {
   const table = (rows: Record<string, unknown>[], empty = 'None.') =>
     rows.length
       ? html`<div class="table-wrap"><table class="report"><thead><tr>${Object.keys(rows[0]).map((k) => html`<th scope="col">${k}</th>`)}</tr></thead>

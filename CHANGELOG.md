@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 Sprint 91: the SQL Worksheet like Database Actions' SQL (parity handoff DA-1, DA-2).
 Sprint 92: the worksheet's Query Result, plans and history (migration 108; parity handoff DA-3, DA-4, DA-5).
 Sprint 93: worksheets as files and tabs, editing tools and bind variables (parity handoff DA-7, DA-9).
+Sprint 94: an object's menu in the worksheet and the Object Browser (parity handoff DA-8, part 1).
 
 ### Added
 - **The SQL Worksheet** (DA-1; Database Actions: SQL): SQL Commands becomes one screen with a **navigator** (schema,
@@ -38,6 +39,10 @@ Sprint 93: worksheets as files and tabs, editing tools and bind variables (parit
 - **Editing tools** (DA-9): Format (Ctrl+F7, keywords in lower or UPPER case), Convert case (Ctrl+B), find and
   replace with regular expressions (Ctrl+F, Ctrl+H), Go to line (Ctrl+G), comment lines (Ctrl+/), a list of the keys,
   Help (F1), and Load Data for the navigator's schema.
+- **An object's menu** (DA-8; Database Actions: the navigator's context menu): ⋯ (or right-click) on an object in
+  the worksheet's navigator or the Object Browser's tree: Open in a side panel, Quick DDL into a new worksheet tab or
+  as a file, Load data, Add index / trigger / policy, and Drop… with what depends on the object. Every statement goes
+  into the worksheet to review; nothing runs.
 - **Bind variables** (`:NAME`, bound as quoted literals) and **substitution variables** (`&NAME.`) are asked for in a
   dialog before a run, and remembered for the session.
 

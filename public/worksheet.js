@@ -535,3 +535,71 @@
     });
   }
 })();
+
+// (sprint 94) An object's ⋯ menu, in the worksheet's navigator and the Object Browser's tree: right-click an object
+// to open it; Open shows the Object Browser's detail in a panel at the side (its tabs and pages load in the panel).
+(() => {
+  'use strict';
+  document.addEventListener('contextmenu', (e) => {
+    const item = e.target.closest?.('.ws-obj, .ob-item');
+    const menu = item?.querySelector(':scope > .obj-menu');
+    if (!menu || e.shiftKey) return; // Shift+right-click keeps the browser's own menu
+    e.preventDefault();
+    for (const d of document.querySelectorAll('.obj-menu[open]')) if (d !== menu) d.open = false;
+    menu.open = true;
+    menu.querySelector('a')?.focus();
+  });
+  let slide = null;
+  const panel = () => {
+    if (slide) return slide;
+    slide = document.createElement('dialog');
+    slide.className = 'obj-slide';
+    slide.setAttribute('aria-labelledby', 'obj-slide-title');
+    const head = document.createElement('div');
+    head.className = 'obj-slide-head';
+    const title = Object.assign(document.createElement('strong'), { id: 'obj-slide-title' });
+    const full = Object.assign(document.createElement('a'), { className: 'btn btn-sm', textContent: 'Open in the Object Browser' });
+    const close = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-sm', textContent: 'Close' });
+    close.addEventListener('click', () => slide.close());
+    const tools = document.createElement('div');
+    tools.append(full, ' ', close);
+    head.append(title, tools);
+    const body = Object.assign(document.createElement('div'), { className: 'obj-slide-body' });
+    slide.append(head, body);
+    document.body.append(slide);
+    body.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href^="/builder/sql/objects/panel"]');
+      if (!a || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      load(a.getAttribute('href'));
+    });
+    slide.addEventListener('click', (e) => { if (e.target === slide) slide.close(); }); // the backdrop
+    return slide;
+  };
+  const load = async (url) => {
+    const d = panel();
+    const body = d.querySelector('.obj-slide-body');
+    body.setAttribute('aria-busy', 'true');
+    try {
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(String(res.status));
+      body.innerHTML = await res.text(); // server-rendered, escaped HTML of the same origin
+      const root = body.querySelector('.obj-panel');
+      d.querySelector('#obj-slide-title').textContent = root?.dataset.label ?? '';
+      d.querySelector('.obj-slide-head a').href = url.replace('/sql/objects/panel', '/sql/objects');
+    } catch {
+      body.textContent = 'The object could not be opened.';
+    } finally {
+      body.removeAttribute('aria-busy');
+    }
+  };
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest?.('[data-obj-open]');
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    a.closest('details')?.removeAttribute('open');
+    const d = panel();
+    if (!d.open) d.showModal();
+    load(a.dataset.objOpen);
+  });
+})();

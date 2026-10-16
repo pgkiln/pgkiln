@@ -15,17 +15,17 @@
 .ws-nav-body[aria-busy=true] { opacity: 0.6; }
 .ws-nav-empty { padding: 8px 12px; margin: 0; }
 .ws-tree, .ws-cols { list-style: none; margin: 0; padding: 0; }
-.ws-obj > a, .ws-obj summary { display: flex; align-items: center; gap: 6px; padding: 3px 10px; color: var(--text); text-decoration: none; cursor: pointer; min-width: 0; }
-.ws-obj summary { list-style: none; }
-.ws-obj summary::-webkit-details-marker { display: none; }
-.ws-obj summary::before { content: '▸'; color: var(--muted); width: 0.8em; flex: none; }
-.ws-obj details[open] > summary::before { content: '▾'; }
+.ws-obj > a, .ws-obj > details > summary { display: flex; align-items: center; gap: 6px; padding: 3px 10px; color: var(--text); text-decoration: none; cursor: pointer; min-width: 0; }
+.ws-obj > details > summary { list-style: none; }
+.ws-obj > details > summary::-webkit-details-marker { display: none; }
+.ws-obj > details > summary::before { content: '▸'; color: var(--muted); width: 0.8em; flex: none; }
+.ws-obj > details[open] > summary::before { content: '▾'; }
 .ws-obj > a { padding-left: calc(10px + 0.8em + 6px); }
-.ws-obj > a:hover, .ws-obj summary:hover { background: var(--surface-3); }
-.ws-obj span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-obj > a:hover, .ws-obj > details > summary:hover { background: var(--surface-3); }
+.ws-obj > a span, .ws-obj > details > summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-obj .icon { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .ws-obj .tag { margin-left: auto; font-size: 10px; }
-.ws-obj summary[draggable=true] { cursor: grab; }
+.ws-obj > details > summary[draggable=true] { cursor: grab; }
 .ws-cols li { display: flex; align-items: center; gap: 6px; padding: 1px 10px 1px 34px; min-width: 0; }
 .ws-cols small { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50%; }
 .ws-cols .icon { width: 12px; height: 12px; }
@@ -203,3 +203,23 @@ th[aria-sort=descending] .ws-sort::after { content: ' ▼'; font-size: 0.75em; }
 .ws-binds h2 { font-size: 15px; margin: 0 0 6px; }
 .ws-binds-fields { display: grid; gap: 8px; margin: 10px 0; }
 .ws-binds-fields .field { display: grid; grid-template-columns: 8rem 1fr; align-items: center; gap: 8px; }
+
+/* (sprint 94) an object's ⋯ menu in the navigator and the Object Browser's tree; Open in a panel */
+.ws-obj, .ob-item { position: relative; }
+.ws-obj > details.menu.obj-menu, .ob-item > details.menu.obj-menu { position: absolute; right: 4px; top: 1px; z-index: 2; display: block; margin: 0; }
+details.menu.obj-menu > summary { display: block; list-style: none; cursor: pointer; padding: 0 6px; border: 0; background: none; border-radius: 3px; color: var(--muted); line-height: 1.6; opacity: 0; }
+details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after { content: none; }
+.obj-menu > summary::-webkit-details-marker { display: none; }
+.ws-obj:hover > .obj-menu > summary, .ob-item:hover > .obj-menu > summary, .obj-menu:focus-within > summary, .obj-menu[open] > summary { opacity: 1; }
+.obj-menu > summary:hover { background: var(--surface-3); color: var(--text); }
+@media (hover: none) { .obj-menu > summary { opacity: 1; } }
+.obj-menu .menu-panel { right: 0; left: auto; min-width: 14rem; }
+.ws-obj .tag { margin-right: 22px; }
+.obj-slide { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(46rem, 100vw); max-width: 100vw; height: 100vh; height: 100dvh; max-height: none; padding: 0;
+  border: 0; border-left: 1px solid var(--border); background: var(--surface); color: var(--text); overflow: hidden; }
+.obj-slide[open] { display: flex; flex-direction: column; }
+.obj-slide::backdrop { background: rgb(0 0 0 / 35%); }
+.obj-slide-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.obj-slide-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obj-slide-body { flex: 1; overflow: auto; padding: 10px 12px; }
+.obj-slide-body[aria-busy=true] { opacity: 0.6; }
