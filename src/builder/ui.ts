@@ -52,8 +52,8 @@ export type Section = 'apps' | 'users' | 'sql' | 'developers' | 'gallery';
 // Builder-only stylesheets and scripts, loaded on every builder page after
 // app.css / app.js (the runtime never loads them). Add new builder assets
 // here, and only here.
-export const BUILDER_STYLES = ['/static/builder.css', '/static/code-editor.css', '/static/worksheet.css'];
-export const BUILDER_SCRIPTS = ['/static/builder.js', '/static/code-editor.js', '/static/worksheet.js', '/static/palette.js'];
+export const BUILDER_STYLES = ['/static/builder.css', '/static/code-editor.css', '/static/worksheet.css', '/static/data-modeler.css'];
+export const BUILDER_SCRIPTS = ['/static/builder.js', '/static/code-editor.js', '/static/worksheet.js', '/static/palette.js', '/static/data-modeler.js'];
 export const builderHead = () =>
   html`${BUILDER_STYLES.map((href) => html`<link rel="stylesheet" href="${href}">\n`)}${BUILDER_SCRIPTS.map((src) => html`<script src="${src}" defer></script>\n`)}`;
 
@@ -251,7 +251,7 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 };
 
 /** Tabs of the SQL Workshop. */
-export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities';
+export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities' | 'modeler';
 export const workshopTabs = (active: WorkshopTab) => {
   const tab = (key: string, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;

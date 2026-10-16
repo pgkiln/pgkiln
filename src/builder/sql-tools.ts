@@ -33,6 +33,7 @@ export const SQL_TOOLS: SqlTool[] = [
   { key: 'sample', href: '/builder/sql/sample-data', icon: 'layers', label: 'Sample Data', description: 'Rows that look real, for development.', group: 'development', tab: 'sample' },
   { key: 'ddl', href: '/builder/sql/ddl', icon: 'file', label: 'Generate DDL', description: 'A schema\'s objects as one script.', group: 'development', tab: 'ddl' },
   { key: 'compare', href: '/builder/sql/compare', icon: 'layers', label: 'Schema Comparison', description: 'The differences between two schemas, and the SQL to align them.', group: 'development', tab: 'compare' },
+  { key: 'modeler', href: '/builder/sql/modeler', icon: 'org', label: 'Data Modeler', description: 'Relational diagrams of tables and their foreign keys; DDL and a data dictionary from them.', group: 'development', tab: 'modeler' },
   { key: 'ai', href: '/builder/sql/ai', icon: 'bolt', label: 'AI', description: 'SQL from a question, explanations and table descriptions.', group: 'development', tab: 'ai' },
   { key: 'utilities', href: '/builder/sql/utilities', icon: 'wrench', label: 'Utilities', description: 'Object reports, About Database and the other utilities.', group: 'administration', tab: 'utilities', main: true },
   { key: 'backups', href: '/builder/backups', icon: 'archive', label: 'Manage Backups', description: 'Backups of the workspace\'s applications.', group: 'administration' },
