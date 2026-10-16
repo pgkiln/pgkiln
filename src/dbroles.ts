@@ -11,7 +11,8 @@ import pg from 'pg';
 // '********' (the review, the activity log), withVerifier() fills in the verifier only for running them.
 
 const ident = pg.escapeIdentifier;
-const literal = pg.escapeLiteral;
+// pg's escapeLiteral starts a literal with a backslash as " E'…'": without the space
+const literal = (s: string) => pg.escapeLiteral(s).trim();
 
 /** Where the password goes in a generated statement (never shown: see maskSql / withVerifier). */
 export const PASSWORD_SLOT = '\u0000password\u0000';

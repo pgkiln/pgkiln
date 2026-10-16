@@ -128,7 +128,8 @@ const one = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ??
 /** The form's values (also the review's hidden fields). */
 function specFromBody(b: Body, isNew: boolean, original: string): RoleSpec {
   const schemas: SchemaGrant[] = [];
-  for (let i = 0; i < 1000 && b[`s.${i}.name`] !== undefined; i++) {
+  const rows = Object.keys(b).map((k) => /^s\.(\d{1,4})\.name$/.exec(k)?.[1]).filter((i): i is string => !!i).sort((x, y) => Number(x) - Number(y));
+  for (const i of rows) {
     schemas.push({
       schema: one(b[`s.${i}.name`]),
       usage: !!b[`s.${i}.usage`],

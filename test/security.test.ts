@@ -8380,3 +8380,110 @@ describe('sprint 96 Launchpad pins and the builder search', () => {
     assert.doesNotMatch(page, /<img src=x/);
   });
 });
+
+describe('sprint 99 database users', () => {
+  const DEV = 'sec99dev';
+  const PW = `Sec99-<b>&"pw'`;
+  const dropRoles = async () => {
+    for (const { r } of (await owner.query(`select rolname as r from pg_roles where rolname like 'sec99%'`)).rows)
+      await owner.query(`drop owned by "${r.replace(/"/g, '""')}"; drop role "${r.replace(/"/g, '""')}"`);
+  };
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    await dropRoles();
+  });
+  after(async () => {
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.activity_log where event = 'db_role' and detail like '%sec99%'`);
+    await dropRoles();
+  });
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/db-users/new');
+    return b;
+  };
+  const base = { original: '', name: 'sec99_role', login: '1', password_mode: 'keep', valid_until: '', conn_limit: '', search_path: '', comment: '' };
+  const exists = async (name: string) => (await owner.one('select count(*)::int as n from pg_roles where rolname = $1', [name])).n === 1;
+
+  test('administrators only: another developer gets 403 on every page and action', async () => {
+    const d = await signIn(DEV);
+    for (const url of ['/builder/db-users', '/builder/db-users/new', '/builder/db-users/role/pgkiln_runtime', '/builder/db-users/role/pgkiln_runtime/drop'])
+      assert.equal((await d.get(url)).statusCode, 403, url);
+    await d.get('/builder');
+    assert.equal((await d.post('/builder/db-users/save', { __csrf: d.lastCsrf, ...base, mode: 'apply', reviewed: 'x' })).statusCode, 403);
+    assert.equal((await d.post('/builder/db-users/drop', { __csrf: d.lastCsrf, name: 'hr_app', to: '' })).statusCode, 403);
+    assert.equal(await exists('sec99_role'), false);
+    assert.doesNotMatch((await d.get('/builder')).body, /href="\/builder\/db-users"/, 'not in a developer\'s menu');
+  });
+
+  test('CSRF: a forged token changes nothing', async () => {
+    const a = await signIn('admin');
+    assert.equal((await a.post('/builder/db-users/save', { __csrf: 'forged', ...base, mode: 'apply', reviewed: 'x' })).statusCode, 403);
+    await owner.query('create role sec99_victim nologin');
+    assert.equal((await a.post('/builder/db-users/drop', { __csrf: 'forged', name: 'sec99_victim', to: '' })).statusCode, 403);
+    assert.equal(await exists('sec99_victim'), true);
+  });
+
+  test('names, dates, search paths, memberships and schemas are checked; values are escaped in SQL and pages', async () => {
+    const a = await signIn('admin');
+    for (const evil of <Record<string, string>[]>[
+      { name: 'x"; drop role pgkiln; --' }, { name: 'pgkiln_sec99' }, { name: 'pg_sec99' }, { valid_until: "2030-01-01' superuser --" },
+      { conn_limit: '1; drop role x' }, { search_path: 'public; drop schema hr cascade' }, { member: 'pgkiln_runtime' }, { member: 'pg_execute_server_program' },
+      { 's.0.name': 'meta', 's.0.usage': '1', 's.0.defaults': 'none' },
+    ]) {
+      const res = await a.post('/builder/db-users/save', { __csrf: a.lastCsrf, ...base, ...evil, mode: 'review' });
+      assert.equal(res.statusCode, 200, JSON.stringify(evil));
+      assert.match(res.body, /class="alert alert-error"/, JSON.stringify(evil));
+      assert.doesNotMatch(res.body, /name="reviewed"/, JSON.stringify(evil));
+    }
+    const comment = `it's <img src=x onerror=alert(99)> \\'; drop table hr.emp; --`;
+    const review = await a.post('/builder/db-users/save', { __csrf: a.lastCsrf, ...base, comment, mode: 'review' });
+    assert.doesNotMatch(review.body, /<img src=x/);
+    assert.match(review.body, /COMMENT ON ROLE &quot;sec99_role&quot; IS E&#39;it&#39;&#39;s &lt;img src=x onerror=alert\(99\)&gt; \\\\&#39;&#39;; drop table hr.emp; --&#39;;/);
+    const reviewed = /name="reviewed" value="([^"]+)"/.exec(review.body)![1];
+    assert.equal((await a.post('/builder/db-users/save', { __csrf: a.lastCsrf, ...base, comment, mode: 'apply', reviewed })).statusCode, 303);
+    assert.equal((await owner.one(`select shobj_description(oid, 'pg_authid') as c from pg_roles where rolname = 'sec99_role'`)).c, comment);
+    assert.ok((await owner.one(`select to_regclass('hr.emp') as t`)).t);
+    assert.doesNotMatch((await a.get('/builder/db-users')).body, /<img src=x/);
+  });
+
+  test('the password is never in a page, a preview or the activity log; it reaches PostgreSQL as a SCRAM verifier', async () => {
+    const a = await signIn('admin');
+    const review = await a.post('/builder/db-users/save', { __csrf: a.lastCsrf, ...base, name: 'sec99_pw', password_mode: 'set', mode: 'review' });
+    assert.match(review.body, /PASSWORD &#39;\*{8}&#39;/);
+    const reviewed = /name="reviewed" value="([^"]+)"/.exec(review.body)![1];
+    const form = { __csrf: a.lastCsrf, ...base, name: 'sec99_pw', password_mode: 'set', reviewed, mode: 'apply' };
+    const mismatch = await a.post('/builder/db-users/save', { ...form, password: PW, confirm: `${PW}x` });
+    const short = await a.post('/builder/db-users/save', { ...form, password: 'short', confirm: 'short' });
+    for (const res of [review, mismatch, short]) {
+      for (const needle of [PW, 'Sec99-&lt;b&gt;', 'value="short"', 'SCRAM-SHA-256$']) assert.ok(!res.body.includes(needle), needle);
+    }
+    assert.equal(await exists('sec99_pw'), false);
+    assert.equal((await a.post('/builder/db-users/save', { ...form, password: PW, confirm: PW })).statusCode, 303);
+    assert.match((await owner.one(`select rolpassword from pg_authid where rolname = 'sec99_pw'`)).rolpassword, /^SCRAM-SHA-256\$4096:/);
+    for (const url of ['/builder/db-users', '/builder/db-users/role/sec99_pw', '/builder/db-users/role/sec99_pw/drop']) {
+      const body = (await a.get(url)).body;
+      assert.ok(!body.includes(PW) && !body.includes('SCRAM-SHA-256$'), url);
+    }
+    const logs = (await owner.query(`select detail from meta.activity_log where detail like '%sec99_pw%'`)).rows.map((r) => String(r.detail)).join('\n');
+    assert.match(logs, /PASSWORD '\*{8}'/);
+    assert.ok(!logs.includes(PW) && !logs.includes('SCRAM-SHA-256$'));
+  });
+
+  test('pgkiln\'s own roles can\'t be changed, dropped or granted; roles in use can\'t be dropped', async () => {
+    const a = await signIn('admin');
+    for (const role of ['pgkiln_runtime', 'pgkiln_authenticator', 'pgkiln']) {
+      const res = await a.post('/builder/db-users/save', { __csrf: a.lastCsrf, ...base, original: role, login: '', conn_limit: '0', mode: 'apply', reviewed: 'x' });
+      assert.equal(res.statusCode, 403, role);
+      assert.equal((await a.post('/builder/db-users/drop', { __csrf: a.lastCsrf, name: role, to: '' })).statusCode, 403, role);
+    }
+    assert.equal((await owner.one(`select rolcanlogin from pg_roles where rolname = 'pgkiln_runtime'`)).rolcanlogin, true);
+    assert.equal((await a.post('/builder/db-users/drop', { __csrf: a.lastCsrf, name: 'hr_app', to: '' })).statusCode, 403);
+    assert.equal(await exists('hr_app'), true);
+    const res = await a.post('/builder/db-users/save', { __csrf: a.lastCsrf, ...base, name: 'sec99_member', member: 'pgkiln_app_code', mode: 'review' });
+    assert.match(res.body, /pgkiln_app_code can&#39;t be granted here/);
+    assert.doesNotMatch((await a.get('/builder/db-users/new')).body, /name="member" value="pgkiln/);
+  });
+});
