@@ -7,6 +7,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
 import { getSession, saveState, takeFlash, type Session } from '../session.ts';
+import { SQL_TOOLS, TOOL_GROUPS } from './sql-tools.ts';
 import { ensureDevbar } from '../runtime/devbar.ts';
 
 // Shared building blocks of the builder UI.
@@ -52,7 +53,7 @@ export type Section = 'apps' | 'users' | 'sql' | 'developers' | 'gallery';
 // app.css / app.js (the runtime never loads them). Add new builder assets
 // here, and only here.
 export const BUILDER_STYLES = ['/static/builder.css', '/static/code-editor.css', '/static/worksheet.css'];
-export const BUILDER_SCRIPTS = ['/static/builder.js', '/static/code-editor.js', '/static/worksheet.js'];
+export const BUILDER_SCRIPTS = ['/static/builder.js', '/static/code-editor.js', '/static/worksheet.js', '/static/palette.js'];
 export const builderHead = () =>
   html`${BUILDER_STYLES.map((href) => html`<link rel="stylesheet" href="${href}">\n`)}${BUILDER_SCRIPTS.map((src) => html`<script src="${src}" defer></script>\n`)}`;
 
@@ -170,6 +171,9 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${back ? html`<a class="ide-back" href="${back[1]}" title="Back to ${back[0]}">${bicon('back')}<span class="sr-only">Back to ${back[0]}</span></a>` : ''}
         <nav class="ide-crumbs" aria-label="Breadcrumb"><ol>${crumbs.map(([label, href], i) =>
           html`<li>${href && i < crumbs.length - 1 ? html`<a href="${href}">${label}</a>` : html`<span aria-current="page">${label}</span>`}</li>`)}</ol></nav>
+        <form method="get" action="${BASE}/palette" class="ide-search" role="search" data-palette>
+          <label class="sr-only" for="ide-search-q">Search the builder</label>
+          <input id="ide-search-q" name="q" type="search" placeholder="Search (Ctrl+K)" autocomplete="off" aria-keyshortcuts="Control+K"></form>
         <div class="ide-tools">${opts.toolbar ?? ''}</div>
       </header>
       ${s.workspace?.banner_label ? html`<div class="ide-banner ide-banner-${BANNER_COLORS.includes(s.workspace.banner_color ?? '') ? s.workspace.banner_color : 'blue'}" role="note" aria-label="Environment">${s.workspace.banner_label}</div>` : ''}
@@ -249,20 +253,21 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 /** Tabs of the SQL Workshop. */
 export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities';
 export const workshopTabs = (active: WorkshopTab) => {
-  const tab = (key: WorkshopTab, href: string, ic: string, label: string) =>
-    html`<a class="ide-tab" href="${BASE}${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
-  // (sprint 75) the main tools as tabs, the others in a More menu (the open one is a tab too), so the strip never scrolls
-  const more: [WorkshopTab, string, string, string][] = [
-    ['quicksql', '/sql/quick', 'bolt', 'Quick SQL'], ['query', '/sql/query', 'filter', 'Query Builder'], ['load', '/sql/load', 'upload', 'Load Data'],
-    ['unload', '/sql/unload', 'download', 'Unload Data'], ['sample', '/sql/sample-data', 'layers', 'Sample Data'], ['ddl', '/sql/ddl', 'file', 'DDL'],
-    ['compare', '/sql/compare', 'layers', 'Compare'], ['ai', '/sql/ai', 'bolt', 'AI'],
-  ];
-  const open = more.find(([k]) => k === active);
+  const tab = (key: string, href: string, ic: string, label: string) =>
+    html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
+  // (sprint 75) the main tools as tabs, the others in a More menu (the open one is a tab too), so the strip never
+  // scrolls; (sprint 96) the More menu under the Launchpad's headings, from SQL_TOOLS
+  const main = SQL_TOOLS.filter((t) => t.main);
+  const open = SQL_TOOLS.find((t) => !t.main && t.tab === active);
   return html`<nav class="ide-tabs sw-tabs u-mb1" aria-label="SQL Workshop">
-    ${tab('home', '/sql', 'home', 'Home')}${tab('sql', '/sql/worksheet', 'code', 'SQL Worksheet')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('utilities', '/sql/utilities', 'wrench', 'Utilities')}
-    ${open ? tab(...open) : ''}
+    ${tab('home', `${BASE}/sql`, 'home', 'Home')}${main.map((t) => tab(t.tab!, t.href, t.icon, t.label))}
+    ${open ? tab(open.tab!, open.href, open.icon, open.label) : ''}
     <details class="menu sw-more"><summary class="ide-tab">${icon('chevron-down')}<span>More</span></summary>
-      <div class="menu-panel align-right"><div class="menu-section menu-links">${more.map(([k, href, ic, label]) => html`<a href="${BASE}${href}"${k === active ? raw(' aria-current="page"') : ''}>${icon(ic)} ${label}</a>`)}</div></div></details></nav>`;
+      <div class="menu-panel align-right">${TOOL_GROUPS.map(([g, heading]) => {
+        // administrators' tools are on the Launchpad and the Utilities page, not in every developer's menu
+        const list = SQL_TOOLS.filter((t) => t.group === g && !t.main && !t.admin);
+        return list.length ? html`<div class="menu-section menu-links"><span class="small muted">${heading}</span>${list.map((t) => html`<a href="${t.href}"${t.tab && t.tab === active ? raw(' aria-current="page"') : ''}>${icon(t.icon)} ${t.label}</a>`)}</div>` : '';
+      })}</div></details></nav>`;
 };
 
 /** Number of app tile colours (.app-color-0 … -7 in app.css). */

@@ -1256,6 +1256,17 @@ you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample da
 (sprint 75) The tools are tabs: Home, SQL Worksheet, Object Browser, SQL Scripts and Utilities; **More** opens the
 others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compare, AI), and the open one is a tab too.
 
+(sprint 96; Database Actions: the Launchpad) The home page starts with **Pinned & recently visited**: the pages you
+pinned (a tool, a database object from the Object Browser, a saved worksheet from its file menu; at most 24, per
+workspace) and the SQL Workshop pages you opened last in this browser. Below, the tools are in three tabs,
+**Development**, **Administration** and **Monitoring**, each with a line about what it does and a pin; the **More**
+menu uses the same headings.
+
+**Search** (**Ctrl/Cmd + K** on any builder page, or the field in the header) finds tools, applications, pages
+(by name or number) and database objects (tables, views, materialized views, functions and procedures) by name;
+the arrow keys and Enter open one. Applications and pages come from your workspace only; objects from the schemas
+the SQL Workshop's connection may use. Without JavaScript the header's field opens a page of results.
+
 - **SQL Worksheet** (`/builder/sql/worksheet`, sprint 91; Database Actions: SQL; was SQL Commands, whose address
   `/builder/sql/commands` opens the same page): one screen with a **navigator** on the left, the **editor** with a
   toolbar, **output tabs** below and a **status bar**.

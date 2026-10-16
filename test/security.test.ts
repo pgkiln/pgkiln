@@ -8334,3 +8334,49 @@ describe('sprint 95 Table Properties', () => {
     assert.equal((await king.post('/builder/sql/objects/table', { __csrf: king.lastCsrf, ...form })).headers.location, '/builder/login');
   });
 });
+
+describe('sprint 96 Launchpad pins and the builder search', () => {
+  const DEV = 'sec96dev';
+  let otherWs: number;
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec96 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+    await owner.query(`drop schema if exists "sec96<b>" cascade; create schema "sec96<b>"; create table "sec96<b>"."sec96<img src=x onerror=alert(96)>" (a int)`);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.workspace where name = 'Sec96 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.builder_pin where label like 'sec96%'`);
+    await owner.query(`drop schema if exists "sec96<b>" cascade`);
+  });
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/sql');
+    return b;
+  };
+
+  test('pins need the CSRF token and stay one developer\'s; labels are escaped', async () => {
+    const a = await signIn('admin');
+    assert.equal((await a.post('/builder/pins', { __csrf: 'forged', href: '/builder/sql/quick', label: 'sec96 forged' })).statusCode, 403);
+    await a.post('/builder/pins', { __csrf: a.lastCsrf, href: '/builder/sql/quick', label: 'sec96 <img src=x onerror=alert(1)>' });
+    const home = (await a.get('/builder/sql')).body;
+    assert.doesNotMatch(home, /<img src=x/);
+    assert.match(home, /sec96 &lt;img src=x/);
+    const d = await signIn(DEV);
+    assert.doesNotMatch((await d.get('/builder/sql')).body, /sec96 &lt;img src=x onerror=alert\(1\)/);
+  });
+
+  test('the search finds only the developer\'s workspace; names are escaped', async () => {
+    const d = await signIn(DEV);
+    const r = (await d.get('/builder/palette?format=json&q=hr')).json() as { results: { kind: string }[] };
+    assert.ok(!r.results.some((x) => x.kind === 'Application' || x.kind === 'Page'), 'not another workspace\'s apps or pages');
+    const a = await signIn('admin');
+    const page = (await a.get(`/builder/palette?q=${encodeURIComponent('sec96<img')}`)).body;
+    assert.match(page, /sec96&lt;img src=x onerror=alert\(96\)&gt;/);
+    assert.doesNotMatch(page, /<img src=x/);
+  });
+});
