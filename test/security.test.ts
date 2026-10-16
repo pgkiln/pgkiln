@@ -8816,3 +8816,119 @@ describe('sprint 102 monitor', () => {
     assert.ok(await owner.one(`select to_regclass('public.sec102_t') as t`));
   });
 });
+
+describe('sprint 101 scheduling', () => {
+  // SQL Workshop › Scheduling (pg_cron): administrators only, CSRF, values only as SQL literals, Apply runs only the
+  // reviewed SQL, Run now runs the stored command. pg_cron itself when installed, else test/pgcron-mock.ts.
+  const DEV = 'sec101dev';
+  const URL = '/builder/sql/scheduling';
+  let mock: typeof import('./pgcron-mock.ts');
+  before(async () => {
+    mock = await import('./pgcron-mock.ts');
+    await mock.mockPgCron();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    await owner.query('drop role if exists sec101_nologin; create role sec101_nologin nologin');
+  });
+  after(async () => {
+    await owner.query(`select cron.unschedule(jobid) from cron.job where jobname like 'sec101%'`);
+    await mock.dropMockPgCron();
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('drop role if exists sec101_nologin');
+    await owner.query(`delete from meta.activity_log where event in ('cron_job', 'cron_run_now') and detail like '%sec101%'`);
+  });
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/sql');
+    return b;
+  };
+  const ctx = async () => (await owner.one<{ d: string; u: string }>('select current_database() as d, current_user as u'))!;
+  const review = async (b: Browser, form: Record<string, string>) => {
+    const res = await b.post(`${URL}/save`, { __csrf: b.lastCsrf, ...form, mode: 'review' });
+    const f = res.body.slice(res.body.lastIndexOf(`<form method="post" action="${URL}/save"`));
+    const out: Record<string, string> = {};
+    for (const m of f.slice(0, f.indexOf('</form>')).matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
+      out[m[1]] = m[2].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    return { res, hidden: out };
+  };
+  const jobOf = async (name: string) => (await owner.one<{ jobid: string; command: string; schedule: string }>('select jobid::text, command, schedule from cron.job where jobname = $1', [name])) ?? null;
+
+  test('administrators only: another developer gets 403 on every page and action', async () => {
+    const { d, u } = await ctx();
+    await owner.query(`select cron.schedule_in_database('sec101 victim', '0 1 * * *', 'select 1', $1, $2)`, [d, u]);
+    const id = (await jobOf('sec101 victim'))!.jobid;
+    const dev = await signIn(DEV);
+    for (const url of [URL, `${URL}/new`, `${URL}/history`, `${URL}/history/purge`, `${URL}/job/${id}`, `${URL}/job/${id}/edit`, `${URL}/job/${id}/unschedule`, `${URL}/preview?schedule=*`])
+      assert.equal((await dev.get(url)).statusCode, 403, url);
+    for (const url of [`${URL}/save`, `${URL}/job/${id}/active`, `${URL}/job/${id}/run`, `${URL}/job/${id}/unschedule`, `${URL}/history/purge`])
+      assert.equal((await dev.post(url, { __csrf: dev.lastCsrf, jobid: id, name: 'sec101 victim', schedule: '* * * * *', command: 'select 2', database: d, username: u, mode: 'apply', reviewed: 'x', days: 'all' })).statusCode, 403, url);
+    assert.deepEqual(await jobOf('sec101 victim'), { jobid: id, command: 'select 1', schedule: '0 1 * * *' });
+    assert.doesNotMatch((await dev.get('/builder/sql')).body, /href="\/builder\/sql\/scheduling"/, 'not on a developer\'s Launchpad');
+  });
+
+  test('CSRF: a forged token changes nothing', async () => {
+    const a = await signIn('admin');
+    const id = (await jobOf('sec101 victim'))!.jobid;
+    for (const url of [`${URL}/job/${id}/active`, `${URL}/job/${id}/unschedule`, `${URL}/job/${id}/run`])
+      assert.equal((await a.post(url, { __csrf: 'forged', active: '' })).statusCode, 403, url);
+    assert.ok(await jobOf('sec101 victim'));
+  });
+
+  test('names, schedules and commands stay literals; pages escape them', async () => {
+    const a = await signIn('admin');
+    const { d, u } = await ctx();
+    const name = `sec101 x'); select cron.unschedule(1); --<b>`;
+    const command = `select '$cmd$' as a, $cmd$ $$ </pre><script>alert(1)</script> $cmd$ as b; -- '); drop table meta.app; --`;
+    const r = await review(a, { jobid: '', name, schedule: '0 2 * * *', command, database: d, username: u, active: '1' });
+    assert.doesNotMatch(r.res.body, /<script>alert|<b>/);
+    assert.equal((await a.post(`${URL}/save`, { __csrf: a.lastCsrf, ...r.hidden, mode: 'apply' })).statusCode, 303);
+    const job = await jobOf(name);
+    assert.equal(job?.command, command, 'stored exactly as typed');
+    const page = await a.get(`${URL}/job/${job!.jobid}`);
+    assert.doesNotMatch(page.body, /<script>alert|<b>|<\/pre><script>/);
+    assert.match((await a.get(URL)).body, /sec101 x&#39;\); select cron\.unschedule\(1\); --&lt;b&gt;/);
+    // a schedule that isn't one, a database or role it may not use: refused before any SQL is shown
+    for (const [k, v, msg] of [['schedule', "0 2 * * *'); drop table meta.app; --", /Schedule:/], ['database', 'template0', /database/], ['username', 'sec101_nologin', /role that can sign in/], ['username', 'nobody"; drop', /role/]]) {
+      const bad = await review(a, { jobid: '', name: 'sec101 bad', schedule: '0 2 * * *', command: 'select 1', database: d, username: u, active: '1', [k as string]: v as string });
+      assert.equal(bad.res.statusCode, 422, String(k));
+      assert.match(bad.res.body, msg as RegExp);
+      assert.doesNotMatch(bad.res.body, /cron\.schedule_in_database\(/);
+    }
+    assert.equal(await jobOf('sec101 bad'), null);
+    // the preview escapes what it echoes
+    assert.doesNotMatch((await a.get(`${URL}/preview?schedule=${encodeURIComponent('<img src=x onerror=alert(1)>')}`)).body, /<img/);
+  });
+
+  test('Apply runs only the reviewed SQL; ids in paths are numbers', async () => {
+    const a = await signIn('admin');
+    const { d, u } = await ctx();
+    const r = await review(a, { jobid: '', name: 'sec101 reviewed', schedule: '0 2 * * *', command: 'select 1', database: d, username: u, active: '1' });
+    const tampered = await a.post(`${URL}/save`, { __csrf: a.lastCsrf, ...r.hidden, command: 'drop table meta.app', mode: 'apply' });
+    assert.match(tampered.body, /changed since you reviewed/);
+    assert.equal(await jobOf('sec101 reviewed'), null);
+    // purge: the reviewed statement, not one the form names
+    const purge = await a.get(`${URL}/history/purge?days=7`);
+    assert.equal((await a.post(`${URL}/history/purge`, { __csrf: a.lastCsrf, days: 'all', reviewed: /name="reviewed" value="([^"]+)"/.exec(purge.body)![1], mode: 'apply' })).statusCode, 422);
+    assert.match((await a.get(`${URL}/history/purge?days=1;drop`)).body, /interval &#39;30 days&#39;/, 'an unknown choice is the default');
+    for (const url of [`${URL}/job/1;drop`, `${URL}/job/99999999999999999999`, `${URL}/job/-1/edit`, `${URL}/history/purge?job=1%20or%201=1`])
+      assert.equal((await a.get(url)).statusCode, 404, url);
+    assert.equal((await a.get(`${URL}/history?job=1%20or%201=1&status=x'&q=%27%3B`)).statusCode, 200);
+  });
+
+  test('Run now runs the stored command, not one from the request', async () => {
+    const a = await signIn('admin');
+    const { d, u } = await ctx();
+    await owner.query('drop table if exists public.sec101_t; create table public.sec101_t (n int)');
+    try {
+      await owner.query(`select cron.schedule_in_database('sec101 run', '0 1 * * *', 'insert into public.sec101_t values (1)', $1, $2)`, [d, u]);
+      const id = (await jobOf('sec101 run'))!.jobid;
+      await a.get(`${URL}/job/${id}`);
+      const res = await a.post(`${URL}/job/${id}/run`, { __csrf: a.lastCsrf, command: 'insert into public.sec101_t values (666)' });
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual((await owner.query('select n from public.sec101_t')).rows, [{ n: 1 }]);
+    } finally {
+      await owner.query('drop table if exists public.sec101_t');
+    }
+  });
+});

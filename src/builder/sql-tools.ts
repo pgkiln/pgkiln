@@ -41,6 +41,7 @@ export const SQL_TOOLS: SqlTool[] = [
   { key: 'backups', href: '/builder/backups', icon: 'archive', label: 'Manage Backups', description: 'Backups of the workspace\'s applications.', group: 'administration' },
   { key: 'workspaces', href: '/builder/workspaces', icon: 'layers', label: 'Workspaces', description: 'Workspaces, their developers and database roles.', group: 'administration', admin: true },
   { key: 'dbusers', href: '/builder/db-users', icon: 'key', label: 'Database Users', description: 'PostgreSQL roles: sign-in, expiry, memberships and schema privileges.', group: 'administration', admin: true },
+  { key: 'scheduling', href: '/builder/sql/scheduling', icon: 'clock', label: 'Scheduling', description: 'pg_cron jobs: SQL on a schedule, next runs, run history; pgkiln\'s automations without it.', group: 'administration', tab: 'scheduling', admin: true },
   { key: 'developers', href: '/builder/developers', icon: 'users', label: 'Developers', description: 'Builder accounts and their workspaces.', group: 'administration' },
   { key: 'monitor', href: '/builder/sql/monitor', icon: 'activity', label: 'SQL Monitor', description: 'Sessions live: what they run, wait for and what blocks them; cancel or terminate.', group: 'monitoring', tab: 'monitor', admin: true },
   { key: 'topsql', href: '/builder/sql/monitor/top', icon: 'chart', label: 'Top SQL', description: 'The slowest and most called statements of the database, with their plans.', group: 'monitoring', tab: 'monitor', admin: true },

@@ -1054,6 +1054,20 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 }
 /* (sprint 100) RESTful Services: examples wrap instead of scrolling sideways */
 pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* (sprint 101, DA-12) SQL Workshop › Scheduling */
+.cron-list td, .cron-runs-table td { overflow-wrap: anywhere; }
+.cron-cmd { display: inline-block; max-width: 40ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.cron-wide { grid-column: 1 / -1; }
+.cron-inline { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.cron-inline select { min-width: 0; max-width: 100%; flex: 1 1 12rem; }
+.cron-fields { border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.8rem; margin: 0.8rem 0; min-width: 0; }
+.cron-field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.6rem; }
+.cron-field-grid input { width: 100%; font-family: var(--mono, monospace); }
+.cron-preview { border-left: 3px solid var(--accent); padding: 0.4rem 0.8rem; margin: 0.6rem 0; background: var(--accent-soft); border-radius: 0 4px 4px 0; }
+.cron-runs { margin: 0.25rem 0 0; padding-left: 1.4rem; font-variant-numeric: tabular-nums; }
+.cron-error { color: var(--danger, #b42318); }
+.cron-sql { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* (sprint 102) SQL Monitor: refresh controls, session actions, bars in Top SQL */
 .sm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
 .sm-live.is-paused .sm-updated::after { content: " · paused"; }
