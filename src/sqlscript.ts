@@ -13,6 +13,9 @@ export interface ScriptStatement {
   line: number;
   /** a psql meta-command (\set, \i, …): reported, not run */
   psql?: boolean;
+  /** (sprint 91) offsets of the statement text in the script: [start, end) */
+  start: number;
+  end: number;
 }
 
 const IDENT = /[A-Za-z0-9_$]/;
@@ -45,7 +48,7 @@ export function splitScript(script: string): ScriptStatement[] {
       lead = skipQuoted(raw, lead)!;
     }
     const sql = raw.slice(lead).trim();
-    if (sql) out.push({ sql, line: lineAt(script, start + lead) });
+    if (sql) out.push({ sql, line: lineAt(script, start + lead), start: start + lead, end: start + lead + sql.length });
   };
 
   while (i < n) {
@@ -64,7 +67,8 @@ export function splitScript(script: string): ScriptStatement[] {
       push(i); // nothing but comments before it
       const eol = script.indexOf('\n', i);
       const end = eol === -1 ? n : eol;
-      out.push({ sql: script.slice(i, end).trim(), line: lineAt(script, i), psql: true });
+      const text = script.slice(i, end).trim();
+      out.push({ sql: text, line: lineAt(script, i), psql: true, start: i, end: i + text.length });
       start = i = end;
       continue;
     }

@@ -15,7 +15,7 @@ import { WIZARD_KINDS, wizardTables } from './wizards.ts';
 // App Builder AI (migration 062), with the AI service an administrator
 // chooses for the builder (meta.builder_ai):
 // - SQL Workshop → AI: SQL from a question (shown, never run: the developer
-//   may run it in SQL Commands), and an explanation of a query or an error;
+//   may run it in the SQL Worksheet), and an explanation of a query or an error;
 // - SQL Workshop → AI → Describe tables: descriptions of tables and columns
 //   for the model (meta.ai_table_note, optionally also COMMENT ON), typed or
 //   drafted by AI from the names and types (never from the data) and
@@ -148,7 +148,7 @@ async function workshopPage(s: Session, reply: FastifyReply, out: { question?: s
     ${out.result ?? ''}
     <div class="columns">
       ${region('SQL from a question', html`
-        <p class="muted u-mt0">The answer is shown, never run: check it, then run it in SQL Commands if you want.</p>
+        <p class="muted u-mt0">The answer is shown, never run: check it, then run it in the SQL Worksheet if you want.</p>
         <form method="post" action="${BASE}/sql/ai/sql">${csrf(s)}
           <div class="form-grid">${select('schema', 'Schema', out.schema ?? list[0] ?? '', list)}</div>
           <div class="field"><label class="label" for="f_question">Question</label>
@@ -324,7 +324,7 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
         <form method="post" action="${BASE}/sql">${csrf(s)}
           <div class="field"><label class="label" for="f_ai_sql">SQL (not run)</label>
             <textarea id="f_ai_sql" name="sql" class="code sql-editor" rows="10" spellcheck="false" data-code="plpgsql">${sql}</textarea></div>
-          <div class="buttons"><button class="btn">Run in SQL Commands</button></div>
+          <div class="buttons"><button class="btn">Run in the SQL Worksheet</button></div>
         </form>`);
     } catch (e) {
       result = errorBox(e);

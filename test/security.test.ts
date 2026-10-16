@@ -8126,10 +8126,10 @@ describe('sprint 89 Object Browser column toolbar', () => {
       await dev.get('/builder/sql/objects?schema=sec89&k=table&o=sec89.t&tab=columns');
       for (const expr of ["0); drop table sec89.t; select (1", "0 /* x */", "now() -- x", 'x'.repeat(201)]) {
         const res = await dev.post('/builder/sql/objects/alter', { __csrf: dev.lastCsrf, schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', default_action: 'set', default: expr });
-        assert.notEqual(res.headers.location, '/builder/sql/commands', expr.slice(0, 20));
+        assert.notEqual(res.headers.location, '/builder/sql/worksheet', expr.slice(0, 20));
       }
       const ok = await dev.post('/builder/sql/objects/alter', { __csrf: dev.lastCsrf, schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', nullable: 'null' });
-      assert.equal(ok.headers.location, '/builder/sql/commands');
+      assert.equal(ok.headers.location, '/builder/sql/worksheet');
       assert.equal((await owner.one(`select attnotnull from pg_attribute where attrelid = 'sec89.t'::regclass and attname = 'name'`)).attnotnull, true, 'nothing ran');
       assert.equal((await dev.post('/builder/sql/objects/alter', { __csrf: 'forged', schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', nullable: 'null' })).statusCode, 403);
       const king = await as('king');
@@ -8137,5 +8137,62 @@ describe('sprint 89 Object Browser column toolbar', () => {
     } finally {
       await owner.query('drop schema if exists sec89 cascade');
     }
+  });
+});
+
+describe('sprint 91 the SQL Worksheet', () => {
+  const DEV = 'sec91dev';
+  let otherWs: number;
+  const signIn = async (username: string, password: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password });
+    await b.get('/builder/sql/worksheet');
+    return b;
+  };
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec91 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.workspace where name = 'Sec91 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('drop table if exists public.sec91_t');
+  });
+
+  test('developers only, with the CSRF token: app users and forged posts run nothing', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get('/builder/sql/worksheet')).headers.location, '/builder/login');
+    assert.equal((await anon.get('/builder/sql/worksheet/navigator?schema=public')).headers.location, '/builder/login');
+    const king = await as('king');
+    assert.equal((await king.post('/builder/sql/worksheet', { __csrf: king.lastCsrf, sql: 'create table public.sec91_t (a int)', mode: 'script' })).headers.location, '/builder/login');
+    const a = await signIn('admin', 'admin');
+    assert.equal((await a.post('/builder/sql/worksheet', { __csrf: 'forged', sql: 'create table public.sec91_t (a int)', mode: 'script' })).statusCode, 403);
+    assert.equal((await owner.one(`select to_regclass('public.sec91_t') as t`)).t, null);
+  });
+
+  test('output is escaped everywhere: grid, script output, notices, history, status bar', async () => {
+    const a = await signIn('admin', 'admin');
+    const evil = '<img src=x onerror=alert(91)>';
+    for (const mode of ['statement', 'script']) {
+      const out = (await a.post('/builder/sql/worksheet', { __csrf: a.lastCsrf, sql: `select '${evil}' as "${evil}"; do $$ begin raise notice '${evil}'; end $$; select 1 from "${evil}"`, mode, continue_on_error: 'on' })).body;
+      assert.doesNotMatch(out, /<img src=x/, mode);
+    }
+    const hist = (await a.get('/builder/sql/worksheet')).body;
+    assert.doesNotMatch(hist, /<img src=x/);
+    assert.match(hist, /data-ws-history="select &#39;&lt;img src=x/);
+  });
+
+  test('Run as: only an application of the developer\'s workspace; another workspace\'s app is refused', async () => {
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const d = await signIn(DEV, DEV);
+    const page = (await d.get('/builder/sql/worksheet')).body;
+    assert.doesNotMatch(page, new RegExp(`<option value="${hr}">`));
+    for (const as_app of [String(hr), '0', '1 or 1=1', '-1'])
+      assert.notEqual((await d.post('/builder/sql/worksheet', { __csrf: d.lastCsrf, sql: 'select current_user', mode: 'statement', as_app })).statusCode, 200, as_app);
+    // the navigator never lists pgkiln's schemas
+    assert.equal((await d.get('/builder/sql/worksheet/navigator?schema=meta')).statusCode, 404);
   });
 });

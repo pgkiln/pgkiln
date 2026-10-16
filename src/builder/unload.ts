@@ -26,7 +26,7 @@ import { workshopDb } from './workspaces.ts';
 // SQL Workshop → Unload Data (APEX: Data Workshop → Unload Data): a table or
 // view (chosen columns, an optional WHERE and ORDER BY) or a query, to CSV,
 // JSON, Excel or XML, streamed from a cursor (src/unload.ts). Runs on a
-// connection of its own as the owner, like SQL Commands, but in a READ ONLY
+// connection of its own as the owner, like the SQL Worksheet, but in a READ ONLY
 // transaction with a statement timeout; the connection is closed afterwards
 // so nothing the query sets can leak into the pool. The table step is a GET
 // form and the download a POST form (CSRF), so it works without JavaScript.

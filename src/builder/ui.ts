@@ -51,8 +51,8 @@ export type Section = 'apps' | 'users' | 'sql' | 'developers' | 'gallery';
 // Builder-only stylesheets and scripts, loaded on every builder page after
 // app.css / app.js (the runtime never loads them). Add new builder assets
 // here, and only here.
-export const BUILDER_STYLES = ['/static/builder.css', '/static/code-editor.css'];
-export const BUILDER_SCRIPTS = ['/static/builder.js', '/static/code-editor.js'];
+export const BUILDER_STYLES = ['/static/builder.css', '/static/code-editor.css', '/static/worksheet.css'];
+export const BUILDER_SCRIPTS = ['/static/builder.js', '/static/code-editor.js', '/static/worksheet.js'];
 export const builderHead = () =>
   html`${BUILDER_STYLES.map((href) => html`<link rel="stylesheet" href="${href}">\n`)}${BUILDER_SCRIPTS.map((src) => html`<script src="${src}" defer></script>\n`)}`;
 
@@ -259,7 +259,7 @@ export const workshopTabs = (active: WorkshopTab) => {
   ];
   const open = more.find(([k]) => k === active);
   return html`<nav class="ide-tabs sw-tabs u-mb1" aria-label="SQL Workshop">
-    ${tab('home', '/sql', 'home', 'Home')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('sql', '/sql/commands', 'code', 'SQL Commands')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('utilities', '/sql/utilities', 'wrench', 'Utilities')}
+    ${tab('home', '/sql', 'home', 'Home')}${tab('sql', '/sql/worksheet', 'code', 'SQL Worksheet')}${tab('objects', '/sql/objects', 'database', 'Object Browser')}${tab('scripts', '/sql/scripts', 'file', 'SQL Scripts')}${tab('utilities', '/sql/utilities', 'wrench', 'Utilities')}
     ${open ? tab(...open) : ''}
     <details class="menu sw-more"><summary class="ide-tab">${icon('chevron-down')}<span>More</span></summary>
       <div class="menu-panel align-right"><div class="menu-section menu-links">${more.map(([k, href, ic, label]) => html`<a href="${BASE}${href}"${k === active ? raw(' aria-current="page"') : ''}>${icon(ic)} ${label}</a>`)}</div></div></details></nav>`;

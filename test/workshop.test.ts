@@ -352,14 +352,14 @@ describe('Query builder', () => {
     assert.deepEqual(fk, [{ a: 't1.dept_id', b: 't2.id', custom: false }]);
   });
 
-  test('the page shows the SQL and a form to run it in SQL Commands', async () => {
+  test('the page shows the SQL and a form to run it in the SQL Worksheet', async () => {
     const page = await dev.get('/builder/sql/query?schema=ws_qb&t=emp&t=dept');
     assert.equal(page.statusCode, 200);
     assert.match(page.body, /join &quot;ws_qb&quot;\.&quot;dept&quot; t2 on t1\.&quot;dept_id&quot; = t2\.&quot;id&quot;/);
     assert.match(page.body, /<form method="post" action="\/builder\/sql"><input type="hidden" name="__csrf"/);
     const sql = /<input type="hidden" name="sql" value="([^"]*)"/.exec(page.body)![1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
     const run = await dev.submit('/builder/sql', { sql });
-    assert.match(run.body, /2 row\(s\)/, "inner join: O'Brien has no department");
+    assert.match(run.body, /2 rows in \d+ ms/, "inner join: O'Brien has no department");
     // an unknown schema falls back to public
     assert.equal((await dev.get('/builder/sql/query?schema=nope%22')).statusCode, 200);
   });

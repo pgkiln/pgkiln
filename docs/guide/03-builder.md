@@ -84,7 +84,7 @@ builder page while the workspace is current.
 Administrators and the workspace's administrators set them on the workspace's page (Administration menu →
 *Workspace preferences*; APEX: Set Workspace Preferences):
 
-- **Enable the SQL Workshop**: off, every SQL Workshop page (SQL Commands, the Object Browser, SQL scripts, Load and
+- **Enable the SQL Workshop**: off, every SQL Workshop page (the SQL Worksheet, the Object Browser, SQL scripts, Load and
   Unload Data, Quick SQL, the query builder, Sample Data, DDL, Compare, AI) answers *403* while the workspace is
   current, for every developer including administrators; the rail and Workspace utilities no longer show it. A
   developer who belongs to another workspace can still use it there. Turn it off for a workspace whose developers
@@ -143,7 +143,7 @@ workspace → *Isolation*). It needs `RUNTIME_DATABASE_URL` (applications don't 
 
 - **Two PostgreSQL logins of its own**: `pgkiln_ws<id>_run_<suffix>` runs its applications (pages, processes, REST
   handlers, automations, workflows, background processes, REST synchronisation); `pgkiln_ws<id>_dev_<suffix>` runs its
-  developers' SQL: SQL Commands, SQL Scripts, Quick SQL, Load and Unload Data, Sample Data, DDL and Compare, the
+  developers' SQL: the SQL Worksheet, SQL Scripts, Quick SQL, Load and Unload Data, Sample Data, DDL and Compare, the
   Advisor, code checks and document previews. SQL that runs `RESET ROLE` (or `set_config('role', …)`) only gets back to
   that login, which can use the workspace's database roles and nothing else.
 - **The workspace's database roles** (APEX: workspace schemas): isolating gives the workspace the roles its
@@ -1191,8 +1191,8 @@ administrator chooses it under **SQL Workshop → AI** (any enabled [AI service]
 switches the builder's AI off). What it is used for:
 
 - **SQL from a question** (SQL Workshop → AI): pick a schema and ask; the answer is a statement and
-  a short explanation. It is **shown, never run**: check it, change it and run it in SQL Commands
-  yourself (*Run in SQL Commands*).
+  a short explanation. It is **shown, never run**: check it, change it and run it in the SQL Worksheet
+  yourself (*Run in the SQL Worksheet*).
 - **Explain a query or an error** (SQL Workshop → AI): paste a query, an error message or both
   (optionally with a schema for context); the explanation is shown with simple formatting.
 - **Describe tables for AI** (SQL Workshop → AI → *Describe tables*): per table or view, a
@@ -1246,34 +1246,64 @@ may use), a form to **issue a token** for an account, and `curl` examples. See
 
 ## SQL Workshop
 
-The SQL Workshop opens on its **home** (`/builder/sql`; APEX: the SQL Workshop home): tiles for the Object Browser,
-SQL Commands, SQL Scripts, the utilities and Quick SQL; **Recently created tables** (the newest tables you can read:
-PostgreSQL keeps no creation time, so object ids decide), your **recent SQL commands** (click one to open it in SQL
-Commands; other developers' are never shown) and the workspace's **recent SQL scripts**. The side column sets the
-session's **schema** (APEX: the default schema): it goes first in the search path of SQL Commands and SQL Scripts until
+The SQL Workshop opens on its **home** (`/builder/sql`; APEX: the SQL Workshop home): tiles for the SQL Worksheet,
+the Object Browser, SQL Scripts, the utilities and Quick SQL; **Recently created tables** (the newest tables you can read:
+PostgreSQL keeps no creation time, so object ids decide), your **recent SQL commands** (click one to open it in the SQL
+Worksheet; other developers' are never shown) and the workspace's **recent SQL scripts**. The side column sets the
+session's **schema** (APEX: the default schema): it goes first in the search path of the SQL Worksheet and SQL Scripts until
 you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample data and Generate DDL.
 
-(sprint 75) The tools are tabs: Home, Object Browser, SQL Commands, SQL Scripts and Utilities; **More** opens the
+(sprint 75) The tools are tabs: Home, SQL Worksheet, Object Browser, SQL Scripts and Utilities; **More** opens the
 others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compare, AI), and the open one is a tab too.
 
-- **SQL Commands** (`/builder/sql/commands`): run any SQL as the **owner connection**, not as an application role. Multiple
-  statements are allowed; the result of the last one is shown (up to 500 rows). Press
-  **Ctrl/Cmd + Enter** to run. The [code editor](#the-code-editor) suggests every schema, table,
-  column and function the owner sees.
+- **SQL Worksheet** (`/builder/sql/worksheet`, sprint 91; Database Actions: SQL; was SQL Commands, whose address
+  `/builder/sql/commands` opens the same page): one screen with a **navigator** on the left, the **editor** with a
+  toolbar, **output tabs** below and a **status bar**.
+  - The navigator has a schema (the same one as the Object Browser), an object type (*All Objects*, tables, views,
+    materialized views, indexes, sequences, types, functions, procedures, triggers, policies) and a search field.
+    A table or view opens to its columns with their types (a key marks the primary key); drag it into the editor
+    for a `SELECT` of all its columns, or use its **SELECT**, **INSERT**, **UPDATE** and **DELETE** buttons, which
+    insert the statement at the cursor. **Open** shows the object in the Object Browser. Columns are listed for the
+    first 400 tables and views of a schema.
+  - **Run Statement** (**Ctrl/Cmd + Enter**) runs the statement at the cursor: the one the cursor is in, else the
+    nearest one before it. A selection runs as it is, even when it holds several statements. The rows of the last
+    query show in **Query Result**, up to 500, with row numbers and NULL as *(null)*. The statement that ran is
+    selected again afterwards.
+  - **Run Script** (**F5**) runs every statement in order and writes **Script Output**: for each statement its line,
+    the rows as text (up to 50), its notices, and its command tag like psql's (`CREATE TABLE`, `INSERT 0 2`,
+    `SELECT 14`) with its time. An error says its line and column in the worksheet; the cursor goes to that line.
+    The script stops at the first error unless **Continue on error** is on. psql meta-commands and `COPY … FROM
+    STDIN` / `TO STDOUT` are skipped (use Load Data and Unload Data).
+  - **Explain Plan** (**F10**) shows `EXPLAIN (VERBOSE, COSTS)` for the statement at the cursor; nothing runs.
+    **Autotrace** (**F6**) runs it with `EXPLAIN (ANALYZE, BUFFERS)` in a transaction that is rolled back, so an
+    UPDATE or DELETE changes nothing.
+  - **Notices** lists the `RAISE NOTICE`, `INFO` and `WARNING` messages of the last run. **SQL History** lists your
+    last 50 statements (other developers' never show); clicking one inserts it at the cursor.
+  - The status bar counts errors and warnings and shows the last message and its time.
+  - Each statement commits on its own. Statements run as the **owner connection** (an isolated workspace's
+    developer login for its developers), on a connection of their own that is closed afterwards, so `SET ROLE` or
+    `SET search_path` doesn't leak. **Run as** picks an application of your workspace instead: the statements then
+    run as its database role, with `pgkiln.app_id` set, so its grants and row level security policies apply. Use
+    it to test policies; it is no security boundary, since the SQL could `RESET ROLE`.
+  - With script, the panes fill the window. Drag the splitters (or focus one and use the arrow keys) to resize
+    them, hide the navigator, or use **Fullscreen** to see only the editor (**Escape** leaves). Sizes are
+    remembered in the browser. Without script, the buttons post the form and the panes stack; Run Statement then
+    runs every statement. The [code editor](#the-code-editor) suggests every schema, table, column and function
+    you can use.
 - **Object Browser** (APEX's): the **schema** in the header and a tree with a
   folder per object type (tables, views, materialized views, indexes, sequences, types, functions, procedures,
   triggers) and a **filter** by name. pgkiln's own schemas (`meta`, `pgkiln_plugins`) and objects that belong to an
   extension show only with **Show system objects**. **Create** (and the tiles shown when nothing is selected) opens
-  SQL Commands with a CREATE TABLE, VIEW, FUNCTION, SEQUENCE or INDEX statement to fill in. A table opens in tabs:
+  the SQL Worksheet with a CREATE TABLE, VIEW, FUNCTION, SEQUENCE or INDEX statement to fill in. A table opens in tabs:
   **Columns** (with comments; the toolbar's *Add*, *Modify* (type, nulls, default), *Rename* and *Drop column* write
-  the ALTER TABLE statement into SQL Commands to review and run: nothing changes until you press Run), **Data** (25
+  the ALTER TABLE statement into the SQL Worksheet to review and run: nothing changes until you press Run), **Data** (25
   rows a page; NULL is a blank cell), **Indexes**, **Constraints**
   (primary key, foreign keys with the table they refer to, unique, check), **Triggers**, **Grants**, **Row level
   security** (on or off, the policies), **Dependencies** (views and foreign keys that use it, and what it uses),
   **Statistics** (rows, sizes, analyze and vacuum times) and **DDL**. A view has the same tabs where they apply; a
   function or procedure shows its source, a trigger, index, sequence or type its definition. (sprint 89) The tabs stay
   on one row: Columns, Data, Indexes, Constraints and DDL (and the current one), the others under **More**. The
-  schema shown is the one you chose last (remembered for the session), else the session's schema of SQL Commands,
+  schema shown is the one you chose last (remembered for the session), else the session's schema of the SQL Worksheet,
   else the **parsing schema** of the application changed last in your workspace (the schema its database role
   uses).
 - **SQL Scripts**: saved scripts, shared by the developers of the workspace. Create one in the editor, upload a
@@ -1308,7 +1338,7 @@ others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compar
   note. Each join can be inner or left. Drag a table by its handle, or focus the handle and use
   the arrow keys (Shift for bigger steps); it stays where it was left. On phones the tables are
   stacked. Then pick conditions (`=`, `<>`, `<`, `like`, `in (a, b)`, `is null` …, combined with
-  AND or OR), the sort, `distinct` and a row limit. The SELECT is shown and opens in SQL Commands.
+  AND or OR), the sort, `distinct` and a row limit. The SELECT is shown and opens in the SQL Worksheet.
   The state is in the URL (tables in the order chosen, joins, functions and the tables' places), so
   a query can be bookmarked; everything except dragging works without JavaScript. Only names from
   the catalog and the fixed functions are used, and condition values are string literals.

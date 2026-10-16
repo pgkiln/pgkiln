@@ -53,10 +53,10 @@ begin; commit;`);
   test('psql meta-commands end at the line break and are marked', () => {
     const s = splitScript('\\set ON_ERROR_STOP on\nselect 1;\n  \\echo done\nselect 2;');
     assert.deepEqual(s, [
-      { sql: '\\set ON_ERROR_STOP on', line: 1, psql: true },
-      { sql: 'select 1', line: 2 },
-      { sql: '\\echo done', line: 3, psql: true },
-      { sql: 'select 2', line: 4 },
+      { sql: '\\set ON_ERROR_STOP on', line: 1, psql: true, start: 0, end: 21 },
+      { sql: 'select 1', line: 2, start: 22, end: 30 },
+      { sql: '\\echo done', line: 3, psql: true, start: 34, end: 44 },
+      { sql: 'select 2', line: 4, start: 45, end: 53 },
     ]);
     // a backslash inside a statement is not a meta-command
     assert.deepEqual(splitScript("select '\\x'\n, 1;").map((x) => x.sql), ["select '\\x'\n, 1"]);

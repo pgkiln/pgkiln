@@ -265,7 +265,7 @@ parsing, type inference and limits.)
 3. The result shows the rows inserted, updated and skipped, with a link to the table in the
    Object Browser.
 
-Load Data runs as the builder's owner connection, like SQL Commands.
+Load Data runs as the builder's owner connection, like the SQL Worksheet.
 
 ### SQL Workshop → Unload Data
 
@@ -352,7 +352,7 @@ Rows to develop and test with (APEX 26.1's Data Generator / "sample data for dev
    Definitions are shared by the developers of the installation, like SQL scripts, and not part of
    an application export (they describe tables, not an application).
 
-Sample Data runs as the builder's owner connection (like SQL Commands: triggers run, row level
+Sample Data runs as the builder's owner connection (like the SQL Worksheet: triggers run, row level
 security doesn't apply to the owner), on a connection of its own that is closed afterwards, with a
 statement timeout (`SAMPLE_DATA_STATEMENT_TIMEOUT`, default `5min`) and at most
 `SAMPLE_DATA_MAX_ROWS` rows per run (default 100,000). Table and column names come from the
