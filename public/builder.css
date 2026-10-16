@@ -1092,3 +1092,10 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sm-top .sql-text { max-height: none; overflow: visible; }
 .sm-sql { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; }
 @media (max-width: 640px) { .sm-bar { width: 3rem; } }
+
+/* (sprint 104) SQL Workshop › RESTful Services › Modules: the module's tree beside the page */
+.rm-layout { display: grid; grid-template-columns: minmax(0, 17rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.rm-layout > .region, .rm-main > .region { margin-top: 0; }
+.rm-main { display: grid; gap: 1rem; min-width: 0; }
+.rm-tree .tree code { font-size: 0.75rem; min-width: 3.4rem; }
+@media (max-width: 760px) { .rm-layout { grid-template-columns: minmax(0, 1fr); } }
