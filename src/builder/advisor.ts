@@ -1,13 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { applyBinds, splitStatements } from '../binds.ts';
-import { owner, type Db } from '../db.ts';
+import { owner, runtime, type Db } from '../db.ts';
 import { devDbForApp } from '../workspace-db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { invokeStepReferences, stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
+import { plpgsqlBlock } from '../runtime/rest-handlers.ts';
 import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
 import { configColumns, searchConfigProblems } from '../runtime/search.ts';
@@ -249,7 +250,15 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       for (const h of Array.isArray(row.handlers) ? row.handlers : []) {
         if (typeof h?.source !== 'string' || !h.source.trim()) continue;
         checked++;
-        const problem = await checkSql(c, h.source, h.type === 'sql' ? 'statements' : 'select');
+        // (117) a PL/pgSQL handler is compiled as the DO block it runs as
+        let block: string | null = null;
+        if (h.type === 'plpgsql') try {
+          block = plpgsqlBlock(h.source);
+        } catch (e) {
+          findings.push({ severity: 'error', message: (e as Error).message, entry, field: `${h.method} ${h.path}` });
+          continue;
+        }
+        const problem = await checkSql(c, block ?? h.source, h.type === 'sql' || block ? 'statements' : 'select');
         if (problem) findings.push({ ...problem, entry, field: `${h.method} ${h.path}` });
       }
     }
@@ -386,6 +395,19 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       if (problem) missing(e, 'Template (HTML)', problem);
       if (row.layout && !layouts.has(String(row.layout).toUpperCase())) missing(e, 'Report layout', `Report layout ${row.layout} doesn't exist (the default layout is used).`, 'warning');
     }
+  }
+
+  // ---- (117) REST modules refuse (403) to run as a superuser, a role that bypasses RLS or a member of pgkiln's
+  // owner: say so here before the endpoints fail. Without a db_role the runtime connection's own user is the role.
+  if (all.some((x) => x.kind === 'rest_module')) {
+    const role = await (app.db_role ? owner : runtime).one(
+      `select r.rolname, r.rolsuper or r.rolbypassrls or pg_has_role(r.oid, n.nspowner, 'MEMBER') as bad
+         from pg_roles r, pg_namespace n where r.rolname = coalesce($1, current_user) and n.nspname = 'meta'`,
+      [app.db_role ?? null],
+    );
+    if (!role || role.bad)
+      findings.push({ severity: 'error', entry: null, field: 'REST modules',
+        message: `The handlers would run as ${role?.rolname ?? app.db_role}, a role that bypasses row level security or owns pgkiln, so every REST module endpoint answers 403. Give the application its own database role (Settings → Security), or set RUNTIME_DATABASE_URL to the least-privilege runtime role.` });
   }
 
   // ---- PL/pgSQL functions of the app's schemas, with plpgsql_check when installed

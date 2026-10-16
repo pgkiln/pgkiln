@@ -233,6 +233,13 @@ Every builder page has the same frame, modelled on an IDE:
 
 On phones the rail gets narrower and the breadcrumb shows only the current page.
 
+The builder's look comes from design tokens at the top of `public/builder.css` (sprint 105): CSS custom properties
+for colours (a warm neutral palette with the kiln's ember for primary buttons, links, focus rings and selections),
+surfaces and their shadows, corner radii, the type scale and transitions, in a light and a dark set. The rail, the
+toolbar and the status bar stay dark in both themes. Transitions are switched off when the operating system asks
+for reduced motion. The builder uses the system's fonts (Inter when it is installed); it loads nothing from
+other sites.
+
 (sprint 86) An address under `/builder` that leads nowhere (a deleted application or page, a typo, an
 application of a workspace you are not a member of) shows a **Page not found** page in the builder's
 theme with a link to the App Builder home; a server error shows **Something went wrong** (the error
@@ -1500,6 +1507,12 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   accounts' roles. The object's page checks the role's grants per method, row level security and (for a view)
   `security_invoker`, lists the endpoints with their URLs, and shows cURL and `fetch` examples and the OpenAPI link.
   Details in [chapter 13](13-rest-api.md#autorest-tables-and-views-from-the-sql-workshop).
+  (sprint 104; Database Actions: REST › Modules) The **Modules** tab edits the REST modules of the workspace's
+  applications as a tree: a module (its base path and its privilege: roles every handler needs), its templates (URIs
+  with `:parameters`) and their handlers (method, source type: collection query, single row, SQL, PL/pgSQL or media,
+  who may call it, roles, documented parameters). Each handler has a **Try it** panel: the request goes to the real
+  endpoint without a token or as an account of the application, and the response is shown in the page. Details in
+  [chapter 13](13-rest-api.md#modules-templates-and-handlers-in-the-sql-workshop).
 - **Change Log** (`/builder/sql/changes`, sprint 106; Database Actions: Liquibase): DDL that succeeds in the **SQL
   Worksheet**, **Table Properties** (*Apply*) and **Schema Comparison** (*Apply and record*: the change script run on
   the target in one transaction) is recorded as a *change set*: the schema it changes, its SQL, who ran it, when,

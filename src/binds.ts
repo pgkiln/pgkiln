@@ -128,7 +128,8 @@ export function splitStatements(sql: string): string[] {
   return out.map((x) => x.replace(/^(\s*(--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/))*\s*/, '').trim()).filter(Boolean);
 }
 
-function substitute(sql: string, replace: (name: string) => string): string {
+/** Replace every :NAME bind (outside strings, comments and casts) with replace(NAME). */
+export function substitute(sql: string, replace: (name: string) => string): string {
   let out = '';
   let i = 0;
   const n = sql.length;

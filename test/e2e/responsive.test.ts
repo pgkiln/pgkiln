@@ -708,6 +708,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_rest: '/builder/sql/rest',
         sql_rest_object: `/builder/sql/rest/${(await owner.one(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, roles)
           values ($1, 'hr', 'dept', 'dept', '{GET,POST,PUT,DELETE}', '{manager}') on conflict (app_id, schema_name, object_name) do update set enabled = true returning id`, [appId])).id}`,
+        // (sprint 104) RESTful Services modules: the list, the HR module, a template and a PL/pgSQL handler
+        ...(await (async () => {
+          const m = (await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'hr'`, [appId])).id;
+          return { rest_modules: '/builder/sql/rest/modules', rest_module_tree: `/builder/sql/rest/modules/${m}`,
+            rest_template: `/builder/sql/rest/modules/${m}/template?t=${encodeURIComponent('emp/:id')}`,
+            rest_handler: `/builder/sql/rest/modules/${m}/handler?t=leave&m=POST` };
+        })()),
         // (sprint 106) the change log, with a long change set
         sql_changes: await (async () => {
           await owner.query(`delete from meta.change_set where schema_name = 'hr' and name = 'e2e_responsive_change_with_a_rather_long_name'`);

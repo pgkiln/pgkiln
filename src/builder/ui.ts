@@ -61,12 +61,14 @@ export const builderHead = () =>
 export const BUILDER_ICONS = [
   'builder', 'back', 'down', 'up', 'left', 'right', 'undo', 'redo', 'zoom-in', 'zoom-out', 'expand', 'help', 'wrench',
   'region', 'item', 'button', 'grip', 'arrow-up', 'arrow-down', 'narrow', 'wide', 'sun', 'moon', 'monitor',
-  'rendering', 'processing', 'shapes', 'save', 'dots', 'pages',
+  'rendering', 'processing', 'shapes', 'save', 'dots', 'pages', 'kiln',
 ] as const;
 export function bicon(name: string, cls = 'icon') {
   if (!(BUILDER_ICONS as readonly string[]).includes(name)) return icon(name, cls);
   return html`<svg class="${cls}" aria-hidden="true" focusable="false"><use href="/static/builder-icons.svg#b-${name}"></use></svg>`;
 }
+/** (sprint 105) the pgkiln brand mark (an ember flame) for the rail and the sign-in pages. */
+export const brandMark = () => bicon('kiln');
 
 // ------------------------------------------------------------------ theme
 // The builder's own light/dark choice (separate from the runtime's): kept in
@@ -113,7 +115,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
     `${title} · Builder`,
     html`<a class="skip-link" href="#main">Skip to content</a>
     <nav class="ide-rail" aria-label="Builder">
-      <a class="rail-logo" href="${BASE}" title="pgkiln Builder"><span aria-hidden="true">pg</span><span class="sr-only">pgkiln Builder home</span></a>
+      <a class="rail-logo" href="${BASE}" title="pgkiln Builder">${brandMark()}<span class="sr-only">pgkiln Builder home</span></a>
       <ul class="rail-list">
         ${rail('apps', BASE, 'builder', 'App Builder')}
         ${s.workspace?.sql_workshop === false ? '' : rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}

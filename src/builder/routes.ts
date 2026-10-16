@@ -13,7 +13,7 @@ import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
 import { loginSettingsFields, saveLoginSettings } from './login-page.ts';
-import { APP_COLORS, appHeader, back, BASE, designerUrl, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, brandMark, designerUrl, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
@@ -61,7 +61,7 @@ export async function builderRoutes(app: FastifyInstance) {
         'Sign in · Builder',
         html`<main class="signin">
           <section class="signin-hero" aria-label="pgkiln">
-            <span class="signin-logo" aria-hidden="true">pg</span>
+            <span class="signin-logo" aria-hidden="true">${brandMark()}</span>
             <h1 class="signin-title">pgkiln</h1>
             <p class="signin-tagline">Build data applications on PostgreSQL, in SQL you can trust</p>
             <p class="signin-foot">Open source under the Apache-2.0 license</p>
