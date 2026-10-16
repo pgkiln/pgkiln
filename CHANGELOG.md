@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-10-16
+
 Sprint 91: the SQL Worksheet like Database Actions' SQL (parity handoff DA-1, DA-2).
 Sprint 92: the worksheet's Query Result, plans and history (migration 108; parity handoff DA-3, DA-4, DA-5).
 Sprint 93: worksheets as files and tabs, editing tools and bind variables (parity handoff DA-7, DA-9).
