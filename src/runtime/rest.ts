@@ -94,19 +94,19 @@ export function matchHandler(handlers: Handler[], method: string, path: string) 
   return methodMismatch ? 'method' : null;
 }
 
-class RestError extends Error {
+export class RestError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
   }
 }
 
-interface Caller {
+export interface Caller {
   user: string;
   claims: Record<string, unknown> | null;
 }
 
 /** The caller of a request: the bearer token checked like meta.api_check does. */
-async function caller(req: FastifyRequest, a: App, publicHandler: boolean): Promise<Caller> {
+export async function caller(req: FastifyRequest, a: App, publicHandler: boolean): Promise<Caller> {
   const auth = String(req.headers.authorization ?? '');
   if (!/^bearer /i.test(auth)) {
     if (publicHandler) return { user: 'nobody', claims: null };
@@ -136,7 +136,7 @@ async function caller(req: FastifyRequest, a: App, publicHandler: boolean): Prom
 const bindValue = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
 /** (093) The workspace preference "RESTful services": off, the workspace's REST modules don't exist. */
-async function restServicesOn(appId: number) {
+export async function restServicesOn(appId: number) {
   const r = await owner.one<{ on: boolean }>('select coalesce((select w.rest_services from meta.workspace w where w.id = meta.app_workspace($1)), true) as on', [appId]);
   return r?.on !== false;
 }

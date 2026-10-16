@@ -46,6 +46,7 @@ const NOT_EXPORTED = new Set([
   'user_preference', // (086) users' preferences: user data of this installation, like saved reports
   'app_backup', // (082) backups of the application kept by this installation
   'feedback', // (084) users' feedback and the developers' answers: data of this installation
+  'rest_object', // (113) AutoREST: tables and views published from the SQL Workshop, installation data like OAuth clients (they name this database's objects)
 ]);
 
 /** Where each exported table appears in the document. */
