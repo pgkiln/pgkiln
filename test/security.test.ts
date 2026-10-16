@@ -8400,5 +8400,74 @@ describe('sprint 97 SQL Workshop charts', () => {
     for (const url of ['/builder/sql/charts', `/builder/sql/charts/${id}`]) assert.doesNotMatch((await a.get(url)).body, /<img src=x/, url);
     const king = await as('king');
     assert.equal((await king.get('/builder/sql/charts')).headers.location, '/builder/login');
+
+describe('sprint 98 data modeler', () => {
+  const DEV = 'sec98dev';
+  let otherWs: number;
+  let id: string;
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec98 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+    await owner.query(`drop schema if exists "sec98<b>" cascade; create schema "sec98<b>";
+      create table "sec98<b>"."t<img src=x onerror=alert(98)>" (id int primary key, "c<script>" text);
+      create table "sec98<b>".child (id int primary key, p int references "sec98<b>"."t<img src=x onerror=alert(98)>");
+      comment on table "sec98<b>".child is '</title><script>alert(1)</script>'`);
+    await owner.query(`delete from meta.sql_diagram where name like 'sec98%'`);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.sql_diagram where name like 'sec98%'`);
+    await owner.query(`delete from meta.workspace where name = 'Sec98 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`drop schema if exists "sec98<b>" cascade`);
+  });
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/sql/modeler');
+    return b;
+  };
+
+  test('developers only; every change needs the CSRF token', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get('/builder/sql/modeler')).headers.location, '/builder/login');
+    const king = await as('king');
+    assert.equal((await king.get('/builder/sql/modeler')).headers.location, '/builder/login', 'an application user is no developer');
+    const a = await signIn('admin');
+    assert.equal((await a.post('/builder/sql/modeler', { __csrf: 'forged', name: 'sec98 forged', schema: 'sec98<b>' })).statusCode, 403);
+    const created = await a.post('/builder/sql/modeler', { __csrf: a.lastCsrf, name: 'sec98 <svg onload=alert(1)>', schema: 'sec98<b>', objects: '*' });
+    assert.equal(created.statusCode, 303);
+    id = /modeler\/(\d+)/.exec(String(created.headers.location))![1];
+    for (const [path, form] of <[string, Record<string, string>][]>[
+      ['layout', { layout: 'auto' }], ['layout', { positions: '[]', format: 'json' }], ['objects', { remove: 'child' }], ['rename', { name: 'sec98 x' }], ['delete', {}],
+    ]) assert.equal((await a.post(`/builder/sql/modeler/${id}/${path}`, { __csrf: 'forged', ...form })).statusCode, 403, path);
+    assert.equal((await owner.one('select count(*)::int as n from meta.sql_diagram where id = $1', [id]))!.n, 1);
+    // a schema the workshop can't use, and odd input
+    assert.equal((await a.post('/builder/sql/modeler', { __csrf: a.lastCsrf, name: 'sec98 meta', schema: 'meta' })).statusCode, 404);
+    assert.equal((await a.post(`/builder/sql/modeler/${id}/layout`, { __csrf: a.lastCsrf, positions: '{not json', format: 'json' })).statusCode, 400);
+    assert.equal((await a.get('/builder/sql/modeler/1%27%20or%201=1')).statusCode, 404);
+  });
+
+  test('a diagram stays in its workspace', async () => {
+    const d = await signIn(DEV);
+    assert.doesNotMatch((await d.get('/builder/sql/modeler')).body, /sec98 &lt;svg/);
+    for (const path of ['', '/svg', '/ddl', '/dictionary']) assert.equal((await d.get(`/builder/sql/modeler/${id}${path}`)).statusCode, 404, path);
+    for (const [path, form] of <[string, Record<string, string>][]>[['layout', { layout: 'auto' }], ['objects', { remove: 'child' }], ['rename', { name: 'sec98 stolen' }], ['delete', {}]])
+      assert.equal((await d.post(`/builder/sql/modeler/${id}/${path}`, { __csrf: d.lastCsrf, ...form })).statusCode, 404, path);
+    assert.equal((await owner.one('select name from meta.sql_diagram where id = $1', [id]))!.name, 'sec98 <svg onload=alert(1)>');
+  });
+
+  test('names and comments are escaped in the page, the SVG, the DDL and the dictionary', async () => {
+    const a = await signIn('admin');
+    assert.match((await a.get('/builder/sql/modeler')).body, /sec98 &lt;svg onload=alert\(1\)&gt;/);
+    for (const path of ['', '/svg', '/ddl', '/dictionary', '/dictionary?download=1', '?q=*']) {
+      const body = (await a.get(`/builder/sql/modeler/${id}${path}`)).body;
+      assert.doesNotMatch(body, /<img src=x|<script>alert|<svg onload|<\/title><script>/, path);
+    }
+    const page = (await a.get(`/builder/sql/modeler/${id}`)).body;
+    assert.match(page, /data-name="t&lt;img src=x onerror=alert\(98\)&gt;"/);
+    assert.match(page, /c&lt;script&gt;/);
   });
 });

@@ -780,6 +780,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         ])])).id}`,
         quick_sql: '/builder/sql/quick',
         query_builder: '/builder/sql/query?schema=hr&t=emp&t=dept&c=t1.ename&c=t1.job&c=t2.dname&wc=t1.sal&wo=%3E&wv=1000&oc=t1.ename',
+        // (sprint 98) the Data Modeler: the diagrams, a diagram, its data dictionary
+        data_modeler: '/builder/sql/modeler',
+        ...await (async () => {
+          const id = (await owner.one(`insert into meta.sql_diagram (name, schema_name, objects, created_by) values ('E2E diagram', 'hr', '[{"name":"emp","x":20,"y":20},{"name":"dept","x":20,"y":420},{"name":"leave_request","x":320,"y":20}]', 'admin')
+            on conflict (workspace_id, name) do update set objects = excluded.objects returning id`)).id;
+          return { data_modeler_diagram: `/builder/sql/modeler/${id}`, data_modeler_dictionary: `/builder/sql/modeler/${id}/dictionary`, data_modeler_ddl: `/builder/sql/modeler/${id}/ddl` };
+        })(),
         data_load_def: `/builder/apps/${appId}/shared?c=data_load_def-${(await owner.one(`select id from meta.data_load_def where app_id = $1 and name = 'EMP_XML'`, [appId])).id}`,
         developers: '/builder/developers',
         users: '/builder/users',

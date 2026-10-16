@@ -1254,7 +1254,7 @@ session's **schema** (APEX: the default schema): it goes first in the search pat
 you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample data and Generate DDL.
 
 (sprint 75) The tools are tabs: Home, SQL Worksheet, Object Browser, SQL Scripts and Utilities; **More** opens the
-others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compare, AI), and the open one is a tab too.
+others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compare, Data Modeler, AI), and the open one is a tab too.
 
 (sprint 96; Database Actions: the Launchpad) The home page starts with **Pinned & recently visited**: the pages you
 pinned (a tool, a database object from the Object Browser, a saved worksheet from its file menu; at most 24, per
@@ -1400,6 +1400,27 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   The state is in the URL (tables in the order chosen, joins, functions and the tables' places), so
   a query can be bookmarked; everything except dragging works without JavaScript. Only names from
   the catalog and the fixed functions are used, and condition values are string literals.
+- **Data Modeler** (SQL Workshop → More → Data Modeler, `/builder/sql/modeler`): named relational
+  **diagrams** of a schema's tables and views, kept per workspace and shared by its developers. Create
+  one with a name, a schema and, optionally, the objects (`orders, customers`, `ord*`, or `*` for all);
+  **Add objects to diagram** searches the schema (part of a name, a pattern with `*`, or `*`) and adds
+  the ticked ones. Each object is a box with its columns, their types, `P` (primary key), `F` (foreign
+  key), `U` (unique) and `*` for not null; a foreign key between two shown tables is a line from the
+  referencing table (a crow's foot: many) to the referenced one (a bar: one), dashed with a circle
+  when the foreign key may be empty. A box's name opens **Table Properties** (a view: the Object
+  Browser). The toolbar: **Save** (Ctrl+S), **Undo** / **Redo** (Ctrl+Z, Ctrl+Y), **Zoom out** / **Zoom
+  in** (or Ctrl+wheel), **Fit**, **Auto layout** (referenced tables to the left of the tables that
+  reference them; undoable), a **Mini-map** (click or drag in it to move around), **SVG** and **PNG**
+  exports of the diagram as shown, **Print**, **Generate DDL** (the CREATE statements of the shown
+  objects with their keys, indexes, triggers, row level security, policies, comments and grants: to
+  download or open in the SQL Worksheet) and **Data dictionary** (each object's columns with type,
+  nullability, default, keys and comments, its constraints and what references it; to print, save as
+  PDF from the print dialog, or download as an HTML file). Drag a box to move it, or focus it and use
+  the arrow keys (Shift for bigger steps). The diagram keeps only the objects' names and positions
+  (`meta.sql_diagram`): columns and keys are read from the catalog each time, so it never goes stale;
+  an object dropped from the schema is reported and left out on the next save. Without JavaScript the
+  diagram shows at its saved positions, and adding, removing, auto layout, Export SVG, DDL and the
+  dictionary all work. Diagrams are installation data, not exported with applications.
 - **Load Data**: load a CSV, TSV, Excel, JSON or XML file into a new table (with inferred column
   types) or an existing one (append, merge by primary key, or replace), with a per-row error
   report, or with a saved **data load definition**; a mapping can be saved as one
