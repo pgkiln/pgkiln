@@ -262,9 +262,14 @@ src/
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts)
     sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
-                           connection's usable schemas), About Database, Database Monitor (administrators); read only, with a timeout
+                           connection's usable schemas), About Database; read only, with a timeout; /sql/utilities/monitor redirects to the SQL Monitor
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
-    top-sql.ts             Top SQL per app role from pg_stat_statements
+    top-sql.ts             Top SQL per app role from pg_stat_statements; (sprint 102) statementsState / statementsNote (installed and loaded?)
+    sql-monitor.ts         (sprint 102, DA-14) SQL Workshop → SQL Monitor (administrators): /sql/monitor (sessions, wait events, progress;
+                           ?fragment=1 the live part), POST /sql/monitor/session (cancel / terminate), /sql/monitor/top (topStatements:
+                           pg_stat_statements sortable, bars), /reset, /statements/:queryid (totals by role, explainForMonitor: EXPLAIN only,
+                           one statement by the extended protocol, read only, generic plan for $1), /statements/:queryid/worksheet
+    plan-view.ts           (sprint 92; shared since 102) planView(): a plan (src/sqlplan.ts) as a tree, for the worksheet and the SQL Monitor
     diagnostics.ts         Activity → Debug messages (level, list, one request's entries, purge); Workspace utilities →
                            Installation (version, install/upgrade runs, applied and missing migrations; administrators)
     ldap.ts                Users → LDAP directories
@@ -311,6 +316,7 @@ public/
   app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   palette.js               (sprint 96) the builder's search dialog (Ctrl+K), recently visited SQL Workshop pages, the Launchpad's tabs
+  sql-monitor.js           (sprint 102) the SQL Monitor: reloads the sessions' live part every 5 / 15 / 60 s, Pause (localStorage pgkiln.sqlMonitor)
   data-modeler.js, .css    (sprint 98) the Data Modeler: drag boxes, undo/redo, save, zoom/fit, auto layout, mini-map, SVG/PNG export, print
   worksheet.js, .css       (sprint 91) the SQL Worksheet: run keys with the cursor, output tabs, navigator swap and search, drag and drop, splitters;
                            (92) grid sort, value dialog, history filter; (93) worksheet tabs in localStorage, Files, binds dialog, format, find, case

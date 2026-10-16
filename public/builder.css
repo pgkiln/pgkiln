@@ -1054,3 +1054,21 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 }
 /* (sprint 100) RESTful Services: examples wrap instead of scrolling sideways */
 pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* (sprint 102) SQL Monitor: refresh controls, session actions, bars in Top SQL */
+.sm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+.sm-live.is-paused .sm-updated::after { content: " · paused"; }
+.sm-actions { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.sm-action { margin: 0; }
+.sm-sessions tr.is-blocked td { background: var(--warning-soft); }
+.sm-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.sm-filter input[type=search] { flex: 1 1 12rem; min-width: 0; }
+.sm-top th a { color: inherit; text-decoration: none; white-space: nowrap; }
+.sm-top th[aria-sort] a { text-decoration: underline; }
+.sm-barcell { white-space: nowrap; }
+.sm-bar { display: inline-block; width: 4.5rem; height: 0.5rem; margin-right: 0.4rem; vertical-align: middle; }
+.sm-bar-track { fill: var(--border); }
+.sm-bar-fill { fill: var(--accent); }
+/* a statement's text is clipped to 1000 characters on the server: no scroll box inside the table */
+.sm-top .sql-text { max-height: none; overflow: visible; }
+.sm-sql { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; }
+@media (max-width: 640px) { .sm-bar { width: 3rem; } }
