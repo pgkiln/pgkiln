@@ -40,6 +40,15 @@ Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
 
 ### Changed
 - The Utilities' *Database Monitor* is replaced by the SQL Monitor; its address redirects.
+- **Builder: refreshed look** (sprint 105): a design token layer in `public/builder.css` (colour, surface elevation,
+  radius, shadows, type scale and motion as CSS custom properties, a full light and dark set) with a warm "stone"
+  palette and the kiln's ember as the brand and primary colour. A flame brand mark replaces "pg" in the rail and on the
+  sign-in pages; the rail has rounded items with an ember marker for the current section and smoother tooltips; the
+  toolbar has a dark search field with its icon. Regions, tiles and cards have rounder corners, subtle shadows and a
+  lift on hover; buttons, fields (a focus ring), selects (one chevron in both themes), segmented controls, tabs,
+  menus and reports (quiet uppercase headers that stick inside a scrolling table, row hover, neutral links) are
+  restyled; the page designer's canvas has a dot grid and softer selections. Transitions are off under
+  `prefers-reduced-motion`. No markup contracts change; system fonts (Inter when installed), no new dependencies.
 
 ## [0.48.0] - 2026-10-16
 

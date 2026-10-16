@@ -11,19 +11,21 @@
    - type: --fs-xs … --fs-xl; motion: --ease and --dur (none under prefers-reduced-motion)
    The light set first, the dark set for data-theme="dark" and for "System" when
    the OS prefers dark. The chrome (rail, toolbar, status bar) is dark in both
-   themes, a shade deeper than the page in the dark one. */
+   themes (the same colours), a shade deeper than the page in the dark one. */
 
 :is(.ide, .ide-login) {
   --rail-w: 56px;
   --bar-h: 48px;
+  --page-px: 22px;
+  --page-py: 18px;
 
   /* chrome: the rail, the top toolbar and the status bar */
-  --chrome: #1c1917;
-  --chrome-2: #292524;
-  --chrome-3: #3a3532;
+  --chrome: #13110f;
+  --chrome-2: #25221f;
+  --chrome-3: #37332f;
   --chrome-text: #f5f4f2;
   --chrome-muted: #aca59f;
-  --chrome-border: #302b28;
+  --chrome-border: #2a2623;
   --chrome-glow: rgb(234 88 12 / 16%);
 
   /* brand: ember */
@@ -85,11 +87,11 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) :is(.ide, .ide-login) {
-    --chrome: #0f0e0d; --chrome-2: #1f1d1b; --chrome-3: #2e2b28; --chrome-border: #262320; --chrome-glow: rgb(234 88 12 / 13%);
-    --bg: #141312; --surface: #1b1a18; --surface-2: #201f1d; --surface-3: #2a2826; --text: #edebe8; --muted: #a8a19a;
-    --border: #2d2b28; --border-strong: #3d3a36; --accent: #ff9152; --accent-text: #1a0b03; --accent-soft: #3a1f12; --ring: rgb(255 145 82 / 30%); --sel-bg: #4a2816; --sel-bar: #ff9152;
-    --gold: #ff9152; --canvas: #121110; --canvas-dot: #262421; --block: #1f1e1c; --block-head: #262422; --code-bg: #161514; --warn: #e0a740;
-    --ce-bg: #161514; --ce-gutter: #1b1a18; --ce-gutter-text: #8f8880;
+    --chrome-glow: rgb(234 88 12 / 13%);
+    --bg: #181715; --surface: #1f1d1b; --surface-2: #242220; --surface-3: #2d2b28; --text: #edebe8; --muted: #a8a19a;
+    --border: #312e2b; --border-strong: #423e39; --accent: #ff9152; --accent-text: #1a0b03; --accent-soft: #3a1f12; --ring: rgb(255 145 82 / 30%); --sel-bg: #4a2816; --sel-bar: #ff9152;
+    --gold: #ff9152; --canvas: #151412; --canvas-dot: #2a2825; --block: #222120; --block-head: #292725; --code-bg: #1a1917; --warn: #e0a740;
+    --ce-bg: #1a1917; --ce-gutter: #1f1d1b; --ce-gutter-text: #8f8880;
     --shadow-xs: 0 1px 1px rgb(0 0 0 / 30%);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 3%);
     --shadow-md: 0 4px 16px -2px rgb(0 0 0 / 50%), inset 0 1px 0 rgb(255 255 255 / 4%);
@@ -99,11 +101,11 @@
   }
 }
 :root[data-theme="dark"] :is(.ide, .ide-login) {
-  --chrome: #0f0e0d; --chrome-2: #1f1d1b; --chrome-3: #2e2b28; --chrome-border: #262320; --chrome-glow: rgb(234 88 12 / 13%);
-  --bg: #141312; --surface: #1b1a18; --surface-2: #201f1d; --surface-3: #2a2826; --text: #edebe8; --muted: #a8a19a;
-  --border: #2d2b28; --border-strong: #3d3a36; --accent: #ff9152; --accent-text: #1a0b03; --accent-soft: #3a1f12; --ring: rgb(255 145 82 / 30%); --sel-bg: #4a2816; --sel-bar: #ff9152;
-  --gold: #ff9152; --canvas: #121110; --canvas-dot: #262421; --block: #1f1e1c; --block-head: #262422; --code-bg: #161514; --warn: #e0a740;
-  --ce-bg: #161514; --ce-gutter: #1b1a18; --ce-gutter-text: #8f8880;
+  --chrome-glow: rgb(234 88 12 / 13%);
+  --bg: #181715; --surface: #1f1d1b; --surface-2: #242220; --surface-3: #2d2b28; --text: #edebe8; --muted: #a8a19a;
+  --border: #312e2b; --border-strong: #423e39; --accent: #ff9152; --accent-text: #1a0b03; --accent-soft: #3a1f12; --ring: rgb(255 145 82 / 30%); --sel-bg: #4a2816; --sel-bar: #ff9152;
+  --gold: #ff9152; --canvas: #151412; --canvas-dot: #2a2825; --block: #222120; --block-head: #292725; --code-bg: #1a1917; --warn: #e0a740;
+  --ce-bg: #1a1917; --ce-gutter: #1f1d1b; --ce-gutter-text: #8f8880;
   --shadow-xs: 0 1px 1px rgb(0 0 0 / 30%);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 3%);
   --shadow-md: 0 4px 16px -2px rgb(0 0 0 / 50%), inset 0 1px 0 rgb(255 255 255 / 4%);
@@ -331,7 +333,7 @@ body.ide {
 .ide-full .ide-alerts .alert { margin-bottom: 6px; }
 
 /* ------------------------------------------------------------ document pages (app home, shared components, SQL Workshop…) */
-.ide-page { max-width: 1680px; margin: 0 auto; padding: 18px 22px 48px; }
+.ide .ide-page { max-width: 1680px; margin: 0 auto; padding: var(--page-py) var(--page-px) 48px; }
 .ide .region-standard, .ide .region-collapsible { border-radius: var(--radius-lg); border-color: var(--border); box-shadow: var(--shadow-sm); }
 .ide .region-header { min-height: 42px; padding: 0.45rem 1rem; background: transparent; border-bottom-color: var(--border); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 .ide .region-header h2 { font-size: 13.5px; font-weight: 650; letter-spacing: -0.005em; min-width: 0; overflow-wrap: anywhere; }
@@ -358,7 +360,7 @@ body.ide {
 .ide fieldset.prop-group > legend { font-size: 11.5px; }
 
 /* application header with its tabs */
-.ide-head { margin: -18px -22px 18px; padding: 16px 22px 0; background: var(--surface); border-bottom: 1px solid var(--border); background-image: linear-gradient(180deg, var(--surface-2), var(--surface) 70%); }
+.ide-head { margin: calc(-1 * var(--page-py)) calc(-1 * var(--page-px)) var(--page-py); padding: 16px var(--page-px) 0; background: var(--surface); border-bottom: 1px solid var(--border); background-image: linear-gradient(180deg, var(--surface-2), var(--surface) 70%); }
 .ide-head-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
 .ide-head-title > div:not(.buttons) { min-width: 0; }
 .ide-head-title h1 { overflow-wrap: anywhere; }
@@ -751,8 +753,8 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 
 @media (min-width: 1280px) {
   /* the side column runs along the right edge, as in APEX */
-  .ab-home { grid-template-columns: minmax(0, 1fr) 288px; margin: -18px -22px -48px 0; min-height: calc(100vh - var(--bar-h) - 28px); }
-  .ab-main { padding: 0 22px 48px 0; padding-top: 18px; }
+  .ab-home { grid-template-columns: minmax(0, 1fr) 288px; margin: calc(-1 * var(--page-py)) calc(-1 * var(--page-px)) -48px 0; min-height: calc(100vh - var(--bar-h) - 28px); }
+  .ab-main { padding: var(--page-py) var(--page-px) 48px 0; }
   .ab-side { padding: 18px 20px 24px; background: var(--surface); border-left: 1px solid var(--border); }
   .ab-side section:first-child { border-top: 0; padding-top: 0; }
 }
@@ -784,8 +786,9 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 
 @media (max-width: 640px) {
   .ide { --rail-w: 44px; --bar-h: 46px; }
-  .ide-page { padding: 12px 12px 40px; }
-  .ide-head { margin: -12px -12px 12px; padding: 12px 12px 0; }
+  .ide { --page-px: 12px; --page-py: 12px; }
+  .ide .ide-page { padding-bottom: 40px; }
+  .ide-head { padding-top: 12px; }
   .ide-head-actions { margin-left: 0; width: 100%; }
   .rail-list { padding: 0 5px; }
   .rail-link { height: 38px; }
@@ -965,7 +968,7 @@ button.is-busy { opacity: 0.7; cursor: progress; }
 .tr-preview { --bg: #f3f4f6; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eceef2; --text: #1b2330; --muted: #5e6a7a; --border: #dfe3e8;
   --accent: #0b63c5; --accent-text: #ffffff; --accent-soft: #e7f0fb; --header: #13294b; --header-text: #eef2f8; --radius: 8px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --font-size: 15px; --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 6%);
-  color-scheme: light; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  --field-border: var(--border); color-scheme: light; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
   background: var(--bg); color: var(--text); font: var(--font-size)/1.5 var(--font); }
 .tr-preview-iris { --bg: #ffffff; --surface-2: #f7f6f5; --surface-3: #efedeb; --text: #1f1c1a; --muted: #645e59; --border: #e2dfdc;
   --accent: #2b62c4; --accent-soft: #e9f0fb; --header: #3a3632; --header-text: #f7f5f3; --radius: 4px; --shadow: none;
