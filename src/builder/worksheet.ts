@@ -9,6 +9,7 @@ import { back, bicon, BASE, csrf, developer, flash, send, shell, workshopTabs, t
 import { clearCompletions } from './code-editor.ts';
 import { createTemplate, listObjects, OB_TYPES, pickSchema, SYSTEM_SCHEMAS, type Obj } from './object-browser.ts';
 import { objectMenu } from './object-actions.ts';
+import { askedSpec, chartControls, chartSpec, drawChart } from './sql-charts.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 import { applySubstitutions, explainStatement, pickStatements, runStatements, substitutionNames, textTable, type RunMode, type WorksheetRun } from '../sqlworksheet.ts';
 import { applyBinds, bindNames } from '../binds.ts';
@@ -30,7 +31,7 @@ import { unloadStatement } from '../unload.ts';
 const NAV_TYPES: [string, string][] = [['all', 'All Objects'], ...OB_TYPES.map(([t, label]) => [t, label] as [string, string]), ['policy', 'Policies']];
 const MODES: RunMode[] = ['statement', 'script', 'explain', 'autotrace'];
 const TABS = [
-  ['result', 'Query Result'], ['output', 'Script Output'], ['notices', 'Notices'], ['explain', 'Explain Plan'], ['autotrace', 'Autotrace'], ['history', 'SQL History'],
+  ['result', 'Query Result'], ['chart', 'Chart'], ['output', 'Script Output'], ['notices', 'Notices'], ['explain', 'Explain Plan'], ['autotrace', 'Autotrace'], ['history', 'SQL History'],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -150,7 +151,7 @@ async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema:
 }
 
 /** The output panes of a run (empty: the page as opened). */
-function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
+function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
   const results = run?.results ?? [];
   const ran = results.filter((r) => r.status !== 'not_run');
   const query = [...ran].reverse().find((r) => r.columns);
@@ -175,6 +176,7 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
         <p class="muted small ws-info">${rowsLabel(query)} · ${query.ms} ms${query.more ? html` · showing the first ${query.data!.length}` : ''} · line ${query.line}</p>
         <span class="ws-spacer"></span>
         ${query.more ? html`<button class="btn btn-sm" name="mode" value="statement_all" title="Run the statement again and show up to ${ALL_ROWS.toLocaleString('en')} rows">All rows</button>` : ''}
+        <button class="btn btn-sm" name="mode" value="chart" title="Create Chart (Ctrl+F11)">${icon('chart')}<span>Chart</span></button>
         <button type="button" class="btn btn-sm" data-ws-copy hidden>${icon('copy')}<span>Copy</span></button>
         ${download}
       </div>
@@ -220,7 +222,7 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
       </li>`)}</ul>`
     : html`<p class="muted">Your statements show here after you run them.</p>`;
 
-  const active: Tab = !run ? (TABS.find(([k]) => k === tabAsked)?.[0] ?? 'result') : mode === 'explain' ? 'explain' : mode === 'autotrace' ? 'autotrace' : mode === 'script' || !query || errors.length ? 'output' : 'result';
+  const active: Tab = chart && run ? 'chart' : !run ? (TABS.find(([k]) => k === tabAsked)?.[0] ?? 'result') : mode === 'explain' ? 'explain' : mode === 'autotrace' ? 'autotrace' : mode === 'script' || !query || errors.length ? 'output' : 'result';
   const time = new Date().toTimeString().slice(0, 8);
   const last = !run ? 'Ready.' : errors.length
     ? `Error${errors[0].errorLine ? ` at line ${errors[0].errorLine}` : ''}: ${errors[0].error}`
@@ -231,7 +233,7 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
     <span class="ws-count ${warnings ? 'is-warn' : ''}" title="Warnings">${icon('alert')} ${warnings}</span>
     <span class="ws-busy" hidden>${icon('refresh')} Running…</span>
     <span class="ws-last">${last}</span><span class="muted ws-time">${run ? time : ''}</span>`;
-  return { panes: { result, output: log, notices, explain: planOf('explain', 'Explain Plan (F10) shows how PostgreSQL would run the statement at the cursor; nothing runs.'), autotrace: planOf('autotrace', 'Autotrace (F6) runs the statement at the cursor with EXPLAIN ANALYZE and rolls it back: actual rows, time and buffers per step.'), history: hist }, active, status };
+  return { panes: { result, chart: chart ?? html`<p class="muted">Create Chart (Ctrl+F11) draws the last query: a label column and number columns.</p>`, output: log, notices, explain: planOf('explain', 'Explain Plan (F10) shows how PostgreSQL would run the statement at the cursor; nothing runs.'), autotrace: planOf('autotrace', 'Autotrace (F6) runs the statement at the cursor with EXPLAIN ANALYZE and rolls it back: actual rows, time and buffers per step.'), history: hist }, active, status };
 }
 
 /** The applications whose database role a run can take (the developer's workspace). */
@@ -347,6 +349,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const continueOnError = body.continue_on_error === 'on';
   // (sprint 93, DA-9) bind variables (:NAME) and substitution variables (&NAME.) asked for before a run
   let askValues: { binds: string[]; subs: string[]; mode: string } | null = null;
+  let chartAsked = false;
   const remembered: Record<string, string> = (() => {
     try {
       const v = JSON.parse(s.state.__WSBINDS ?? '{}');
@@ -358,6 +361,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
   if (isPost && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download'].includes(String(body.mode ?? ''))) {
     const m: RunMode = MODES.find((x) => x === body.mode) ?? 'statement';
     const allRows = body.mode === 'statement_all';
+    chartAsked = body.mode === 'chart';
     mode = m;
     const sel = /^\d{1,9}$/.test(String(body.sel_start ?? '')) && /^\d{1,9}$/.test(String(body.sel_end ?? '')) ? { start: Number(body.sel_start), end: Number(body.sel_end) } : undefined;
     const picked = pickStatements(text, m, sel);
@@ -410,8 +414,25 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const history = (await owner.query<HistoryRow>(
     `select id, sql, status, rows, ms, error, runs, at from meta.sql_history where username = $1 and workspace_id = $2 order by id desc limit $3`,
     [s.username, currentWorkspace(s), HISTORY_SHOWN])).rows;
-  const { panes, active, status } = outputPanes(run, mode, history, String(req.query?.tab ?? ''));
   const lastQuery = [...(run?.results ?? [])].reverse().find((r) => r.status === 'ok' && r.columns);
+  // (sprint 97, DA-6) Create Chart: the last query drawn, its settings and Save
+  let chartPane: Raw | null = null;
+  let chartCss = '';
+  if (chartAsked && lastQuery?.columns) {
+    const spec = chartSpec(lastQuery.columns, lastQuery.numeric ?? [], askedSpec(body));
+    if (!spec) chartPane = html`<p class="muted">Nothing to draw: the query needs a number column next to its labels.</p>`;
+    else {
+      const d = drawChart('', lastQuery.columns, lastQuery.data ?? [], spec);
+      chartCss = d.css;
+      chartPane = html`${chartControls(lastQuery.columns, spec)}
+        <div class="ch-actions"><button class="btn btn-sm" name="mode" value="chart">${icon('refresh')} Draw again</button>
+          <input type="hidden" name="chart_sql" value="${lastQuery.sql}">
+          <label class="sr-only" for="ws-chart-name">Chart name</label><input id="ws-chart-name" name="chart_name" placeholder="Chart name" maxlength="120">
+          <button class="btn btn-sm btn-hot" formaction="${BASE}/sql/charts">${icon('save')} Save chart</button></div>
+        <div class="ch-view">${d.body}</div>`;
+    }
+  }
+  const { panes, active, status } = outputPanes(run, mode, history, String(req.query?.tab ?? ''), chartPane);
   const downloadable = (() => {
     try {
       return lastQuery ? unloadStatement(lastQuery.sql) : null;
@@ -433,7 +454,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
 
   const toolBtn = (m: RunMode, ic: string, label: string, key: string, hot = false) =>
     html`<button class="btn btn-sm${hot ? ' btn-hot' : ''}" name="mode" value="${m}" title="${label} (${key})" data-ws-key="${key}">${icon(ic)}<span>${label}</span></button>`;
-  const main = html`<div class="ws-page">
+  const main = html`${chartCss ? html`<style nonce="${req.cspNonce}">${raw(chartCss.replace(/</g, ''))}</style>` : ''}<div class="ws-page">
     <h1 class="sr-only">SQL Worksheet</h1>
     ${workshopTabs('sql')}
     <form method="post" action="${BASE}/sql/worksheet" class="ws" id="ws" data-ran="${ran ? `${ran.start},${ran.end}` : ''}" data-error-line="${firstError?.errorLine ?? ''}"

@@ -278,3 +278,16 @@ details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after 
 .pin-btn.is-pinned { color: var(--hot); }
 .pin-btn .icon { width: 14px; height: 14px; }
 .ob-pin { float: right; }
+
+/* (sprint 97) charts: the worksheet's Chart tab, the Charts page and its dashboard */
+.ch-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin-bottom: 8px; font-size: 13px; }
+.ch-controls > label { display: flex; flex-direction: column; gap: 2px; }
+.ch-controls fieldset { display: flex; flex-wrap: wrap; gap: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; margin: 0; }
+.ch-controls legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+.ch-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.ch-actions input { flex: 0 1 16rem; width: auto; min-width: 0; }
+.ch-view { min-width: 0; max-width: 60rem; }
+.ch-dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 12px; margin-bottom: 16px; }
+.ch-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 12px; min-width: 0; }
+.ch-card h2 { font-size: 14px; margin: 0 0 6px; }
+.ch-edit { max-width: 48rem; margin-top: 16px; }

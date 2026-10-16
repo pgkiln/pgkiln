@@ -64,6 +64,7 @@
     const k = e.key.toLowerCase();
     if (k === 's' && !e.shiftKey) { save(); return true; }
     if (e.key === 'F7') { format(); return true; }
+    if (e.key === 'F11' && button('chart')) { run('chart'); return true; }
     if (!inEditor && !e.target.closest?.('.ws-findbar')) return false;
     if (k === 'b' && inEditor) { convertCase(); return true; }
     if (k === 'f' || k === 'h' || k === 'g') { openFind(k); return true; }
@@ -338,6 +339,9 @@
   };
   form.querySelector('.ws-nav-switch').addEventListener('click', (e) => { const b = e.target.closest('[data-ws-navtab]'); if (b) navTab(b.dataset.wsNavtab); });
   navTab(location.hash === '#ws-files' ? 'files' : 'objects');
+
+  // ------------------------------------------------------------ (sprint 97) a chart's settings draw it again
+  form.querySelector('.ch-controls')?.addEventListener('change', () => run('chart'));
 
   // ------------------------------------------------------------ (sprint 93) bind and substitution values
   const binds = form.querySelector('[data-ws-binds]');

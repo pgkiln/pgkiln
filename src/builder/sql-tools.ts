@@ -26,6 +26,7 @@ export const SQL_TOOLS: SqlTool[] = [
   { key: 'objects', href: '/builder/sql/objects', icon: 'database', label: 'Object Browser', description: 'Tables, views and functions with their columns, data, keys, policies and DDL.', group: 'development', tab: 'objects', main: true },
   { key: 'scripts', href: '/builder/sql/scripts', icon: 'file', label: 'SQL Scripts', description: 'Saved scripts of the workspace: upload, run, download, run history.', group: 'development', tab: 'scripts', main: true },
   { key: 'table', href: '/builder/sql/objects/table', icon: 'table', label: 'Create Table', description: 'A new table in a form: columns, keys, indexes and security.', group: 'development' },
+  { key: 'charts', href: '/builder/sql/charts', icon: 'chart', label: 'Charts', description: 'Queries drawn as charts, and a dashboard of them.', group: 'development', tab: 'charts' },
   { key: 'quicksql', href: '/builder/sql/quick', icon: 'bolt', label: 'Quick SQL', description: 'A data model in shorthand, turned into DDL.', group: 'development', tab: 'quicksql' },
   { key: 'query', href: '/builder/sql/query', icon: 'filter', label: 'Query Builder', description: 'A query from tables and their joins, drawn.', group: 'development', tab: 'query' },
   { key: 'load', href: '/builder/sql/load', icon: 'upload', label: 'Load Data', description: 'CSV, Excel, JSON or XML into a new or existing table.', group: 'development', tab: 'load' },

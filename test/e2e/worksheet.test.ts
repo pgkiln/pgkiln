@@ -333,4 +333,19 @@ describe('SQL Worksheet', () => {
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
+
+  test('(sprint 97) Ctrl+F11 draws the last query; changing the type draws it again', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet`);
+    await setEditor(page, `select name, id from ${S}.dept order by id`, 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    await page.locator('textarea[name=sql]').focus();
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+F11')]);
+    assert.equal(await page.locator('.ws-tabs [role=tab][aria-selected=true]').textContent(), 'Chart');
+    assert.ok(await page.locator('#ws-pane-chart .ch-view').isVisible());
+    await Promise.all([page.waitForNavigation(), page.selectOption('#ch-kind', 'donut')]);
+    assert.equal(await page.locator('#ch-kind').inputValue(), 'donut');
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
 });

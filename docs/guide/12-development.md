@@ -223,6 +223,8 @@ src/
     sql.ts                 SQL Workshop: the home and the session's schema
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
                            GET /builder/palette (the builder's search: JSON for Ctrl+K, a results page without JavaScript)
+    sql-charts.ts          (sprint 97) charts of a query: chartSpec(), drawChart() (runtime/charts.ts, a PageCss in a nonce'd <style>), the
+                           worksheet's Chart tab, SQL Workshop → Charts (meta.sql_chart, 110; read-only runs)
     sql-tools.ts           (sprint 96) SQL_TOOLS: every SQL Workshop tool with its group, tab and description (home, More menu, search)
     worksheet.ts           (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
                            columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role, (sprint 93) Save / Rename / Download as SQL Scripts, bind and substitution values, POST /sql/worksheet/format; GET /sql/worksheet/navigator
@@ -315,6 +317,7 @@ test/
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
   app-from-file.test.ts    Create → From a file: proposed names and types, app + table + rows + pages, row errors, login, validation
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
+  sql-charts.test.ts       (sprint 97) the worksheet's Chart tab, saving a chart, the Charts dashboard, a chart's page, read-only runs
   launchpad.test.ts        (sprint 96) Launchpad groups, pins (builder pages only, at most 24), the search (JSON and page)
   tabledef.test.ts         (sprint 95) table definitions round trip: CREATE, read, ALTER, read again; mistakes
   table-editor.test.ts     (sprint 95) the Table Properties page: preview, apply, a failing apply rolls back, template, worksheet
