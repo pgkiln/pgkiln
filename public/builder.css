@@ -1068,5 +1068,7 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sm-bar { display: inline-block; width: 4.5rem; height: 0.5rem; margin-right: 0.4rem; vertical-align: middle; }
 .sm-bar-track { fill: var(--border); }
 .sm-bar-fill { fill: var(--accent); }
+/* a statement's text is clipped to 1000 characters on the server: no scroll box inside the table */
+.sm-top .sql-text { max-height: none; overflow: visible; }
 .sm-sql { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; }
 @media (max-width: 640px) { .sm-bar { width: 3rem; } }

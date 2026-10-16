@@ -19,7 +19,7 @@ setup`) and on practically every managed service. Install with `create extension
 | **unaccent** | Accent-insensitive search (`café` finds `cafe`), essential in multilingual apps | Text search options |
 | **citext** | Case-insensitive text columns (e-mail addresses, codes) without `lower()` everywhere | NLS_COMP=LINGUISTIC |
 | **btree_gist** | Exclusion constraints on ranges, e.g. **no overlapping bookings/leave** enforced by the database, race-free | Custom PL/SQL checks |
-| **pg_stat_statements** | Which SQL is slow or called most, per role, so per app (`db_role`) | Monitor Activity → Top SQL |
+| **pg_stat_statements** | Which SQL is slow or called most, per role, so per app (`db_role`) | Monitor Activity → Top SQL; SQL Workshop → SQL Monitor (Top SQL, a statement's totals) |
 | **tablefunc** | `crosstab()` for pivot tables | Interactive report *Pivot* |
 | **ltree** | Hierarchies (org charts, categories, menus) with fast subtree queries | Tree region, `CONNECT BY` |
 | **postgres_fdw**, **file_fdw** | Query another PostgreSQL database, or a CSV file, as if it were a table | Remote servers / database links |

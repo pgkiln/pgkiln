@@ -301,7 +301,7 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
         const on = key === sort;
         const nextDesc = on ? !desc : !SORTS[key].asc;
         const params = new URLSearchParams({ sort: key, dir: nextDesc ? 'desc' : 'asc', ...(filter ? { q: filter } : {}) });
-        return html`<a href="${URL_BASE}/top?${params}"${on ? raw(` aria-sort="${desc ? 'descending' : 'ascending'}"`) : ''}>${SORTS[key].label}${on ? (desc ? ' ▼' : ' ▲') : ''}</a>`;
+        return html`<a href="${URL_BASE}/top?${params}" title="Sort by ${SORTS[key].label.toLowerCase()}">${SORTS[key].label}${on ? (desc ? ' ▼' : ' ▲') : ''}</a>`;
       };
       const th = (key: string, numeric = true) => html`<th${numeric ? raw(' class="num"') : ''}${key === sort ? raw(` aria-sort="${desc ? 'descending' : 'ascending'}"`) : ''}>${link(key)}</th>`;
       const i = info[0] as Row | undefined;
