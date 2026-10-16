@@ -36,7 +36,7 @@ describe('charts', () => {
     assert.deepEqual(chartSpec(['region', 'amount', 'units'], [false, true, true]), { kind: 'bar', label: 'region', values: ['amount', 'units'] });
     assert.deepEqual(chartSpec(['region', 'amount', 'units'], [false, true, true], { kind: 'pie', values: ['units', 'nope'] }), { kind: 'pie', label: 'region', values: ['units'] });
     assert.equal(chartSpec(['a', 'b'], [false, false]), null);
-    assert.equal(chartSpec(['region', 'amount'], [false, true], { kind: 'evil' as never }).kind, 'bar');
+    assert.equal(chartSpec(['region', 'amount'], [false, true], { kind: 'evil' as never })?.kind, 'bar');
   });
 
   test('Create Chart in the worksheet: the Chart tab, settings, its styles with the page\'s nonce', async () => {
