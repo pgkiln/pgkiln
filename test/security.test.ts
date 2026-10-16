@@ -8400,6 +8400,8 @@ describe('sprint 97 SQL Workshop charts', () => {
     for (const url of ['/builder/sql/charts', `/builder/sql/charts/${id}`]) assert.doesNotMatch((await a.get(url)).body, /<img src=x/, url);
     const king = await as('king');
     assert.equal((await king.get('/builder/sql/charts')).headers.location, '/builder/login');
+  });
+});
 
 describe('sprint 98 data modeler', () => {
   const DEV = 'sec98dev';
