@@ -14,10 +14,32 @@ export type TopSql =
   | { ok: true; rows: { queryid: string; calls: number; total_ms: number; mean_ms: number; rows: number; share: number; query: string }[] }
   | { ok: false; reason: 'no_role' | 'not_installed' | 'not_loaded' | 'error'; message?: string };
 
+/** (sprint 102) Whether pg_stat_statements can be read: created in this database and loaded by the server. */
+export async function statementsState(): Promise<{ ok: true } | { ok: false; reason: 'not_installed' | 'not_loaded' | 'error'; message?: string }> {
+  if (!(await owner.one(`select 1 as ok from pg_extension where extname = 'pg_stat_statements'`))) return { ok: false, reason: 'not_installed' };
+  try {
+    await owner.query('select 1 from pg_stat_statements limit 1');
+    return { ok: true };
+  } catch (e) {
+    const message = (e as Error).message;
+    return { ok: false, reason: /shared_preload_libraries/.test(message) ? 'not_loaded' : 'error', message };
+  }
+}
+
+/** Why the statistics can't be shown, and how to turn them on. */
+export function statementsNote(reason: 'not_installed' | 'not_loaded' | 'error', message?: string) {
+  return html`<div class="alert alert-error" role="alert">${reason === 'not_installed'
+    ? html`The <code>pg_stat_statements</code> extension isn't installed in this database. To turn it on: set <code>shared_preload_libraries = 'pg_stat_statements'</code> (postgresql.conf, or <code>alter system set shared_preload_libraries = 'pg_stat_statements'</code>), restart PostgreSQL, then as a superuser: <code>create extension pg_stat_statements;</code>`
+    : reason === 'not_loaded'
+      ? html`The server doesn't load <code>pg_stat_statements</code> yet. Set <code>shared_preload_libraries = 'pg_stat_statements'</code> (the development <code>docker-compose.yml</code> does) and restart PostgreSQL.`
+      : html`The statistics could not be read: ${message ?? ''}`}</div>`;
+}
+
 /** The role's statements, slowest in total first (or by mean time, calls or rows). */
 export async function topSql(role: string | null, sort = 'total', limit = 50): Promise<TopSql> {
   if (!role) return { ok: false, reason: 'no_role' };
-  if (!(await owner.one(`select 1 as ok from pg_extension where extname = 'pg_stat_statements'`))) return { ok: false, reason: 'not_installed' };
+  const state = await statementsState();
+  if (!state.ok) return state;
   try {
     const res = await owner.query(
       `select queryid::text, calls::int, round(total_exec_time::numeric, 1)::float8 as total_ms, round(mean_exec_time::numeric, 2)::float8 as mean_ms,
@@ -61,11 +83,7 @@ export async function topSqlRoutes(app: FastifyInstance) {
         : html`<p class="muted">No statements recorded for <code>${a.db_role}</code> yet. Use the application, then come back.</p>`
       : top.reason === 'no_role'
         ? html`<div class="alert alert-error" role="alert">This application runs as the owner role, so its statements can't be told apart. Give it a database role in Settings.</div>`
-        : html`<div class="alert alert-error" role="alert">${top.reason === 'not_installed'
-            ? html`The <code>pg_stat_statements</code> extension isn't installed. As a superuser: <code>create extension pg_stat_statements;</code>`
-            : top.reason === 'not_loaded'
-              ? html`The server doesn't load <code>pg_stat_statements</code> yet. Set <code>shared_preload_libraries = 'pg_stat_statements'</code> (the development <code>docker-compose.yml</code> does) and restart PostgreSQL.`
-              : html`The statistics could not be read: ${top.message}`}</div>`;
+        : statementsNote(top.reason, top.message);
     const main = html`${appHeader(a, 'activity')}
       ${region('Top SQL', html`<p class="muted u-mt0">Statements run as the role <code>${a.db_role ?? '(owner)'}</code> since the statistics were last reset, from <code>pg_stat_statements</code>. Literals and binds show as <code>$1</code>, <code>$2</code>…; applications that share a role share this list. <a href="${BASE}/apps/${a.id}/activity">Back to Activity</a></p>
         ${body}`)}`;

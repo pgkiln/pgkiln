@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 Sprint 101: Scheduling with pg_cron (parity handoff DA-12).
+Sprint 102: the SQL Monitor (parity handoff DA-14).
 
 ### Added
 - **Scheduling** (DA-12; Database Actions: Scheduling; administrators only): SQL Workshop → *Scheduling* lists
@@ -16,6 +17,16 @@ Sprint 101: Scheduling with pg_cron (parity handoff DA-12).
   role (recorded in the activity log, not in pg_cron's history). The run history has filters and a reviewed purge.
   Without pg_cron the page says what is missing and how to install it, and lists pgkiln's own automations and
   process jobs read-only.
+- **SQL Monitor** (DA-14; Database Actions: Real Time SQL Monitor; administrators only): SQL Workshop → *SQL Monitor*
+  shows the live sessions with state, wait event, running time and who blocks whom, a summary of wait events and the
+  progress of VACUUM, ANALYZE, CREATE INDEX, CLUSTER and COPY, refreshed in place every 5, 15 or 60 seconds with
+  *Pause* (a Refresh link without JavaScript). *Cancel* and *Terminate* a session with confirmation. *Top SQL* covers
+  the whole database from `pg_stat_statements` with total and mean time as bars, sort by any column, search and
+  *Reset statistics*. A statement's page shows its totals per role, its Explain Plan as a tree (`EXPLAIN` only, in a
+  read-only transaction; a generic plan for `$1` parameters on PostgreSQL 16+) and *Open in worksheet*.
+
+### Changed
+- The Utilities' *Database Monitor* is replaced by the SQL Monitor; its address redirects.
 
 ## [0.48.0] - 2026-10-16
 
