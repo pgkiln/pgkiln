@@ -51,6 +51,12 @@ jobs:
           psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = 'pg_stat_statements'"
           docker restart ${{ job.services.postgres.id }}
           for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U pgkiln && break; sleep 1; done
+      # Schema Export / Import (test/datapump.test.ts) needs pg_dump and pg_restore of the server's major version:
+      # the runner's own are older, so install 17 from the PostgreSQL apt repository (src/datapump.ts finds the newest)
+      - name: PostgreSQL 17 client programs
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
       # npm test installs the framework and the HR example app (the tests' fixture) first (pretest)
       - run: npm test
 
