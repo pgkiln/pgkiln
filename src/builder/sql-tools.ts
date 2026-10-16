@@ -41,6 +41,7 @@ export const SQL_TOOLS: SqlTool[] = [
   { key: 'backups', href: '/builder/backups', icon: 'archive', label: 'Manage Backups', description: 'Backups of the workspace\'s applications.', group: 'administration' },
   { key: 'workspaces', href: '/builder/workspaces', icon: 'layers', label: 'Workspaces', description: 'Workspaces, their developers and database roles.', group: 'administration', admin: true },
   { key: 'dbusers', href: '/builder/db-users', icon: 'key', label: 'Database Users', description: 'PostgreSQL roles: sign-in, expiry, memberships and schema privileges.', group: 'administration', admin: true },
+  { key: 'datapump', href: '/builder/sql/data-pump', icon: 'archive', label: 'Schema Export / Import', description: 'A schema to a file with pg_dump, a file into a schema with pg_restore (Data Pump).', group: 'administration', tab: 'datapump', admin: true },
   { key: 'developers', href: '/builder/developers', icon: 'users', label: 'Developers', description: 'Builder accounts and their workspaces.', group: 'administration' },
   { key: 'monitor', href: '/builder/sql/utilities/monitor', icon: 'activity', label: 'Database Monitor', description: 'Sessions, what they run and what blocks them.', group: 'monitoring', admin: true },
   { key: 'about', href: '/builder/sql/utilities/about', icon: 'info', label: 'About Database', description: 'The server: version, settings, extensions and sizes.', group: 'monitoring' },

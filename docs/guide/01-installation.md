@@ -158,6 +158,10 @@ which is read at startup; real environment variables take precedence.
 | `DB_ACQUIRE_TIMEOUT_MS` | `30000` | How long a request waits for a free connection before it fails with an error |
 | `DB_IDLE_IN_TRANSACTION_MS` | `300000` | The database ends a transaction left idle this long (milliseconds), so a hung request frees its connection |
 | `MAX_UPLOAD_MB` | `10` | Largest file a file item accepts (an item's `max_mb` can only lower it) |
+| `PGKILN_PG_BIN` | (searched) | (sprint 103) The directory of pg_dump and pg_restore for Schema Export / Import (the server's major version or newer) |
+| `PGKILN_DUMP_DIR` | `<temp>/pgkiln-dumps` | Where Schema Export / Import keeps its files (the Docker image: `/app/dumps`, a volume) |
+| `PGKILN_DUMP_KEEP_DAYS` | `7` | Days an export or upload is kept |
+| `PGKILN_DUMP_MAX_MB` | `2048` | Largest dump an administrator uploads |
 | `DATA_LOAD_MAX_MB` | `50` | Largest file for SQL Workshop → Load Data and Create → From a file |
 | `DATA_LOAD_MAX_ROWS` | `100000` | Most rows loaded from one file |
 | `PDF_MAX_ROWS` | `5000` | Most rows in a report PDF (1 to 100,000; read with a cursor in batches) |

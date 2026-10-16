@@ -883,6 +883,16 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         })()),
         // (sprint 99) Administration → Database Users: the list, a new role's form and a role
         db_users: '/builder/db-users', db_user_new: '/builder/db-users/new', db_user: '/builder/db-users/role/hr_app',
+        // (sprint 103) Schema Export / Import: the jobs, the export form, the import page, a job with a long log, an upload's import form
+        ...(await (async () => {
+          const ids = (await owner.query(`insert into meta.dump_job (kind, status, username, schema_name, options, file_name, original_name, bytes, log, error, started_at, finished_at, expires_at) values
+            ('export', 'failed', 'e2e_dump', 'hr', '{"format":"custom","content":"all","tables":[],"exclude":[],"privileges":true}', null, null, 123456,
+             $1, 'pg_dump ended with exit code 1', now() - interval '1 minute', now(), null),
+            ('import', 'uploaded', 'e2e_dump', null, '{}', 'upload-e2e-0.dump', $2, 2048, '', null, null, null, now() + interval '1 day') returning id::int`,
+            ['pg_dump: dumping contents of table "hr.a_table_with_a_rather_long_name_for_the_responsive_test"\n'.repeat(40) + 'x'.repeat(300), 'an-uploaded-dump-file-with-a-long-name-without-spaces-' + 'y'.repeat(60) + '.dump'])).rows.map((r) => r.id);
+          return { data_pump: '/builder/sql/data-pump', data_pump_export: '/builder/sql/data-pump/export?schema=hr', data_pump_import: '/builder/sql/data-pump/import',
+            data_pump_job: `/builder/sql/data-pump/job/${ids[0]}`, data_pump_import_form: `/builder/sql/data-pump/job/${ids[1]}/import` };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -897,6 +907,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         }
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.dump_job where username = 'e2e_dump'`);
         await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);

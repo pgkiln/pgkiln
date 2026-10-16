@@ -1054,3 +1054,10 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 }
 /* (sprint 100) RESTful Services: examples wrap instead of scrolling sideways */
 pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* (sprint 103) SQL Workshop › Schema Export / Import */
+.dp-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1rem; margin: 0 0 1rem; }
+.dp-facts dt { color: var(--muted); }
+.dp-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.dp-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.2rem 1rem; margin: 0.5rem 0; }
+.dp-log { max-height: 32rem; }

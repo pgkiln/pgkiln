@@ -153,6 +153,7 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
         ${tile('/sql/compare', 'layers', 'Schema Comparison', 'The differences between two schemas, and the SQL to align them.')}
         ${tile('/sql/utilities/reports', 'list', 'Object Reports', 'Tables without a primary key, foreign keys without an index, row-level security, grants, sizes.')}
         ${tile('/sql/utilities/about', 'help', 'About Database', 'The PostgreSQL version, settings, extensions and sizes.')}
+        ${admin ? tile('/sql/data-pump', 'archive', 'Schema Export / Import', 'A schema to a file with pg_dump, a file into a schema with pg_restore (administrators).') : ''}
         ${admin ? tile('/sql/utilities/monitor', 'activity', 'Database Monitor', 'Sessions, running and blocked queries of this database (administrators).') : ''}
       </div>`;
     return send(reply, s, shell(s, 'SQL Workshop utilities', [['SQL Workshop', `${BASE}/sql`], ['Utilities']], main, 'sql'));
