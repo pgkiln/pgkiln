@@ -28,6 +28,8 @@ export function objectMenu(schema: string, o: MenuObj): Raw {
   return html`<details class="menu obj-menu"><summary title="Actions for ${o.name}" aria-label="Actions for ${o.name}">⋯</summary>
     <div class="menu-panel"><div class="menu-section menu-links">
       ${o.type === 'policy' ? '' : html`<a href="${open}" data-obj-open="${`${BASE}/sql/objects/panel?${new URLSearchParams({ schema, k: o.type, o: o.ref })}`}">${icon('eye')} Open</a>`}
+      ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}`, 'edit', 'Edit…') : ''}
+      ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, template: o.ref })}`, 'copy', 'Use as template') : ''}
       ${table ? item(`${BASE}/sql/load`, 'upload', 'Load data') : ''}
       ${table ? html`${item(q('index'), 'list', 'Add index')}${item(q('trigger'), 'bolt', 'Add trigger')}${item(q('policy'), 'shield', 'Add policy')}` : ''}
       ${item(q('ddl'), 'code', 'Quick DDL to the worksheet')}

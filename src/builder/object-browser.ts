@@ -144,7 +144,8 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
     if (!schema) detail = html`<p class="muted">No schema you may use.</p>`;
     else if (selected) detail = await objectDetail(db, s, schema, selected, String(q.tab ?? ''), Number(q.p) || 1, link);
     else
-      detail = region(`Create database objects in ${schema}`, html`<div class="ob-tiles">${[
+      detail = region(`Create database objects in ${schema}`, html`<div class="ob-tiles">
+        <a class="create-source" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema })}">${icon('table')}<span><b>Table (form)</b><small class="muted">Columns, keys, indexes and security in a form</small></span></a>${[
         ['table', 'table', 'Table'], ['view', 'layers', 'View'], ['function', 'code', 'Function'], ['sequence', 'hash', 'Sequence'], ['index', 'list', 'Index'],
       ].map(([k, ic, label]) => html`<a class="create-source" href="${BASE}/sql/worksheet?${new URLSearchParams({ template: k, schema })}">${icon(ic)}<span><b>${label}</b><small class="muted">Start a CREATE ${label.toUpperCase()} statement</small></span></a>`)}
         <a class="create-source" href="${BASE}/sql/quick">${icon('bolt')}<span><b>Quick SQL</b><small class="muted">A data model in shorthand</small></span></a>
@@ -414,5 +415,6 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
     default:
       body = await ddlOf((x) => (x.kind === 'table' || x.kind === 'view' || x.kind === 'materialized view') ? x.name === relname : x.table === relname);
   }
-  return html`<h2 class="ob-title">${icon(OB_TYPES.find(([t]) => t === o.type)![2])} ${o.ref}${o.rls ? html` <span class="tag">RLS</span>` : ''}</h2>${nav}${region(tabs.find(([k]) => k === tab)![1], body)}`;
+  return html`<h2 class="ob-title">${icon(OB_TYPES.find(([t]) => t === o.type)![2])} ${o.ref}${o.rls ? html` <span class="tag">RLS</span>` : ''}${o.type === 'table'
+    ? html` <a class="btn btn-sm" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}">${icon('edit')} Edit table</a>` : ''}</h2>${nav}${region(tabs.find(([k]) => k === tab)![1], body)}`;
 }

@@ -1271,6 +1271,16 @@ others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compar
     function and the trigger) and **Add policy** (row level security on, a policy to fill in); **Drop…** writes the
     DROP statement with a comment that lists what depends on the object (views, foreign keys…). Nothing runs: you
     review the statement and run it.
+  - (sprint 95) **Table Properties** (a table's **Edit…**, **Use as template**, the Object Browser's *Edit table* and
+    its *Table (form)* tile): a form with **Columns** (name, type, primary key, not null, default, identity,
+    comment; move them up or down for a new table, remove them), **Unique keys**, **Foreign keys** (the table it refers
+    to, its columns, on delete), **Checks**, **Indexes** (columns or expressions, unique; indexes with another method or
+    a condition are kept as they are), the table's **comment**, **row level security** (and forcing it for the owner)
+    and, for a new table, **partitioning** (range, list or hash and its key). **Preview DDL** shows the exact CREATE
+    TABLE, or for an existing table the ALTER statements from what the catalog says now; **Apply** runs them in one
+    transaction (nothing changes when one fails, and the error shows under *Output*); **Open in the worksheet** puts
+    them there instead. *Use as template* starts a new table with the same columns and keys (names with `_copy`).
+    Defaults, checks and index expressions are single expressions (no `;` or comments).
   - **Run Statement** (**Ctrl/Cmd + Enter**) runs the statement at the cursor: the one the cursor is in, else the
     nearest one before it. A selection runs as it is, even when it holds several statements. The rows of the last
     query show in **Query Result**, up to 500, with row numbers, numbers right-aligned and NULL as *(null)*. The

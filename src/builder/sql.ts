@@ -15,6 +15,7 @@ import { ddlToolRoutes } from './ddl-tools.ts';
 import { sqlUtilityRoutes } from './sql-utilities.ts';
 import { createTemplate, objectBrowserRoutes } from './object-browser.ts';
 import { objectActionRoutes } from './object-actions.ts';
+import { tableEditorRoutes } from './table-editor.ts';
 import { currentWorkspace, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection; an isolated
@@ -125,4 +126,6 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(objectBrowserRoutes);
   // (sprint 94) an object's menu: Quick DDL, Drop, Add index / trigger / policy, Open in a panel
   await app.register(objectActionRoutes);
+  // (sprint 95) Table Properties: create, edit or copy a table in a form
+  await app.register(tableEditorRoutes);
 }
