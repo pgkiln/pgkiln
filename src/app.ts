@@ -59,6 +59,7 @@ import { staticFileRoutes } from './runtime/static-files.ts';
 import { staticFileBuilderRoutes } from './builder/static-files.ts';
 import { pluginRoutes } from './builder/plugins.ts';
 import { restRoutes } from './runtime/rest.ts';
+import { autoRestRoutes } from './runtime/autorest.ts';
 import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
 import { runtimeRoutes } from './runtime/routes.ts';
@@ -183,6 +184,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(pushRoutes);
   await app.register(staticFileRoutes);
   await app.register(restRoutes);
+  await app.register(autoRestRoutes); // (sprint 100) AutoREST: /a/:alias/autorest/
   await app.register(builderRoutes);
   await app.register(galleryRoutes);
   await app.register(appGroupRoutes);

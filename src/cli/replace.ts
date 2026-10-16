@@ -72,7 +72,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (081) the mail service an application sends through, and its queued and sent mail
   'app_mail_service', 'mail_queue',
   // (086) users' preferences
-  'user_preference'];
+  'user_preference',
+  // (113) AutoREST: the tables and views the application publishes (SQL Workshop › RESTful Services)
+  'rest_object'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
