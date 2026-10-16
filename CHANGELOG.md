@@ -9,6 +9,7 @@ Sprint 96: the SQL Workshop's Launchpad and the builder's search (migration 109;
 Sprint 97: charts of a query (migration 110; parity handoff DA-6).
 Sprint 98: the Data Modeler (migration 111; parity handoff DA-10).
 Sprint 99: Administration → Database Users (parity handoff DA-13).
+Sprint 100: RESTful Services, tables and views as REST endpoints (migration 113; parity handoff DA-11, part 1).
 
 ### Added
 - **The Launchpad** (DA-15; Database Actions: the Launchpad): the SQL Workshop home starts with *Pinned & recently
@@ -32,6 +33,14 @@ Sprint 99: Administration → Database Users (parity handoff DA-13).
   transaction. Passwords become SCRAM-SHA-256 verifiers in pgkiln and are never shown or logged. Drop a role after
   reassigning or dropping what it owns. pgkiln's own roles are read-only; roles used by applications or workspaces
   can't be dropped.
+- **RESTful Services** (DA-11, part 1; Database Actions: REST › Enable, AutoREST): SQL Workshop → *RESTful
+  Services* publishes a table or view through an application at `/a/<alias>/autorest/<object>/`: GET returns rows
+  paged with `limit` / `offset`, with `?column=` filters, `?q=` search and `?order=`; GET, PUT and DELETE by primary
+  key; POST inserts. Requests run as the application's database role (never the owner or a role that bypasses row
+  level security) with the application's tokens, OAuth clients and roles; public access is an explicit choice. An
+  OpenAPI description per application; the object's page shows grant and RLS checks with cURL and fetch examples.
+  Tables and views have *REST › Enable / Disable* in their ⋯ menu (`meta.rest_object`, migration 113, installation
+  data, not exported).
 - **Search** (**Ctrl/Cmd + K**, or the header's field on every builder page): tools, applications, pages and
   database objects by name; a page of results without JavaScript.
 

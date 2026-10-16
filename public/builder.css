@@ -1052,3 +1052,5 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
   .dbu-facts { grid-template-columns: 1fr; } .dbu-facts dd { margin-bottom: 0.4rem; }
   .dbu-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dbu-stats a.stat { padding: 0.5rem 0.7rem; } .dbu-stats .stat b { font-size: 1.15rem; }
 }
+/* (sprint 100) RESTful Services: examples wrap instead of scrolling sideways */
+pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }

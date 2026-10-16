@@ -20,6 +20,7 @@ import { createTemplate, objectBrowserRoutes } from './object-browser.ts';
 import { objectActionRoutes } from './object-actions.ts';
 import { tableEditorRoutes } from './table-editor.ts';
 import { dataModelerRoutes } from './data-modeler.ts';
+import { autoRestBuilderRoutes } from './autorest.ts';
 import { currentWorkspace, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection; an isolated
@@ -130,4 +131,6 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(tableEditorRoutes);
   // (sprint 98) the Data Modeler: relational diagrams, their DDL and data dictionary
   await app.register(dataModelerRoutes);
+  // (sprint 100) RESTful Services: AutoREST (autorest.ts)
+  await app.register(autoRestBuilderRoutes);
 }
