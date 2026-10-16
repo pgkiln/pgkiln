@@ -32,6 +32,7 @@ export function objectMenu(schema: string, o: MenuObj): Raw {
       ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, template: o.ref })}`, 'copy', 'Use as template') : ''}
       ${table ? item(`${BASE}/sql/load`, 'upload', 'Load data') : ''}
       ${table ? html`${item(q('index'), 'list', 'Add index')}${item(q('trigger'), 'bolt', 'Add trigger')}${item(q('policy'), 'shield', 'Add policy')}` : ''}
+      ${RELATIONS.has(o.type) ? item(`${BASE}/sql/rest/object?${new URLSearchParams({ schema, name: o.name })}`, 'globe', 'REST › Enable / Disable') : ''}
       ${item(q('ddl'), 'code', 'Quick DDL to the worksheet')}
       ${item(q('download'), 'download', 'Quick DDL as a file')}
       ${item(q('drop'), 'trash', 'Drop…')}

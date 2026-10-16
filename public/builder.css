@@ -1032,3 +1032,6 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 
 /* (sprint 90, PD-4) a commented-out component in the tree (APEX: Comment Out): struck through and muted */
 .pd-node[data-commented] .pd-label { text-decoration: line-through; color: var(--muted); }
+
+/* (sprint 100) RESTful Services: examples wrap instead of scrolling sideways */
+pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
