@@ -260,4 +260,26 @@ describe('SQL Worksheet', () => {
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
+
+  test('(sprint 94) right-click an object for its menu; Open shows it in a panel whose tabs load there', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet?schema=${S}`);
+    const dept = page.locator('.ws-obj', { has: page.locator('summary', { hasText: /^dept$/ }) });
+    await dept.locator('summary').first().click({ button: 'right' });
+    assert.ok(await dept.locator('.obj-menu[open] a', { hasText: 'Quick DDL to the worksheet' }).isVisible());
+    await dept.locator('.obj-menu [data-obj-open]').click();
+    await page.locator('.obj-slide[open] .obj-panel').waitFor();
+    assert.match(await page.locator('#obj-slide-title').textContent() ?? '', /Tables: ws91e2e\.dept/);
+    await page.locator('.obj-slide a', { hasText: 'Data' }).click();
+    await page.locator('.obj-slide td', { hasText: 'Research' }).waitFor();
+    assert.match(page.url(), /\/builder\/sql\/worksheet/, 'the page stayed');
+    await page.keyboard.press('Escape');
+    assert.ok(!(await page.locator('.obj-slide').isVisible()));
+    // Quick DDL opens a new worksheet tab with the DDL
+    await dept.locator('summary').first().click({ button: 'right' });
+    await Promise.all([page.waitForNavigation(), dept.locator('.obj-menu a', { hasText: 'Quick DDL to the worksheet' }).click()]);
+    assert.match(await page.locator('textarea[name=sql]').inputValue(), /^-- DDL of ws91e2e\.dept\n/);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
 });

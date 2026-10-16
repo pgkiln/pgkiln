@@ -1263,8 +1263,14 @@ others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compar
     materialized views, indexes, sequences, types, functions, procedures, triggers, policies) and a search field.
     A table or view opens to its columns with their types (a key marks the primary key); drag it into the editor
     for a `SELECT` of all its columns, or use its **SELECT**, **INSERT**, **UPDATE** and **DELETE** buttons, which
-    insert the statement at the cursor. **Open** shows the object in the Object Browser. Columns are listed for the
-    first 400 tables and views of a schema.
+    insert the statement at the cursor. Columns are listed for the first 400 tables and views of a schema.
+  - (sprint 94) Each object has a **⋯ menu** (or right-click it; Shift+right-click keeps the browser's menu), in
+    the Object Browser's tree too: **Open** shows the Object Browser's tabs in a panel at the side, without leaving
+    the worksheet; **Quick DDL** puts the object's DDL into a new worksheet tab (with the search path set to its
+    schema) or downloads it as a `.sql` file; for a table **Load data**, **Add index**, **Add trigger** (a trigger
+    function and the trigger) and **Add policy** (row level security on, a policy to fill in); **Drop…** writes the
+    DROP statement with a comment that lists what depends on the object (views, foreign keys…). Nothing runs: you
+    review the statement and run it.
   - **Run Statement** (**Ctrl/Cmd + Enter**) runs the statement at the cursor: the one the cursor is in, else the
     nearest one before it. A selection runs as it is, even when it holds several statements. The rows of the last
     query show in **Query Result**, up to 500, with row numbers, numbers right-aligned and NULL as *(null)*. The

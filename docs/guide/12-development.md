@@ -223,6 +223,8 @@ src/
     worksheet.ts           (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
                            columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role, (sprint 93) Save / Rename / Download as SQL Scripts, bind and substitution values, POST /sql/worksheet/format; GET /sql/worksheet/navigator
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
+    object-actions.ts      (sprint 94) an object's ⋯ menu (objectMenu) in the worksheet and the Object Browser: Quick DDL (objectDdl), Drop with
+                           dependents, Add index / trigger / policy as drafts; GET /sql/objects/action, /sql/objects/panel (Open in a panel)
     scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
     querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
@@ -306,6 +308,7 @@ test/
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
   app-from-file.test.ts    Create → From a file: proposed names and types, app + table + rows + pages, row errors, login, validation
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
+  object-actions.test.ts   (sprint 94) object menus: Quick DDL, Drop with dependents, Add index / trigger / policy, the panel, not-found
   worksheet.test.ts        (sprint 91) the SQL Worksheet: statement at the cursor, Run Script log, plans, notices, history, navigator, Run as
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits

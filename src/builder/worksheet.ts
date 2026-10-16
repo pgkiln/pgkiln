@@ -8,6 +8,7 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, bicon, BASE, csrf, developer, flash, send, shell, workshopTabs, type Req } from './ui.ts';
 import { clearCompletions } from './code-editor.ts';
 import { createTemplate, listObjects, OB_TYPES, pickSchema, SYSTEM_SCHEMAS, type Obj } from './object-browser.ts';
+import { objectMenu } from './object-actions.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 import { applySubstitutions, explainStatement, pickStatements, runStatements, substitutionNames, textTable, type RunMode, type WorksheetRun } from '../sqlworksheet.ts';
 import { applyBinds, bindNames } from '../binds.ts';
@@ -135,9 +136,9 @@ async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema:
   return html`<ul class="ws-tree" id="ws-tree">${objects.map((o) => {
     const list = cols.get(o.ref);
     const obLink = `${BASE}/sql/objects?${new URLSearchParams(o.type === 'policy' ? { schema, k: 'table', o: o.ref, tab: 'rls' } : { schema, k: o.type, o: o.ref })}`;
-    if (!list) return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}"><a href="${obLink}" title="${label(o.type)}">${icon(iconOf(o.type))}<span>${o.name}</span></a></li>`;
+    if (!list) return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}"><a href="${obLink}" title="${label(o.type)}">${icon(iconOf(o.type))}<span>${o.name}</span></a>${objectMenu(schema, o)}</li>`;
     const st = objectStatements(schema, o.name, list, o.type);
-    return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}"><details>
+    return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}">${objectMenu(schema, o)}<details>
       <summary draggable="true" data-ws-sql="${st.select}" title="${label(o.type).replace(/s$/, '')}: drag into the editor for a SELECT">${icon(iconOf(o.type))}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}</summary>
       <ul class="ws-cols">${list.map((c) => html`<li title="${c.type}${c.notnull ? ' not null' : ''}">${c.pk ? icon('key') : icon('minus')}<span>${c.name}</span><small class="muted">${c.type}</small></li>`)}</ul>
       <div class="ws-obj-actions">

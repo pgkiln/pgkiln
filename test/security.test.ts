@@ -8281,3 +8281,29 @@ describe('sprint 93 the SQL Worksheet: scripts as files, bind values', () => {
     assert.match(again, /value="&#39;\); drop table meta\.sql_script; --"/);
   });
 });
+
+describe('sprint 94 object menus', () => {
+  after(async () => {
+    await owner.query(`drop schema if exists "sec94<i>" cascade`);
+  });
+  test('names are escaped in menus, the panel and the drafts; app users get nothing', async () => {
+    await owner.query(`drop schema if exists "sec94<i>" cascade; create schema "sec94<i>"; create table "sec94<i>"."<img src=x onerror=alert(94)>" (a int)`);
+    const a = new Browser();
+    await a.get('/builder/login');
+    await a.post('/builder/login', { __csrf: a.lastCsrf, username: 'admin', password: 'admin' });
+    const ws = (await a.get(`/builder/sql/worksheet?schema=${encodeURIComponent('sec94<i>')}`)).body;
+    assert.doesNotMatch(ws, /<img src=x|<i>/);
+    assert.match(ws, /class="menu obj-menu"/);
+    const ref = '"sec94<i>"."<img src=x onerror=alert(94)>"';
+    const panel = (await a.get(`/builder/sql/objects/panel?${new URLSearchParams({ schema: 'sec94<i>', k: 'table', o: ref })}`)).body;
+    assert.match(panel, /^<div class="obj-panel"/);
+    assert.doesNotMatch(panel, /<img src=x/);
+    await a.get(`/builder/sql/objects/action?${new URLSearchParams({ schema: 'sec94<i>', k: 'table', o: ref, do: 'drop' })}`);
+    const draft = (await a.get('/builder/sql/worksheet')).body;
+    assert.match(draft, /drop table &quot;sec94&lt;i&gt;&quot;\.&quot;&lt;img src=x onerror=alert\(94\)&gt;&quot;;/);
+    const file = await a.get(`/builder/sql/objects/action?${new URLSearchParams({ schema: 'sec94<i>', k: 'table', o: ref, do: 'download' })}`);
+    assert.match(String(file.headers['content-disposition']), /^attachment; filename="[\w.-]+\.sql"$/);
+    const king = await as('king');
+    assert.equal((await king.get(`/builder/sql/objects/panel?${new URLSearchParams({ schema: 'sec94<i>', k: 'table', o: ref })}`)).headers.location, '/builder/login');
+  });
+});
