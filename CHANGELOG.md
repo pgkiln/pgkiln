@@ -65,7 +65,7 @@ Sprint 104: RESTful Services modules, templates and handlers (migration 117; par
   installation where `RUNTIME_DATABASE_URL` is not set (or points at a privileged role): such handlers ran with full
   rights and ignored row level security. Fix: give the application its own database role, or set
   `RUNTIME_DATABASE_URL` to the least-privilege runtime role. AutoREST (sprint 100) already refused this. The Advisor
-  compiles PL/pgSQL handlers.
+  reports an affected application as an error (run it after upgrading) and compiles PL/pgSQL handlers.
 
 ## [0.48.0] - 2026-10-16
 

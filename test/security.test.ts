@@ -9157,6 +9157,15 @@ describe('sprint 104 rest handlers', () => {
       assert.equal((await call('GET', 'who', 'king')).statusCode, 403);
       assert.equal((await call('POST', 'note', 'king', { body_text: 'bypass' })).statusCode, 403);
       assert.equal(await notes(), n);
+      // the Advisor says so before the endpoints fail, and is quiet again for the application's own role
+      const { advise } = await import('../src/builder/advisor.ts');
+      const restFinding = async () => (await advise(appId)).findings.filter((f) => f.field === 'REST modules');
+      const found = await restFinding();
+      assert.equal(found.length, 1);
+      assert.equal(found[0].severity, 'error');
+      assert.match(found[0].message, /sec104_bypass.*403/);
+      await owner.query(`update meta.app set db_role = 'hr_app' where id = $1`, [appId]);
+      assert.equal((await restFinding()).length, 0);
     } finally {
       await owner.query(`update meta.app set db_role = 'hr_app' where id = $1`, [appId]);
     }
