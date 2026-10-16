@@ -140,6 +140,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
               <a href="${BASE}/users">${icon('user')} Manage users and groups</a>
               <a href="${BASE}/developers">${icon('users')} Developers</a>
               <a href="${BASE}/dashboard">${icon('activity')} Monitor activity</a>
+              ${s.instanceAdmin ? html`<a href="${BASE}/db-users">${icon('key')} Database users</a>` : ''}
               <a href="${BASE}/developers">${icon('key')} Change my password</a>
             </div>
           </div></details></li>

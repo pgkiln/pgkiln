@@ -37,6 +37,7 @@ import { reportSettingsRoutes } from './builder/report-settings.ts';
 import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
+import { dbUserRoutes } from './builder/db-users.ts';
 import { usersRoutes } from './builder/users.ts';
 import { codeEditorRoutes } from './builder/code-editor.ts';
 import { sampleDataRoutes } from './builder/sampledata.ts';
@@ -199,6 +200,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(pluginRoutes);
   await app.register(sqlRoutes);
   await app.register(usersRoutes);
+  await app.register(dbUserRoutes);
   await app.register(dataLoadRoutes);
   await app.register(layoutRoutes);
   await app.register(automationRoutes);
