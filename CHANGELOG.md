@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 101: Scheduling with pg_cron (parity handoff DA-12).
+
+### Added
+- **Scheduling** (DA-12; Database Actions: Scheduling; administrators only): SQL Workshop → *Scheduling* lists
+  pg_cron's jobs with the schedule in words, the next run (in `cron.timezone`), the last run and recent failures.
+  Create and edit a job with a schedule builder that previews the next five runs (also without JavaScript); the SQL
+  (`cron.schedule_in_database`, `cron.alter_job`) is reviewed, then applied in one transaction. Disable / Enable,
+  Unschedule, and *Run now*: pg_cron has none, so pgkiln runs the job's stored command once in its database as its
+  role (recorded in the activity log, not in pg_cron's history). The run history has filters and a reviewed purge.
+  Without pg_cron the page says what is missing and how to install it, and lists pgkiln's own automations and
+  process jobs read-only.
+
 ## [0.48.0] - 2026-10-16
 
 Sprint 96: the SQL Workshop's Launchpad and the builder's search (migration 109; parity handoff DA-15).
