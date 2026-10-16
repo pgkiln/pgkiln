@@ -18,6 +18,7 @@ export function restExtras(a: { id: number; alias: string }, row: { name: string
         <td data-label="Type">${h.type}</td><td data-label="Access">${h.auth === 'public' ? 'public' : h.roles?.length ? `token, role ${h.roles.join(' or ')}` : 'token'}</td></tr>`)}</tbody></table></div>
     ${example ? html`<p class="muted small">Try it with a token from <a href="/builder/apps/${a.id}/api">REST API</a>:</p>
       <pre class="source">curl ${base}/${example.path.replace(/:([a-z_]+)/gi, '1')} -H "Authorization: Bearer $TOKEN"</pre>` : ''}
+    <p class="muted small">Edit its templates and handlers, and try them, in <a href="/builder/sql/rest/modules">SQL Workshop › RESTful Services › Modules</a>.</p>
     <p class="wrap-anywhere">OpenAPI description: <a href="${base}/openapi.json" target="_blank" rel="noopener"><code>${base}/openapi.json</code></a></p>
   </fieldset>`;
 }

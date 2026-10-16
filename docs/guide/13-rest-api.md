@@ -31,11 +31,12 @@ answer 404.
 |---|---|
 | `method` | `GET`, `POST`, `PUT`, `PATCH` or `DELETE` |
 | `path` | Segments with `:parameters`, e.g. `orders/:id/lines` |
-| `type` | `collection`: a SELECT, returned page by page as `{items, offset, limit, has_more}` (`?limit=` up to 500, `?offset=`, `page_size` for the default); the page streams from a cursor as a chunked JSON array (an error before the first rows is still a 4xx/5xx, a failure after them ends the response short) · `item`: one row as an object, 404 when there is none · `sql`: statements; the first row of the last one is the response (201 for POST, 204 without a row; `status` overrides) |
+| `type` | `collection`: a SELECT, returned page by page as `{items, offset, limit, has_more}` (`?limit=` up to 500, `?offset=`, `page_size` for the default); the page streams from a cursor as a chunked JSON array (an error before the first rows is still a 4xx/5xx, a failure after them ends the response short) · `item`: one row as an object, 404 when there is none · `sql`: statements; the first row of the last one is the response (201 for POST, 204 without a row; `status` overrides) · `plpgsql` (sprint 104): a PL/pgSQL block that answers with `meta.rest_reply(body, status)` ([below](#modules-templates-and-handlers-in-the-sql-workshop)) · `media`: a query whose row has `content_type`, `content` and optionally `filename`, sent as that content |
 | `source` | The SQL. Binds: path parameters, query parameters and the fields of a JSON (or form) body, upper case (`:ID`, `:CUSTOMER`); `:BODY` is the whole JSON body. `:APP_USER` (the caller), `:APP_ID` and `:APP_ALIAS` are set by the server: a parameter of that name (or `APP_SESSION`, `APP_PAGE_ID`, `REQUEST`, `APP_LANGUAGE`) is ignored, and can't be a path parameter |
 | `roles` | The caller needs one of these roles (as `meta.has_role()` sees them) |
 | `auth` | `token` (default) or `public` (no token; the SQL runs with `meta.app_user()` = `nobody`) |
 | `description` | For the OpenAPI description |
+| `params` | (sprint 104) Documented parameters: `[{"name": "start_date", "in": "body", "type": "string", "required": true, "description": "…"}]` (`in`: `query` or `body`; types `string`, `integer`, `number`, `boolean`). They go into the OpenAPI document; a required one that is missing or empty answers 400 |
 
 **Calling them.** Send `Authorization: Bearer <token>` with a token from **App → REST API**: a token
 issued for an account, or one from `POST /oauth/token` for an OAuth client ([below](#tokens)). An
@@ -62,6 +63,63 @@ curl http://127.0.0.1:3100/a/hr/rest/v1/my/leave -H "Authorization: Bearer $TOKE
 curl -X POST http://127.0.0.1:3100/a/hr/rest/v1/leave -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" -d '{"start_date": "2027-05-03", "end_date": "2027-05-04", "reason": "dentist"}'
 ```
+
+## Modules, templates and handlers in the SQL Workshop
+
+**SQL Workshop → RESTful Services → Modules** (sprint 104; Oracle Database Actions / ORDS: REST › Modules) edits
+the same REST modules the ORDS way, for every application of the workspace:
+
+- a **module** is a base path, `/a/<alias>/rest/<name>/`, with a title, a description, *Enabled* and its
+  **privilege**: application roles (as `meta.has_role()` sees them) of which a caller needs one for *every*
+  handler of the module, public ones included;
+- a **template** is a URI below it with `:parameters`, e.g. `emp/:id`, with a description for the OpenAPI document
+  (a template can exist before its first handler; renaming it moves its handlers);
+- a **handler** answers one method of a template: its source type (*collection query*, *single row*, *SQL*,
+  *PL/pgSQL*, *media*), the source, who may call it (a token, or explicitly *public*), further roles, the page size
+  or status, and documented parameters, one per line: `start_date body string required First day`.
+
+The tree on the left of each page shows module › templates › handlers. A Run only or locked application refuses
+changes. The module's page checks the role the handlers run as and links the module's **OpenAPI** document.
+
+**PL/pgSQL handlers** run their block as a `DO` statement as the application's database role. A `DO` block takes
+no parameters, so pgkiln sets the request's binds as transaction-local settings (with query parameters: values
+never become SQL text) and turns `:NAME` in the block into `meta.rest_param('NAME')` (text, NULL when absent):
+
+```sql
+declare
+  v_id int;
+begin
+  v_id := sales.create_order(:CUSTOMER, :TOTAL::numeric);
+  perform meta.rest_reply(jsonb_build_object('id', v_id), 201);
+end
+```
+
+`meta.rest_reply(body jsonb, status int)` sets the response (status 200–599, also 4xx for your own errors; the
+transaction is still committed); without it the handler answers 204. A `raise exception` answers 400 with its
+message and rolls back. Statements without `begin … end` are wrapped in one.
+
+**Media handlers** run a query whose first row has `content_type`, `content` (bytea or text) and optionally
+`filename`; the response is that content, sent with `X-Content-Type-Options: nosniff` and a sandboxing
+Content-Security-Policy, so HTML or SVG from a table can't run script in the application's origin. No row: 404.
+
+**Try it.** A handler's page sends a request to the real endpoint, with path parameters, a query string and a JSON
+body, either without a token (to see the 401) or *as* an account of the application with a short-lived token (the
+same as issuing one on App → REST API). A PUT, POST or DELETE changes data. The response's status and body are
+shown in the page; it works without JavaScript.
+
+**Example:** the HR example's module `hr` (`examples/hr/hr_62_rest_module.sql`): `GET emp/:id` (single row),
+`GET emp/:id/photo` (media), `POST leave` (PL/pgSQL with body parameters) and `GET payroll/:deptno` (roles manager or
+admin):
+
+```bash
+curl http://127.0.0.1:3100/a/hr/rest/hr/emp/7839 -H "Authorization: Bearer $TOKEN"
+curl -X POST http://127.0.0.1:3100/a/hr/rest/hr/leave -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" -d '{"start_date": "2027-05-03", "end_date": "2027-05-04", "reason": "dentist"}'
+# {"id": 12, "status": "requested"}
+```
+
+Handlers never run as a superuser, a role that bypasses row level security or pgkiln's owner: such a request
+answers 403 (set `RUNTIME_DATABASE_URL` and give the application its own database role).
 
 ## AutoREST: tables and views from the SQL Workshop
 

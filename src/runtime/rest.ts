@@ -12,7 +12,8 @@ import { PassThrough } from 'node:stream';
 import { publicError, writeOut } from './context.ts';
 import { DO_TAG, HandlerInputError, mediaResponse, runPlpgsql, setBinds } from './rest-handlers.ts';
 
-// REST modules (APEX: RESTful Services): handlers defined in the builder,
+// REST modules (APEX: RESTful Services): handlers defined in the builder (Shared Components, or (sprint 104)
+// SQL Workshop › RESTful Services › Modules as templates and handlers; plpgsql and media types: rest-handlers.ts),
 // served under /a/<alias>/rest/<module>/<path>.
 //
 //   {"method": "GET", "path": "employees", "type": "collection", "source": "select … order by empno"}
@@ -92,6 +93,7 @@ export function handlerProblems(handlers: unknown): string[] {
       else h.params.forEach((p: any) => {
         if (!p || typeof p !== 'object' || typeof p.name !== 'string' || !PARAM_NAME.test(p.name)) problems.push(`${at}: a parameter's name is letters, digits and _.`);
         else if (RESERVED_BINDS.has(p.name.toUpperCase())) problems.push(`${at}: ${p.name} is set by the server and can't be a parameter.`);
+        else if (p.name.toUpperCase() === 'BODY') problems.push(`${at}: :BODY is the whole JSON body; name the parameter otherwise.`);
         if (p && p.in !== 'query' && p.in !== 'body') problems.push(`${at}: a parameter is "in" query or body.`);
         if (p?.type !== undefined && !PARAM_TYPES.includes(p.type)) problems.push(`${at}: a parameter's type is one of ${PARAM_TYPES.join(', ')}.`);
       });

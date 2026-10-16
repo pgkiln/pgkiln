@@ -8,6 +8,7 @@ import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { invokeStepReferences, stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
+import { plpgsqlBlock } from '../runtime/rest-handlers.ts';
 import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
 import { configColumns, searchConfigProblems } from '../runtime/search.ts';
@@ -249,7 +250,15 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       for (const h of Array.isArray(row.handlers) ? row.handlers : []) {
         if (typeof h?.source !== 'string' || !h.source.trim()) continue;
         checked++;
-        const problem = await checkSql(c, h.source, h.type === 'sql' ? 'statements' : 'select');
+        // (117) a PL/pgSQL handler is compiled as the DO block it runs as
+        let block: string | null = null;
+        if (h.type === 'plpgsql') try {
+          block = plpgsqlBlock(h.source);
+        } catch (e) {
+          findings.push({ severity: 'error', message: (e as Error).message, entry, field: `${h.method} ${h.path}` });
+          continue;
+        }
+        const problem = await checkSql(c, block ?? h.source, h.type === 'sql' || block ? 'statements' : 'select');
         if (problem) findings.push({ ...problem, entry, field: `${h.method} ${h.path}` });
       }
     }
