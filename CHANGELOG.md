@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 
 Sprint 96: the SQL Workshop's Launchpad and the builder's search (migration 109; parity handoff DA-15).
 Sprint 97: charts of a query (migration 110; parity handoff DA-6).
+Sprint 98: the Data Modeler (migration 111; parity handoff DA-10).
 
 ### Added
 - **The Launchpad** (DA-15; Database Actions: the Launchpad): the SQL Workshop home starts with *Pinned & recently
@@ -16,6 +17,12 @@ Sprint 97: charts of a query (migration 110; parity handoff DA-6).
 - **Charts** (DA-6; Database Actions: Create Chart and Charts): the worksheet's *Chart* tab (Ctrl+F11) draws the last
   query (type, label and value columns to choose); *Save chart* keeps it (`meta.sql_chart`, migration 110) and SQL
   Workshop → *Charts* lists the saved charts with a dashboard; a saved chart's query runs read-only.
+- **Data Modeler** (DA-10; Database Actions: Data Modeler): SQL Workshop → *Data Modeler* keeps named relational
+  diagrams of a schema's tables and views (`meta.sql_diagram`, migration 111; positions only, the columns and keys
+  come from the catalog). Boxes show columns, types, primary, foreign and unique keys and not null; foreign keys are
+  lines with crow's feet (dashed when optional). Add objects by search (`*` for all), drag and save positions,
+  undo / redo, zoom, fit, auto layout, a mini-map; export SVG or PNG, print; Generate DDL of the shown objects and a
+  data dictionary (HTML); a box opens Table Properties. Without JavaScript the diagram is a server-drawn SVG.
 - **Search** (**Ctrl/Cmd + K**, or the header's field on every builder page): tools, applications, pages and
   database objects by name; a page of results without JavaScript.
 
