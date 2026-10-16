@@ -8231,3 +8231,53 @@ describe('sprint 92 the SQL Worksheet: history, plans, SQL inserts', () => {
     assert.equal(refused.statusCode, 422);
   });
 });
+
+describe('sprint 93 the SQL Worksheet: scripts as files, bind values', () => {
+  const DEV = 'sec93dev';
+  let otherWs: number;
+  let theirs: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/sql/worksheet');
+    return b;
+  };
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec93 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+    theirs = (await owner.one(`insert into meta.sql_script (name, content, workspace_id) values ('sec93 secret', 'select ''secret 93''', 1) returning id`)).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.sql_script where name like 'sec93%'`);
+    await owner.query(`delete from meta.workspace where name = 'Sec93 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+
+  test('another workspace\'s script is neither opened, listed nor changed', async () => {
+    const d = await signIn(DEV);
+    const page = (await d.get(`/builder/sql/worksheet?script=${theirs}`)).body;
+    assert.doesNotMatch(page, /secret 93|sec93 secret/);
+    for (const mode of ['save', 'rename'])
+      await d.post('/builder/sql/worksheet', { __csrf: d.lastCsrf, sql: 'select 1 -- hacked', mode, script_id: String(theirs), ws_name: 'sec93 hacked' });
+    assert.deepEqual(await owner.one('select name, content, workspace_id from meta.sql_script where id = $1', [theirs]), { name: 'sec93 secret', content: "select 'secret 93'", workspace_id: 1 });
+    // a save without a script of one's own makes a new one in one's own workspace
+    assert.equal((await owner.one(`select workspace_id from meta.sql_script where name = 'sec93 hacked'`))?.workspace_id, otherWs);
+    const dl = await d.post('/builder/sql/worksheet', { __csrf: d.lastCsrf, sql: 'x', mode: 'download', script_id: String(theirs), ws_name: 'a"\r\nSet-Cookie: x=1' });
+    assert.equal(dl.headers['content-disposition'], 'attachment; filename="a_Set-Cookie_x_1.sql"');
+    assert.equal(dl.headers['set-cookie'], undefined);
+  });
+
+  test('bind values never become SQL; names and values are escaped in the dialog', async () => {
+    const a = await signIn('admin');
+    const ask = (await a.post('/builder/sql/worksheet', { __csrf: a.lastCsrf, sql: 'select :x, &y.', mode: 'statement' })).body;
+    assert.match(ask, /name="bind_X"/);
+    const out = (await a.post('/builder/sql/worksheet', { __csrf: a.lastCsrf, sql: 'select :x as v', mode: 'statement', binds_given: '1', bind_X: "'); drop table meta.sql_script; --" })).body;
+    assert.match(out, /<td>&#39;\); drop table meta\.sql_script; --<\/td>/);
+    assert.ok(await owner.one(`select to_regclass('meta.sql_script') as t`));
+    const again = (await a.post('/builder/sql/worksheet', { __csrf: a.lastCsrf, sql: 'select :x as v', mode: 'statement' })).body;
+    assert.match(again, /value="&#39;\); drop table meta\.sql_script; --"/);
+  });
+});

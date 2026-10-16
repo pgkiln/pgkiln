@@ -71,19 +71,19 @@ describe('SQL Worksheet', () => {
     await setEditor(page, sql, sql.length - 3);
     await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
     assert.equal(await page.locator('#ws-pane-result td:not(.ws-rownum)').first().textContent(), 'second');
-    assert.equal(await page.locator('[role=tab][aria-selected=true]').textContent(), 'Query Result');
+    assert.equal(await page.locator('.ws-tabs [role=tab][aria-selected=true]').textContent(), 'Query Result');
     // the statement that ran is selected again
     assert.deepEqual(await page.evaluate(() => { const t = document.querySelector<HTMLTextAreaElement>('textarea[name=sql]')!; return t.value.slice(t.selectionStart, t.selectionEnd); }), "select 'second' as which");
 
     await setEditor(page, sql, 0);
     await Promise.all([page.waitForNavigation(), page.keyboard.press('F5')]);
-    assert.equal(await page.locator('[role=tab][aria-selected=true]').textContent(), 'Script Output');
+    assert.equal(await page.locator('.ws-tabs [role=tab][aria-selected=true]').textContent(), 'Script Output');
     assert.match(await page.locator('#ws-pane-output').textContent() ?? '', /SELECT 2[\s\S]*SELECT 1/);
     await page.locator('[role=tab]', { hasText: 'SQL History' }).click();
     assert.ok(await page.locator('#ws-pane-history').isVisible());
     assert.ok(!(await page.locator('#ws-pane-output').isVisible()));
     await page.keyboard.press('ArrowLeft');
-    assert.equal(await page.locator('[role=tab][aria-selected=true]').textContent(), 'Autotrace');
+    assert.equal(await page.locator('.ws-tabs [role=tab][aria-selected=true]').textContent(), 'Autotrace');
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
@@ -159,6 +159,7 @@ describe('SQL Worksheet', () => {
 
   test('(sprint 92) sort a column, a value in a dialog, Autotrace as a tree, history search and run again', async () => {
     const { context, page } = await builder();
+    await owner.query(`delete from meta.sql_history where username = 'admin'`);
     await page.goto(`${base}/builder/sql/worksheet?schema=${S}`);
     const sql = `select id, name, json_build_object('n', name) as j from ${S}.dept order by id`;
     await setEditor(page, sql, 3);
@@ -178,7 +179,7 @@ describe('SQL Worksheet', () => {
 
     await setEditor(page, `select * from ${S}.dept where id = 1`, 0);
     await Promise.all([page.waitForNavigation(), page.keyboard.press('F6')]);
-    assert.equal(await page.locator('[role=tab][aria-selected=true]').textContent(), 'Autotrace');
+    assert.equal(await page.locator('.ws-tabs [role=tab][aria-selected=true]').textContent(), 'Autotrace');
     assert.ok(await page.locator('#ws-pane-autotrace .ws-plan-op').first().isVisible());
     assert.ok(!(await page.locator('#ws-pane-autotrace .ws-plan-text pre').isVisible()), 'the text plan is folded');
 
@@ -187,8 +188,75 @@ describe('SQL Worksheet', () => {
     assert.equal(await page.locator('.ws-history li:not([hidden])').count(), 1);
     await setEditor(page, '', 0);
     await Promise.all([page.waitForNavigation(), page.locator('.ws-history li:not([hidden]) [data-ws-run]').click()]);
-    assert.equal(await page.locator('[role=tab][aria-selected=true]').textContent(), 'Query Result');
+    assert.equal(await page.locator('.ws-tabs [role=tab][aria-selected=true]').textContent(), 'Query Result');
     assert.equal(await page.locator('[data-ws-grid] tbody tr').count(), 2);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
+
+  test('(sprint 93) worksheets as tabs that survive a reload; Ctrl+S saves as a script; Files', async () => {
+    await owner.query(`delete from meta.sql_script where name = 'e2e93 script'`);
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet`);
+    const tabs = () => page.locator('.ws-wtabs [role=tab]').allTextContents();
+    await setEditor(page, 'select 1', 8);
+    assert.deepEqual(await tabs(), ['Untitled 1*']);
+    await page.locator('.ws-wtab-new').click();
+    assert.equal(await page.locator('textarea[name=sql]').inputValue(), '');
+    await page.locator('textarea[name=sql]').fill('select 2');
+    await page.reload();
+    assert.deepEqual(await tabs(), ['Untitled 1*', 'Untitled 2*']);
+    assert.equal(await page.locator('textarea[name=sql]').inputValue(), 'select 2', 'the active tab came back');
+    await page.locator('.ws-wtabs [role=tab]', { hasText: 'Untitled 1' }).click();
+    assert.equal(await page.locator('textarea[name=sql]').inputValue(), 'select 1');
+    // Ctrl+S on an unsaved worksheet asks for a name; Enter saves
+    await page.locator('textarea[name=sql]').focus();
+    await page.keyboard.press('Control+s');
+    assert.ok(await page.locator('#ws-name').isVisible());
+    await page.fill('#ws-name', 'e2e93 script');
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Enter')]);
+    assert.deepEqual(await tabs(), ['e2e93 script', 'Untitled 2*']);
+    assert.equal(await page.locator('.ws-file-name').textContent(), 'e2e93 script');
+    await page.locator('[data-ws-navtab=files]').click();
+    assert.ok(await page.locator('#ws-files a', { hasText: 'e2e93 script' }).isVisible());
+    await page.locator('textarea[name=sql]').press('End');
+    await page.keyboard.type(' + 1');
+    assert.equal(await page.locator('.ws-file-name').textContent(), 'e2e93 script*');
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+s')]);
+    assert.equal((await owner.one(`select content from meta.sql_script where name = 'e2e93 script'`))!.content, 'select 1 + 1');
+    assert.equal(await page.locator('.ws-file-name').textContent(), 'e2e93 script');
+    await owner.query(`delete from meta.sql_script where name = 'e2e93 script'`);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
+
+  test('(sprint 93) a bind variable asks for its value; Format, find and replace, comment lines', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet`);
+    await setEditor(page, 'select :n * 2 as d', 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.ok(await page.locator('#ws-binds').isVisible());
+    await page.fill('input[name=bind_N]', '21');
+    await Promise.all([page.waitForNavigation(), page.locator('#ws-binds button[value=statement]').click()]);
+    assert.equal(await page.locator('[data-ws-grid] td:not(.ws-rownum)').textContent(), '42');
+
+    await setEditor(page, 'SELECT a,b FROM t', 0);
+    await page.keyboard.press('Control+F7');
+    await page.waitForFunction(() => (document.querySelector('textarea[name=sql]') as HTMLTextAreaElement).value.includes('\n'));
+    assert.equal(await page.locator('textarea[name=sql]').inputValue(), 'select a,\n       b\nfrom t');
+    await page.keyboard.press('Control+h');
+    await page.fill('[data-ws-find-q]', 'from t');
+    await page.fill('[data-ws-find-r]', 'from u');
+    await page.locator('[data-ws-find-all]').click();
+    assert.match(await page.locator('textarea[name=sql]').inputValue(), /from u$/);
+    assert.equal(await page.locator('[data-ws-find-msg]').textContent(), '1 replaced.');
+    await page.keyboard.press('Escape');
+    assert.ok(!(await page.locator('.ws-findbar').isVisible()));
+    await page.evaluate(() => (document.querySelector('textarea[name=sql]') as HTMLTextAreaElement).setSelectionRange(0, 0));
+    await page.keyboard.press('Control+/');
+    assert.match(await page.locator('textarea[name=sql]').inputValue(), /^-- select a,\n {7}b/);
+    await page.keyboard.press('Control+/');
+    assert.match(await page.locator('textarea[name=sql]').inputValue(), /^select a,/);
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });

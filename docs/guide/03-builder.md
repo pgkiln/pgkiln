@@ -1289,6 +1289,22 @@ others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compar
     succeeded, click one to insert it at the cursor, **Run** to run it again, or copy it. Other developers' history
     never shows; 500 statements are kept per developer. The home page's *Recent SQL commands* opens it.
   - The status bar counts errors and warnings and shows the last message and its time.
+  - (sprint 93) **Worksheets and files**: the worksheet's name is a menu with **Save** (**Ctrl/Cmd + S**), *Save as
+    new*, *Rename*, **Download** (a `.sql` file), **New** and *Open…*. A worksheet is saved as a script of SQL Scripts
+    (shared by the workspace's developers); the navigator's **Files** tab lists them, and SQL Scripts opens one in the
+    worksheet. Several worksheets stay open as **tabs** above the editor (at most 20); a `*` marks text not saved yet.
+    The tabs and their unsaved text are kept in the browser, so they survive a reload.
+  - **Bind variables** (`:NAME`) and **substitution variables** (`&NAME.`) are asked for in a dialog before the run.
+    A bind variable's value is a quoted literal (empty is NULL), so it can never change the statement; a substitution
+    variable's text goes into the statement as it is (a table or column name, for instance). The values are
+    remembered for the session; the history and the log keep the statement as written.
+  - **Format** (**Ctrl + F7**) lays out the selection or the whole worksheet: a clause per line, the columns of a select
+    list and the conditions of a WHERE one per line, joins and subqueries indented, keywords in lower or UPPER case
+    (chosen in the **?** menu). Strings, comments and `$$` bodies stay as they are. **Convert case** (**Ctrl + B**)
+    cycles the selection (or the word at the cursor) through UPPER, lower and Initial caps. **Find and replace**
+    (**Ctrl + F**, **Ctrl + H**) with a regular expression or exact case, **Go to line** (**Ctrl + G**), and
+    **Ctrl + /** comments the selected lines out or in. The **?** menu lists every key; **F1** opens this help. The
+    upload button opens Load Data for the navigator's schema.
   - Each statement commits on its own. Statements run as the **owner connection** (an isolated workspace's
     developer login for its developers), on a connection of their own that is closed afterwards, so `SET ROLE` or
     `SET search_path` doesn't leak. **Run as** picks an application of your workspace instead: the statements then
