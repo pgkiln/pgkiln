@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 Sprint 101: Scheduling with pg_cron (parity handoff DA-12).
 Sprint 102: the SQL Monitor (parity handoff DA-14).
 Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
+Sprint 106: the change log of DDL change sets (migration 118; parity handoff DA-17).
 
 ### Added
 - **Scheduling** (DA-12; Database Actions: Scheduling; administrators only): SQL Workshop → *Scheduling* lists
@@ -37,6 +38,14 @@ Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
   `PGKILN_PG_BIN` points at the client programs, which must be at least as new as the server. A dump's functions
   and triggers run as pgkiln's owner role: import only dumps you trust.
 - The Docker image includes PostgreSQL 17's client programs (`pg_dump`, `pg_restore`) and a `dumps` volume.
+- **Change Log** (DA-17; Liquibase / Flyway): DDL that succeeds in the SQL Worksheet, *Apply* in Table Properties and
+  the new *Apply and record* of Schema Comparison (the change script in one transaction) are recorded as change sets
+  per workspace and schema: author, time, SQL, where from, the object and a number that is never reused
+  (`meta.change_set`, `meta.change_set_counter`, migration 118). SQL Workshop › *Change Log* lists them per schema,
+  renames and deletes them, marks those made after the latest builder export of an application of the workspace, and
+  downloads them as Flyway versioned files (`V0001__add_bonus.sql`, several in a zip), a Liquibase formatted SQL
+  changelog or a plain script (all, not yet written, or after the latest export). Only schema DDL is kept: no data
+  changes and no role, database or server statements (no passwords). The builder's Export is logged as `app_export`.
 
 ### Changed
 - The Utilities' *Database Monitor* is replaced by the SQL Monitor; its address redirects.

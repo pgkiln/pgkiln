@@ -708,6 +708,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_rest: '/builder/sql/rest',
         sql_rest_object: `/builder/sql/rest/${(await owner.one(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, roles)
           values ($1, 'hr', 'dept', 'dept', '{GET,POST,PUT,DELETE}', '{manager}') on conflict (app_id, schema_name, object_name) do update set enabled = true returning id`, [appId])).id}`,
+        // (sprint 106) the change log, with a long change set
+        sql_changes: await (async () => {
+          await owner.query(`delete from meta.change_set where schema_name = 'hr' and name = 'e2e_responsive_change_with_a_rather_long_name'`);
+          await owner.query(`insert into meta.change_set (workspace_id, schema_name, name, author, source, sql, object_name) values (1, 'hr', 'e2e_responsive_change_with_a_rather_long_name', 'admin', 'worksheet',
+            'comment on table hr.emp is ''A rather long comment without spaces: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'';', 'emp')`);
+          return '/builder/sql/changes?schema=hr';
+        })(),
         // (sprint 67) REST source catalogs, a data source from one, the workspace's export and import
         rest_catalogs: '/builder/rest-catalogs',
         ...(await (async () => {

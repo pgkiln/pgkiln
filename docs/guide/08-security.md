@@ -517,6 +517,11 @@ and the row level security below decide what an API caller may read and change. 
 the published object or bypasses row level security, and an object answers only to a bearer token of its application
 unless the developer chose *public* for it ([chapter 13](13-rest-api.md#autorest-tables-and-views-from-the-sql-workshop)).
 
+(sprint 106) The SQL Workshop's **Change Log** keeps the schema DDL developers run from the worksheet, Table
+Properties and Schema Comparison, per workspace (only the workspace's developers see it). Statements about roles,
+databases, servers, user mappings and subscriptions are never recorded, so passwords and connection strings stay
+out of it; it holds what the DDL says otherwise (defaults, comments, function bodies).
+
 ### Database users and their passwords
 
 (sprint 99) Administrators create and change PostgreSQL roles in the builder (**Administration → Database users**,

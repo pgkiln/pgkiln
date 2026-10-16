@@ -1488,7 +1488,8 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   replaces views and functions, drops and creates constraints, indexes, triggers, policies and
   grants that differ, and lists for review what it doesn't change: drops of what only the target
   has (commented out), columns whose identity or generation differs, and types, domains and
-  sequences that differ. The same from the command line (`pgkiln ddl`, `pgkiln compare`,
+  sequences that differ. (sprint 106) *Apply and record* runs the script on the target in one transaction and records
+  it in the Change Log (below). The same from the command line (`pgkiln ddl`, `pgkiln compare`,
   [chapter 18](18-cli.md)) and for AI agents (`generate_ddl`, `compare_schemas`).
 - **RESTful Services** (`/builder/sql/rest`, sprint 100; Database Actions: REST › AutoREST): publish a table or
   view as REST endpoints. Choose the object (of a schema the SQL Workshop may use), the **application** it is
@@ -1499,6 +1500,19 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   accounts' roles. The object's page checks the role's grants per method, row level security and (for a view)
   `security_invoker`, lists the endpoints with their URLs, and shows cURL and `fetch` examples and the OpenAPI link.
   Details in [chapter 13](13-rest-api.md#autorest-tables-and-views-from-the-sql-workshop).
+- **Change Log** (`/builder/sql/changes`, sprint 106; Database Actions: Liquibase): DDL that succeeds in the **SQL
+  Worksheet**, **Table Properties** (*Apply*) and **Schema Comparison** (*Apply and record*: the change script run on
+  the target in one transaction) is recorded as a *change set*: the schema it changes, its SQL, who ran it, when,
+  where from and a number per schema that is never given again (deleting a change set keeps the others' numbers).
+  Statements without a schema-qualified name count for the worksheet's schema. Only schema DDL is kept (CREATE,
+  ALTER, DROP, COMMENT, GRANT and REVOKE on objects): no queries or data changes, and nothing about roles, databases
+  or servers, so passwords never end up in the log. The page lists a schema's change sets with their SQL; rename one
+  (its file name) or delete it from the log (the database is not changed). It marks which change sets were made
+  before the latest **Export** of an application of the workspace (*in it*) and which after (*still to ship*).
+  *Download migration* writes all of them, those not yet written to a file, or those after the latest export, as
+  **Flyway** versioned migrations (`V0001__add_bonus.sql`; several in a zip), a **Liquibase** formatted SQL changelog
+  (`--liquibase formatted sql`, `--changeset author:0001-add_bonus`) or one plain SQL script; each change set also
+  has its own Flyway file. Change sets belong to the workspace and are not part of an application export.
 - **Utilities** (`/builder/sql/utilities`; APEX: SQL Workshop → Utilities): tiles for Load and Unload Data, Sample
   Data, the Query Builder, DDL and Compare, and three pages of their own. Each runs in a read-only transaction with a
   15-second statement timeout, on the SQL Workshop's connection (an isolated workspace's developers see only the

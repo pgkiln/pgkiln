@@ -5,12 +5,14 @@ import { changeScript, compare, ddlScript, OBJECT_TYPES, pick, readSchema, userS
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity } from '../session.ts';
-import { BASE, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import { BASE, csrf, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import type { Session } from '../session.ts';
 import { workshopDb } from './workspaces.ts';
 
 // SQL Workshop → Generate DDL and Schema Comparison (APEX: SQL Workshop →
 // Utilities). Both only read the catalog (src/ddl.ts); the scripts they
-// write are shown and downloaded, never run.
+// write are shown and downloaded. (sprint 106) Compare's Apply and record
+// runs the change script and records it (changelog.ts).
 
 const TYPE_LABELS: Record<(typeof OBJECT_TYPES)[number], string> = {
   types: 'Types and domains', sequences: 'Sequences', tables: 'Tables (constraints, indexes)', views: 'Views and materialized views',
@@ -28,6 +30,12 @@ const diffBlock = (d: Difference, source: string, target: string) => {
   const text = unifiedDiff(d.name, Buffer.from(`${d.target ?? ''}\n`), Buffer.from(`${d.source ?? ''}\n`), [target, source]);
   return html`<pre class="diff">${text.trimEnd().split('\n').map((l, i) => html`${i ? '\n' : ''}<span class="${l.startsWith('+') && !l.startsWith('+++') ? 'diff-add' : l.startsWith('-') && !l.startsWith('---') ? 'diff-del' : null}">${l}</span>`)}</pre>`;
 };
+
+/** (sprint 106, DA-17) Apply the change script in one transaction and record it in the change log (changelog.ts). */
+const applyForm = (s: Session, source: string, target: string) =>
+  html`<form method="post" action="${BASE}/sql/compare/apply" class="u-mt1">${csrf(s)}<input type="hidden" name="source" value="${source}"><input type="hidden" name="target" value="${target}">
+    <button class="btn btn-hot" data-confirm="Run the change script on ${target} in one transaction?">${icon('play')} Apply and record</button>
+    <span class="muted small">Runs the script on ${target} (commented-out drops stay out) and records it in the <a href="${BASE}/sql/changes?schema=${encodeURIComponent(target)}">change log</a>.</span></form>`;
 
 export async function ddlToolRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/ddl`, async (req: Req, reply) => {
@@ -98,9 +106,10 @@ export async function ddlToolRoutes(app: FastifyInstance) {
             html`<ul class="compare-list">${list.map((d) => html`<li><details><summary><span class="tag">${d.kind}</span> ${d.name}</summary>
               ${st === 'different' ? diffBlock(d, source, target) : html`<pre class="diff">${d.source ?? d.target}</pre>`}</details></li>`)}</ul>`)}`)}
           <div class="u-spacer"></div>
-          ${region(`Change script: make ${target} like ${source}`, html`<p class="muted">Creates what only ${source} has, changes what differs, and lists what only ${target} has as commented-out drops; columns that change identity or generation, and types, domains and sequences that differ, are left for review. Nothing is run here.</p>
+          ${region(`Change script: make ${target} like ${source}`, html`<p class="muted">Creates what only ${source} has, changes what differs, and lists what only ${target} has as commented-out drops; columns that change identity or generation, and types, domains and sequences that differ, are left for review. Nothing runs until you choose Apply and record.</p>
             <textarea class="code" rows="20" spellcheck="false" readonly aria-label="Change script" data-code="plpgsql">${script}</textarea>`,
-            html`<a class="btn" href="${BASE}/sql/compare?${new URLSearchParams({ source, target, download: '1' }).toString()}">${icon('download')} Download</a>`)}`;
+            html`<a class="btn" href="${BASE}/sql/compare?${new URLSearchParams({ source, target, download: '1' }).toString()}">${icon('download')} Download</a>`)}
+          ${differences.length ? applyForm(s, source, target) : ''}`;
       } catch (e) {
         result = html`<div class="alert alert-error" role="alert">${(e as Error).message}</div>`;
       }
