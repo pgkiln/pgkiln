@@ -1310,6 +1310,12 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     width, and the step's conditions (filter, index and join conditions, sort keys). Autotrace adds the actual time,
     rows, loops and buffers, the time spent in the step itself, marks the **slowest step**, and flags estimates that
     are 10 times too high or too low (run `ANALYZE` on the table). **Text plan** shows it like psql.
+  - (sprint 97) **Chart** (**Ctrl + F11**, or *Chart* above the Query Result) draws the last query with pgkiln's
+    own charts: the first text or date column gives the labels, the number columns the values; change the type (bar,
+    column, stacked bar, line, area, donut, pie, scatter), the label column or the values and it draws again. Name it
+    and **Save chart**: SQL Workshop → **Charts** lists the saved charts (shared by the workspace) and draws the ones
+    on its dashboard; a chart's page changes its settings, opens its query in the worksheet or deletes it. A saved
+    chart's SELECT runs read-only with a 10 second timeout and at most 500 rows.
   - **Notices** lists the `RAISE NOTICE`, `INFO` and `WARNING` messages of the last run with their time.
     **SQL History** (sprint 92) lists your last 200 statements in this workspace with how they ended, their rows and
     time; running the same statement again counts on its row (*3×*). Search it, show only the ones that failed or

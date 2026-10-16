@@ -8380,3 +8380,25 @@ describe('sprint 96 Launchpad pins and the builder search', () => {
     assert.doesNotMatch(page, /<img src=x/);
   });
 });
+
+describe('sprint 97 SQL Workshop charts', () => {
+  after(async () => {
+    await owner.query(`delete from meta.sql_chart where name like 'sec97%'`);
+  });
+  test('CSRF; names, labels and values are escaped in the chart, the list and the page', async () => {
+    const a = new Browser();
+    await a.get('/builder/login');
+    await a.post('/builder/login', { __csrf: a.lastCsrf, username: 'admin', password: 'admin' });
+    await a.get('/builder/sql/worksheet');
+    const evil = '<img src=x onerror=alert(97)>';
+    const sql = `select '${evil}' as "${evil}", 1 as n`;
+    assert.equal((await a.post('/builder/sql/charts', { __csrf: 'forged', chart_sql: sql, chart_name: 'sec97 x' })).statusCode, 403);
+    const ws = (await a.post('/builder/sql/worksheet', { __csrf: a.lastCsrf, sql, mode: 'chart' })).body;
+    assert.doesNotMatch(ws, /<img src=x/);
+    await a.post('/builder/sql/charts', { __csrf: a.lastCsrf, chart_sql: sql, chart_name: `sec97 ${evil}` });
+    const id = (await owner.one(`select id from meta.sql_chart where name like 'sec97%'`))!.id;
+    for (const url of ['/builder/sql/charts', `/builder/sql/charts/${id}`]) assert.doesNotMatch((await a.get(url)).body, /<img src=x/, url);
+    const king = await as('king');
+    assert.equal((await king.get('/builder/sql/charts')).headers.location, '/builder/login');
+  });
+});

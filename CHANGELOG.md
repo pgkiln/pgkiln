@@ -6,12 +6,16 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 Sprint 96: the SQL Workshop's Launchpad and the builder's search (migration 109; parity handoff DA-15).
+Sprint 97: charts of a query (migration 110; parity handoff DA-6).
 
 ### Added
 - **The Launchpad** (DA-15; Database Actions: the Launchpad): the SQL Workshop home starts with *Pinned & recently
   visited* (pins per developer and workspace in `meta.builder_pin`, migration 109: tools, Object Browser objects,
   saved worksheets; recent pages kept in the browser), then the tools in tabs *Development*, *Administration* and
   *Monitoring* with a description and a pin each. The *More* menu uses the same headings.
+- **Charts** (DA-6; Database Actions: Create Chart and Charts): the worksheet's *Chart* tab (Ctrl+F11) draws the last
+  query (type, label and value columns to choose); *Save chart* keeps it (`meta.sql_chart`, migration 110) and SQL
+  Workshop → *Charts* lists the saved charts with a dashboard; a saved chart's query runs read-only.
 - **Search** (**Ctrl/Cmd + K**, or the header's field on every builder page): tools, applications, pages and
   database objects by name; a page of results without JavaScript.
 
