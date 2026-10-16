@@ -22,6 +22,7 @@ import { tableEditorRoutes } from './table-editor.ts';
 import { dataModelerRoutes } from './data-modeler.ts';
 import { autoRestBuilderRoutes } from './autorest.ts';
 import { restModuleRoutes } from './rest-modules.ts';
+import { changeLogRoutes } from './changelog.ts';
 import { currentWorkspace, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 
 // SQL Workshop: SQL commands and the object browser (owner connection; an isolated
@@ -136,4 +137,6 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(autoRestBuilderRoutes);
   // (sprint 104) RESTful Services: modules, templates and handlers (rest-modules.ts)
   await app.register(restModuleRoutes);
+  // (sprint 106) the change log (changelog.ts)
+  await app.register(changeLogRoutes);
 }

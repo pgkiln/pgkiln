@@ -254,7 +254,7 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 };
 
 /** Tabs of the SQL Workshop. */
-export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities' | 'charts' | 'modeler' | 'rest' | 'scheduling' | 'datapump' | 'monitor';
+export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities' | 'charts' | 'modeler' | 'rest' | 'scheduling' | 'datapump' | 'monitor' | 'changes';
 export const workshopTabs = (active: WorkshopTab) => {
   const tab = (key: string, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;

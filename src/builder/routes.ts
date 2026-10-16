@@ -360,6 +360,8 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.one('select meta.export_app($1) as doc', [a.alias]);
+    // (sprint 106) the change log marks the change sets made before an application's latest export
+    await logActivity({ appId: a.id, username: s.username, event: 'app_export', ip: clientIp(req), detail: String(req.query?.format ?? 'json') });
     // ?format=dir|text: one file per component, as `pgkiln export --format dir|text` writes it (docs/guide/18-cli.md)
     if (req.query?.format === 'dir' || req.query?.format === 'text')
       return reply

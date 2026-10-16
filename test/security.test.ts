@@ -9256,3 +9256,95 @@ describe('sprint 104 rest handlers', () => {
     assert.ok(await owner.one('select 1 from meta.rest_module where id = $1', [modId]));
   });
 });
+
+describe('sprint 106 change log', () => {
+  const S = 'sec106';
+  const DEV = 'sec106dev';
+  let otherWs: number;
+  let id: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/sql/changes');
+    return b;
+  };
+  const count = async () => (await owner.one(`select count(*)::int as n from meta.change_set where schema_name like 'sec106%'`)).n;
+  before(async () => {
+    await owner.query(`drop schema if exists ${S} cascade; drop schema if exists ${S}_b cascade`);
+    await owner.query(`delete from meta.change_set where schema_name like 'sec106%' or schema_name like 'we%'`);
+    await owner.query(`create schema ${S}; create table ${S}.t (id int primary key)`);
+    id = (await owner.one(`insert into meta.change_set (workspace_id, schema_name, name, author, source, sql) values (1, $1, 'xss', '<img src=x onerror=alert(106)>', 'worksheet', $2) returning id`,
+      [S, `comment on table ${S}.t is '<script>alert(106)</script>';`])).id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec106 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.change_set where schema_name like 'sec106%' or schema_name like 'we%'`);
+    await owner.query(`delete from meta.change_set_counter where schema_name like 'sec106%' or schema_name like 'we%'`);
+    await owner.query(`delete from meta.workspace where name = 'Sec106 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`drop schema if exists ${S} cascade; drop schema if exists ${S}_b cascade`);
+    await owner.query(`do $$ begin if exists (select 1 from pg_roles where rolname = 'sec106_role') then drop role sec106_role; end if; end $$`);
+  });
+
+  test('CSRF: a forged token downloads, renames, deletes and applies nothing', async () => {
+    const a = await signIn('admin');
+    await owner.query(`create schema ${S}_b`);
+    for (const [url, form] of [
+      ['/builder/sql/changes/download', { schema: S, format: 'flyway', which: 'all' }],
+      [`/builder/sql/changes/${id}/download`, {}],
+      [`/builder/sql/changes/${id}`, { name: 'renamed' }],
+      [`/builder/sql/changes/${id}/delete`, {}],
+      ['/builder/sql/compare/apply', { source: S, target: `${S}_b` }],
+    ] as [string, Record<string, string>][])
+      assert.equal((await a.post(url, { __csrf: 'forged', ...form })).statusCode, 403, url);
+    const row = await owner.one('select name, exported_at from meta.change_set where id = $1', [id]);
+    assert.deepEqual(row, { name: 'xss', exported_at: null });
+    assert.equal(await owner.one(`select to_regclass('${S}_b.t') as t`).then((r) => r.t), null, 'the target is unchanged');
+  });
+
+  test('change sets are escaped in the page; names are checked; file names are safe', async () => {
+    const a = await signIn('admin');
+    const page = (await a.get(`/builder/sql/changes?schema=${S}`)).body;
+    assert.doesNotMatch(page, /<script>alert\(106\)|<img src=x/);
+    assert.match(page, /&lt;script&gt;alert\(106\)/);
+    for (const name of ['x"; drop table t; --', '../../etc/passwd', 'A B', ''])
+      await a.post(`/builder/sql/changes/${id}`, { __csrf: a.lastCsrf, name });
+    assert.equal((await owner.one('select name from meta.change_set where id = $1', [id])).name, 'xss');
+    await assert.rejects(owner.query(`update meta.change_set set name = 'a/../b' where id = $1`, [id]), /check constraint/);
+    const weird = 'we"ird\r\nx';
+    await owner.query(`insert into meta.change_set (workspace_id, schema_name, name, author, source, sql) values (1, $1, 'w', 'admin', 'worksheet', 'create table x (a int);')`, [weird]);
+    const res = await a.post('/builder/sql/changes/download', { __csrf: a.lastCsrf, schema: weird, format: 'liquibase', which: 'all' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['content-disposition'], 'attachment; filename="we_ird__x.changelog.sql"');
+  });
+
+  test('only schema DDL that succeeded is recorded: no role passwords, no failed statements', async () => {
+    const a = await signIn('admin');
+    await a.get('/builder/sql/worksheet');
+    const n = await count();
+    await a.post('/builder/sql/worksheet', { __csrf: a.lastCsrf, mode: 'script', continue: '1',
+      sql: `create role sec106_role login password 'sec106-secret';\nalter role sec106_role password 'sec106-other';\ncreate table ${S}.bad (id nope);\ninsert into ${S}.t values (1);` });
+    assert.equal(await count(), n);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.change_set where sql like '%sec106-secret%' or sql like '%sec106-other%'`)).n, 0);
+  });
+
+  test('another workspace\'s developer sees and changes none of it; schemas are checked; users are not developers', async () => {
+    const d = await signIn(DEV);
+    assert.doesNotMatch((await d.get(`/builder/sql/changes?schema=${S}`)).body, /alert\(106\)|sec106\.t/);
+    for (const url of [`/builder/sql/changes/${id}/download`, `/builder/sql/changes/${id}`, `/builder/sql/changes/${id}/delete`])
+      assert.equal((await d.post(url, { __csrf: d.lastCsrf, name: 'mine' })).statusCode, 404, url);
+    assert.equal((await d.post('/builder/sql/changes/download', { __csrf: d.lastCsrf, schema: S, format: 'sql', which: 'all' })).statusCode, 404);
+    assert.ok(await owner.one('select 1 from meta.change_set where id = $1 and name = $2', [id, 'xss']));
+    const a = await signIn('admin');
+    for (const [source, target] of [['meta', S], [S, 'meta'], [S, S], [S, 'pg_catalog'], [`${S}"; drop schema ${S} cascade; --`, S]])
+      assert.equal((await a.post('/builder/sql/compare/apply', { __csrf: a.lastCsrf, source, target })).statusCode, 404, `${source} → ${target}`);
+    assert.ok(await owner.one(`select to_regclass('${S}.t') as t`).then((r) => r.t));
+    const king = await as('king');
+    assert.equal((await king.get('/builder/sql/changes')).headers.location, '/builder/login');
+    assert.equal((await king.post(`/builder/sql/changes/${id}/delete`, { __csrf: king.lastCsrf })).headers.location, '/builder/login');
+  });
+});

@@ -5,7 +5,8 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
 import { SYSTEM_SCHEMAS } from './object-browser.ts';
 import { clearCompletions } from './code-editor.ts';
-import { usableSchemas, workshopDb } from './workspaces.ts';
+import { currentWorkspace, usableSchemas, workshopDb } from './workspaces.ts';
+import { joinStatements, recordChanges } from '../changelog.ts';
 import { checkTable, emptyTable, ON_DELETE, readTable, tableSql, type ColumnDef, type TableDef } from '../tabledef.ts';
 
 // (sprint 95, Database Actions DA-8: Table Properties) Create a table, edit one, or start from one as a template, in
@@ -196,6 +197,8 @@ async function page(req: Req, reply: FastifyReply) {
       await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), detail: ddl.join(';\n').slice(0, 2000) });
       clearCompletions();
       if (!failed) {
+        // (sprint 106, DA-17) one change set in the change log
+        await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'table', defaultSchema: def.schema, statements: [joinStatements(ddl)] });
         flash(s, `${editing ? 'Changed' : 'Created'} ${def.schema}.${def.name}: ${ddl.length} statement${ddl.length === 1 ? '' : 's'}.`);
         const now = await readTable(db, `${pgIdent(def.schema)}.${pgIdent(def.name)}`);
         return back(reply, s, `${BASE}/sql/objects/table?${new URLSearchParams({ o: now ? `${pgIdent(now.schema)}.${pgIdent(now.name)}` : '' })}`);

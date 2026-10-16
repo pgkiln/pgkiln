@@ -16,6 +16,7 @@ import { applyBinds, bindNames } from '../binds.ts';
 import { formatSql } from '../sqlformat.ts';
 import { planView } from './plan-view.ts';
 import { unloadStatement } from '../unload.ts';
+import { recordChanges } from '../changelog.ts';
 
 // (sprint 91, Database Actions DA-1/DA-2) The SQL Worksheet: one screen with a navigator (schema, object
 // type, filter; tables and views open to their columns and give SELECT / INSERT / UPDATE / DELETE
@@ -386,6 +387,9 @@ async function worksheet(req: Req, reply: FastifyReply) {
       if (mode === 'statement' || mode === 'script') {
         clearCompletions(); // the statements may have changed tables or grants
         if (run) await recordHistory(s, run);
+        // (sprint 106, DA-17) the DDL that succeeded goes into the change log
+        if (run) await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'worksheet', defaultSchema: searchSchema ?? 'public',
+          statements: run.results.filter((r) => r.status === 'ok').map((r) => r.sql) });
         const detail = picked.map((x) => x.sql).join(';\n');
         await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), elapsedMs: Math.round(performance.now() - started), detail: detail.length > 2000 ? `${detail.slice(0, 2000)}…` : detail });
       }

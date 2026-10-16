@@ -34,6 +34,7 @@ export const SQL_TOOLS: SqlTool[] = [
   { key: 'sample', href: '/builder/sql/sample-data', icon: 'layers', label: 'Sample Data', description: 'Rows that look real, for development.', group: 'development', tab: 'sample' },
   { key: 'ddl', href: '/builder/sql/ddl', icon: 'file', label: 'Generate DDL', description: 'A schema\'s objects as one script.', group: 'development', tab: 'ddl' },
   { key: 'compare', href: '/builder/sql/compare', icon: 'layers', label: 'Schema Comparison', description: 'The differences between two schemas, and the SQL to align them.', group: 'development', tab: 'compare' },
+  { key: 'changes', href: '/builder/sql/changes', icon: 'history', label: 'Change Log', description: 'DDL run here as change sets per schema; download as Flyway, Liquibase or SQL migrations.', group: 'development', tab: 'changes' },
   { key: 'modeler', href: '/builder/sql/modeler', icon: 'org', label: 'Data Modeler', description: 'Relational diagrams of tables and their foreign keys; DDL and a data dictionary from them.', group: 'development', tab: 'modeler' },
   { key: 'rest', href: '/builder/sql/rest', icon: 'globe', label: 'RESTful Services', description: 'REST modules, templates and handlers; tables and views as REST endpoints (AutoREST); OpenAPI.', group: 'development', tab: 'rest' },
   { key: 'ai', href: '/builder/sql/ai', icon: 'bolt', label: 'AI', description: 'SQL from a question, explanations and table descriptions.', group: 'development', tab: 'ai' },

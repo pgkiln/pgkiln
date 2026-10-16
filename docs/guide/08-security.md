@@ -523,6 +523,11 @@ real settings. Media handlers are served with a sandboxing Content-Security-Poli
 SQL Workshop calls an endpoint as an account of the application, as a developer issuing a token could
 ([chapter 13](13-rest-api.md#modules-templates-and-handlers-in-the-sql-workshop)).
 
+(sprint 106) The SQL Workshop's **Change Log** keeps the schema DDL developers run from the worksheet, Table
+Properties and Schema Comparison, per workspace (only the workspace's developers see it). Statements about roles,
+databases, servers, user mappings and subscriptions are never recorded, so passwords and connection strings stay
+out of it; it holds what the DDL says otherwise (defaults, comments, function bodies).
+
 ### Database users and their passwords
 
 (sprint 99) Administrators create and change PostgreSQL roles in the builder (**Administration → Database users**,

@@ -70,6 +70,8 @@ src/
   sqlworksheet.ts          (sprint 91) the worksheet's runs: pickStatements() (at the cursor, a selection, all), runStatements() (a log per
                            statement, psql command tags, notices, error line and column), explainStatement() (EXPLAIN / rolled-back ANALYZE)
   datamodel.ts             (sprint 98) Data Modeler diagrams: readModel() (catalog), boxSize(), fkPath() (crow's feet), autoLayout(), diagramSvg()
+  changelog.ts             (sprint 106, migration 118) the change log: isSchemaDdl(), ddlTarget() (schema and object), changeName()
+                           (add_bonus, create_index_x), recordChanges() (grouped per schema), Flyway / Liquibase / plain SQL writers
   tabledef.ts              (sprint 95) a table as a definition: readTable(), checkTable(), tableSql() (CREATE, or ALTER from the catalog's version)
   sqlformat.ts             (sprint 93) formatSql(): the worksheet's Format (clauses per line, keyword case; strings and comments kept)
   sqlplan.ts               (sprint 92) EXPLAIN (FORMAT JSON) as a tree: parsePlan() (self time, slowest step, misestimates), planText()
@@ -278,7 +280,9 @@ src/
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
-    ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts)
+    ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts); (sprint 106) the Apply and record form
+    changelog.ts           (sprint 106) SQL Workshop → Change Log (/builder/sql/changes): change sets per schema, latest app export,
+                           downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded)
     sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
                            connection's usable schemas), About Database; read only, with a timeout; /sql/utilities/monitor redirects to the SQL Monitor
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
@@ -367,6 +371,8 @@ test/
   sql-charts.test.ts       (sprint 97) the worksheet's Chart tab, saving a chart, the Charts dashboard, a chart's page, read-only runs
   launchpad.test.ts        (sprint 96) Launchpad groups, pins (builder pages only, at most 24), the search (JSON and page)
   tabledef.test.ts         (sprint 95) table definitions round trip: CREATE, read, ALTER, read again; mistakes
+  changelog.test.ts        (sprint 106) DDL recognition and names, recording from Table Properties, the worksheet and Compare,
+                           downloads (Flyway, Liquibase, SQL), stable numbers, the latest application export
   table-editor.test.ts     (sprint 95) the Table Properties page: preview, apply, a failing apply rolls back, template, worksheet
   object-actions.test.ts   (sprint 94) object menus: Quick DDL, Drop with dependents, Add index / trigger / policy, the panel, not-found
   data-modeler.test.ts     (sprint 98) Data Modeler: "hr core" with its FK lines, saved positions, SVG, objects, DDL, dictionary, geometry
