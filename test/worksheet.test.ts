@@ -9,6 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { commandTag, pickStatements, textTable, usesClientCopy } from '../src/sqlworksheet.ts';
 import { objectStatements } from '../src/builder/worksheet.ts';
+import { parsePlan, planText } from '../src/sqlplan.ts';
 import { Browser } from './helpers.ts';
 
 describe('picking the statements to run', () => {
@@ -53,6 +54,36 @@ describe('picking the statements to run', () => {
     assert.equal(st.delete, 'delete from hr."Emp"\n where id = null');
     assert.match(st.update!, /set "full name" = null\n where id = null/);
     assert.deepEqual(Object.keys(objectStatements('hr', 'v', [], 'view')), ['select']);
+  });
+});
+
+describe('plans as a tree (sprint 92)', () => {
+  const json = [{
+    Plan: { 'Node Type': 'Hash Join', 'Join Type': 'Left', 'Startup Cost': 1, 'Total Cost': 10.5, 'Plan Rows': 1000, 'Plan Width': 8, 'Actual Total Time': 5, 'Actual Rows': 3, 'Actual Loops': 1, 'Hash Cond': '(e.deptno = d.deptno)',
+      Plans: [
+        { 'Node Type': 'Seq Scan', 'Relation Name': 'emp', Schema: 'hr', Alias: 'e', 'Startup Cost': 0, 'Total Cost': 4, 'Plan Rows': 14, 'Plan Width': 8, 'Actual Total Time': 1, 'Actual Rows': 14, 'Actual Loops': 1, 'Shared Hit Blocks': 2 },
+        { 'Node Type': 'Index Scan', 'Index Name': 'dept_pkey', 'Relation Name': 'dept', Schema: 'hr', Alias: 'd', 'Startup Cost': 0, 'Total Cost': 2, 'Plan Rows': 1, 'Plan Width': 4, 'Actual Total Time': 0.5, 'Actual Rows': 1, 'Actual Loops': 2 },
+        { 'Node Type': 'Seq Scan', 'Relation Name': 'x', 'Startup Cost': 0, 'Total Cost': 1, 'Plan Rows': 5, 'Plan Width': 4, 'Actual Total Time': 0, 'Actual Rows': 0, 'Actual Loops': 0 },
+      ] },
+    'Planning Time': 0.2, 'Execution Time': 5.1,
+  }];
+  test('steps, their own time, the slowest step and estimates that are far off', () => {
+    const p = parsePlan(json, true);
+    assert.equal(p.root.op, 'Hash Join (Left)');
+    assert.deepEqual(p.root.details, [['Hash Cond', '(e.deptno = d.deptno)']]);
+    assert.equal(p.root.selfMs, 3, '5 ms minus 1 ms and 2 × 0.5 ms');
+    assert.equal(p.root.slowest, true);
+    assert.equal(Math.round(p.root.misestimate!), 333, '1000 estimated, 3 found');
+    assert.equal(p.root.children[0].target, 'on hr.emp e');
+    assert.equal(p.root.children[1].target, 'using dept_pkey on hr.dept d');
+    assert.equal(p.root.children[2].neverRun, true);
+    assert.equal(p.root.children[2].misestimate, undefined);
+    const text = planText(p);
+    assert.match(text, /^Hash Join \(Left\) {2}\(cost=1\.\.10\.50 rows=1000 width=8\) \(actual time=5 rows=3 loops=1\)\n {2}Hash Cond: \(e\.deptno = d\.deptno\)\n {2}-> {2}Seq Scan on hr\.emp e/);
+    assert.match(text, /\(never executed\)/);
+    assert.match(text, /Buffers: shared hit=2/);
+    assert.match(text, /Execution Time: 5\.10 ms$/);
+    assert.equal(parsePlan(json, false).root.selfMs, undefined);
   });
 });
 
@@ -120,7 +151,7 @@ describe('the SQL Worksheet page', () => {
     assert.match(second, /<td>second<\/td>/);
     assert.doesNotMatch(second, /<td>Sales<\/td>/);
     // NULL reads (null), with row numbers
-    assert.match((await b.submit('/builder/sql/worksheet', { sql: 'select null::int as n', mode: 'statement', sel_start: '0', sel_end: '0' })).body, /<td class="ws-rownum">1<\/td><td><span class="null">\(null\)<\/span><\/td>/);
+    assert.match((await b.submit('/builder/sql/worksheet', { sql: 'select null::int as n', mode: 'statement', sel_start: '0', sel_end: '0' })).body, /<td class="ws-rownum">1<\/td><td class="num"><span class="null">\(null\)<\/span><\/td>/);
   });
 
   test('Run Script runs everything with a log per statement; it stops at an error unless told to continue', async () => {
@@ -169,8 +200,71 @@ describe('the SQL Worksheet page', () => {
     assert.match(page, new RegExp(`<option value="${hr.id}">[^<]*\\(${hr.db_role}\\)</option>`));
     await owner.query(`grant usage on schema ${S} to ${hr.db_role}; grant select on ${S}.dept to ${hr.db_role}`);
     const as = (await b.submit('/builder/sql/worksheet', { sql: `select current_user as u, count(*) as n from ${S}.dept`, mode: 'statement', as_app: String(hr.id) })).body;
-    assert.match(as, new RegExp(`<td>${hr.db_role}</td><td>1</td>`));
+    assert.match(as, new RegExp(`<td>${hr.db_role}</td><td class="num">1</td>`));
     assert.match(as, new RegExp(`Runs as the role ${hr.db_role}`));
     assert.equal((await b.submit('/builder/sql/worksheet', { sql: 'select 1', as_app: '999999' })).statusCode, 404);
+  });
+
+  test('(sprint 92) the grid: numbers to the right, All rows, downloads through Unload Data with SQL inserts', async () => {
+    const b = await builder();
+    await b.get('/builder/sql/worksheet');
+    const out = (await b.submit('/builder/sql/worksheet', { sql: `select id, name from ${S}.dept order by id`, mode: 'statement' })).body;
+    assert.match(out, /<th scope="col" class="num"><button type="button" class="ws-sort" data-ws-sort="0" hidden>id<\/button>/);
+    assert.match(out, /<td class="num">1<\/td><td>Sales<\/td>/);
+    assert.match(out, /<form method="post" action="\/builder\/sql\/unload" id="ws-dl"[^>]*>.*<input type="hidden" name="query" value="select id, name from ws91\.dept order by id">/s);
+    assert.match(out, /<button form="ws-dl" name="format" value="sql">SQL inserts<\/button>/);
+    const sql = await b.submit('/builder/sql/unload', { source: 'query', query: `select id, name, id > 1 as big, null::text as n from ${S}.dept order by id`, format: 'sql' });
+    assert.equal(sql.headers['content-type'], 'application/sql; charset=utf-8');
+    assert.equal(sql.body, `insert into "query" ("id", "name", "big", "n") values (1, 'Sales', false, null);\ninsert into "query" ("id", "name", "big", "n") values (2, 'Research', true, null);\n`);
+    // more rows than the grid shows: All rows runs it again with up to 10,000
+    const many = (await b.submit('/builder/sql/worksheet', { sql: 'select g from generate_series(1, 600) g', mode: 'statement' })).body;
+    assert.match(many, /showing the first 500/);
+    assert.match(many, /name="mode" value="statement_all"/);
+    const all = (await b.submit('/builder/sql/worksheet', { sql: 'select g from generate_series(1, 600) g', mode: 'statement_all' })).body;
+    assert.doesNotMatch(all, /showing the first/);
+    assert.match(all, /<td class="num">600<\/td>/);
+    // no download for something that isn't one SELECT
+    assert.doesNotMatch((await b.submit('/builder/sql/worksheet', { sql: 'show search_path', mode: 'statement' })).body, /id="ws-dl"/);
+  });
+
+  test('(sprint 92) plans as a tree with the text behind a toggle; notices with their time', async () => {
+    const b = await builder();
+    await b.get('/builder/sql/worksheet');
+    const at = (await b.submit('/builder/sql/worksheet', { sql: `select * from ${S}.dept d where d.id = 1`, mode: 'autotrace' })).body;
+    assert.match(at, /<span class="ws-plan-op">(Index|Seq|Bitmap Heap) Scan<\/span>/);
+    assert.match(at, /<span class="ws-plan-target">(using dept_pkey )?on ws91\.dept d<\/span>/);
+    assert.match(at, /execution [\d.]+ ms \(rolled back\)/);
+    assert.match(at, /<details class="ws-plan-text"><summary>Text plan<\/summary>/);
+    const n = (await b.submit('/builder/sql/worksheet', { sql: "do $$ begin raise notice 'timed'; end $$", mode: 'script' })).body;
+    assert.match(n, /<span>timed<\/span> <small class="muted">statement 1 · \d\d:\d\d:\d\d\.\d{3}<\/small>/);
+  });
+
+  test('(sprint 92) SQL History: status, rows and time per statement; a repeat counts on its row; one\'s own only', async () => {
+    const b = await builder();
+    await b.get('/builder/sql/worksheet');
+    await owner.query(`delete from meta.sql_history where username = 'admin'`);
+    for (let k = 0; k < 3; k++) await b.submit('/builder/sql/worksheet', { sql: `select 92 as again`, mode: 'statement' });
+    await b.submit('/builder/sql/worksheet', { sql: `select * from ${S}.missing_92`, mode: 'statement' });
+    const rows = (await owner.query(`select sql, status, rows, runs, error from meta.sql_history where username = 'admin' order by id`)).rows;
+    assert.deepEqual(rows.map((r) => [r.sql, r.status, r.runs]), [['select 92 as again', 'ok', 3], [`select * from ${S}.missing_92`, 'error', 1]]);
+    assert.match(rows[1].error, /does not exist/);
+    const page = (await b.get('/builder/sql/worksheet?tab=history')).body;
+    assert.match(page, /data-ws-tab="history"[^>]*>|aria-selected="true" data-ws-tab="history"/);
+    assert.match(page, /data-active="history"/);
+    assert.match(page, /<li data-status="error" data-sql="select \* from ws91\.missing_92">/);
+    assert.match(page, /1 row · \d+ ms · 3×/);
+    const id = (await owner.one(`select id from meta.sql_history where sql = 'select 92 as again'`))!.id;
+    assert.match((await b.get(`/builder/sql/worksheet?history=${id}`)).body, />select 92 as again<\/textarea>/);
+    // another developer doesn't get it
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('ws92dev', meta.hash_password('ws92dev'), false) on conflict do nothing`);
+    try {
+      const other = new Browser(app);
+      await other.get('/builder/login');
+      await other.submit('/builder/login', { username: 'ws92dev', password: 'ws92dev' });
+      const theirs = (await other.get(`/builder/sql/worksheet?history=${id}`)).body;
+      assert.doesNotMatch(theirs, /select 92 as again/);
+    } finally {
+      await owner.query(`delete from meta.developer where username = 'ws92dev'`);
+    }
   });
 });

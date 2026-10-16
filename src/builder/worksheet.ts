@@ -10,6 +10,8 @@ import { clearCompletions } from './code-editor.ts';
 import { createTemplate, listObjects, OB_TYPES, pickSchema, SYSTEM_SCHEMAS, type Obj } from './object-browser.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 import { explainStatement, pickStatements, runStatements, textTable, type RunMode, type WorksheetRun } from '../sqlworksheet.ts';
+import type { Plan, PlanNode } from '../sqlplan.ts';
+import { unloadStatement } from '../unload.ts';
 
 // (sprint 91, Database Actions DA-1/DA-2) The SQL Worksheet: one screen with a navigator (schema, object
 // type, filter; tables and views open to their columns and give SELECT / INSERT / UPDATE / DELETE
@@ -53,6 +55,55 @@ export function objectStatements(schema: string, name: string, cols: Column[], k
 }
 
 const MAX_COLUMN_OBJECTS = 400;
+/** (sprint 92) Rows of a query (the Query Result grid): normally, and with "All rows". */
+const GRID_ROWS = 500;
+const ALL_ROWS = 10_000;
+/** (sprint 92) SQL History: rows kept per developer and workspace, and shown. */
+const HISTORY_KEEP = 500;
+const HISTORY_SHOWN = 200;
+
+interface HistoryRow { id: string; sql: string; status: 'ok' | 'error'; rows: string | null; ms: number | null; error: string | null; runs: number; at: string }
+
+const fmtMs = (n: number) => (n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(1) : n.toFixed(3));
+
+/** (sprint 92, DA-4) A plan as a tree of steps (open), with the text plan behind a toggle. */
+function planView(plan: Plan, text: string): Raw {
+  const step = (n: PlanNode): Raw => html`<li><details open${n.slowest ? raw(' class="is-slowest"') : ''}>
+    <summary><span class="ws-plan-op">${n.op}</span>${n.target ? html` <span class="ws-plan-target">${n.target}</span>` : ''}
+      <span class="ws-plan-nums">cost ${n.startupCost.toFixed(2)}..${n.totalCost.toFixed(2)} · rows ${n.planRows} · width ${n.width}${plan.analyze
+        ? n.neverRun ? html` · <em>never executed</em>` : html` · <strong>${fmtMs(n.actualTotal ?? 0)} ms</strong> × ${n.loops} · ${n.actualRows} row${n.actualRows === 1 ? '' : 's'}${n.selfMs !== undefined ? ` · self ${fmtMs(n.selfMs)} ms` : ''}${n.sharedHit || n.sharedRead ? ` · buffers ${n.sharedHit ?? 0} hit${n.sharedRead ? `, ${n.sharedRead} read` : ''}` : ''}`
+        : ''}</span>
+      ${n.slowest ? html`<span class="tag tag-warn">slowest step</span>` : ''}
+      ${n.misestimate ? html`<span class="tag tag-warn" title="Estimated ${n.planRows} rows, got ${n.actualRows}: ANALYZE the table, or look at the statistics">estimate ${n.misestimate >= 1 ? `${Math.round(n.misestimate)}× too high` : `${Math.round(1 / n.misestimate)}× too low`}</span>` : ''}
+    </summary>
+    ${n.details.length ? html`<dl class="ws-plan-details">${n.details.map(([k, v]) => html`<dt>${k}</dt><dd><code>${v}</code></dd>`)}</dl>` : ''}
+    ${n.children.length ? html`<ul class="ws-plan-tree">${n.children.map(step)}</ul>` : ''}
+  </details></li>`;
+  return html`${plan.planningMs !== undefined || plan.executionMs !== undefined ? html`<p class="muted small ws-info">${plan.planningMs !== undefined ? `Planning ${fmtMs(plan.planningMs)} ms` : ''}${plan.executionMs !== undefined ? ` · execution ${fmtMs(plan.executionMs)} ms (rolled back)` : ''}</p>` : ''}
+    <ul class="ws-plan-tree ws-plan-root">${step(plan.root)}</ul>
+    <details class="ws-plan-text"><summary>Text plan</summary><pre class="ws-log ws-plan">${text}</pre></details>`;
+}
+
+/** (sprint 92, DA-5) Keep the statements of a run in SQL History: the same statement again right after counts on its row. */
+async function recordHistory(s: Session, run: WorksheetRun) {
+  const ws = currentWorkspace(s);
+  for (const r of run.results) {
+    if (r.status !== 'ok' && r.status !== 'error') continue;
+    const sql = r.sql.length > 20000 ? `${r.sql.slice(0, 19999)}…` : r.sql;
+    const rows = r.status === 'ok' ? (r.rows ?? null) : null;
+    const updated = await owner.query(
+      `update meta.sql_history h set runs = runs + 1, at = now(), status = $4, rows = $5, ms = $6, error = $7
+        where h.id = (select id from meta.sql_history where username = $1 and workspace_id = $2 order by id desc limit 1) and h.sql = $3`,
+      [s.username, ws, sql, r.status, rows, r.ms, r.error ?? null]);
+    if (!updated.rowCount)
+      await owner.query(`insert into meta.sql_history (username, workspace_id, sql, status, rows, ms, error) values ($1, $2, $3, $4, $5, $6, $7)`,
+        [s.username, ws, sql, r.status, rows, r.ms, r.error ?? null]);
+  }
+  await owner.query(
+    `delete from meta.sql_history where username = $1 and workspace_id = $2
+        and id < (select min(id) from (select id from meta.sql_history where username = $1 and workspace_id = $2 order by id desc limit $3) x)`,
+    [s.username, ws, HISTORY_KEEP]);
+}
 
 /** The navigator's tree for a schema and an object type. */
 async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema: string, type: string): Promise<Raw> {
@@ -96,7 +147,7 @@ async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema:
 }
 
 /** The output panes of a run (empty: the page as opened). */
-function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: { id: string; detail: string; at: string }[]): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
+function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
   const results = run?.results ?? [];
   const ran = results.filter((r) => r.status !== 'not_run');
   const query = [...ran].reverse().find((r) => r.columns);
@@ -104,10 +155,29 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: { 
   const warnings = run?.notices.filter((n) => n.level === 'WARNING').length ?? 0;
   const oneLine = (sql: string) => { const x = sql.replace(/\s+/g, ' '); return x.length > 80 ? `${x.slice(0, 79)}…` : x; };
 
+  const rowsLabel = (q: NonNullable<typeof query>) => `${q.rows ?? q.data!.length} row${q.rows === 1 ? '' : 's'}`;
+  let download: Raw | '' = '';
+  if (query) {
+    try {
+      unloadStatement(query.sql);
+      download = html`<details class="menu ws-dl"><summary class="btn btn-sm">${icon('download')}<span>Download</span></summary>
+        <div class="menu-panel align-right"><div class="menu-section menu-links">${(['csv', 'json', 'xml', 'xlsx', 'sql'] as const).map((f) =>
+          html`<button form="ws-dl" name="format" value="${f}">${{ csv: 'CSV', json: 'JSON', xml: 'XML', xlsx: 'Excel', sql: 'SQL inserts' }[f]}</button>`)}</div></div></details>`;
+    } catch {
+      download = '';
+    }
+  }
   const result: Raw = query
-    ? html`<p class="muted small ws-info">${query.rows ?? query.data!.length} row${query.rows === 1 ? '' : 's'} · ${query.ms} ms${query.more ? html` · showing the first ${query.data!.length}` : ''} · line ${query.line}</p>
-      <div class="table-wrap ws-grid"><table class="report"><thead><tr><th scope="col" class="ws-rownum">#</th>${query.columns!.map((c) => html`<th scope="col">${c}</th>`)}</tr></thead>
-      <tbody>${query.data!.map((r, k) => html`<tr><td class="ws-rownum">${k + 1}</td>${r.map((v) => html`<td>${v === null ? html`<span class="null">(null)</span>` : v}</td>`)}</tr>`)}</tbody></table></div>`
+    ? html`<div class="ws-result-bar">
+        <p class="muted small ws-info">${rowsLabel(query)} · ${query.ms} ms${query.more ? html` · showing the first ${query.data!.length}` : ''} · line ${query.line}</p>
+        <span class="ws-spacer"></span>
+        ${query.more ? html`<button class="btn btn-sm" name="mode" value="statement_all" title="Run the statement again and show up to ${ALL_ROWS.toLocaleString('en')} rows">All rows</button>` : ''}
+        <button type="button" class="btn btn-sm" data-ws-copy hidden>${icon('copy')}<span>Copy</span></button>
+        ${download}
+      </div>
+      <div class="table-wrap ws-grid"><table class="report" data-ws-grid><thead><tr><th scope="col" class="ws-rownum">#</th>${query.columns!.map((c, k) => html`<th scope="col"${query.numeric?.[k] ? raw(' class="num"') : ''}><button type="button" class="ws-sort" data-ws-sort="${k}" hidden>${c}</button><span class="ws-sort-label">${c}</span></th>`)}</tr></thead>
+      <tbody>${query.data!.map((r, k) => html`<tr><td class="ws-rownum">${k + 1}</td>${r.map((v, i) => html`<td${query.numeric?.[i] ? raw(' class="num"') : ''}>${v === null ? html`<span class="null">(null)</span>` : v}</td>`)}</tr>`)}</tbody></table></div>
+      <dialog class="ws-cell" id="ws-cell" aria-labelledby="ws-cell-title"><div class="ws-cell-head"><strong id="ws-cell-title">Value</strong><button type="button" class="btn btn-sm" data-ws-cell-close>Close</button></div><pre></pre></dialog>`
     : run && mode !== 'explain' && mode !== 'autotrace'
       ? html`<p class="muted">${errors.length ? 'The statement failed: see Script Output.' : 'No rows: the last statement was not a query. See Script Output.'}</p>`
       : html`<p class="muted">Run a query (Ctrl+Enter) to see its rows here.</p>`;
@@ -125,18 +195,29 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: { 
     : html`<p class="muted">Run Script (F5) runs every statement and logs each one here.</p>`;
 
   const notices = run?.notices.length
-    ? html`<ul class="ws-notices">${run.notices.map((n) => html`<li><span class="tag${n.level === 'WARNING' ? ' tag-warn' : ''}">${n.level}</span> <span>${n.message}</span> <small class="muted">statement ${n.n}</small></li>`)}</ul>`
+    ? html`<ul class="ws-notices">${run.notices.map((n) => html`<li><span class="tag${n.level === 'WARNING' ? ' tag-warn' : ''}">${n.level}</span> <span>${n.message}</span> <small class="muted">statement ${n.n} · ${n.at}</small></li>`)}</ul>`
     : html`<p class="muted">RAISE NOTICE, INFO and WARNING messages of the last run show here.</p>`;
 
   const planOf = (m: RunMode, empty: string) => mode === m && run
-    ? (run.plan ? html`<pre class="ws-log ws-plan">${run.plan}</pre>` : html`<p class="alert alert-error">${run.results[0]?.error ?? 'No plan.'}</p>`)
+    ? (run.tree ? planView(run.tree, run.plan ?? '') : html`<p class="alert alert-error">${run.results[0]?.error ?? 'No plan.'}</p>`)
     : html`<p class="muted">${empty}</p>`;
 
+  const when = (at: string) => new Date(at).toISOString().slice(0, 16).replace('T', ' ');
   const hist = history.length
-    ? html`<ul class="ws-history">${history.map((h) => html`<li><a href="${BASE}/sql/worksheet?recent=${h.id}" data-ws-history="${h.detail}" title="${h.detail.slice(0, 500)}"><code>${oneLine(h.detail)}</code></a><small class="muted">${new Date(h.at).toISOString().slice(0, 16).replace('T', ' ')}</small></li>`)}</ul>`
+    ? html`<div class="ws-hist-bar" hidden>
+        <label class="sr-only" for="ws-hist-q">Search the history</label><input id="ws-hist-q" type="search" placeholder="Search the history" data-ws-hist-q>
+        <label class="sr-only" for="ws-hist-s">Status</label><select id="ws-hist-s" data-ws-hist-s><option value="">All</option><option value="ok">Succeeded</option><option value="error">Failed</option></select>
+      </div>
+      <ul class="ws-history">${history.map((h) => html`<li data-status="${h.status}" data-sql="${h.sql.toLowerCase()}">
+        <span class="ws-hist-icon ${h.status === 'error' ? 'is-err' : 'is-ok'}" title="${h.status === 'error' ? `Failed: ${h.error ?? ''}` : 'Succeeded'}">${icon(h.status === 'error' ? 'x-circle' : 'check-circle')}</span>
+        <a href="${BASE}/sql/worksheet?history=${h.id}" data-ws-history="${h.sql}" title="Insert at the cursor: ${h.sql.slice(0, 500)}"><code>${oneLine(h.sql)}</code></a>
+        <small class="muted ws-hist-meta">${h.status === 'ok' && h.rows !== null ? `${h.rows} row${h.rows === '1' ? '' : 's'} · ` : ''}${h.ms ?? 0} ms${h.runs > 1 ? ` · ${h.runs}×` : ''} · ${when(h.at)}</small>
+        <button type="button" class="btn btn-sm" data-ws-run="${h.sql}" title="Put it in the editor and run it" hidden>Run</button>
+        <button type="button" class="btn btn-sm btn-icon" data-ws-copy-text="${h.sql}" title="Copy" hidden>${icon('copy')}<span class="sr-only">Copy</span></button>
+      </li>`)}</ul>`
     : html`<p class="muted">Your statements show here after you run them.</p>`;
 
-  const active: Tab = !run ? 'result' : mode === 'explain' ? 'explain' : mode === 'autotrace' ? 'autotrace' : mode === 'script' || !query || errors.length ? 'output' : 'result';
+  const active: Tab = !run ? (TABS.find(([k]) => k === tabAsked)?.[0] ?? 'result') : mode === 'explain' ? 'explain' : mode === 'autotrace' ? 'autotrace' : mode === 'script' || !query || errors.length ? 'output' : 'result';
   const time = new Date().toTimeString().slice(0, 8);
   const last = !run ? 'Ready.' : errors.length
     ? `Error${errors[0].errorLine ? ` at line ${errors[0].errorLine}` : ''}: ${errors[0].error}`
@@ -170,6 +251,11 @@ async function worksheet(req: Req, reply: FastifyReply) {
       const r = await owner.one<{ detail: string }>(`select detail from meta.activity_log where id = $1 and username = $2 and event = 'sql_command'`, [req.query!.recent, s.username]);
       if (r) text = r.detail;
     }
+    // (sprint 92) a statement from SQL History (one's own, in this workspace)
+    if (/^\d{1,18}$/.test(String(req.query?.history ?? ''))) {
+      const r = await owner.one<{ sql: string }>(`select sql from meta.sql_history where id = $1 and username = $2 and workspace_id = $3`, [req.query!.history, s.username, currentWorkspace(s)]);
+      if (r) text = r.sql;
+    }
   }
   const [schemas, searchSchema, apps] = await Promise.all([usableSchemas(db), sessionSchema(s, db), runAsApps(s)]);
   if (!isPost) {
@@ -195,6 +281,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const continueOnError = body.continue_on_error === 'on';
   if (isPost && text.trim() && body.mode !== 'nav') {
     const m: RunMode = MODES.find((x) => x === body.mode) ?? 'statement';
+    const allRows = body.mode === 'statement_all';
     mode = m;
     const sel = /^\d{1,9}$/.test(String(body.sel_start ?? '')) && /^\d{1,9}$/.test(String(body.sel_end ?? '')) ? { start: Number(body.sel_start), end: Number(body.sel_end) } : undefined;
     const statements = pickStatements(text, m, sel);
@@ -212,7 +299,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
         }
         run = m === 'explain' || m === 'autotrace'
           ? await explainStatement(c, statements[0], m === 'autotrace')
-          : await runStatements(c, text, statements, { continueOnError: m === 'script' && continueOnError });
+          : await runStatements(c, text, statements, { continueOnError: m === 'script' && continueOnError, gridRows: allRows ? ALL_ROWS : GRID_ROWS });
       } catch (e) {
         run = { results: [{ n: 1, line: statements[0].line, sql: statements[0].sql, start: 0, end: 0, status: 'error', error: (e as Error).message, ms: 0 }], notices: [], failed: 1, ms: 0 };
       } finally {
@@ -220,14 +307,24 @@ async function worksheet(req: Req, reply: FastifyReply) {
       }
       if (mode === 'statement' || mode === 'script') {
         clearCompletions(); // the statements may have changed tables or grants
+        if (run) await recordHistory(s, run);
         const detail = statements.map((x) => x.sql).join(';\n');
         await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), elapsedMs: Math.round(performance.now() - started), detail: detail.length > 2000 ? `${detail.slice(0, 2000)}…` : detail });
       }
     }
   }
-  const history = (await owner.query<{ id: string; detail: string; at: string }>(
-    `select id, detail, at from meta.activity_log where username = $1 and event = 'sql_command' order by id desc limit 50`, [s.username])).rows;
-  const { panes, active, status } = outputPanes(run, mode, history);
+  const history = (await owner.query<HistoryRow>(
+    `select id, sql, status, rows, ms, error, runs, at from meta.sql_history where username = $1 and workspace_id = $2 order by id desc limit $3`,
+    [s.username, currentWorkspace(s), HISTORY_SHOWN])).rows;
+  const { panes, active, status } = outputPanes(run, mode, history, String(req.query?.tab ?? ''));
+  const lastQuery = [...(run?.results ?? [])].reverse().find((r) => r.status === 'ok' && r.columns);
+  const downloadable = (() => {
+    try {
+      return lastQuery ? unloadStatement(lastQuery.sql) : null;
+    } catch {
+      return null; // not one SELECT: Unload Data would refuse it
+    }
+  })();
   const firstError = run?.results.find((r) => r.status === 'error');
   const runsAs = asApp ? `the role ${asApp.db_role} of ${asApp.name}` : workshopRunsAs(db);
 
@@ -283,6 +380,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
       </section>
       <footer class="ws-status" role="status" aria-live="polite">${status}</footer>
     </form>
+    ${downloadable ? html`<form method="post" action="${BASE}/sql/unload" id="ws-dl" class="ws-dl-form">${csrf(s)}<input type="hidden" name="source" value="query"><input type="hidden" name="query" value="${downloadable}"><input type="hidden" name="header" value="1"><input type="hidden" name="bom" value="1"></form>` : ''}
   </div>`;
   return send(reply, s, shell(s, 'SQL Worksheet', [['SQL Workshop', `${BASE}/sql`], ['SQL Worksheet']], main, 'sql', { full: true }));
 }

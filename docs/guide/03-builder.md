@@ -1267,18 +1267,27 @@ others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compar
     first 400 tables and views of a schema.
   - **Run Statement** (**Ctrl/Cmd + Enter**) runs the statement at the cursor: the one the cursor is in, else the
     nearest one before it. A selection runs as it is, even when it holds several statements. The rows of the last
-    query show in **Query Result**, up to 500, with row numbers and NULL as *(null)*. The statement that ran is
-    selected again afterwards.
+    query show in **Query Result**, up to 500, with row numbers, numbers right-aligned and NULL as *(null)*. The
+    statement that ran is selected again afterwards. (sprint 92) Click a column heading to sort the rows, a cell to
+    see its whole value (JSON indented), **Copy** for the rows as tab-separated text, and **All rows** to run the
+    statement again for up to 10,000 rows. **Download** saves a SELECT as CSV, JSON, XML, Excel or SQL inserts
+    through Unload Data (a read-only transaction, so the query runs once more).
   - **Run Script** (**F5**) runs every statement in order and writes **Script Output**: for each statement its line,
     the rows as text (up to 50), its notices, and its command tag like psql's (`CREATE TABLE`, `INSERT 0 2`,
     `SELECT 14`) with its time. An error says its line and column in the worksheet; the cursor goes to that line.
     The script stops at the first error unless **Continue on error** is on. psql meta-commands and `COPY … FROM
     STDIN` / `TO STDOUT` are skipped (use Load Data and Unload Data).
-  - **Explain Plan** (**F10**) shows `EXPLAIN (VERBOSE, COSTS)` for the statement at the cursor; nothing runs.
-    **Autotrace** (**F6**) runs it with `EXPLAIN (ANALYZE, BUFFERS)` in a transaction that is rolled back, so an
-    UPDATE or DELETE changes nothing.
-  - **Notices** lists the `RAISE NOTICE`, `INFO` and `WARNING` messages of the last run. **SQL History** lists your
-    last 50 statements (other developers' never show); clicking one inserts it at the cursor.
+  - **Explain Plan** (**F10**) shows the plan of the statement at the cursor; nothing runs. **Autotrace** (**F6**) runs
+    it with `EXPLAIN (ANALYZE, BUFFERS)` in a transaction that is rolled back, so an UPDATE or DELETE changes
+    nothing. (sprint 92) The plan is a tree of steps: the operation, the table or index, cost, estimated rows and
+    width, and the step's conditions (filter, index and join conditions, sort keys). Autotrace adds the actual time,
+    rows, loops and buffers, the time spent in the step itself, marks the **slowest step**, and flags estimates that
+    are 10 times too high or too low (run `ANALYZE` on the table). **Text plan** shows it like psql.
+  - **Notices** lists the `RAISE NOTICE`, `INFO` and `WARNING` messages of the last run with their time.
+    **SQL History** (sprint 92) lists your last 200 statements in this workspace with how they ended, their rows and
+    time; running the same statement again counts on its row (*3×*). Search it, show only the ones that failed or
+    succeeded, click one to insert it at the cursor, **Run** to run it again, or copy it. Other developers' history
+    never shows; 500 statements are kept per developer. The home page's *Recent SQL commands* opens it.
   - The status bar counts errors and warnings and shows the last message and its time.
   - Each statement commits on its own. Statements run as the **owner connection** (an isolated workspace's
     developer login for its developers), on a connection of their own that is closed afterwards, so `SET ROLE` or

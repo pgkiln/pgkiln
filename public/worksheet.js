@@ -8,6 +8,8 @@
 //   - tables and views: drag into the editor for a SELECT, or the SELECT / INSERT / UPDATE / DELETE buttons
 //   - resizable panes (mouse, touch or arrow keys on the splitters), a navigator that hides, fullscreen;
 //     sizes and the hidden navigator are remembered in this browser
+//   - (sprint 92) Query Result: sort by a column, copy as tab-separated text, a cell's whole value in a dialog;
+//     SQL History: search, filter by status, run again, copy
 // Strict CSP: no inline styles; sizes are set through the CSSOM.
 (() => {
   'use strict';
@@ -114,6 +116,82 @@
     if (!sum) return;
     e.dataTransfer.setData('text/plain', `${sum.dataset.wsSql};\n`);
     e.dataTransfer.effectAllowed = 'copy';
+  });
+
+  // ------------------------------------------------------------ (sprint 92) Query Result and SQL History
+  const copy = async (text, what) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      announce(`${what} copied.`);
+    } catch {
+      announce('Copying is not allowed here.');
+    }
+  };
+  const announce = (msg) => {
+    const last = form.querySelector('.ws-last');
+    if (last) last.textContent = msg;
+  };
+  const grid = form.querySelector('[data-ws-grid]');
+  if (grid) {
+    const cellValue = (td) => (td.querySelector('.null') ? '' : td.textContent);
+    form.addEventListener('click', (e) => {
+      if (e.target.closest('[data-ws-copy]')) {
+        const head = [...grid.tHead.rows[0].cells].slice(1).map((th) => th.textContent.trim());
+        const rows = [...grid.tBodies[0].rows].map((tr) => [...tr.cells].slice(1).map((td) => cellValue(td).replace(/[\t\n]/g, ' ')));
+        copy([head, ...rows].map((r) => r.join('\t')).join('\n'), `${rows.length} rows`);
+      }
+      const sort = e.target.closest('[data-ws-sort]');
+      if (sort) {
+        const k = Number(sort.dataset.wsSort) + 1;
+        const th = sort.closest('th');
+        const asc = th.getAttribute('aria-sort') !== 'ascending';
+        for (const x of grid.tHead.rows[0].cells) x.removeAttribute('aria-sort');
+        th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
+        const num = th.classList.contains('num');
+        const key = (tr) => { const td = tr.cells[k]; return td.querySelector('.null') ? null : num ? Number(td.textContent) : td.textContent; };
+        const rows = [...grid.tBodies[0].rows].sort((a, b) => {
+          const x = key(a), y = key(b);
+          if (x === y) return 0;
+          if (x === null) return 1; // nulls last either way
+          if (y === null) return -1;
+          return (num ? x - y : String(x).localeCompare(String(y))) * (asc ? 1 : -1);
+        });
+        grid.tBodies[0].append(...rows);
+      }
+      const td = e.target.closest('[data-ws-grid] td:not(.ws-rownum)');
+      const dlg = document.getElementById('ws-cell');
+      if (td && dlg && !td.querySelector('.null')) {
+        let v = td.textContent;
+        if (/^\s*[[{]/.test(v)) { try { v = JSON.stringify(JSON.parse(v), null, 2); } catch { /* not JSON */ } }
+        const col = grid.tHead.rows[0].cells[td.cellIndex].textContent.trim();
+        dlg.querySelector('#ws-cell-title').textContent = `${col}, row ${td.parentElement.cells[0].textContent}`;
+        dlg.querySelector('pre').textContent = v;
+        dlg.showModal();
+      }
+      if (e.target.closest('[data-ws-cell-close]')) e.target.closest('dialog').close();
+    });
+  }
+  const histQ = form.querySelector('[data-ws-hist-q]');
+  const histS = form.querySelector('[data-ws-hist-s]');
+  const filterHistory = () => {
+    const q = histQ.value.trim().toLowerCase();
+    for (const li of form.querySelectorAll('.ws-history li')) li.hidden = (!!q && !li.dataset.sql.includes(q)) || (!!histS.value && li.dataset.status !== histS.value);
+  };
+  histQ?.addEventListener('input', filterHistory);
+  histQ?.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+  histS?.addEventListener('change', filterHistory);
+  form.addEventListener('click', (e) => {
+    const again = e.target.closest('[data-ws-run]');
+    if (again) {
+      const before = ta.value.replace(/\s+$/, '');
+      const start = before ? before.length + 2 : 0;
+      ta.value = `${before}${before ? '\n\n' : ''}${again.dataset.wsRun};\n`;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.setSelectionRange(start, start + again.dataset.wsRun.length);
+      run('statement');
+    }
+    const c = e.target.closest('[data-ws-copy-text]');
+    if (c) copy(c.dataset.wsCopyText, 'The statement');
   });
 
   // ------------------------------------------------------------ navigator

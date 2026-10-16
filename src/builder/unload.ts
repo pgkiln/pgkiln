@@ -21,7 +21,7 @@ import {
   type UnloadOptions,
 } from '../unload.ts';
 import { BASE, csrf, developer, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
-import { workshopDb } from './workspaces.ts';
+import { sessionSchema, workshopDb } from './workspaces.ts';
 
 // SQL Workshop → Unload Data (APEX: Data Workshop → Unload Data): a table or
 // view (chosen columns, an optional WHERE and ORDER BY) or a query, to CSV,
@@ -100,7 +100,7 @@ export async function unloadRoutes(app: FastifyInstance) {
     return html`
       <fieldset class="prop-group u-mt125"><legend>Format</legend>
         <div class="unload-formats" role="radiogroup" aria-label="Format">${UNLOAD_FORMATS.map(
-          (f) => html`<label class="check"><input type="radio" name="format" value="${f}"${fmt === f ? raw(' checked') : ''}> ${{ csv: 'CSV', json: 'JSON', xlsx: 'Excel (.xlsx)', xml: 'XML' }[f]}</label>`,
+          (f) => html`<label class="check"><input type="radio" name="format" value="${f}"${fmt === f ? raw(' checked') : ''}> ${{ csv: 'CSV', json: 'JSON', xlsx: 'Excel (.xlsx)', xml: 'XML', sql: 'SQL inserts' }[f]}</label>`,
         )}</div>
       </fieldset>
       <fieldset class="prop-group"><legend>CSV</legend><div class="form-grid">
@@ -213,11 +213,15 @@ export async function unloadRoutes(app: FastifyInstance) {
     if (typeof opts === 'string') return refuse(opts);
 
     const started = performance.now();
-    const c = await (await workshopDb(s)).pool.connect();
+    const db = await workshopDb(s);
+    const schema = await sessionSchema(s, db);
+    const c = await db.pool.connect();
     let opened;
     try {
       await c.query('begin transaction read only');
       await c.query(`select set_config('statement_timeout', $1, true)`, [timeout()]);
+      // (sprint 92) the session's schema first in the search path, like the SQL Worksheet (its downloads come here)
+      if (schema) await c.query(`select set_config('search_path', $1, true)`, [`${pg.escapeIdentifier(schema)}, public`]);
       opened = await openUnload(c, sql, opts);
     } catch (e) {
       await c.query('rollback').catch(() => {});
