@@ -54,7 +54,7 @@ async function workshopHome(req: Req, reply: FastifyReply) {
   ]);
   const tile = (href: string, ic: string, title: string, text: string) =>
     html`<a class="ab-tile sw-tile" href="${BASE}${href}"><span class="ab-tile-icon sw-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`;
-  const list = (title: string, rows: Raw[], empty: string) =>
+  const list = (title: string | Raw, rows: Raw[], empty: string) =>
     html`<section class="sw-recent"><h2>${title}</h2>${rows.length ? html`<ul>${rows}</ul>` : html`<p class="muted">${empty}</p>`}</section>`;
   const main = html`<div class="ab-home">
     <div class="ab-main">
@@ -69,7 +69,7 @@ async function workshopHome(req: Req, reply: FastifyReply) {
       </div>
       <div class="sw-recents">
         ${list('Recently created tables', tables.rows.map((t) => html`<li><a href="${BASE}/sql/objects?o=${encodeURIComponent(t.qname)}">${t.qname}</a><span class="muted">~${Number(t.rows).toLocaleString('en')} rows</span></li>`), 'No tables you can read.')}
-        ${list('Recent SQL commands', commands.rows.map((c) => html`<li><a href="${BASE}/sql/worksheet?recent=${c.id}" title="${c.detail.slice(0, 500)}">${c.detail.replace(/\s+/g, ' ').slice(0, 60)}</a><span class="muted">${ago(c.at)}</span></li>`), 'You haven\'t run SQL commands yet.')}
+        ${list(html`<a href="${BASE}/sql/worksheet?tab=history" title="Open SQL History">Recent SQL commands</a>`, commands.rows.map((c) => html`<li><a href="${BASE}/sql/worksheet?recent=${c.id}" title="${c.detail.slice(0, 500)}">${c.detail.replace(/\s+/g, ' ').slice(0, 60)}</a><span class="muted">${ago(c.at)}</span></li>`), 'You haven\'t run SQL commands yet.')}
         ${list('Recent SQL scripts', scripts.rows.map((x) => html`<li><a href="${BASE}/sql/scripts/${x.id}">${x.name}</a><span class="muted">${ago(x.updated_at)}</span></li>`), 'No scripts in this workspace yet.')}
       </div>
     </div>

@@ -8196,3 +8196,38 @@ describe('sprint 91 the SQL Worksheet', () => {
     assert.equal((await d.get('/builder/sql/worksheet/navigator?schema=meta')).statusCode, 404);
   });
 });
+
+describe('sprint 92 the SQL Worksheet: history, plans, SQL inserts', () => {
+  const signIn = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder/sql/worksheet');
+    return b;
+  };
+  after(async () => {
+    await owner.query(`drop schema if exists "sec92<b>" cascade`);
+  });
+
+  test('history ids are numbers of one\'s own rows; names in plans and history are escaped', async () => {
+    const a = await signIn();
+    for (const h of ['1 or 1=1', '-1', "1'; drop table meta.sql_history; --"])
+      assert.equal((await a.get(`/builder/sql/worksheet?history=${encodeURIComponent(h)}`)).statusCode, 200, h);
+    assert.ok(await owner.one(`select to_regclass('meta.sql_history') as t`));
+    await owner.query(`drop schema if exists "sec92<b>" cascade; create schema "sec92<b>"; create table "sec92<b>"."<img src=x onerror=alert(92)>" (a int)`);
+    for (const mode of ['explain', 'autotrace']) {
+      const out = (await a.post('/builder/sql/worksheet', { __csrf: a.lastCsrf, sql: `select * from "sec92<b>"."<img src=x onerror=alert(92)>" where a = 1`, mode })).body;
+      assert.doesNotMatch(out, /<img src=x/, mode);
+      assert.match(out, /ws-plan-target/, mode);
+    }
+    assert.doesNotMatch((await a.get('/builder/sql/worksheet?tab=history')).body, /<img src=x|<b>/);
+  });
+
+  test('SQL inserts quote values and names; the download stays one read-only SELECT', async () => {
+    const a = await signIn();
+    const res = await a.post('/builder/sql/unload', { __csrf: a.lastCsrf, source: 'query', query: `select 'O''Brien''); drop table x; --' as "a""b", 'NaN'::numeric as n`, format: 'sql' });
+    assert.equal(res.body, `insert into "query" ("a""b", "n") values ('O''Brien''); drop table x; --', 'NaN');\n`);
+    const refused = await a.post('/builder/sql/unload', { __csrf: a.lastCsrf, source: 'query', query: 'delete from meta.sql_history', format: 'sql' });
+    assert.equal(refused.statusCode, 422);
+  });
+});

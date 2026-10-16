@@ -156,4 +156,40 @@ describe('SQL Worksheet', () => {
     assert.ok(await p.locator('#ws-pane-output').isVisible(), 'the panes stack without script');
     await plain.close();
   });
+
+  test('(sprint 92) sort a column, a value in a dialog, Autotrace as a tree, history search and run again', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet?schema=${S}`);
+    const sql = `select id, name, json_build_object('n', name) as j from ${S}.dept order by id`;
+    await setEditor(page, sql, 3);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    const firstName = () => page.locator('[data-ws-grid] tbody tr').first().locator('td').nth(2).textContent();
+    assert.equal(await firstName(), 'Sales');
+    await page.locator('[data-ws-sort="1"]').click();
+    assert.equal(await firstName(), 'Research', 'ascending by name');
+    assert.equal(await page.locator('th[aria-sort=ascending]').count(), 1);
+    await page.locator('[data-ws-sort="1"]').click();
+    assert.equal(await firstName(), 'Sales', 'descending');
+    await page.locator('[data-ws-grid] tbody tr').first().locator('td').nth(3).click();
+    assert.ok(await page.locator('#ws-cell').isVisible());
+    assert.match(await page.locator('#ws-cell pre').textContent() ?? '', /\{\n {2}"n": "Sales"\n\}/);
+    await page.keyboard.press('Escape');
+    assert.ok(!(await page.locator('#ws-cell').isVisible()));
+
+    await setEditor(page, `select * from ${S}.dept where id = 1`, 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('F6')]);
+    assert.equal(await page.locator('[role=tab][aria-selected=true]').textContent(), 'Autotrace');
+    assert.ok(await page.locator('#ws-pane-autotrace .ws-plan-op').first().isVisible());
+    assert.ok(!(await page.locator('#ws-pane-autotrace .ws-plan-text pre').isVisible()), 'the text plan is folded');
+
+    await page.locator('[role=tab]', { hasText: 'SQL History' }).click();
+    await page.fill('[data-ws-hist-q]', 'json_build_object');
+    assert.equal(await page.locator('.ws-history li:not([hidden])').count(), 1);
+    await setEditor(page, '', 0);
+    await Promise.all([page.waitForNavigation(), page.locator('.ws-history li:not([hidden]) [data-ws-run]').click()]);
+    assert.equal(await page.locator('[role=tab][aria-selected=true]').textContent(), 'Query Result');
+    assert.equal(await page.locator('[data-ws-grid] tbody tr').count(), 2);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
 });

@@ -13,8 +13,8 @@ import { esc, XLSX_TYPE, XlsxWriter, xlsxWidths, type XlsxCell } from './xlsx.ts
 // bytea are exact. The builder runs it in a read-only transaction with a
 // statement timeout (builder/unload.ts).
 
-export type UnloadFormat = 'csv' | 'json' | 'xlsx' | 'xml';
-export const UNLOAD_FORMATS: UnloadFormat[] = ['csv', 'json', 'xlsx', 'xml'];
+export type UnloadFormat = 'csv' | 'json' | 'xlsx' | 'xml' | 'sql';
+export const UNLOAD_FORMATS: UnloadFormat[] = ['csv', 'json', 'xlsx', 'xml', 'sql'];
 
 export interface UnloadOptions {
   format: UnloadFormat;
@@ -27,7 +27,7 @@ export interface UnloadOptions {
   /** XML: the root element and the element of each row */
   rootTag: string;
   rowTag: string;
-  /** Excel: the sheet name */
+  /** Excel: the sheet name; SQL inserts: the table name */
   sheet: string;
 }
 
@@ -41,6 +41,7 @@ export const UNLOAD_TYPES: Record<UnloadFormat, string> = {
   json: 'application/json; charset=utf-8',
   xlsx: XLSX_TYPE,
   xml: 'application/xml; charset=utf-8',
+  sql: 'application/sql; charset=utf-8',
 };
 
 export class UnloadError extends Error {}
@@ -138,6 +139,16 @@ function encoder(o: UnloadOptions, fields: pg.FieldDef[]): Encoder {
         rows,
         end: () => `</${o.rootTag}>\n`,
       };
+    }
+    case 'sql': {
+      // (sprint 92) INSERT statements: numbers and booleans as they are, other values as quoted literals that
+      // PostgreSQL casts to the column's type
+      const ident = (n: string) => `"${n.replace(/"/g, '""')}"`;
+      const head = `insert into ${ident(o.sheet)} (${names.map(ident).join(', ')}) values (`;
+      const literal = (v: string | null, i: number) =>
+        v === null ? 'null' : oids[i] === BOOL ? (v === 't' ? 'true' : 'false') : isNumeric(oids[i]) && JSON_NUMBER.test(v) ? v : `'${v.replace(/'/g, "''")}'`;
+      const rows = (rows: Row[]) => rows.map((r) => `${head}${r.map(literal).join(', ')});\n`).join('');
+      return { start: rows, rows, end: () => '' };
     }
     case 'xlsx': {
       let pending: Uint8Array[] = [];

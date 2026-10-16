@@ -69,6 +69,7 @@ src/
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers and offsets, psql commands), runScript() (stop/continue, transaction, savepoints)
   sqlworksheet.ts          (sprint 91) the worksheet's runs: pickStatements() (at the cursor, a selection, all), runStatements() (a log per
                            statement, psql command tags, notices, error line and column), explainStatement() (EXPLAIN / rolled-back ANALYZE)
+  sqlplan.ts               (sprint 92) EXPLAIN (FORMAT JSON) as a tree: parsePlan() (self time, slowest step, misestimates), planText()
   quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
   xlsx.ts                  Excel writer for report downloads and Unload Data (typed cells, streamed through fflate's Zip)
   automations.ts           cron parser, next run in a time zone, scheduler (also meta.task_expire_tick, 094), running automations (the actions run
@@ -219,7 +220,7 @@ src/
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: the home and the session's schema
     worksheet.ts           (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
-                           columns, objectStatements), toolbar, output tabs, history, Run as an app's role; GET /sql/worksheet/navigator
+                           columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role; GET /sql/worksheet/navigator
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
     scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)

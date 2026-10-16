@@ -112,3 +112,52 @@ body.ws-fullscreen .ide-rail, body.ws-fullscreen .ide-bar, body.ws-fullscreen .i
 body.ws-fullscreen .ws-nav, body.ws-fullscreen .ws-split, body.ws-fullscreen .ws-output, body.ws-fullscreen .ws-runs-as { display: none; }
 body.ws-fullscreen .ws { grid-template-columns: minmax(0, 1fr); }
 body.ide.ws-fullscreen { padding-left: 0; }
+
+/* (sprint 92) Query Result: toolbar, sticky header, numbers right-aligned, sortable headings, long values cut */
+.ws-result-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ws-result-bar .ws-info { margin: 0; }
+.ws-result-bar .btn { display: inline-flex; align-items: center; gap: 4px; }
+.ws-result-bar .icon { width: 14px; height: 14px; }
+.ws-dl > summary { list-style: none; }
+.ws-dl > summary::-webkit-details-marker { display: none; }
+.ws-dl .menu-links button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 6px 12px; font: inherit; color: var(--text); cursor: pointer; }
+.ws-dl .menu-links button:hover, .ws-dl .menu-links button:focus-visible { background: var(--surface-3); }
+.ws-dl-form { display: none; }
+.ws-grid thead th { position: sticky; top: 0; z-index: 1; }
+.ws-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ws-grid td { max-width: 32rem; overflow: hidden; text-overflow: ellipsis; }
+.js .ws-grid td:not(.ws-rownum) { cursor: zoom-in; }
+.ws-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.ws-sort:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+.js .ws-sort-label { display: none; }
+th[aria-sort=ascending] .ws-sort::after { content: ' ▲'; font-size: 0.75em; }
+th[aria-sort=descending] .ws-sort::after { content: ' ▼'; font-size: 0.75em; }
+.ws-cell { width: min(48rem, calc(100vw - 32px)); max-height: 80vh; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+.ws-cell-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.ws-cell pre { margin: 0; padding: 12px; max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; }
+
+/* (sprint 92) plans as a tree */
+.ws-plan-tree { list-style: none; margin: 0; padding-left: 18px; border-left: 1px dashed var(--border); }
+.ws-plan-root { padding-left: 0; border-left: 0; }
+.ws-plan-tree summary { cursor: pointer; padding: 3px 4px; border-radius: 3px; }
+.ws-plan-tree summary:hover { background: var(--surface-3); }
+.ws-plan-op { font-weight: 650; }
+.ws-plan-target { color: var(--gold); }
+.ws-plan-nums { color: var(--muted); font-size: 12px; margin-left: 6px; }
+.ws-plan-tree .tag { margin-left: 6px; font-size: 11px; }
+.ws-plan-tree .is-slowest > summary { background: color-mix(in srgb, var(--warn) 15%, transparent); }
+.ws-plan-details { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 2px 0 4px 22px; font-size: 12px; }
+.ws-plan-details dt { color: var(--muted); }
+.ws-plan-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.ws-plan-text { margin-top: 10px; }
+.ws-plan-text > summary { cursor: pointer; color: var(--muted); }
+
+/* (sprint 92) SQL History */
+.ws-hist-bar { display: flex; gap: 6px; margin-bottom: 6px; }
+.ws-hist-bar input { flex: 1; min-width: 0; }
+.ws-hist-icon .icon { width: 14px; height: 14px; }
+.ws-hist-icon.is-ok { color: #2f7d32; }
+.ws-hist-icon.is-err { color: #c0392b; }
+.ws-history li { align-items: center; }
+.ws-history .btn { flex: none; }
+@media (max-width: 640px) { .ws-hist-meta { display: none; } }

@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 Sprint 91: the SQL Worksheet like Database Actions' SQL (parity handoff DA-1, DA-2).
+Sprint 92: the worksheet's Query Result, plans and history (migration 108; parity handoff DA-3, DA-4, DA-5).
 
 ### Added
 - **The SQL Worksheet** (DA-1; Database Actions: SQL): SQL Commands becomes one screen with a **navigator** (schema,
@@ -21,8 +22,18 @@ Sprint 91: the SQL Worksheet like Database Actions' SQL (parity handoff DA-1, DA
   `EXPLAIN ANALYZE` and rolls it back.
 - **Run as** an application of the workspace: the worksheet's statements run as its database role with
   `pgkiln.app_id` set, so its row level security applies.
+- **Query Result** (DA-3): numbers right-aligned, sort by a column, a cell's whole value in a dialog (JSON indented),
+  Copy as tab-separated text, *All rows* (up to 10,000), and **Download** as CSV, JSON, XML, Excel or SQL inserts.
+- **Plans as a tree** (DA-4): Explain Plan and Autotrace show the steps with cost, rows and conditions; Autotrace
+  adds actual time, rows, loops, buffers and each step's own time, marks the slowest step and estimates that are
+  10× off; the text plan is one click away.
+- **SQL History** (DA-5, migration 108 `meta.sql_history`): per developer and workspace, each statement with how
+  it ended, its rows and time; a repeat counts on its row; search, filter by status, run again, copy. Notices show
+  their time.
+- **SQL inserts** as an Unload Data format.
 
 ### Changed
+- Unload Data puts the session's schema first in the search path, like the worksheet.
 - The SQL Workshop's "SQL Commands" is called the **SQL Worksheet** everywhere (tiles, tabs, *Run in the SQL
   Worksheet* in the Query Builder and AI). Each statement now commits on its own; before, several statements ran
   in one implicit transaction.

@@ -1,4 +1,6 @@
 import type pg from 'pg';
+import { isNumeric } from './runtime/report.ts';
+import { parsePlan, planText, type Plan } from './sqlplan.ts';
 import { splitScript, type ScriptStatement } from './sqlscript.ts';
 import type { Client } from './db.ts';
 
@@ -66,11 +68,13 @@ export function commandTag(sql: string, command: string | null | undefined, rowC
 const MAX_VALUE = 500;
 
 /** A value as text (the grid and the script output): JSON for objects, \x… for bytes; shortened. */
-export function cellText(v: unknown): string | null {
+export function cellText(v: unknown, max = MAX_VALUE): string | null {
   if (v === null || v === undefined) return null;
-  const s = Buffer.isBuffer(v) ? `\\x${v.subarray(0, MAX_VALUE).toString('hex')}` : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : String(v);
-  return s.length > MAX_VALUE ? `${s.slice(0, MAX_VALUE)}…` : s;
+  const s = Buffer.isBuffer(v) ? `\\x${v.subarray(0, max).toString('hex')}` : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return s.length > max ? `${s.slice(0, max)}…` : s;
 }
+/** (sprint 92) Values in the Query Result grid: whole up to this (a cell shows the start, a click the rest). */
+export const GRID_VALUE = 10_000;
 
 /** Rows as a fixed-width text table like psql's (NULL as empty), for the script output. */
 export function textTable(columns: string[], rows: (string | null)[][]): string {
@@ -86,6 +90,8 @@ export function textTable(columns: string[], rows: (string | null)[][]): string 
 export interface Notice {
   level: string;
   message: string;
+  /** (sprint 92) the time it came, HH:MM:SS.mmm */
+  at: string;
   /** the statement it came from (1-based) */
   n: number;
 }
@@ -102,6 +108,8 @@ export interface WorksheetResult {
   columns?: string[];
   /** the rows kept for the output (all of them up to the limit for the last query) */
   data?: (string | null)[][];
+  /** (sprint 92) which columns are numbers (right-aligned in the grid) */
+  numeric?: boolean[];
   /** more rows than kept */
   more?: boolean;
   error?: string;
@@ -118,6 +126,8 @@ export interface WorksheetRun {
   ms: number;
   /** the plan text (explain / autotrace) */
   plan?: string;
+  /** (sprint 92) the plan as a tree */
+  tree?: Plan;
 }
 
 /** COPY with the client's stream: the worksheet has no file to read or write. */
@@ -140,7 +150,7 @@ export async function runStatements(c: Client, text: string, statements: ScriptS
   const notices: Notice[] = [];
   let current = 0;
   const onNotice = (m: { severity?: string; message?: string }) => {
-    notices.push({ level: (m.severity ?? 'NOTICE').toUpperCase(), message: m.message ?? '', n: current });
+    notices.push({ level: (m.severity ?? 'NOTICE').toUpperCase(), message: m.message ?? '', n: current, at: new Date().toISOString().slice(11, 23) });
   };
   c.on('notice', onNotice);
   const lastQuery = [...statements].reverse().find((s) => !s.psql && /^\s*(\(|select|with|values|table|show|explain|fetch|returning)\b/i.test(s.sql)) ?? statements[statements.length - 1];
@@ -164,8 +174,10 @@ export async function runStatements(c: Client, text: string, statements: ScriptS
         r.rows = res.rowCount;
         if (res.fields?.length) {
           const keep = s === lastQuery ? (opts.gridRows ?? 500) : (opts.logRows ?? 50);
+          const max = s === lastQuery ? GRID_VALUE : MAX_VALUE;
           r.columns = res.fields.map((f) => f.name);
-          r.data = (res.rows ?? []).slice(0, keep).map((row) => row.map(cellText));
+          r.numeric = res.fields.map((f) => isNumeric(f.dataTypeID));
+          r.data = (res.rows ?? []).slice(0, keep).map((row) => row.map((v) => cellText(v, max)));
           r.more = (res.rows ?? []).length > keep;
         }
       } catch (e) {
@@ -197,14 +209,17 @@ export async function explainStatement(c: Client, s: ScriptStatement, analyze: b
   const started = performance.now();
   const r: WorksheetResult = { n: 1, line: s.line, sql: s.sql, start: s.start, end: s.end, status: 'not_run', ms: 0 };
   let plan: string | undefined;
+  let tree: Plan | undefined;
   if (s.psql || usesClientCopy(s.sql)) {
     r.status = 'skipped';
     r.error = 'Only SQL statements have a plan.';
   } else {
     try {
       await c.query('begin');
-      const out = await c.query<{ 'QUERY PLAN': string }>(`explain (${analyze ? 'analyze, buffers, ' : ''}verbose, costs) ${s.sql}`);
-      plan = out.rows.map((x) => x['QUERY PLAN']).join('\n');
+      const out = await c.query<{ 'QUERY PLAN': unknown }>(`explain (format json, ${analyze ? 'analyze, buffers, ' : ''}verbose, costs) ${s.sql}`);
+      const json = out.rows[0]?.['QUERY PLAN'];
+      tree = parsePlan(typeof json === 'string' ? JSON.parse(json) : json, analyze);
+      plan = planText(tree);
       r.status = 'ok';
       r.tag = analyze ? 'EXPLAIN ANALYZE (rolled back)' : 'EXPLAIN';
     } catch (e) {
@@ -217,5 +232,5 @@ export async function explainStatement(c: Client, s: ScriptStatement, analyze: b
     }
   }
   r.ms = Math.round(performance.now() - started);
-  return { results: [r], notices: [], failed: r.status === 'error' ? 1 : 0, ms: r.ms, plan };
+  return { results: [r], notices: [], failed: r.status === 'error' ? 1 : 0, ms: r.ms, plan, tree };
 }
