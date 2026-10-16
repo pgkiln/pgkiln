@@ -28,12 +28,13 @@ export const DEFAULT_WORKSPACE = 1;
 /** The workspaces a developer may use (administrators: all), and the current one, on the session object. */
 export async function loadWorkspaces(s: Session) {
   const rows = (
-    await owner.query<WorkspaceRef>(
+    await owner.query<WorkspaceRef & { instance_admin?: boolean }>(
       `select w.id, w.name, w.message, w.banner_label, w.banner_color, w.isolated, w.sql_workshop, w.rest_services,
               coalesce((select json_agg(json_build_object('label', l.label, 'url', l.url, 'description', l.description) order by l.position, lower(l.label))
                           from meta.workspace_link l where l.workspace_id = w.id), '[]') as links,
               exists (select 1 from meta.developer d where d.username = $1 and d.is_admin)
-                or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $1 and m.is_admin) as admin
+                or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $1 and m.is_admin) as admin,
+              exists (select 1 from meta.developer d where d.username = $1 and d.is_admin) as instance_admin
          from meta.workspace w
         where exists (select 1 from meta.developer d where d.username = $1 and d.is_admin)
            or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $1)
@@ -42,6 +43,7 @@ export async function loadWorkspaces(s: Session) {
     )
   ).rows;
   s.workspaces = rows;
+  s.instanceAdmin = !!rows[0]?.instance_admin;
   const wanted = Number(s.state.__WS);
   s.workspace = rows.find((w) => w.id === wanted) ?? rows[0] ?? null;
 }

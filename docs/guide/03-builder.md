@@ -183,7 +183,7 @@ Every builder page has the same frame, modelled on an IDE:
   pages of an application); at the bottom the **Administration** menu (Workspace utilities; for administrators of the
   current workspace *Manage service*: [workspace message and environment banner](#workspace-message-and-environment-banner),
   [workspace utilization](#workspace-utilization) and the workspace's page; Manage users and groups, Developers,
-  Monitor activity, Change my password), Help, and your account menu (the circle with your initials) with the
+  Monitor activity, [Database users](#database-users) for administrators, Change my password), Help, and your account menu (the circle with your initials) with the
   **builder theme** (*Dark*, the default; *Light*; or *System*, which follows the operating system),
   Change password and Sign out. The theme is remembered on this device, also after signing out;
   it only changes the builder, not your applications.
@@ -1467,8 +1467,45 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   - **Database Monitor** (administrators only): the client sessions of this database from `pg_stat_activity`, active
     first, with their state, wait event, running time, the sessions that block them and the query (as far as the
     owner may read other roles' statistics). Read only: it cancels nothing.
+  - **Database Users** (administrators only; Administration menu → *Database users*, `/builder/db-users`; sprint 99,
+    Database Actions: Database Users): see [Database users](#database-users).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
+
+### Database users
+
+(sprint 99; Database Actions: Database Users) **Administration → Database users** (administrators only; also on the
+SQL Workshop's Launchpad under *Administration*) lists the PostgreSQL roles of the server (`pg_roles`; the predefined
+`pg_` roles are left out): whether they can sign in, superuser / create DB / create role / bypass RLS / replication,
+the connection limit, **valid until** (with *in N days* or *expired*), the roles they are a member of and what they own
+(schemas, objects in this database, objects elsewhere). PostgreSQL doesn't record when a role was created.
+The tiles on top filter the list: roles that can sign in, **passwords that expire within 30 days**, roles with
+**BYPASSRLS**, roles **without sign-in that own objects**, and pgkiln's own roles; a search field filters by name.
+
+**Create database user** (or a role's page) is a form: name, *Can sign in* (LOGIN), the password (*No password* /
+*Set a password*; for an existing role *Keep*, *Set a new password* or *Remove*), **valid until** (a date; empty: no
+expiry), the connection limit, the roles it is a **member of** (group roles and the predefined roles; not pgkiln's own,
+superusers, login roles or the roles that reach the server's files), its **default schema** (the search path in this
+database: `ALTER ROLE … IN DATABASE … SET search_path`), a comment, and per schema **Usage** and **Create**,
+**Future tables** (default privileges, *read* or *read and write*, on what pgkiln's owner connection creates there) and
+**Existing tables** (a one-off grant or revoke on the tables there now). pgkiln's own schemas aren't offered.
+
+**Review SQL** shows the statements (only what differs from what the catalog says now), with the password as
+`'********'`; the password itself is typed on that page (twice) and **Apply** runs the statements in one
+transaction: all or none, and the error with the statement that failed. Apply runs only what the review showed:
+when the form or the role changed in between, the review comes again. The masked statements go to the activity log
+(event `db_role`).
+
+**Drop role…** lists what the role owns and warns about objects in other databases; it reassigns them to another role
+(`REASSIGN OWNED`) or, with a tick, drops them (`DROP OWNED`), revokes its privileges in this database and drops the
+role, again after showing the SQL.
+
+pgkiln's **own roles** are marked *pgkiln* and are read only here: the owner and runtime connections (`DATABASE_URL`,
+`RUNTIME_DATABASE_URL`), every `pgkiln…` role (`pgkiln_runtime`, `pgkiln_app_code`, `pgkiln_authenticator`,
+`pgkiln_anon`, isolated workspaces' logins) and the bootstrap superuser. Roles **in use** by an application (parsing
+schema, REST API role) or an isolated workspace can be changed but not dropped. New names can't start with `pg_` or
+`pgkiln`. The owner connection needs `CREATEROLE` (and, on PostgreSQL 16 and later, ADMIN on roles it didn't create)
+for these changes; PostgreSQL's own error says so otherwise.
 
 ## Export and import
 

@@ -511,6 +511,18 @@ refused ([chapter 16](16-files.md#data-loading)). The SQL Workshop (the SQL Work
 Quick SQL, Load Data, Unload Data, Sample Data) runs as the owner instead, so every developer can change any table: keep
 developer accounts to people you trust with the database.
 
+### Database users and their passwords
+
+(sprint 99) Administrators create and change PostgreSQL roles in the builder (**Administration → Database users**,
+[chapter 3](03-builder.md#database-users)). Passwords never reach PostgreSQL or a page in plain text: pgkiln hashes
+a new password itself into a **SCRAM-SHA-256 verifier** (random salt, 4096 iterations, SASLprep, like psql's
+`\password`) and the statement carries only that verifier, as a literal built with pg's `escapeLiteral`. The review
+and the activity log show `PASSWORD '********'`; the password is typed on the review page, posted once with Apply and
+not stored, echoed or logged. A server with `log_statement = ddl` logs the verifier, not the password. Every name is
+quoted with `escapeIdentifier`, every value is checked (dates, numbers, schema names, grantable roles) and quoted.
+The page is for administrators only (others get 403), every change needs the CSRF token, and pgkiln's own roles can't
+be changed, dropped or granted from it, so the page can't take pgkiln's own connections away.
+
 ## Session state protection
 
 - **URL items**: on pages with protection *Arguments must have checksum* (the default), item

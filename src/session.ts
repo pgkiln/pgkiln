@@ -32,6 +32,8 @@ export interface Session {
   /** Builder only: the developer's workspaces and the current one (src/builder/workspaces.ts). */
   workspaces?: BuilderWorkspace[];
   workspace?: BuilderWorkspace | null;
+  /** Builder only (sprint 99): an administrator of the installation (the Administration menu's Database users) */
+  instanceAdmin?: boolean;
   /** Builder only (079): sha256 of the developer toolbar token (src/runtime/devbar.ts). */
   devbar_hash?: string | null;
   /** (085) when the session started, in ms since the epoch (its maximum length counts from here) */

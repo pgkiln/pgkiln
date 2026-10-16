@@ -87,6 +87,9 @@ src/
   mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
   yamltext.ts              the text style of the directory export: a strict YAML subset, written and read
   webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
+  dbroles.ts               (sprint 99, DA-13) Database Users' SQL: roleSql (CREATE/ALTER ROLE, memberships, search path, schema
+                           and default privileges: only what differs from the catalog), dropSql, checkRole/checkPassword,
+                           scramVerifier (SCRAM-SHA-256, SASLprep) and the password slot (maskSql for review and log, withVerifier to run)
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGKILN_SECRET_KEY
   websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
                            tokens) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
@@ -240,6 +243,9 @@ src/
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
     querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
     users.ts               user directory and identity providers
+    db-users.ts            (sprint 99, DA-13) Administration → Database Users (/builder/db-users, administrators only): PostgreSQL
+                           roles with highlights, create/edit (review the masked SQL, then Apply in one transaction), drop with
+                           reassigning; pgkiln's own roles read-only, roles of applications and workspaces not dropped
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
