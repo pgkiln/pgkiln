@@ -5,10 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-10-16
+
+**Upgrade note:** REST module handlers now refuse (403) to run as a superuser, a role that bypasses row level security
+or a member of pgkiln's owner. An application without its own database role on an installation where
+`RUNTIME_DATABASE_URL` is not set is affected. Run the Advisor after upgrading; give the application its own database
+role or set `RUNTIME_DATABASE_URL` (details under *Changed*).
+
 Sprint 101: Scheduling with pg_cron (parity handoff DA-12).
 Sprint 102: the SQL Monitor (parity handoff DA-14).
 Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
 Sprint 104: RESTful Services modules, templates and handlers (migration 117; parity handoff DA-11, part 2).
+Sprint 105: a refreshed builder look.
 Sprint 106: the change log of DDL change sets (migration 118; parity handoff DA-17).
 
 ### Added
