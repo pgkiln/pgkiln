@@ -69,6 +69,7 @@ src/
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers and offsets, psql commands), runScript() (stop/continue, transaction, savepoints)
   sqlworksheet.ts          (sprint 91) the worksheet's runs: pickStatements() (at the cursor, a selection, all), runStatements() (a log per
                            statement, psql command tags, notices, error line and column), explainStatement() (EXPLAIN / rolled-back ANALYZE)
+  datamodel.ts             (sprint 98) Data Modeler diagrams: readModel() (catalog), boxSize(), fkPath() (crow's feet), autoLayout(), diagramSvg()
   tabledef.ts              (sprint 95) a table as a definition: readTable(), checkTable(), tableSql() (CREATE, or ALTER from the catalog's version)
   sqlformat.ts             (sprint 93) formatSql(): the worksheet's Format (clauses per line, keyword case; strings and comments kept)
   sqlplan.ts               (sprint 92) EXPLAIN (FORMAT JSON) as a tree: parsePlan() (self time, slowest step, misestimates), planText()
@@ -231,6 +232,8 @@ src/
                            (one transaction) / Open in the worksheet
     object-actions.ts      (sprint 94) an object's ⋯ menu (objectMenu) in the worksheet and the Object Browser: Quick DDL (objectDdl), Drop with
                            dependents, Add index / trigger / policy as drafts; GET /sql/objects/action, /sql/objects/panel (Open in a panel)
+    data-modeler.ts        (sprint 98) SQL Workshop → Data Modeler: /sql/modeler (diagrams, meta.sql_diagram, 111), /:id (SVG), /:id/objects, /layout,
+                           /rename, /delete, /svg (export), /ddl (diagramDdl), /dictionary (data dictionary, ?download=1)
     scripts.ts             SQL Workshop → SQL Scripts: editor, upload/download, run, results per statement, run history
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
     querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
@@ -294,6 +297,7 @@ public/
   app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
   palette.js               (sprint 96) the builder's search dialog (Ctrl+K), recently visited SQL Workshop pages, the Launchpad's tabs
+  data-modeler.js, .css    (sprint 98) the Data Modeler: drag boxes, undo/redo, save, zoom/fit, auto layout, mini-map, SVG/PNG export, print
   worksheet.js, .css       (sprint 91) the SQL Worksheet: run keys with the cursor, output tabs, navigator swap and search, drag and drop, splitters;
                            (92) grid sort, value dialog, history filter; (93) worksheet tabs in localStorage, Files, binds dialog, format, find, case
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
@@ -319,6 +323,7 @@ test/
   tabledef.test.ts         (sprint 95) table definitions round trip: CREATE, read, ALTER, read again; mistakes
   table-editor.test.ts     (sprint 95) the Table Properties page: preview, apply, a failing apply rolls back, template, worksheet
   object-actions.test.ts   (sprint 94) object menus: Quick DDL, Drop with dependents, Add index / trigger / policy, the panel, not-found
+  data-modeler.test.ts     (sprint 98) Data Modeler: "hr core" with its FK lines, saved positions, SVG, objects, DDL, dictionary, geometry
   worksheet.test.ts        (sprint 91) the SQL Worksheet: statement at the cursor, Run Script log, plans, notices, history, navigator, Run as
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
@@ -365,6 +370,7 @@ test/
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
+  e2e/data-modeler.test.ts (sprint 98) the Data Modeler in a browser: drag, save, reload, undo/redo, zoom, mini-map, exports, phone
   e2e/worksheet.test.ts    (sprint 91) the SQL Worksheet in a browser: run keys, tabs, navigator, drag and drop, splitters, phone, no JavaScript
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
