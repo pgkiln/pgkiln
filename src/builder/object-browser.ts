@@ -6,6 +6,7 @@ import { readSchema } from '../ddl.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, workshopDb } from './workspaces.ts';
 import { objectMenu } from './object-actions.ts';
+import { isPinned, pinButton } from './launchpad.ts';
 import { owner } from '../db.ts';
 import type { Session } from '../session.ts';
 
@@ -142,7 +143,12 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
 
     let detail: Raw;
     if (!schema) detail = html`<p class="muted">No schema you may use.</p>`;
-    else if (selected) detail = await objectDetail(db, s, schema, selected, String(q.tab ?? ''), Number(q.p) || 1, link);
+    else if (selected) {
+      // (sprint 96) pin the object to the SQL Workshop's home
+      const href = `${BASE}/sql/objects?${new URLSearchParams({ schema, k: selected.type, o: selected.ref })}`;
+      const pin = pinButton(s, { href, label: selected.name, icon: OB_TYPES.find(([t]) => t === selected.type)![2] }, await isPinned(s, href), href);
+      detail = html`<div class="ob-pin">${pin}</div>${await objectDetail(db, s, schema, selected, String(q.tab ?? ''), Number(q.p) || 1, link)}`;
+    }
     else
       detail = region(`Create database objects in ${schema}`, html`<div class="ob-tiles">
         <a class="create-source" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema })}">${icon('table')}<span><b>Table (form)</b><small class="muted">Columns, keys, indexes and security in a form</small></span></a>${[

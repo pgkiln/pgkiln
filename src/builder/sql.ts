@@ -8,6 +8,8 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { clearCompletions } from './code-editor.ts';
 import { scriptRoutes } from './scripts.ts';
 import { worksheetRoutes } from './worksheet.ts';
+import { launchpad, launchpadRoutes } from './launchpad.ts';
+import { isAdmin } from './locks.ts';
 import { quickSqlRoutes } from './quicksql.ts';
 import { queryBuilderRoutes } from './querybuilder.ts';
 import { unloadRoutes } from './unload.ts';
@@ -54,21 +56,13 @@ async function workshopHome(req: Req, reply: FastifyReply) {
       [currentWorkspace(s)],
     ),
   ]);
-  const tile = (href: string, ic: string, title: string, text: string) =>
-    html`<a class="ab-tile sw-tile" href="${BASE}${href}"><span class="ab-tile-icon sw-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`;
   const list = (title: string | Raw, rows: Raw[], empty: string) =>
     html`<section class="sw-recent"><h2>${title}</h2>${rows.length ? html`<ul>${rows}</ul>` : html`<p class="muted">${empty}</p>`}</section>`;
   const main = html`<div class="ab-home">
     <div class="ab-main">
       <h1 class="sr-only">SQL Workshop</h1>
       ${workshopTabs('home')}
-      <div class="ab-tiles sw-tiles">
-        ${tile('/sql/worksheet', 'code', 'SQL Worksheet', 'Run statements and scripts, with a navigator, plans and history.')}
-        ${tile('/sql/objects', 'search', 'Object Browser', 'Browse tables, views and functions, their policies, grants and data.')}
-        ${tile('/sql/scripts', 'file', 'SQL Scripts', 'Create, upload and run stored SQL scripts.')}
-        ${tile('/sql/utilities', 'wrench', 'Utilities', 'Load and unload data, sample data, DDL, schema comparison, object reports and the database.')}
-        ${tile('/sql/quick', 'bolt', 'Quick SQL', 'Write a data model in shorthand and get the DDL.')}
-      </div>
+      ${await launchpad(s, await isAdmin(s.username))}
       <div class="sw-recents">
         ${list('Recently created tables', tables.rows.map((t) => html`<li><a href="${BASE}/sql/objects?o=${encodeURIComponent(t.qname)}">${t.qname}</a><span class="muted">~${Number(t.rows).toLocaleString('en')} rows</span></li>`), 'No tables you can read.')}
         ${list(html`<a href="${BASE}/sql/worksheet?tab=history" title="Open SQL History">Recent SQL commands</a>`, commands.rows.map((c) => html`<li><a href="${BASE}/sql/worksheet?recent=${c.id}" title="${c.detail.slice(0, 500)}">${c.detail.replace(/\s+/g, ' ').slice(0, 60)}</a><span class="muted">${ago(c.at)}</span></li>`), 'You haven\'t run SQL commands yet.')}
@@ -105,6 +99,8 @@ export async function sqlRoutes(app: FastifyInstance) {
   // Generate DDL and Schema Comparison (sprint 56)
   await app.register(ddlToolRoutes);
   await app.register(sqlUtilityRoutes);
+  // (sprint 96) the Launchpad's pins and the builder's search (Ctrl+K)
+  await app.register(launchpadRoutes);
   // (sprint 91) the SQL Worksheet (was SQL Commands; /sql/commands and a post to /sql are the same page)
   await app.register(worksheetRoutes);
   app.get(`${BASE}/sql`, workshopHome);

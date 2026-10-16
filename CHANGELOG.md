@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 96: the SQL Workshop's Launchpad and the builder's search (migration 109; parity handoff DA-15).
+
+### Added
+- **The Launchpad** (DA-15; Database Actions: the Launchpad): the SQL Workshop home starts with *Pinned & recently
+  visited* (pins per developer and workspace in `meta.builder_pin`, migration 109: tools, Object Browser objects,
+  saved worksheets; recent pages kept in the browser), then the tools in tabs *Development*, *Administration* and
+  *Monitoring* with a description and a pin each. The *More* menu uses the same headings.
+- **Search** (**Ctrl/Cmd + K**, or the header's field on every builder page): tools, applications, pages and
+  database objects by name; a page of results without JavaScript.
+
 ## [0.47.0] - 2026-10-16
 
 Sprint 91: the SQL Worksheet like Database Actions' SQL (parity handoff DA-1, DA-2).

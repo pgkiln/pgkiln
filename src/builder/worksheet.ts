@@ -479,7 +479,9 @@ async function worksheet(req: Req, reply: FastifyReply) {
                 ${script ? html`<button class="btn btn-sm" name="mode" value="save_as">Save as new</button><button class="btn btn-sm" name="mode" value="rename">Rename</button>` : ''}
                 <button class="btn btn-sm" name="mode" value="download">${icon('download')} Download</button>
               </div>
-              <div class="ws-file-actions"><a class="btn btn-sm" href="${BASE}/sql/worksheet?new=1" data-ws-new>${icon('plus')} New</a><a class="btn btn-sm" href="#ws-files" data-ws-open>Open…</a></div>
+              <div class="ws-file-actions"><a class="btn btn-sm" href="${BASE}/sql/worksheet?new=1" data-ws-new>${icon('plus')} New</a><a class="btn btn-sm" href="#ws-files" data-ws-open>Open…</a>
+                ${script ? html`<input type="hidden" name="pin_href" value="${BASE}/sql/worksheet?script=${script.id}"><input type="hidden" name="pin_label" value="${script.name}"><input type="hidden" name="back" value="${BASE}/sql/worksheet?script=${script.id}">
+                  <button class="btn btn-sm" formaction="${BASE}/pins" title="Pin this worksheet to the SQL Workshop home">${icon('pin')} Pin</button>` : ''}</div>
             </div></div></details>
           ${toolBtn('statement', 'play', 'Run Statement', 'Ctrl+Enter', true)}
           ${toolBtn('script', 'file', 'Run Script', 'F5')}

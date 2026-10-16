@@ -221,6 +221,9 @@ src/
     errors.ts              (sprint 86) the builder's HTML 404 and 500 pages for browsers (wantsHtml, a not-found handler and an onSend hook)
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: the home and the session's schema
+    launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
+                           GET /builder/palette (the builder's search: JSON for Ctrl+K, a results page without JavaScript)
+    sql-tools.ts           (sprint 96) SQL_TOOLS: every SQL Workshop tool with its group, tab and description (home, More menu, search)
     worksheet.ts           (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
                            columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role, (sprint 93) Save / Rename / Download as SQL Scripts, bind and substitution values, POST /sql/worksheet/format; GET /sql/worksheet/navigator
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
@@ -290,6 +293,7 @@ public/
   app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)
   app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
+  palette.js               (sprint 96) the builder's search dialog (Ctrl+K), recently visited SQL Workshop pages, the Launchpad's tabs
   worksheet.js, .css       (sprint 91) the SQL Worksheet: run keys with the cursor, output tabs, navigator swap and search, drag and drop, splitters;
                            (92) grid sort, value dialog, history filter; (93) worksheet tabs in localStorage, Files, binds dialog, format, find, case
   builder.css              builder only: IDE look (dark chrome, icon rail, panes), builder light/dark tokens
@@ -311,6 +315,7 @@ test/
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
   app-from-file.test.ts    Create → From a file: proposed names and types, app + table + rows + pages, row errors, login, validation
   workshop.test.ts         SQL scripts, Quick SQL pages, query builder, data load definitions (Load Data, the process, export)
+  launchpad.test.ts        (sprint 96) Launchpad groups, pins (builder pages only, at most 24), the search (JSON and page)
   tabledef.test.ts         (sprint 95) table definitions round trip: CREATE, read, ALTER, read again; mistakes
   table-editor.test.ts     (sprint 95) the Table Properties page: preview, apply, a failing apply rolls back, template, worksheet
   object-actions.test.ts   (sprint 94) object menus: Quick DDL, Drop with dependents, Add index / trigger / policy, the panel, not-found

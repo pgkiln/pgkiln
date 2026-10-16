@@ -313,4 +313,24 @@ describe('SQL Worksheet', () => {
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
+
+  test('(sprint 96) Ctrl+K searches the builder; the Launchpad lists recent pages and tool groups as tabs', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet`);
+    await page.goto(`${base}/builder/sql/quick`);
+    await page.goto(`${base}/builder/sql`);
+    assert.deepEqual(await page.locator('[data-lp-recent] a').allTextContents(), ['Quick SQL', 'SQL Worksheet']);
+    assert.equal(await page.locator('[data-lp-group]:not([hidden])').count(), 1);
+    await page.locator('[data-lp-tab=monitoring]').click();
+    assert.ok(await page.locator('#lp-monitoring a', { hasText: 'About Database' }).isVisible());
+    await page.keyboard.press('Control+k');
+    await page.locator('.palette[open] input').fill('dept');
+    await page.locator('.palette-list [role=option]', { hasText: 'dept' }).first().waitFor();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowUp');
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Enter')]);
+    assert.match(page.url(), /\/builder\/sql\/objects\?schema=/);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
 });
