@@ -9,6 +9,7 @@ import { publicUrl } from '../sso.ts';
 import { SYSTEM_SCHEMAS } from './object-browser.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { splitRoles } from './users.ts';
+import { restNav } from './rest-modules.ts';
 import { currentWorkspace, usableSchemas, workshopDb } from './workspaces.ts';
 
 // (sprint 100, Database Actions DA-11 part 1) SQL Workshop › RESTful Services: AutoREST. A developer publishes a
@@ -166,8 +167,8 @@ async function listPage(s: Session, q: Record<string, unknown>, problems: string
       <div class="buttons"><button class="btn btn-hot"${usable.length ? '' : raw(' disabled')}>${icon('bolt')} Enable</button></div>
       ${usable.length ? '' : html`<p class="muted">No application of this workspace has a database role to run as.</p>`}
     </form>`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest')}
-    <p class="muted">RESTful Services: publish a table or view as REST endpoints (AutoREST). Rows come paged as JSON, with filters; a primary key gives single-row GET, PUT and DELETE. Requests run as the publishing application's database role with the caller as <code>meta.app_user()</code>, so its grants and row level security apply. For tailored endpoints with your own SQL, use an application's REST modules (Shared Components).</p>
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest')}${restNav('autorest')}
+    <p class="muted">RESTful Services: publish a table or view as REST endpoints (AutoREST). Rows come paged as JSON, with filters; a primary key gives single-row GET, PUT and DELETE. Requests run as the publishing application's database role with the caller as <code>meta.app_user()</code>, so its grants and row level security apply. For tailored endpoints with your own SQL or PL/pgSQL, create a <a href="${BASE}/sql/rest/modules">module</a>.</p>
     ${region('Published objects', table)}
     ${region('Enable a table or view', form)}`;
   return shell(s, 'RESTful Services', [['SQL Workshop', `${BASE}/sql`], ['RESTful Services']], main, 'sql');

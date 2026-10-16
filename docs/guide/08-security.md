@@ -516,6 +516,12 @@ Workshop → RESTful Services**, AutoREST) run as the app role too, never as the
 and the row level security below decide what an API caller may read and change. AutoREST refuses a role that owns
 the published object or bypasses row level security, and an object answers only to a bearer token of its application
 unless the developer chose *public* for it ([chapter 13](13-rest-api.md#autorest-tables-and-views-from-the-sql-workshop)).
+(sprint 104) REST module handlers refuse to run as a superuser, a role that bypasses row level security or a member
+of pgkiln's owner (403). Their parameters are bound: SQL handlers get escaped literals, PL/pgSQL handlers read
+transaction-local settings through `meta.rest_param()`; a request can't set the server's binds (`APP_USER`, …) or
+real settings. Media handlers are served with a sandboxing Content-Security-Policy and `nosniff`. *Try it* in the
+SQL Workshop calls an endpoint as an account of the application, as a developer issuing a token could
+([chapter 13](13-rest-api.md#modules-templates-and-handlers-in-the-sql-workshop)).
 
 ### Database users and their passwords
 

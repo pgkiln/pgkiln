@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 Sprint 101: Scheduling with pg_cron (parity handoff DA-12).
 Sprint 102: the SQL Monitor (parity handoff DA-14).
 Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
+Sprint 104: RESTful Services modules, templates and handlers (migration 117; parity handoff DA-11, part 2).
 
 ### Added
 - **Scheduling** (DA-12; Database Actions: Scheduling; administrators only): SQL Workshop → *Scheduling* lists
@@ -37,6 +38,16 @@ Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
   `PGKILN_PG_BIN` points at the client programs, which must be at least as new as the server. A dump's functions
   and triggers run as pgkiln's owner role: import only dumps you trust.
 - The Docker image includes PostgreSQL 17's client programs (`pg_dump`, `pg_restore`) and a `dumps` volume.
+- **RESTful Services modules** (DA-11 part 2; Database Actions / ORDS: REST › Modules): SQL Workshop › RESTful
+  Services › *Modules* edits an application's REST modules as a tree of module (base path) › templates (URIs with
+  `:parameters`) › handlers (method and source type). New source types: **PL/pgSQL** (a block run as a `DO`
+  statement; binds are read through `meta.rest_param()`, set as transaction-local settings with query parameters,
+  and `meta.rest_reply(body, status)` answers) and **media** (a row's `content_type` and `content`, served
+  sandboxed). A module's **privilege** (roles every handler needs), template descriptions and documented handler
+  parameters (query or body, type, required: a missing one answers 400) go into the module's OpenAPI document. Each
+  handler has a **Try it** panel that calls the real endpoint without a token or with a short-lived token of an
+  account of the application. Modules travel with the application's export (migration 117 adds
+  `meta.rest_module.roles` and `.templates`). The HR example has a module `hr` (`examples/hr/hr_62_rest_module.sql`).
 
 ### Changed
 - The Utilities' *Database Monitor* is replaced by the SQL Monitor; its address redirects.
@@ -49,6 +60,12 @@ Sprint 103: Schema Export / Import (migration 116; parity handoff DA-16).
   menus and reports (quiet uppercase headers that stick inside a scrolling table, row hover, neutral links) are
   restyled; the page designer's canvas has a dot grid and softer selections. Transitions are off under
   `prefers-reduced-motion`. No markup contracts change; system fonts (Inter when installed), no new dependencies.
+- **Upgrade note:** REST module handlers refuse to run (403) when the role they would run as is a superuser, bypasses
+  row level security or is a member of pgkiln's owner. This affects an application without its own database role on an
+  installation where `RUNTIME_DATABASE_URL` is not set (or points at a privileged role): such handlers ran with full
+  rights and ignored row level security. Fix: give the application its own database role, or set
+  `RUNTIME_DATABASE_URL` to the least-privilege runtime role. AutoREST (sprint 100) already refused this. The Advisor
+  reports an affected application as an error (run it after upgrading) and compiles PL/pgSQL handlers.
 
 ## [0.48.0] - 2026-10-16
 

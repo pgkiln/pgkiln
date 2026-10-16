@@ -1506,6 +1506,12 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   accounts' roles. The object's page checks the role's grants per method, row level security and (for a view)
   `security_invoker`, lists the endpoints with their URLs, and shows cURL and `fetch` examples and the OpenAPI link.
   Details in [chapter 13](13-rest-api.md#autorest-tables-and-views-from-the-sql-workshop).
+  (sprint 104; Database Actions: REST › Modules) The **Modules** tab edits the REST modules of the workspace's
+  applications as a tree: a module (its base path and its privilege: roles every handler needs), its templates (URIs
+  with `:parameters`) and their handlers (method, source type: collection query, single row, SQL, PL/pgSQL or media,
+  who may call it, roles, documented parameters). Each handler has a **Try it** panel: the request goes to the real
+  endpoint without a token or as an account of the application, and the response is shown in the page. Details in
+  [chapter 13](13-rest-api.md#modules-templates-and-handlers-in-the-sql-workshop).
 - **Utilities** (`/builder/sql/utilities`; APEX: SQL Workshop → Utilities): tiles for Load and Unload Data, Sample
   Data, the Query Builder, DDL and Compare, and three pages of their own. Each runs in a read-only transaction with a
   15-second statement timeout, on the SQL Workshop's connection (an isolated workspace's developers see only the

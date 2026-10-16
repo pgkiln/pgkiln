@@ -162,7 +162,10 @@ src/
     maps.ts                map region (data for Leaflet: layers with a query each, markers, clusters or heat, PostGIS geometry as GeoJSON, report filter by area or distance; list fallback, head assets)
     spatial.ts             spatial filtering on the server: map area and distance parsing, PostGIS detection and SQL (ST_Intersects, ST_DWithin), lat/lng fallback (bounding box, haversine)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
-    rest.ts                REST modules: handler checks, matching, bearer tokens, execution (collections stream from a cursor), OpenAPI
+    rest.ts                REST modules: handler and template checks, matching, bearer tokens, module privilege, the constrained-role
+                           check, execution (collections stream from a cursor), OpenAPI (templates, documented parameters, roles)
+    rest-handlers.ts       (sprint 104, migration 117) PL/pgSQL handlers (binds as settings, DO block, meta.rest_reply) and media
+                           handlers (content type and file name cleaned, sandboxed response)
     autorest.ts            (sprint 100, migration 113) AutoREST: /a/:alias/autorest/<object>/ for the tables and views SQL Workshop →
                            RESTful Services published (meta.rest_object): caller() of rest.ts, SET ROLE to the app role, owner/BYPASSRLS
                            check, columns from the catalog (column grants), filters/q/order/paging, POST/PUT/DELETE by primary key, OpenAPI
@@ -299,6 +302,9 @@ src/
     autorest.ts            (sprint 100) SQL Workshop → RESTful Services (/builder/sql/rest): publish a table or view through an
                            application of the workspace (checks: schema the workshop may use, app role not the owner), its page
                            (grants per method, RLS, security_invoker, endpoints, cURL/fetch, OpenAPI link), settings, disable
+    rest-modules.ts        (sprint 104) SQL Workshop → RESTful Services → Modules (/builder/sql/rest/modules): modules of the
+                           workspace's applications, the module › template › handler tree, handler forms, Try it (inject with a
+                           short-lived token), Run only / lock checks
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     process-jobs.ts        page designer: the Jobs tab of a background chain process
     template-spec.ts       template component property form (Shared Components)
@@ -377,6 +383,7 @@ test/
   charts.test.ts           chart markup per kind (geometry as classes), gauges, Gantt time axis and dependencies, pyramid, polar, range, box plot, stock, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
+  rest-modules.test.ts     (sprint 104) modules, templates, PL/pgSQL and media handlers, OpenAPI, the builder's tree and Try it
   workflow-invoke.test.ts  workflow invoke_api steps: the call between transactions, faults, retry, lease, Advisor, export (mock service)
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
