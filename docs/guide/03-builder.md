@@ -1475,15 +1475,48 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     to the Object Browser. pgkiln's own `meta` schema and the system's are left out.
   - **About Database**: the PostgreSQL version, database size, uptime, a few settings (encoding, time zone,
     connections, memory, row security), the installed extensions and the schemas with their size.
-  - **Database Monitor** (administrators only): the client sessions of this database from `pg_stat_activity`, active
-    first, with their state, wait event, running time, the sessions that block them and the query (as far as the
-    owner may read other roles' statistics). Read only: it cancels nothing.
+  - **SQL Monitor** (administrators only): see [SQL Monitor](#sql-monitor) below (it replaced the Database Monitor;
+    the old address `/builder/sql/utilities/monitor` redirects).
   - **Database Users** (administrators only; Administration menu → *Database users*, `/builder/db-users`; sprint 99,
     Database Actions: Database Users): see [Database users](#database-users).
   - **Schema Export / Import** (administrators only; `/builder/sql/data-pump`; sprint 103, Database Actions: Data
     Pump): see [Schema export and import](#schema-export-and-import).
 
 Because the SQL Workshop runs as the owner, restrict who gets a developer account.
+
+### SQL Monitor
+
+(sprint 102; Database Actions: Real Time SQL Monitor and Performance Hub) **SQL Workshop → SQL Monitor**
+(`/builder/sql/monitor`, administrators only; on the Launchpad under *Monitoring*, in the Utilities and in the search,
+Ctrl+K) shows what the database is doing, from PostgreSQL's statistics views:
+
+- **Sessions**: tiles with the sessions (of `max_connections`), the active ones, those idle in a transaction, the
+  blocked ones and the longest running statement; then the client sessions of this database (`pg_stat_activity`;
+  idle sessions on request, *Show idle sessions*) with user, application and client address, state (idle in a
+  transaction with its time), wait event, running time, the sessions that **block** it (the row is highlighted) and
+  the query. A query with a `query_id` links to its statement page. **Cancel** (`pg_cancel_backend`: stop the running
+  statement) and **Terminate** (`pg_terminate_backend`: roll back and disconnect) ask for a confirmation first; only
+  client sessions of this database can be signalled, and the owner role needs the right to (a superuser, the
+  session's own role, or `pg_signal_backend` for non-superusers' sessions).
+- **Wait events**: what the active sessions of the server wait for now, counted per type and event (*CPU: running*
+  when they don't wait).
+- **In progress** (only when something runs): VACUUM, ANALYZE, CREATE INDEX, CLUSTER and COPY from the
+  `pg_stat_progress_*` views, with the phase and a progress bar.
+- The tiles and tables **refresh in place** every 5, 15 or 60 seconds, with a **Pause** button; the choice is
+  remembered in the browser. Without JavaScript, *Refresh* reloads the page.
+- **Top SQL**: the statements of this database from `pg_stat_statements`, every role: calls, total and mean time
+  (with bars), rows, shared blocks hit and read; sort by any column (click the heading again to reverse), search the
+  text, **Reset statistics** (the whole server, after a confirmation). Literals show as `$1`, `$2`….
+- **A statement**: its text, its totals (calls, total and mean time, rows, blocks, temporary blocks) and a row per
+  role with standard deviation, minimum and maximum; **Explain** shows its plan as a tree like the worksheet's. It is
+  `EXPLAIN` only, never `EXPLAIN ANALYZE` (the statement is someone else's): a text with parameters gets a generic
+  plan (`EXPLAIN (GENERIC_PLAN)`, PostgreSQL 16 or later), in a read-only transaction that is rolled back, with
+  a 5-second timeout and one statement only. Choose the schema its unqualified names live in. **Open in worksheet**
+  puts the text in the SQL Worksheet.
+
+Top SQL needs the `pg_stat_statements` extension, which the server must load (`shared_preload_libraries`); pgkiln
+creates the extension when it can (migration 016). Without it the page says how to turn it on. The per-application
+**Top SQL** on an application's Activity page shows the same statistics for its database role only.
 
 ### Database users
 

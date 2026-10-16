@@ -8734,6 +8734,89 @@ describe('sprint 100 rest', () => {
   });
 });
 
+describe('sprint 102 monitor', () => {
+  const DEV = 'sec102dev';
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    await owner.query(`drop table if exists public.sec102_t; create table public.sec102_t (id int primary key)`);
+  });
+  after(async () => {
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('drop table if exists public.sec102_t');
+  });
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    await b.get('/builder/sql');
+    return b;
+  };
+
+  test('administrators only; anonymous visitors sign in first', async () => {
+    const anon = new Browser();
+    for (const url of ['/builder/sql/monitor', '/builder/sql/monitor?fragment=1', '/builder/sql/monitor/top', '/builder/sql/monitor/statements/1'])
+      assert.equal((await anon.get(url)).statusCode, 302, url);
+    assert.equal((await anon.post('/builder/sql/monitor/session', { pid: '1', action: 'terminate' })).statusCode, 302);
+    const d = await signIn(DEV);
+    for (const url of ['/builder/sql/monitor', '/builder/sql/monitor?fragment=1', '/builder/sql/monitor/top?sort=calls', '/builder/sql/monitor/statements/1?explain=1'])
+      assert.equal((await d.get(url)).statusCode, 403, url);
+    for (const url of ['/builder/sql/monitor/session', '/builder/sql/monitor/reset', '/builder/sql/monitor/statements/1/worksheet'])
+      assert.equal((await d.post(url, { __csrf: d.lastCsrf, pid: '1', action: 'terminate' })).statusCode, 403, url);
+  });
+
+  test('CSRF: a forged token signals no session and resets nothing', async () => {
+    const a = await signIn('admin');
+    const pid = String((await owner.one('select pg_backend_pid() as pid')).pid);
+    assert.equal((await a.post('/builder/sql/monitor/session', { __csrf: 'forged', pid, action: 'terminate' })).statusCode, 403);
+    assert.equal((await a.post('/builder/sql/monitor/reset', { __csrf: 'forged' })).statusCode, 403);
+    assert.equal((await a.post('/builder/sql/monitor/statements/1/worksheet', { __csrf: 'forged' })).statusCode, 403);
+  });
+
+  test('a pid, an action, a sort or a statement id cannot inject SQL; texts are escaped', async () => {
+    const a = await signIn('admin');
+    for (const form of [{ pid: '1 or 1=1', action: 'cancel' }, { pid: '1);select pg_terminate_backend(1', action: 'cancel' }, { pid: '1', action: 'pg_reload_conf' }, { pid: '', action: 'cancel' }])
+      assert.equal((await a.post('/builder/sql/monitor/session', { __csrf: a.lastCsrf, ...form })).statusCode, 400, JSON.stringify(form));
+    for (const qs of ['sort=calls%3Bdrop%20table%20x', 'sort=total&dir=desc%3Bselect%201', 'q=%27%20or%201%3D1%20--', 'q=%25_%5C'])
+      assert.equal((await a.get(`/builder/sql/monitor/top?${qs}`)).statusCode, 200, qs);
+    for (const id of ['1%20or%201=1', 'abc', '99999999999999999999999', '1%3Bselect%201'])
+      assert.equal((await a.get(`/builder/sql/monitor/statements/${id}`)).statusCode, 404, id);
+    assert.ok(await owner.one(`select to_regclass('public.sec102_t') as t`));
+    // a session's query text and application name are escaped
+    const { default: pg } = await import('pg');
+    const c = new pg.Client({ connectionString: process.env.DATABASE_URL, application_name: '<img src=x onerror=alert(102)>' });
+    await c.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select '<script>alert(102)</script>' as x`);
+      const page = (await a.get('/builder/sql/monitor')).body;
+      assert.doesNotMatch(page, /<img src=x|<script>alert/);
+      assert.match(page, /&lt;img src=x onerror=alert\(102\)&gt;/);
+      const top = (await a.get('/builder/sql/monitor/top?q=alert')).body;
+      assert.doesNotMatch(top, /<script>alert/);
+    } finally {
+      await c.end();
+    }
+  });
+
+  test('Explain of a recorded statement never changes data, and runs one statement only', async () => {
+    const { explainForMonitor } = await import('../src/builder/sql-monitor.ts');
+    for (const sql of [
+      'insert into public.sec102_t values (1)',
+      'with x as (insert into public.sec102_t values (2) returning *) select * from x',
+      'select 1; insert into public.sec102_t values (3)',
+      'select 1; commit; insert into public.sec102_t values (4)',
+      `select $$;$$; insert into public.sec102_t values (5)`,
+      'create table public.sec102_u as select 1',
+      'select pg_terminate_backend(pg_backend_pid())',
+    ]) await explainForMonitor(sql, null);
+    assert.equal((await owner.one('select count(*)::int as n from public.sec102_t')).n, 0);
+    assert.equal((await owner.one(`select to_regclass('public.sec102_u') as t`)).t, null);
+    // a schema that doesn't exist or is crafted is only quoted into the search path
+    await explainForMonitor('select * from sec102_t', 'public"; drop table public.sec102_t; --');
+    assert.ok(await owner.one(`select to_regclass('public.sec102_t') as t`));
+  });
+});
+
 describe('sprint 103 dump', () => {
   const DEV = 'sec103dev';
   let job = 0;

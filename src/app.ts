@@ -39,6 +39,7 @@ import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { dbUserRoutes } from './builder/db-users.ts';
 import { dataPumpRoutes } from './builder/datapump.ts';
+import { sqlMonitorRoutes } from './builder/sql-monitor.ts';
 import { usersRoutes } from './builder/users.ts';
 import { codeEditorRoutes } from './builder/code-editor.ts';
 import { sampleDataRoutes } from './builder/sampledata.ts';
@@ -205,6 +206,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(usersRoutes);
   await app.register(dbUserRoutes);
   await app.register(dataPumpRoutes);
+  await app.register(sqlMonitorRoutes); // (sprint 102) SQL Workshop › SQL Monitor
   await app.register(dataLoadRoutes);
   await app.register(layoutRoutes);
   await app.register(automationRoutes);

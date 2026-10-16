@@ -701,7 +701,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_utilities: '/builder/sql/utilities',
         sql_object_report: '/builder/sql/utilities/reports?r=unindexed-foreign-keys',
         sql_about: '/builder/sql/utilities/about',
-        sql_monitor: '/builder/sql/utilities/monitor',
+        // (sprint 102) SQL Monitor: sessions and Top SQL
+        sql_monitor: '/builder/sql/monitor',
+        sql_top: '/builder/sql/monitor/top',
         // (sprint 100) RESTful Services: the list and a published object
         sql_rest: '/builder/sql/rest',
         sql_rest_object: `/builder/sql/rest/${(await owner.one(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, roles)

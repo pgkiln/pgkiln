@@ -34,7 +34,7 @@ describe('the Launchpad', () => {
     const home = (await b.get('/builder/sql')).body;
     for (const g of ['Development', 'Administration', 'Monitoring']) assert.match(home, new RegExp(`<section class="lp-group" id="lp-${g.toLowerCase()}" data-lp-group="${g.toLowerCase()}" aria-label="${g}">`));
     assert.match(home, /<a href="\/builder\/sql\/worksheet">.*?<strong>SQL Worksheet<\/strong><small class="muted">Run statements and scripts/s);
-    assert.match(home, /<a href="\/builder\/sql\/utilities\/monitor">/, 'administrators see the database monitor');
+    assert.match(home, /<a href="\/builder\/sql\/monitor">/, 'administrators see the SQL Monitor (sprint 102)');
     assert.match(home, /Pinned &amp; recently visited/);
     assert.match(home, /<span class="small muted">Monitoring<\/span><a href="\/builder\/sql\/utilities\/about">/);
   });

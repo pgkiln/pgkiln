@@ -15,8 +15,8 @@ import { workshopDb, workshopRunsAs } from './workspaces.ts';
 //     the SQL Workshop's connection may use (workshopDb: an isolated
 //     workspace's developers see only their own roles' schemas);
 //   - About Database: version, a few settings, extensions, sizes;
-//   - Database Monitor (administrators): sessions and blocked queries of this
-//     database (pg_stat_activity), read only.
+//   - (sprint 102) the Database Monitor moved to SQL Workshop › SQL Monitor
+//     (sql-monitor.ts); its old address redirects there.
 //
 // Every query runs read only with a statement timeout.
 
@@ -154,7 +154,7 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
         ${tile('/sql/utilities/reports', 'list', 'Object Reports', 'Tables without a primary key, foreign keys without an index, row-level security, grants, sizes.')}
         ${tile('/sql/utilities/about', 'help', 'About Database', 'The PostgreSQL version, settings, extensions and sizes.')}
         ${admin ? tile('/sql/data-pump', 'archive', 'Schema Export / Import', 'A schema to a file with pg_dump, a file into a schema with pg_restore (administrators).') : ''}
-        ${admin ? tile('/sql/utilities/monitor', 'activity', 'Database Monitor', 'Sessions, running and blocked queries of this database (administrators).') : ''}
+        ${admin ? tile('/sql/monitor', 'activity', 'SQL Monitor', 'Sessions, running and blocked queries, wait events and Top SQL (administrators).') : ''}
       </div>`;
     return send(reply, s, shell(s, 'SQL Workshop utilities', [['SQL Workshop', `${BASE}/sql`], ['Utilities']], main, 'sql'));
   });
@@ -235,45 +235,11 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
     return send(reply, s, shell(s, 'About Database', crumbs('About Database'), main, 'sql'));
   });
 
+  // (sprint 102) the Database Monitor became SQL Workshop › SQL Monitor (sql-monitor.ts)
   app.get(`${BASE}/sql/utilities/monitor`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     if (!(await isAdmin(s.username))) return reply.code(403).send('Administrators only.');
-    const data = await readOnly(owner, async (q) => ({
-      sessions: await q(`select a.pid, a.usename as "user", a.application_name as app, a.client_addr::text as client, a.state,
-                                a.wait_event_type || coalesce(': ' || a.wait_event, '') as wait,
-                                to_char(a.backend_start, 'YYYY-MM-DD HH24:MI') as since,
-                                case when a.state = 'active' then round(extract(epoch from now() - a.query_start)::numeric, 1) end as running_s,
-                                case when a.state like 'idle in transaction%' then round(extract(epoch from now() - a.state_change)::numeric, 1) end as idle_tx_s,
-                                pg_blocking_pids(a.pid) as blocked_by, left(a.query, 500) as query
-                           from pg_stat_activity a
-                          where a.datname = current_database() and a.backend_type = 'client backend' and a.pid <> pg_backend_pid()
-                          order by a.state = 'active' desc, a.query_start nulls last limit 200`),
-      totals: (await q(`select count(*)::int as sessions, count(*) filter (where state = 'active')::int as active,
-                               count(*) filter (where state like 'idle in transaction%')::int as idle_tx,
-                               count(*) filter (where cardinality(pg_blocking_pids(pid)) > 0)::int as blocked,
-                               (select setting::int from pg_settings where name = 'max_connections') as max
-                          from pg_stat_activity where datname = current_database() and backend_type = 'client backend'`))[0],
-    }));
-    const t = data.totals as Record<string, number>;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities')}
-      <div class="stat-grid u-mb1">
-        ${[['Sessions', `${t.sessions} / ${t.max}`], ['Active', t.active], ['Idle in a transaction', t.idle_tx], ['Blocked', t.blocked]]
-          .map(([l, v]) => html`<div class="stat"><b>${String(v)}</b><span>${l}</span></div>`)}
-      </div>
-      ${region('Sessions', html`<p class="muted u-mt0">The client sessions of this database (pg_stat_activity), active ones first. A query's text is shown only for roles whose statistics the owner may read (<code>pg_read_all_stats</code>). Reload the page to refresh it.</p>
-        <div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th class="num">PID</th><th>User</th><th>Application</th><th>State</th><th>Wait</th><th class="num">Running (s)</th><th>Blocked by</th><th>Query</th></tr></thead>
-        <tbody>${data.sessions.length ? data.sessions.map((x) => html`<tr>
-          <td class="num" data-label="PID">${String(x.pid)}</td>
-          <td data-label="User">${String(x.user ?? '')}</td>
-          <td data-label="Application" class="u-break">${String(x.app ?? '')}${x.client ? html` <span class="muted">${String(x.client)}</span>` : ''}</td>
-          <td data-label="State">${x.idle_tx_s != null ? html`<span class="tag">${String(x.state)} ${String(x.idle_tx_s)} s</span>` : String(x.state ?? '')}</td>
-          <td data-label="Wait">${String(x.wait ?? '')}</td>
-          <td class="num" data-label="Running">${x.running_s != null ? String(x.running_s) : ''}</td>
-          <td data-label="Blocked by">${(x.blocked_by as number[]).length ? html`<span class="tag">${(x.blocked_by as number[]).join(', ')}</span>` : ''}</td>
-          <td data-label="Query" class="u-break"><code>${String(x.query ?? '')}</code></td></tr>`)
-          : html`<tr><td colspan="8" class="empty">No other sessions.</td></tr>`}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, 'Database Monitor', crumbs('Database Monitor'), main, 'sql'));
+    return reply.redirect(`${BASE}/sql/monitor`, 301);
   });
 }

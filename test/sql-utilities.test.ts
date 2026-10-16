@@ -57,11 +57,11 @@ after(async () => {
 describe('SQL Workshop utilities', () => {
   test('the Utilities page: the tools, and the Database Monitor only for administrators', async () => {
     const page = (await admin.get('/builder/sql/utilities')).body;
-    for (const href of ['/builder/sql/load', '/builder/sql/unload', '/builder/sql/ddl', '/builder/sql/compare', '/builder/sql/utilities/reports', '/builder/sql/utilities/about', '/builder/sql/utilities/monitor'])
+    for (const href of ['/builder/sql/load', '/builder/sql/unload', '/builder/sql/ddl', '/builder/sql/compare', '/builder/sql/utilities/reports', '/builder/sql/utilities/about', '/builder/sql/monitor'])
       assert.match(page, new RegExp(`href="${href}"`), href);
     assert.match((await admin.get('/builder/sql')).body, /href="\/builder\/sql\/utilities"/, 'the home tile');
     const devPage = (await dev.get('/builder/sql/utilities')).body;
-    assert.doesNotMatch(devPage, /utilities\/monitor/);
+    assert.doesNotMatch(devPage, /sql\/monitor/);
     assert.equal((await dev.get('/builder/sql/utilities/monitor')).statusCode, 403);
   });
 
@@ -99,8 +99,9 @@ describe('SQL Workshop utilities', () => {
     assert.match(about, /server_encoding/);
     assert.match(about, /plpgsql/);
     assert.match(about, /su62/);
+    // (sprint 102) the Database Monitor is SQL Workshop › SQL Monitor now
     const monitor = await admin.get('/builder/sql/utilities/monitor');
-    assert.equal(monitor.statusCode, 200);
-    assert.match(monitor.body, /Sessions/);
+    assert.equal(monitor.statusCode, 301);
+    assert.equal(monitor.headers.location, '/builder/sql/monitor');
   });
 });
