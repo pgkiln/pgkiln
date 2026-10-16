@@ -1282,6 +1282,8 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     function and the trigger) and **Add policy** (row level security on, a policy to fill in); **Drop…** writes the
     DROP statement with a comment that lists what depends on the object (views, foreign keys…). Nothing runs: you
     review the statement and run it.
+    (sprint 100) Tables and views also have **REST › Enable / Disable**: it opens the object's page in **RESTful
+    Services** when it is published, or the Enable form for it (below).
   - (sprint 95) **Table Properties** (a table's **Edit…**, **Use as template**, the Object Browser's *Edit table* and
     its *Table (form)* tile): a form with **Columns** (name, type, primary key, not null, default, identity,
     comment; move them up or down for a new table, remove them), **Unique keys**, **Foreign keys** (the table it refers
@@ -1433,6 +1435,15 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   has (commented out), columns whose identity or generation differs, and types, domains and
   sequences that differ. The same from the command line (`pgkiln ddl`, `pgkiln compare`,
   [chapter 18](18-cli.md)) and for AI agents (`generate_ddl`, `compare_schemas`).
+- **RESTful Services** (`/builder/sql/rest`, sprint 100; Database Actions: REST › AutoREST): publish a table or
+  view as REST endpoints. Choose the object (of a schema the SQL Workshop may use), the **application** it is
+  published through, a URL name, the **methods** (GET: rows and one row; POST; PUT; DELETE; single rows need a primary
+  key), **who may call it** (a bearer token of the application, or explicitly *public*), optional application
+  **roles** and the page size. The application decides the rest: the statements run as its database role (never the
+  object's owner, a superuser or a role that bypasses row level security), with its tokens and OAuth clients and its
+  accounts' roles. The object's page checks the role's grants per method, row level security and (for a view)
+  `security_invoker`, lists the endpoints with their URLs, and shows cURL and `fetch` examples and the OpenAPI link.
+  Details in [chapter 13](13-rest-api.md#autorest-tables-and-views-from-the-sql-workshop).
 - **Utilities** (`/builder/sql/utilities`; APEX: SQL Workshop → Utilities): tiles for Load and Unload Data, Sample
   Data, the Query Builder, DDL and Compare, and three pages of their own. Each runs in a read-only transaction with a
   15-second statement timeout, on the SQL Workshop's connection (an isolated workspace's developers see only the

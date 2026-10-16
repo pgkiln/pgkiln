@@ -1,17 +1,17 @@
 # 13. REST APIs
 
-pgkiln offers two ways to expose data securely over REST (mobile apps, integrations, scripts),
+pgkiln offers three ways to expose data securely over REST (mobile apps, integrations, scripts),
 which can be combined:
 
-| | [REST modules](#rest-modules-in-the-builder) | [PostgREST](#how-it-works) |
-|---|---|---|
-| What | Endpoints you define in the builder: a method, a path and the SQL | A separate service that turns a schema of views and functions into an API |
-| Served by | pgkiln itself, under `/a/<alias>/rest/<module>/` | PostgREST, next to pgkiln |
-| Runs as | the application's database role (like its pages) | a dedicated API role |
-| Good for | a handful of tailored endpoints, field apps, integrations | broad data access with filtering, sorting and embedding |
+| | [REST modules](#rest-modules-in-the-builder) | [AutoREST](#autorest-tables-and-views-from-the-sql-workshop) | [PostgREST](#how-it-works) |
+|---|---|---|---|
+| What | Endpoints you define in the builder: a method, a path and the SQL | A table or view published as it is: rows, one row, insert, update, delete | A separate service that turns a schema of views and functions into an API |
+| Served by | pgkiln itself, under `/a/<alias>/rest/<module>/` | pgkiln itself, under `/a/<alias>/autorest/<object>/` | PostgREST, next to pgkiln |
+| Runs as | the application's database role (like its pages) | the application's database role | a dedicated API role |
+| Good for | a handful of tailored endpoints, field apps, integrations | quick CRUD access to a table, prototypes, simple integrations | broad data access with filtering, sorting and embedding |
 
-Both use the same tokens (App → REST API: tokens and OAuth clients), the same accounts and the
-same row level security, and both publish an OpenAPI description.
+All three use the same tokens (App → REST API: tokens and OAuth clients), the same accounts and the
+same row level security, and all publish an OpenAPI description.
 
 ## REST modules in the builder
 
@@ -62,6 +62,71 @@ curl http://127.0.0.1:3100/a/hr/rest/v1/my/leave -H "Authorization: Bearer $TOKE
 curl -X POST http://127.0.0.1:3100/a/hr/rest/v1/leave -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" -d '{"start_date": "2027-05-03", "end_date": "2027-05-04", "reason": "dentist"}'
 ```
+
+## AutoREST: tables and views from the SQL Workshop
+
+**SQL Workshop → RESTful Services** (`/builder/sql/rest`; Database Actions: a table's *REST › Enable*, ORDS
+AutoREST), or **REST › Enable / Disable** in a table's or view's ⋯ menu (SQL Worksheet navigator, Object Browser).
+Choose:
+
+| Setting | Meaning |
+|---|---|
+| Table or view | Any table, partitioned table, view, materialized view or foreign table of a schema the SQL Workshop may use (not `meta`) |
+| Application | An application of the current workspace with a database role. It decides how requests run (below) and gives the URL |
+| URL name | The segment in `/a/<alias>/autorest/<name>/`: lower case letters, digits, `_` and `-`; the object's name by default |
+| Methods | `GET` (rows and one row), `POST` (insert), `PUT` (update), `DELETE`. `PUT` and `DELETE` need a primary key; a materialized view answers `GET` only |
+| Who may call it | **A bearer token of the application** (the default), or **public**: anyone, without a token. Public is never implied: it is a choice on the form |
+| Roles | Optional application roles; the caller needs one of them (`meta.has_role()`), else 403 |
+| Page size | Rows per page without `?limit=` (1–500, default 25) |
+
+The object's page shows the checks (the role is not the owner and doesn't bypass row level security; its grants per
+method; row level security on or off; for a view whether it is `security_invoker`; the primary key; columns the role
+may not read), the endpoints with their URLs, cURL and `fetch` examples, and the OpenAPI link. Its settings can be
+changed, the object disabled (404) or removed (*Disable REST*). The table itself is never changed.
+
+**Endpoints** (`/a/hr/autorest/dept/` for `hr.dept` published through `hr`):
+
+| Request | Answer |
+|---|---|
+| `GET …/dept/` | `{"items": […], "offset": 0, "limit": 25, "has_more": true}`. `?limit=` (1–500) and `?offset=` page; `?<column>=<value>` keeps rows whose column equals the value (several are combined with AND); `?q=<text>` keeps rows where a text column contains the text (case-insensitive; `%` and `_` are literal); `?order=dname,deptno.desc` sorts (default: the primary key). An unknown parameter or column is a 400 |
+| `GET …/dept/10` | The row as an object, or 404. A composite key is comma separated: `…/pair/1,x` (URL-encode a comma inside a value) |
+| `POST …/dept/` | A JSON object of column values → 201 with the new row and a `Location` header. Columns left out get their defaults; an unknown column is a 400 |
+| `PUT …/dept/10` | A JSON object of the columns to change → 200 with the row, or 404 (also when row level security hides it). Columns left out keep their values |
+| `DELETE …/dept/10` | 204, or 404 |
+| `GET /a/hr/autorest/openapi.json` | OpenAPI 3 of the application's published objects: without a token the public ones, with a valid token all of them; column types as JSON Schema |
+
+A method that isn't enabled answers 405 with an `Allow` header. Errors are JSON `{"error": "…"}`, as for REST modules:
+400 for invalid input, a check or unique constraint, or a `raise exception`; 403 for a missing role or grant
+(including column grants and a row level security `with check`).
+
+**How a request runs.** As for [REST modules](#rest-modules-in-the-builder): the token is checked (signature, expiry,
+the application, an active account with access or a client that isn't revoked) at every request; a browser session is
+not accepted. The statement then runs in a transaction **as the application's database role**, with
+`meta.app_user()` = the caller (`nobody` for a public object without a token), `meta.has_role()` reading the caller's
+roles, and a 30-second statement timeout. So the role's grants, column grants and the table's row level security
+apply exactly as on the application's pages. Columns the role may not select are left out of every answer and can't
+be filtered or sorted on. AutoREST refuses, when the object is enabled and again at every request (after `SET ROLE`),
+a role that owns the object or is a member of its owner (row level security doesn't apply to the owner), a superuser
+and a role with `BYPASSRLS`. An application without a database role can't publish objects. Names come from the
+catalog and are quoted; filter values, keys and bodies are query parameters, never SQL text.
+
+The workspace preference *Enable RESTful services* turns AutoREST off with the REST modules (404), and the
+application's availability applies too.
+
+```bash
+TOKEN=…   # App → REST API → Issue a token for king
+curl "http://127.0.0.1:3100/a/hr/autorest/dept/?limit=2" -H "Authorization: Bearer $TOKEN"
+# {"items":[{"deptno":10,"dname":"ACCOUNTING",…},{"deptno":20,…}],"offset":0,"limit":2,"has_more":true}
+curl "http://127.0.0.1:3100/a/hr/autorest/dept/?limit=2"            # 401: no token
+```
+
+**Views.** A view without `security_invoker = true` runs with its owner's rights, so the row level security of the
+tables beneath it does not apply to the caller; the page warns about it. Views have no primary key: they publish the
+collection (`GET`, and `POST` when PostgreSQL can insert into the view).
+
+**Export.** The published objects are installation data, like OAuth clients: they name objects of this database and
+are not part of an application export; an in-place import (`pgkiln import --replace`) keeps them. Tailored endpoints
+that travel with the application are [REST modules](#rest-modules-in-the-builder).
 
 ## PostgREST
 

@@ -511,6 +511,12 @@ refused ([chapter 16](16-files.md#data-loading)). The SQL Workshop (the SQL Work
 Quick SQL, Load Data, Unload Data, Sample Data) runs as the owner instead, so every developer can change any table: keep
 developer accounts to people you trust with the database.
 
+The REST endpoints pgkiln serves (an application's REST modules and the tables and views published with **SQL
+Workshop → RESTful Services**, AutoREST) run as the app role too, never as the owner: these grants, column grants
+and the row level security below decide what an API caller may read and change. AutoREST refuses a role that owns
+the published object or bypasses row level security, and an object answers only to a bearer token of its application
+unless the developer chose *public* for it ([chapter 13](13-rest-api.md#autorest-tables-and-views-from-the-sql-workshop)).
+
 ## Session state protection
 
 - **URL items**: on pages with protection *Arguments must have checksum* (the default), item
