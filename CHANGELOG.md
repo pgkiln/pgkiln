@@ -5,6 +5,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-10-18
+
+Sprint 107: a transaction mode in the SQL Worksheet (parity handoff DA-2, the rest).
+Sprint 108: the builder look, part 2.
+DA-18: JavaScript (MLE) stays not planned; plv8 where installed (docs only).
+
+### Added
+- **Transaction mode in the SQL Worksheet** (DA-2; beyond Database Actions, which commits every statement): switch a
+  worksheet tab from *Autocommit* to *Transaction* to keep its statements in one transaction until **Commit** or
+  **Rollback**. A badge shows the open transaction, its statements and its age, or why the server rolled it back.
+  Ctrl+Enter and Run Script use a database connection pinned to the tab (never pooled, bound to the builder session and
+  workspace). The transaction is rolled back after `WORKSHEET_TXN_IDLE_SECONDS` without a run (default 300), on
+  sign-out, when its session expires, on a workspace switch, when its tab is closed or switched back to Autocommit,
+  and when the server stops; `idle_in_transaction_session_timeout` is set as a backstop. Typed `COMMIT` / `ROLLBACK`
+  end it; statements that cannot run in a transaction (VACUUM, `CREATE INDEX CONCURRENTLY`, …) are refused; an error
+  leaves it aborted until Rollback. Explain Plan and Autotrace run inside it behind a savepoint; its DDL reaches the
+  Change Log at COMMIT. *Run as* stays fixed while the transaction is open. Limits: `WORKSHEET_TXN_MAX_PER_DEVELOPER`
+  (3) and `WORKSHEET_TXN_MAX` (20). The transactions live in the server's memory: several servers need sticky
+  sessions. Without JavaScript the worksheet runs in Autocommit.
+- **Highlighted read-only SQL**: Object Browser DDL and source, the Data Modeler's DDL, the SQL that Quick SQL, the
+  Query Builder, Scheduling, Database Users and the table editor generate, SQL Monitor statements, chart queries and
+  the Change Log use the code editor's colours. The code editor marks the current line.
+
+### Changed
+- **Builder look, part 2** (sprint 108): the code editor's syntax colours are tokens of the builder's theme (ember
+  keywords; every token kind at least 4.5:1 in light and dark). The Data Modeler's boxes, lines and mini-map follow
+  the dark theme (exports stay light); polish for the Object Browser tree, the wizards' icon picker and colour field
+  and the SQL Monitor's refresh controls.
+- In Autocommit, a `BEGIN` left open at the end of a worksheet run is rolled back with a warning under Notices
+  (it was rolled back silently).
+
+### Fixed
+- The worksheet's success and error colours were hard to read in dark mode; its splitters and worksheet tabs have
+  correct ARIA. The Data Modeler's mini-map showed white boxes in dark mode.
+
 ## [0.49.0] - 2026-10-16
 
 **Upgrade note:** REST module handlers now refuse (403) to run as a superuser, a role that bypasses row level security
