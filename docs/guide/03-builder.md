@@ -151,6 +151,7 @@ applications' files. Choose what goes in:
 | Extension links | Label, URL, description, order |
 | REST source catalogs | Every [catalog](19-rest-data-sources.md#rest-source-catalogs) with its services |
 | SQL scripts, blueprints, data generators | The SQL Workshop's saved work |
+| Data Reporter datasets | Every [dataset](#data-reporter-datasets-and-reporting-applications) (sprint 110) |
 
 Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, passwords and
 secrets, script runs and other history. **Applications are exported on their own** (an application's *Export*).
@@ -213,7 +214,7 @@ longer sign in. Delete a workspace only when it is shared and empty; its logins 
 
 Every builder page has the same frame, modelled on an IDE:
 
-- **The icon rail** on the left: App Builder, SQL Workshop, [App Gallery](#app-gallery), **Search** (on the
+- **The icon rail** on the left: App Builder, SQL Workshop, [App Gallery](#app-gallery), [Data Reporter](#data-reporter-datasets-and-reporting-applications), **Search** (on the
   pages of an application); at the bottom the **Administration** menu (Workspace utilities; for administrators of the
   current workspace *Manage service*: [workspace message and environment banner](#workspace-message-and-environment-banner),
   [workspace utilization](#workspace-utilization) and the workspace's page; Manage users and groups, Developers,
@@ -291,6 +292,49 @@ The **App Gallery** (the cube in the icon rail, `/builder/gallery`; APEX: App Ga
   Create with that boilerplate chosen.
 
 The list is `examples/gallery/gallery.json`; add your own starters there as blueprint files.
+
+## Data Reporter: datasets and reporting applications
+
+**Data Reporter** in the icon rail (`/builder/reporter`, sprint 110; APEX 26.1: Data Reporter as a workspace tool)
+gives business users reports on the workspace's data without a developer writing a page per question. Every
+developer of the workspace manages it; the page lists the workspace's **datasets** and its **reporting
+applications** (with their users and published reports).
+
+A **dataset** (`meta.dataset`, per workspace) is a trusted view of the data: tables and views of one schema, joined,
+the columns users may see, and a row filter.
+
+- **New dataset**: choose a schema (those your [SQL Workshop](#sql-workshop) connection may use; never pgkiln's own
+  or the system's), tick tables and views (the first is the main one) and give it a name (lower case, it can't
+  change) and a label. **Joins are proposed from foreign keys** in either direction (a left join on the key's
+  columns); every column is offered, labelled from its name, numbers with a number mask.
+- **The dataset's page**: its label and description; the tables with their joins (to an earlier table, left or
+  inner, *on* `column = its column`; add a table, remove one); the **columns** (offer or not, a name reports use, a
+  label, a [format mask](14-globalization.md) and a description users see in the report editor); up to five
+  **row filter** conditions (column, operator, value) that every report on it gets; the **query** it builds, and a
+  **preview** of ten rows (read only, through your SQL Workshop connection). The dataset is checked against the
+  database when it is saved: tables, views and columns must exist; the page says what doesn't match (any more).
+- **Download** one dataset or **Export all** as a file (`*.dataset.json`, format `pgkiln-dataset/1`); **Import**
+  reads such a file (or pasted text) in one transaction: each dataset is checked against this installation's
+  database, and one with the same name is kept unless you choose *Replace*. Datasets also travel in the
+  [workspace export](#export-and-import); they are not part of an application's export.
+
+**Create reporting application** (on a dataset's row or page: the form is filled in, so *Create* is the second
+click) makes an application of type *Reporting* on one or more datasets: page 1 is a
+[Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter) region offering the datasets, users sign in with
+their accounts of the [user directory](#users-the-user-directory), and the first administrator is the account you
+name (yours by default). Its database role `app_<alias>` may only **read** (SELECT) the datasets' tables and views,
+so every report runs through those grants and [row level security](08-security.md) (a view with
+`security_invoker` needs grants on its own tables too: grant them to the role yourself). Give accounts access and
+roles under the application's *Users and roles*:
+
+| Role | May |
+|---|---|
+| viewer (or no role) | Open published reports (by their stable URL too), pin them |
+| editor | Also build reports, save them, publish and unpublish their own |
+| administrator | Also unpublish and delete anyone's reports |
+
+The application is an ordinary pgkiln application otherwise: change its pages, theme or sign-in in the builder as
+you like. `meta.reporting_app_count(workspace_id)` counts a workspace's reporting applications.
 
 ### Creating an application
 
@@ -756,7 +800,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
 | `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
 | `report` (also) | *Ask in your own words (AI)*: the AI service and placeholder of the [natural-language filters](04-pages-and-regions.md#natural-language-filters-ask-in-your-own-words) |
-| `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks), who may share reports, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
+| `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks; or (sprint 110) a dataset of the workspace), who may share, build and moderate reports, publishing, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 | `form_designer` | Who may design forms (an authorization scheme), data sources (a table or view each: static id, label, description, key column, may add / change / delete rows, offered columns with labels and lists of values), rows per page ([Form Designer](04-pages-and-regions.md#form_designer-form-designer)) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to
@@ -963,6 +1007,7 @@ application has a **type** (Settings → Application type):
 | Theme application | Offers its theme (colours, navigation, light/dark settings and the Theme Roller's styles) and its template components to other applications |
 | Library application | Offers its lists of values, authorization schemes, build options, template components and lists (with their entries) to other applications |
 | Boilerplate application | A starting point: **Create** offers it under *Start from* |
+| Reporting application | (sprint 110) Made by [App Builder → Data Reporter](#data-reporter-datasets-and-reporting-applications) on datasets: its users build, publish and share reports |
 
 **Shared Components → Subscriptions** subscribes the application to one of those components: it is
 copied now (replacing a component with the same name) and remembered as a subscription. The page
