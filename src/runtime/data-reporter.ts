@@ -303,7 +303,7 @@ export const reportLink = (ctx: PageContext, id: number) => `${ctx.base}/reports
 const MAX_PINS = 20;
 const pinsName = (r: Region) => `reporter.pins.${r.id}`;
 
-/** (sprint 110) The reports the current user pinned in this region (a user preference). */
+/** (sprint 110) The published reports the current user pinned in this region (a user preference; with config.publishing). */
 async function pinsOf(ctx: PageContext, r: Region): Promise<number[]> {
   if (ctx.user === 'nobody') return [];
   const c = ctx.client!;
@@ -381,7 +381,7 @@ async function home(ctx: PageContext, r: Region, sources: Source[], edit = true)
   // (sprint 110) users who may not edit see the shared (published) reports only
   const reports = edit ? all : all.filter((x) => x.shared);
   const pub = publishing(r);
-  const pins = await pinsOf(ctx, r);
+  const pins = pub ? await pinsOf(ctx, r) : [];
   const sharedTag = pub ? t('reporter.published_tag') : t('reporter.shared_tag');
   const labelOf = (id: string) => {
     const s = sources.find((x) => x.id === id);
@@ -534,7 +534,7 @@ async function reportView(ctx: PageContext, r: Region, source: Source, cols: Map
     const pins = await pinsOf(ctx, r);
     const moderate = !saved.own && (await mayModerate(ctx, r));
     const buttons: Raw[] = [];
-    if (saved.shared) buttons.push(post('pin', pins.includes(saved.id) ? 'unpin' : 'pin', pins.includes(saved.id) ? t('reporter.unpin') : t('reporter.pin')));
+    if (pub && saved.shared) buttons.push(post('pin', pins.includes(saved.id) ? 'unpin' : 'pin', pins.includes(saved.id) ? t('reporter.unpin') : t('reporter.pin')));
     if (pub && saved.own && edit && (saved.shared || (await mayShare(ctx, r)))) buttons.push(post('publish', saved.shared ? 'unpublish' : 'publish', saved.shared ? t('reporter.unpublish') : t('reporter.publish'), saved.shared ? 'btn' : 'btn btn-hot'));
     if (moderate && saved.shared) buttons.push(post('publish', 'unpublish', t('reporter.unpublish')));
     if (moderate) buttons.push(post('delete', 'any', t('reporter.delete'), 'btn btn-danger', t('reporter.delete_confirm', { name: saved.name })));
@@ -732,7 +732,7 @@ export async function dataReporterRoutes(app: FastifyInstance) {
     action(req, reply, async (ctx, r) => {
       const id = /^\d{1,9}$/.test(String(req.body?.rep ?? '')) ? Number(req.body!.rep) : 0;
       const rep = await reportOf(ctx, r, id);
-      if (!rep?.shared) return { message: ctx.locale.t('reporter.not_found'), back: new URLSearchParams() };
+      if (!rep?.shared || !publishing(r)) return { message: ctx.locale.t('reporter.not_found'), back: new URLSearchParams() };
       const pins = (await pinsOf(ctx, r)).filter((x) => x !== id);
       if (req.body?.mode === 'pin') pins.unshift(id);
       await ctx.client!.query('select meta.set_preference($1, $2)', [pinsName(r), pins.slice(0, MAX_PINS).join(',')]);

@@ -133,7 +133,7 @@ export async function datasetRoutes(app: FastifyInstance) {
         <div class="buttons"><a class="btn btn-hot" href="${root}/datasets/new">${icon('plus')} New dataset</a><a class="btn" href="${root}/import">${icon('upload')} Import</a>${sets.length ? html`<a class="btn" href="${root}/export">${icon('download')} Export all</a>` : ''}</div></div>
       <p class="muted u-mt0">Datasets are trusted views of ${s.workspace?.name ?? 'this workspace'}'s data for business users: tables and views of one schema, joined, with the columns they may see, labels, format masks and descriptions, and a row filter. A reporting application on one or more datasets lets its users build, save, publish and share reports; every report runs as the application's database role, so grants and row level security apply.</p>
       ${region('Datasets', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th scope="col">Dataset</th><th scope="col">Schema</th><th scope="col">Tables and views</th><th scope="col" class="num">Columns</th><th scope="col">Updated (UTC)</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <thead><tr><th scope="col">Dataset</th><th scope="col">Schema</th><th scope="col">Tables and views</th><th scope="col" class="num">Columns</th><th scope="col">Updated (UTC)</th><th scope="col">Actions</th></tr></thead>
         <tbody>${sets.length ? sets.map((d) => html`<tr>
           <td data-label="Dataset"><a href="${root}/datasets/${d.id}">${d.label}</a> <code>${d.name}</code>${d.description ? html`<br><span class="muted small">${d.description.slice(0, 160)}</span>` : ''}</td>
           <td data-label="Schema"><code>${d.schema_name}</code></td>
@@ -143,7 +143,7 @@ export async function datasetRoutes(app: FastifyInstance) {
           <td data-label=""><a class="btn" href="${root}/apps/new?dataset=${encodeURIComponent(d.name)}">${icon('plus')} Create reporting application</a></td>
         </tr>`) : html`<tr><td colspan="6" class="empty">No datasets yet: create one on tables and views of a schema, or import a dataset file.</td></tr>`}</tbody></table></div>`)}
       ${region('Reporting applications', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th scope="col">Application</th><th scope="col">Datasets</th><th scope="col" class="num">Users</th><th scope="col" class="num">Published reports</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <thead><tr><th scope="col">Application</th><th scope="col">Datasets</th><th scope="col" class="num">Users</th><th scope="col" class="num">Published reports</th><th scope="col">Actions</th></tr></thead>
         <tbody>${apps.length ? apps.map((a) => html`<tr>
           <td data-label="Application"><a href="${BASE}/apps/${a.id}">${a.name}</a> <code>${a.alias}</code></td>
           <td data-label="Datasets">${a.datasets.join(', ')}</td>
