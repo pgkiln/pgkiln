@@ -437,15 +437,20 @@
       gutter.setAttribute('aria-hidden', 'true');
       const nums = document.createElement('div');
       nums.className = 'ce-nums';
-      gutter.append(nums);
+      // the caret's line: a band behind the text, its number over the gutter's
+      const curNum = document.createElement('div');
+      curNum.className = 'ce-cur-num';
+      gutter.append(nums, curNum);
       const main = document.createElement('div');
       main.className = 'ce-main';
       const hl = document.createElement('div');
       hl.className = 'ce-hl';
       hl.setAttribute('aria-hidden', 'true');
+      const cur = document.createElement('div');
+      cur.className = 'ce-cur';
       const inner = document.createElement('pre');
       inner.className = 'ce-code';
-      hl.append(inner);
+      hl.append(cur, inner);
       ta.parentNode.insertBefore(wrap, ta);
       main.append(hl, ta);
       wrap.append(gutter, main);
@@ -502,7 +507,7 @@
       ta.setAttribute('aria-autocomplete', 'list');
       ta.setAttribute('aria-haspopup', 'listbox');
       ta.setAttribute('aria-controls', list.id);
-      Object.assign(this, { wrap, gutter, nums, main, hl, inner, list, bar, langEl: lang, hint, pos, msg, check, live, suggest });
+      Object.assign(this, { wrap, gutter, nums, cur, curNum, main, hl, inner, list, bar, langEl: lang, hint, pos, msg, check, live, suggest });
       this.applyLang();
     }
 
@@ -661,7 +666,25 @@
         this.digits = digits;
         this.gutter.style.setProperty('--ce-digits', String(Math.max(2, digits)));
       }
+      this.placeLine();
       if (this.pop) this.place();
+    }
+
+    /** The current-line band and number: on the caret's line; hidden while a selection spans lines. */
+    placeLine() {
+      const ta = this.ta;
+      const lines = this.lineStarts;
+      const a = lowerBound(lines, ta.selectionStart + 1);
+      const b = lowerBound(lines, ta.selectionEnd + 1);
+      const hide = a !== b;
+      this.cur.hidden = hide;
+      this.curNum.hidden = hide;
+      if (hide) return;
+      const { lh, padTop } = this.metrics();
+      const y = padTop + (a - 1) * lh - ta.scrollTop;
+      this.cur.style.transform = `translateY(${y}px)`;
+      this.curNum.style.transform = `translateY(${y}px)`;
+      this.curNum.textContent = String(a);
     }
 
     tokenAt(off) {
@@ -703,6 +726,7 @@
       this.sync();
       if (this.pop && this.ta.selectionStart !== this.ta.selectionEnd) this.close();
       if (this.updateMatch()) this.schedule(true);
+      else this.placeLine();
       const c = this.ta.selectionStart;
       const line = lowerBound(this.lineStarts, c + 1);
       this.pos.textContent = `Ln ${line}, Col ${c - this.lineStarts[line - 1] + 1}`;

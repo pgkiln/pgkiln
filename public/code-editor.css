@@ -2,65 +2,9 @@
    transparent and lies exactly over the highlighted copy (.ce-code), so both
    must share font, size, line height, padding and tab size. */
 :root {
-  --ce-bg: #fbfcfd;
-  --ce-gutter: #f1f3f6;
-  --ce-gutter-text: #5d6876;
-  --ce-text: #1b2330;
-  --ce-kw: #8b2bb9;
-  --ce-type: #0b6e8a;
-  --ce-fn: #1d5fc4;
-  --ce-str: #1d7a3a;
-  --ce-num: #b35400;
-  --ce-com: #6b7685;
-  --ce-bind: #b0306a;
-  --ce-qid: #7a5b00;
-  --ce-tag: #1d5fc4;
-  --ce-attr: #8b2bb9;
-  --ce-err: #c23028;
-  --ce-match: rgb(11 99 197 / 18%);
-  --ce-select: rgb(11 99 197 / 22%);
+  /* the colours (--ce-bg, --ce-kw, …, --ce-line, --ce-select) are tokens in builder.css, light and dark */
   --ce-font: 0.84rem;
   --ce-lh: 20px; /* whole pixels: fractional line heights drift apart over thousands of lines */
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ce-bg: #12161d;
-    --ce-gutter: #171c24;
-    --ce-gutter-text: #8f99a8;
-    --ce-text: #e3e7ed;
-    --ce-kw: #d39bff;
-    --ce-type: #5fd0e6;
-    --ce-fn: #82b6ff;
-    --ce-str: #8fd694;
-    --ce-num: #ffb46b;
-    --ce-com: #8591a3;
-    --ce-bind: #ff8cc0;
-    --ce-qid: #e8c66a;
-    --ce-tag: #82b6ff;
-    --ce-attr: #d39bff;
-    --ce-err: #ff7a70;
-    --ce-match: rgb(105 164 255 / 25%);
-    --ce-select: rgb(105 164 255 / 30%);
-  }
-}
-:root[data-theme="dark"] {
-  --ce-bg: #12161d;
-  --ce-gutter: #171c24;
-  --ce-gutter-text: #8f99a8;
-  --ce-text: #e3e7ed;
-  --ce-kw: #d39bff;
-  --ce-type: #5fd0e6;
-  --ce-fn: #82b6ff;
-  --ce-str: #8fd694;
-  --ce-num: #ffb46b;
-  --ce-com: #8591a3;
-  --ce-bind: #ff8cc0;
-  --ce-qid: #e8c66a;
-  --ce-tag: #82b6ff;
-  --ce-attr: #d39bff;
-  --ce-err: #ff7a70;
-  --ce-match: rgb(105 164 255 / 25%);
-  --ce-select: rgb(105 164 255 / 30%);
 }
 @media (pointer: coarse) {
   :root { --ce-font: 16px; --ce-lh: 24px; } /* the same as other fields: no zoom on focus in iOS */
@@ -68,13 +12,13 @@
 
 .ce {
   position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr);
-  min-width: 0; max-width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--ce-bg);
+  min-width: 0; max-width: 100%; border: 1px solid var(--field-border, var(--border)); border-radius: var(--radius-sm, 6px); background: var(--ce-bg);
 }
-.ce:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ce:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring, transparent); }
 .ce-gutter {
   --ce-digits: 2;
   width: calc(var(--ce-digits) * 1ch + 1.1rem); overflow: hidden; position: relative;
-  background: var(--ce-gutter); border-right: 1px solid var(--border); border-radius: 6px 0 0 0;
+  background: var(--ce-gutter); border-right: 1px solid var(--border); border-radius: var(--radius-sm, 6px) 0 0 0;
   color: var(--ce-gutter-text); user-select: none;
 }
 .ce-gutter, .ce .ce-code, .ce textarea.ce-input {
@@ -82,6 +26,11 @@
   font-variant-ligatures: none; letter-spacing: 0; font-kerning: none;
 }
 .ce-nums { position: absolute; top: 0; left: 0; right: 0; white-space: pre; text-align: right; padding: 0.5rem 0.45rem 0 0; will-change: transform; }
+/* the caret's line (sprint 108): a band behind the text and its number in the gutter, while the editor has the focus */
+.ce-cur, .ce-cur-num { position: absolute; left: 0; right: 0; top: 0; height: var(--ce-lh); will-change: transform; display: none; }
+.ce-cur { background: var(--ce-line); }
+.ce-cur-num { padding-right: 0.45rem; text-align: right; color: var(--ce-gutter-active); background: var(--ce-gutter); font-weight: 650; }
+.ce:focus-within :is(.ce-cur, .ce-cur-num):not([hidden]) { display: block; }
 .ce-main { position: relative; min-width: 0; }
 .ce .ce-hl { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .ce .ce-code {
@@ -114,14 +63,15 @@
 .ce-code .t-attr { color: var(--ce-attr); }
 .ce-code .t-ent { color: var(--ce-num); }
 .ce-code .t-err { color: var(--ce-err); text-decoration: wavy underline; }
-.ce-code .t-op, .ce-code .t-pun, .ce-code .t-br, .ce-code .t-id { color: var(--ce-text); }
-.ce-code .t-match { background: var(--ce-match); border-radius: 2px; outline: 1px solid var(--ce-match); }
+.ce-code .t-op { color: var(--ce-op); }
+.ce-code .t-pun, .ce-code .t-br, .ce-code .t-id { color: var(--ce-text); }
+.ce-code .t-match { background: var(--ce-match); border-radius: 2px; outline: 1px solid var(--ce-match-ring); }
 
 /* status bar: language, hint, caret position, check */
 .ce-bar {
   grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.75rem;
   padding: 0.2rem 0.5rem; border-top: 1px solid var(--border); background: var(--ce-gutter);
-  border-radius: 0 0 6px 6px; font-size: 0.75rem; color: var(--muted); min-width: 0;
+  border-radius: 0 0 var(--radius-sm, 6px) var(--radius-sm, 6px); font-size: 0.75rem; color: var(--muted); min-width: 0;
 }
 .ce-lang { font-weight: 650; letter-spacing: 0.02em; }
 .ce-hint { flex: 1 1 12rem; min-width: 0; }
@@ -138,7 +88,7 @@
   position: absolute; z-index: 30; left: 0; top: 0; margin: 0; padding: 0.25rem 0; list-style: none;
   width: max-content; min-width: 14rem; max-width: min(34rem, calc(100% - 0.5rem)); max-height: 15rem; overflow: auto;
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
-  box-shadow: 0 8px 24px rgb(16 24 40 / 18%); font-size: 0.82rem;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgb(16 24 40 / 18%)); font-size: 0.82rem;
 }
 .ce-opt { display: flex; align-items: baseline; gap: 0.75rem; padding: 0.2rem 0.6rem 0.2rem 0.4rem; cursor: pointer; white-space: nowrap; }
 .ce-opt::before {
