@@ -1565,6 +1565,10 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   **Flyway** versioned migrations (`V0001__add_bonus.sql`; several in a zip), a **Liquibase** formatted SQL changelog
   (`--liquibase formatted sql`, `--changeset author:0001-add_bonus`) or one plain SQL script; each change set also
   has its own Flyway file. Change sets belong to the workspace and are not part of an application export.
+- **JavaScript (MLE)**: not planned. Database Actions has a JavaScript tool for Oracle's Multilingual Engine;
+  PostgreSQL runs JavaScript in the database only through the [plv8](15-extensions.md) extension. Where plv8 is
+  installed, write `create function … language plv8` in the SQL Worksheet like any other function: the navigator,
+  the Object Browser and Quick DDL show it. pgkiln adds no JavaScript editor of its own.
 - **Utilities** (`/builder/sql/utilities`; APEX: SQL Workshop → Utilities): tiles for Load and Unload Data, Sample
   Data, the Query Builder, DDL and Compare, and three pages of their own. Each runs in a read-only transaction with a
   15-second statement timeout, on the SQL Workshop's connection (an isolated workspace's developers see only the

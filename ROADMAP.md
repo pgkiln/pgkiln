@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.49.0 (October 2026): the rest of Oracle Database Actions in the SQL Workshop: Scheduling with pg_cron, the SQL Monitor with Top SQL, Schema Export / Import with pg_dump and pg_restore, RESTful Services modules, templates and handlers (PL/pgSQL and media), and a change log of DDL with Flyway and Liquibase downloads; a refreshed builder look.
+- **Current release:** 0.50.0 (October 2026): a transaction mode in the SQL Worksheet (Commit and Rollback, rolled back when idle), the code editor's syntax colours in the builder's light and dark themes, highlighted read-only SQL across the SQL Workshop, and the Data Modeler in dark mode.
 - **APEX parity:** 146 features compared: 143 available, none partial or missing, 3 deliberately
   not planned (collections, JSON duality views and database links: PostgreSQL covers them).
 
