@@ -3,7 +3,6 @@ import { isNumeric } from './runtime/report.ts';
 import { parsePlan, planText, type Plan } from './sqlplan.ts';
 import { splitScript, type ScriptStatement } from './sqlscript.ts';
 import { skipQuoted } from './binds.ts';
-import type { Client } from './db.ts';
 
 // (sprint 91, Database Actions DA-1/DA-2) The SQL Workshop's worksheet: which statements a run takes
 // (the one at the cursor, a selection, or all of them), and running them on one connection with a log
@@ -144,9 +143,10 @@ export interface RunOptions {
 
 /**
  * Run statements on `c` (a connection of its own, destroyed by the caller: the SQL may change the role or
- * settings). Each statement autocommits, like Database Actions. Notices are collected per statement.
+ * settings). Each statement autocommits, like Database Actions, unless the caller opened a transaction on `c`
+ * (sprint 107, the worksheet's transaction mode). Notices are collected per statement.
  */
-export async function runStatements(c: Client, text: string, statements: ScriptStatement[], opts: RunOptions = {}): Promise<WorksheetRun> {
+export async function runStatements(c: pg.ClientBase, text: string, statements: ScriptStatement[], opts: RunOptions = {}): Promise<WorksheetRun> {
   const started = performance.now();
   const notices: Notice[] = [];
   let current = 0;
@@ -206,7 +206,7 @@ export async function runStatements(c: Client, text: string, statements: ScriptS
  * EXPLAIN the statement (Explain Plan: nothing runs) or EXPLAIN ANALYZE it inside a transaction that is
  * rolled back (Autotrace: it runs, its changes don't stay).
  */
-export async function explainStatement(c: Client, s: ScriptStatement, analyze: boolean): Promise<WorksheetRun> {
+export async function explainStatement(c: pg.ClientBase, s: ScriptStatement, analyze: boolean, inTransaction = false): Promise<WorksheetRun> {
   const started = performance.now();
   const r: WorksheetResult = { n: 1, line: s.line, sql: s.sql, start: s.start, end: s.end, status: 'not_run', ms: 0 };
   let plan: string | undefined;
@@ -216,7 +216,9 @@ export async function explainStatement(c: Client, s: ScriptStatement, analyze: b
     r.error = 'Only SQL statements have a plan.';
   } else {
     try {
-      await c.query('begin');
+      // (sprint 107) in a worksheet's open transaction: a savepoint, so the plan sees the transaction's changes and
+      // Autotrace's own are undone while the transaction's stay (a failing EXPLAIN doesn't abort it either)
+      await c.query(inTransaction ? 'savepoint pgkiln_explain' : 'begin');
       const out = await c.query<{ 'QUERY PLAN': unknown }>(`explain (format json, ${analyze ? 'analyze, buffers, ' : ''}verbose, costs) ${s.sql}`);
       const json = out.rows[0]?.['QUERY PLAN'];
       tree = parsePlan(typeof json === 'string' ? JSON.parse(json) : json, analyze);
@@ -229,7 +231,8 @@ export async function explainStatement(c: Client, s: ScriptStatement, analyze: b
       r.error = `${err.message}${err.code ? ` (${err.code})` : ''}`;
       r.errorLine = s.line;
     } finally {
-      await c.query('rollback').catch(() => {});
+      if (inTransaction) await c.query('rollback to savepoint pgkiln_explain').then(() => c.query('release savepoint pgkiln_explain')).catch(() => {});
+      else await c.query('rollback').catch(() => {});
     }
   }
   r.ms = Math.round(performance.now() - started);

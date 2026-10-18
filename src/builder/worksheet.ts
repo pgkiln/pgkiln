@@ -17,6 +17,7 @@ import { formatSql } from '../sqlformat.ts';
 import { planView } from './plan-view.ts';
 import { unloadStatement } from '../unload.ts';
 import { recordChanges } from '../changelog.ts';
+import { accountRun, beginTxn, endAllTxns, endTxn, findTxn, outsideTxnOnly, txnIdleSeconds, txnNote, txnState, clearTxnNote, type WorksheetTxn } from '../worksheet-txn.ts';
 
 // (sprint 91, Database Actions DA-1/DA-2) The SQL Worksheet: one screen with a navigator (schema, object
 // type, filter; tables and views open to their columns and give SELECT / INSERT / UPDATE / DELETE
@@ -217,6 +218,47 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
   return { panes: { result, chart: chart ?? html`<p class="muted">Create Chart (Ctrl+F11) draws the last query: a label column and number columns.</p>`, output: log, notices, explain: planOf('explain', 'Explain Plan (F10) shows how PostgreSQL would run the statement at the cursor; nothing runs.'), autotrace: planOf('autotrace', 'Autotrace (F6) runs the statement at the cursor with EXPLAIN ANALYZE and rolls it back: actual rows, time and buffers per step.'), history: hist }, active, status };
 }
 
+/** (sprint 107) The idle timeout in words. */
+const idleLabel = () => {
+  const sec = txnIdleSeconds();
+  return sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`;
+};
+
+/** (sprint 107) The transaction badge's text (public/worksheet.js writes the same after a reload or a tab switch). */
+export function txnBadge(state: 'open' | 'aborted' | 'none', statements: number, startedMs: number | null, note: string | null): string {
+  if (state === 'none') return note ?? 'No open transaction';
+  const min = startedMs ? Math.floor((Date.now() - startedMs) / 60_000) : 0;
+  const age = min < 1 ? 'under a minute' : `${min} min`;
+  return `${state === 'aborted' ? 'Transaction failed' : 'Transaction open'} · ${statements} statement${statements === 1 ? '' : 's'} · ${age}`;
+}
+
+/** (sprint 107) Commit or Rollback a worksheet tab's transaction (the toolbar's buttons, and the JSON endpoint). */
+async function finishTxn(req: Req, s: Session, tab: string, t: WorksheetTxn | undefined, action: 'commit' | 'rollback'): Promise<{ ok: boolean; message: string; busy?: boolean }> {
+  if (!t) return { ok: false, message: 'This worksheet has no open transaction.' };
+  if (t.busy) return { ok: false, busy: true, message: 'A run is still going on in this worksheet: wait for it to finish.' };
+  const n = t.statements;
+  const failed = txnState(t) === 'aborted';
+  const ended = await endTxn(t, action);
+  clearTxnNote(s.id, tab);
+  if (ended.ddl.length) await recordChanges({ workspaceId: t.workspaceId, author: s.username ?? '?', source: 'worksheet', defaultSchema: t.defaultSchema, statements: ended.ddl });
+  await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), detail: ended.tag.toLowerCase() });
+  if (ended.error) return { ok: false, message: `${action.toUpperCase()} failed: ${ended.error}. The connection was closed, so the transaction is rolled back.` };
+  if (action === 'commit' && ended.tag !== 'COMMIT') return { ok: false, message: 'The transaction had failed, so COMMIT rolled it back: nothing was saved.' };
+  const what = `${n} statement${n === 1 ? '' : 's'}`;
+  return { ok: true, message: action === 'commit' ? `Committed (${what}).` : `Rolled back (${what} undone${failed ? '; the transaction had failed' : ''}).` };
+}
+
+/** (sprint 107) A tab's transaction as JSON, for the badge after a reload or a tab switch. */
+function txnStatus(s: Session, tab: string) {
+  const t = findTxn(s.id, tab);
+  const state = t && t.workspaceId === currentWorkspace(s) ? txnState(t) : 'none';
+  const note = state === 'none' ? txnNote(s.id, tab) : null;
+  return {
+    state, statements: t?.statements ?? 0, startedMs: t?.startedMs ?? null, lastMs: t?.lastMs ?? null, idleSeconds: txnIdleSeconds(),
+    runsAs: t?.runsAs ?? null, note, badge: txnBadge(state, t?.statements ?? 0, t?.startedMs ?? null, note), now: Date.now(),
+  };
+}
+
 /** The applications whose database role a run can take (the developer's workspace). */
 async function runAsApps(s: Session) {
   return (await owner.query<{ id: number; name: string; db_role: string }>(
@@ -339,7 +381,22 @@ async function worksheet(req: Req, reply: FastifyReply) {
       return {};
     }
   })();
-  if (isPost && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download'].includes(String(body.mode ?? ''))) {
+  // (sprint 107, DA-2) transaction mode: the worksheet tab's open transaction (bound to this session)
+  const txnAsked = isPost && body.txn === '1';
+  let txn: WorksheetTxn | undefined = tabKey ? findTxn(s.id, tabKey) : undefined;
+  let txnError = '';
+  let txnInfo = '';
+  if (txn && txn.workspaceId !== currentWorkspace(s)) {
+    await endTxn(txn, 'rollback', 'You switched workspaces: the transaction was rolled back.');
+    txn = undefined;
+  }
+  if (isPost && (body.mode === 'commit' || body.mode === 'rollback')) {
+    const done = await finishTxn(req, s, tabKey, txn, body.mode === 'commit' ? 'commit' : 'rollback');
+    if (!done.busy) txn = undefined;
+    if (done.ok) txnInfo = done.message;
+    else txnError = done.message;
+  }
+  if (isPost && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download', 'commit', 'rollback'].includes(String(body.mode ?? ''))) {
     const m: RunMode = MODES.find((x) => x === body.mode) ?? 'statement';
     const allRows = body.mode === 'statement_all';
     chartAsked = body.mode === 'chart';
@@ -362,34 +419,88 @@ async function worksheet(req: Req, reply: FastifyReply) {
       ...x,
       sql: applyBinds(applySubstitutions(x.sql, Object.fromEntries(subs.map((n) => [n, value('sub', n)]))), Object.fromEntries(binds.map((n) => [n, value('bind', n)]))),
     }));
+    const explaining = m === 'explain' || m === 'autotrace';
+    // (sprint 107) which connection: the tab's transaction (open, or opened now), or one of its own
+    const useTxn = statements.length > 0 && txnAsked && (!explaining || (!!txn && txnState(txn) !== 'none'));
     if (statements.length) {
+      const blocked = txnAsked && !explaining ? statements.find((x) => !x.psql && outsideTxnOnly(x.sql)) : undefined;
+      if (txn && !txnAsked) txnError = 'This worksheet has an open transaction: Commit or Rollback it first, or switch back to Transaction.';
+      else if (txnAsked && !tabKey) txnError = 'Transaction mode needs JavaScript (the worksheet tab it belongs to); this run was refused.';
+      else if (txn && (asApp?.id ?? null) !== txn.asAppId) txnError = `This worksheet's transaction runs as ${txn.runsAs}: Commit or Rollback it before changing Run as.`;
+      else if (txn?.busy) txnError = 'A run is still going on in this worksheet: wait for it to finish.';
+      else if (blocked) txnError = `Line ${blocked.line}: ${blocked.sql.trim().split(/\s+/).slice(0, 2).join(' ').toUpperCase()} can't run inside a transaction. Switch the worksheet to Autocommit to run it.`;
+    }
+    if (statements.length && !txnError) {
       ran = { start: statements[0].start, end: statements[statements.length - 1].end };
-      // a connection of its own, closed afterwards: the SQL may SET ROLE or change settings, which must not
-      // leak into the builder's pooled connections
-      const c = await (asApp ? await devDbForApp(asApp.id) : db).pool.connect();
       const started = performance.now();
-      try {
-        if (searchSchema) await c.query(`select set_config('search_path', $1, false)`, [`${pg.escapeIdentifier(searchSchema)}, public`]);
-        if (asApp) {
-          await c.query(`select set_config('pgkiln.app_id', $1, false)`, [String(asApp.id)]);
-          await c.query(`set role ${pg.escapeIdentifier(asApp.db_role)}`);
+      const runOn = (c: pg.ClientBase, inTxn: boolean) => explaining
+        ? explainStatement(c, statements[0], m === 'autotrace', inTxn)
+        : runStatements(c, text, statements, { continueOnError: m === 'script' && continueOnError, gridRows: allRows ? ALL_ROWS : GRID_ROWS });
+      const failedRun = (e: unknown): WorksheetRun => ({ results: [{ n: 1, line: statements[0].line, sql: statements[0].sql, start: 0, end: 0, status: 'error', error: (e as Error).message, ms: 0 }], notices: [], failed: 1, ms: 0 });
+      if (useTxn) {
+        if (!txn) {
+          const note = txnNote(s.id, tabKey);
+          const began = await beginTxn({ sessionId: s.id, username: s.username!, workspaceId: currentWorkspace(s), tab: tabKey, db: asApp ? await devDbForApp(asApp.id) : db,
+            asApp: asApp ?? null, runsAs: asApp ? `the role ${asApp.db_role} of ${asApp.name}` : workshopRunsAs(db), searchSchema });
+          if (typeof began === 'string') txnError = began;
+          else {
+            txn = began;
+            if (note) txnInfo = `${note} A new transaction started.`;
+          }
         }
-        run = m === 'explain' || m === 'autotrace'
-          ? await explainStatement(c, statements[0], m === 'autotrace')
-          : await runStatements(c, text, statements, { continueOnError: m === 'script' && continueOnError, gridRows: allRows ? ALL_ROWS : GRID_ROWS });
-      } catch (e) {
-        run = { results: [{ n: 1, line: statements[0].line, sql: statements[0].sql, start: 0, end: 0, status: 'error', error: (e as Error).message, ms: 0 }], notices: [], failed: 1, ms: 0 };
-      } finally {
-        c.release(true);
+        if (txn) {
+          const t = txn;
+          t.busy = true;
+          try {
+            run = await runOn(t.client, true);
+          } catch (e) {
+            run = failedRun(e);
+          } finally {
+            t.busy = false;
+            t.lastMs = Date.now();
+          }
+        }
+      } else {
+        // a connection of its own, closed afterwards: the SQL may SET ROLE or change settings, which must not
+        // leak into the builder's pooled connections
+        const c = await (asApp ? await devDbForApp(asApp.id) : db).pool.connect();
+        try {
+          if (searchSchema) await c.query(`select set_config('search_path', $1, false)`, [`${pg.escapeIdentifier(searchSchema)}, public`]);
+          if (asApp) {
+            await c.query(`select set_config('pgkiln.app_id', $1, false)`, [String(asApp.id)]);
+            await c.query(`set role ${pg.escapeIdentifier(asApp.db_role)}`);
+          }
+          run = await runOn(c, false);
+          // (sprint 107) a BEGIN typed in Autocommit lasts for the run only: say so when it was left open
+          if (!explaining && c.getTransactionStatus() !== 'I') {
+            await c.query('rollback').catch(() => {});
+            run.notices.push({ level: 'WARNING', message: 'The transaction started with BEGIN was still open at the end of the run and was rolled back. Switch the worksheet to Transaction to keep a transaction open between runs.', n: run.results.filter((r) => r.status !== 'not_run').length, at: new Date().toISOString().slice(11, 23) });
+          }
+        } catch (e) {
+          run = failedRun(e);
+        } finally {
+          c.release(true);
+        }
       }
       // the log and history show the statements as written (with :NAME), not with the values
       if (run) for (const r of run.results) r.sql = picked[r.n - 1]?.sql ?? r.sql;
-      if (mode === 'statement' || mode === 'script') {
+      // (sprint 107) the transaction's statements and DDL; a COMMIT / ROLLBACK typed in the editor ended it
+      let committedDdl: string[] | null = null;
+      if (txn && run && !explaining) {
+        committedDdl = accountRun(txn, run.results);
+        if (txnState(txn) === 'none' && findTxn(s.id, tabKey) === txn) {
+          await endTxn(txn, 'rollback'); // nothing open: just closes the connection
+          txn = undefined;
+          txnInfo = 'The transaction ended with the COMMIT or ROLLBACK in the editor; the next run starts a new one.';
+        }
+      }
+      if (txn && findTxn(s.id, tabKey) !== txn) txn = undefined; // the database ended the connection
+      if (run && (mode === 'statement' || mode === 'script')) {
         clearCompletions(); // the statements may have changed tables or grants
-        if (run) await recordHistory(s, run);
-        // (sprint 106, DA-17) the DDL that succeeded goes into the change log
-        if (run) await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'worksheet', defaultSchema: searchSchema ?? 'public',
-          statements: run.results.filter((r) => r.status === 'ok').map((r) => r.sql) });
+        await recordHistory(s, run);
+        // (sprint 106, DA-17) the DDL that succeeded goes into the change log (in a transaction: when it commits)
+        await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'worksheet', defaultSchema: searchSchema ?? 'public',
+          statements: committedDdl ?? run.results.filter((r) => r.status === 'ok').map((r) => r.sql) });
         const detail = picked.map((x) => x.sql).join(';\n');
         await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), elapsedMs: Math.round(performance.now() - started), detail: detail.length > 2000 ? `${detail.slice(0, 2000)}…` : detail });
       }
@@ -435,6 +546,12 @@ async function worksheet(req: Req, reply: FastifyReply) {
       <div class="buttons"><button class="btn btn-hot" name="mode" value="${askValues.mode}">${icon('play')} Run</button><button class="btn" name="mode" value="nav" data-ws-binds-cancel>Cancel</button></div>
     </dialog>` : '';
   const runsAs = asApp ? `the role ${asApp.db_role} of ${asApp.name}` : workshopRunsAs(db);
+  // (sprint 107) the transaction badge: the real state of the tab's transaction on the server
+  const tState = txnState(txn);
+  const tNote = !txn && tabKey ? txnNote(s.id, tabKey) : null;
+  if (tState === 'aborted' && !txnError) txnError = 'A statement failed, so the transaction is aborted: Rollback ends it (COMMIT would roll it back too).';
+  const txnOn = txnAsked || !!txn;
+  const badge = txnBadge(tState, txn?.statements ?? 0, txn?.startedMs ?? null, tNote);
 
   const toolBtn = (m: RunMode, ic: string, label: string, key: string, hot = false) =>
     html`<button class="btn btn-sm${hot ? ' btn-hot' : ''}" name="mode" value="${m}" title="${label} (${key})" data-ws-key="${key}">${icon(ic)}<span>${label}</span></button>`;
@@ -506,6 +623,13 @@ async function worksheet(req: Req, reply: FastifyReply) {
             </dl>
             <label class="ws-kwcase" hidden>Format keywords in <select data-ws-kwcase><option value="lower">lower case</option><option value="upper">UPPER CASE</option></select></label>
             <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>Help on the SQL Worksheet</a></div></div></details>
+          <span class="ws-txn" data-ws-txn data-state="${tState}" data-statements="${txn?.statements ?? 0}" data-started="${txn?.startedMs ?? ''}" data-last="${txn?.lastMs ?? ''}" data-idle="${txnIdleSeconds()}" data-note="${tNote ?? ''}" hidden>
+            <label class="ws-runas"><span>Commit</span><select name="txn" data-ws-txn-mode title="Autocommit: each statement commits on its own. Transaction: the statements stay in one transaction until Commit or Rollback.">
+              <option value="">Autocommit</option><option value="1"${txnOn ? raw(' selected') : ''}>Transaction</option></select></label>
+            <span class="ws-txn-badge" data-ws-txn-badge data-state="${tState}" role="status" title="${tState === 'none' ? '' : `Runs as ${txn?.runsAs ?? ''}`}">${badge}</span>
+            <button class="btn btn-sm" name="mode" value="commit" data-ws-txn-commit title="Commit the worksheet's transaction"${txn ? '' : raw(' disabled')}>${icon('check')}<span>Commit</span></button>
+            <button class="btn btn-sm" name="mode" value="rollback" data-ws-txn-rollback title="Roll back the worksheet's transaction"${txn ? '' : raw(' disabled')}>${icon('undo')}<span>Rollback</span></button>
+          </span>
           <label class="ws-runas"><span>Run as</span>
             <select name="as_app" title="Who the statements run as">
               <option value="">${db === owner ? 'Owner connection' : 'Workspace login'}</option>
@@ -514,8 +638,11 @@ async function worksheet(req: Req, reply: FastifyReply) {
           <button type="button" class="btn btn-sm btn-icon" data-ws-clear title="Clear the editor" hidden>${icon('trash')}<span class="sr-only">Clear</span></button>
           <button type="button" class="btn btn-sm btn-icon" data-ws-fullscreen title="Fullscreen (Escape leaves)" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">Fullscreen</span></button>
         </div>
-        <p class="ws-runs-as muted small">Runs as ${runsAs}${searchSchema ? html`; <code>${searchSchema}</code> first in the search path (<a href="${BASE}/sql">change</a>)` : ''}. Each statement commits on its own.</p>
+        <p class="ws-runs-as muted small">Runs as ${runsAs}${searchSchema ? html`; <code>${searchSchema}</code> first in the search path (<a href="${BASE}/sql">change</a>)` : ''}. <span data-ws-commit-note>${txnOn
+          ? `The statements stay in one transaction until Commit or Rollback; it is rolled back after ${idleLabel()} without a run.`
+          : 'Each statement commits on its own.'}</span></p>
         ${fileError ? html`<p class="alert alert-error ws-file-error" role="alert">${fileError}</p>` : ''}
+        ${txnError ? html`<p class="alert alert-error ws-txn-alert" role="alert">${txnError}</p>` : txnInfo ? html`<p class="alert alert-info ws-txn-alert" role="status">${txnInfo}</p>` : ''}
         <div class="ws-wtabs" role="tablist" aria-label="Worksheets" hidden></div>
         <div class="ws-findbar" hidden>
           <label class="sr-only" for="ws-find-q">Find</label><input id="ws-find-q" type="search" placeholder="Find" autocomplete="off" data-ws-find-q>
@@ -552,6 +679,27 @@ export async function worksheetRoutes(app: FastifyInstance) {
   }
   // (before sprint 61 SQL Commands was /builder/sql: a post there still runs)
   app.post(`${BASE}/sql`, worksheet);
+
+  // (sprint 107, DA-2) transaction mode: a tab's transaction (the badge), Commit / Rollback without a reload (closing a
+  // worksheet tab, switching to Autocommit). Always the caller's own session: another developer's tab doesn't exist here.
+  app.get(`${BASE}/sql/worksheet/txn`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const tab = String(req.query?.tab ?? '');
+    if (!/^[a-z0-9]{1,20}$/.test(tab)) return reply.code(400).send({ error: 'Which worksheet?' });
+    return reply.header('Cache-Control', 'no-store').send(txnStatus(s, tab));
+  });
+  app.post(`${BASE}/sql/worksheet/txn`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const tab = String(req.body?.tab ?? '');
+    const action = req.body?.action;
+    if (!/^[a-z0-9]{1,20}$/.test(tab) || (action !== 'commit' && action !== 'rollback')) return reply.code(400).send({ error: 'Which worksheet, and commit or rollback?' });
+    const t = findTxn(s.id, tab);
+    const done = await finishTxn(req, s, tab, t && t.workspaceId === currentWorkspace(s) ? t : undefined, action);
+    return reply.code(done.busy ? 409 : 200).header('Cache-Control', 'no-store').send({ ...done, ...txnStatus(s, tab) });
+  });
+  app.addHook('onClose', async () => endAllTxns());
 
   // (sprint 93, DA-9) Format: the worksheet's text laid out, keywords in the case asked for
   app.post(`${BASE}/sql/worksheet/format`, async (req: Req, reply) => {
