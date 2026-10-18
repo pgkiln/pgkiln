@@ -1360,6 +1360,31 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sm-toolbar select { width: auto; }
 .sm-toolbar [aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 
+/* (sprint 109, WS-1) the Workspace home (/builder/home) */
+.wh-title { margin: 0 0 14px; font-size: var(--fs-xl); overflow-wrap: anywhere; }
+.wh-summary h2, .wh-top-head h2 { margin: 0 0 10px; }
+.wh-stats a.stat { color: inherit; text-decoration: none; }
+.wh-stats a.stat:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.wh-stats a.stat span { color: var(--accent); }
+.wh-top-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.wh-top-head h2 { margin: 0; }
+.wh-timeframe { display: inline-flex; }
+.wh-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; margin-top: 10px; }
+.wh-top > .region { margin: 0; min-width: 0; }
+.wh-message { margin-bottom: 16px; }
+.wh-message-text { margin: 0 0 8px; white-space: pre-line; overflow-wrap: anywhere; }
+.wh-edit > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.wh-edit > summary::-webkit-details-marker { display: none; }
+.wh-edit[open] > summary { margin-bottom: 10px; }
+.wh-release { display: flex; gap: 0.6rem; align-items: flex-start; }
+.wh-release p { margin: 0.2rem 0 0; overflow-wrap: anywhere; }
+.wh-release-form { margin-top: 10px; }
+@media (max-width: 640px) {
+  .wh-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .wh-stats .stat { padding: 0.6rem 0.75rem; }
+  .wh-stats .stat b { font-size: 1.2rem; }
+}
+
 /* (sprint 110) App Builder → Data Reporter: datasets */
 .dataset-checks { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.25rem 0 0.5rem; overflow-wrap: anywhere; }
 .dataset-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.4rem; }

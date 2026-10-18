@@ -118,7 +118,7 @@ describe('accessibility (axe-core)', () => {
         const app = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
         const pid = (await owner.one('select id from meta.page where app_id = $1 and page_no = 3', [app])).id;
         const urls = [
-          '/builder', '/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities', '/builder/workspaces', '/builder/instance',
+          '/builder', '/builder/home', '/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities', '/builder/workspaces', '/builder/instance',
           `/builder/apps/${app}`, `/builder/apps/${app}/shared`, `/builder/apps/${app}/settings`, `/builder/apps/${app}/theme`,
           `/builder/apps/${app}/search?q=emp`, `/builder/apps/${app}/advisor`, `/builder/apps/${app}/static-files`, `/builder/apps/${app}/static-files?edit=hr.js`, `/builder/apps/${app}/plugins?p=log_event`, `/builder/pages/${pid}`, `/builder/pages/${pid}?c=page`,
           '/builder/sql', '/builder/sql/scripts', '/builder/sql/objects', '/builder/users', '/builder/developers', '/builder/ai',

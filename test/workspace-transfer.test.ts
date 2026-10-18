@@ -71,7 +71,7 @@ describe('a workspace file', () => {
     file = JSON.parse(res.body);
     assert.equal(file.format, 'pgkiln-workspace/1');
     assert.equal(file.workspace, 'S67X Source');
-    assert.deepEqual(file.settings, { description: 'Where it comes from', message: 'Release on Friday', banner_label: 'TEST', banner_color: 'orange', sql_workshop: false, rest_services: true });
+    assert.deepEqual(file.settings, { description: 'Where it comes from', message: 'Release on Friday', banner_label: 'TEST', banner_color: 'orange', sql_workshop: false, rest_services: true, builder_home: null });
     assert.deepEqual(file.developers, [{ username: DEV, admin: true }]);
     assert.deepEqual(file.app_groups.map((g: any) => g.name), ['S67X Empty', 'S67X Finance']);
     assert.deepEqual(file.extension_links, [{ label: 'S67X Wiki', url: 'https://wiki.example.com/', description: 'Docs', position: 5 }]);

@@ -191,6 +191,8 @@ which is read at startup; real environment variables take precedence.
 | `PGKILN_REST_MAX_BYTES` | `5000000` | Largest web service response read (also after decompression) |
 | `MIGRATE_ON_START` | `false` | `true` applies missing migrations when the server starts. Without it, a server whose database lacks migrations answers every request with 503 and names the missing files until they are applied (`npm run db:migrate` or `pgkiln migrate`; no restart needed) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| `PGKILN_RELEASE_CHECK` | `off` | `on`: the server asks GitHub once a day for a newer pgkiln release and the [Workspace home](03-builder.md#the-release-check) announces it. Administrators can also set it in the builder (Instance settings → *New versions*), which wins over the variable. Keep it off where the server may not reach the internet |
+| `PGKILN_RELEASE_URL` | GitHub's releases API | For tests and mirrors only: the address of a JSON document like GitHub's `releases/latest` |
 
 ## npm scripts
 

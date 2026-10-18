@@ -922,6 +922,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           return { scheduling: '/builder/sql/scheduling', scheduling_new: '/builder/sql/scheduling/new', scheduling_job: `/builder/sql/scheduling/job/${id}`,
             scheduling_history: '/builder/sql/scheduling/history', scheduling_purge: '/builder/sql/scheduling/history/purge' };
         })()),
+        // (sprint 109) the Workspace home and the App Builder at /builder/apps
+        workspace_home: '/builder/home',
+        app_builder: '/builder/apps',
         // (sprint 110) App Builder → Data Reporter: datasets, a new one (schema step), the HR dataset with a preview, import, a reporting application
         ...(await (async () => {
           const id = (await owner.one(`select id from meta.dataset where workspace_id = 1 and name = 'hr'`)).id;
