@@ -91,7 +91,12 @@ export async function saveState(s: Session) {
 export async function destroySession(reply: FastifyReply, s: Session, path: string) {
   await runtime.query('delete from meta.session where id = $1', [s.id]);
   reply.clearCookie(cookieName(s.app_id), { path });
+  for (const fn of endHooks) await fn(s.id).catch(() => {});
 }
+
+/** (sprint 107) Called when a session is destroyed (sign-out, a new sign-in): the worksheet's transactions end with it. */
+const endHooks: ((sessionId: string) => Promise<unknown>)[] = [];
+export const onSessionEnd = (fn: (sessionId: string) => Promise<unknown>) => endHooks.push(fn);
 
 /** Take (and clear) a one-shot flash message stored in session state. */
 export function takeFlash(s: Session, key = '__FLASH') {

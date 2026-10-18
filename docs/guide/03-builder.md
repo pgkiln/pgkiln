@@ -1389,11 +1389,41 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     (**Ctrl + F**, **Ctrl + H**) with a regular expression or exact case, **Go to line** (**Ctrl + G**), and
     **Ctrl + /** comments the selected lines out or in. The **?** menu lists every key; **F1** opens this help. The
     upload button opens Load Data for the navigator's schema.
-  - Each statement commits on its own. Statements run as the **owner connection** (an isolated workspace's
+  - Each statement commits on its own (**Autocommit**, like Database Actions). Statements run as the **owner connection** (an isolated workspace's
     developer login for its developers), on a connection of their own that is closed afterwards, so `SET ROLE` or
     `SET search_path` doesn't leak. **Run as** picks an application of your workspace instead: the statements then
     run as its database role, with `pgkiln.app_id` set, so its grants and row level security policies apply. Use
-    it to test policies; it is no security boundary, since the SQL could `RESET ROLE`.
+    it to test policies; it is no security boundary, since the SQL could `RESET ROLE`. A `BEGIN` typed in
+    Autocommit lasts for the run only: `begin; …; commit;` in one Run Script works, but a transaction still open at
+    the end of the run is rolled back, with a warning under *Notices*.
+  - (sprint 107) **Transaction mode** (more than Database Actions, which always autocommits): the toolbar's
+    **Commit** menu switches a worksheet tab between *Autocommit* and *Transaction*. In Transaction mode the tab's
+    statements (Run Statement and Run Script) stay in one transaction on a connection of its own until you press
+    **Commit** or **Rollback**: a SELECT in the same tab sees the changes, other sessions (and your other tabs) don't
+    until you commit. A badge shows *Transaction open*, the number of statements and its age; after a reload it shows
+    the server's real state, and leaving the page with an open transaction asks first.
+    - `COMMIT` or `ROLLBACK` typed in the editor end the transaction too (the next run starts a new one); a `BEGIN`
+      typed inside it only warns. Statements PostgreSQL refuses inside a transaction (`VACUUM`, `CREATE INDEX
+      CONCURRENTLY`, `ALTER SYSTEM`, `CREATE DATABASE`, …) are refused before they run, so they can't abort it.
+    - A statement that fails leaves the transaction **aborted** (*Transaction failed*): every later statement fails
+      until **Rollback**; Commit then rolls back as well, and says so.
+    - **Explain Plan** and **Autotrace** run inside the open transaction behind a savepoint: the plan sees its changes,
+      Autotrace's own changes are undone and the transaction stays as it was.
+    - **Run as**: the transaction keeps the role it started with. Changing *Run as* while it is open is refused:
+      commit or roll back first. `SET ROLE` typed in the editor reaches only the roles of the connection's login, as
+      in Autocommit.
+    - DDL reaches the **Change Log** when the transaction commits, never when it is rolled back. SQL History records
+      each statement as it runs.
+    - The transaction is **rolled back** when it is left without a run for `WORKSHEET_TXN_IDLE_SECONDS` (default
+      300, five minutes; the badge and the next run say so), when you close its worksheet tab or switch it to
+      Autocommit (after asking), sign out, switch workspaces, and when the server stops. The database ends the
+      connection itself a minute later (`idle_in_transaction_session_timeout`) should the server not.
+    - Each open transaction holds a database connection outside the pools: a developer has at most
+      `WORKSHEET_TXN_MAX_PER_DEVELOPER` (default 3) and the server `WORKSHEET_TXN_MAX` (default 20); past that a run in
+      Transaction mode is refused. A transaction belongs to the builder session, workspace and worksheet tab that
+      started it: another developer, or another sign-in of yours, never reaches it. It lives in the server's memory,
+      so with several pgkiln servers behind a load balancer the browser must stay on one (sticky sessions).
+    - Without JavaScript the worksheet runs in Autocommit only.
   - With script, the panes fill the window. Drag the splitters (or focus one and use the arrow keys) to resize
     them, hide the navigator, or use **Fullscreen** to see only the editor (**Escape** leaves). Sizes are
     remembered in the browser. Without script, the buttons post the form and the panes stack; Run Statement then
