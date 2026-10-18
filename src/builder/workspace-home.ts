@@ -35,7 +35,7 @@ async function timeframeOf(s: Session): Promise<Timeframe> {
 /** The workspace's numbers: top applications and users over the timeframe, and the summary counts. */
 export async function homeData(ws: number, tf: Timeframe) {
   const interval = TIMEFRAMES[tf].interval;
-  const [apps, users, counts] = await Promise.all([
+  const [apps, users, devs, counts] = await Promise.all([
     owner.query<{ id: number; name: string; views: number; users: number }>(
       `select * from (
          select a.id, a.name,
@@ -52,7 +52,17 @@ export async function homeData(ws: number, tf: Timeframe) {
         group by l.username order by views desc, lower(l.username) limit ${TOP}`,
       [ws, interval],
     ),
-    owner.one<{ apps: number; tables: number; developers: number; views: number }>(
+    // the workspace's developers (its members and the installation's administrators) as users of its applications
+    owner.query<{ username: string; views: number; apps: number }>(
+      `select l.username, count(*)::int as views, count(distinct l.app_id)::int as apps
+         from meta.app a join meta.activity_log l on l.app_id = a.id
+        where ${inWorkspaceSql('a', 1)} and l.event = 'page_view' and l.at > now() - $2::interval
+          and lower(l.username) in (select lower(m.username) from meta.workspace_member m where m.workspace_id = $1
+                                    union select lower(d.username) from meta.developer d where d.is_admin)
+        group by l.username order by views desc, lower(l.username) limit ${TOP}`,
+      [ws, interval],
+    ),
+    owner.one<{ apps: number; tables: number; developers: number; reporting: number }>(
       `select (select count(*) from meta.app a where ${inWorkspaceSql('a', 1)})::int as apps,
               -- the tables of the schemas this workspace's database roles may use (as Workspace utilization counts them)
               (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -62,12 +72,13 @@ export async function homeData(ws: number, tf: Timeframe) {
                                join pg_roles rl on rl.rolname = x.r
                               where has_schema_privilege(rl.oid, n.oid, 'USAGE')))::int as tables,
               (select count(*) from meta.workspace_member m where m.workspace_id = $1)::int as developers,
-              (select count(*) from meta.app a join meta.activity_log l on l.app_id = a.id
-                where ${inWorkspaceSql('a', 1)} and l.event = 'page_view' and l.at > now() - $2::interval)::int as views`,
-      [ws, interval],
+              -- reporting applications: those with a Data Reporter region
+              (select count(*) from meta.app a where ${inWorkspaceSql('a', 1)}
+                  and exists (select 1 from meta.page p join meta.region r on r.page_id = p.id where p.app_id = a.id and r.type = 'data_reporter'))::int as reporting`,
+      [ws],
     ),
   ]);
-  return { apps: apps.rows, users: users.rows, counts: counts! };
+  return { apps: apps.rows, users: users.rows, developers: devs.rows, counts: counts! };
 }
 
 /** The System message: the running version, and a newer release when the check is on. */
@@ -103,6 +114,20 @@ async function systemMessage(s: Session, admin: boolean) {
   return region('System message', html`${body}${admins}`, '', 'system-message');
 }
 
+/** (Instance settings page) the release check: on, off, or as the environment says. */
+export async function releaseCheckRegion(s: Session) {
+  const check = await releaseCheckEnabled();
+  const value = check.from === 'builder' ? (check.on ? 'on' : 'off') : 'default';
+  const opt = (v: string, label: string) => html`<option value="${v}"${v === value ? raw(' selected') : ''}>${label}</option>`;
+  return region('New versions', html`<form method="post" action="${HOME}/release-check">${csrf(s)}<input type="hidden" name="from" value="instance">
+      <div class="field"><label class="label" for="f_release_check">Check for new pgkiln releases</label>
+        <select id="f_release_check" name="check">${opt('default', `As the environment says (${process.env.PGKILN_RELEASE_CHECK ? 'PGKILN_RELEASE_CHECK' : 'off'})`)}${opt('on', 'On')}${opt('off', 'Off')}</select>
+        <small class="help">On: the server asks GitHub (<code>api.github.com</code>) once a day for the latest release and the Workspace home
+          announces a newer one with its release notes. Nothing about this installation is sent. In effect: <b>${check.on ? 'on' : 'off'}</b>.
+          Turn it off when the server may not reach the internet.</small></div>
+      <div class="buttons"><button class="btn">Save</button></div></form>`, '', 'release-check');
+}
+
 /** The workspace message, with a pencil (a <details> form, no script needed) for its administrators. */
 function workspaceMessage(s: Session, canEdit: boolean) {
   const w = s.workspace;
@@ -121,7 +146,10 @@ function workspaceMessage(s: Session, canEdit: boolean) {
     </div></section>`;
 }
 
-const GUIDE = 'https://github.com/pgkiln/pgkiln/blob/main';
+const REPO = 'https://github.com/pgkiln/pgkiln';
+const GUIDE = `${REPO}/blob/main`;
+/** The Data Reporter tool (sprint 110, WS-2): its card and link only when the route exists. */
+export const REPORTER = `${BASE}/reporter`;
 
 export async function workspaceHomeRoutes(app: FastifyInstance) {
   app.get(HOME, async (req: Req, reply) => {
@@ -131,62 +159,68 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
     const [tf, admin, canEdit] = await Promise.all([timeframeOf(s), isAdmin(s.username), s.workspace ? workspaceAdmin(s.username, s.workspace.id) : false]);
     const data = await homeData(ws, tf);
     const sql = s.workspace?.sql_workshop !== false;
+    const reporter = app.hasRoute({ method: 'GET', url: REPORTER });
     const card = (href: string, ic: string, title: string, text: string) =>
       html`<a class="ab-tile" href="${href}"><span class="ab-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`;
-    const stat = (n: number, label: string, href: string | null) =>
-      href ? html`<a class="stat" href="${href}"><b>${n}</b><span>${label}</span></a>` : html`<div class="stat"><b>${n}</b><span>${label}</span></div>`;
+    const stat = (n: number, one: string, many: string, href: string | null) => {
+      const inner = html`<b>${n}</b><span>${n === 1 ? one : many}</span>`;
+      return href ? html`<a class="stat" href="${href}">${inner}</a>` : html`<div class="stat">${inner}</div>`;
+    };
     const tfLabel = TIMEFRAMES[tf].label;
     const timeframe = html`<form method="post" action="${HOME}/timeframe" class="segmented wh-timeframe" role="group" aria-labelledby="wh-tf-label">${csrf(s)}
         <span class="sr-only" id="wh-tf-label">Reporting timeframe</span>
         ${(Object.keys(TIMEFRAMES) as Timeframe[]).map((k) => html`<button name="timeframe" value="${k}" aria-pressed="${k === tf ? 'true' : 'false'}">${TIMEFRAMES[k].label}</button>`)}</form>`;
+    const none = html`<p class="muted u-mt0">No page views in the last ${tfLabel}.</p>`;
+    const people = (rows: { username: string; views: number; apps: number }[], caption: string, who: string) => rows.length
+      ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">${caption}, last ${tfLabel}</caption>
+          <thead><tr><th scope="col">${who}</th><th scope="col" class="num">Page views</th><th scope="col" class="num">Applications</th></tr></thead>
+          <tbody>${rows.map((u) => html`<tr><td class="cell-break">${u.username}</td><td class="num">${u.views}</td><td class="num">${u.apps}</td></tr>`)}</tbody></table></div>`
+      : none;
     const topApps = data.apps.length
       ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">Top applications, last ${tfLabel}</caption>
           <thead><tr><th scope="col">Application</th><th scope="col" class="num">Page views</th><th scope="col" class="num">Users</th></tr></thead>
           <tbody>${data.apps.map((a) => html`<tr><td class="cell-break"><a href="${BASE}/apps/${a.id}">${a.name}</a></td><td class="num">${a.views}</td><td class="num">${a.users}</td></tr>`)}</tbody></table></div>`
-      : html`<p class="muted u-mt0">No page views in the last ${tfLabel}.</p>`;
-    const topUsers = data.users.length
-      ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">Top users, last ${tfLabel}</caption>
-          <thead><tr><th scope="col">User</th><th scope="col" class="num">Page views</th><th scope="col" class="num">Applications</th></tr></thead>
-          <tbody>${data.users.map((u) => html`<tr><td class="cell-break">${u.username}</td><td class="num">${u.views}</td><td class="num">${u.apps}</td></tr>`)}</tbody></table></div>`
-      : html`<p class="muted u-mt0">No page views in the last ${tfLabel}.</p>`;
+      : none;
+    const ext = (href: string, label: string) => html`<li><a href="${href}" target="_blank" rel="noopener">${label}${icon('chevron')}</a></li>`;
     const main = html`<div class="ab-home wh-home">
       <div class="ab-main">
         <h1 class="wh-title">${s.workspace ? html`Workspace ${s.workspace.name}` : 'Workspace home'}</h1>
         <nav class="ab-tiles ab-tiles-wrap wh-tools" aria-label="Tools">
-          ${card(BASE, 'grid', 'App Builder', 'Create, edit and run the applications of this workspace.')}
+          ${card(`${BASE}/apps`, 'grid', 'App Builder', 'Create, edit and run the applications of this workspace.')}
           ${sql ? card(`${BASE}/sql`, 'database', 'SQL Workshop', 'Run SQL, browse database objects, load data and build REST services.') : ''}
+          ${reporter ? card(REPORTER, 'chart', 'Data Reporter', 'Datasets and reports for business users, without building pages.') : ''}
           ${card(`${BASE}/gallery`, 'package', 'App Gallery', 'Sample and starter applications to install.')}
         </nav>
         ${workspaceMessage(s, canEdit)}
         <section class="wh-summary" aria-labelledby="wh-summary-title">
           <h2 id="wh-summary-title">Summary</h2>
           <div class="stat-grid wh-stats">
-            ${stat(data.counts.apps, data.counts.apps === 1 ? 'application' : 'applications', BASE)}
-            ${stat(data.counts.tables, data.counts.tables === 1 ? 'table' : 'tables', sql ? `${BASE}/sql/objects` : null)}
-            ${stat(data.counts.developers, data.counts.developers === 1 ? 'developer' : 'developers', `${BASE}/developers`)}
-            ${stat(data.counts.views, `page views (${tfLabel})`, `${BASE}/dashboard`)}
+            ${stat(data.counts.apps, 'application', 'applications', `${BASE}/apps`)}
+            ${stat(data.counts.tables, 'table', 'tables', sql ? `${BASE}/sql/objects` : null)}
+            ${stat(data.counts.developers, 'developer', 'developers', `${BASE}/developers`)}
+            ${stat(data.counts.reporting, 'reporting application', 'reporting applications', reporter ? REPORTER : null)}
           </div>
         </section>
         <div class="wh-top-head"><h2>Activity</h2>${timeframe}</div>
-        <div class="columns wh-top">
+        <div class="wh-top">
           ${region(`Top applications (${tfLabel})`, topApps)}
-          ${region(`Top users (${tfLabel})`, topUsers)}
+          ${region(`Top users (${tfLabel})`, people(data.users, 'Top users', 'User'))}
+          ${region(`Top developers (${tfLabel})`, people(data.developers, 'Top developers', 'Developer'))}
         </div>
-        <div class="u-spacer"></div>
         ${await systemMessage(s, admin)}
       </div>
-      <aside class="ab-side" aria-label="Learn more and resources">
+      <aside class="ab-side" aria-label="About and learn more">
         <section><h2>About</h2><p>The workspace home: its tools, how its applications are used and what is new. ${s.workspace ? html`You work in ${s.workspace.name}.` : ''}</p></section>
         <section><h2>Learn more</h2><ul class="ab-links ab-tasks">
-          <li><a href="${GUIDE}/docs/README.md" target="_blank" rel="noopener">The pgkiln guide${icon('chevron')}</a></li>
-          <li><a href="${GUIDE}/docs/guide/11-from-apex.md" target="_blank" rel="noopener">Coming from APEX${icon('chevron')}</a></li>
-          <li><a href="${GUIDE}/CHANGELOG.md" target="_blank" rel="noopener">What's new (changelog)${icon('chevron')}</a></li>
+          ${ext(`${GUIDE}/docs/README.md`, 'The pgkiln guide')}
+          ${ext(`${GUIDE}/docs/guide/10-tutorial.md`, 'Tutorial')}
+          ${ext(`${GUIDE}/docs/guide/11-from-apex.md`, 'Coming from APEX')}
+          ${ext(`${GUIDE}/CHANGELOG.md`, "What's new (changelog)")}
+          ${ext(`${REPO}/discussions`, 'Discussions')}
         </ul></section>
         <section><h2>Resources</h2><ul class="ab-links ab-tasks">
-          <li><a href="${GUIDE}/docs/guide/10-tutorial.md" target="_blank" rel="noopener">Tutorial${icon('chevron')}</a></li>
-          <li><a href="${GUIDE}/docs/guide/04-pages-and-regions.md#data_reporter-data-reporter" target="_blank" rel="noopener">Data Reporter regions${icon('chevron')}</a></li>
-          <li><a href="${GUIDE}/docs/guide/20-ai-agents.md" target="_blank" rel="noopener">AI coding agents (MCP)${icon('chevron')}</a></li>
-          <li><a href="https://github.com/pgkiln/pgkiln/issues" target="_blank" rel="noopener">Report a problem${icon('chevron')}</a></li>
+          ${ext(`${GUIDE}/docs/guide/20-ai-agents.md`, 'AI coding agents (MCP)')}
+          ${ext(`${REPO}/issues`, 'Report a problem')}
         </ul></section>
       </aside>
     </div>`;
@@ -228,20 +262,23 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators change the release check.');
     const v = req.body?.check;
-    if (v === 'on' || v === 'off') {
-      await setReleaseCheck(v);
+    // from the Instance settings page (back there) or the Workspace home
+    const to = req.body?.from === 'instance' ? `${BASE}/instance#release-check` : `${HOME}#system-message`;
+    if (v === 'on' || v === 'off' || v === 'default') {
+      await setReleaseCheck(v === 'default' ? '' : v);
       await logActivity({ appId: null, username: s.username, event: 'instance_settings', ip: clientIp(req), detail: `release check ${v}` });
-      if (v === 'on') await refreshRelease(true);
-      flash(s, v === 'on' ? 'The server checks for new versions once a day.' : 'The check for new versions is off.');
+      const now = await releaseCheckEnabled();
+      if (now.on) await refreshRelease(true);
+      flash(s, now.on ? 'The server checks for new versions once a day.' : 'The check for new versions is off.');
     } else if (v === 'now') {
       if (!(await releaseCheckEnabled()).on) {
         flash(s, 'The check for new versions is off.', 'error');
-        return back(reply, s, `${HOME}#system-message`);
+        return back(reply, s, to);
       }
       await refreshRelease(true);
       const c = cachedRelease();
       flash(s, c?.error ? `The check failed (${c.error}).` : 'Checked for a new version.', c?.error ? 'error' : 'ok');
     } else return reply.code(400).send('Unknown action');
-    return back(reply, s, `${HOME}#system-message`);
+    return back(reply, s, to);
   });
 }

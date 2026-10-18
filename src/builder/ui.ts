@@ -118,7 +118,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       <a class="rail-logo" href="${BASE}/home" title="pgkiln Builder">${brandMark()}<span class="sr-only">pgkiln Builder home</span></a>
       <ul class="rail-list">
         ${rail('home', `${BASE}/home`, 'home', 'Home')}
-        ${rail('apps', BASE, 'builder', 'App Builder')}
+        ${rail('apps', `${BASE}/apps`, 'builder', 'App Builder')}
         ${s.workspace?.sql_workshop === false ? '' : rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
         ${rail('gallery', `${BASE}/gallery`, 'package', 'App Gallery')}
         ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}

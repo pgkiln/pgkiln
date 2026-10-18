@@ -36,6 +36,14 @@ function releaseUrl() {
   return u && /^https?:\/\/[^\s]+$/.test(u) && URL.canParse(u) ? u : RELEASE_API;
 }
 
+/**
+ * Never ask the real GitHub from a test run (node --test sets NODE_TEST_CONTEXT in its test processes; CI has no
+ * outbound network guarantee): there only a PGKILN_RELEASE_URL (a local mock) is asked.
+ */
+function networkAllowed() {
+  return !process.env.NODE_TEST_CONTEXT || !!process.env.PGKILN_RELEASE_URL;
+}
+
 /** Is the check on? The builder's setting, else the environment variable; off by default. */
 export async function releaseCheckEnabled(): Promise<{ on: boolean; from: 'builder' | 'environment' | 'default' }> {
   const row = await owner.one<{ value: string }>(`select value from meta.setting where name = 'release_check'`).catch(() => null);
@@ -105,7 +113,7 @@ async function fetchLatest(): Promise<Release | null> {
  * concurrent calls share one request.
  */
 export async function refreshRelease(force = false): Promise<void> {
-  if (!(await releaseCheckEnabled()).on) return;
+  if (!networkAllowed() || !(await releaseCheckEnabled()).on) return;
   if (!force && cache && Date.now() - cache.at < (cache.error ? RETRY_MS : FRESH_MS)) return;
   inflight ??= fetchLatest()
     .then((release) => {

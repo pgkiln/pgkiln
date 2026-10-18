@@ -49,7 +49,7 @@ export async function exportWorkspace(workspaceId: number, parts: readonly Part[
   const want = (p: Part) => parts.includes(p);
   const doc: Json = { format: WORKSPACE_FORMAT, exported_at: new Date().toISOString(), pgkiln: meta.version ?? null, exported_by: meta.by ?? null, workspace: w.name };
   if (want('settings'))
-    doc.settings = { description: w.description, message: w.message, banner_label: w.banner_label, banner_color: w.banner_color, sql_workshop: w.sql_workshop, rest_services: w.rest_services };
+    doc.settings = { description: w.description, message: w.message, banner_label: w.banner_label, banner_color: w.banner_color, sql_workshop: w.sql_workshop, rest_services: w.rest_services, builder_home: w.builder_home ?? null };
   if (want('developers'))
     doc.developers = (await owner.query('select username, is_admin as admin from meta.workspace_member where workspace_id = $1 order by username', [workspaceId])).rows;
   if (want('app_groups'))
@@ -126,9 +126,12 @@ export async function importWorkspace(c: Client, workspaceId: number, doc: unkno
     const s = d.settings as Json;
     await c.query(
       `update meta.workspace set description = $2, message = $3, banner_label = $4, banner_color = coalesce($5, banner_color),
-              sql_workshop = coalesce($6, sql_workshop), rest_services = coalesce($7, rest_services) where id = $1`,
+              sql_workshop = coalesce($6, sql_workshop), rest_services = coalesce($7, rest_services),
+              builder_home = case when $8::boolean then $9 else builder_home end where id = $1`,
       [workspaceId, text(s.description, 2000), text(s.message, 2000), text(s.banner_label, 40), BANNER_COLORS.includes(s.banner_color) ? s.banner_color : null,
-        typeof s.sql_workshop === 'boolean' ? s.sql_workshop : null, typeof s.rest_services === 'boolean' ? s.rest_services : null],
+        typeof s.sql_workshop === 'boolean' ? s.sql_workshop : null, typeof s.rest_services === 'boolean' ? s.rest_services : null,
+        // (119) what /builder opens; older files have no key and keep the current value
+        'builder_home' in s, s.builder_home === 'home' ? 'home' : null],
     );
     r.lines.push('Settings: description, message, banner and preferences set from the file.');
   }
