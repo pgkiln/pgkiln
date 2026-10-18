@@ -7224,7 +7224,7 @@ describe('sprint 61 builder screens', () => {
     const b = new Browser();
     await b.get('/builder/login');
     const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin', remember: '1', next: '//evil.example/x' });
-    assert.equal(res.headers.location, '/builder');
+    assert.equal(res.headers.location, '/builder/home');
     const cookie = String(([] as string[]).concat(res.headers['set-cookie'] ?? []).find((c) => c.startsWith('pgkiln_bsignin=')));
     assert.match(cookie, /HttpOnly/i);
     assert.match(cookie, /Path=\/builder/);

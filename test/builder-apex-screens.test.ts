@@ -98,7 +98,7 @@ describe('the sign-in page', () => {
     for (const next of ['https://evil.example/', '//evil.example', '/a/hr/1', '/builder/../a']) {
       const c = new Browser(app);
       res = await signIn(c, DEV, DEV_PW, { next });
-      assert.equal(res.headers.location, '/builder', next);
+      assert.equal(res.headers.location, '/builder/home', next);
     }
   });
 });
