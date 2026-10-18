@@ -9,6 +9,8 @@
      --accent ≥ 4.8:1 on every surface, --muted ≥ 5.6:1, in both themes
    - elevation: --shadow-xs … --shadow-lg; radius: --radius-sm / --radius / --radius-lg
    - type: --fs-xs … --fs-xl; motion: --ease and --dur (none under prefers-reduced-motion)
+   - code (sprint 108): --ce-* for public/code-editor.js and read-only <pre data-code-view>; every
+     syntax colour ≥ 4.5:1 on --ce-bg in both themes (test/e2e/code-editor.test.ts checks it)
    The light set first, the dark set for data-theme="dark" and for "System" when
    the OS prefers dark. The chrome (rail, toolbar, status bar) is dark in both
    themes (the same colours), a shade deeper than the page in the dark one. */

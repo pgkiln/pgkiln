@@ -338,4 +338,57 @@ describe('code editor', () => {
     assert.ok(await ce.locator('.ce-check').isVisible());
     await context.close();
   });
+
+  // (sprint 108) the syntax colours are tokens of the builder's theme: every token kind reads at WCAG AA (4.5:1) on
+  // the editor's background, in the light and the dark theme; the caret's line is marked; read-only DDL is highlighted
+  test('syntax colours: AA contrast in both themes, the current line, highlighted DDL', async () => {
+    const SAMPLE = `-- a comment\nselect e.ename, count(*) as "Total", 42 from hr.emp e\n where e.deptno = :P2_DEPTNO and e.job <> 'CLERK'::text;`;
+    // a string, not a function: tsx would wrap the helpers in __name(), which the page doesn't have
+    const CONTRAST = `(([sel, bgSel]) => {
+      const rgb = (c) => (c.match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = (c) => {
+        const [r, g, b] = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const bg = lum(rgb(getComputedStyle(document.querySelector(bgSel)).backgroundColor));
+      const out = {};
+      for (const el of document.querySelectorAll(sel)) {
+        const kind = [...el.classList].find((c) => c.startsWith('t-') && c !== 't-match');
+        const fg = lum(rgb(getComputedStyle(el).color));
+        out[kind] = Math.min(out[kind] ?? 99, (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05));
+      }
+      return out;
+    })`;
+    const contrast = (page: Page, sel: string, bgSel: string): Promise<Record<string, number>> =>
+      page.evaluate(`${CONTRAST}(${JSON.stringify([sel, bgSel])})`);
+    for (const theme of ['light', 'dark'] as const) {
+      const { context, page } = await builder();
+      await context.addCookies([{ name: 'pgkiln_btheme', value: theme, url: `${base}/builder` }]);
+      await page.goto(`${base}/builder/pages/${region.page_id}?c=region-${region.id}`);
+      await page.waitForSelector('.ce #f_region_source');
+      await page.fill('#f_region_source', SAMPLE);
+      await page.waitForFunction(() => document.querySelector('.ce:has(#f_region_source) .ce-code .t-com'));
+      const ratios = await contrast(page, '.ce:has(#f_region_source) .ce-code span', '.ce:has(#f_region_source)');
+      for (const kind of ['t-kw', 't-fn', 't-str', 't-num', 't-com', 't-bind', 't-qid', 't-op', 't-id', 't-type'])
+        assert.ok(ratios[kind] >= 4.5, `${theme}: ${kind} at ${ratios[kind]?.toFixed(2)}:1 (${JSON.stringify(ratios)})`);
+      // the caret's line: a band and its number
+      await page.focus('#f_region_source');
+      await page.keyboard.press('Control+Home');
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      const cur = page.locator('.ce:has(#f_region_source) .ce-cur-num');
+      await cur.waitFor({ state: 'visible' });
+      assert.equal(await cur.textContent(), '3');
+      assert.ok(await page.locator('.ce:has(#f_region_source) .ce-cur').isVisible());
+      // read-only DDL in the Object Browser, with the same colours
+      await page.goto(`${base}/builder/sql/objects?schema=hr&k=table&o=hr.emp&tab=ddl`);
+      const ddl = page.locator('pre.ce-view[data-code-view=sql]');
+      assert.ok(await ddl.locator('.t-kw').count() > 0, 'the DDL is highlighted');
+      assert.match(await ddl.textContent() ?? '', /create table/i, 'and keeps its text');
+      const view = await contrast(page, 'pre.ce-view span', 'pre.ce-view');
+      for (const [kind, r] of Object.entries(view)) assert.ok(r >= 4.5, `${theme} DDL: ${kind} at ${r.toFixed(2)}:1`);
+      assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+      await context.close();
+    }
+  });
 });
