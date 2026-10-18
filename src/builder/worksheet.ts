@@ -516,7 +516,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
         </div>
         <p class="ws-runs-as muted small">Runs as ${runsAs}${searchSchema ? html`; <code>${searchSchema}</code> first in the search path (<a href="${BASE}/sql">change</a>)` : ''}. Each statement commits on its own.</p>
         ${fileError ? html`<p class="alert alert-error ws-file-error" role="alert">${fileError}</p>` : ''}
-        <div class="ws-wtabs" role="tablist" aria-label="Worksheets" hidden></div>
+        <div class="ws-wtabs" role="group" aria-label="Worksheets" hidden></div>
         <div class="ws-findbar" hidden>
           <label class="sr-only" for="ws-find-q">Find</label><input id="ws-find-q" type="search" placeholder="Find" autocomplete="off" data-ws-find-q>
           <label class="sr-only" for="ws-find-r">Replace with</label><input id="ws-find-r" placeholder="Replace with" autocomplete="off" data-ws-find-r>

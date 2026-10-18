@@ -15,6 +15,8 @@
 //   - "Check" plans the SQL like the Advisor (POST /builder/code/check)
 //   - screen readers keep the plain textarea; the list is announced through
 //     aria-activedescendant and a polite live region
+//   - (sprint 108) read-only code, <pre data-code-view="sql|plpgsql|json|html">, is
+//     highlighted with the same lexer and colours (DDL, generated SQL)
 //
 // Strict CSP: no inline styles; geometry is set through the CSSOM. Suggestions
 // and highlighted text are built as text nodes, never parsed as HTML.
@@ -437,15 +439,20 @@
       gutter.setAttribute('aria-hidden', 'true');
       const nums = document.createElement('div');
       nums.className = 'ce-nums';
-      gutter.append(nums);
+      // the caret's line: a band behind the text, its number over the gutter's
+      const curNum = document.createElement('div');
+      curNum.className = 'ce-cur-num';
+      gutter.append(nums, curNum);
       const main = document.createElement('div');
       main.className = 'ce-main';
       const hl = document.createElement('div');
       hl.className = 'ce-hl';
       hl.setAttribute('aria-hidden', 'true');
+      const cur = document.createElement('div');
+      cur.className = 'ce-cur';
       const inner = document.createElement('pre');
       inner.className = 'ce-code';
-      hl.append(inner);
+      hl.append(cur, inner);
       ta.parentNode.insertBefore(wrap, ta);
       main.append(hl, ta);
       wrap.append(gutter, main);
@@ -502,7 +509,7 @@
       ta.setAttribute('aria-autocomplete', 'list');
       ta.setAttribute('aria-haspopup', 'listbox');
       ta.setAttribute('aria-controls', list.id);
-      Object.assign(this, { wrap, gutter, nums, main, hl, inner, list, bar, langEl: lang, hint, pos, msg, check, live, suggest });
+      Object.assign(this, { wrap, gutter, nums, cur, curNum, main, hl, inner, list, bar, langEl: lang, hint, pos, msg, check, live, suggest });
       this.applyLang();
     }
 
@@ -661,7 +668,25 @@
         this.digits = digits;
         this.gutter.style.setProperty('--ce-digits', String(Math.max(2, digits)));
       }
+      this.placeLine();
       if (this.pop) this.place();
+    }
+
+    /** The current-line band and number: on the caret's line; hidden while a selection spans lines. */
+    placeLine() {
+      const ta = this.ta;
+      const lines = this.lineStarts;
+      const a = lowerBound(lines, ta.selectionStart + 1);
+      const b = lowerBound(lines, ta.selectionEnd + 1);
+      const hide = a !== b;
+      this.cur.hidden = hide;
+      this.curNum.hidden = hide;
+      if (hide) return;
+      const { lh, padTop } = this.metrics();
+      const y = padTop + (a - 1) * lh - ta.scrollTop;
+      this.cur.style.transform = `translateY(${y}px)`;
+      this.curNum.style.transform = `translateY(${y}px)`;
+      this.curNum.textContent = String(a);
     }
 
     tokenAt(off) {
@@ -703,6 +728,7 @@
       this.sync();
       if (this.pop && this.ta.selectionStart !== this.ta.selectionEnd) this.close();
       if (this.updateMatch()) this.schedule(true);
+      else this.placeLine();
       const c = this.ta.selectionStart;
       const line = lowerBound(this.lineStarts, c + 1);
       this.pos.textContent = `Ln ${line}, Col ${c - this.lineStarts[line - 1] + 1}`;
@@ -997,11 +1023,40 @@
     return lo;
   }
 
+  /** Highlight a read-only <pre data-code-view>: its text, as spans (text nodes only). Long ones stay plain. */
+  function colorize(pre) {
+    const lang = pre.dataset.codeView in LANG_LABEL ? pre.dataset.codeView : 'text';
+    pre.classList.add('ce-view');
+    const text = pre.textContent;
+    if (lang === 'text' || text.length > 200000) return;
+    const { T, S, E } = lex(lang, text);
+    const frag = document.createDocumentFragment();
+    let pos = 0;
+    for (let k = 0; k < T.length; k++) {
+      const st = Math.max(S[k], pos);
+      if (E[k] <= st) continue;
+      if (st > pos) frag.append(text.slice(pos, st));
+      const span = document.createElement('span');
+      span.className = `t-${T[k]}`;
+      span.textContent = text.slice(st, E[k]);
+      frag.append(span);
+      pos = E[k];
+    }
+    if (pos < text.length) frag.append(text.slice(pos));
+    pre.replaceChildren(frag);
+  }
+
   const editors = new WeakMap();
+  const viewed = new WeakSet();
   function enhance(root) {
     for (const ta of (root || document).querySelectorAll('textarea[data-code]')) {
       if (editors.has(ta) || ta.closest('.ce')) continue;
       editors.set(ta, new Editor(ta));
+    }
+    for (const pre of (root || document).querySelectorAll('pre[data-code-view]')) {
+      if (viewed.has(pre)) continue;
+      viewed.add(pre);
+      colorize(pre);
     }
   }
   window.pgkilnCodeEditor = { enhance, editorOf: (ta) => editors.get(ta) };

@@ -9,6 +9,8 @@
      --accent ≥ 4.8:1 on every surface, --muted ≥ 5.6:1, in both themes
    - elevation: --shadow-xs … --shadow-lg; radius: --radius-sm / --radius / --radius-lg
    - type: --fs-xs … --fs-xl; motion: --ease and --dur (none under prefers-reduced-motion)
+   - code (sprint 108): --ce-* for public/code-editor.js and read-only <pre data-code-view>; every
+     syntax colour ≥ 4.5:1 on --ce-bg in both themes (test/e2e/code-editor.test.ts checks it)
    The light set first, the dark set for data-theme="dark" and for "System" when
    the OS prefers dark. The chrome (rail, toolbar, status bar) is dark in both
    themes (the same colours), a shade deeper than the page in the dark one. */
@@ -59,10 +61,31 @@
   --block: #ffffff;
   --block-head: #f7f5f2;
   --code-bg: #fbfaf8;
+  --field-border: var(--border-strong);
+
+  /* code editor (sprint 108, public/code-editor.js): every token colour is at least 4.5:1 on --ce-bg
+     (keywords take the ember; the others cool hues so they stay apart) */
   --ce-bg: #fdfcfb;
   --ce-gutter: #f5f3f0;
   --ce-gutter-text: #6b645d;
-  --field-border: var(--border-strong);
+  --ce-gutter-active: #1c1917;
+  --ce-text: #1c1917;
+  --ce-kw: #b23a0a;
+  --ce-type: #0e6b66;
+  --ce-fn: #2457a6;
+  --ce-str: #3a7516;
+  --ce-num: #8a3ea0;
+  --ce-com: #736c66;
+  --ce-bind: #b02a5c;
+  --ce-qid: #80590a;
+  --ce-op: #5c5650;
+  --ce-tag: #2457a6;
+  --ce-attr: #b23a0a;
+  --ce-err: #c0262d;
+  --ce-match: rgb(234 88 12 / 16%);
+  --ce-match-ring: rgb(194 65 12 / 55%);
+  --ce-line: rgb(28 25 23 / 4.5%);
+  --ce-select: rgb(234 88 12 / 20%);
 
   /* shape, elevation, type, motion */
   --radius-sm: 6px;
@@ -91,7 +114,10 @@
     --bg: #181715; --surface: #1f1d1b; --surface-2: #242220; --surface-3: #2d2b28; --text: #edebe8; --muted: #a8a19a;
     --border: #312e2b; --border-strong: #423e39; --accent: #ff9152; --accent-text: #1a0b03; --accent-soft: #3a1f12; --ring: rgb(255 145 82 / 30%); --sel-bg: #4a2816; --sel-bar: #ff9152;
     --gold: #ff9152; --canvas: #151412; --canvas-dot: #2a2825; --block: #222120; --block-head: #292725; --code-bg: #1a1917; --warn: #e0a740;
-    --ce-bg: #1a1917; --ce-gutter: #1f1d1b; --ce-gutter-text: #8f8880;
+    --ce-bg: #1a1917; --ce-gutter: #1f1d1b; --ce-gutter-text: #8f8880; --ce-gutter-active: #e9e6e3; --ce-text: #e9e6e3;
+    --ce-kw: #ff9152; --ce-type: #5cc8bd; --ce-fn: #8ab4ff; --ce-str: #a5d68a; --ce-num: #d4a8ff; --ce-com: #938b83; --ce-bind: #ff8fb8;
+    --ce-qid: #e6c26a; --ce-op: #b8b0a8; --ce-tag: #8ab4ff; --ce-attr: #ff9152; --ce-err: #ff7a70;
+    --ce-match: rgb(255 145 82 / 22%); --ce-match-ring: rgb(255 145 82 / 60%); --ce-line: rgb(255 255 255 / 4.5%); --ce-select: rgb(255 145 82 / 28%);
     --shadow-xs: 0 1px 1px rgb(0 0 0 / 30%);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 3%);
     --shadow-md: 0 4px 16px -2px rgb(0 0 0 / 50%), inset 0 1px 0 rgb(255 255 255 / 4%);
@@ -105,7 +131,10 @@
   --bg: #181715; --surface: #1f1d1b; --surface-2: #242220; --surface-3: #2d2b28; --text: #edebe8; --muted: #a8a19a;
   --border: #312e2b; --border-strong: #423e39; --accent: #ff9152; --accent-text: #1a0b03; --accent-soft: #3a1f12; --ring: rgb(255 145 82 / 30%); --sel-bg: #4a2816; --sel-bar: #ff9152;
   --gold: #ff9152; --canvas: #151412; --canvas-dot: #2a2825; --block: #222120; --block-head: #292725; --code-bg: #1a1917; --warn: #e0a740;
-  --ce-bg: #1a1917; --ce-gutter: #1f1d1b; --ce-gutter-text: #8f8880;
+  --ce-bg: #1a1917; --ce-gutter: #1f1d1b; --ce-gutter-text: #8f8880; --ce-gutter-active: #e9e6e3; --ce-text: #e9e6e3;
+  --ce-kw: #ff9152; --ce-type: #5cc8bd; --ce-fn: #8ab4ff; --ce-str: #a5d68a; --ce-num: #d4a8ff; --ce-com: #938b83; --ce-bind: #ff8fb8;
+  --ce-qid: #e6c26a; --ce-op: #b8b0a8; --ce-tag: #8ab4ff; --ce-attr: #ff9152; --ce-err: #ff7a70;
+  --ce-match: rgb(255 145 82 / 22%); --ce-match-ring: rgb(255 145 82 / 60%); --ce-line: rgb(255 255 255 / 4.5%); --ce-select: rgb(255 145 82 / 28%);
   --shadow-xs: 0 1px 1px rgb(0 0 0 / 30%);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 3%);
   --shadow-md: 0 4px 16px -2px rgb(0 0 0 / 50%), inset 0 1px 0 rgb(255 255 255 / 4%);
@@ -1301,3 +1330,32 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .rm-main { display: grid; gap: 1rem; min-width: 0; }
 .rm-tree .tree code { font-size: 0.75rem; min-width: 3.4rem; }
 @media (max-width: 760px) { .rm-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* ------------------------------------------------------------ page polish (sprint 108): Object Browser, wizards, SQL Monitor */
+/* Object Browser: the tree in the builder's type scale, the selected object with the ember bar */
+.ob-folder .tree { font-size: var(--fs-base); }
+.ob-folder .tree a { padding-block: 0.28rem; }
+.ob-folder .tree a[aria-current="page"] { background: var(--sel-bg); color: var(--sel-text); box-shadow: inset 2px 0 0 var(--sel-bar); font-weight: 600; }
+.ob-folder > summary { border-radius: var(--radius-sm); }
+.ob-folder > summary:hover { background: var(--surface-3); }
+.ob-folder > summary .icon { color: var(--muted); }
+/* wizards: the icon picker looks like a select; a colour field is a swatch, not a bar */
+.ide .icon-picker > summary { border-color: var(--field-border); border-radius: var(--radius-sm); box-shadow: var(--shadow-xs); transition: border-color var(--dur) var(--ease); }
+.ide .icon-picker > summary:hover { border-color: color-mix(in srgb, var(--text) 22%, var(--border-strong)); }
+.ide .icon-picker > summary::after {
+  content: ""; width: 14px; height: 14px; margin-left: 0.15rem;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23857d75' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E") center / 14px no-repeat;
+}
+.ide .icon-picker[open] > summary { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.ide .icon-picker-panel { border-color: var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-md); background: var(--surface); }
+.ide .field input[type=color]:not(.swatch) {
+  width: 4.5rem; height: 34px; min-height: 0; padding: 3px; cursor: pointer;
+  border: 1px solid var(--field-border); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-xs);
+}
+.ide .field input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+.ide .field input[type=color]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.ide .field input[type=color]::-moz-color-swatch { border: 0; border-radius: 4px; }
+/* SQL Monitor: the refresh controls on one row */
+.sm-toolbar:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.25rem 0 0.75rem; }
+.sm-toolbar select { width: auto; }
+.sm-toolbar [aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }

@@ -130,7 +130,7 @@ export async function sqlChartRoutes(app: FastifyInstance) {
         <div class="field"><label class="label" for="ch-name">Name</label><input id="ch-name" name="name" value="${ch.name}" maxlength="120" required></div>
         ${controls}
         <label class="check"><input type="checkbox" name="on_dashboard"${ch.on_dashboard ? raw(' checked') : ''}> On the Charts dashboard</label>
-        <details class="u-mt1"><summary>The query</summary><pre class="source">${ch.sql}</pre></details>
+        <details class="u-mt1"><summary>The query</summary><pre class="source" data-code-view="sql" tabindex="0" aria-label="The query">${ch.sql}</pre></details>
         <div class="buttons"><button class="btn btn-hot" name="action" value="save">${icon('save')} Save</button>
           <button class="btn" name="action" value="worksheet">${icon('code')} Open in the worksheet</button>
           <button class="btn btn-danger" name="action" value="delete" data-confirm="Delete the chart ${ch.name}?">${icon('trash')} Delete</button></div>

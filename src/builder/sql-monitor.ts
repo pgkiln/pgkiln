@@ -369,7 +369,7 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     const main = html`<h1 class="u-mb1">Statement</h1>
       <div class="stat-grid u-mb1">${tile('Calls', num(calls))}${tile('Total ms', num(total))}${tile('Mean ms', num(calls ? total / calls : 0))}${tile('Rows', num(sum('rows')))}
         ${tile('Blocks hit', num(sum('hit')))}${tile('Blocks read', num(sum('read')))}${tile('Temp blocks written', num(sum('temp_written')))}</div>
-      ${region('Text', html`<pre class="source u-break sm-sql">${sql}</pre>
+      ${region('Text', html`<pre class="source u-break sm-sql" data-code-view="sql" tabindex="0" aria-label="SQL text">${sql}</pre>
         <div class="buttons"><form method="post" action="${URL_BASE}/statements/${queryid}/worksheet">${csrf(s)}<button class="btn">${icon('code')} Open in worksheet</button></form>
           <a class="btn" href="${URL_BASE}/top">Back to Top SQL</a></div>`)}
       ${region('By role', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Role</th><th class="num">Calls</th><th class="num">Total ms</th><th class="num">Mean ms</th><th class="num">Std dev ms</th><th class="num">Min ms</th><th class="num">Max ms</th><th class="num">Rows</th><th class="num">Hit</th><th class="num">Read</th><th class="num">Temp read</th><th class="num">Temp written</th></tr></thead>

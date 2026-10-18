@@ -69,7 +69,7 @@ async function listPage(s: Session, q: Record<string, unknown>) {
       ${list.map((c) => html`<tr>
         <td data-label="#">${c.seq}</td>
         <td data-label="Change set" class="wrap-anywhere"><details><summary><code>${flywayName(c)}</code>${c.object_name ? html` <span class="muted small">${c.object_name}</span>` : ''}</summary>
-          <pre class="source wrap-pre">${c.sql}</pre>
+          <pre class="source wrap-pre" data-code-view="sql" tabindex="0" aria-label="SQL">${c.sql}</pre>
           <form method="post" action="${CHANGES}/${c.id}" class="search u-mwnone">${csrf(s)}
             <div class="field"><label class="label" for="f_name_${c.id}">Name</label><input id="f_name_${c.id}" name="name" value="${c.name}" pattern="[a-z0-9][a-z0-9_]{0,59}" required></div>
             <button class="btn btn-sm u-selfend">Rename</button></form>
