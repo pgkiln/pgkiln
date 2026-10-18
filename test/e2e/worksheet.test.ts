@@ -348,4 +348,81 @@ describe('SQL Worksheet', () => {
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
+
+  test('(sprint 107) transaction mode: Ctrl+Enter keeps the UPDATE open, the badge, reload, Rollback, closing a tab, a phone', async () => {
+    const { openTxnCount } = await import('../../src/worksheet-txn.ts');
+    const { context, page } = await builder();
+    const dialogs: string[] = [];
+    page.on('dialog', (d) => { dialogs.push(d.type()); void d.accept(); });
+    await page.goto(`${base}/builder/sql/worksheet?new=1`);
+    const badge = page.locator('[data-ws-txn-badge]');
+    assert.ok(!(await page.locator('[data-ws-txn-commit]').isVisible()), 'Autocommit: no Commit button');
+    await page.selectOption('[data-ws-txn-mode]', '1');
+    assert.ok(await page.locator('[data-ws-txn-commit]').isDisabled());
+    assert.equal(await badge.textContent(), 'No open transaction');
+    assert.match(await page.locator('[data-ws-commit-note]').textContent() ?? '', /stay in one transaction until Commit or Rollback/);
+    await setEditor(page, `update ${S}.dept set name = 'Sales 107' where id = 1`, 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.equal(await badge.textContent(), 'Transaction open · 1 statement · under a minute');
+    assert.equal((await owner.one(`select name from ${S}.dept where id = 1`))!.name, 'Sales', 'another session does not see it');
+    await setEditor(page, `select name from ${S}.dept where id = 1`, 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.equal(await page.locator('#ws-pane-result td:not(.ws-rownum)').first().textContent(), 'Sales 107');
+    assert.equal(dialogs.length, 0, 'a run is not leaving the page');
+    // opening the page again (a reload would post the run again): the badge is the server's state; leaving asked first
+    await page.goto(`${base}/builder/sql/worksheet`);
+    assert.deepEqual(dialogs, ['beforeunload']);
+    dialogs.length = 0;
+    assert.equal(await page.locator('[data-ws-txn-mode]').inputValue(), '1');
+    await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent?.startsWith('Transaction open · 2 statements'));
+    assert.ok(await page.locator('[data-ws-txn-commit]').isEnabled());
+    await Promise.all([page.waitForNavigation(), page.locator('[data-ws-txn-rollback]').click()]);
+    assert.match(await page.locator('.ws-txn-alert').textContent() ?? '', /Rolled back \(2 statements undone\)/);
+    assert.equal(await badge.textContent(), 'No open transaction');
+    // closing the worksheet tab rolls its transaction back (after asking)
+    await setEditor(page, `update ${S}.dept set name = 'x' where id = 2`, 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.equal(openTxnCount('admin'), 1);
+    await page.locator('.ws-wtab-new').click();
+    assert.equal(await badge.textContent(), 'No open transaction', 'a new tab has none');
+    await page.locator('.ws-wtabs [role=tab]').first().click();
+    await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent?.startsWith('Transaction open'));
+    await page.locator('[data-ws-wclose]').first().click();
+    await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent === 'No open transaction');
+    for (let i = 0; i < 50 && openTxnCount('admin'); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(openTxnCount('admin'), 0);
+    assert.deepEqual(dialogs, ['confirm']);
+    // leaving the page with an open transaction asks first
+    await page.selectOption('[data-ws-txn-mode]', '1');
+    await setEditor(page, `select 1`, 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.equal(openTxnCount('admin'), 1);
+    // switching to Autocommit rolls it back (after asking)
+    await page.selectOption('[data-ws-txn-mode]', '');
+    await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent === 'No open transaction');
+    assert.equal(openTxnCount('admin'), 0);
+    await page.selectOption('[data-ws-txn-mode]', '1');
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    dialogs.length = 0;
+    await page.close({ runBeforeUnload: true });
+    for (let i = 0; i < 50 && !dialogs.length; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(dialogs, ['beforeunload']);
+    const { endAllTxns } = await import('../../src/worksheet-txn.ts');
+    await endAllTxns();
+    assert.equal((await owner.one(`select string_agg(name, ',' order by id) as n from ${S}.dept`))!.n, 'Sales,Research');
+    await context.close();
+    // a phone: the toolbar wraps, nothing overflows
+    const phone = await builder({ width: 390, height: 844 });
+    await phone.page.goto(`${base}/builder/sql/worksheet?new=1`);
+    await phone.page.selectOption('[data-ws-txn-mode]', '1');
+    await setEditor(phone.page, 'select 1', 0);
+    await Promise.all([phone.page.waitForNavigation(), phone.page.keyboard.press('Control+Enter')]);
+    assert.ok(await phone.page.locator('[data-ws-txn-badge]').isVisible());
+    const overflow = await phone.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `no horizontal overflow (${overflow}px)`);
+    assert.deepEqual(await phone.page.evaluate(() => (window as any).__csp), []);
+    await phone.page.close();
+    await endAllTxns();
+    await phone.context.close();
+  });
 });

@@ -169,6 +169,9 @@ which is read at startup; real environment variables take precedence.
 | `SAMPLE_DATA_STATEMENT_TIMEOUT` | `5min` | Statement timeout of SQL Workshop → Sample Data (each insert of a preview or a run) |
 | `SAMPLE_DATA_MAX_ROWS` | `100000` | Most rows one Sample Data run generates (all tables together) |
 | `UNLOAD_STATEMENT_TIMEOUT` | `5min` | Statement timeout of SQL Workshop → Unload Data (each statement: the cursor and every batch of rows) |
+| `WORKSHEET_TXN_IDLE_SECONDS` | `300` | SQL Worksheet transaction mode: seconds without a run before an open transaction is rolled back (10 to 86400) |
+| `WORKSHEET_TXN_MAX_PER_DEVELOPER` | `3` | Open worksheet transactions per developer (each holds a database connection) |
+| `WORKSHEET_TXN_MAX` | `20` | Open worksheet transactions on the server |
 | `REGION_CACHE_MAX_ENTRIES` | `1000` | Most regions in the [region cache](04-pages-and-regions.md#large-tables) of one server process (`0` turns caching off) |
 | `REGION_CACHE_MAX_MB` | `64` | Memory for the region cache of one server process |
 | `AUTOMATIONS` | on | `off` stops this server from running [automations](06-processing.md#automations) |

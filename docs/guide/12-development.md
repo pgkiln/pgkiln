@@ -68,7 +68,12 @@ src/
   xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested)
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers and offsets, psql commands), runScript() (stop/continue, transaction, savepoints)
   sqlworksheet.ts          (sprint 91) the worksheet's runs: pickStatements() (at the cursor, a selection, all), runStatements() (a log per
-                           statement, psql command tags, notices, error line and column), explainStatement() (EXPLAIN / rolled-back ANALYZE)
+                           statement, psql command tags, notices, error line and column), explainStatement() (EXPLAIN / rolled-back ANALYZE;
+                           a savepoint inside a worksheet transaction)
+  worksheet-txn.ts         (sprint 107) the worksheet's transaction mode: an in-memory registry of pinned pg.Clients per (builder session,
+                           worksheet tab), beginTxn() / endTxn() (caps per developer and server), accountRun() (statement count, DDL kept for
+                           the Change Log until COMMIT), outsideTxnOnly(), sweepTxns() (idle timeout, ended sessions); onSessionEnd and
+                           onClosePools roll back; WORKSHEET_TXN_IDLE_SECONDS / _MAX_PER_DEVELOPER / _MAX
   datamodel.ts             (sprint 98) Data Modeler diagrams: readModel() (catalog), boxSize(), fkPath() (crow's feet), autoLayout(), diagramSvg()
   changelog.ts             (sprint 106, migration 118) the change log: isSchemaDdl(), ddlTarget() (schema and object), changeName()
                            (add_bonus, create_index_x), recordChanges() (grouped per schema), Flyway / Liquibase / plain SQL writers
@@ -249,7 +254,8 @@ src/
                            worksheet's Chart tab, SQL Workshop → Charts (meta.sql_chart, 110; read-only runs)
     sql-tools.ts           (sprint 96) SQL_TOOLS: every SQL Workshop tool with its group, tab and description (home, More menu, search)
     worksheet.ts           (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
-                           columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role, (sprint 93) Save / Rename / Download as SQL Scripts, bind and substitution values, POST /sql/worksheet/format; GET /sql/worksheet/navigator
+                           columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role, (sprint 93) Save / Rename / Download as SQL Scripts, bind and substitution values, POST /sql/worksheet/format; GET /sql/worksheet/navigator;
+                           (sprint 107) transaction mode: the txn field, Commit / Rollback (mode=commit|rollback), txnBadge(), GET/POST /sql/worksheet/txn (JSON)
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
     table-editor.ts        (sprint 95) Table Properties: GET/POST /sql/objects/table (create, edit ?o=, ?template=), fromForm(), Preview / Apply
                            (one transaction) / Open in the worksheet
@@ -344,7 +350,8 @@ public/
   sql-monitor.js           (sprint 102) the SQL Monitor: reloads the sessions' live part every 5 / 15 / 60 s, Pause (localStorage pgkiln.sqlMonitor)
   data-modeler.js, .css    (sprint 98) the Data Modeler: drag boxes, undo/redo, save, zoom/fit, auto layout, mini-map, SVG/PNG export, print
   worksheet.js, .css       (sprint 91) the SQL Worksheet: run keys with the cursor, output tabs, navigator swap and search, drag and drop, splitters;
-                           (92) grid sort, value dialog, history filter; (93) worksheet tabs in localStorage, Files, binds dialog, format, find, case
+                           (92) grid sort, value dialog, history filter; (93) worksheet tabs in localStorage, Files, binds dialog, format, find, case;
+                           (107) Autocommit / Transaction per tab, the badge from the server, beforeunload, rollback on closing a tab
   builder.css              builder only: IDE look (dark chrome, icon rail, panes); design tokens at the top (colour,
                            elevation, radius, type, motion; light and dark sets, sprint 105), then the shared controls
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
@@ -377,6 +384,8 @@ test/
   object-actions.test.ts   (sprint 94) object menus: Quick DDL, Drop with dependents, Add index / trigger / policy, the panel, not-found
   data-modeler.test.ts     (sprint 98) Data Modeler: "hr core" with its FK lines, saved positions, SVG, objects, DDL, dictionary, geometry
   worksheet.test.ts        (sprint 91) the SQL Worksheet: statement at the cursor, Run Script log, plans, notices, history, navigator, Run as
+  worksheet-txn.test.ts    (sprint 107) transaction mode: the tab's transaction, Commit / Rollback, typed COMMIT, aborted, idle timeout, refusals,
+                           Explain in it, Change Log at COMMIT, the JSON endpoint, sign-out
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
   printing.test.ts         report PDFs
@@ -424,7 +433,8 @@ test/
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
   e2e/data-modeler.test.ts (sprint 98) the Data Modeler in a browser: drag, save, reload, undo/redo, zoom, mini-map, exports, phone
-  e2e/worksheet.test.ts    (sprint 91) the SQL Worksheet in a browser: run keys, tabs, navigator, drag and drop, splitters, phone, no JavaScript
+  e2e/worksheet.test.ts    (sprint 91) the SQL Worksheet in a browser: run keys, tabs, navigator, drag and drop, splitters, phone, no JavaScript;
+                           (107) transaction mode: badge, reload, Rollback, closing a tab, Autocommit switch, beforeunload
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
