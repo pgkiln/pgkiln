@@ -126,6 +126,7 @@ export const CONFIGURATION: readonly { env: string; secret?: boolean; default: s
   { env: 'OPENAI_API_KEY', secret: true, default: '(none)', help: 'Default key of OpenAI AI services' },
   { env: 'MAP_TILE_URL', default: 'OpenStreetMap', help: 'Tile server of map regions' },
   { env: 'LOG_LEVEL', default: 'info', help: 'Server log level' },
+  { env: 'PGKILN_RELEASE_CHECK', default: 'off', help: 'Ask GitHub once a day for a newer pgkiln release (the Workspace home; administrators can also turn it on there)' },
 ];
 
 /** A configuration value as the page shows it: secrets never, only whether they are set. */
