@@ -357,7 +357,7 @@ describe('SQL Worksheet', () => {
     await page.goto(`${base}/builder/sql/worksheet?new=1`);
     const badge = page.locator('[data-ws-txn-badge]');
     assert.ok(!(await page.locator('[data-ws-txn-commit]').isVisible()), 'Autocommit: no Commit button');
-    await page.selectOption('[data-ws-txn-mode]', '1');
+    await page.selectOption('[data-ws-txn-mode]', 'on');
     assert.ok(await page.locator('[data-ws-txn-commit]').isDisabled());
     assert.equal(await badge.textContent(), 'No open transaction');
     assert.match(await page.locator('[data-ws-commit-note]').textContent() ?? '', /stay in one transaction until Commit or Rollback/);
@@ -373,7 +373,7 @@ describe('SQL Worksheet', () => {
     await page.goto(`${base}/builder/sql/worksheet`);
     assert.deepEqual(dialogs, ['beforeunload']);
     dialogs.length = 0;
-    assert.equal(await page.locator('[data-ws-txn-mode]').inputValue(), '1');
+    assert.equal(await page.locator('[data-ws-txn-mode]').inputValue(), 'on');
     await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent?.startsWith('Transaction open · 2 statements'));
     assert.ok(await page.locator('[data-ws-txn-commit]').isEnabled());
     await Promise.all([page.waitForNavigation(), page.locator('[data-ws-txn-rollback]').click()]);
@@ -393,7 +393,7 @@ describe('SQL Worksheet', () => {
     assert.equal(openTxnCount('admin'), 0);
     assert.deepEqual(dialogs, ['confirm']);
     // leaving the page with an open transaction asks first
-    await page.selectOption('[data-ws-txn-mode]', '1');
+    await page.selectOption('[data-ws-txn-mode]', 'on');
     await setEditor(page, `select 1`, 0);
     await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
     assert.equal(openTxnCount('admin'), 1);
@@ -401,7 +401,7 @@ describe('SQL Worksheet', () => {
     await page.selectOption('[data-ws-txn-mode]', '');
     await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent === 'No open transaction');
     assert.equal(openTxnCount('admin'), 0);
-    await page.selectOption('[data-ws-txn-mode]', '1');
+    await page.selectOption('[data-ws-txn-mode]', 'on');
     await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
     dialogs.length = 0;
     await page.close({ runBeforeUnload: true });
@@ -414,7 +414,7 @@ describe('SQL Worksheet', () => {
     // a phone: the toolbar wraps, nothing overflows
     const phone = await builder({ width: 390, height: 844 });
     await phone.page.goto(`${base}/builder/sql/worksheet?new=1`);
-    await phone.page.selectOption('[data-ws-txn-mode]', '1');
+    await phone.page.selectOption('[data-ws-txn-mode]', 'on');
     await setEditor(phone.page, 'select 1', 0);
     await Promise.all([phone.page.waitForNavigation(), phone.page.keyboard.press('Control+Enter')]);
     assert.ok(await phone.page.locator('[data-ws-txn-badge]').isVisible());

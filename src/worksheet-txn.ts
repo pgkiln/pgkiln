@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { onClosePools, owner, type Db } from './db.ts';
-import { onSessionEnd } from './session.ts';
+import { onSessionEnd, sessionLimits } from './session.ts';
 import { isSchemaDdl } from './changelog.ts';
 
 // (sprint 107, DA-2) Transaction mode of the SQL Worksheet. Database Actions autocommits every statement;
@@ -175,7 +175,10 @@ export async function beginAgain(t: WorksheetTxn) {
 export async function endTxn(t: WorksheetTxn, action: 'commit' | 'rollback', note?: string): Promise<{ tag: string; error?: string; ddl: string[] }> {
   const key = keyOf(t.sessionId, t.tab);
   if (open.get(key) === t) open.delete(key);
-  if (note) notes.set(key, { message: note, at: Date.now() });
+  if (note) {
+    notes.set(key, { message: note, at: Date.now() });
+    if (notes.size > 1000) notes.delete(notes.keys().next().value!); // the oldest
+  }
   let tag = action.toUpperCase();
   let error: string | undefined;
   try {
@@ -233,7 +236,12 @@ export async function sweepTxns(now = Date.now()) {
   await Promise.all(ended);
   const sessions = [...new Set([...open.values()].map((t) => t.sessionId))];
   if (sessions.length) {
-    const alive = new Set((await owner.query<{ id: string }>('select id::text as id from meta.session where id::text = any ($1)', [sessions]).catch(() => ({ rows: sessions.map((id) => ({ id })) }))).rows.map((r) => r.id));
+    // a session that ended or expired (its row may stay a while after it expires)
+    const { idleMinutes, maxHours } = sessionLimits();
+    const alive = new Set((await owner.query<{ id: string }>(
+      `select id::text as id from meta.session where id::text = any ($1)
+          and last_seen > now() - make_interval(mins => $2) and created_at > now() - make_interval(hours => $3)`, [sessions, idleMinutes, maxHours])
+      .catch(() => ({ rows: sessions.map((id) => ({ id })) }))).rows.map((r) => r.id));
     await Promise.all(sessions.filter((id) => !alive.has(id)).map((id) => endSessionTxns(id, 'The builder session ended: the transaction was rolled back.')));
   }
   for (const [k, n] of notes) if (now - n.at > NOTE_MS) notes.delete(k);

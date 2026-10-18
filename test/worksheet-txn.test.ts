@@ -37,7 +37,7 @@ const builder = async () => {
 };
 /** A run in transaction mode (txn=1) or Autocommit, in worksheet tab `tab`. */
 const run = (b: Browser, tab: string, sql: string, extra: Record<string, string> = {}) =>
-  b.submit('/builder/sql/worksheet', { sql, mode: 'statement', sel_start: '0', sel_end: '0', ws_tab: tab, txn: '1', ...extra }).then((r) => r.body);
+  b.submit('/builder/sql/worksheet', { sql, mode: 'statement', sel_start: '0', sel_end: '0', ws_tab: tab, txn: 'on', ...extra }).then((r) => r.body);
 const sal = async () => Number((await owner.one(`select sal from ${S}.emp where id = 1`)).sal);
 const badgeOf = (page: string) => /data-ws-txn-badge data-state="(\w+)"[^>]*>([^<]*)</.exec(page)?.slice(1);
 
@@ -76,7 +76,7 @@ describe('worksheet transactions', () => {
     const b = await builder();
     const page = (await b.get('/builder/sql/worksheet')).body;
     assert.match(page, /<span class="ws-txn" data-ws-txn data-state="none"[^>]* hidden>/);
-    assert.match(page, /<select name="txn" data-ws-txn-mode[^>]*>\s*<option value="">Autocommit<\/option><option value="1">Transaction<\/option>/);
+    assert.match(page, /<select name="txn" data-ws-txn-mode[^>]*>\s*<option value="">Autocommit<\/option><option value="on">Transaction<\/option>/);
     assert.match(page, /value="commit" data-ws-txn-commit[^>]* disabled>/);
     assert.match(page, /Each statement commits on its own\./);
   });
@@ -87,7 +87,7 @@ describe('worksheet transactions', () => {
     const p1 = await run(b, 'tx1', `update ${S}.emp set sal = sal + 1 where id = 1`);
     assert.match(p1, /UPDATE 1/);
     assert.deepEqual(badgeOf(p1), ['open', 'Transaction open · 1 statement · under a minute']);
-    assert.match(p1, /<option value="1" selected>Transaction<\/option>/);
+    assert.match(p1, /<option value="on" selected>Transaction<\/option>/);
     assert.match(p1, /value="commit" data-ws-txn-commit[^>]*>(?!.*disabled)/);
     assert.match(p1, /The statements stay in one transaction until Commit or Rollback; it is rolled back after 5 minutes without a run\./);
     const p2 = await run(b, 'tx1', `select sal from ${S}.emp where id = 1`);
@@ -97,12 +97,12 @@ describe('worksheet transactions', () => {
     // another tab of the same developer is another transaction
     const other = await run(b, 'tx2', `select sal from ${S}.emp where id = 1`);
     assert.match(other, new RegExp(`<td class="num">${before}\\.?0*</td>`));
-    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx2', txn: '1' });
+    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx2', txn: 'on' });
     // the badge after a reload: the server's state
     const status = JSON.parse((await b.get('/builder/sql/worksheet/txn?tab=tx1')).body);
     assert.equal(status.state, 'open');
     assert.equal(status.statements, 2);
-    const rb = (await b.submit('/builder/sql/worksheet', { sql: 'select 1', mode: 'rollback', ws_tab: 'tx1', txn: '1' })).body;
+    const rb = (await b.submit('/builder/sql/worksheet', { sql: 'select 1', mode: 'rollback', ws_tab: 'tx1', txn: 'on' })).body;
     assert.match(rb, /Rolled back \(2 statements undone\)\./);
     assert.deepEqual(badgeOf(rb), ['none', 'No open transaction']);
     assert.equal(await sal(), before);
@@ -113,19 +113,19 @@ describe('worksheet transactions', () => {
   test('Commit keeps the changes; Run Script runs in the transaction too', async () => {
     const b = await builder();
     const before = await sal();
-    const p = (await b.submit('/builder/sql/worksheet', { sql: `update ${S}.emp set sal = sal + 10 where id = 1;\nupdate ${S}.emp set sal = sal + 10 where id = 1`, mode: 'script', ws_tab: 'tx3', txn: '1' })).body;
+    const p = (await b.submit('/builder/sql/worksheet', { sql: `update ${S}.emp set sal = sal + 10 where id = 1;\nupdate ${S}.emp set sal = sal + 10 where id = 1`, mode: 'script', ws_tab: 'tx3', txn: 'on' })).body;
     assert.equal(badgeOf(p)![1], 'Transaction open · 2 statements · under a minute');
     assert.equal(await sal(), before);
-    const c = (await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx3', txn: '1' })).body;
+    const c = (await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx3', txn: 'on' })).body;
     assert.match(c, /Committed \(2 statements\)\./);
     assert.equal(await sal(), before + 20);
-    assert.match((await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx3', txn: '1' })).body, /This worksheet has no open transaction\./);
+    assert.match((await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx3', txn: 'on' })).body, /This worksheet has no open transaction\./);
   });
 
   test('COMMIT and ROLLBACK typed in the editor end the transaction; BEGIN inside it only warns', async () => {
     const b = await builder();
     const before = await sal();
-    const p = (await b.submit('/builder/sql/worksheet', { sql: `begin;\nupdate ${S}.emp set sal = sal + 1 where id = 1;\ncommit`, mode: 'script', ws_tab: 'tx4', txn: '1' })).body;
+    const p = (await b.submit('/builder/sql/worksheet', { sql: `begin;\nupdate ${S}.emp set sal = sal + 1 where id = 1;\ncommit`, mode: 'script', ws_tab: 'tx4', txn: 'on' })).body;
     assert.match(p, /there is already a transaction in progress/);
     assert.match(p, /The transaction ended with the COMMIT or ROLLBACK in the editor; the next run starts a new one\./);
     assert.deepEqual(badgeOf(p), ['none', 'No open transaction']);
@@ -147,7 +147,7 @@ describe('worksheet transactions', () => {
     assert.deepEqual(badgeOf(e), ['aborted', 'Transaction failed · 1 statement · under a minute']);
     assert.match(e, /A statement failed, so the transaction is aborted: Rollback ends it/);
     assert.match(await run(b, 'tx5', 'select 1'), /current transaction is aborted/);
-    const c = (await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx5', txn: '1' })).body;
+    const c = (await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx5', txn: 'on' })).body;
     assert.match(c, /The transaction had failed, so COMMIT rolled it back: nothing was saved\./);
     assert.equal(await sal(), before);
   });
@@ -167,7 +167,7 @@ describe('worksheet transactions', () => {
     assert.match((await b.get('/builder/sql/worksheet?wstab=tx6')).body, /data-ws-txn-badge data-state="none"[^>]*>The transaction was rolled back after 5 minutes/);
     const again = await run(b, 'tx6', 'select 1');
     assert.match(again, /rolled back after 5 minutes without a run \(1 statement undone\)\. A new transaction started\./);
-    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx6', txn: '1' });
+    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx6', txn: 'on' });
   });
 
   test('Autocommit: a BEGIN left open is rolled back at the end of the run, with a warning', async () => {
@@ -190,8 +190,8 @@ describe('worksheet transactions', () => {
     const v = await run(b, 'tx8', `select 1;\nvacuum ${S}.emp`, { mode: 'script' });
     assert.match(v, /Line 2: VACUUM can&#39;t run inside a transaction\. Switch the worksheet to Autocommit to run it\./);
     assert.equal(JSON.parse((await b.get('/builder/sql/worksheet/txn?tab=tx8')).body).state, 'open', 'the transaction is intact');
-    assert.match((await b.submit('/builder/sql/worksheet', { sql: 'select 1', mode: 'statement', txn: '1' })).body, /Transaction mode needs JavaScript/);
-    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx8', txn: '1' });
+    assert.match((await b.submit('/builder/sql/worksheet', { sql: 'select 1', mode: 'statement', txn: 'on' })).body, /Transaction mode needs JavaScript/);
+    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx8', txn: 'on' });
   });
 
   test('Run as an application\'s role inside the transaction; Explain and Autotrace see its changes and keep it open', async () => {
@@ -200,14 +200,14 @@ describe('worksheet transactions', () => {
     const p = await run(b, 'tx9', 'select current_user as u', { as_app: String(hr.id) });
     assert.match(p, new RegExp(`<td>${hr.db_role}</td>`));
     assert.match(p, new RegExp(`title="Runs as the role ${hr.db_role} of `));
-    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx9', txn: '1' });
+    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx9', txn: 'on' });
     await run(b, 'tx10', `create table ${S}.made_in_tx (a int)`);
-    const ex = (await b.submit('/builder/sql/worksheet', { sql: `select * from ${S}.made_in_tx`, mode: 'autotrace', ws_tab: 'tx10', txn: '1' })).body;
+    const ex = (await b.submit('/builder/sql/worksheet', { sql: `select * from ${S}.made_in_tx`, mode: 'autotrace', ws_tab: 'tx10', txn: 'on' })).body;
     assert.match(ex, /Seq Scan/);
     const st = JSON.parse((await b.get('/builder/sql/worksheet/txn?tab=tx10')).body);
     assert.equal(st.state, 'open');
     assert.equal(st.statements, 1);
-    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx10', txn: '1' });
+    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx10', txn: 'on' });
     assert.equal((await owner.one(`select to_regclass('${S}.made_in_tx') as t`)).t, null);
   });
 
@@ -217,10 +217,10 @@ describe('worksheet transactions', () => {
     const n0 = await count();
     await run(b, 'tx11', `create table ${S}.cl107a (a int)`);
     assert.equal(await count(), n0, 'not while open');
-    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx11', txn: '1' });
+    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx11', txn: 'on' });
     assert.equal(await count(), n0);
     await run(b, 'tx11', `create table ${S}.cl107b (a int)`);
-    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx11', txn: '1' });
+    await b.submit('/builder/sql/worksheet', { sql: '', mode: 'commit', ws_tab: 'tx11', txn: 'on' });
     assert.equal(await count(), n0 + 1);
   });
 
@@ -236,6 +236,19 @@ describe('worksheet transactions', () => {
     await run(b, 'tx13', `update ${S}.emp set sal = sal + 1 where id = 1`);
     assert.equal(openTxnCount('admin'), 1);
     await b.submit('/builder/logout', {});
+    assert.equal(openTxnCount('admin'), 0);
+    assert.equal(await sal(), before);
+  });
+
+  test('a builder session that expired has its transaction rolled back by the sweeper', async () => {
+    const b = await builder();
+    const before = await sal();
+    await run(b, 'tx14', `update ${S}.emp set sal = sal + 1 where id = 1`);
+    assert.equal(openTxnCount('admin'), 1);
+    await sweepTxns();
+    assert.equal(openTxnCount('admin'), 1, 'alive: kept');
+    await owner.query(`update meta.session set last_seen = now() - interval '3 days' where username = 'admin' and app_id is null`);
+    await sweepTxns();
     assert.equal(openTxnCount('admin'), 0);
     assert.equal(await sal(), before);
   });

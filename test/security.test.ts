@@ -9361,7 +9361,7 @@ describe('sprint 107 transaction mode', () => {
     return b;
   };
   const run = (b: Browser, tab: string, sql: string, extra: Record<string, string> = {}) =>
-    b.post('/builder/sql/worksheet', { __csrf: b.lastCsrf, sql, mode: 'statement', ws_tab: tab, txn: '1', ...extra });
+    b.post('/builder/sql/worksheet', { __csrf: b.lastCsrf, sql, mode: 'statement', ws_tab: tab, txn: 'on', ...extra });
   const end = (b: Browser, tab: string) => b.post('/builder/sql/worksheet/txn', { __csrf: b.lastCsrf, tab, action: 'rollback' });
   const status = async (b: Browser, tab: string) => JSON.parse((await b.get(`/builder/sql/worksheet/txn?tab=${tab}`)).body);
   const v = async () => Number((await owner.one(`select v from ${S}.t where id = 1`)).v);
@@ -9392,7 +9392,7 @@ describe('sprint 107 transaction mode', () => {
       assert.equal((await status(other, 'sec107a')).state, 'none');
       const c = JSON.parse((await other.post('/builder/sql/worksheet/txn', { __csrf: other.lastCsrf, tab: 'sec107a', action: 'commit' })).body);
       assert.equal(c.ok, false);
-      assert.match((await other.post('/builder/sql/worksheet', { __csrf: other.lastCsrf, sql: '', mode: 'commit', ws_tab: 'sec107a', txn: '1' })).body, /This worksheet has no open transaction/);
+      assert.match((await other.post('/builder/sql/worksheet', { __csrf: other.lastCsrf, sql: '', mode: 'commit', ws_tab: 'sec107a', txn: 'on' })).body, /This worksheet has no open transaction/);
       // its own run with that tab key is a transaction of its own, which doesn't see the change
       const page = (await run(other, 'sec107a', `select v from ${S}.t where id = 1`)).body;
       assert.match(page, /<td class="num">0<\/td>/);
@@ -9446,8 +9446,8 @@ describe('sprint 107 transaction mode', () => {
     await run(a, 'seccsrf', `update ${S}.t set v = 9 where id = 1`);
     assert.equal((await a.post('/builder/sql/worksheet/txn', { tab: 'seccsrf', action: 'commit' })).statusCode, 403);
     assert.equal((await a.post('/builder/sql/worksheet/txn', { __csrf: 'forged', tab: 'seccsrf', action: 'commit' })).statusCode, 403);
-    assert.equal((await a.post('/builder/sql/worksheet', { __csrf: 'forged', sql: '', mode: 'commit', ws_tab: 'seccsrf', txn: '1' })).statusCode, 403);
-    assert.equal((await a.post('/builder/sql/worksheet', { __csrf: 'forged', sql: `update ${S}.t set v = 10 where id = 1`, mode: 'statement', ws_tab: 'seccsrf', txn: '1' })).statusCode, 403);
+    assert.equal((await a.post('/builder/sql/worksheet', { __csrf: 'forged', sql: '', mode: 'commit', ws_tab: 'seccsrf', txn: 'on' })).statusCode, 403);
+    assert.equal((await a.post('/builder/sql/worksheet', { __csrf: 'forged', sql: `update ${S}.t set v = 10 where id = 1`, mode: 'statement', ws_tab: 'seccsrf', txn: 'on' })).statusCode, 403);
     assert.equal((await status(a, 'seccsrf')).state, 'open');
     assert.equal(await v(), 0, 'nothing committed');
     const anon = new Browser();

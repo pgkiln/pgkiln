@@ -382,7 +382,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
     }
   })();
   // (sprint 107, DA-2) transaction mode: the worksheet tab's open transaction (bound to this session)
-  const txnAsked = isPost && body.txn === '1';
+  const txnAsked = isPost && body.txn === 'on';
   let txn: WorksheetTxn | undefined = tabKey ? findTxn(s.id, tabKey) : undefined;
   let txnError = '';
   let txnInfo = '';
@@ -625,7 +625,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
             <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>Help on the SQL Worksheet</a></div></div></details>
           <span class="ws-txn" data-ws-txn data-state="${tState}" data-statements="${txn?.statements ?? 0}" data-started="${txn?.startedMs ?? ''}" data-last="${txn?.lastMs ?? ''}" data-idle="${txnIdleSeconds()}" data-note="${tNote ?? ''}" data-now="${Date.now()}" hidden>
             <label class="ws-runas"><span>Commit</span><select name="txn" data-ws-txn-mode title="Autocommit: each statement commits on its own. Transaction: the statements stay in one transaction until Commit or Rollback.">
-              <option value="">Autocommit</option><option value="1"${txnOn ? raw(' selected') : ''}>Transaction</option></select></label>
+              <option value="">Autocommit</option><option value="on"${txnOn ? raw(' selected') : ''}>Transaction</option></select></label>
             <span class="ws-txn-badge" data-ws-txn-badge data-state="${tState}" role="status" title="${tState === 'none' ? '' : `Runs as ${txn?.runsAs ?? ''}`}">${badge}</span>
             <button class="btn btn-sm" name="mode" value="commit" data-ws-txn-commit title="Commit the worksheet's transaction"${txn ? '' : raw(' disabled')}>${icon('check')}<span>Commit</span></button>
             <button class="btn btn-sm" name="mode" value="rollback" data-ws-txn-rollback title="Roll back the worksheet's transaction"${txn ? '' : raw(' disabled')}>${icon('undo')}<span>Rollback</span></button>

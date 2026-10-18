@@ -349,7 +349,7 @@
 
   // ------------------------------------------------------------ (sprint 107) transaction mode
   function txnTabChanged() {
-    modeSel.value = cur.txn ? '1' : '';
+    modeSel.value = cur.txn ? 'on' : '';
     txnApply({ state: 'none', statements: 0, startedMs: null, note: null });
     txnFetch();
   }
@@ -372,7 +372,7 @@
   };
   const txnApply = (i) => {
     txnInfo = i;
-    const on = modeSel.value === '1';
+    const on = modeSel.value === 'on';
     txnBox.dataset.state = i.state;
     badge.dataset.state = i.state;
     badge.textContent = badgeText(i);
@@ -404,7 +404,7 @@
       if (!res.ok) throw new Error(String(res.status));
       const j = await res.json();
       if (key !== cur.key) return; // switched meanwhile
-      if (j.state !== 'none') modeSel.value = '1';
+      if (j.state !== 'none') modeSel.value = 'on';
       fromServer(j);
     } catch {
       badge.textContent = 'Transaction state unknown';
@@ -426,8 +426,8 @@
     }
   }
   modeSel.addEventListener('change', async () => {
-    if (modeSel.value !== '1' && txnInfo.state !== 'none') {
-      if (!window.confirm('Switching to Autocommit rolls back the open transaction. Roll it back?')) { modeSel.value = '1'; return; }
+    if (modeSel.value !== 'on' && txnInfo.state !== 'none') {
+      if (!window.confirm('Switching to Autocommit rolls back the open transaction. Roll it back?')) { modeSel.value = 'on'; return; }
       await txnPost(cur.key, 'rollback');
       modeSel.value = '';
     }
@@ -447,8 +447,8 @@
   });
   if (!form.dataset.tab || form.dataset.tab !== cur.key) txnTabChanged();
   else {
-    if (txnInfo.state !== 'none') modeSel.value = '1';
-    else if (!form.querySelector('[data-ws-txn-mode] option[selected]')) modeSel.value = cur.txn ? '1' : '';
+    if (txnInfo.state !== 'none') modeSel.value = 'on';
+    else if (!form.querySelector('[data-ws-txn-mode] option[selected]')) modeSel.value = cur.txn ? 'on' : '';
     txnApply(txnInfo);
   }
 
