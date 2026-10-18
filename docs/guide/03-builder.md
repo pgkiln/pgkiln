@@ -6,7 +6,7 @@ The builder lives at `/builder`. Everything it does is also possible in SQL (see
 ## Signing in and developer accounts
 
 Sign in with a developer account. The first one is `admin` / `admin`, and a red banner reminds you
-to change it.
+to change it. After signing in the builder opens the [Workspace home](#workspace-home) (`/builder/home`).
 
 The sign-in page (`/builder/login`) is laid out like APEX's: **Workspace** (optional), **Username** and
 **Password** (with a *Show* button). A workspace you name must be one of yours (administrators: any); it becomes the
@@ -75,7 +75,8 @@ its developers must not reach other teams' applications or data.
 
 Administrators and the workspace's administrators set them on the workspace's page (*Manage service*, or the
 Administration menu → *Workspace message and environment banner*; APEX: Define Workspace Message, Define Environment
-Banner): a **message** (plain text, up to 2000 characters) shown to the workspace's developers on the App Builder home,
+Banner): a **message** (plain text, up to 2000 characters) shown to the workspace's developers on the
+[Workspace home](#workspace-home) (where they can also edit it in place) and the App Builder home,
 and an **environment banner**: a label of up to 40 characters in one of eight colours, shown at the top of every
 builder page while the workspace is current.
 
@@ -94,6 +95,11 @@ Administrators and the workspace's administrators set them on the workspace's pa
   when it is turned on again. PostgREST is not affected.
 
 Both are on by default (migration 093) and are not exported.
+
+- **Builder links open** (sprint 109, migration 119): what an address of just `/builder` (a bookmark from before the
+  Workspace home) opens in this workspace: the **App Builder** (the default: it is also at `/builder/apps`) or the
+  **Workspace home** (a redirect). Signing in always opens the Workspace home. It travels in a
+  [workspace export](#export-and-import)'s settings.
 
 ### Extension links
 
@@ -213,7 +219,8 @@ longer sign in. Delete a workspace only when it is shared and empty; its logins 
 
 Every builder page has the same frame, modelled on an IDE:
 
-- **The icon rail** on the left: App Builder, SQL Workshop, [App Gallery](#app-gallery), **Search** (on the
+- **The icon rail** on the left: Home (the [Workspace home](#workspace-home); the logo leads there too), App Builder,
+  SQL Workshop, [App Gallery](#app-gallery), **Search** (on the
   pages of an application); at the bottom the **Administration** menu (Workspace utilities; for administrators of the
   current workspace *Manage service*: [workspace message and environment banner](#workspace-message-and-environment-banner),
   [workspace utilization](#workspace-utilization) and the workspace's page; Manage users and groups, Developers,
@@ -247,9 +254,42 @@ application of a workspace you are not a member of) shows a **Page not found** p
 theme with a link to the App Builder home; a server error shows **Something went wrong** (the error
 is in the server log, not on the page). Scripts get the plain answers they always got.
 
+## Workspace home
+
+(sprint 109; APEX: the workspace home page) The page the builder opens after signing in, `/builder/home`, above the
+App Builder and the SQL Workshop. Everything on it is of the current [workspace](#workspaces), and it works without
+JavaScript. The [default-password banner](#signing-in-and-developer-accounts) stays on top until the password is changed.
+
+- **Tool cards**: App Builder (`/builder/apps`), SQL Workshop (not when the workspace's preferences turn it off),
+  **Data Reporter** (when the server has the Data Reporter tool at `/builder/reporter`) and the [App Gallery](#app-gallery).
+- **Workspace message**: the [workspace message](#workspace-message-and-environment-banner), plain text. The
+  workspace's administrators (and the installation's) edit it in place with **Edit message**; empty removes it.
+- **Summary**: the number of applications (opens the App Builder), tables in the schemas the workspace's database
+  roles may use (opens the Object Browser), developers (opens Developers) and reporting applications (applications
+  with a [Data Reporter region](04-pages-and-regions.md); opens the Data Reporter when there is one).
+- **Activity**: **Top applications** (page views and users), **Top users** and **Top developers** (page views by the
+  workspace's developers and the installation's administrators in its applications) over **1 hour**, **1 day** (the
+  default) or **1 week**. The timeframe is remembered for each developer (`meta.developer.home_timeframe`).
+- **System message**: the pgkiln version the server runs and, when the [release check](#the-release-check) is on and
+  a newer release is out, **pgkiln X is available** with a link to its release notes and how to upgrade (back up,
+  install the new version, `pgkiln migrate`, restart).
+- **A side column**: About, **Learn more** (this guide, the [tutorial](10-tutorial.md),
+  [Coming from APEX](11-from-apex.md), the changelog and the discussions on GitHub) and Resources.
+
+### The release check
+
+Off by default. When it is on, the server asks GitHub's releases API (`api.github.com`) for the latest pgkiln release,
+at most once a day per server process (an hour after a failure), with a 5-second timeout and a 1 MB limit; nothing
+about the installation is sent. Pages never wait for it: they show what was fetched last and refresh it in the
+background. Administrators turn it on or off on the Workspace home (**Check for new versions**, **Check now**,
+**Turn off**) or on Workspace utilities → **Instance settings** → *New versions* (*On*, *Off*, or *As the environment
+says*: the variable `PGKILN_RELEASE_CHECK`, [chapter 1](01-installation.md#configuration-reference)). Leave it off on a server
+that may not reach the internet. Under the test runner the server never asks GitHub.
+
 ## App Builder home
 
-The home page is laid out like APEX's App Builder:
+The App Builder's home page, `/builder/apps` (`/builder` shows it too, unless the workspace's
+[preferences](#workspace-preferences) send `/builder` to the Workspace home), is laid out like APEX's App Builder:
 
 - **Four tiles**: **Create** and **Import** (each on its own page), the workspace **Dashboard**
   (applications, pages, active accounts; page views, users, failed sign-ins and errors of the last

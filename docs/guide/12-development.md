@@ -21,6 +21,9 @@ src/
   env.ts                   .env loader (imported first)
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); logs each run that applies
   instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
+  release-check.ts         (sprint 109) "pgkiln X is available": meta.setting 'release_check' over PGKILN_RELEASE_CHECK (off by default);
+                           GitHub's releases/latest (PGKILN_RELEASE_URL in tests), 5 s timeout, 1 MB, cached a day per process,
+                           never under node --test without PGKILN_RELEASE_URL; parseRelease keeps a semver and an https link only
                            or fails a file in public.pgkiln_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
@@ -217,7 +220,12 @@ src/
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
-    home.ts                App Builder home (tiles, applications report/cards, Recent), Create, Import, Dashboard, Utilities
+    home.ts                App Builder home at /builder/apps and /builder (tiles, applications report/cards, Recent; /builder redirects
+                           to the Workspace home when meta.workspace.builder_home = 'home'), Create, Import, Dashboard, Utilities
+    workspace-home.ts      (sprint 109, migration 119) the Workspace home /builder/home, opened after sign-in: tool cards (Data Reporter
+                           when GET /builder/reporter exists), workspace message edited in place (workspaceAdmin), Summary, Top
+                           applications / users / developers over meta.developer.home_timeframe, System message (src/release-check.ts),
+                           POST timeframe, message, release-check; releaseCheckRegion for Instance settings
     newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app, from a file, from tables
     appfromfile.ts         Create → From a file: upload (src/dataload.ts parsing), proposed table/columns, one transaction:
                            app + table + rows (loadRows) + pages (meta.generate_page: report and form, chart, facets)
