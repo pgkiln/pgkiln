@@ -1359,3 +1359,10 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sm-toolbar:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.25rem 0 0.75rem; }
 .sm-toolbar select { width: auto; }
 .sm-toolbar [aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+
+/* (sprint 110) App Builder → Data Reporter: datasets */
+.dataset-checks { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.25rem 0 0.5rem; overflow-wrap: anywhere; }
+.dataset-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.4rem; }
+.dataset-filter > select, .dataset-filter > input { flex: 1 1 10rem; min-width: 0; }
+.dataset-columns input { min-width: 0; width: 100%; }
+.dataset-page pre.code { white-space: pre-wrap; overflow-wrap: anywhere; }

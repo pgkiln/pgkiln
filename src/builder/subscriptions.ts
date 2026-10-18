@@ -23,6 +23,7 @@ const TYPE_HELP: Record<AppType, string> = {
   theme: 'Its theme (colours, navigation, Theme Roller styles) and template components are offered to other applications.',
   library: 'Its lists of values, authorization schemes, build options, template components and lists are offered to other applications.',
   boilerplate: 'A starting point: Create application can copy it.',
+  reporting: 'Made by App Builder → Data Reporter on datasets of the workspace: its users build, publish and share reports.',
 };
 
 const what = (kind: Kind, name: string) => (kind === 'theme' ? 'Theme' : `${KINDS[kind].label} ${name}`);

@@ -65,7 +65,7 @@ const clip = (v: string | undefined, max: number) => (v ?? '').trim().slice(0, m
  * except binary ones.
  */
 export async function mergeReporterSettings(
-  config: Config, b: Body, a: { authz: Set<string> },
+  config: Config, b: Body, a: { authz: Set<string>; datasets?: Set<string> },
   lookup: { byName: (schema: string, table: string) => Promise<DbObject | null>; byOid: (oid: number) => Promise<DbObject | null> } = { byName: findObject, byOid: objectByOid },
 ): Promise<{ config: Config; errors: string[] }> {
   const out: Config = { ...config };
@@ -80,6 +80,13 @@ export async function mergeReporterSettings(
   delete out.share_authz;
   if (b.sharing === 'off') out.sharing = false;
   else if (b.sharing?.startsWith('authz:') && a.authz.has(b.sharing.slice(6).toUpperCase())) out.share_authz = b.sharing.slice(6);
+  // (sprint 110) who may edit reports, who may unpublish and delete anyone's, published reports
+  for (const k of ['edit_authz', 'admin_authz'] as const) {
+    delete out[k];
+    if (b[k] && a.authz.has(b[k]!.toUpperCase())) out[k] = b[k];
+  }
+  delete out.publishing;
+  if (b.publishing === 'true') out.publishing = true;
 
   const sources: Source[] = [];
   const existing = sourcesOf({ config });
@@ -87,6 +94,13 @@ export async function mergeReporterSettings(
     const s = existing.find((x) => x.id === b[`s${i}_key`]);
     if (!s || sources.some((x) => x.id === s.id)) continue;
     if (b[`s${i}_remove`] === 'true') continue;
+    if (s.dataset) {
+      // (sprint 110) a dataset: its columns are the dataset's (SQL Workshop → Data Reporter); label and description may differ here
+      const label = clip(b[`s${i}_label`], 80);
+      const description = clip(b[`s${i}_description`], 300);
+      sources.push({ id: s.id, dataset: s.dataset, ...(label ? { label } : {}), ...(description ? { description } : {}) } as Source);
+      continue;
+    }
     const obj = await lookup.byName(s.schema, s.table);
     const names = new Set(obj?.columns.map((c) => c.name));
     const columns: SourceColumn[] = [];
@@ -129,6 +143,17 @@ export async function mergeReporterSettings(
       sources.push({ id, label, schema: obj.schema, table: obj.table, columns });
     }
   }
+  // (sprint 110) a dataset of the workspace as a new source
+  if (b.new_dataset) {
+    const name = b.new_dataset.trim().toLowerCase();
+    if (!a.datasets?.has(name)) errors.push('Choose one of the workspace\'s datasets.');
+    else if (sources.length >= MAX_SOURCES) errors.push(`A region offers at most ${MAX_SOURCES} data sources.`);
+    else {
+      let id = name.slice(0, 36);
+      for (let n = 2; sources.some((s) => s.id === id); n++) id = `${name.slice(0, 36)}_${n}`;
+      sources.push({ id, dataset: name } as Source);
+    }
+  }
   if (sources.length) out.sources = sources;
   else delete out.sources;
   return { config: out, errors };
@@ -145,8 +170,23 @@ export async function reporterSettingsForm(pageId: number, appId: number, r: { i
   const objects = await objectList(app?.db_role ?? null);
   const sources = sourcesOf({ config: cfg });
   const sharing = cfg.sharing === false ? 'off' : typeof cfg.share_authz === 'string' && cfg.share_authz ? `authz:${cfg.share_authz}` : '';
+  const datasets = (await owner.query<{ name: string; label: string }>('select name, label from meta.dataset where workspace_id = meta.app_workspace($1) order by name', [appId])).rows;
   const sourceSets = await Promise.all(
     sources.map(async (src, i) => {
+      if (src.dataset) {
+        const d = datasets.find((x) => x.name === src.dataset);
+        return html`<fieldset class="prop-group"><legend>${src.label || d?.label || src.id} <span class="muted">(dataset ${src.dataset})</span></legend>
+          <input type="hidden" name="s${i}_key" value="${src.id}">
+          ${!d ? html`<div class="alert alert-error" role="alert">The workspace has no dataset ${src.dataset} (any more).</div>` : ''}
+          <div class="form-grid">
+            <div class="field"><label class="label" for="${id(`s${i}_id`)}">Static id</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
+            <div class="field"><label class="label" for="${id(`s${i}_label`)}">Label</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${d?.label ?? ''}"></div>
+            <div class="field" data-wide><label class="label" for="${id(`s${i}_description`)}">Description (shown to users)</label><input id="${id(`s${i}_description`)}" name="s${i}_description" maxlength="300" value="${src.description ?? ''}" placeholder="the dataset's"></div>
+          </div>
+          <p class="muted">Its tables, columns, labels, masks and row filter are the dataset's: <a href="${BASE}/reporter">App Builder → Data Reporter</a>.</p>
+          <div class="field"><label class="check"><input type="checkbox" name="s${i}_remove" value="true"> Remove this data source (users' reports on it stop working)</label></div>
+        </fieldset>`;
+      }
       const obj = await findObject(src.schema, src.table);
       const offered = new Map(src.columns.map((c) => [c.name, c]));
       const all = [...(obj?.columns ?? []).map((c) => ({ name: c.name, type: c.type, missing: false })),
@@ -184,6 +224,12 @@ export async function reporterSettingsForm(pageId: number, appId: number, r: { i
           <select id="${id('sharing')}" name="sharing">${opt('', 'Every signed-in user', sharing)}${opt('off', 'Nobody (private reports only)', sharing)}${schemes.map((n) => opt(`authz:${n}`, `Authorization: ${n}`, sharing))}</select></div>
         <div class="field"><label class="label" for="${id('page_size')}">Rows per page</label>
           <input id="${id('page_size')}" name="page_size" type="number" min="5" max="200" value="${cfg.page_size ?? ''}" placeholder="25"></div>
+        <div class="field"><label class="label" for="${id('edit_authz')}">Who may build and save reports</label>
+          <select id="${id('edit_authz')}" name="edit_authz">${opt('', 'Every user', cfg.edit_authz ?? '')}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.edit_authz ?? ''))}</select>
+          <small class="help">Others only run shared reports.</small></div>
+        <div class="field"><label class="label" for="${id('admin_authz')}">Who may unpublish and delete anyone's reports</label>
+          <select id="${id('admin_authz')}" name="admin_authz">${opt('', 'Nobody', cfg.admin_authz ?? '')}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.admin_authz ?? ''))}</select></div>
+        <div class="field"><label class="check"><input type="checkbox" name="publishing" value="true"${cfg.publishing === true ? raw(' checked') : ''}> Shared reports are published: a stable URL, pins</label></div>
         <div class="field" data-wide><label class="label" for="${id('empty')}">Text when there are no rows</label>
           <input id="${id('empty')}" name="empty" maxlength="200" value="${cfg.empty ?? ''}" placeholder="No data found"></div>
       </div></fieldset>
@@ -194,7 +240,9 @@ export async function reporterSettingsForm(pageId: number, appId: number, r: { i
         <div class="field"><label class="label" for="${id('new_id')}">Static id</label><input id="${id('new_id')}" name="new_id" maxlength="40" pattern="[a-z][a-z0-9_]*" placeholder="from the name"></div>
         <div class="field"><label class="label" for="${id('new_label')}">Label</label><input id="${id('new_label')}" name="new_label" maxlength="80"></div>
       </div>
-      <small class="help">All columns are offered at first (except binary ones); untick those users should not see. Prefer a view that shows exactly what business users may report on.</small></fieldset>
+      <small class="help">All columns are offered at first (except binary ones); untick those users should not see. Prefer a view that shows exactly what business users may report on.</small>
+      ${datasets.length ? html`<div class="form-grid"><div class="field" data-wide><label class="label" for="${id('new_dataset')}">Or a dataset of the workspace</label>
+        <select id="${id('new_dataset')}" name="new_dataset"><option value="">- none -</option>${datasets.map((d) => html`<option value="${d.name}">${d.label} (${d.name})</option>`)}</select></div></div>` : ''}</fieldset>
       <div class="buttons"><button class="btn btn-hot">Save Data Reporter settings</button></div>
     </form>`;
 }
@@ -210,7 +258,8 @@ export async function reporterBuilderRoutes(app: FastifyInstance) {
       : undefined;
     if (!r) return reply.code(404).send('Not found');
     const schemes = (await owner.query<{ name: string }>('select name from meta.authz_scheme where app_id = $1', [r.app_id])).rows;
-    const { config, errors } = await mergeReporterSettings(r.config ?? {}, (req.body ?? {}) as Body, { authz: new Set(schemes.map((x) => x.name.toUpperCase())) });
+    const datasets = (await owner.query<{ name: string }>('select name from meta.dataset where workspace_id = meta.app_workspace($1)', [r.app_id])).rows;
+    const { config, errors } = await mergeReporterSettings(r.config ?? {}, (req.body ?? {}) as Body, { authz: new Set(schemes.map((x) => x.name.toUpperCase())), datasets: new Set(datasets.map((x) => x.name)) });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     if (errors.length) flash(s, errors.join(' '), 'error');
     else flash(s, 'Settings saved.');
