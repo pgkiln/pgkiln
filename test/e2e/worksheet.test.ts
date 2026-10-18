@@ -198,7 +198,7 @@ describe('SQL Worksheet', () => {
     await owner.query(`delete from meta.sql_script where name = 'e2e93 script'`);
     const { context, page } = await builder();
     await page.goto(`${base}/builder/sql/worksheet`);
-    const tabs = () => page.locator('.ws-wtabs [role=tab]').allTextContents();
+    const tabs = () => page.locator('.ws-wtabs [data-ws-wtab]').allTextContents();
     await setEditor(page, 'select 1', 8);
     assert.deepEqual(await tabs(), ['Untitled 1*']);
     await page.locator('.ws-wtab-new').click();
@@ -207,7 +207,7 @@ describe('SQL Worksheet', () => {
     await page.reload();
     assert.deepEqual(await tabs(), ['Untitled 1*', 'Untitled 2*']);
     assert.equal(await page.locator('textarea[name=sql]').inputValue(), 'select 2', 'the active tab came back');
-    await page.locator('.ws-wtabs [role=tab]', { hasText: 'Untitled 1' }).click();
+    await page.locator('.ws-wtabs [data-ws-wtab]', { hasText: 'Untitled 1' }).click();
     assert.equal(await page.locator('textarea[name=sql]').inputValue(), 'select 1');
     // Ctrl+S on an unsaved worksheet asks for a name; Enter saves
     await page.locator('textarea[name=sql]').focus();
@@ -385,7 +385,7 @@ describe('SQL Worksheet', () => {
     assert.equal(openTxnCount('admin'), 1);
     await page.locator('.ws-wtab-new').click();
     assert.equal(await badge.textContent(), 'No open transaction', 'a new tab has none');
-    await page.locator('.ws-wtabs [role=tab]').first().click();
+    await page.locator('.ws-wtabs [data-ws-wtab]').first().click();
     await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent?.startsWith('Transaction open'));
     await page.locator('[data-ws-wclose]').first().click();
     await page.waitForFunction(() => document.querySelector('[data-ws-txn-badge]')?.textContent === 'No open transaction');

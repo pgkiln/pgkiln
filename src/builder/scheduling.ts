@@ -237,7 +237,7 @@ const hiddenSpec = (spec: JobSpec, jobid: string | null) => html`<input type="hi
 /** The review step of any change: the SQL, Apply (with the digest), Back. */
 function reviewRegion(s: Session, stmts: string[], action: string, hidden: Raw, o: { back?: Raw | ''; apply?: string; danger?: boolean; extra?: Raw | '' } = {}) {
   return html`${region('SQL', stmts.length
-    ? html`<p class="muted u-mt0">These statements run in one transaction on pgkiln's owner connection when you apply them: all of them, or none.</p><pre class="source cron-sql" aria-label="Generated SQL">${stmts.join('\n\n')}</pre>`
+    ? html`<p class="muted u-mt0">These statements run in one transaction on pgkiln's owner connection when you apply them: all of them, or none.</p><pre class="source cron-sql" data-code-view="sql" tabindex="0" aria-label="Generated SQL">${stmts.join('\n\n')}</pre>`
     : html`<p class="muted u-mt0">Nothing to change.</p>`)}
     <form method="post" action="${action}" class="cron-form">${csrf(s)}${hidden}<input type="hidden" name="reviewed" value="${reviewDigest(stmts)}">${o.extra ?? ''}
       <div class="buttons">${stmts.length ? html`<button class="btn ${o.danger ? 'btn-danger' : 'btn-hot'}" name="mode" value="apply">${icon(o.danger ? 'trash' : 'check')} ${o.apply ?? 'Apply'}</button>` : ''}${o.back ?? ''}</div></form>`;
@@ -320,7 +320,7 @@ async function jobPage(reply: FastifyReply, s: Session, st: Extract<CronState, {
       <dt>State</dt><dd>${job.active ? 'Active' : html`<span class="tag">inactive</span>`}</dd>
       <dt>Schedule</dt><dd><code>${job.schedule}</code></dd>
       <dt>Database</dt><dd>${job.database}</dd><dt>Run as</dt><dd>${job.username}</dd><dt>Job id</dt><dd>${job.jobid}</dd>
-    </dl><pre class="source cron-sql" aria-label="Command">${job.command}</pre>`)}
+    </dl><pre class="source cron-sql" data-code-view="sql" tabindex="0" aria-label="Command">${job.command}</pre>`)}
     ${region('Schedule', schedulePreview(job.schedule, st.timeZone))}
     ${region('Recent runs', html`${runsTable(runs, false)}<p class="small"><a href="${URL_BASE}/history?job=${job.jobid}">All runs of this job</a> · <a href="${URL_BASE}/history/purge?job=${job.jobid}">Purge its history</a></p>`)}`;
   return send(reply, s, shell(s, name, crumbs([name]), main, 'sql'));

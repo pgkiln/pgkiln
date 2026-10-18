@@ -98,6 +98,17 @@ describe('Data Modeler', () => {
     await page.click('[data-dm=fit]');
     await page.click('[data-dm=minimap]');
     assert.equal(await page.locator('.dm-minimap use').count(), 1);
+    // (sprint 108) the builder is dark by default: the boxes take the theme's colours, not the export's white, and the
+    // rules have no .dm-svg ancestor, so the mini-map's <use> copy is themed too; the toggle shows that it is on
+    const fills = await page.evaluate(() => ({
+      frame: getComputedStyle(document.querySelector('.dm-box .dm-frame')!).fill,
+      title: getComputedStyle(document.querySelector('.dm-box .dm-title')!).fill,
+      mini: getComputedStyle(document.querySelector('.dm-minimap')!).backgroundColor,
+    }));
+    assert.notEqual(fills.frame, 'rgb(255, 255, 255)', 'a dark box');
+    assert.notEqual(fills.title, fills.frame);
+    assert.notEqual(fills.mini, 'rgb(255, 255, 255)', 'a dark mini-map');
+    assert.equal(await page.getAttribute('[data-dm=minimap]', 'aria-pressed'), 'true');
     await page.click('[data-dm=minimap]');
     assert.equal(await page.locator('.dm-minimap').count(), 0);
 

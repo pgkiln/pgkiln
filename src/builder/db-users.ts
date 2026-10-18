@@ -223,7 +223,7 @@ function reviewForm(s: Session, spec: RoleSpec, stmts: string[], o: { isNew: boo
   return html`${errorList(o.errors)}${o.output ?? ''}
     ${region('SQL', stmts.length
       ? html`<p class="muted u-mt0">These statements run in one transaction when you apply them: all of them, or none.${spec.password === 'set' ? ' The password shows as \'********\': pgkiln sends PostgreSQL only its SCRAM-SHA-256 verifier.' : ''}</p>
-        <pre class="source dbu-sql" aria-label="Generated SQL">${maskSql(stmts)}</pre>`
+        <pre class="source dbu-sql" data-code-view="sql" tabindex="0" aria-label="Generated SQL">${maskSql(stmts)}</pre>`
       : html`<p class="muted u-mt0">Nothing to change: the role is as the form says.</p>`)}
     <form method="post" action="${URL_BASE}/save" class="dbu-form">${csrf(s)}${hiddenSpec(spec, o.isNew)}
       <input type="hidden" name="reviewed" value="${reviewDigest(stmts)}">
@@ -409,7 +409,7 @@ async function dropPage(req: Req, reply: FastifyReply, s: Session, name: string,
           <option value=""${sel(to === '')}>${r.owned ? 'Drop them with the role (DROP OWNED)' : 'It owns nothing here: just revoke its privileges'}</option></select>
           <small class="help">DROP OWNED also revokes the privileges granted to the role in this database.</small></div>
         <div class="buttons"><button class="btn">${icon('eye')} Review SQL</button></div></form>`)}
-    ${region('SQL', html`<pre class="source dbu-sql" aria-label="Generated SQL">${maskSql(stmts)}</pre>
+    ${region('SQL', html`<pre class="source dbu-sql" data-code-view="sql" tabindex="0" aria-label="Generated SQL">${maskSql(stmts)}</pre>
       <form method="post" action="${URL_BASE}/drop" class="dbu-form">${csrf(s)}
         <input type="hidden" name="name" value="${r.name}"><input type="hidden" name="to" value="${to}"><input type="hidden" name="reviewed" value="${reviewDigest(stmts)}">
         ${!to && r.owned ? html`<label class="check u-mb1"><input type="checkbox" name="drop_objects" value="1" required> Drop the ${String(r.owned)} object${r.owned === 1 ? '' : 's'} ${r.name} owns, with their data</label>` : ''}

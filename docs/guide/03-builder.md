@@ -235,7 +235,9 @@ On phones the rail gets narrower and the breadcrumb shows only the current page.
 
 The builder's look comes from design tokens at the top of `public/builder.css` (sprint 105): CSS custom properties
 for colours (a warm neutral palette with the kiln's ember for primary buttons, links, focus rings and selections),
-surfaces and their shadows, corner radii, the type scale and transitions, in a light and a dark set. The rail, the
+surfaces and their shadows, corner radii, the type scale and transitions, in a light and a dark set; the code editor's syntax colours (`--ce-*`: keywords, strings, numbers, comments, binds,
+quoted names, operators, the matching bracket, the current line, the selection and the line numbers) are tokens there
+too (sprint 108). The rail, the
 toolbar and the status bar stay dark in both themes. Transitions are switched off when the operating system asks
 for reduced motion. The builder uses the system's fonts (Inter when it is installed); it loads nothing from
 other sites.
@@ -704,7 +706,13 @@ handlers, the SQL Workshop and the import box) opens in a small code editor:
   binds, `&ITEM.` substitutions, `$$` bodies), JSON and HTML (tags, attributes, `&ITEM.` and
   `{{tags}}`). The language follows the component type: a `static` region's source is HTML, a
   `regex` validation is plain text, an `execute_sql` dynamic action is PL/pgSQL.
-- **Line numbers**, the line and column of the cursor, and the **matching bracket** marked.
+- **Line numbers**, the line and column of the cursor, the **current line** (a band and its number in bold
+  while the field has the focus) and the **matching bracket** marked.
+- **Colours from the builder's theme** (sprint 108): keywords take the kiln's ember, types, functions, strings,
+  numbers, binds and quoted names cool hues, comments a muted grey, each at least 4.5:1 (WCAG AA) on the editor's
+  background in the light and the dark theme. Read-only SQL (the Object Browser's DDL and source tabs, the Data
+  Modeler's DDL, generated SQL in Quick SQL, Query Builder, Scheduling, Database Users and the table editor, the SQL
+  Monitor's text, a saved chart's query, the Change Log, a script's results) is highlighted the same way.
 - **Tab / Shift+Tab** indent and outdent (the selected lines, too); **Enter** keeps the
   indentation and indents after `(`, `begin`, `loop`, `then`; brackets and quotes are closed for
   you and typing the closer steps over it. Press **Escape, then Tab** to move on to the next field.
@@ -1483,8 +1491,9 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   when the foreign key may be empty. A box's name opens **Table Properties** (a view: the Object
   Browser). The toolbar: **Save** (Ctrl+S), **Undo** / **Redo** (Ctrl+Z, Ctrl+Y), **Zoom out** / **Zoom
   in** (or Ctrl+wheel), **Fit**, **Auto layout** (referenced tables to the left of the tables that
-  reference them; undoable), a **Mini-map** (click or drag in it to move around), **SVG** and **PNG**
-  exports of the diagram as shown, **Print**, **Generate DDL** (the CREATE statements of the shown
+  reference them; undoable), a **Mini-map** (click or drag in it to move around; the button shows when it is on),
+  **SVG** and **PNG** exports of the diagram as shown (in light colours, whichever theme the builder uses; on screen the
+  boxes, lines and mini-map follow the light or dark theme), **Print**, **Generate DDL** (the CREATE statements of the shown
   objects with their keys, indexes, triggers, row level security, policies, comments and grants: to
   download or open in the SQL Worksheet) and **Data dictionary** (each object's columns with type,
   nullability, default, keys and comments, its constraints and what references it; to print, save as

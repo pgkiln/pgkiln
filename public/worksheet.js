@@ -269,8 +269,8 @@
       wrap.className = 'ws-wtab';
       const b = document.createElement('button');
       b.type = 'button';
-      b.setAttribute('role', 'tab');
-      b.setAttribute('aria-selected', String(t === cur));
+      // (sprint 108) buttons in a group, the open one aria-current: a tablist may hold only tabs, not the close buttons
+      if (t === cur) b.setAttribute('aria-current', 'true');
       b.dataset.wsWtab = t.key;
       b.textContent = `${t.name}${dirty(t) ? '*' : ''}`;
       b.title = t.scriptId ? `Script “${t.name}”${dirty(t) ? ' (unsaved changes)' : ''}` : 'Not saved as a script';
@@ -625,6 +625,7 @@
   const size = (key, px) => {
     const v = key === 'nav' ? Math.max(160, Math.min(px, window.innerWidth * 0.5)) : Math.max(80, Math.min(px, window.innerHeight * 0.75));
     form.style.setProperty(key === 'nav' ? '--ws-nav' : '--ws-out', `${Math.round(v)}px`);
+    form.querySelector(`[data-ws-split="${key}"]`)?.setAttribute('aria-valuenow', String(Math.round(v)));
     store.set(key, String(Math.round(v)));
     return v;
   };
@@ -632,6 +633,9 @@
   for (const sp of form.querySelectorAll('[data-ws-split]')) {
     const key = sp.dataset.wsSplit;
     const current = () => (key === 'nav' ? form.querySelector('.ws-nav').getBoundingClientRect().width : out.getBoundingClientRect().height);
+    // (sprint 108) a focusable separator states its position (in pixels)
+    sp.setAttribute('aria-valuemin', '0');
+    if (!sp.hasAttribute('aria-valuenow')) sp.setAttribute('aria-valuenow', String(Math.round(current())));
     sp.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       sp.setPointerCapture(e.pointerId);

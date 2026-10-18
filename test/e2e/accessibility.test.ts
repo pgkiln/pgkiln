@@ -104,28 +104,37 @@ describe('accessibility (axe-core)', () => {
     assert.equal(found.size, 0, report(found));
   });
 
-  test('builder pages', async () => {
-    const found: Found = new Map();
-    const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
-    try {
-      await page.goto(`${base}/builder/login`);
-      await audit(page, 'builder login', found);
-      await signIn(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
-      const app = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
-      const pid = (await owner.one('select id from meta.page where app_id = $1 and page_no = 3', [app])).id;
-      const urls = [
-        '/builder', '/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities', '/builder/workspaces', '/builder/instance',
-        `/builder/apps/${app}`, `/builder/apps/${app}/shared`, `/builder/apps/${app}/settings`, `/builder/apps/${app}/theme`,
-        `/builder/apps/${app}/search?q=emp`, `/builder/apps/${app}/advisor`, `/builder/apps/${app}/static-files`, `/builder/apps/${app}/static-files?edit=hr.js`, `/builder/apps/${app}/plugins?p=log_event`, `/builder/pages/${pid}`, `/builder/pages/${pid}?c=page`,
-        '/builder/sql', '/builder/sql/scripts', '/builder/sql/objects', '/builder/users', '/builder/developers', '/builder/ai',
-      ];
-      for (const u of urls) {
-        await page.goto(`${base}${u}`);
-        await audit(page, u, found);
+  // the builder's theme is its own cookie (dark by default); sprint 108 audits both and the SQL Workshop's pages
+  for (const theme of ['dark', 'light'] as const)
+    test(`builder pages, ${theme}`, async () => {
+      const found: Found = new Map();
+      const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await context.addCookies([{ name: 'pgkiln_btheme', value: theme, url: `${base}/builder` }]);
+      const page = await context.newPage();
+      try {
+        await page.goto(`${base}/builder/login`);
+        await audit(page, 'builder login', found);
+        await signIn(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
+        const app = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+        const pid = (await owner.one('select id from meta.page where app_id = $1 and page_no = 3', [app])).id;
+        const urls = [
+          '/builder', '/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities', '/builder/workspaces', '/builder/instance',
+          `/builder/apps/${app}`, `/builder/apps/${app}/shared`, `/builder/apps/${app}/settings`, `/builder/apps/${app}/theme`,
+          `/builder/apps/${app}/search?q=emp`, `/builder/apps/${app}/advisor`, `/builder/apps/${app}/static-files`, `/builder/apps/${app}/static-files?edit=hr.js`, `/builder/apps/${app}/plugins?p=log_event`, `/builder/pages/${pid}`, `/builder/pages/${pid}?c=page`,
+          '/builder/sql', '/builder/sql/scripts', '/builder/sql/objects', '/builder/users', '/builder/developers', '/builder/ai',
+          // sprint 108: the SQL Workshop and the wizards in both themes
+          '/builder/create/tables', '/builder/create/paste', '/builder/create/file', `/builder/apps/${app}/wizard?kind=report_form&table=hr.dept`,
+          '/builder/sql/worksheet', '/builder/sql/objects?schema=hr&k=table&o=hr.emp', '/builder/sql/objects?schema=hr&k=table&o=hr.emp&tab=ddl',
+          '/builder/sql/objects/table?schema=hr', '/builder/sql/modeler', '/builder/sql/monitor', '/builder/sql/charts', '/builder/sql/scheduling',
+          '/builder/sql/rest', '/builder/sql/changes',
+        ];
+        for (const u of urls) {
+          await page.goto(`${base}${u}`);
+          await audit(page, `${theme} ${u}`, found);
+        }
+      } finally {
+        await context.close();
       }
-    } finally {
-      await page.context().close();
-    }
-    assert.equal(found.size, 0, report(found));
-  });
+      assert.equal(found.size, 0, report(found));
+    });
 });

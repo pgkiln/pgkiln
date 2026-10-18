@@ -643,7 +643,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
           : 'Each statement commits on its own.'}</span></p>
         ${fileError ? html`<p class="alert alert-error ws-file-error" role="alert">${fileError}</p>` : ''}
         ${txnError ? html`<p class="alert alert-error ws-txn-alert" role="alert">${txnError}</p>` : txnInfo ? html`<p class="alert alert-info ws-txn-alert" role="status">${txnInfo}</p>` : ''}
-        <div class="ws-wtabs" role="tablist" aria-label="Worksheets" hidden></div>
+        <div class="ws-wtabs" role="group" aria-label="Worksheets" hidden></div>
         <div class="ws-findbar" hidden>
           <label class="sr-only" for="ws-find-q">Find</label><input id="ws-find-q" type="search" placeholder="Find" autocomplete="off" data-ws-find-q>
           <label class="sr-only" for="ws-find-r">Replace with</label><input id="ws-find-r" placeholder="Replace with" autocomplete="off" data-ws-find-r>

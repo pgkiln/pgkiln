@@ -345,7 +345,9 @@ src/
 public/
   app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)
   app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs, dynamic actions (focus, classes, messages), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
-  code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies)
+  code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies);
+                           (sprint 108) the current line, and read-only <pre data-code-view="sql|plpgsql|json|html"> highlighted;
+                           its colours are the --ce-* tokens in builder.css
   palette.js               (sprint 96) the builder's search dialog (Ctrl+K), recently visited SQL Workshop pages, the Launchpad's tabs
   sql-monitor.js           (sprint 102) the SQL Monitor: reloads the sessions' live part every 5 / 15 / 60 s, Pause (localStorage pgkiln.sqlMonitor)
   data-modeler.js, .css    (sprint 98) the Data Modeler: drag boxes, undo/redo, save, zoom/fit, auto layout, mini-map, SVG/PNG export, print
@@ -353,7 +355,8 @@ public/
                            (92) grid sort, value dialog, history filter; (93) worksheet tabs in localStorage, Files, binds dialog, format, find, case;
                            (107) Autocommit / Transaction per tab, the badge from the server, beforeunload, rollback on closing a tab
   builder.css              builder only: IDE look (dark chrome, icon rail, panes); design tokens at the top (colour,
-                           elevation, radius, type, motion; light and dark sets, sprint 105), then the shared controls
+                           elevation, radius, type, motion; light and dark sets, sprint 105; code editor --ce-*, sprint 108),
+                           then the shared controls
   builder.js               builder only: tabs, component tree, property filter, drag and drop on the layout
   builder-icons.svg        builder only: icons of the rail, toolbar and designer (b-*); b-kiln is the brand mark (brandMark() in ui.ts)
 test/
@@ -431,7 +434,7 @@ test/
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
-  e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers
+  e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers, syntax colours at AA in both themes (sprint 108)
   e2e/data-modeler.test.ts (sprint 98) the Data Modeler in a browser: drag, save, reload, undo/redo, zoom, mini-map, exports, phone
   e2e/worksheet.test.ts    (sprint 91) the SQL Worksheet in a browser: run keys, tabs, navigator, drag and drop, splitters, phone, no JavaScript;
                            (107) transaction mode: badge, reload, Rollback, closing a tab, Autocommit switch, beforeunload
@@ -485,7 +488,7 @@ CI (`.github/workflows/ci.yml`) runs these jobs against PostgreSQL 17:
 - **test**: typecheck and `npm test` on a fresh database;
 - **e2e**: the browser tests, uploading the screenshots as an artifact; `test/e2e/accessibility.test.ts` runs
   axe-core (WCAG 2.1 A and AA rules) on every page of the HR example (light, dark, Iris) and the builder's main pages
-  and allows no violation;
+  (in both builder themes, with the SQL Workshop and the wizards, since sprint 108) and allows no violation;
 - **docker**: builds the image and starts the compose stack as a user would.
 
 - **upgrade**: installs each earlier release (`v0.31.0` …) with its HR example (`git archive <tag> | tar -x`,

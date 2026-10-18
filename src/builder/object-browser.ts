@@ -279,22 +279,22 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
   const ddlOf = async (match: (x: { kind: string; name: string; table?: string }) => boolean) => {
     const objects = await readSchema(db.pool as pg.Pool, schema).catch(() => []);
     const text = objects.filter(match).map((x) => x.ddl).join('\n\n');
-    return text ? html`<pre class="source">${text}</pre>` : html`<p class="muted">No DDL (an extension's object, or not readable with this connection).</p>`;
+    return text ? html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="DDL of ${o.name}">${text}</pre>` : html`<p class="muted">No DDL (an extension's object, or not readable with this connection).</p>`;
   };
   const relname = o.ref.includes('.') ? o.ref.slice(o.ref.lastIndexOf('.') + 1).replace(/^"|"$/g, '') : o.ref.replace(/^"|"$/g, '');
 
   if (o.type === 'function' || o.type === 'procedure') {
     const src = await db.one<{ def: string }>('select pg_get_functiondef($1::regprocedure) as def', [o.ref]).catch(() => undefined);
-    return region(o.name, src ? html`<pre class="source">${src.def}</pre>` : html`<p class="muted">An aggregate or window function: no source.</p>`);
+    return region(o.name, src ? html`<pre class="source" data-code-view="plpgsql" tabindex="0" aria-label="Source of ${o.name}">${src.def}</pre>` : html`<p class="muted">An aggregate or window function: no source.</p>`);
   }
   if (o.type === 'trigger') {
     const [rel, name] = o.ref.split('|');
     const t = await db.one<{ def: string }>('select pg_get_triggerdef(oid, true) as def from pg_trigger where tgrelid = $1::regclass and tgname = $2', [rel, name]);
-    return region(o.name, html`<pre class="source">${t?.def ?? ''}</pre>`);
+    return region(o.name, html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="Definition of ${o.name}">${t?.def ?? ''}</pre>`);
   }
   if (o.type === 'index') {
     const i = await db.one<{ def: string; size: string }>('select pg_get_indexdef($1::regclass) as def, pg_size_pretty(pg_relation_size($1::regclass)) as size', [o.ref]);
-    return region(o.name, html`<pre class="source">${i?.def ?? ''};</pre><p class="muted">Size: ${i?.size ?? ''}</p>`);
+    return region(o.name, html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="Definition of ${o.name}">${i?.def ?? ''};</pre><p class="muted">Size: ${i?.size ?? ''}</p>`);
   }
   if (o.type === 'sequence') {
     const q = await db.one<Record<string, unknown>>(

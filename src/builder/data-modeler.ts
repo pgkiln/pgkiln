@@ -355,7 +355,7 @@ export async function dataModelerRoutes(app: FastifyInstance) {
       return reply.header('content-disposition', `attachment; filename="${fileName(d.name)}.sql"`).type('application/sql; charset=utf-8').send(script);
     const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('modeler')}
       ${region(`DDL of ${d.name}`, html`<p class="muted u-mt0">The CREATE statements of the diagram's ${m.tables.length} objects in schema ${d.schema_name}: tables, their keys, indexes, triggers, row level security, policies, comments and grants, and views. Review before running.</p>
-        <pre class="source" tabindex="0" aria-label="DDL">${script}</pre>
+        <pre class="source" data-code-view="sql" tabindex="0" aria-label="DDL">${script}</pre>
         <form method="post" action="${BASE}/sql">${csrf(s)}<input type="hidden" name="sql" value="${script}">
           <div class="buttons"><a class="btn" href="${M}/${d.id}">${bicon('back')} Back to the diagram</a><a class="btn" href="${M}/${d.id}/ddl?download=1">${icon('download')} Download</a>
             <button class="btn btn-hot">${icon('play')} Open in the SQL Worksheet</button></div></form>`)}`;
