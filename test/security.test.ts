@@ -9348,3 +9348,149 @@ describe('sprint 106 change log', () => {
     assert.equal((await king.post(`/builder/sql/changes/${id}/delete`, { __csrf: king.lastCsrf })).headers.location, '/builder/login');
   });
 });
+
+describe('sprint 107 transaction mode', () => {
+  const DEV = 'sec107dev';
+  const S = 'sec107';
+  let ws: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username });
+    await b.get('/builder/sql/worksheet');
+    return b;
+  };
+  const run = (b: Browser, tab: string, sql: string, extra: Record<string, string> = {}) =>
+    b.post('/builder/sql/worksheet', { __csrf: b.lastCsrf, sql, mode: 'statement', ws_tab: tab, txn: '1', ...extra });
+  const end = (b: Browser, tab: string) => b.post('/builder/sql/worksheet/txn', { __csrf: b.lastCsrf, tab, action: 'rollback' });
+  const status = async (b: Browser, tab: string) => JSON.parse((await b.get(`/builder/sql/worksheet/txn?tab=${tab}`)).body);
+  const v = async () => Number((await owner.one(`select v from ${S}.t where id = 1`)).v);
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    ws = (await owner.one(`insert into meta.workspace (name) values ('Sec107 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, DEV]);
+    await owner.query(`drop schema if exists ${S} cascade; create schema ${S}; create table ${S}.t (id int primary key, v int); insert into ${S}.t values (1, 0)`);
+    await owner.query(`grant usage on schema ${S} to public; grant select on ${S}.t to public`);
+  });
+  after(async () => {
+    const { endAllTxns } = await import('../src/worksheet-txn.ts');
+    await endAllTxns();
+    delete process.env.WORKSHEET_TXN_MAX_PER_DEVELOPER;
+    delete process.env.WORKSHEET_TXN_MAX;
+    await owner.query(`delete from meta.workspace where name = 'Sec107 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query('drop role if exists sec107_login');
+  });
+
+  test('another developer, or another session of the same one, never reaches a transaction: same tab key, status, commit', async () => {
+    const a = await signIn('admin');
+    await run(a, 'sec107a', `update ${S}.t set v = 107 where id = 1`);
+    assert.equal((await status(a, 'sec107a')).state, 'open');
+    for (const other of [await signIn(DEV), await signIn('admin')]) {
+      assert.equal((await status(other, 'sec107a')).state, 'none');
+      const c = JSON.parse((await other.post('/builder/sql/worksheet/txn', { __csrf: other.lastCsrf, tab: 'sec107a', action: 'commit' })).body);
+      assert.equal(c.ok, false);
+      assert.match((await other.post('/builder/sql/worksheet', { __csrf: other.lastCsrf, sql: '', mode: 'commit', ws_tab: 'sec107a', txn: '1' })).body, /This worksheet has no open transaction/);
+      // its own run with that tab key is a transaction of its own, which doesn't see the change
+      const page = (await run(other, 'sec107a', `select v from ${S}.t where id = 1`)).body;
+      assert.match(page, /<td class="num">0<\/td>/);
+      await end(other, 'sec107a');
+    }
+    assert.equal((await status(a, 'sec107a')).state, 'open', 'still open, still the first developer\'s');
+    assert.equal(await v(), 0);
+    await end(a, 'sec107a');
+    assert.equal(await v(), 0);
+  });
+
+  test('limits per developer and per server', async () => {
+    const { openTxnCount } = await import('../src/worksheet-txn.ts');
+    process.env.WORKSHEET_TXN_MAX_PER_DEVELOPER = '2';
+    try {
+      const a = await signIn('admin');
+      for (const tab of ['seclim1', 'seclim2']) assert.match((await run(a, tab, 'select 1')).body, /data-state="open"/);
+      const third = (await run(a, 'seclim3', `update ${S}.t set v = 1 where id = 1`)).body;
+      assert.match(third, /You have 2 worksheets with an open transaction, the most allowed/);
+      assert.equal(await v(), 0, 'the refused run ran nothing');
+      // a second session of the same developer counts too
+      assert.match((await run(await signIn('admin'), 'seclim4', 'select 1')).body, /the most allowed/);
+      assert.equal(openTxnCount('admin'), 2);
+      process.env.WORKSHEET_TXN_MAX = '2';
+      assert.match((await run(await signIn(DEV), 'seclim5', 'select 1')).body, /The server has as many open worksheet transactions as it allows/);
+      for (const tab of ['seclim1', 'seclim2']) await end(a, tab);
+      assert.equal(openTxnCount(), 0);
+    } finally {
+      delete process.env.WORKSHEET_TXN_MAX_PER_DEVELOPER;
+      delete process.env.WORKSHEET_TXN_MAX;
+    }
+  });
+
+  test('the idle timeout rolls back and closes the connection; the database has its own backstop', async () => {
+    const { sweepTxns, txnIdleSeconds } = await import('../src/worksheet-txn.ts');
+    const a = await signIn('admin');
+    const page = (await run(a, 'secidle', 'show idle_in_transaction_session_timeout')).body;
+    assert.match(page, new RegExp(`<td>${(txnIdleSeconds() + 60) / 60}min</td>`));
+    await run(a, 'secidle', `update ${S}.t set v = 5 where id = 1`);
+    const pid = Number(/<td class="num">(\d+)<\/td>/.exec((await run(a, 'secidle', 'select pg_backend_pid()')).body)![1]);
+    assert.equal((await owner.one(`select state from pg_stat_activity where pid = $1`, [pid])).state, 'idle in transaction');
+    await sweepTxns(Date.now() + txnIdleSeconds() * 1000 + 5000);
+    assert.equal(await v(), 0);
+    for (let i = 0; i < 50 && (await owner.one('select 1 as x from pg_stat_activity where pid = $1', [pid])); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(await owner.one('select 1 as x from pg_stat_activity where pid = $1', [pid]), undefined, 'the connection is gone, never back in a pool');
+    assert.equal((await status(a, 'secidle')).state, 'none');
+  });
+
+  test('CSRF on Commit / Rollback (page and JSON); developers only', async () => {
+    const a = await signIn('admin');
+    await run(a, 'seccsrf', `update ${S}.t set v = 9 where id = 1`);
+    assert.equal((await a.post('/builder/sql/worksheet/txn', { tab: 'seccsrf', action: 'commit' })).statusCode, 403);
+    assert.equal((await a.post('/builder/sql/worksheet/txn', { __csrf: 'forged', tab: 'seccsrf', action: 'commit' })).statusCode, 403);
+    assert.equal((await a.post('/builder/sql/worksheet', { __csrf: 'forged', sql: '', mode: 'commit', ws_tab: 'seccsrf', txn: '1' })).statusCode, 403);
+    assert.equal((await a.post('/builder/sql/worksheet', { __csrf: 'forged', sql: `update ${S}.t set v = 10 where id = 1`, mode: 'statement', ws_tab: 'seccsrf', txn: '1' })).statusCode, 403);
+    assert.equal((await status(a, 'seccsrf')).state, 'open');
+    assert.equal(await v(), 0, 'nothing committed');
+    const anon = new Browser();
+    assert.equal((await anon.get('/builder/sql/worksheet/txn?tab=seccsrf')).headers.location, '/builder/login');
+    const king = await as('king');
+    assert.equal((await king.post('/builder/sql/worksheet/txn', { __csrf: king.lastCsrf, tab: 'seccsrf', action: 'commit' })).headers.location, '/builder/login');
+    assert.equal((await a.get('/builder/sql/worksheet/txn?tab=../x')).statusCode, 400);
+    await end(a, 'seccsrf');
+    assert.equal(await v(), 0);
+  });
+
+  test('role escalation: the pinned connection is the pool\'s login, SET ROLE stays within it, Run as is checked and never leaks', async () => {
+    const { beginTxn, endTxn } = await import('../src/worksheet-txn.ts');
+    const { makePool, ownerUrl } = await import('../src/db.ts');
+    // a non-superuser login, like an isolated workspace's developer login
+    await owner.query(`drop role if exists sec107_login; create role sec107_login login password 'sec107-pw' nosuperuser nocreaterole`);
+    const url = new URL(ownerUrl);
+    url.username = 'sec107_login';
+    url.password = 'sec107-pw';
+    const pool = makePool(url.toString(), 'sec107');
+    try {
+      const t = await beginTxn({ sessionId: 'sec107-session', username: 'sec107', workspaceId: -1, tab: 'secrole', db: pool, runsAs: 'test', searchSchema: null });
+      assert.ok(typeof t !== 'string', String(t));
+      if (typeof t === 'string') return;
+      assert.deepEqual((await t.client.query('select session_user::text as s, current_user::text as c')).rows[0], { s: 'sec107_login', c: 'sec107_login' });
+      await assert.rejects(t.client.query('set role pgkiln'), /permission denied/);
+      await endTxn(t, 'rollback');
+    } finally {
+      await pool.end();
+    }
+    // Run as: another workspace's application is refused in transaction mode too, and nothing opens
+    const { openTxnCount } = await import('../src/worksheet-txn.ts');
+    const hr = await owner.one(`select id, db_role from meta.app where alias = 'hr'`);
+    const d = await signIn(DEV);
+    assert.equal((await run(d, 'secrunas', 'select 1', { as_app: String(hr.id) })).statusCode, 404);
+    assert.equal(openTxnCount(DEV), 0);
+    // the application's role lasts as long as the transaction's own connection
+    const a = await signIn('admin');
+    assert.match((await run(a, 'secrunas', 'select current_user::text as u', { as_app: String(hr.id) })).body, new RegExp(`<td>${hr.db_role}</td>`));
+    assert.match((await run(a, 'secrunas', `select current_user::text as u`)).body, /runs as the role .* Commit or Rollback it before changing Run as/);
+    await end(a, 'secrunas');
+    assert.doesNotMatch((await run(a, 'secrunas', 'select current_user::text as u')).body, new RegExp(`<td>${hr.db_role}</td>`));
+    await end(a, 'secrunas');
+    assert.equal((await owner.one('select current_user::text as u')).u, (await owner.one('select session_user::text as u')).u, 'the builder\'s pool is untouched');
+  });
+});

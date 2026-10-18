@@ -89,10 +89,10 @@ export const clearTxnNote = (sessionId: string, tab: string) => notes.delete(key
 /** Open transactions (tests and the instance's monitor). */
 export const openTxnCount = (username?: string) => [...open.values()].filter((t) => username === undefined || t.username === username).length;
 
-/** Statements PostgreSQL refuses inside a transaction block: refused before they abort the transaction. */
-export const outsideTxnOnly = (sql: string) => {
+/** Statements PostgreSQL refuses inside a transaction block (refused before they abort it): the command, or ''. */
+export const outsideTxnOnly = (sql: string): string => {
   const s = sql.replace(/^(\s|--[^\n]*\n|\/\*[\s\S]*?\*\/)+/, '').toLowerCase();
-  return /^(vacuum|alter\s+system|(create|drop)\s+(database|tablespace)|(create|drop)\s+(unique\s+)?index\s+concurrently|reindex\b[^;]*\bconcurrently|alter\s+table\b[^;]*\bdetach\s+partition\b[^;]*\bconcurrently|prepare\s+transaction|commit\s+prepared|rollback\s+prepared)\b/.test(s);
+  return /^(vacuum|alter\s+system|(create|drop)\s+(database|tablespace)|(create|drop)\s+(unique\s+)?index\s+concurrently|reindex\b[^;]*\bconcurrently|alter\s+table\b[^;]*\bdetach\s+partition\b[^;]*\bconcurrently|prepare\s+transaction|commit\s+prepared|rollback\s+prepared)\b/.exec(s)?.[0].replace(/\s+/g, ' ').toUpperCase() ?? '';
 };
 
 export interface BeginOptions {

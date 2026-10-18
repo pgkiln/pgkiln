@@ -291,3 +291,10 @@ details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after 
 .ch-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 12px; min-width: 0; }
 .ch-card h2 { font-size: 14px; margin: 0 0 6px; }
 .ch-edit { max-width: 48rem; margin-top: 16px; }
+
+/* (sprint 107) transaction mode: Autocommit / Transaction, the badge, Commit and Rollback */
+.ws-txn { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.ws-txn-badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); max-width: 22rem; overflow-wrap: anywhere; }
+.ws-txn-badge[data-state="open"] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); background: color-mix(in srgb, var(--warn) 10%, transparent); font-weight: 600; }
+.ws-txn-badge[data-state="aborted"] { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); font-weight: 600; }
+.ws-txn-alert { margin: 6px 8px; }

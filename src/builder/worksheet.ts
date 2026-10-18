@@ -428,7 +428,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
       else if (txnAsked && !tabKey) txnError = 'Transaction mode needs JavaScript (the worksheet tab it belongs to); this run was refused.';
       else if (txn && (asApp?.id ?? null) !== txn.asAppId) txnError = `This worksheet's transaction runs as ${txn.runsAs}: Commit or Rollback it before changing Run as.`;
       else if (txn?.busy) txnError = 'A run is still going on in this worksheet: wait for it to finish.';
-      else if (blocked) txnError = `Line ${blocked.line}: ${blocked.sql.trim().split(/\s+/).slice(0, 2).join(' ').toUpperCase()} can't run inside a transaction. Switch the worksheet to Autocommit to run it.`;
+      else if (blocked) txnError = `Line ${blocked.line}: ${outsideTxnOnly(blocked.sql)} can't run inside a transaction. Switch the worksheet to Autocommit to run it.`;
     }
     if (statements.length && !txnError) {
       ran = { start: statements[0].start, end: statements[statements.length - 1].end };
@@ -623,7 +623,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
             </dl>
             <label class="ws-kwcase" hidden>Format keywords in <select data-ws-kwcase><option value="lower">lower case</option><option value="upper">UPPER CASE</option></select></label>
             <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>Help on the SQL Worksheet</a></div></div></details>
-          <span class="ws-txn" data-ws-txn data-state="${tState}" data-statements="${txn?.statements ?? 0}" data-started="${txn?.startedMs ?? ''}" data-last="${txn?.lastMs ?? ''}" data-idle="${txnIdleSeconds()}" data-note="${tNote ?? ''}" hidden>
+          <span class="ws-txn" data-ws-txn data-state="${tState}" data-statements="${txn?.statements ?? 0}" data-started="${txn?.startedMs ?? ''}" data-last="${txn?.lastMs ?? ''}" data-idle="${txnIdleSeconds()}" data-note="${tNote ?? ''}" data-now="${Date.now()}" hidden>
             <label class="ws-runas"><span>Commit</span><select name="txn" data-ws-txn-mode title="Autocommit: each statement commits on its own. Transaction: the statements stay in one transaction until Commit or Rollback.">
               <option value="">Autocommit</option><option value="1"${txnOn ? raw(' selected') : ''}>Transaction</option></select></label>
             <span class="ws-txn-badge" data-ws-txn-badge data-state="${tState}" role="status" title="${tState === 'none' ? '' : `Runs as ${txn?.runsAs ?? ''}`}">${badge}</span>

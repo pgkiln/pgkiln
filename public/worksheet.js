@@ -13,6 +13,9 @@
 //   - (sprint 93) worksheets as tabs kept in this browser (unsaved text survives a reload), saved as SQL Scripts
 //     (Ctrl+S), the Files list; bind and substitution values in a dialog; Format (Ctrl+F7), Convert case (Ctrl+B),
 //     find and replace (Ctrl+F, Ctrl+H), go to line (Ctrl+G), comment lines (Ctrl+/), Help (F1)
+//   - (sprint 107) transaction mode per worksheet tab: Autocommit / Transaction, Commit and Rollback, a badge with the
+//     server's real state (fetched again after a reload and a tab switch, and when the idle timeout is due); leaving the
+//     page with an open transaction asks first, closing the tab or switching to Autocommit rolls it back
 // Strict CSP: no inline styles; sizes are set through the CSSOM.
 (() => {
   'use strict';
@@ -288,11 +291,15 @@
     ta.value = t.text;
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     drawTabs();
+    txnTabChanged();
     ta.focus();
   };
   const newTab = () => switchTo(add({ key: newKey(), name: untitled(), scriptId: null, text: '', saved: '' }));
   const closeTab = (t) => {
-    if (dirty(t) && t.text.trim() && !window.confirm(`Close “${t.name}” without saving?`)) return;
+    const txnOpen = t === cur ? txnBox.dataset.state !== 'none' : !!t.txnOpen;
+    if (txnOpen && !window.confirm(`“${t.name}” has an open transaction. Close it and roll the transaction back?`)) return;
+    if (!txnOpen && dirty(t) && t.text.trim() && !window.confirm(`Close “${t.name}” without saving?`)) return;
+    if (t.txn) txnPost(t.key, 'rollback'); // the server knows best whether one is open
     const i = book.tabs.indexOf(t);
     book.tabs.splice(i, 1);
     if (t === cur) {
@@ -339,6 +346,111 @@
   };
   form.querySelector('.ws-nav-switch').addEventListener('click', (e) => { const b = e.target.closest('[data-ws-navtab]'); if (b) navTab(b.dataset.wsNavtab); });
   navTab(location.hash === '#ws-files' ? 'files' : 'objects');
+
+  // ------------------------------------------------------------ (sprint 107) transaction mode
+  function txnTabChanged() {
+    modeSel.value = cur.txn ? '1' : '';
+    txnApply({ state: 'none', statements: 0, startedMs: null, note: null });
+    txnFetch();
+  }
+  const txnBox = form.querySelector('[data-ws-txn]');
+  const modeSel = txnBox.querySelector('[data-ws-txn-mode]');
+  const badge = txnBox.querySelector('[data-ws-txn-badge]');
+  const commitBtn = txnBox.querySelector('[data-ws-txn-commit]');
+  const rollbackBtn = txnBox.querySelector('[data-ws-txn-rollback]');
+  const commitNote = form.querySelector('[data-ws-commit-note]');
+  const idleSeconds = Number(txnBox.dataset.idle) || 300;
+  const idleWords = idleSeconds % 60 ? `${idleSeconds} seconds` : `${idleSeconds / 60} minute${idleSeconds === 60 ? '' : 's'}`;
+  let txnInfo = { state: txnBox.dataset.state, statements: Number(txnBox.dataset.statements) || 0, startedMs: Number(txnBox.dataset.started) || null,
+    lastMs: Number(txnBox.dataset.last) || null, note: txnBox.dataset.note || null };
+  let clockSkew = Date.now() - (Number(txnBox.dataset.now) || Date.now());
+  let txnTimer = 0;
+  const badgeText = (i) => {
+    if (i.state === 'none') return i.note || 'No open transaction';
+    const min = i.startedMs ? Math.floor((Date.now() - clockSkew - i.startedMs) / 60000) : 0;
+    return `${i.state === 'aborted' ? 'Transaction failed' : 'Transaction open'} · ${i.statements} statement${i.statements === 1 ? '' : 's'} · ${min < 1 ? 'under a minute' : `${min} min`}`;
+  };
+  const txnApply = (i) => {
+    txnInfo = i;
+    const on = modeSel.value === '1';
+    txnBox.dataset.state = i.state;
+    badge.dataset.state = i.state;
+    badge.textContent = badgeText(i);
+    badge.hidden = !on && i.state === 'none' && !i.note;
+    commitBtn.hidden = rollbackBtn.hidden = !on && i.state === 'none';
+    commitBtn.disabled = i.state !== 'open';
+    rollbackBtn.disabled = i.state === 'none';
+    commitNote.textContent = on
+      ? `The statements stay in one transaction until Commit or Rollback; it is rolled back after ${idleWords} without a run.`
+      : 'Each statement commits on its own.';
+    cur.txn = on;
+    cur.txnOpen = i.state !== 'none';
+    persist();
+    clearTimeout(txnTimer);
+    if (i.state !== 'none') {
+      // the age once a minute; the server again when the idle timeout is due
+      const due = i.lastMs ? i.lastMs + idleSeconds * 1000 + 2000 - (Date.now() - clockSkew) : 60000;
+      txnTimer = setTimeout(() => (due <= 60000 ? txnFetch() : txnApply(txnInfo)), Math.max(1000, Math.min(due, 60000)));
+    }
+  };
+  const fromServer = (j) => {
+    clockSkew = Date.now() - j.now;
+    txnApply({ state: j.state, statements: j.statements, startedMs: j.startedMs, lastMs: j.lastMs, note: j.note });
+  };
+  async function txnFetch() {
+    const key = cur.key;
+    try {
+      const res = await fetch(`/builder/sql/worksheet/txn?tab=${encodeURIComponent(key)}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error(String(res.status));
+      const j = await res.json();
+      if (key !== cur.key) return; // switched meanwhile
+      if (j.state !== 'none') modeSel.value = '1';
+      fromServer(j);
+    } catch {
+      badge.textContent = 'Transaction state unknown';
+    }
+  }
+  async function txnPost(key, action) {
+    try {
+      const res = await fetch('/builder/sql/worksheet/txn', { method: 'POST', credentials: 'same-origin', headers: { accept: 'application/json' },
+        body: new URLSearchParams({ __csrf: form.elements.__csrf.value, tab: key, action }) });
+      const j = await res.json();
+      if (key === cur.key) {
+        fromServer(j);
+        if (j.message) announce(j.message);
+      }
+      return j;
+    } catch {
+      announce('The transaction could not be ended: reload the page.');
+      return null;
+    }
+  }
+  modeSel.addEventListener('change', async () => {
+    if (modeSel.value !== '1' && txnInfo.state !== 'none') {
+      if (!window.confirm('Switching to Autocommit rolls back the open transaction. Roll it back?')) { modeSel.value = '1'; return; }
+      await txnPost(cur.key, 'rollback');
+      modeSel.value = '';
+    }
+    txnApply(txnInfo);
+  });
+  // a page post (a run, Commit, Rollback) is not leaving: the transaction stays
+  let submitting = false;
+  form.addEventListener('submit', () => {
+    submitting = true;
+    setTimeout(() => { submitting = false; }, 3000); // a download doesn't leave the page
+  });
+  window.addEventListener('pageshow', () => { submitting = false; });
+  window.addEventListener('beforeunload', (e) => {
+    if (submitting || txnInfo.state === 'none') return;
+    e.preventDefault();
+    e.returnValue = ''; // the browser asks "Leave site?"; an idle transaction is rolled back after the timeout
+  });
+  if (!form.dataset.tab || form.dataset.tab !== cur.key) txnTabChanged();
+  else {
+    if (txnInfo.state !== 'none') modeSel.value = '1';
+    else if (!form.querySelector('[data-ws-txn-mode] option[selected]')) modeSel.value = cur.txn ? '1' : '';
+    txnApply(txnInfo);
+  }
 
   // ------------------------------------------------------------ (sprint 97) a chart's settings draw it again
   form.querySelector('.ch-controls')?.addEventListener('change', () => run('chart'));
