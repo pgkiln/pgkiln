@@ -258,3 +258,21 @@ describe('a reporting application on the HR dataset', () => {
     assert.equal((await v.get(`/a/${ALIAS}/reports/${reportId}`)).statusCode, 404);
   });
 });
+
+describe('datasets travel with the workspace export', () => {
+  test('exported as definitions; imported (added, then kept or replaced by name)', async () => {
+    const { exportWorkspace, importWorkspace } = await import('../src/workspace-export.ts');
+    const doc = await exportWorkspace(1, ['datasets']);
+    const hr = doc.datasets.find((d: any) => d.name === 'hr');
+    assert.equal(hr.tables[1].join.on[0].column, 'deptno');
+    doc.datasets = [{ ...hr, name: 'ds110_ws', label: 'From the workspace file' }];
+    const r1 = await owner.tx((c) => importWorkspace(c, 1, doc, ['datasets'], { replace: false, by: 'test' }));
+    assert.equal(r1.added, 1);
+    doc.datasets[0].label = 'Replaced';
+    const r2 = await owner.tx((c) => importWorkspace(c, 1, doc, ['datasets'], { replace: true, by: 'test' }));
+    assert.equal(r2.replaced, 1);
+    assert.equal((await owner.one(`select label from meta.dataset where name = 'ds110_ws'`)).label, 'Replaced');
+    doc.datasets = [{ ...hr, name: 'Bad Name' }];
+    await assert.rejects(owner.tx((c) => importWorkspace(c, 1, doc, ['datasets'], { replace: true, by: 'test' })), /not a valid dataset name/);
+  });
+});

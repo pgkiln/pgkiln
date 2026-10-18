@@ -1,5 +1,6 @@
 import type { Client } from './db.ts';
 import { owner } from './db.ts';
+import { checkDataset, datasetOf, storeDataset } from './datasets.ts';
 import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, replaceCatalog, wholeCatalogProblems } from './restcatalog.ts';
 
 // Workspace utilities → Export / import (APEX: Workspace Utilities → Export,
@@ -16,6 +17,7 @@ import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, repla
 //   sql_scripts      the SQL Workshop's saved scripts
 //   blueprints       saved blueprints
 //   data_generators  saved data generators (Sample Data)
+//   datasets         (sprint 110) Data Reporter datasets (pgkiln-dataset/1 definitions)
 //
 // Not exported: the workspace's name (the importer's workspace keeps its own),
 // isolation and its database roles (installation-specific), script runs and
@@ -24,7 +26,7 @@ import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, repla
 // installation has a developer of that name.
 
 export const WORKSPACE_FORMAT = 'pgkiln-workspace/1';
-export const PARTS = ['settings', 'developers', 'app_groups', 'extension_links', 'rest_catalogs', 'sql_scripts', 'blueprints', 'data_generators'] as const;
+export const PARTS = ['settings', 'developers', 'app_groups', 'extension_links', 'rest_catalogs', 'sql_scripts', 'blueprints', 'data_generators', 'datasets'] as const;
 export type Part = (typeof PARTS)[number];
 export const PART_LABELS: Record<Part, string> = {
   settings: 'Settings: description, message, banner and preferences',
@@ -35,6 +37,7 @@ export const PART_LABELS: Record<Part, string> = {
   sql_scripts: 'SQL scripts',
   blueprints: 'Blueprints',
   data_generators: 'Data generators',
+  datasets: 'Data Reporter datasets',
 };
 
 const MAX_ITEMS = 5000;
@@ -72,6 +75,8 @@ export async function exportWorkspace(workspaceId: number, parts: readonly Part[
     // (seed is a bigint: pg returns a string)
     doc.data_generators = (await owner.query('select name, description, schema_name, seed, tables from meta.data_generator where workspace_id = $1 order by name', [workspaceId])).rows
       .map((g) => ({ ...g, seed: g.seed === null ? null : Number(g.seed) }));
+  if (want('datasets'))
+    doc.datasets = (await owner.query('select * from meta.dataset where workspace_id = $1 order by name', [workspaceId])).rows.map(datasetOf);
   return doc;
 }
 
@@ -235,6 +240,18 @@ export async function importWorkspace(c: Client, workspaceId: number, doc: unkno
         (id) => c.query('update meta.data_generator set description = $2, schema_name = $3, seed = $4, tables = $5, updated_by = $6, updated_at = now() where id = $1', [id, ...vals, opts.by]))]++;
     }
     tally('Data generators', n.added, n.replaced, n.skipped);
+  }
+
+  if (want('datasets')) {
+    // (sprint 110) checked for form here; App Builder → Data Reporter shows what doesn't match this database
+    const n = count();
+    for (const x of d.datasets as Json[]) {
+      const { dataset, errors } = checkDataset(isObj(x) ? x : {});
+      if (errors.length || !dataset.columns.length) throw new Error(`Dataset ${isObj(x) ? x.name : '?'}: ${errors.slice(0, 5).join(' ') || 'it offers no columns.'}`);
+      const existing = (await c.query<{ id: number }>('select id from meta.dataset where workspace_id = $1 and name = $2', [workspaceId, dataset.name])).rows[0];
+      n[await upsert(existing, () => storeDataset(c, workspaceId, dataset, opts.by), () => storeDataset(c, workspaceId, dataset, opts.by))]++;
+    }
+    tally('Data Reporter datasets', n.added, n.replaced, n.skipped);
   }
   return r;
 }
