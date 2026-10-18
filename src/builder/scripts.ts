@@ -92,7 +92,7 @@ export function resultsHtml(results: StatementResult[]) {
     (r) => html`<li class="script-result">
       <div class="script-result-head">${statusTag(r)} <strong>#${r.n || '-'}</strong>
         <span class="muted small">${r.line ? `line ${r.line}` : ''}${r.status === 'ok' ? ` · ${r.command ?? 'done'}${r.rows !== null && r.rows !== undefined ? `, ${r.rows} row(s)` : ''}` : ''}${r.status === 'ok' || r.status === 'error' ? ` · ${r.ms} ms` : ''}</span></div>
-      <details class="script-sql"><summary><code>${r.sql.length > 120 ? `${r.sql.slice(0, 120).replace(/\s+/g, ' ')}…` : r.sql.replace(/\s+/g, ' ')}</code></summary><pre class="source">${r.sql}</pre></details>
+      <details class="script-sql"><summary><code>${r.sql.length > 120 ? `${r.sql.slice(0, 120).replace(/\s+/g, ' ')}…` : r.sql.replace(/\s+/g, ' ')}</code></summary><pre class="source" data-code-view="sql" tabindex="0" aria-label="Statement">${r.sql}</pre></details>
       ${r.error ? html`<div class="alert ${r.status === 'error' ? 'alert-error' : 'alert-note'}">${r.error}</div>` : ''}
       ${r.columns?.length
         ? html`<div class="table-wrap"><table class="report"><thead><tr>${r.columns.map((c) => html`<th>${c}</th>`)}</tr></thead>

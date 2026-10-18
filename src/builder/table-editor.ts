@@ -121,7 +121,7 @@ function form(s: Session, def: TableDef, opts: { editing: TableDef | null; schem
         <div class="field"><label class="label" for="te-part_by">Partition by</label><select id="te-part_by" name="part_by"><option value="">Not partitioned</option>${(['range', 'list', 'hash'] as const).map((p) => html`<option value="${p}"${sel(p, def.partitionBy)}>${p}</option>`)}</select></div>
         <div class="field"><label class="label" for="te-part_key">Key</label>${input('part_key', def.partitionKey, 'Key', 'class="code" placeholder="created_at"')}</div></div>
         <small class="help">The partitions themselves are tables made with CREATE TABLE … PARTITION OF in the worksheet.</small></fieldset>`}`],
-    ['ddl', 'DDL', opts.ddl.length ? html`<pre class="source te-ddl">${opts.ddl.join('\n\n')}</pre>` : html`<p class="muted">${editing ? 'No changes yet: the table is as the form shows it.' : 'Fill in the table and press Preview DDL.'}</p>`],
+    ['ddl', 'DDL', opts.ddl.length ? html`<pre class="source te-ddl" data-code-view="sql" tabindex="0" aria-label="DDL">${opts.ddl.join('\n\n')}</pre>` : html`<p class="muted">${editing ? 'No changes yet: the table is as the form shows it.' : 'Fill in the table and press Preview DDL.'}</p>`],
     ['output', 'Output', opts.output || html`<p class="muted">Apply shows what happened here.</p>`],
   ];
   const tab = sections.some(([k]) => k === opts.tab) ? opts.tab : opts.errors.length ? 'columns' : 'columns';
@@ -203,7 +203,7 @@ async function page(req: Req, reply: FastifyReply) {
         const now = await readTable(db, `${pgIdent(def.schema)}.${pgIdent(def.name)}`);
         return back(reply, s, `${BASE}/sql/objects/table?${new URLSearchParams({ o: now ? `${pgIdent(now.schema)}.${pgIdent(now.name)}` : '' })}`);
       }
-      output = html`<div class="alert alert-error" role="alert"><p><strong>Nothing was changed</strong>: the statements ran in one transaction, which was rolled back.</p><p>${failed}</p><pre class="source">${at}</pre></div>`;
+      output = html`<div class="alert alert-error" role="alert"><p><strong>Nothing was changed</strong>: the statements ran in one transaction, which was rolled back.</p><p>${failed}</p><pre class="source" data-code-view="sql" tabindex="0" aria-label="Failed statement">${at}</pre></div>`;
       tab = 'output';
     }
     if (errors.length) tab = 'columns';

@@ -361,7 +361,7 @@ export async function queryBuilderRoutes(app: FastifyInstance) {
     </form>`;
 
     const output = built
-      ? html`<div class="u-spacer"></div>${region('SQL', html`<pre class="source" tabindex="0" aria-label="Generated SQL">${built.sql}</pre>
+      ? html`<div class="u-spacer"></div>${region('SQL', html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="Generated SQL">${built.sql}</pre>
           <form method="post" action="${BASE}/sql">${csrf(s)}<input type="hidden" name="sql" value="${built.sql}">
             <div class="buttons"><button class="btn btn-hot">${icon('play')} Run in the SQL Worksheet</button></div></form>`)}`
       : '';

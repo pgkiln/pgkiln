@@ -43,7 +43,7 @@ export async function quickSqlRoutes(app: FastifyInstance) {
         ${region('PostgreSQL', html`${warnings.length
             ? html`<div class="alert alert-error" role="alert"><ul class="u-m0">${warnings.map((w) => html`<li>Line ${w.line}: ${w.message}</li>`)}</ul></div>`
             : ''}
-          <pre class="source ddl" tabindex="0" aria-label="Generated SQL">${ddl}</pre>`)}
+          <pre class="source ddl" data-code-view="sql" tabindex="0" aria-label="Generated SQL">${ddl}</pre>`)}
       </div>
       <div class="u-spacer"></div>
       ${region('Save or run', html`<div class="form-grid"><div class="field"><label class="label" for="f_name">Script name</label>

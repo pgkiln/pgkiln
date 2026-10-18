@@ -48,24 +48,27 @@
 .ce textarea.ce-input:focus-visible { outline: none; }
 .ce textarea.sql-editor { min-height: 18rem; }
 
-/* tokens */
-.ce-code .t-kw { color: var(--ce-kw); font-weight: 600; }
-.ce-code .t-type { color: var(--ce-type); }
-.ce-code .t-fn { color: var(--ce-fn); }
-.ce-code .t-str { color: var(--ce-str); }
-.ce-code .t-key { color: var(--ce-fn); }
-.ce-code .t-num { color: var(--ce-num); }
-.ce-code .t-com { color: var(--ce-com); font-style: italic; }
-.ce-code .t-bind, .ce-code .t-sub { color: var(--ce-bind); font-weight: 600; }
-.ce-code .t-qid { color: var(--ce-qid); }
-.ce-code .t-dol { color: var(--ce-str); font-weight: 600; }
-.ce-code .t-tag { color: var(--ce-tag); }
-.ce-code .t-attr { color: var(--ce-attr); }
-.ce-code .t-ent { color: var(--ce-num); }
-.ce-code .t-err { color: var(--ce-err); text-decoration: wavy underline; }
-.ce-code .t-op { color: var(--ce-op); }
-.ce-code .t-pun, .ce-code .t-br, .ce-code .t-id { color: var(--ce-text); }
+/* tokens: in the editor and in read-only code (<pre data-code-view>, sprint 108) */
+:is(.ce-code, .ce-view) .t-kw { color: var(--ce-kw); font-weight: 600; }
+:is(.ce-code, .ce-view) .t-type { color: var(--ce-type); }
+:is(.ce-code, .ce-view) .t-fn { color: var(--ce-fn); }
+:is(.ce-code, .ce-view) .t-str { color: var(--ce-str); }
+:is(.ce-code, .ce-view) .t-key { color: var(--ce-fn); }
+:is(.ce-code, .ce-view) .t-num { color: var(--ce-num); }
+:is(.ce-code, .ce-view) .t-com { color: var(--ce-com); font-style: italic; }
+:is(.ce-code, .ce-view) .t-bind, :is(.ce-code, .ce-view) .t-sub { color: var(--ce-bind); font-weight: 600; }
+:is(.ce-code, .ce-view) .t-qid { color: var(--ce-qid); }
+:is(.ce-code, .ce-view) .t-dol { color: var(--ce-str); font-weight: 600; }
+:is(.ce-code, .ce-view) .t-tag { color: var(--ce-tag); }
+:is(.ce-code, .ce-view) .t-attr { color: var(--ce-attr); }
+:is(.ce-code, .ce-view) .t-ent { color: var(--ce-num); }
+:is(.ce-code, .ce-view) .t-err { color: var(--ce-err); text-decoration: wavy underline; }
+:is(.ce-code, .ce-view) .t-op { color: var(--ce-op); }
+:is(.ce-code, .ce-view) .t-pun, :is(.ce-code, .ce-view) .t-br, :is(.ce-code, .ce-view) .t-id { color: var(--ce-text); }
 .ce-code .t-match { background: var(--ce-match); border-radius: 2px; outline: 1px solid var(--ce-match-ring); }
+
+pre.ce-view { background: var(--ce-bg); color: var(--ce-text); border-color: var(--border); }
+pre.ce-view::selection, pre.ce-view ::selection { background: var(--ce-select); }
 
 /* status bar: language, hint, caret position, check */
 .ce-bar {
