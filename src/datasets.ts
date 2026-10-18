@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { heading } from './runtime/items.ts';
 import { OPERATORS } from './runtime/report.ts';
 
 // (sprint 110, migration 120) Data Reporter datasets: a reusable, trusted view of a workspace's data for business
@@ -200,4 +201,167 @@ export function freeColumnName(taken: Set<string>, table: string, column: string
   let n = base;
   for (let i = 2; taken.has(n); i++) n = `${base.slice(0, 36)}_${i}`;
   return n;
+}
+
+// ---------------------------------------------------------------- the catalog
+
+/** A table or view of a schema with its columns (name and type, in table order). */
+export interface CatalogObject {
+  name: string;
+  kind: 'table' | 'view';
+  columns: { name: string; type: string; numeric: boolean }[];
+}
+/** A foreign key between two tables of the schema: table(columns) references ref(refColumns). */
+export interface CatalogFk {
+  table: string;
+  columns: string[];
+  ref: string;
+  refColumns: string[];
+}
+
+type Queryable = { query: <T extends pg.QueryResultRow = any>(sql: string, params?: unknown[]) => Promise<pg.QueryResult<T>> };
+
+/** The tables and views of a schema with their columns, and the foreign keys inside it (read as the given connection). */
+export async function readSchemaCatalog(db: Queryable, schema: string): Promise<{ objects: CatalogObject[]; fks: CatalogFk[] }> {
+  if (RESERVED.test(schema)) return { objects: [], fks: [] };
+  const objects = (
+    await db.query<CatalogObject>(
+      `select c.relname as name, case when c.relkind in ('v', 'm') then 'view' else 'table' end as kind,
+              coalesce(json_agg(json_build_object('name', a.attname, 'type', format_type(a.atttypid, a.atttypmod),
+                                                  'numeric', t.typcategory = 'N') order by a.attnum)
+                       filter (where a.attnum > 0), '[]') as columns
+         from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         left join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
+         left join pg_type t on t.oid = a.atttypid
+        where n.nspname = $1 and c.relkind in ('r', 'p', 'v', 'm') and has_schema_privilege(n.oid, 'USAGE')
+        group by c.relname, c.relkind order by c.relname`,
+      [schema],
+    )
+  ).rows;
+  const fks = (
+    await db.query<CatalogFk>(
+      `select c.relname as table, f.relname as ref,
+              array(select a.attname::text from unnest(k.conkey) with ordinality u(n, i) join pg_attribute a on a.attrelid = k.conrelid and a.attnum = u.n order by u.i) as columns,
+              array(select a.attname::text from unnest(k.confkey) with ordinality u(n, i) join pg_attribute a on a.attrelid = k.confrelid and a.attnum = u.n order by u.i) as "refColumns"
+         from pg_constraint k join pg_class c on c.oid = k.conrelid join pg_class f on f.oid = k.confrelid
+        where k.contype = 'f' and c.relnamespace = $1::regnamespace and f.relnamespace = $1::regnamespace
+        order by c.relname, k.conname`,
+      [schema],
+    )
+  ).rows;
+  return { objects, fks };
+}
+
+/** The catalog as checkDataset() wants it. */
+export const catalogOf = (objects: CatalogObject[]): Catalog => new Map(objects.map((o) => [o.name, new Set(o.columns.map((c) => c.name))]));
+
+/**
+ * The join of a table to one of the earlier tables, proposed from foreign keys (either direction; the first match).
+ * null: no foreign key links it to them.
+ */
+export function proposeJoin(table: string, earlier: DatasetTable[], fks: CatalogFk[]): DatasetJoin | null {
+  for (const t of earlier) {
+    // this table references the earlier one (a child joined to its parent)
+    const out = fks.find((f) => f.table === table && f.ref === t.table);
+    if (out) return { to: t.alias, type: 'left', on: out.columns.map((c, i) => ({ column: c, ref: out.refColumns[i] })).slice(0, DATASET_LIMITS.joinColumns) };
+    // the earlier one references this table (a parent joined to the child before it)
+    const back = fks.find((f) => f.table === t.table && f.ref === table);
+    if (back) return { to: t.alias, type: 'left', on: back.refColumns.map((c, i) => ({ column: c, ref: back.columns[i] })).slice(0, DATASET_LIMITS.joinColumns) };
+  }
+  return null;
+}
+
+/**
+ * A new dataset on tables and views of a schema: joins proposed from foreign keys (a table without one joins to
+ * nothing and is reported), every column except binary ones, labelled from its name; numeric columns get a number mask.
+ */
+export function proposeDataset(name: string, label: string, schema: string, tableNames: string[], cat: { objects: CatalogObject[]; fks: CatalogFk[] }): { dataset: Dataset; errors: string[] } {
+  const errors: string[] = [];
+  const tables: DatasetTable[] = [];
+  // the tables in the order chosen, but a table that joins to none of the earlier ones waits for the others
+  const pending = tableNames.filter((t, i) => tableNames.indexOf(t) === i && cat.objects.some((o) => o.name === t)).slice(0, DATASET_LIMITS.tables);
+  let progress = true;
+  while (pending.length && progress) {
+    progress = false;
+    for (let i = 0; i < pending.length; i++) {
+      const table = pending[i];
+      const alias = `t${tables.length + 1}`;
+      if (!tables.length) tables.push({ alias, table });
+      else {
+        const join = proposeJoin(table, tables, cat.fks);
+        if (!join) continue;
+        tables.push({ alias, table, join });
+      }
+      pending.splice(i, 1);
+      i--;
+      progress = true;
+    }
+  }
+  for (const t of pending) errors.push(`No foreign key links ${t} to the other tables: add it on the dataset's page with a join of your own.`);
+  const taken = new Set<string>();
+  const columns: DatasetColumn[] = [];
+  for (const t of tables) {
+    const obj = cat.objects.find((o) => o.name === t.table)!;
+    // a join column of a later table repeats the earlier one's: offered once
+    const joined = new Set(t.join?.on.map((p) => p.column) ?? []);
+    for (const c of obj.columns) {
+      if (c.type === 'bytea' || joined.has(c.name) || columns.length >= DATASET_LIMITS.columns) continue;
+      const n = freeColumnName(taken, t.table, c.name);
+      taken.add(n);
+      columns.push({ name: n, table: t.alias, column: c.name, label: heading(c.name), ...(c.numeric && /^(numeric|real|double|money)/.test(c.type) ? { format: '999G999G990D00' } : {}) });
+    }
+  }
+  return { dataset: { name, label: label || name, schema, tables, columns, filters: [] }, errors };
+}
+
+// ---------------------------------------------------------------- storage
+
+export interface DatasetRow {
+  id: number;
+  workspace_id: number;
+  name: string;
+  label: string;
+  description: string | null;
+  schema_name: string;
+  tables: DatasetTable[];
+  columns: DatasetColumn[];
+  filters: DatasetFilter[];
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** The datasets of a workspace (name order). */
+export async function workspaceDatasets(db: Queryable, workspaceId: number): Promise<DatasetRow[]> {
+  return (await db.query<DatasetRow>('select * from meta.dataset where workspace_id = $1 order by name', [workspaceId])).rows;
+}
+
+/** Insert or replace a checked dataset of a workspace (by name); returns its id. */
+export async function storeDataset(db: Queryable, workspaceId: number, d: Dataset, by: string | null, opts: { replace?: boolean } = {}): Promise<number> {
+  const vals = [workspaceId, d.name, d.label, d.description ?? null, d.schema, JSON.stringify(d.tables), JSON.stringify(d.columns), JSON.stringify(d.filters), by];
+  const res = await db.query<{ id: number }>(
+    `insert into meta.dataset (workspace_id, name, label, description, schema_name, tables, columns, filters, created_by, updated_by)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+     on conflict (workspace_id, name) do ${opts.replace === false ? 'nothing' : `update
+       set label = excluded.label, description = excluded.description, schema_name = excluded.schema_name, tables = excluded.tables,
+           columns = excluded.columns, filters = excluded.filters, updated_by = excluded.updated_by, updated_at = now()`}
+     returning id`,
+    vals,
+  );
+  return res.rows[0]?.id ?? 0;
+}
+
+/**
+ * The datasets an application offers, by name, as definitions (read through the runtime's own login: row level
+ * security shows an isolated workspace's login its own workspace's datasets only).
+ */
+export async function appDatasets(db: Queryable, appId: number, names: string[]): Promise<Map<string, Dataset>> {
+  if (!names.length) return new Map();
+  const rows = (
+    await db.query(
+      `select name, label, description, schema_name, tables, columns, filters from meta.dataset
+        where workspace_id = meta.dataset_workspace($1) and name = any($2::text[])`,
+      [appId, names],
+    )
+  ).rows;
+  return new Map(rows.map((r) => [r.name as string, datasetOf(r)]));
 }

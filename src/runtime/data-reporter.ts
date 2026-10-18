@@ -1,7 +1,9 @@
 import pg from 'pg';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { appTx, savepoint } from '../db.ts';
+import { appDatasets, DATASET_NAME, datasetSql } from '../datasets.ts';
+import { appTx, owner, runtime, savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
+import { english } from '../i18n.ts';
 import type { Region } from '../metadata.ts';
 import { logActivity, saveState } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
@@ -21,7 +23,13 @@ import { loadContext, simplePage, txContext, type Req } from './routes.ts';
 //                  "columns": [{"name": "ename", "label": "Name"}, {"name": "sal", "label": "Salary", "format": "FML999G990D00"}]}],
 //     "sharing": true,            // users may share reports with everyone (default true)
 //     "share_authz": "SCHEME",    // …but only users that pass this scheme (default: every signed-in user)
-//     "page_size": 25
+//     "page_size": 25,
+//     // (sprint 110) a workspace dataset as a source (the builder's Data Reporter): its joined tables, columns,
+//     // labels, masks and row filter come from meta.dataset; label and description may be given here too
+//     //   "sources": [{"id": "hr", "dataset": "hr"}]
+//     "edit_authz": "SCHEME",     // who may build, change and save reports; others only run shared ones (default: everyone)
+//     "admin_authz": "SCHEME",    // who may unpublish and delete anyone's reports of the region
+//     "publishing": true          // shared reports are "published": a stable URL (/a/<alias>/reports/<id>), pinning
 //   }
 //
 // A report is a definition (Def): the source, the columns, filters, group by
@@ -39,6 +47,7 @@ export interface SourceColumn {
   name: string;
   label?: string;
   format?: string;
+  description?: string;
 }
 export interface Source {
   id: string;
@@ -47,6 +56,10 @@ export interface Source {
   schema: string;
   table: string;
   columns: SourceColumn[];
+  /** (sprint 110) the name of a workspace dataset: schema and table are empty until resolveSources() */
+  dataset?: string;
+  /** (sprint 110) the dataset's SELECT (built by datasetSql from the checked definition) */
+  sql?: string;
 }
 export interface Def {
   source: string;
@@ -73,6 +86,10 @@ export function sourcesOf(r: { config: Record<string, any> }): Source[] {
   const list = Array.isArray(r.config.sources) ? r.config.sources : [];
   const out: Source[] = [];
   for (const s of list) {
+    if (s && typeof s === 'object' && SOURCE_ID.test(str(s.id)) && DATASET_NAME.test(str(s.dataset)) && !out.some((x) => x.id === s.id)) {
+      out.push({ id: s.id, label: str(s.label) || undefined, description: str(s.description) || undefined, schema: '', table: '', columns: [], dataset: s.dataset });
+      continue;
+    }
     if (!s || typeof s !== 'object' || !SOURCE_ID.test(str(s.id)) || !str(s.schema) || !str(s.table) || out.some((x) => x.id === s.id)) continue;
     // never pgkiln's own or the system's tables
     if (RESERVED_SCHEMAS.test(s.schema)) continue;
@@ -82,15 +99,41 @@ export function sourcesOf(r: { config: Record<string, any> }): Source[] {
   return out;
 }
 
+/**
+ * (sprint 110) The region's sources with its datasets filled in (schema, columns with labels, masks and descriptions,
+ * the dataset's SELECT); a dataset source whose dataset is gone is left out.
+ */
+export async function resolveSources(r: { config: Record<string, any> }, appId: number): Promise<Source[]> {
+  const list = sourcesOf(r);
+  const names = [...new Set(list.map((s) => s.dataset).filter((x): x is string => !!x))];
+  if (!names.length) return list;
+  const sets = await appDatasets(runtime, appId, names);
+  const out: Source[] = [];
+  for (const s of list) {
+    if (!s.dataset) {
+      out.push(s);
+      continue;
+    }
+    const d = sets.get(s.dataset);
+    if (!d || !d.columns.length) continue;
+    out.push({
+      ...s, label: s.label ?? d.label, description: s.description ?? d.description, schema: d.schema, table: d.name, sql: datasetSql(d),
+      columns: d.columns.map((c) => ({ name: c.name, ...(c.label ? { label: c.label } : {}), ...(c.format ? { format: c.format } : {}), ...(c.description ? { description: c.description } : {}) })),
+    });
+  }
+  return out;
+}
+
 /** A column a user may use: offered by the developer and readable now. */
 export interface Col {
   name: string;
   label: string;
   format?: string;
+  description?: string;
   type: number;
 }
 
-const objectSql = (s: Source) => `${pg.escapeIdentifier(s.schema)}.${pg.escapeIdentifier(s.table)}`;
+const objectSql = (s: Source) => (s.sql ? `(${s.sql})` : `${pg.escapeIdentifier(s.schema)}.${pg.escapeIdentifier(s.table)}`);
 const q = (col: string) => `"__q".${pg.escapeIdentifier(col)}`;
 
 /**
@@ -103,7 +146,7 @@ export async function availableColumns(c: pg.PoolClient, s: Source, tr: (x: stri
   const out = new Map<string, Col>();
   for (const sc of s.columns)
     if (types.has(sc.name) && !out.has(sc.name))
-      out.set(sc.name, { name: sc.name, label: tr(sc.label || heading(sc.name)), format: sc.format || undefined, type: types.get(sc.name)! });
+      out.set(sc.name, { name: sc.name, label: tr(sc.label || heading(sc.name)), format: sc.format || undefined, description: sc.description ? tr(sc.description) : undefined, type: types.get(sc.name)! });
   return out;
 }
 
@@ -239,6 +282,35 @@ export async function mayShare(ctx: PageContext, r: Region) {
   return typeof r.config.share_authz === 'string' && r.config.share_authz ? isAuthorized(ctx, r.config.share_authz) : true;
 }
 
+/** (sprint 110) May the current user build, change and save reports of this region (config.edit_authz)? */
+export async function mayEdit(ctx: PageContext, r: Region) {
+  const a = r.config.edit_authz;
+  return typeof a === 'string' && a ? isAuthorized(ctx, a) : true;
+}
+
+/** (sprint 110) May the current user unpublish and delete anyone's reports of this region (config.admin_authz)? */
+export async function mayModerate(ctx: PageContext, r: Region) {
+  const a = r.config.admin_authz;
+  return ctx.user !== 'nobody' && typeof a === 'string' && a ? isAuthorized(ctx, a) : false;
+}
+
+/** (sprint 110) Shared reports are called published (a stable URL, pins). */
+const publishing = (r: Region) => r.config.publishing === true;
+
+/** (sprint 110) A report's stable URL: /a/<alias>/reports/<id> (it opens the report on its page). */
+export const reportLink = (ctx: PageContext, id: number) => `${ctx.base}/reports/${id}`;
+
+const MAX_PINS = 20;
+const pinsName = (r: Region) => `reporter.pins.${r.id}`;
+
+/** (sprint 110) The reports the current user pinned in this region (a user preference). */
+async function pinsOf(ctx: PageContext, r: Region): Promise<number[]> {
+  if (ctx.user === 'nobody') return [];
+  const c = ctx.client!;
+  const v = (await savepoint(c, () => c.query<{ v: string | null }>('select meta.get_preference($1) as v', [pinsName(r)]))).rows[0]?.v ?? '';
+  return v.split(',').filter((x) => /^\d{1,9}$/.test(x)).map(Number).slice(0, MAX_PINS);
+}
+
 const pageSize = (r: Region) => {
   const n = Number(r.config.page_size);
   return Number.isInteger(n) && n >= 5 && n <= 200 ? n : DEFAULT_PAGE_SIZE;
@@ -261,27 +333,29 @@ export async function renderDataReporter(ctx: PageContext, r: Region): Promise<R
   const t = ctx.locale.t;
   const c = ctx.client!;
   const prefix = prefixOf(r);
-  const sources = sourcesOf(r);
+  const sources = await resolveSources(r, ctx.app.id);
   if (!sources.length) return html`<p class="empty">${t('reporter.no_sources')}</p>`;
+  // (sprint 110) users who may not edit only run saved reports: no editor, no reports of their own
+  const edit = await mayEdit(ctx, r);
   const openId = Number(ctx.params.get(`${prefix}open`));
   let saved: Saved | undefined;
   if (Number.isInteger(openId) && openId > 0) {
     saved = (await savepoint(c, () => c.query<Saved>('select * from meta.data_reports where id = $1 and region_id = $2', [openId, r.id]))).rows[0];
-    if (!saved) return html`<div class="alert alert-error" role="alert">${t('reporter.not_found')}</div>${await home(ctx, r, sources)}`;
+    if (!saved) return html`<div class="alert alert-error" role="alert">${t('reporter.not_found')}</div>${await home(ctx, r, sources, edit)}`;
   }
-  const edited = ctx.params.has(`${prefix}src`);
+  const edited = edit && ctx.params.has(`${prefix}src`);
   const sourceId = edited ? ctx.params.get(`${prefix}src`)! : saved ? str(saved.definition?.source) : '';
-  if (!sourceId) return home(ctx, r, sources);
+  if (!sourceId) return home(ctx, r, sources, edit);
   const source = sources.find((s) => s.id === sourceId);
-  if (!source) return html`<div class="alert alert-error" role="alert">${t('reporter.unknown_source')}</div>${await home(ctx, r, sources)}`;
+  if (!source) return html`<div class="alert alert-error" role="alert">${t('reporter.unknown_source')}</div>${await home(ctx, r, sources, edit)}`;
   let cols: Map<string, Col>;
   try {
     cols = await availableColumns(c, source, ctx.locale.tr);
   } catch (e) {
-    return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `data reporter "${r.title ?? r.id}" source ${source.id}`)}</div>${await home(ctx, r, sources)}`;
+    return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `data reporter "${r.title ?? r.id}" source ${source.id}`)}</div>${await home(ctx, r, sources, edit)}`;
   }
   const def = checkDef(edited ? defFromParams(ctx.params, prefix) : saved!.definition, source.id, cols);
-  return reportView(ctx, r, source, cols, def, saved, edited);
+  return reportView(ctx, r, source, cols, def, saved, edited, edit);
 }
 
 /**
@@ -291,12 +365,12 @@ export async function renderDataReporter(ctx: PageContext, r: Region): Promise<R
  * keeps the compact form (a list of sources and a Start button); welcome_title
  * and welcome_text replace the greeting.
  */
-async function home(ctx: PageContext, r: Region, sources: Source[]): Promise<Raw> {
+async function home(ctx: PageContext, r: Region, sources: Source[], edit = true): Promise<Raw> {
   const t = ctx.locale.t;
   const c = ctx.client!;
   const prefix = prefixOf(r);
   const q = (ctx.params.get(`${prefix}q`) ?? '').trim().slice(0, 100);
-  const reports = (
+  const all = (
     await savepoint(c, () =>
       c.query<Saved & { updated_at: string }>(
         `select id, name, description, username, shared, own, definition, updated_at from meta.data_reports
@@ -304,6 +378,11 @@ async function home(ctx: PageContext, r: Region, sources: Source[]): Promise<Raw
           order by own desc, case when own then updated_at end desc, lower(name), id`, [r.id, q]),
     )
   ).rows;
+  // (sprint 110) users who may not edit see the shared (published) reports only
+  const reports = edit ? all : all.filter((x) => x.shared);
+  const pub = publishing(r);
+  const pins = await pinsOf(ctx, r);
+  const sharedTag = pub ? t('reporter.published_tag') : t('reporter.shared_tag');
   const labelOf = (id: string) => {
     const s = sources.find((x) => x.id === id);
     return s ? ctx.locale.tr(s.label || heading(s.table)) : id;
@@ -311,51 +390,54 @@ async function home(ctx: PageContext, r: Region, sources: Source[]): Promise<Raw
   const list = (rows: (Saved & { updated_at: string })[]) =>
     html`<ul class="reporter-list">${rows.map((x) => html`<li>
       <a href="${url(ctx, r, new URLSearchParams([[`${prefix}open`, String(x.id)]]))}">${x.name}</a>
-      <span class="muted">${labelOf(str(x.definition?.source))}${x.own ? html` · ${t('reporter.changed', { date: String(x.updated_at).slice(0, 10) })}` : html` · ${t('reporter.by', { user: x.username })}`}</span>${x.definition?.chart ? html` <span class="tag">${t('reporter.chart_tag')}</span>` : ''}${x.own && x.shared ? html` <span class="tag">${t('reporter.shared_tag')}</span>` : ''}
+      <span class="muted">${labelOf(str(x.definition?.source))}${x.own ? html` · ${t('reporter.changed', { date: String(x.updated_at).slice(0, 10) })}` : html` · ${t('reporter.by', { user: x.username })}`}</span>${x.definition?.chart ? html` <span class="tag">${t('reporter.chart_tag')}</span>` : ''}${x.own && x.shared ? html` <span class="tag">${sharedTag}</span>` : ''}
       ${x.description ? html`<p class="muted reporter-desc">${x.description}</p>` : ''}
     </li>`)}</ul>`;
-  const mine = reports.filter((x) => x.own);
-  const others = reports.filter((x) => !x.own);
+  const pinned = pins.map((id) => reports.find((x) => x.id === id)).filter((x): x is (typeof reports)[number] => !!x);
+  const mine = edit ? reports.filter((x) => x.own) : [];
+  const others = edit ? reports.filter((x) => !x.own) : reports;
   const keep = [...ctx.params.entries()].filter(([k]) => !k.startsWith(prefix) && !['clear', 'cs'].includes(k));
   const hidden = keep.map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`);
-  const lists = html`${ctx.user !== 'nobody' ? html`<h3 class="reporter-h">${t('reporter.my_reports')}</h3>${mine.length ? list(mine) : html`<p class="muted">${q ? t('reporter.no_match') : t('reporter.no_reports')}</p>`}` : ''}
-    ${others.length ? html`<h3 class="reporter-h">${t('reporter.shared_reports')}</h3>${list(others)}` : ''}`;
+  const lists = html`${pinned.length ? html`<h3 class="reporter-h">${t('reporter.pinned')}</h3>${list(pinned)}` : ''}
+    ${edit && ctx.user !== 'nobody' ? html`<h3 class="reporter-h">${t('reporter.my_reports')}</h3>${mine.length ? list(mine) : html`<p class="muted">${q ? t('reporter.no_match') : t('reporter.no_reports')}</p>`}` : ''}
+    ${others.length ? html`<h3 class="reporter-h">${pub ? t('reporter.published_reports') : t('reporter.shared_reports')}</h3>${list(others)}`
+      : edit ? '' : html`<h3 class="reporter-h">${pub ? t('reporter.published_reports') : t('reporter.shared_reports')}</h3><p class="muted">${q ? t('reporter.no_match') : t('reporter.no_published')}</p>`}`;
 
   if (r.config.welcome === false) {
     const form = `drn${r.id}`;
     ctx.detached.push(html`<form id="${form}" method="get" action="${ctx.base}/${ctx.page.page_no}">${hidden}</form>`);
     return html`<div class="reporter">
-      <div class="reporter-new">
+      ${edit ? html`<div class="reporter-new">
         <label class="label" for="${form}_src">${t('reporter.new')}</label>
         <div class="reporter-row">
           ${sel(`${prefix}src`, form, t('reporter.source'), sources.map((s) => [s.id, ctx.locale.tr(s.label || heading(s.table))]), sources[0].id, `${form}_src`)}
           <button class="btn btn-hot" form="${form}">${t('reporter.create')}</button>
         </div>
         ${sources.some((s) => s.description) ? html`<dl class="reporter-sources">${sources.filter((s) => s.description).map((s) => html`<dt>${ctx.locale.tr(s.label || heading(s.table))}</dt><dd>${ctx.locale.tr(s.description!)}</dd>`)}</dl>` : ''}
-      </div>
+      </div>` : ''}
       ${lists}
     </div>`;
   }
 
   const title = typeof r.config.welcome_title === 'string' && r.config.welcome_title.trim() ? ctx.locale.tr(r.config.welcome_title) : t('reporter.welcome_title');
-  const text = typeof r.config.welcome_text === 'string' && r.config.welcome_text.trim() ? ctx.locale.tr(r.config.welcome_text) : t('reporter.welcome_text');
+  const text = typeof r.config.welcome_text === 'string' && r.config.welcome_text.trim() ? ctx.locale.tr(r.config.welcome_text) : edit ? t('reporter.welcome_text') : t('reporter.welcome_viewer');
   // the search: a GET form of its own (detached: the region may sit inside the page's form)
   const search = `drq${r.id}`;
   const searchable = q !== '' || reports.length > 6;
   if (searchable) ctx.detached.push(html`<form id="${search}" method="get" action="${ctx.base}/${ctx.page.page_no}" role="search">${hidden}</form>`);
   return html`<div class="reporter reporter-welcome">
     <div class="reporter-hello"><h3 class="reporter-title">${title}</h3><p class="muted">${text}</p></div>
-    <h3 class="reporter-h">${t('reporter.new')}</h3>
+    ${edit ? html`<h3 class="reporter-h">${t('reporter.new')}</h3>
     <ul class="reporter-cards">${sources.map((s) => html`<li><a class="reporter-card" href="${url(ctx, r, new URLSearchParams([[`${prefix}src`, s.id]]))}">
       <strong>${ctx.locale.tr(s.label || heading(s.table))}</strong>
       ${s.description ? html`<span class="muted">${ctx.locale.tr(s.description)}</span>` : ''}
-      <span class="reporter-card-meta">${t('reporter.columns_count', { n: s.columns.length })}</span></a></li>`)}</ul>
+      <span class="reporter-card-meta">${t('reporter.columns_count', { n: s.columns.length })}</span></a></li>`)}</ul>` : ''}
     ${searchable ? html`<div class="reporter-row reporter-search"><input type="search" name="${prefix}q" value="${q}" form="${search}" aria-label="${t('reporter.search')}" placeholder="${t('reporter.search')}"><button class="btn" form="${search}">${t('reporter.search')}</button></div>` : ''}
     ${lists}
   </div>`;
 }
 
-async function reportView(ctx: PageContext, r: Region, source: Source, cols: Map<string, Col>, def: Def, saved: Saved | undefined, edited: boolean): Promise<Raw> {
+async function reportView(ctx: PageContext, r: Region, source: Source, cols: Map<string, Col>, def: Def, saved: Saved | undefined, edited: boolean, edit = true): Promise<Raw> {
   const t = ctx.locale.t;
   const prefix = prefixOf(r);
   const form = `dre${r.id}`;
@@ -374,7 +456,7 @@ async function reportView(ctx: PageContext, r: Region, source: Source, cols: Map
   const editor = html`<details class="reporter-editor"${!saved || edited ? raw(' open') : ''}>
     <summary>${t('reporter.edit')}</summary>
     <fieldset class="reporter-set"><legend>${t('reporter.columns')}</legend>
-      <div class="reporter-checks">${[...cols.values()].map((x) => html`<label class="check"><input type="checkbox" name="${prefix}col" value="${x.name}" form="${form}"${shownCols.includes(x.name) ? raw(' checked') : ''}> ${x.label}</label>`)}</div>
+      <div class="reporter-checks">${[...cols.values()].map((x) => html`<label class="check"><input type="checkbox" name="${prefix}col" value="${x.name}" form="${form}"${shownCols.includes(x.name) ? raw(' checked') : ''}> ${x.label}${x.description ? html` <small class="muted reporter-coldesc">${x.description}</small>` : ''}</label>`)}</div>
     </fieldset>
     <fieldset class="reporter-set"><legend>${t('reporter.filters')}</legend>
       ${rows(def.filters, LIMITS.filters, { column: '', op: 'eq', value: '' }).map((f) => html`<div class="reporter-row">
@@ -412,7 +494,8 @@ async function reportView(ctx: PageContext, r: Region, source: Source, cols: Map
 
   // ---- saving (signed-in users)
   let save: Raw | '' = '';
-  if (ctx.user !== 'nobody') {
+  const pub = publishing(r);
+  if (edit && ctx.user !== 'nobody') {
     const share = await mayShare(ctx, r);
     const own = saved?.own ? saved : undefined;
     const sform = `drs${r.id}`;
@@ -429,7 +512,7 @@ async function reportView(ctx: PageContext, r: Region, source: Source, cols: Map
         <label class="label" for="${fid('desc')}">${t('reporter.description')}</label>
         <input id="${fid('desc')}" name="description" form="${sform}" maxlength="500" value="${own?.description ?? ''}">
       </div>
-      ${share ? html`<label class="check"><input type="checkbox" name="shared" value="true" form="${sform}"${own?.shared ? raw(' checked') : ''}> ${t('reporter.share')}</label>` : ''}
+      ${share ? html`<label class="check"><input type="checkbox" name="shared" value="true" form="${sform}"${own?.shared ? raw(' checked') : ''}> ${pub ? t('reporter.publish_on_save') : t('reporter.share')}</label>` : ''}
       <div class="buttons">
         <button class="btn btn-hot" form="${sform}" name="mode" value="save">${t('report.save')}</button>
         ${own ? html`<button class="btn" form="${sform}" name="mode" value="new">${t('reporter.save_as_new')}</button>
@@ -438,14 +521,40 @@ async function reportView(ctx: PageContext, r: Region, source: Source, cols: Map
     </fieldset>`;
   }
 
+  // (sprint 110) a saved report's actions: its stable URL, pin, publish / unpublish, an administrator's unpublish and delete
+  let actions: Raw | '' = '';
+  if (saved && ctx.user !== 'nobody') {
+    const base = `${ctx.base}/${ctx.page.page_no}/reporter/${r.id}`;
+    const csrf = html`<input type="hidden" name="__csrf" value="${ctx.session.csrf_token}">`;
+    const post = (action: string, mode: string, label: string, cls = 'btn', confirm = '') => {
+      const fid2 = `dra${r.id}_${action}_${mode}`;
+      ctx.detached.push(html`<form id="${fid2}" method="post" action="${base}/${action}">${csrf}<input type="hidden" name="rep" value="${saved.id}"><input type="hidden" name="mode" value="${mode}"></form>`);
+      return html`<button class="${cls}" form="${fid2}"${confirm ? html` data-confirm="${confirm}"` : ''}>${label}</button>`;
+    };
+    const pins = await pinsOf(ctx, r);
+    const moderate = !saved.own && (await mayModerate(ctx, r));
+    const buttons: Raw[] = [];
+    if (saved.shared) buttons.push(post('pin', pins.includes(saved.id) ? 'unpin' : 'pin', pins.includes(saved.id) ? t('reporter.unpin') : t('reporter.pin')));
+    if (pub && saved.own && edit && (saved.shared || (await mayShare(ctx, r)))) buttons.push(post('publish', saved.shared ? 'unpublish' : 'publish', saved.shared ? t('reporter.unpublish') : t('reporter.publish'), saved.shared ? 'btn' : 'btn btn-hot'));
+    if (moderate && saved.shared) buttons.push(post('publish', 'unpublish', t('reporter.unpublish')));
+    if (moderate) buttons.push(post('delete', 'any', t('reporter.delete'), 'btn btn-danger', t('reporter.delete_confirm', { name: saved.name })));
+    const link = pub && saved.shared ? reportLink(ctx, saved.id) : '';
+    if (buttons.length || link)
+      actions = html`<div class="reporter-actions">
+        ${link ? html`<label class="label" for="${fid('link')}">${t('reporter.link')}</label><input id="${fid('link')}" class="reporter-link" readonly value="${link}"> <a href="${link}">${t('reporter.open_link')}</a>` : ''}
+        ${buttons.length ? html`<div class="buttons">${buttons}</div>` : ''}
+      </div>`;
+  }
+
   return html`<div class="reporter">
     <div class="reporter-head">
       <a href="${url(ctx, r, null)}">‹ ${t('reporter.back')}</a>
       <h3 class="reporter-title">${title}</h3>
-      <span class="muted">${saved ? html`${ctx.locale.tr(source.label || heading(source.table))}${saved.own ? '' : html` · ${t('reporter.by', { user: saved.username })}`}${saved.shared ? html` <span class="tag">${t('reporter.shared_tag')}</span>` : ''}` : ''}</span>
+      <span class="muted">${saved ? html`${ctx.locale.tr(source.label || heading(source.table))}${saved.own ? '' : html` · ${t('reporter.by', { user: saved.username })}`}${saved.shared ? html` <span class="tag">${pub ? t('reporter.published_tag') : t('reporter.shared_tag')}</span>` : ''}` : ''}</span>
       ${saved?.description ? html`<p class="muted reporter-desc">${saved.description}</p>` : ''}
     </div>
-    ${editor}
+    ${actions}
+    ${edit ? editor : ''}
     ${result}
     ${save}
   </div>`;
@@ -514,6 +623,12 @@ async function runReport(ctx: PageContext, r: Region, source: Source, cols: Map<
 
 // ---------------------------------------------------------------- saving and deleting
 
+/** A report of the region the current user can see (own or shared), through meta.data_reports. */
+async function reportOf(ctx: PageContext, r: Region, id: number) {
+  if (!id) return undefined;
+  return (await ctx.client!.query<{ id: number; name: string; own: boolean; shared: boolean }>('select id, name, own, shared from meta.data_reports where id = $1 and region_id = $2', [id, r.id])).rows[0];
+}
+
 export async function dataReporterRoutes(app: FastifyInstance) {
   /** Shared checks: CSRF, a signed-in user, the region visible on the page; back to the page afterwards. */
   const action = async (req: Req, reply: FastifyReply, run: (ctx: PageContext, r: Region) => Promise<{ message: string; back: URLSearchParams }>) => {
@@ -558,7 +673,8 @@ export async function dataReporterRoutes(app: FastifyInstance) {
       const b = req.body ?? {};
       const prefix = prefixOf(r);
       const params = new URLSearchParams(typeof b.params === 'string' ? b.params.slice(0, 8000) : '');
-      const source = sourcesOf(r).find((s) => s.id === params.get(`${prefix}src`));
+      if (!(await mayEdit(ctx, r))) throw new Forbidden('edit');
+      const source = (await resolveSources(r, ctx.app.id)).find((s) => s.id === params.get(`${prefix}src`));
       if (!source) throw new Forbidden('source');
       const cols = await availableColumns(ctx.client!, source);
       const def = checkDef(defFromParams(params, prefix), source.id, cols);
@@ -579,10 +695,61 @@ export async function dataReporterRoutes(app: FastifyInstance) {
   );
 
   app.post('/a/:alias/:page/reporter/:id/delete', async (req: Req, reply) =>
-    action(req, reply, async (ctx) => {
+    action(req, reply, async (ctx, r) => {
       const id = /^\d{1,9}$/.test(String(req.body?.rep ?? '')) ? Number(req.body!.rep) : 0;
-      const done = (await ctx.client!.query<{ d: boolean }>('select meta.delete_data_report($1) as d', [id])).rows[0].d;
+      const rep = await reportOf(ctx, r, id);
+      let done = false;
+      if (rep?.own) {
+        // (sprint 110) users who may not edit don't delete either
+        if (!(await mayEdit(ctx, r))) throw new Forbidden('edit');
+        done = (await ctx.client!.query<{ d: boolean }>('select meta.delete_data_report($1) as d', [id])).rows[0].d;
+      } else if (rep) {
+        // (sprint 110) an administrator of the region deletes anyone's (shared) report
+        if (!(await mayModerate(ctx, r))) throw new Forbidden('moderate');
+        done = !!(await owner.query('delete from meta.data_report where id = $1 and app_id = $2 and region_id = $3', [id, ctx.app.id, r.id])).rowCount;
+      }
       return { message: ctx.locale.t(done ? 'reporter.deleted' : 'reporter.not_found'), back: new URLSearchParams() };
     }),
   );
+
+  // (sprint 110) publish or unpublish a saved report: the owner (who may edit and share), or an administrator of the region (unpublish)
+  app.post('/a/:alias/:page/reporter/:id/publish', async (req: Req, reply) =>
+    action(req, reply, async (ctx, r) => {
+      const t = ctx.locale.t;
+      const id = /^\d{1,9}$/.test(String(req.body?.rep ?? '')) ? Number(req.body!.rep) : 0;
+      const on = req.body?.mode === 'publish';
+      const rep = await reportOf(ctx, r, id);
+      if (!rep) return { message: t('reporter.not_found'), back: new URLSearchParams() };
+      const allowed = rep.own ? (await mayEdit(ctx, r)) && (!on || (await mayShare(ctx, r))) : !on && (await mayModerate(ctx, r));
+      if (!allowed) throw new Forbidden('publish');
+      await owner.query('update meta.data_report set shared = $4, updated_at = now() where id = $1 and app_id = $2 and region_id = $3', [id, ctx.app.id, r.id, on]);
+      return { message: t(on ? 'reporter.published' : 'reporter.unpublished', { name: rep.name }), back: new URLSearchParams([[`${prefixOf(r)}open`, String(id)]]) };
+    }),
+  );
+
+  // (sprint 110) pin a shared report to the top of the region's list, or unpin it (a preference of the user)
+  app.post('/a/:alias/:page/reporter/:id/pin', async (req: Req, reply) =>
+    action(req, reply, async (ctx, r) => {
+      const id = /^\d{1,9}$/.test(String(req.body?.rep ?? '')) ? Number(req.body!.rep) : 0;
+      const rep = await reportOf(ctx, r, id);
+      if (!rep?.shared) return { message: ctx.locale.t('reporter.not_found'), back: new URLSearchParams() };
+      const pins = (await pinsOf(ctx, r)).filter((x) => x !== id);
+      if (req.body?.mode === 'pin') pins.unshift(id);
+      await ctx.client!.query('select meta.set_preference($1, $2)', [pinsName(r), pins.slice(0, MAX_PINS).join(',')]);
+      return { message: ctx.locale.t(req.body?.mode === 'pin' ? 'reporter.pinned_msg' : 'reporter.unpinned_msg', { name: rep.name }), back: new URLSearchParams([[`${prefixOf(r)}open`, String(id)]]) };
+    }),
+  );
+
+  // (sprint 110) a report's stable URL: its page with the report open (the page checks who may see it)
+  app.get('/a/:alias/reports/:id', async (req: Req, reply) => {
+    const id = /^\d{1,9}$/.test(String(req.params.id ?? '')) ? Number(req.params.id) : 0;
+    const hit = id
+      ? await owner.one<{ page_no: number; region_id: number; alias: string }>(
+          `select p.page_no, d.region_id, a.alias from meta.data_report d join meta.app a on a.id = d.app_id
+             join meta.region g on g.id = d.region_id join meta.page p on p.id = g.page_id
+            where d.id = $1 and a.alias = $2 and d.shared`, [id, req.params.alias])
+      : undefined;
+    if (!hit) return simplePage(reply, 404, english('error.not_found'), english('reporter.not_found'));
+    return reply.redirect(`/a/${encodeURIComponent(hit.alias)}/${hit.page_no}?dr${hit.region_id}_open=${id}`, 303);
+  });
 }
