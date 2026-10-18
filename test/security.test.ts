@@ -9494,3 +9494,133 @@ describe('sprint 107 transaction mode', () => {
     assert.equal((await owner.one('select current_user::text as u')).u, (await owner.one('select session_user::text as u')).u, 'the builder\'s pool is untouched');
   });
 });
+
+describe('sprint 109 WS-1', () => {
+  // the Workspace home (/builder/home): the workspace message (its administrators only, plain text), the reporting
+  // timeframe, the release check (administrators only; never asks the network in tests), the /builder preference
+  const DEV = 'sec109dev';
+  let ws: number;
+  let other: number;
+  let otherApp: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    assert.equal(res.statusCode, 303);
+    assert.equal(res.headers.location, '/builder/home');
+    await b.get('/builder/home');
+    return b;
+  };
+  const message = async (id: number) => (await owner.one('select message from meta.workspace where id = $1', [id])).message;
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    await owner.query(`delete from meta.workspace where name in ('Sec109 Own', 'Sec109 Other')`);
+    ws = (await owner.one(`insert into meta.workspace (name, message) values ('Sec109 Own', 'own') returning id`)).id;
+    other = (await owner.one(`insert into meta.workspace (name, message) values ('Sec109 Other', 'other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, false)', [ws, DEV]);
+    await owner.query(`delete from meta.app where alias = 'sec109x'`);
+    otherApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec109x', 'Sec109 secret app', 'none') returning id`)).id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [otherApp, other]);
+    await owner.query(`insert into meta.activity_log (app_id, page_no, username, event) values ($1, 1, 'sec109_reader', 'page_view')`, [otherApp]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.activity_log where app_id = $1', [otherApp]);
+    await owner.query('delete from meta.app where id = $1', [otherApp]);
+    await owner.query(`delete from meta.workspace where id = any($1::int[])`, [[ws, other]]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.setting where name = 'release_check'`);
+  });
+
+  test('a developer who is not the workspace\'s administrator cannot change its message (nor another workspace\'s); no edit form', async () => {
+    const d = await signIn(DEV);
+    const home = (await d.get('/builder/home')).body;
+    assert.match(home, /<p class="wh-message-text">own<\/p>/);
+    assert.doesNotMatch(home, /action="\/builder\/home\/message"/);
+    for (const id of [ws, other, 1]) {
+      const res = await d.post('/builder/home/message', { __csrf: d.lastCsrf, workspace: String(id), message: 'hacked' });
+      assert.equal(res.statusCode, 403, `workspace ${id}`);
+    }
+    assert.equal(await message(ws), 'own');
+    assert.equal(await message(other), 'other');
+    assert.equal((await d.post('/builder/home/message', { __csrf: d.lastCsrf, workspace: '1 or 1=1', message: 'x' })).statusCode, 400);
+    // another workspace's applications and users never show
+    assert.doesNotMatch(home, /Sec109 secret app|sec109_reader/);
+    // nor its preference for /builder
+    assert.equal((await d.post(`/builder/workspaces/${ws}/preferences`, { __csrf: d.lastCsrf, builder_home: 'home' })).statusCode, 403);
+    assert.equal((await owner.one('select builder_home from meta.workspace where id = $1', [ws])).builder_home, null);
+  });
+
+  test('CSRF: the message, the timeframe and the release check need the session\'s token', async () => {
+    const a = await signIn('admin');
+    await a.post('/builder/home/message', { __csrf: 'forged', workspace: String(ws), message: 'forged' });
+    assert.equal(await message(ws), 'own');
+    await a.post('/builder/home/message', { workspace: String(ws), message: 'forged' });
+    assert.equal(await message(ws), 'own');
+    const tf = (await owner.one(`select home_timeframe from meta.developer where username = 'admin'`)).home_timeframe;
+    await a.post('/builder/home/timeframe', { __csrf: 'forged', timeframe: tf === 'hour' ? 'week' : 'hour' });
+    assert.equal((await owner.one(`select home_timeframe from meta.developer where username = 'admin'`)).home_timeframe, tf);
+    await owner.query(`delete from meta.setting where name = 'release_check'`);
+    await a.post('/builder/home/release-check', { __csrf: 'forged', check: 'off' });
+    assert.ok(!(await owner.one(`select 1 from meta.setting where name = 'release_check'`)));
+  });
+
+  test('the message is plain text: markup is escaped on the Workspace home and the App Builder', async () => {
+    const a = await signIn('admin');
+    await a.post('/builder/workspace', { __csrf: a.lastCsrf, workspace: String(ws) });
+    await a.get('/builder/home');
+    const xss = '<script>alert(1)</script><img src=x onerror=alert(2)> "quoted"';
+    assert.equal((await a.post('/builder/home/message', { __csrf: a.lastCsrf, workspace: String(ws), message: xss })).statusCode, 303);
+    for (const url of ['/builder/home', '/builder/apps']) {
+      const body = (await a.get(url)).body;
+      assert.ok(!body.includes('<script>alert(1)') && !body.includes('<img src=x'), url);
+      assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;&lt;img src=x onerror=alert\(2\)&gt;/);
+    }
+    // the textarea can't be closed early either
+    await a.post('/builder/home/message', { __csrf: a.lastCsrf, workspace: String(ws), message: '</textarea><b>x</b>' });
+    assert.match((await a.get('/builder/home')).body, /&lt;\/textarea&gt;&lt;b&gt;x&lt;\/b&gt;<\/textarea>/);
+    await owner.query(`update meta.workspace set message = 'own' where id = $1`, [ws]);
+  });
+
+  test('usernames in Top users are escaped; an unknown timeframe is refused', async () => {
+    const a = await signIn('admin');
+    await a.post('/builder/workspace', { __csrf: a.lastCsrf, workspace: String(other) });
+    await owner.query(`insert into meta.activity_log (app_id, page_no, username, event) values ($1, 1, '<img src=x onerror=alert(3)>', 'page_view')`, [otherApp]);
+    const body = (await a.get('/builder/home')).body;
+    assert.ok(!body.includes('<img src=x onerror=alert(3)>'));
+    assert.match(body, /&lt;img src=x onerror=alert\(3\)&gt;/);
+    assert.equal((await a.post('/builder/home/timeframe', { __csrf: a.lastCsrf, timeframe: "day'; drop table meta.app; --" })).statusCode, 400);
+    assert.equal((await a.post('/builder/home/timeframe', { __csrf: a.lastCsrf, timeframe: '__proto__' })).statusCode, 400);
+  });
+
+  test('only administrators turn the release check on; a non-administrator sees no form; no network in tests', async () => {
+    await owner.query(`delete from meta.setting where name = 'release_check'`);
+    const d = await signIn(DEV);
+    assert.doesNotMatch((await d.get('/builder/home')).body, /action="\/builder\/home\/release-check"/);
+    for (const check of ['on', 'now', 'default'])
+      assert.equal((await d.post('/builder/home/release-check', { __csrf: d.lastCsrf, check })).statusCode, 403);
+    assert.ok(!(await owner.one(`select 1 from meta.setting where name = 'release_check'`)));
+    assert.equal((await d.get('/builder/instance')).statusCode, 403);
+    const a = await signIn('admin');
+    assert.equal((await a.post('/builder/home/release-check', { __csrf: a.lastCsrf, check: 'bogus' })).statusCode, 400);
+    // turned on without PGKILN_RELEASE_URL under the test runner: nothing is asked, nothing is announced
+    const { cachedRelease, resetReleaseCache } = await import('../src/release-check.ts');
+    resetReleaseCache();
+    delete process.env.PGKILN_RELEASE_URL;
+    await a.post('/builder/home/release-check', { __csrf: a.lastCsrf, check: 'on' });
+    assert.equal(cachedRelease(), null);
+    assert.doesNotMatch((await a.get('/builder/home')).body, /is available/);
+    await a.post('/builder/home/release-check', { __csrf: a.lastCsrf, check: 'default' });
+  });
+
+  test('sign-in still only follows builder paths; the Workspace home needs a developer', async () => {
+    assert.equal((await new Browser().get('/builder/home')).statusCode, 302);
+    const b = new Browser();
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username: DEV, password: DEV, next: '//evil.example/builder' });
+    assert.equal(res.headers.location, '/builder/home');
+    // an application's end user is no developer
+    const u = await as('scott');
+    assert.equal((await u.get('/builder/home')).statusCode, 302);
+  });
+});
