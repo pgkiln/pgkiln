@@ -22,6 +22,12 @@ before(async () => {
   appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
   defId = (await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'SALARY_CHANGE'`, [appId])).id;
   salBefore = (await owner.one('select sal::text from hr.emp where empno = $1', [EMPNO])).sal;
+  // the HR example's mail service (part 51), which other tests may have replaced
+  const svc = (await owner.one(`insert into meta.mail_service (name, description, provider, senders, settings)
+    values ('DEVELOPMENT_LOG', 'Writes mail to the server log; sends nothing', 'log', '{@example.com}', '{"default_from": "hr@example.com"}')
+    on conflict (name) do update set enabled = true returning id`)).id;
+  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
+    on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = null`, [appId, svc]);
   await cleanup();
 });
 
