@@ -87,7 +87,8 @@ describe('report views', () => {
     assert.doesNotMatch(rows, /SMITH/, 'filtered on the computed column');
     assert.match(body, /<tfoot>[\s\S]*Sum: [\d,.]+[\s\S]*<\/tfoot>/);
     assert.ok(rows.indexOf('KING') > 0 && rows.indexOf('KING') < rows.indexOf('JONES'), 'sorted on it, descending');
-    assert.match(body, /class="chip">Year pay = <b>sal \* 12<\/b>/);
+    // (sprint 112) HR page 2 asks in your own words: its settings are chips under the question box
+    assert.match(body, /class="ask-chip-text">Year pay = sal \* 12</);
   });
 
   test('a broken computation is reported and left out; the report still works', async () => {

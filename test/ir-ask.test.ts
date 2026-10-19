@@ -68,7 +68,7 @@ async function king() {
 }
 const k = (x: string) => `r${region}_${x}`;
 const at = (res: { headers: Record<string, unknown> }) => new URL(res.headers.location as string, 'http://x');
-const chipCount = (body: string) => (body.match(/<li class="chip ask-chip">/g) ?? []).length;
+const chipCount = (body: string) => (body.match(/<li class="chip ask-chip[^"]*">/g) ?? []).length;
 
 describe('the phrase parser', () => {
   test('English: filters, sort, group by, aggregates, pivot, chart, highlights, computed columns, values', async () => {

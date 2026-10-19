@@ -3,7 +3,7 @@ import { generate } from '../ai/service.ts';
 import { AiError } from '../ai/types.ts';
 import { applyBinds } from '../binds.ts';
 import { appTx, owner, savepoint } from '../db.ts';
-import { html, raw, type Raw } from '../html.ts';
+import { esc, html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { logActivity, saveState } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden } from './authz.ts';
@@ -96,7 +96,7 @@ async function askColumns(ctx: PageContext, r: Region, params: URLSearchParams) 
   await resolveRestRegion(ctx, r);
   const st = reportState({ ...ctx, params } as PageContext, r);
   const base = stripSemicolon(applyBinds(r.source ?? 'select 1', bindValues(ctx)));
-  const { src } = await withComputations(ctx, r, base, st);
+  const { src, errors } = await withComputations(ctx, r, base, st);
   const fields = await fieldsOf(ctx, src);
   const computed = new Set(st.computations.map((c) => c.name.toLowerCase()));
   const baseCount = src === base ? fields.length : (await fieldsOf(ctx, base)).length;
@@ -104,7 +104,7 @@ async function askColumns(ctx: PageContext, r: Region, params: URLSearchParams) 
     name: f.name, label: headingOf(r, f.name, ctx.locale.tr), kind: kindOf(f.dataTypeID), pos: i + 1,
     ...(i >= baseCount && computed.has(f.name.toLowerCase()) ? { computed: true } : {}),
   }));
-  return { columns, fieldCount: fields.length, src };
+  return { columns, fieldCount: fields.length, src, errors };
 }
 
 /** Stored values of the report's text columns matching the candidates (a query parameter): for "only clerks". */
@@ -289,9 +289,10 @@ export async function renderAiFilter(ctx: PageContext, r: Region): Promise<Raw |
   // the chips: the report's settings in the URL, each with Edit and Remove
   const chips = chipsOf(ctx.params, r.id);
   let columns: Column[] = [];
+  let computeErrors: Awaited<ReturnType<typeof askColumns>>['errors'] = [];
   if (chips.length && ctx.client)
     try {
-      columns = (await savepoint(ctx.client, () => askColumns(ctx, r, ctx.params))).columns;
+      ({ columns, errors: computeErrors } = await savepoint(ctx.client, () => askColumns(ctx, r, ctx.params)));
     } catch {
       // the report shows its own error; the chips can still be removed
     }
@@ -333,7 +334,9 @@ export async function renderAiFilter(ctx: PageContext, r: Region): Promise<Raw |
   const items = chips.map((ch, i) => {
     const text = chipText(ch, t, label, byPos);
     const edit = editor(ch, i);
-    return html`<li class="chip ask-chip"><span class="ask-chip-text">${text}</span>${edit
+    // a computed column that doesn't parse is marked (the report says why); a highlight shows its color
+    const err = ch.kind === 'compute' ? computeErrors.find((x) => x.c.raw === ch.raw) : undefined;
+    return html`<li class="chip ask-chip${err ? ' chip-error' : ''}"${err ? raw(` title="${esc(err.message)}"`) : ''}>${ch.kind === 'highlight' ? html`<span class="swatch hl-${ch.color}" aria-hidden="true"></span>` : ''}<span class="ask-chip-text">${text}</span>${edit
       ? html`<details class="ask-edit"><summary aria-label="${t('ai_filter.edit')}: ${text}">${t('ai_filter.edit')}</summary><div class="ask-edit-body">${edit}<button class="btn" name="edit" value="${i}" form="${chipForm}">${t('report.apply')}</button></div></details>`
       : ''}<button class="ask-chip-x" name="remove" value="${i}" form="${chipForm}" aria-label="${t('ai_filter.remove', { what: text })}" title="${t('report.remove')}">×</button></li>`;
   });
