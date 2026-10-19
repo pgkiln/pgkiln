@@ -11,7 +11,7 @@
 import pg from 'pg';
 import { owner } from './db.ts';
 
-export const APP_TYPES = ['standard', 'theme', 'library', 'boilerplate'] as const;
+export const APP_TYPES = ['standard', 'theme', 'library', 'boilerplate', 'reporting'] as const;
 export type AppType = (typeof APP_TYPES)[number];
 
 export const APP_TYPE_LABELS: Record<AppType, string> = {
@@ -19,6 +19,7 @@ export const APP_TYPE_LABELS: Record<AppType, string> = {
   theme: 'Theme application',
   library: 'Library application',
   boilerplate: 'Boilerplate application',
+  reporting: 'Reporting application',
 };
 
 /** What can be subscribed to: table, key column, label; and the master types that offer it. */

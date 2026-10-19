@@ -80,6 +80,13 @@ src/
   datamodel.ts             (sprint 98) Data Modeler diagrams: readModel() (catalog), boxSize(), fkPath() (crow's feet), autoLayout(), diagramSvg()
   changelog.ts             (sprint 106, migration 118) the change log: isSchemaDdl(), ddlTarget() (schema and object), changeName()
                            (add_bonus, create_index_x), recordChanges() (grouped per schema), Flyway / Liquibase / plain SQL writers
+  datasets.ts              (sprint 110, migration 120) Data Reporter datasets: checkDataset() (names, joins to earlier tables, columns
+                           and filters on its tables, whitelisted operators; with a catalog: existing objects), datasetSql() (quoted
+                           identifiers, literal values), readSchemaCatalog() (tables, views, columns, foreign keys), proposeJoin() /
+                           proposeDataset(), storeDataset(), appDatasets() (the runtime's read), pgkiln-dataset/1 files
+  reporting-app.ts         (sprint 110) reporting applications: createReportingApp() (createApp, SELECT-only grants on the datasets'
+                           objects, type reporting, roles viewer/editor/administrator as schemes EDITOR and ADMIN, page 1 a Data
+                           Reporter), reportingApps(), reportingAppCount() (meta.reporting_app_count, for the workspace home)
   tabledef.ts              (sprint 95) a table as a definition: readTable(), checkTable(), tableSql() (CREATE, or ALTER from the catalog's version)
   sqlformat.ts             (sprint 93) formatSql(): the worksheet's Format (clauses per line, keyword case; strings and comments kept)
   sqlplan.ts               (sprint 92) EXPLAIN (FORMAT JSON) as a tree: parsePlan() (self time, slowest step, misestimates), planText()
@@ -191,7 +198,9 @@ src/
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals); (094) the vacation rule panel and route
     data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
-                           reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report)
+                           reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report);
+                           (sprint 110) dataset sources (resolveSources), edit_authz / admin_authz / publishing, pins (a preference),
+                           publish / pin routes, the stable URL GET /a/:alias/reports/:id
     form-designer.ts       Form Designer region (migration 106): sources from the region's config, checkFormDef (offered columns, displays,
                            actions), forms as cards, a form's rows, a row's form (lost update hash), the designer; row/design/delete routes
     workflows.ts           workflow console region and its actions
@@ -322,7 +331,11 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
     subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
-    reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing)
+    reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing;
+                           (sprint 110) a dataset as a source, who may edit, who may moderate, publishing)
+    datasets.ts            (sprint 110) App Builder → Data Reporter (/builder/reporter): datasets (new: schema, tables; a dataset's
+                           joins, columns, row filter, query and preview), files (download, export all, import), Create reporting
+                           application
     form-designer.ts       page designer: Form Designer settings (designers' scheme; sources: key, actions, offered columns, labels, lists of values)
     workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
     rest.ts                REST module endpoints list and curl example (Shared Components)
@@ -408,6 +421,8 @@ test/
   worksheet.test.ts        (sprint 91) the SQL Worksheet: statement at the cursor, Run Script log, plans, notices, history, navigator, Run as
   worksheet-txn.test.ts    (sprint 107) transaction mode: the tab's transaction, Commit / Rollback, typed COMMIT, aborted, idle timeout, refusals,
                            Explain in it, Change Log at COMMIT, the JSON endpoint, sign-out
+  datasets.test.ts         (sprint 110) datasets: checks and SQL, proposed joins, the builder's pages, files, the workspace export;
+                           a reporting application in two clicks, an editor publishes, a viewer opens the stable URL, pins
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
   printing.test.ts         report PDFs

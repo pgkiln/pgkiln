@@ -9625,6 +9625,164 @@ describe('sprint 109 WS-1', () => {
   });
 });
 
+describe('sprint 110 WS-2', () => {
+  // A reporting application on the HR dataset "hr" (examples/hr/hr_63_datasets.sql): king administrator,
+  // scott editor, allen viewer (no role).
+  const ALIAS = 'sec110-reports';
+  const ROLE = 'app_sec110_reports';
+  let id110 = 0;
+  let rid = 0;
+  const P = () => `dr${rid}_`;
+  const user = async (name: string) => {
+    const b = new Browser();
+    assert.equal((await b.login(name, name, ALIAS)).statusCode, 303, `login as ${name}`);
+    await b.get(`/a/${ALIAS}/1`);
+    return b;
+  };
+  const dev = async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    return b;
+  };
+  const drop = async () => {
+    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+    if ((await owner.query('select 1 from pg_roles where rolname = $1', [ROLE])).rowCount) {
+      await owner.query(`drop owned by ${ROLE}`);
+      await owner.query(`drop role ${ROLE}`);
+    }
+    await owner.query(`delete from meta.dataset where name like 'sec110%'`);
+  };
+  const save = (b: Browser, name: string, params: string, extra: Record<string, string> = {}) =>
+    b.post(`/a/${ALIAS}/1/reporter/${rid}/save`, { __csrf: b.lastCsrf, params, name, mode: 'save', ...extra });
+
+  before(async () => {
+    await drop();
+    const { checkNewApp } = await import('../src/builder/newapp.ts');
+    const { createReportingApp } = await import('../src/reporting-app.ts');
+    const { workspaceDatasets } = await import('../src/datasets.ts');
+    const sets = (await workspaceDatasets(owner, 1)).filter((d) => d.name === 'hr');
+    const checked = await checkNewApp({ name: 'Sec 110', alias: ALIAS, schema: 'hr', authentication: 'app_users', admin_user: 'king' }, 1);
+    id110 = (await owner.tx((c) => createReportingApp(c, checked, sets))).id;
+    rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type = 'data_reporter'`, [id110])).id;
+    await owner.query(`insert into meta.app_access (app_id, account_id, roles) select $1, id, $3 from meta.account where username = $2`, [id110, 'scott', '{editor}']);
+    await owner.query(`insert into meta.app_access (app_id, account_id, roles) select $1, id, '{}' from meta.account where username = $2`, [id110, 'allen']);
+  });
+  after(drop);
+
+  test('a viewer sees no unpublished report, and can neither save, publish, unpublish nor delete', async () => {
+    const scott = await user('scott');
+    assert.equal((await save(scott, 'Sec draft', `${P()}src=hr&${P()}col=ename`)).statusCode, 303);
+    assert.equal((await save(scott, 'Sec published', `${P()}src=hr&${P()}col=ename`)).statusCode, 303);
+    const draft = (await owner.one('select id from meta.data_report where app_id = $1 and name = $2', [id110, 'Sec draft'])).id;
+    const pub = (await owner.one('select id from meta.data_report where app_id = $1 and name = $2', [id110, 'Sec published'])).id;
+    await scott.get(`/a/${ALIAS}/1`);
+    assert.equal((await scott.post(`/a/${ALIAS}/1/reporter/${rid}/publish`, { __csrf: scott.lastCsrf, rep: String(pub), mode: 'publish' })).statusCode, 303);
+
+    const allen = await user('allen');
+    const home = await allen.get(`/a/${ALIAS}/1`);
+    assert.doesNotMatch(home.body, /Sec draft/);
+    assert.match(home.body, /Sec published/);
+    assert.match((await allen.get(`/a/${ALIAS}/1?${P()}open=${draft}`)).body, /That report is not available/);
+    assert.equal((await allen.get(`/a/${ALIAS}/reports/${draft}`)).statusCode, 404, 'no stable URL for an unpublished report');
+    // no saving (not even under a new name), no publishing, no unpublishing or deleting someone else's
+    assert.equal((await save(allen, 'Mine', `${P()}src=hr&${P()}col=ename`)).statusCode, 403);
+    assert.equal(await owner.one('select 1 from meta.data_report where app_id = $1 and name = $2', [id110, 'Mine']), undefined);
+    assert.equal((await allen.post(`/a/${ALIAS}/1/reporter/${rid}/publish`, { __csrf: allen.lastCsrf, rep: String(pub), mode: 'unpublish' })).statusCode, 403);
+    assert.equal((await allen.post(`/a/${ALIAS}/1/reporter/${rid}/delete`, { __csrf: allen.lastCsrf, rep: String(pub) })).statusCode, 403);
+    await allen.post(`/a/${ALIAS}/1/reporter/${rid}/publish`, { __csrf: allen.lastCsrf, rep: String(draft), mode: 'publish' });
+    assert.equal((await owner.one('select shared from meta.data_report where id = $1', [draft])).shared, false);
+    // ad-hoc definitions in the URL don't run for a viewer
+    assert.doesNotMatch((await allen.get(`/a/${ALIAS}/1?${P()}src=hr&${P()}col=sal`)).body, /reporter-editor|<th scope="col" class="num">Salary/);
+    // an editor may not unpublish or delete another editor's report; an administrator may
+    const king = await user('king');
+    assert.equal((await save(king, 'King report', `${P()}src=hr&${P()}col=ename`, { shared: 'true' })).statusCode, 303);
+    const kr = (await owner.one('select id, shared from meta.data_report where app_id = $1 and name = $2', [id110, 'King report']));
+    assert.equal(kr.shared, true);
+    assert.equal((await scott.post(`/a/${ALIAS}/1/reporter/${rid}/publish`, { __csrf: scott.lastCsrf, rep: String(kr.id), mode: 'unpublish' })).statusCode, 403);
+    assert.equal((await scott.post(`/a/${ALIAS}/1/reporter/${rid}/delete`, { __csrf: scott.lastCsrf, rep: String(kr.id) })).statusCode, 403);
+    assert.equal((await king.post(`/a/${ALIAS}/1/reporter/${rid}/delete`, { __csrf: king.lastCsrf, rep: String(pub) })).statusCode, 303);
+    assert.equal(await owner.one('select 1 from meta.data_report where id = $1', [pub]), undefined);
+    // a stable URL of another application's report doesn't open it here
+    assert.equal((await allen.get(`/a/hr/reports/${kr.id}`)).statusCode, 404);
+  });
+
+  test('editors and viewers of a reporting application can\'t reach the builder\'s datasets', async () => {
+    const scott = await user('scott');
+    for (const url of ['/builder/reporter', '/builder/reporter/datasets/new?schema=hr', '/builder/reporter/export', '/builder/reporter/apps/new'])
+      assert.equal((await scott.get(url)).headers.location, '/builder/login', url);
+    const before = (await owner.one('select count(*)::int as n from meta.dataset')).n;
+    const res = await scott.post('/builder/reporter/datasets', { __csrf: scott.lastCsrf, schema: 'hr', name: 'sec110_x', tables: 'emp' });
+    assert.notEqual(res.statusCode, 200);
+    assert.equal((await owner.one('select count(*)::int as n from meta.dataset')).n, before);
+  });
+
+  test('injection: identifiers come from the catalog and are quoted; values are literals; a tampered dataset only fails', async () => {
+    const a = await dev();
+    // the builder's form: a made-up column reference and an injected filter value
+    await a.get('/builder/reporter/datasets/new?schema=hr');
+    assert.equal((await a.post('/builder/reporter/datasets', { __csrf: a.lastCsrf, schema: 'hr', name: 'sec110_inj', tables: ['emp', 'x"; drop table hr.emp; --'] })).statusCode, 303);
+    const row = await owner.one(`select id from meta.dataset where name = 'sec110_inj'`);
+    await a.get(`/builder/reporter/datasets/${row.id}`);
+    await a.post(`/builder/reporter/datasets/${row.id}`, {
+      __csrf: a.lastCsrf, label: 'Inj', t0_alias: 't1',
+      c0_ref: 't1.ename', c0_on: 'true', c0_name: 'ename',
+      c1_ref: 't1.ename" from hr.emp; --', c1_on: 'true', c1_name: 'evil',
+      c2_ref: 't1.sal', c2_on: 'true', c2_name: 'Robert"); drop',
+      f0_col: 't1.job', f0_op: 'eq', f0_value: "x' or '1'='1",
+      f1_col: 't1.job', f1_op: '; drop table hr.emp', f1_value: '1',
+      new_table: 'pg_authid',
+    });
+    const d = await owner.one('select * from meta.dataset where id = $1', [row.id]);
+    assert.deepEqual(d.columns.map((c: any) => c.name), ['ename']);
+    assert.deepEqual(d.tables.map((t: any) => t.table), ['emp']);
+    assert.deepEqual(d.filters, [{ table: 't1', column: 'job', op: 'eq', value: "x' or '1'='1" }]);
+    // a schema the workshop may not use, and pgkiln's own
+    for (const schema of ['meta', 'pg_catalog', 'information_schema']) {
+      await a.post('/builder/reporter/datasets', { __csrf: a.lastCsrf, schema, name: 'sec110_meta', tables: 'app' });
+      assert.equal(await owner.one(`select 1 from meta.dataset where name = 'sec110_meta'`), undefined, schema);
+    }
+    // a dataset row changed behind the builder's back: still quoted, the report fails without running anything else
+    await owner.query(`insert into meta.dataset (workspace_id, name, label, schema_name, tables, columns, created_by) values
+      (1, 'sec110_bad', 'Bad', 'hr', '[{"alias": "t1", "table": "emp\\"; drop table hr.dept; --"}]', '[{"name": "x", "table": "t1", "column": "ename"}]', 'test')`);
+    const cfg = (await owner.one('select config from meta.region where id = $1', [rid])).config;
+    await owner.query('update meta.region set config = $2 where id = $1', [rid, { ...cfg, sources: [...cfg.sources, { id: 'bad', dataset: 'sec110_bad' }, { id: 'evil', dataset: 'x"; --' }] }]);
+    const scott = await user('scott');
+    const res = await scott.get(`/a/${ALIAS}/1?${P()}src=bad`);
+    assert.equal(res.statusCode, 200);
+    assert.match(res.body, /alert-error/);
+    assert.ok(await owner.one(`select to_regclass('hr.dept') as t`).then((r) => r.t), 'hr.dept is still there');
+    // report parameters: an unknown column, an injected value
+    const ok = await scott.get(`/a/${ALIAS}/1?${P()}src=hr&${P()}col=${encodeURIComponent('ename"; --')}&${P()}fc=ename&${P()}fo=eq&${P()}fv=${encodeURIComponent("x' or 1=1 --")}`);
+    assert.equal(ok.statusCode, 200);
+    assert.doesNotMatch(ok.body, /alert-error/);
+    await owner.query('update meta.region set config = $2 where id = $1', [rid, cfg]);
+    // the region settings keep only known authorization schemes and datasets of the workspace
+    const { mergeReporterSettings } = await import('../src/builder/reporter.ts');
+    const m = await mergeReporterSettings({}, { edit_authz: 'NOPE', admin_authz: 'ADMIN', new_dataset: 'other' }, { authz: new Set(['ADMIN']), datasets: new Set(['hr']) });
+    assert.equal(m.config.edit_authz, undefined);
+    assert.equal(m.config.admin_authz, 'ADMIN');
+    assert.equal(m.config.sources, undefined);
+  });
+
+  test('CSRF: every new POST needs the token', async () => {
+    const scott = await user('scott');
+    const pub = await owner.one(`select id from meta.data_report where app_id = $1 and name = 'Sec draft'`, [id110]);
+    for (const [path, form] of [['save', { params: `${P()}src=hr`, name: 'csrf' }], ['publish', { rep: String(pub.id), mode: 'publish' }], ['pin', { rep: String(pub.id), mode: 'pin' }], ['delete', { rep: String(pub.id) }]] as const)
+      assert.equal((await scott.post(`/a/${ALIAS}/1/reporter/${rid}/${path}`, { __csrf: 'forged', ...form })).statusCode, 403, path);
+    assert.ok(await owner.one('select 1 from meta.data_report where id = $1', [pub.id]));
+    const a = await dev();
+    const ds = await owner.one(`select id from meta.dataset where name = 'hr'`);
+    assert.equal((await a.post('/builder/reporter/datasets', { __csrf: 'forged', schema: 'hr', name: 'sec110_csrf', tables: 'emp' })).statusCode, 403);
+    assert.equal((await a.post(`/builder/reporter/datasets/${ds.id}`, { __csrf: 'forged', label: 'Hacked' })).statusCode, 403);
+    assert.equal((await a.post(`/builder/reporter/datasets/${ds.id}/delete`, { __csrf: 'forged' })).statusCode, 403);
+    assert.equal((await a.post('/builder/reporter/import', { __csrf: 'forged', text: '{"datasets": []}' })).statusCode, 403);
+    assert.equal((await a.post('/builder/reporter/apps', { __csrf: 'forged', name: 'X', alias: 'sec110-x', admin_user: 'king', datasets: 'hr' })).statusCode, 403);
+    assert.equal(await owner.one(`select 1 from meta.app where alias = 'sec110-x'`), undefined);
+    assert.equal((await owner.one(`select label from meta.dataset where id = $1`, [ds.id])).label, 'HR');
+  });
+});
+
 describe('sprint 111 WS-4', () => {
   // AI agents and tools (migration 121): SQL tools are read-only and run as the app role through RLS; navigate tools link
   // only to pages the user may open (pgkiln builds the checksum); an agent's authorization scheme; model output escaped;

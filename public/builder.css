@@ -1384,3 +1384,12 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   .wh-stats .stat { padding: 0.6rem 0.75rem; }
   .wh-stats .stat b { font-size: 1.2rem; }
 }
+
+/* (sprint 110) App Builder → Data Reporter: datasets */
+.dataset-checks { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.25rem 0 0.5rem; overflow-wrap: anywhere; }
+.dataset-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.4rem; }
+.dataset-filter > select, .dataset-filter > input { flex: 1 1 10rem; min-width: 0; }
+.dataset-columns input { min-width: 0; width: 100%; }
+.dataset-page pre.code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dataset-schema { flex-wrap: wrap; }
+.dataset-schema > select { flex: 1 1 10rem; min-width: 0; }
