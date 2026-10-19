@@ -311,14 +311,15 @@ export async function teamRoutes(app: FastifyInstance) {
     type Col = { key: string; title: string; chip?: Raw; items: IssueRow[] };
     let cols: Col[];
     if (by === 'milestone') {
-      const ms = lk.milestones.filter((m) => m.status === 'open' || rows.some((r) => r.milestone_id === m.id));
-      cols = [...ms.map((m) => ({ key: String(m.id), title: m.name, items: rows.filter((r) => r.milestone_id === m.id) })),
+      const ms = lk.milestones.filter((m) => m.status === 'open' || rows.some((r) => String(r.milestone_id) === String(m.id)));
+      cols = [...ms.map((m) => ({ key: String(m.id), title: m.name, items: rows.filter((r) => String(r.milestone_id) === String(m.id)) })),
         { key: '', title: 'No milestone', items: rows.filter((r) => r.milestone_id === null) }];
     } else {
       const ls = lk.labels.filter((l) => String(l.group_id ?? 0) === group);
-      const ids = new Set(ls.map((l) => l.id));
-      cols = [...ls.map((l) => ({ key: String(l.id), title: l.name, chip: chip(l), items: rows.filter((r) => r.labels.some((x) => x.id === l.id)) })),
-        { key: '', title: 'None of these', items: rows.filter((r) => !r.labels.some((x) => ids.has(x.id))) }];
+      // (ids: bigint columns come as strings, the json_agg ones as numbers)
+      const ids = new Set(ls.map((l) => String(l.id)));
+      cols = [...ls.map((l) => ({ key: String(l.id), title: l.name, chip: chip(l), items: rows.filter((r) => r.labels.some((x) => String(x.id) === String(l.id))) })),
+        { key: '', title: 'None of these', items: rows.filter((r) => !r.labels.some((x) => ids.has(String(x.id)))) }];
     }
     const back = `${TEAM}/board?${filterQuery(f, { by: by === 'milestone' ? 'milestone' : '', group: by === 'label' ? group : '' })}`;
     const move = (i: IssueRow, from: string) => {
@@ -647,12 +648,12 @@ export async function teamRoutes(app: FastifyInstance) {
         <div class="field"><label class="label" for="${p}_group">Group</label>${groupSel(`${p}_group`, l.group_id ?? null)}</div>
         <div class="field"><label class="label" for="${p}_desc">Description</label><input id="${p}_desc" name="description" maxlength="500" value="${l.description ?? ''}"></div>
       </div><div class="buttons"><button class="btn btn-sm btn-hot">${l.id ? 'Save' : 'Add label'}</button></div></form>`;
-    const byGroup = [...lk.groups.map((g) => ({ g, ls: lk.labels.filter((l) => l.group_id === g.id) })), { g: null, ls: lk.labels.filter((l) => l.group_id === null) }];
+    const byGroup = [...lk.groups.map((g) => ({ g, ls: lk.labels.filter((l) => String(l.group_id) === String(g.id)) })), { g: null, ls: lk.labels.filter((l) => l.group_id === null) }];
     const main = html`${teamHeader('labels')}
       ${byGroup.filter((x) => x.g || x.ls.length).map(({ g, ls }) => region(g ? g.name : 'Labels without a group', html`
         ${g?.description ? html`<p class="muted small u-mt0">${g.description}</p>` : ''}
         ${ls.length ? html`<ul class="team-label-list">${ls.map((l) => html`<li>${chip(l)} <span class="small muted">${l.description ?? ''}</span>
-            <a class="small" href="${TEAM}?label=${l.id}">${n.get(l.id) ?? 0} open</a>
+            <a class="small" href="${TEAM}?label=${l.id}">${n.get(Number(l.id)) ?? 0} open</a>
             <details class="team-inline-edit"><summary class="link-button">Edit</summary>${labelForm(l, `l${l.id}`)}
               ${admin ? html`<form method="post" action="${TEAM}/labels/${l.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the label ${l.name}? Issues lose it.">${icon('trash')} Delete label</button></form>` : ''}</details></li>`)}</ul>`
           : html`<p class="muted small">No labels in this group.</p>`}

@@ -183,6 +183,7 @@ describe('Team Development', () => {
     assert.equal((await b.submit(`/builder/team/issues/${id}/move`, { by: 'label', group: String(typeGroup), from: feature, to: bug, back: '/builder/team/board?group=1' })).statusCode, 303);
     const labels = (await owner.query('select l.name from meta.team_issue_label il join meta.team_label l on l.id = il.label_id where il.issue_id = $1 order by 1', [id])).rows.map((r) => r.name);
     assert.deepEqual(labels, ['Bug', 'High'], 'the Type label replaced, the priority kept');
+    assert.match((await b.get(`/builder/team/board?group=${typeGroup}`)).body, /team-label-red">Bug<\/span> <span class="muted small">1<\/span>/, 'the card is in the Bug column');
     const byMs = (await b.get('/builder/team/board?by=milestone')).body;
     assert.match(byMs, /No milestone/);
     const m11 = await milestoneId(ws, '1.1');
