@@ -5,6 +5,52 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **AI Agents** (WS-4; APEX 26.1 / 26.2; migration 121): Shared Components → AI Agents. An agent combines an AI
+  service, a system prompt, a reasoning effort (low / medium / high, mapped to each provider), approved tools, step
+  and token limits and an authorization scheme; an AI assistant region can name one (`{"agent": "NAME"}`). Tools:
+  SQL queries (a read-only transaction as the application's role through row level security, with a time limit),
+  PL/pgSQL functions, REST data sources, JavaScript actions in the browser, and **Navigate** links to pages the user
+  may open, whose URL and checksum pgkiln builds. Agents and tools export with the application.
+- Every AI tool call is logged with its arguments, status and duration (debug level 4 and Activity → AI usage →
+  Tool calls; kept 30 days, developers only).
+- AI services: **Gemini** and any **OpenAI-compatible** endpoint (Ollama, vLLM, Azure OpenAI); optional instance
+  defaults `GEMINI_API_KEY` and `OPENAI_COMPATIBLE_API_KEY`. HR example: page 46 "HR agent" (`hr_64`).
+
+### Fixed
+- **Docker upgrades:** `docker compose pull` in `deploy/` skipped the pgkiln image once one was present, because
+  `pull_policy: missing` stood next to `build:`; upgrading with `docker compose pull && docker compose up -d` kept
+  the old `:latest`. The line is gone. In a `compose.yaml` copied from 0.51.0 or older, delete it yourself. CI now
+  upgrades a running 0.50.0 container this way.
+
+## [0.51.0] - 2026-10-19
+
+Sprint 109: the Workspace home (parity handoff WS-1). Sprint 110: Data Reporter as a workspace tool (WS-2).
+
+### Added
+- **Workspace home** (WS-1; APEX: the workspace home page; migration 119): after signing in the builder opens
+  `/builder/home`: cards for App Builder, SQL Workshop, Data Reporter and the App Gallery; the workspace message,
+  edited in place by the workspace's administrators; a Summary of applications, tables, developers and reporting
+  applications that link to their tool; top applications, users and developers over 1 hour, 1 day or 1 week
+  (remembered per developer); a System message with the server's version; Learn more and Resources. Works without
+  JavaScript.
+- **Release check** (off by default): with `PGKILN_RELEASE_CHECK=on`, or *Instance settings → New versions* in the
+  builder, the server asks GitHub's releases API at most once a day (5-second timeout, 1 MB, nothing sent about the
+  installation) and the Workspace home shows *pgkiln X is available* with the release notes and how to upgrade.
+- **Data Reporter as a workspace tool** (WS-2; APEX 26.1; migration 120): App Builder → **Data Reporter**
+  (`/builder/reporter`) keeps **datasets** (`meta.dataset`): tables and views of one schema with joins proposed from
+  foreign keys, the offered columns with labels, format masks and descriptions, and a row filter, checked against
+  the database when saved, with a query preview. Datasets download and import as `*.dataset.json` files and travel
+  in the workspace export. **Create reporting application** makes an application of type *Reporting* on one or more
+  datasets in two clicks: its role may only SELECT the datasets' tables and views, so every report runs through
+  those grants and RLS; viewers open published reports, editors build and publish them, administrators moderate.
+- Data Reporter region: a dataset as a source; `edit_authz`, `admin_authz` and `publishing` (published reports with
+  a stable URL `/a/<alias>/reports/<id>`, Publish / Unpublish, pins per user). HR example `hr_63_datasets.sql`.
+
+### Changed
+- The App Builder's home moved to `/builder/apps`. `/builder` still shows it unless the workspace's preferences
+  (*Builder links open*) send it to the Workspace home; the logo and the rail's Home lead to the Workspace home.
+
 ## [0.50.0] - 2026-10-18
 
 Sprint 107: a transaction mode in the SQL Worksheet (parity handoff DA-2, the rest).

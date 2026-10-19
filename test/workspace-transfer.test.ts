@@ -83,7 +83,7 @@ describe('a workspace file', () => {
     // only what was asked for
     const some = await exportWorkspace(source, ['sql_scripts']);
     assert.deepEqual(Object.keys(some).filter((k) => (PARTS as readonly string[]).includes(k)), ['sql_scripts']);
-    assert.deepEqual(describeWorkspaceFile(file).counts, { settings: 1, developers: 1, app_groups: 2, extension_links: 1, rest_catalogs: 1, sql_scripts: 1, blueprints: 1, data_generators: 1 });
+    assert.deepEqual(describeWorkspaceFile(file).counts, { settings: 1, developers: 1, app_groups: 2, extension_links: 1, rest_catalogs: 1, sql_scripts: 1, blueprints: 1, data_generators: 1, datasets: 0 });
   });
 
   test('import into another workspace: everything added; the target keeps its own name', async () => {

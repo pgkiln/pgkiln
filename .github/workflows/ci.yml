@@ -104,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        from: [v0.31.0, v0.32.0, v0.33.2, v0.34.0, v0.35.0, v0.36.0, v0.37.0, v0.38.0, v0.39.0, v0.40.0, v0.41.0, v0.42.0, v0.43.0, v0.44.0, v0.45.0, v0.46.0, v0.47.0, v0.48.0, v0.49.0]
+        from: [v0.31.0, v0.32.0, v0.33.2, v0.34.0, v0.35.0, v0.36.0, v0.37.0, v0.38.0, v0.39.0, v0.40.0, v0.41.0, v0.42.0, v0.43.0, v0.44.0, v0.45.0, v0.46.0, v0.47.0, v0.48.0, v0.49.0, v0.50.0]
     services:
       postgres:
         image: postgres:17
@@ -160,6 +160,39 @@ jobs:
           curl -fsS http://127.0.0.1:3100/healthz
           curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
           curl -fsS -o /dev/null http://127.0.0.1:3100/builder/login
+      - name: Logs
+        if: always()
+        working-directory: deploy
+        run: docker compose logs
+
+  docker-upgrade:
+    # what a user runs to upgrade: docker compose pull, then docker compose up -d. An older release stands in for
+    # a stale :latest; the pull must replace it (it didn't with pull_policy: missing) and up -d must recreate the
+    # container on the new image, which migrates the database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start an older release as :latest
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 24)/; s/^RUNTIME_PASSWORD=$/RUNTIME_PASSWORD=$(openssl rand -hex 24)/" .env
+          sed -i "s/^PGKILN_SECRET_KEY=$/PGKILN_SECRET_KEY=$(openssl rand -hex 24)/; s/^PGKILN_ADMIN_PASSWORD=$/PGKILN_ADMIN_PASSWORD=ci-admin-password-0123/" .env
+          echo PGKILN_EXAMPLE=hr >> .env
+          docker pull pgkiln/pgkiln:0.50.0
+          docker tag pgkiln/pgkiln:0.50.0 pgkiln/pgkiln:latest
+          docker compose up -d --wait --wait-timeout 300
+      - name: Upgrade with docker compose pull
+        working-directory: deploy
+        run: |
+          old=$(docker image inspect -f '{{.Id}}' pgkiln/pgkiln:0.50.0)
+          docker compose pull pgkiln
+          new=$(docker image inspect -f '{{.Id}}' pgkiln/pgkiln:latest)
+          [ "$new" != "$old" ] || { echo "docker compose pull kept the old image"; exit 1; }
+          docker compose up -d --wait --wait-timeout 300
+          [ "$(docker inspect -f '{{.Image}}' "$(docker compose ps -q pgkiln)")" = "$new" ] || { echo "the container still runs the old image"; exit 1; }
+          curl -fsS http://127.0.0.1:3100/healthz
+          curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
       - name: Logs
         if: always()
         working-directory: deploy

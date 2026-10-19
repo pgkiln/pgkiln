@@ -1,10 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { owner } from '../db.ts';
-import { decryptSecret } from '../secrets.ts';
 import { claudeError } from './anthropic.ts';
 import { openAiError } from './openai.ts';
-import { envKeyName, MAX_PROMPT_CHARS, MAX_SYSTEM_CHARS, serviceForApp, usageToday, logUsage, type AiService, type CallInfo } from './service.ts';
+import { baseUrlFor, MAX_PROMPT_CHARS, MAX_SYSTEM_CHARS, serviceForApp, serviceKey, usageToday, logUsage, type AiService, type CallInfo } from './service.ts';
 import { AiError } from './types.ts';
 
 // Conversations with tools (AI assistant regions, src/runtime/assistant.ts):
@@ -23,7 +22,9 @@ import { AiError } from './types.ts';
 // service's effort, server-side refusal fallbacks. The assistant's content
 // is appended to the history unchanged (thinking blocks included): the
 // history only ever grows, as the API expects. OpenAI: Chat Completions with
-// strict function tools.
+// strict function tools; also Gemini (its OpenAI-compatible endpoint) and
+// OpenAI-compatible endpoints (121). An agent (src/runtime/ai-agents.ts)
+// may set the reasoning effort and a lower output limit per call.
 
 export interface ChatTool {
   name: string;
@@ -47,6 +48,10 @@ export interface ChatRequest {
   /** at most this many rounds of tool calls (then the model must answer) */
   maxRounds: number;
   runTool(name: string, input: Record<string, unknown>): Promise<ToolOutcome>;
+  /** (121) an agent's reasoning effort: Claude's output_config.effort, OpenAI's reasoning_effort (else the service's own) */
+  effort?: 'low' | 'medium' | 'high' | null;
+  /** (121) an agent's output limit per call (never above the service's maximum) */
+  maxTokens?: number | null;
 }
 
 export interface ChatResult {
@@ -69,16 +74,9 @@ export interface ChatInfo {
 /** Tool results are cut to this many characters (the model sees that they were). */
 export const MAX_TOOL_RESULT_CHARS = 20_000;
 
-function apiKey(s: AiService) {
-  let key: string | undefined;
-  try {
-    key = s.api_key_enc ? decryptSecret(s.api_key_enc) : process.env[envKeyName(s.provider)];
-  } catch (e) {
-    throw new AiError('config', `AI service ${s.name}: ${(e as Error).message}`);
-  }
-  if (!key) throw new AiError('config', `AI service ${s.name} has no API key (enter one in the builder, or set ${envKeyName(s.provider)} on the server).`);
-  return key;
-}
+
+/** The output limit of one call: the agent's, never above the service's. */
+const outputLimit = (s: AiService, req: ChatRequest) => Math.min(s.max_tokens, req.maxTokens ?? s.max_tokens);
 
 const clip = (text: string) => (text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n[cut off: the result was longer]` : text);
 
@@ -114,7 +112,7 @@ async function metered<T extends { model: string; input: number; output: number 
 const TOO_MANY_ROUNDS = 'The assistant needed more steps than it may take for one question: ask a simpler question, or start a new conversation.';
 
 async function claudeChat(s: AiService, limits: Parameters<typeof metered>[1], req: ChatRequest, info: ChatInfo): Promise<ChatResult> {
-  const client = new Anthropic({ apiKey: apiKey(s), authToken: null, baseURL: s.base_url || undefined, timeout: s.timeout_s * 1000, maxRetries: 1 });
+  const client = new Anthropic({ apiKey: serviceKey(s), authToken: null, baseURL: baseUrlFor(s), timeout: s.timeout_s * 1000, maxRetries: 1 });
   const messages = [...(req.history as Anthropic.Beta.BetaMessageParam[]), { role: 'user', content: req.message } as Anthropic.Beta.BetaMessageParam];
   const tools: Anthropic.Beta.BetaTool[] = req.tools.map((t) => ({
     name: t.name, description: t.description, strict: true, input_schema: t.parameters as Anthropic.Beta.BetaTool.InputSchema,
@@ -126,11 +124,11 @@ async function claudeChat(s: AiService, limits: Parameters<typeof metered>[1], r
       try {
         m = await client.beta.messages.stream({
           model: s.model,
-          max_tokens: s.max_tokens,
+          max_tokens: outputLimit(s, req),
           system: req.system,
           messages,
           ...(tools.length ? { tools } : {}),
-          ...(s.effort ? { output_config: { effort: s.effort } } : {}),
+          ...((req.effort ?? s.effort) ? { output_config: { effort: (req.effort ?? s.effort)! } } : {}),
           ...(s.refusal_fallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
         }).finalMessage();
       } catch (e) {
@@ -161,7 +159,7 @@ async function claudeChat(s: AiService, limits: Parameters<typeof metered>[1], r
 }
 
 async function openAiChat(s: AiService, limits: Parameters<typeof metered>[1], req: ChatRequest, info: ChatInfo): Promise<ChatResult> {
-  const client = new OpenAI({ apiKey: apiKey(s), baseURL: s.base_url || undefined, timeout: s.timeout_s * 1000, maxRetries: 1 });
+  const client = new OpenAI({ apiKey: serviceKey(s), baseURL: baseUrlFor(s), timeout: s.timeout_s * 1000, maxRetries: 1 });
   const messages = [...(req.history as OpenAI.Chat.ChatCompletionMessageParam[]), { role: 'user', content: req.message } as OpenAI.Chat.ChatCompletionMessageParam];
   const tools: OpenAI.Chat.ChatCompletionTool[] = req.tools.map((t) => ({
     type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters, strict: true },
@@ -175,8 +173,10 @@ async function openAiChat(s: AiService, limits: Parameters<typeof metered>[1], r
           model: s.model,
           // the system prompt is sent with each request, not kept in the history
           messages: [{ role: 'system', content: req.system }, ...messages],
-          max_completion_tokens: s.max_tokens,
+          max_completion_tokens: outputLimit(s, req),
           ...(tools.length ? { tools } : {}),
+          // (121) an agent's reasoning effort; models without reasoning refuse it, so none is sent without one
+          ...(req.effort ? { reasoning_effort: req.effort } : {}),
         });
       } catch (e) {
         throw openAiError(e);

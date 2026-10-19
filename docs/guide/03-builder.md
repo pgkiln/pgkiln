@@ -157,6 +157,7 @@ applications' files. Choose what goes in:
 | Extension links | Label, URL, description, order |
 | REST source catalogs | Every [catalog](19-rest-data-sources.md#rest-source-catalogs) with its services |
 | SQL scripts, blueprints, data generators | The SQL Workshop's saved work |
+| Data Reporter datasets | Every [dataset](#data-reporter-datasets-and-reporting-applications) (sprint 110) |
 
 Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, passwords and
 secrets, script runs and other history. **Applications are exported on their own** (an application's *Export*).
@@ -220,7 +221,7 @@ longer sign in. Delete a workspace only when it is shared and empty; its logins 
 Every builder page has the same frame, modelled on an IDE:
 
 - **The icon rail** on the left: Home (the [Workspace home](#workspace-home); the logo leads there too), App Builder,
-  SQL Workshop, [App Gallery](#app-gallery), **Search** (on the
+  SQL Workshop, [App Gallery](#app-gallery), [Data Reporter](#data-reporter-datasets-and-reporting-applications), **Search** (on the
   pages of an application); at the bottom the **Administration** menu (Workspace utilities; for administrators of the
   current workspace *Manage service*: [workspace message and environment banner](#workspace-message-and-environment-banner),
   [workspace utilization](#workspace-utilization) and the workspace's page; Manage users and groups, Developers,
@@ -266,7 +267,8 @@ JavaScript. The [default-password banner](#signing-in-and-developer-accounts) st
   workspace's administrators (and the installation's) edit it in place with **Edit message**; empty removes it.
 - **Summary**: the number of applications (opens the App Builder), tables in the schemas the workspace's database
   roles may use (opens the Object Browser), developers (opens Developers) and reporting applications (applications
-  with a [Data Reporter region](04-pages-and-regions.md); opens the Data Reporter when there is one).
+  made by [Data Reporter](#data-reporter-datasets-and-reporting-applications) → *Create reporting application*; opens
+  the Data Reporter).
 - **Activity**: **Top applications** (page views and users), **Top users** and **Top developers** (page views by the
   workspace's developers and the installation's administrators in its applications) over **1 hour**, **1 day** (the
   default) or **1 week**. The timeframe is remembered for each developer (`meta.developer.home_timeframe`).
@@ -331,6 +333,49 @@ The **App Gallery** (the cube in the icon rail, `/builder/gallery`; APEX: App Ga
   Create with that boilerplate chosen.
 
 The list is `examples/gallery/gallery.json`; add your own starters there as blueprint files.
+
+## Data Reporter: datasets and reporting applications
+
+**Data Reporter** in the icon rail (`/builder/reporter`, sprint 110; APEX 26.1: Data Reporter as a workspace tool)
+gives business users reports on the workspace's data without a developer writing a page per question. Every
+developer of the workspace manages it; the page lists the workspace's **datasets** and its **reporting
+applications** (with their users and published reports).
+
+A **dataset** (`meta.dataset`, per workspace) is a trusted view of the data: tables and views of one schema, joined,
+the columns users may see, and a row filter.
+
+- **New dataset**: choose a schema (those your [SQL Workshop](#sql-workshop) connection may use; never pgkiln's own
+  or the system's), tick tables and views (the first is the main one) and give it a name (lower case, it can't
+  change) and a label. **Joins are proposed from foreign keys** in either direction (a left join on the key's
+  columns); every column is offered, labelled from its name, numbers with a number mask.
+- **The dataset's page**: its label and description; the tables with their joins (to an earlier table, left or
+  inner, *on* `column = its column`; add a table, remove one); the **columns** (offer or not, a name reports use, a
+  label, a [format mask](14-globalization.md) and a description users see in the report editor); up to five
+  **row filter** conditions (column, operator, value) that every report on it gets; the **query** it builds, and a
+  **preview** of ten rows (read only, through your SQL Workshop connection). The dataset is checked against the
+  database when it is saved: tables, views and columns must exist; the page says what doesn't match (any more).
+- **Download** one dataset or **Export all** as a file (`*.dataset.json`, format `pgkiln-dataset/1`); **Import**
+  reads such a file (or pasted text) in one transaction: each dataset is checked against this installation's
+  database, and one with the same name is kept unless you choose *Replace*. Datasets also travel in the
+  [workspace export](#export-and-import); they are not part of an application's export.
+
+**Create reporting application** (on a dataset's row or page: the form is filled in, so *Create* is the second
+click) makes an application of type *Reporting* on one or more datasets: page 1 is a
+[Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter) region offering the datasets, users sign in with
+their accounts of the [user directory](#users-the-user-directory), and the first administrator is the account you
+name (yours by default). Its database role `app_<alias>` may only **read** (SELECT) the datasets' tables and views,
+so every report runs through those grants and [row level security](08-security.md) (a view with
+`security_invoker` needs grants on its own tables too: grant them to the role yourself). Give accounts access and
+roles under the application's *Users and roles*:
+
+| Role | May |
+|---|---|
+| viewer (or no role) | Open published reports (by their stable URL too), pin them |
+| editor | Also build reports, save them, publish and unpublish their own |
+| administrator | Also unpublish and delete anyone's reports |
+
+The application is an ordinary pgkiln application otherwise: change its pages, theme or sign-in in the builder as
+you like. `meta.reporting_app_count(workspace_id)` counts a workspace's reporting applications.
 
 ### Creating an application
 
@@ -796,7 +841,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
 | `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
 | `report` (also) | *Ask in your own words (AI)*: off, the built-in phrases or an AI service, and the placeholder of [Ask in your own words](04-pages-and-regions.md#ask-in-your-own-words-ai-interactive-reports) |
-| `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks), who may share reports, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
+| `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks; or (sprint 110) a dataset of the workspace), who may share, build and moderate reports, publishing, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 | `form_designer` | Who may design forms (an authorization scheme), data sources (a table or view each: static id, label, description, key column, may add / change / delete rows, offered columns with labels and lists of values), rows per page ([Form Designer](04-pages-and-regions.md#form_designer-form-designer)) |
 
 Links, lists of values and the facets' report are checked when saving: a form can only point to
@@ -1003,6 +1048,7 @@ application has a **type** (Settings → Application type):
 | Theme application | Offers its theme (colours, navigation, light/dark settings and the Theme Roller's styles) and its template components to other applications |
 | Library application | Offers its lists of values, authorization schemes, build options, template components and lists (with their entries) to other applications |
 | Boilerplate application | A starting point: **Create** offers it under *Start from* |
+| Reporting application | (sprint 110) Made by [App Builder → Data Reporter](#data-reporter-datasets-and-reporting-applications) on datasets: its users build, publish and share reports |
 
 **Shared Components → Subscriptions** subscribes the application to one of those components: it is
 copied now (replacing a component with the same name) and remembered as a subscription. The page
@@ -1247,7 +1293,12 @@ Workspace utilities → **AI services** (administrators only; APEX: *Generative 
 large language model services of this installation. A service has:
 
 - a **name** (upper case, e.g. `CLAUDE`) by which processes, dynamic actions and SQL refer to it;
-- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs;
+- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs; *Gemini*
+  (Google, through its OpenAI-compatible endpoint `https://generativelanguage.googleapis.com/v1beta/openai/`,
+  with the `openai` SDK); or *OpenAI-compatible*: any endpoint that speaks OpenAI's Chat Completions,
+  such as Ollama (`http://localhost:11434/v1`), vLLM, Azure OpenAI (`https://<resource>.openai.azure.com/openai/v1/`)
+  or a gateway. An OpenAI-compatible service needs a base URL; its key may stay empty for endpoints
+  without keys (a local Ollama);
 - a **model**, exactly as the provider names it (new Claude services start with `claude-opus-5-5`);
   pgkiln never changes or downgrades it;
 - for Claude, the **effort** (how deeply the model thinks; current Claude models always think, lower
@@ -1259,8 +1310,9 @@ large language model services of this installation. A service has:
 - an optional **base URL** for a gateway or proxy that speaks the provider's API (calls to the AI
   service don't go through `PGKILN_REST_ALLOWED_HOSTS`: only administrators set this URL);
 - the **API key**: stored encrypted with `PGKILN_SECRET_KEY`, write-only (never shown again, never
-  exported or logged, not readable by applications). Without one the server's `ANTHROPIC_API_KEY` /
-  `OPENAI_API_KEY` is used.
+  exported or logged, not readable by applications, never sent to the browser). Without one the
+  server's `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `OPENAI_COMPATIBLE_API_KEY`
+  (by provider) is used.
 
 On a service's page, **Applications** sets which applications may use it, each with optional daily
 limits (requests and input + output tokens per UTC day; a request over a limit fails with a message
@@ -1276,6 +1328,62 @@ phrases ([chapter 4](04-pages-and-regions.md#ask-in-your-own-words-ai-interactiv
 into it, is sent to the chosen provider (or the gateway of the base URL). Choose providers and
 models that your organisation allows for that data. See
 [Generate text with AI](06-processing.md#generate-text-with-ai).
+
+## AI agents
+
+Shared Components → Generative AI → **AI Agents** (APEX 26.1 / 26.2: AI Agents and AI Tools) holds an
+application's agents and the tools they may use. An agent reasons over a user's request in an
+[AI assistant region](04-pages-and-regions.md#ai_assistant-ai-assistant) and acts **only through the
+tools you approve**; pgkiln prepares the context, runs each tool call itself under the checks below,
+and composes the conversation.
+
+An **agent** has:
+
+- a **name** (upper case, e.g. `SALES_AGENT`) that regions refer to, and a description;
+- an **AI service** the application may use, and a **system prompt** (`&ITEM.` is replaced by the item's
+  value as delimited data, as in assistant regions);
+- a **reasoning effort**: *low*, *medium* or *high*, or empty for the service's own. For Claude it is
+  the output effort (thinking depth, `output_config.effort`); for OpenAI, Gemini and OpenAI-compatible
+  services it is sent as `reasoning_effort` (leave it empty for models without reasoning: they refuse it);
+- the **tools** it may use (ticked from the application's tools);
+- **maximum steps** (rounds of tool calls per question, 1–20, default 5) and **maximum output tokens**
+  per call (never above the service's maximum);
+- an **authorization scheme**: other users see *You may not use this assistant* instead of the message
+  box, and their questions are refused before anything is sent to the AI service.
+
+A **tool** has a name the model calls it by, a description that tells the model what it does and when
+to use it, optional **parameters** (JSON: `{"DNAME": {"type": "string", "description": "…", "optional": true}}`;
+types string, integer, number, boolean, date, `enum` for a list of texts), an optional authorization
+scheme (only users who pass it are offered the tool) and one of these types:
+
+| Type | What runs | Checks |
+|---|---|---|
+| **SQL query** | one `SELECT` (or `WITH`, `VALUES`, `TABLE`) with the parameters as `:NAME` bind values, plus `:APP_USER` and items | as the application's database role (grants and row level security apply), in a **read-only transaction** (functions it calls can't write either), with a time limit (1–60 s, default 15) and at most *maximum rows* rows (default 50) back to the model |
+| **PL/pgSQL function** | `schema.function` called with named arguments: each parameter name in lower case is an argument name (`P_EMPNO` → `p_empno => …`) | as the application's role; it **may change data** (committed); same time limit and rows |
+| **REST data source** | a REST data source of the application; the parameters become its parameters | as in [assistant regions](04-pages-and-regions.md#ai_assistant-ai-assistant) |
+| **JavaScript** | nothing on the server: after the answer the browser calls the function registered with `pgkiln.actions.register(action)` (with `{value: arguments}`) and the dynamic actions of the **custom event** of that name (the arguments as JSON) | once, right after the answer; the arguments are escaped data in the page |
+| **Navigate** | the model picks one of the tool's **pages**, a link text and item values of that page; pgkiln builds the URL with the item values' **checksum** (bound to application, page and user) and shows the link under the answer | only pages the user may open are offered (the page's authorization scheme and sign-in); only items of that page; the model's values are never substituted (`&ITEM.`); nothing opens the link by itself |
+
+The model's arguments are checked against the parameters before a tool runs; they are bind values
+(escaped literals), never SQL text, and can't replace the server's own names (`:APP_USER`, `:APP_ID`, …).
+Tool results go back to the model as data, with the instruction never to follow instructions inside them.
+
+**Every tool call is logged** with the arguments the model gave, its status (*ok*, *error*, or *refused*
+for a page the user may not open) and duration: in the page's debug messages (level 4) and under
+Activity → **AI usage** → *Tool calls* (`meta.ai_tool_call`, kept 30 days; arguments may hold user data,
+only developers see them). The token usage of each call to the model is logged as before.
+
+Agents and tools are kept in the application (`meta.app.ai_agents`, `meta.app.ai_tools`) and **exported
+with it**; an export made before they existed imports with none. The forms check each one before
+saving (a SQL tool must be a query, a function `schema.name`, a navigate tool's pages must exist); the
+runtime checks them again and shows *This assistant is not set up yet* for a broken one. Renaming a
+tool keeps it in its agents; a tool an agent uses can't be deleted; renaming an agent renames it in
+the regions that use it.
+
+The HR example (`examples/hr/hr_64_ai_agent.sql`) has an agent `HR_AGENT` on page 46: ask *Who in Sales
+earns most?* and it calls the SQL tool `top_earners` as the signed-in user's role, then offers
+*Open BLAKE's record*, a link to the employee form (page 3) with a valid checksum, only to users who
+may open that page.
 
 ## App Builder AI
 

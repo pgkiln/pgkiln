@@ -71,7 +71,7 @@ export function sharedGroups(appId: number): { key: string; title: string; icon:
     { key: 'data', title: 'Data Sources', icon: 'database', items: [t('rest_source', 'REST Data Sources'), t('web_credential', 'Web Credentials'), t('rest_module', 'RESTful Services'), t('data_load_def', 'Data Load Definitions')] },
     { key: 'workflows', title: 'Workflows and Automations', icon: 'activity', items: [t('workflow_definition', 'Workflows'), t('task_definition', 'Task Definitions'), t('automation', 'Automations')] },
     { key: 'globalization', title: 'Globalization', icon: 'globe', items: [page('globalization', 'Translations and Text Messages'), t('dynamic_translation', 'Dynamic Translations'), settings('globalization', 'Globalization Attributes')] },
-    { key: 'ai', title: 'Generative AI', icon: 'lightbulb', items: [page('ai', 'AI Services')] },
+    { key: 'ai', title: 'Generative AI', icon: 'lightbulb', items: [page('ai', 'AI Services'), page('ai-agents', 'AI Agents')] },
   ];
 }
 

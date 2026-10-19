@@ -80,6 +80,13 @@ src/
   datamodel.ts             (sprint 98) Data Modeler diagrams: readModel() (catalog), boxSize(), fkPath() (crow's feet), autoLayout(), diagramSvg()
   changelog.ts             (sprint 106, migration 118) the change log: isSchemaDdl(), ddlTarget() (schema and object), changeName()
                            (add_bonus, create_index_x), recordChanges() (grouped per schema), Flyway / Liquibase / plain SQL writers
+  datasets.ts              (sprint 110, migration 120) Data Reporter datasets: checkDataset() (names, joins to earlier tables, columns
+                           and filters on its tables, whitelisted operators; with a catalog: existing objects), datasetSql() (quoted
+                           identifiers, literal values), readSchemaCatalog() (tables, views, columns, foreign keys), proposeJoin() /
+                           proposeDataset(), storeDataset(), appDatasets() (the runtime's read), pgkiln-dataset/1 files
+  reporting-app.ts         (sprint 110) reporting applications: createReportingApp() (createApp, SELECT-only grants on the datasets'
+                           objects, type reporting, roles viewer/editor/administrator as schemes EDITOR and ADMIN, page 1 a Data
+                           Reporter), reportingApps(), reportingAppCount() (meta.reporting_app_count, for the workspace home)
   tabledef.ts              (sprint 95) a table as a definition: readTable(), checkTable(), tableSql() (CREATE, or ALTER from the catalog's version)
   sqlformat.ts             (sprint 93) formatSql(): the worksheet's Format (clauses per line, keyword case; strings and comments kept)
   sqlplan.ts               (sprint 92) EXPLAIN (FORMAT JSON) as a tree: parsePlan() (self time, slowest step, misestimates), planText()
@@ -131,7 +138,10 @@ src/
                            limits, the call, meta.ai_usage), requests.ts (meta.ai_generate from SQL: runPendingAi() after an sql
                            process, aiRequestTick() in the scheduler, 24-hour purge), chat.ts (conversations with tools, migration
                            061: chat() runs the tool loop on a provider-format history (Claude: streamed, strict tools, tool_choice
-                           auto, content appended unchanged; OpenAI: strict function tools), limits and usage per provider call)
+                           auto, content appended unchanged; OpenAI: strict function tools), limits and usage per provider call;
+                           (121) an agent's effort (Claude output_config.effort, OpenAI reasoning_effort) and output limit).
+                           Providers (121): anthropic, openai, gemini (OpenAI-compatible endpoint, GEMINI_BASE_URL), openai_compatible
+                           (Ollama, vLLM, Azure OpenAI; base URL required, key optional): service.ts serviceKey(), baseUrlFor(), providerLabel()
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
                            loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -188,7 +198,9 @@ src/
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals); (094) the vacation rule panel and route
     data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
-                           reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report)
+                           reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report);
+                           (sprint 110) dataset sources (resolveSources), edit_authz / admin_authz / publishing, pins (a preference),
+                           publish / pin routes, the stable URL GET /a/:alias/reports/:id
     form-designer.ts       Form Designer region (migration 106): sources from the region's config, checkFormDef (offered columns, displays,
                            actions), forms as cards, a form's rows, a row's form (lost update hash), the designer; row/design/delete routes
     workflows.ts           workflow console region and its actions
@@ -196,7 +208,13 @@ src/
                            schemas from items, answers into items), aiInputs/aiOutputs for its dynamic action (route in routes.ts)
     assistant.ts           AI assistant region (migration 061): config checks, tool schemas and argument checks, context queries
                            and SQL tools as the app role (rolled back unless "writes"), REST tools, meta.ai_conversation per
-                           session, formatAnswer (escaped), send/clear routes
+                           session, formatAnswer (escaped), send/clear routes; (121) "agent": an AI agent's service, prompt, tools,
+                           steps and authorization; links of navigate tools under the answer, browser actions once (__AIACT<id>)
+    ai-agents.ts           (121) AI agents and AI tools (meta.app.ai_agents / ai_tools): checks (agentProblems, aiToolProblems,
+                           definitionProblems), agentFor(), prepareTools() (authorization schemes, navigate pages the user may
+                           open, strict schemas), runAgentTool() (sql: read-only transaction as the app role with a time limit;
+                           function: named arguments, committed; rest; javascript: queued for the browser; navigate: URL and
+                           checksum built here), logToolCall() (meta.ai_tool_call, debug level 4, 30-day purge)
     ai-filter.ts           "Ask in your own words" on a report ("ai_filter", sprint 112: AI interactive reports): the box, the chips
                            form (Edit/Remove/Undo, undo history in the session), ask and chips routes; an AI service's structured
                            output (planSchema) or the phrase parser, then ir-plan.ts
@@ -319,7 +337,11 @@ src/
     pwa.ts                 Settings → Progressive Web App (icon upload)
     themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
     subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
-    reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing)
+    reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing;
+                           (sprint 110) a dataset as a source, who may edit, who may moderate, publishing)
+    datasets.ts            (sprint 110) App Builder → Data Reporter (/builder/reporter): datasets (new: schema, tables; a dataset's
+                           joins, columns, row filter, query and preview), files (download, export all, import), Create reporting
+                           application
     form-designer.ts       page designer: Form Designer settings (designers' scheme; sources: key, actions, offered columns, labels, lists of values)
     workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
     rest.ts                REST module endpoints list and curl example (Shared Components)
@@ -355,6 +377,8 @@ src/
     assistant.ts           page designer: AI assistant settings and a report's "Ask in your own words" (off, built-in phrases or an AI service, placeholder)
     ai.ts                  Workspace utilities → AI services (administrators: services, write-only encrypted keys, access and
                            daily limits per app, Test, usage log) and Activity → AI usage per application
+    ai-agents.ts           (121) Shared Components → AI Agents: the agent and tool forms (checked before saving, renames follow
+                           into agents and regions), toolCallTable() (Activity → AI usage → Tool calls), agentOptions()
     supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
   app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)
@@ -403,6 +427,8 @@ test/
   worksheet.test.ts        (sprint 91) the SQL Worksheet: statement at the cursor, Run Script log, plans, notices, history, navigator, Run as
   worksheet-txn.test.ts    (sprint 107) transaction mode: the tab's transaction, Commit / Rollback, typed COMMIT, aborted, idle timeout, refusals,
                            Explain in it, Change Log at COMMIT, the JSON endpoint, sign-out
+  datasets.test.ts         (sprint 110) datasets: checks and SQL, proposed joins, the builder's pages, files, the workspace export;
+                           a reporting application in two clicks, an editor publishes, a viewer opens the stable URL, pins
   quicksql.test.ts         Quick SQL parser and DDL generator
   xml.test.ts              XML reader: rows, attributes, paths, refused DTDs and entities, limits
   printing.test.ts         report PDFs

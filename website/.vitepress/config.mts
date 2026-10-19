@@ -67,7 +67,7 @@ export default defineConfig({
     },
     footer: {
       message: 'Released under the Apache-2.0 license. Not affiliated with Oracle; Oracle and APEX are trademarks of Oracle.',
-      copyright: `© ${new Date().getFullYear()} Vargar`,
+      copyright: `© ${new Date().getFullYear()} <a href="https://vargar.eu">Vargar</a> · Created by <a href="https://nickquispel.nl">Nick Quispel</a>`,
     },
   },
 });

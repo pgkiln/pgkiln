@@ -72,9 +72,8 @@ export async function homeData(ws: number, tf: Timeframe) {
                                join pg_roles rl on rl.rolname = x.r
                               where has_schema_privilege(rl.oid, n.oid, 'USAGE')))::int as tables,
               (select count(*) from meta.workspace_member m where m.workspace_id = $1)::int as developers,
-              -- reporting applications: those with a Data Reporter region
-              (select count(*) from meta.app a where ${inWorkspaceSql('a', 1)}
-                  and exists (select 1 from meta.page p join meta.region r on r.page_id = p.id where p.app_id = a.id and r.type = 'data_reporter'))::int as reporting`,
+              -- reporting applications: apps of type 'reporting' (Data Reporter → Create reporting application)
+              meta.reporting_app_count($1) as reporting`,
       [ws],
     ),
   ]);
@@ -188,7 +187,7 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
         <nav class="ab-tiles ab-tiles-wrap wh-tools" aria-label="Tools">
           ${card(`${BASE}/apps`, 'grid', 'App Builder', 'Create, edit and run the applications of this workspace.')}
           ${sql ? card(`${BASE}/sql`, 'database', 'SQL Workshop', 'Run SQL, browse database objects, load data and build REST services.') : ''}
-          ${reporter ? card(REPORTER, 'chart', 'Data Reporter', 'Datasets and reports for business users, without building pages.') : ''}
+          ${reporter ? card(REPORTER, 'pie-chart', 'Data Reporter', 'Datasets and reports for business users, without building pages.') : ''}
           ${card(`${BASE}/gallery`, 'package', 'App Gallery', 'Sample and starter applications to install.')}
         </nav>
         ${workspaceMessage(s, canEdit)}
