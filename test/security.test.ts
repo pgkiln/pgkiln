@@ -10128,3 +10128,72 @@ describe('sprint 112 WS-5', () => {
     assert.doesNotMatch(body.slice(body.indexOf('class="ai-filter"'), body.indexOf('class="ai-filter"') + 20000), /style="|onclick=/);
   });
 });
+
+describe('sprint 115 WS-11', () => {
+  // HR page 47 (examples/hr/hr_68_component_details.sql): the popup LOV's endless paging, the wait
+  // popup's message, menu entries that run dynamic actions
+  let pageId: number;
+  const made: number[] = [];
+  const meta47 = (body: string) => JSON.parse(/<script type="application\/json" id="pgkiln-meta">([\s\S]*?)<\/script>/.exec(body)![1]);
+  before(async () => {
+    pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 47', [appId])).id;
+  });
+  after(async () => {
+    for (const id of made) await owner.query('delete from meta.dynamic_action where id = $1', [id]);
+    await owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'ACTIONS'`, [pageId, JSON.stringify([
+      { label: 'Count employees', action: 'COUNT', icon: 'users' }, { label: 'Say hello', action: 'HELLO', icon: 'bell' }, { label: 'Pick an employee', page: 26, icon: 'search' }])]);
+  });
+
+  test('the popup LOV search: CSRF, a page size and a page number capped, the term a bind', async () => {
+    const b = await as('king');
+    await b.get('/a/hr/47');
+    assert.equal((await b.post('/a/hr/47/lov/P47_REF/search', { __csrf: 'wrong', q: '', p: '0' })).statusCode, 403);
+    const big = await b.post('/a/hr/47/lov/P47_REF/search', { __csrf: b.lastCsrf, q: '', p: '0', n: '100000' });
+    assert.equal(JSON.parse(big.body).rows.length, 100, 'at most 100 a page');
+    const far = await b.post('/a/hr/47/lov/P47_REF/search', { __csrf: b.lastCsrf, q: '', p: '999999999999' });
+    assert.equal(far.statusCode, 200);
+    assert.deepEqual(JSON.parse(far.body).rows, []);
+    const inj = await b.post('/a/hr/47/lov/P47_REF/search', { __csrf: b.lastCsrf, q: `%' or 1=1 --`, p: '0' });
+    assert.equal(inj.statusCode, 200);
+    assert.deepEqual(JSON.parse(inj.body).rows, []);
+    const anon = new Browser();
+    await anon.get('/a/hr/47');
+    assert.notEqual((await anon.post('/a/hr/47/lov/P47_REF/search', { __csrf: anon.lastCsrf, q: '', p: '1' })).statusCode, 200);
+  });
+
+  test('a wait popup message cannot break out of the page data (it is shown as text)', async () => {
+    made.push((await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, message)
+      values ($1, 990, 'sec wait', 'click', 'CHECK', 'wait_popup', $2) returning id`, [pageId, '</script><script>alert(1)</script><img src=x onerror=alert(2)>'])).id);
+    const body = (await (await as('king')).get('/a/hr/47')).body;
+    assert.ok(!body.includes('<script>alert(1)'));
+    assert.ok(!body.includes('<img src=x onerror'));
+    assert.equal(meta47(body).das.find((d: any) => d.id === made.at(-1)).message, '</script><script>alert(1)</script><img src=x onerror=alert(2)>');
+  });
+
+  test('a menu_entry dynamic action with an authorization the user lacks is neither sent nor run', async () => {
+    const id = (await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, code, affected_items, authz)
+      values ($1, 991, 'sec menu', 'menu_entry', 'COUNT', 'execute_sql', 'select ''leak'' as p47_result', 'P47_RESULT', 'ADMIN') returning id`, [pageId])).id;
+    made.push(id);
+    const allen = await as('allen');
+    const body = (await allen.get('/a/hr/47')).body;
+    assert.ok(!meta47(body).das.some((d: any) => d.id === id));
+    const res = await allen.post(`/a/hr/47/da/${id}`, { __csrf: allen.lastCsrf });
+    assert.equal(res.statusCode, 403);
+    assert.doesNotMatch(res.body, /leak/);
+    const king = await as('king');
+    await king.get('/a/hr/47');
+    assert.equal(JSON.parse((await king.post(`/a/hr/47/da/${id}`, { __csrf: king.lastCsrf })).body).items.P47_RESULT, 'leak');
+  });
+
+  test('menu entries: an entry the user may not use is left out; labels are escaped; the database refuses a crafted action', async () => {
+    await owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'ACTIONS'`, [pageId, JSON.stringify([
+      { label: '<img src=x onerror=alert(1)>', action: 'HELLO' }, { label: 'Admins only', action: 'COUNT', authz: 'ADMIN' }])]);
+    const allen = (await (await as('allen')).get('/a/hr/47')).body;
+    assert.ok(!allen.includes('<img src=x onerror'));
+    assert.match(allen, /data-menu-entry="HELLO">&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.ok(!allen.includes('data-menu-entry="COUNT"'), 'not for allen');
+    assert.match((await (await as('king')).get('/a/hr/47')).body, /data-menu-entry="COUNT"/);
+    for (const action of ['X" onclick="alert(1)', 'x', 'A B', '', 'A'.repeat(61)])
+      await assert.rejects(owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'ACTIONS'`, [pageId, JSON.stringify([{ label: 'x', action }])]), /button_menu_ok|check constraint/, action);
+  });
+});
