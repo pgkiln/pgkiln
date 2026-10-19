@@ -124,14 +124,13 @@ export async function mergeAssistantSettings(appId: number, config: Config, b: B
 export async function aiFilterSettingsForm(pageId: number, appId: number, r: { id: number; config: Config }, s: Session): Promise<Raw> {
   const cfg = (r.config?.ai_filter ?? {}) as Config;
   const id = (n: string) => `raf_${r.id}_${n}`;
-  const { allowed, options } = await serviceOptions(appId, cfg.service);
+  const { options } = await serviceOptions(appId, cfg.service);
   return html`<h3 class="u-mt15">Ask in your own words (AI)</h3>
-    <p class="muted u-mt0">Users type a question; an AI service turns it into the report's filters, search and sort (only columns the report shows, only its operators). The question and the column names go to the service's provider.</p>
-    ${allowed.length || cfg.service ? '' : NO_SERVICE}
+    <p class="muted u-mt0">Users type a question; it becomes the report's own settings (filters, highlights, sort, control break, totals, group by, pivot, chart, computed columns; only columns the report shows, only its operators), shown as chips they can edit, remove or undo. With an AI service the question and the column names go to the service's provider; without one (<i>built-in phrases</i>) pgkiln reads common phrases itself, in English, Dutch and German.</p>
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/ai-filter" class="component-form">${csrf(s)}
       <div class="form-grid">
         <div class="field"><label class="label" for="${id('service')}">AI service</label>
-          <select id="${id('service')}" name="service">${opt('', '- off -', cfg.service ?? '')}${options}</select></div>
+          <select id="${id('service')}" name="service">${opt('', '- off -', r.config?.ai_filter ? '-' : '')}${opt('-', 'Built-in phrases (no AI)', r.config?.ai_filter && !cfg.service ? '-' : '')}${options}</select></div>
         <div class="field" data-wide><label class="label" for="${id('placeholder')}">Placeholder</label>
           <input id="${id('placeholder')}" name="placeholder" maxlength="200" value="${cfg.placeholder ?? ''}"></div>
       </div>
@@ -171,8 +170,9 @@ export async function assistantBuilderRoutes(app: FastifyInstance) {
     const service = (b.service ?? '').trim().toUpperCase();
     if (!service) delete config.ai_filter;
     else {
+      // "-": the built-in phrases, no AI service (sprint 112)
       const placeholder = (b.placeholder ?? '').trim().slice(0, 200);
-      config.ai_filter = { service, ...(placeholder ? { placeholder } : {}), ...(b.public === 'true' ? { public: true } : {}) };
+      config.ai_filter = { ...(service === '-' ? {} : { service }), ...(placeholder ? { placeholder } : {}), ...(b.public === 'true' ? { public: true } : {}) };
     }
     const errors = aiFilterProblems(config.ai_filter);
     if (errors.length) flash(s, errors.join(' '), 'error');

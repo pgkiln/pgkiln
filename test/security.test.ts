@@ -9624,3 +9624,169 @@ describe('sprint 109 WS-1', () => {
     assert.equal((await u.get('/builder/home')).statusCode, 302);
   });
 });
+
+describe('sprint 112 WS-5', () => {
+  // "Ask in your own words": the phrase parser and the AI answer only set the report's own settings over its
+  // shown columns; chips are edited and removed through a CSRF-checked form whose fields are checked again
+  let region: number;
+  let oldConfig: unknown;
+  let mock: Awaited<ReturnType<typeof import('./ai-mock.ts').startAiMock>>;
+  const SERVICE = 'T_WS5_SEC';
+  const k = (x: string) => `r${region}_${x}`;
+  const at = (res: { headers: Record<string, unknown> }) => new URL(res.headers.location as string, 'http://x');
+  const ask = async (b: Browser, question: string, params = '') => {
+    await b.get('/a/hr/2');
+    return b.post(`/a/hr/2/report/${region}/ask`, { __csrf: b.lastCsrf, question, params });
+  };
+  const chips = async (b: Browser, form: Record<string, string>) => {
+    await b.get('/a/hr/2');
+    return b.post(`/a/hr/2/report/${region}/chips`, { __csrf: b.lastCsrf, ...form });
+  };
+  const setConfig = (extra: Record<string, unknown>) =>
+    owner.query('update meta.region set config = $2 where id = $1', [region, JSON.stringify({ ...(oldConfig as object), ...extra })]);
+
+  before(async () => {
+    const r = await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
+    region = r.id;
+    oldConfig = r.config;
+    mock = await (await import('./ai-mock.ts')).startAiMock();
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`delete from meta.ai_service where name = $1`, [SERVICE]);
+    const svc = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc, effort) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3, 'medium') returning id`,
+      [SERVICE, `${mock.base}/claude`, encryptSecret('sk-ant-sec')])).id;
+    await owner.query(`insert into meta.app_ai_service (app_id, service_id) values ($1, $2)`, [appId, svc]);
+  });
+  after(async () => {
+    await owner.query('update meta.region set config = $2 where id = $1', [region, JSON.stringify(oldConfig)]);
+    await owner.query(`delete from meta.ai_service where name = $1`, [SERVICE]);
+    await mock.close();
+  });
+
+  test('the parser never sets anything on a hidden column', async () => {
+    await setConfig({ hidden: ['sal'], ai_filter: {} });
+    try {
+      const b = await as('king');
+      for (const q of ['salary over 3000', 'sort by salary', 'sum of salary by department', 'bonus is 10% of salary', 'highlight salary over 1 in red', 'chart of salary by job', 'sal > 1']) {
+        const loc = at(await ask(b, q));
+        assert.ok(![...loc.searchParams.entries()].some(([, v]) => /\bsal\b/.test(v)), `${q}: ${loc.search}`);
+        assert.equal(loc.searchParams.get(k('s')), null, q);
+      }
+      // a value lookup never reads a hidden column either
+      await setConfig({ hidden: ['job'], ai_filter: {} });
+      const loc = at(await ask(b, 'only clerks'));
+      assert.equal(loc.searchParams.getAll(k('f')).length, 0);
+    } finally {
+      await setConfig({});
+    }
+  });
+
+  test('the AI answer: only shown columns, whitelisted operators, functions, colors and chart types; expressions checked', async () => {
+    await setConfig({ hidden: ['sal'], ai_filter: { service: SERVICE } });
+    try {
+      const b = await as('king');
+      mock.answer = JSON.stringify({
+        reset: false,
+        filters: [{ column: 'sal', operator: 'gt', value: '0' }, { column: 'job', operator: 'raw_sql', value: '1' }, { column: 'job', operator: 'eq', value: "x' or 1=1 --" }],
+        highlights: [{ column: 'sal', operator: 'gt', value: '1', color: 'red' }, { column: 'job', operator: 'eq', value: 'CLERK', color: 'red;background:url(x)' }],
+        search: '', sort_column: 'sal', sort_descending: true, control_break: 'sal',
+        aggregates: [{ function: 'sum', column: 'sal' }, { function: 'sum); drop table hr.emp; --', column: 'empno' }],
+        group_by: ['sal', 'job'], group_functions: [{ function: 'max', column: 'sal' }],
+        pivot: { row: 'job', column: 'department', function: 'sum', value: 'sal' },
+        chart: { type: 'pie); --', label: 'job', function: 'count', value: 'empno' },
+        computed_columns: [{ name: 'leak', expression: 'sal * 1' }, { name: 'evil', expression: "empno); delete from hr.emp; --" }, { name: 'slow', expression: 'pg_sleep(5)' }, { name: 'ok', expression: 'empno * 2' }],
+      });
+      const before = mock.seen.length;
+      const loc = at(await ask(b, 'anything'));
+      const schema = mock.seen[before].body.output_config.format.schema;
+      assert.ok(!schema.properties.filters.items.properties.column.enum.includes('sal'), 'hidden columns are not offered');
+      assert.doesNotMatch(mock.seen[before].body.system, /- sal:/);
+      assert.deepEqual(loc.searchParams.getAll(k('f')), ["job|eq|x' or 1=1 --"]);
+      assert.deepEqual(loc.searchParams.getAll(k('h')), ['job|eq|yellow|CLERK'], 'an unknown color falls back to yellow');
+      assert.equal(loc.searchParams.get(k('s')), null);
+      assert.equal(loc.searchParams.get(k('b')), null);
+      assert.deepEqual(loc.searchParams.getAll(k('a')), []);
+      assert.deepEqual(loc.searchParams.getAll(k('g')), ['job']);
+      assert.deepEqual(loc.searchParams.getAll(k('ga')), []);
+      assert.equal(loc.searchParams.get(k('pv')), null);
+      assert.equal(loc.searchParams.get(k('ch')), null);
+      assert.deepEqual(loc.searchParams.getAll(k('c')), ['ok|empno * 2']);
+      // the value is a literal: the report runs, nothing is matched, nothing is deleted
+      const n = (await owner.one('select count(*)::int as n from hr.emp')).n;
+      const page = await b.get(`${loc.pathname}${loc.search}`);
+      assert.equal(page.statusCode, 200);
+      assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n);
+    } finally {
+      await setConfig({});
+    }
+  });
+
+  test('values are query parameters or escaped literals', async () => {
+    const b = await as('king');
+    const n = (await owner.one('select count(*)::int as n from hr.emp')).n;
+    for (const q of ["only o'brien'); delete from hr.emp; --", "name is x'; drop table hr.emp; --", 'job contains %_\\', 'bonus is pg_sleep(5)', "x is 'a' || (select password from meta.account limit 1)"]) {
+      const res = await ask(b, q);
+      assert.equal(res.statusCode, 303, q);
+      const loc = at(res);
+      assert.ok(!loc.searchParams.getAll(k('c')).some((c) => /sleep|select/i.test(c)), q);
+      assert.equal((await b.get(`${loc.pathname}${loc.search}`)).statusCode, 200, q);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n);
+  });
+
+  test('chip edits: columns, operators, functions, colors, chart types and expressions are checked; tampered forms are refused', async () => {
+    await setConfig({ hidden: ['sal'], ai_filter: {} });
+    try {
+      const b = await as('king');
+      const params = new URLSearchParams([[k('f'), 'job|eq|CLERK'], [k('h'), 'job|eq|red|CLERK'], [k('a'), 'count|empno'], [k('ch'), 'bar|job|count|empno'], [k('c'), 'x|empno*2']]).toString();
+      const keys = { k0: 'f:job|eq|CLERK', k1: 'a:count|empno', k2: 'h:job|eq|red|CLERK', k3: 'c:x|empno*2', k4: 'ch:bar|job|count|empno' };
+      const refused = async (form: Record<string, string>, why: string) => assert.equal((await chips(b, { params, ...keys, ...form })).statusCode, 403, why);
+      await refused({ edit: '0', e0_a: 'sal', e0_b: 'gt', e0_c: '0' }, 'a hidden column');
+      await refused({ edit: '0', e0_a: 'nope', e0_b: 'eq', e0_c: '0' }, 'an unknown column');
+      await refused({ edit: '0', e0_a: 'job', e0_b: 'raw', e0_c: '0' }, 'an unknown operator');
+      await refused({ edit: '1', e1_a: 'sum(empno)); --', e1_b: 'empno' }, 'an unknown function');
+      await refused({ edit: '2', e2_a: 'job', e2_b: 'eq', e2_c: 'x', e2_d: 'red;x' }, 'an unknown color');
+      await refused({ edit: '4', e4_a: 'pie); --', e4_b: 'job', e4_c: 'count', e4_d: 'empno' }, 'an unknown chart type');
+      await refused({ edit: '0', k0: 'f:job|eq|MANAGER', e0_a: 'job', e0_b: 'eq', e0_c: 'x' }, 'a chip key that is not the chip');
+      await refused({ remove: '9' }, 'a chip that is not there');
+      await refused({ remove: '-1' }, 'a negative index');
+      // a computed column that uses a hidden column or an unknown function: a message, no change
+      for (const expr of ['sal * 2', 'pg_sleep(5)', "empno); delete from hr.emp; --"]) {
+        const res = await chips(b, { params, ...keys, edit: '3', e3_a: 'x', e3_b: expr });
+        assert.equal(res.statusCode, 303, expr);
+        assert.deepEqual(at(res).searchParams.getAll(k('c')), ['x|empno*2'], expr);
+      }
+      // no CSRF token, or another user's session: refused
+      assert.equal((await b.post(`/a/hr/2/report/${region}/chips`, { params, ...keys, remove: '0' })).statusCode, 403);
+      assert.equal((await b.post(`/a/hr/2/report/${region}/ask`, { question: 'salary over 1', params: '' })).statusCode, 403);
+      const res = await chips(b, { params, ...keys, remove: '0' });
+      assert.equal(res.statusCode, 303);
+      assert.deepEqual(at(res).searchParams.getAll(k('f')), []);
+    } finally {
+      await setConfig({});
+    }
+  });
+
+  test('a report without "ai_filter", a region of another page and signed-out users are refused', async () => {
+    const b = await as('king');
+    await setConfig({ ai_filter: undefined });
+    try {
+      assert.equal((await ask(b, 'salary over 1')).statusCode, 403);
+    } finally {
+      await setConfig({});
+    }
+    const other = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 38 and r.type = 'report'`, [appId])).id;
+    await b.get('/a/hr/2');
+    assert.equal((await b.post(`/a/hr/2/report/${other}/ask`, { __csrf: b.lastCsrf, question: 'x', params: '' })).statusCode, 403);
+    const anon = new Browser();
+    const res = await anon.post(`/a/hr/2/report/${region}/chips`, { __csrf: 'x', undo: '1', params: '' });
+    assert.notEqual(res.statusCode, 303);
+  });
+
+  test('the box and chips render escaped, without inline styles or scripts', async () => {
+    const b = await as('king');
+    const body = (await b.get(`/a/hr/2?${new URLSearchParams([[k('f'), 'job|eq|<img src=x onerror=alert(1)>'], [k('c'), 'y|"<script>"']])}`)).body;
+    assert.ok(!body.includes('<img src=x onerror=alert(1)>'));
+    assert.ok(!body.includes('<script>"'));
+    assert.doesNotMatch(body.slice(body.indexOf('class="ai-filter"'), body.indexOf('class="ai-filter"') + 20000), /style="|onclick=/);
+  });
+});
