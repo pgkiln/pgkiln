@@ -925,6 +925,17 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         // (sprint 109) the Workspace home and the App Builder at /builder/apps
         workspace_home: '/builder/home',
         app_builder: '/builder/apps',
+        // (sprint 111) Shared Components → AI Agents (the HR example's agent and tools), a tool call with long arguments on AI usage
+        ...(await (async () => {
+          await owner.query(`insert into meta.ai_tool_call (app_id, page_no, username, agent, tool, type, arguments, status, duration_ms, message)
+            values ($1, 46, 'king', 'HR_AGENT', 'top_earners', 'sql', $2, 'error', 12, $3)`,
+            [appId, JSON.stringify({ DNAME: 'a-long-department-name-without-any-spaces-'.repeat(4) }), 'The query failed: ' + 'q'.repeat(150)]);
+          return {
+            ai_agents: `/builder/apps/${appId}/ai-agents`, ai_agent: `/builder/apps/${appId}/ai-agents/agent?name=HR_AGENT`, ai_agent_new: `/builder/apps/${appId}/ai-agents/agent`,
+            ai_tool: `/builder/apps/${appId}/ai-agents/tool?name=top_earners`, ai_tool_navigate: `/builder/apps/${appId}/ai-agents/tool?name=open_employee`,
+            ai_usage_tool_calls: `/builder/apps/${appId}/ai`,
+          };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -943,6 +954,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
+        await owner.query(`delete from meta.ai_tool_call where app_id = $1 and agent = 'HR_AGENT' and duration_ms = 12`, [appId]);
         await owner.query(`delete from meta.ai_usage where service = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.ai_service where name = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like 'E2E %'`, [appId]);

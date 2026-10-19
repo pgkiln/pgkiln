@@ -182,6 +182,8 @@ which is read at startup; real environment variables take precedence.
 | `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |
 | `ANTHROPIC_API_KEY` | *(none)* | Default API key of [AI services](03-builder.md#ai-services) with the provider Claude that have no key of their own |
 | `OPENAI_API_KEY` | *(none)* | Default API key of AI services with the provider OpenAI that have no key of their own |
+| `GEMINI_API_KEY` | *(none)* | (sprint 111) Default API key of AI services with the provider Gemini that have no key of their own |
+| `OPENAI_COMPATIBLE_API_KEY` | *(none)* | (sprint 111) Default API key of OpenAI-compatible AI services (Ollama, vLLM, Azure OpenAI) that have no key of their own; without either, no key is sent (`none`) |
 | `PGKILN_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials and the API keys of AI services; at least 32 characters (e.g. `openssl rand -base64 32`). Keep it outside the database; changing it means entering the secrets again ([chapter 19](19-rest-data-sources.md)) |
 | `PGKILN_REST_ALLOWED_HOSTS` | *(none: no outgoing calls)* | Hosts REST data sources and `invoke_api` may call: `api.example.com`, `*.example.com`, `host:8443`, `*` (any public host) ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)) |
 | `PGKILN_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (also allows them) |
