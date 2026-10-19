@@ -9782,3 +9782,201 @@ describe('sprint 110 WS-2', () => {
     assert.equal((await owner.one(`select label from meta.dataset where id = $1`, [ds.id])).label, 'HR');
   });
 });
+
+describe('sprint 114 WS-6', () => {
+  // (123) workflows and approvals: migrating running instances, custom outcomes, task events, drafts, the SVG export.
+  // The HR example's SALARY_CHANGE (part 67): version 2 active, version 3 in development with a draft step.
+  const DEV = 'sec114dev';
+  const WS = 'Sec114 ws';
+  let defId = 0;
+  let salBefore = '';
+  const dev = async (user = 'admin', password = 'admin') => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: user, password });
+    return b;
+  };
+  const inApp = (user: string, sql: string, params: unknown[] = [], app = appId) =>
+    owner.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(app), user]);
+      return (await c.query(sql, params)).rows[0];
+    });
+  const settle = async (id: string) => {
+    const { runWorkflows } = await import('../src/workflow.ts');
+    for (let i = 0; i < 20; i++) {
+      await runWorkflows();
+      if ((await owner.one('select state from meta.workflow where id = $1', [id]))?.state !== 'active') return;
+    }
+  };
+  const cleanup = async () => {
+    await owner.query(`delete from meta.task where app_id = $1 and (definition_id in (select id from meta.task_definition where app_id = $1 and name in ('SALARY_DECISION', 'SEC114_EVENTS'))
+                         or workflow_id in (select id from meta.workflow where name = 'SALARY_CHANGE'))`, [appId]);
+    await owner.query(`delete from meta.workflow where app_id = $1 and name = 'SALARY_CHANGE'`, [appId]);
+    await owner.query(`delete from meta.workflow_definition where app_id = $1 and name = 'SEC114_XSS'`, [appId]);
+    await owner.query(`delete from meta.task_definition where app_id = $1 and name = 'SEC114_EVENTS'`, [appId]);
+    await owner.query(`delete from meta.app where alias = 'sec114-copy'`);
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    if (salBefore) await owner.query('update hr.emp set sal = $1 where empno = 7499', [salBefore]);
+  };
+  /** A running SALARY_CHANGE instance at APPROVE, as if started under version 1. */
+  const v1Instance = async () => {
+    const id = (await inApp('blake', `select meta.start_workflow('SALARY_CHANGE', '7499', '{"ENAME": "Allen", "NEW_SAL": 1700}') as id`)).id as string;
+    await settle(id);
+    await owner.query(`update meta.workflow w set version = '1', steps = (select x->'steps' from meta.workflow_definition d, jsonb_array_elements(d.inactive_versions) x
+                        where d.id = w.definition_id and x->>'version' = '1') where w.id = $1`, [id]);
+    return id;
+  };
+  const state = (id: string) => owner.one('select version, current_step, steps, state from meta.workflow where id = $1', [id]);
+
+  before(async () => {
+    defId = (await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'SALARY_CHANGE'`, [appId])).id;
+    salBefore = (await owner.one('select sal::text from hr.emp where empno = 7499')).sal;
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false)`, [DEV]);
+    // the developer works in the new workspace only
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    const ws = (await owner.one('insert into meta.workspace (name) values ($1) returning id', [WS])).id;
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, DEV]);
+  });
+  after(cleanup);
+
+  test('migration: developers of the application only, with CSRF; unmapped steps and other applications\' workflows are refused', async () => {
+    const id = await v1Instance();
+    const url = `/builder/apps/${appId}/shared/workflow_definition/${defId}/migrate`;
+    const form = { to: '2', wf: id, 'm.APPROVE': 'APPROVE' };
+    // not a developer: the application's own users, and nobody
+    const king = await as('king');
+    for (const b of [new Browser(), king]) {
+      assert.equal((await b.get(url)).headers.location, '/builder/login');
+      assert.equal((await b.post(url, { __csrf: b.lastCsrf, ...form })).headers.location, '/builder/login');
+    }
+    // a developer of another workspace: the application doesn't exist
+    const outsider = await dev(DEV, DEV);
+    assert.equal((await outsider.get(url)).statusCode, 404);
+    await outsider.get('/builder');
+    assert.equal((await outsider.post(url, { __csrf: outsider.lastCsrf, ...form })).statusCode, 404);
+    // CSRF
+    const a = await dev();
+    await a.get(url);
+    assert.equal((await a.post(url, { __csrf: 'forged', ...form })).statusCode, 403);
+    assert.equal((await state(id)).version, '1');
+    // the definition through another application's URL
+    assert.equal((await a.post(`/builder/apps/${appId + 100000}/shared/workflow_definition/${defId}/migrate`, { __csrf: a.lastCsrf, ...form })).statusCode, 404);
+    // no mapping (or a mapping to a step that doesn't exist, or a smuggled name): nothing moves
+    for (const m of ['', 'NOPE', 'APPROVE"; drop table meta.workflow; --'])
+      await a.post(url, { __csrf: a.lastCsrf, ...form, 'm.APPROVE': m });
+    assert.deepEqual([(await state(id)).version, (await state(id)).current_step], ['1', 'APPROVE']);
+    // a workflow of another application (a copy of HR) in the list: nothing moves, not even the own one
+    const copy = (await owner.one(`select meta.import_app(meta.export_app('hr'), 'sec114-copy') as id`)).id;
+    const foreign = (await inApp('blake', `select meta.start_workflow('SALARY_CHANGE', '7499', '{"ENAME": "Allen", "NEW_SAL": 1}') as id`, [], copy)).id;
+    await owner.query(`update meta.workflow set version = '1' where id = $1`, [foreign]);
+    await a.post(url, { __csrf: a.lastCsrf, ...form, wf: [id, foreign] });
+    assert.equal((await state(id)).version, '1');
+    assert.equal((await state(foreign)).version, '1');
+    const rows = (await owner.query(`select workflow_id::text, problem from meta.migrate_workflows($1, '2', $2::bigint[], '{"APPROVE": "APPROVE"}', false, 'x')`, [defId, [id, foreign]])).rows;
+    assert.deepEqual(rows.map((r) => [r.workflow_id, r.problem]), [[id, null], [String(foreign), 'not an instance of this workflow']]);
+    // the function is the owner's: applications can't call it
+    assert.equal((await owner.one(`select has_function_privilege('pgkiln_runtime', 'meta.migrate_workflows(int, text, bigint[], jsonb, boolean, text)', 'execute') as ok`)).ok, false);
+    assert.equal((await owner.one(`select has_function_privilege('hr_app', 'meta.migrate_workflows(int, text, bigint[], jsonb, boolean, text)', 'execute') as ok`)).ok, false);
+    // the right request moves it
+    assert.equal((await a.post(url, { __csrf: a.lastCsrf, ...form })).statusCode, 303);
+    assert.deepEqual([(await state(id)).version, (await state(id)).current_step], ['2', 'APPROVE']);
+  });
+
+  test('outcomes come from the task definition only: unknown ones, injected ones and the type\'s own are refused', async () => {
+    // king is also a named owner, so meta.complete_task from SQL (without a session's roles) gets past the rights check
+    const t = (await inApp('blake', `select meta.create_task('SALARY_DECISION', '7499', '{"ENAME": "Allen", "NEW_SAL": 1}', array['king']) as id`)).id as string;
+    const king = await as('king');
+    const post = async (b: Browser, action: string) => {
+      await b.get('/a/hr/14');
+      return b.post(`/a/hr/tasks/${t}`, { __csrf: b.lastCsrf, next: '/a/hr/14', action });
+    };
+    for (const action of ['outcome:maybe', 'outcome:cancelled', 'outcome:expired', 'approve', 'reject', 'complete', "outcome:yes' or '1'='1", 'outcome:<b>x</b>', 'outcome:'])
+      await post(king, action);
+    assert.deepEqual(await owner.one('select state, outcome from meta.task where id = $1', [t]), { state: 'unassigned', outcome: null });
+    assert.equal((await owner.one(`select count(*)::int as n from meta.task_event where task_id = $1 and event <> 'created'`, [t])).n, 0);
+    // someone who may not act on it: refused, whatever the outcome
+    await post(await as('allen'), 'outcome:yes');
+    await post(await as('blake'), 'outcome:yes');
+    assert.equal((await owner.one('select state from meta.task where id = $1', [t])).state, 'unassigned');
+    // CSRF
+    await king.get('/a/hr/14');
+    await king.post(`/a/hr/tasks/${t}`, { __csrf: 'forged', next: '/a/hr/14', action: 'outcome:yes' });
+    assert.equal((await owner.one('select state from meta.task where id = $1', [t])).state, 'unassigned');
+    // the database refuses an outcome the definition doesn't have, from SQL too
+    await assert.rejects(inApp('king', `select meta.complete_task($1, 'maybe')`, [t]), /cannot end as maybe/);
+    await post(king, 'outcome:YES');
+    assert.deepEqual(await owner.one('select state, outcome from meta.task where id = $1', [t]), { state: 'completed', outcome: 'yes' });
+  });
+
+  test('event SQL runs as the application\'s role: after the commit (complete) and in the request (fail)', async () => {
+    const { runTaskHooks } = await import('../src/task-events.ts');
+    await owner.query(`insert into meta.task_definition (app_id, name, type, subject, owner_roles, action_code, events) values ($1, 'SEC114_EVENTS', 'action', 'sec114 &N.', '{admin}',
+      'select 1 / (:N::int - 2)',
+      '[{"on": "complete", "type": "sql", "code": "delete from meta.task_hook"}, {"on": "fail", "type": "sql", "code": "delete from meta.task where app_id = :TASK_ID::int * 0 + 1"}]')`, [appId]);
+    const create = async (n: number) => (await inApp('blake', `select meta.create_task('SEC114_EVENTS', null, $1) as id`, [{ N: n }])).id as string;
+    const king = await as('king');
+    const t1 = await create(1);
+    await king.get('/a/hr/14');
+    await king.post(`/a/hr/tasks/${t1}`, { __csrf: king.lastCsrf, next: '/a/hr/14', action: 'complete' });
+    assert.equal((await owner.one('select state from meta.task where id = $1', [t1])).state, 'completed');
+    const before = (await owner.one('select count(*)::int as n from meta.task_hook')).n;
+    await runTaskHooks();
+    const h = await owner.one(`select error from meta.task_hook where task_id = $1 and event = 'complete'`, [t1]);
+    assert.match(h.error, /permission denied for table task_hook/);
+    assert.ok((await owner.one('select count(*)::int as n from meta.task_hook')).n >= before, 'nothing was deleted');
+    // fail: the fail SQL can't touch pgkiln's tables either; the request fails as a whole
+    const tasks = (await owner.one('select count(*)::int as n from meta.task where app_id = $1', [appId])).n;
+    const t2 = await create(2);
+    await king.get('/a/hr/14');
+    await king.post(`/a/hr/tasks/${t2}`, { __csrf: king.lastCsrf, next: '/a/hr/14', action: 'complete' });
+    assert.equal((await owner.one('select state from meta.task where id = $1', [t2])).state, 'unassigned');
+    assert.equal((await owner.one('select count(*)::int as n from meta.task where app_id = $1', [appId])).n, tasks + 1);
+    // the outbox and the account addresses are closed to applications
+    for (const f of ['meta.task_addresses(bigint, boolean, boolean)']) assert.equal((await owner.one(`select has_function_privilege('hr_app', $1, 'execute') as ok`, [f])).ok, false, f);
+    assert.equal((await owner.one(`select has_table_privilege('hr_app', 'meta.task_hook', 'select') as ok`)).ok, false);
+  });
+
+  test('draft versions can\'t be activated: not in the builder, not with SQL, not into the active steps', async () => {
+    const a = await dev();
+    const url = `/builder/apps/${appId}/shared?c=workflow_definition-${defId}`;
+    await a.get(url);
+    await a.post(`/builder/apps/${appId}/shared/workflow_definition/${defId}/versions`, { __csrf: a.lastCsrf, action: 'activate' });
+    const d = await owner.one('select version, dev_version from meta.workflow_definition where id = $1', [defId]);
+    assert.deepEqual(d, { version: '2', dev_version: '3' });
+    await assert.rejects(owner.query('select meta.activate_workflow_version($1)', [defId]), /draft steps/);
+    await assert.rejects(owner.query('update meta.workflow_definition set steps = dev_steps where id = $1', [defId]), /workflow_definition_no_draft/);
+    assert.equal((await owner.one(`select has_function_privilege('hr_app', 'meta.activate_workflow_version(int)', 'execute') as ok`)).ok, false);
+    // a migration doesn't reach a development version either
+    await assert.rejects(owner.query(`select * from meta.migrate_workflows($1, '3', '{1}', '{}', false, 'x')`, [defId]), /has no version 3 to migrate to/);
+  });
+
+  test('the SVG export: developers only, a file (attachment, sandboxed), labels escaped', async () => {
+    const bad = '</text><script>alert(1)</script><text>';
+    await owner.query(`insert into meta.workflow_definition (app_id, name, title, steps) values ($1, 'SEC114_XSS', 'x', $2)`, [appId, JSON.stringify([
+      { name: `A${bad}`, type: 'switch', cases: [{ when: `1 = 1 ${bad}`, next: 'B' }, { outcome: `<img src=x onerror=alert(1)>`, next: 'B' }] },
+      { name: 'B', type: 'draft_x' },
+      { name: 'C', type: 'send_mail', to: 'x@example.com', template: `<script>alert(2)</script>` },
+      { name: `D\u0001\u0008]]>`, type: 'end' },
+    ])]);
+    const id = (await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'SEC114_XSS'`, [appId])).id;
+    const url = `/builder/apps/${appId}/shared/workflow_definition/${id}/diagram.svg`;
+    assert.equal((await new Browser().get(url)).headers.location, '/builder/login');
+    assert.equal((await (await as('king')).get(url)).headers.location, '/builder/login');
+    assert.equal((await (await dev(DEV, DEV)).get(url)).statusCode, 404);
+    const a = await dev();
+    assert.equal((await a.get(`/builder/apps/${appId + 100000}/shared/workflow_definition/${id}/diagram.svg`)).statusCode, 404);
+    const res = await a.get(url);
+    assert.equal(res.statusCode, 200);
+    assert.match(String(res.headers['content-disposition']), /^attachment; filename="sec114_xss-v1\.svg"$/);
+    assert.match(String(res.headers['content-security-policy']), /default-src 'none'.*sandbox/);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    assert.doesNotMatch(res.body, /<script|<img|onerror=alert\(1\)>/i);
+    assert.match(res.body, /&lt;\/text&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(res.body, /[\u0001\u0008]/, 'no control characters in the XML');
+    // well-formed: every tag the export opens it closes
+    assert.equal((res.body.match(/<text\b/g) ?? []).length, (res.body.match(/<\/text>/g) ?? []).length);
+  });
+});
