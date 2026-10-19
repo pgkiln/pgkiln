@@ -239,6 +239,7 @@ export const ja: Record<MessageKey, string> = {
   'workflows.event.split': "分岐を開始",
   'workflows.event.joined': "分岐が合流",
   'workflows.event.cancelled': "分岐をキャンセル",
+  'workflows.event.migrated': "別のバージョンに移行",
   'tasks.sign_in': "タスクを見るにはサインインしてください。",
   'tasks.none': "タスクはありません。",
   'tasks.assigned_to': "担当: {user}",

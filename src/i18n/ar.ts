@@ -239,6 +239,7 @@ export const ar: Record<MessageKey, string> = {
   'workflows.event.split': "بدأت الفروع",
   'workflows.event.joined': "اندمجت الفروع",
   'workflows.event.cancelled': "أُلغي الفرع",
+  'workflows.event.migrated': "نُقل إلى إصدار آخر",
   'tasks.sign_in': "سجّل الدخول لرؤية مهامك.",
   'tasks.none': "لا توجد مهام.",
   'tasks.assigned_to': "مُسندة إلى {user}",

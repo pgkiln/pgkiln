@@ -239,6 +239,7 @@ export const fr: Record<MessageKey, string> = {
   'workflows.event.split': 'branches démarrées',
   'workflows.event.joined': 'branches réunies',
   'workflows.event.cancelled': 'branche annulée',
+  'workflows.event.migrated': "déplacé vers une autre version",
   'tasks.sign_in': 'Connectez-vous pour voir vos tâches.',
   'tasks.none': 'Aucune tâche.',
   'tasks.assigned_to': 'attribuée à {user}',

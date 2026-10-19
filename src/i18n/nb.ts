@@ -239,6 +239,7 @@ export const nb: Record<MessageKey, string> = {
   'workflows.event.split': "startet grener",
   'workflows.event.joined': "grenene ble samlet",
   'workflows.event.cancelled': "grenen ble avbrutt",
+  'workflows.event.migrated': "flyttet til en annen versjon",
   'tasks.sign_in': "Logg inn for å se oppgavene dine.",
   'tasks.none': "Ingen oppgaver.",
   'tasks.assigned_to': "tildelt {user}",

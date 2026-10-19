@@ -239,6 +239,7 @@ export const cs: Record<MessageKey, string> = {
   'workflows.event.split': "spuštěny větve",
   'workflows.event.joined': "větve spojeny",
   'workflows.event.cancelled': "větev zrušena",
+  'workflows.event.migrated': "přesunuto do jiné verze",
   'tasks.sign_in': "Přihlaste se, abyste viděli své úkoly.",
   'tasks.none': "Žádné úkoly.",
   'tasks.assigned_to': "přiřazeno: {user}",

@@ -1176,7 +1176,7 @@ table shows which version each instance runs and where it is.
 
 <a id="migrating-instances"></a>**Migrating running instances** (APEX 26.2: in-flight workflow migration). Running
 instances (active, waiting or faulted) of an older version can move to a newer one: the active version or an inactive
-version activated after theirs. Under the definition, **Migrate running instances to a newer version…** (shown
+version activated after theirs. Under the definition, **Migrate instances…** (shown
 while there are such instances) opens a page where you choose the version and the instances, and map each step an
 instance is at to a step of the new version (a step of the same name is proposed). **Preview** shows per instance
 where it goes or why it can't; **Migrate** then moves them all in one transaction, with their variables, the task

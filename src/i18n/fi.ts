@@ -239,6 +239,7 @@ export const fi: Record<MessageKey, string> = {
   'workflows.event.split': "haarat käynnistetty",
   'workflows.event.joined': "haarat yhdistetty",
   'workflows.event.cancelled': "haara peruttu",
+  'workflows.event.migrated': "siirretty toiseen versioon",
   'tasks.sign_in': "Kirjaudu nähdäksesi tehtäväsi.",
   'tasks.none': "Ei tehtäviä.",
   'tasks.assigned_to': "vastuuhenkilö {user}",

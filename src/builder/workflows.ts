@@ -149,7 +149,7 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
   ${instances.length
     ? html`<fieldset class="prop-group u-mt125"><legend>Instances</legend>
         ${instances.some((w) => ['active', 'waiting', 'faulted'].includes(w.state) && (w.version ?? '1') !== row.version)
-          ? html`<p class="u-mt0"><a class="btn btn-sm" href="${`${base}/migrate`}">Migrate running instances to a newer version…</a></p>` : ''}
+          ? html`<p class="u-mt0"><a class="btn btn-sm" href="${`${base}/migrate`}" title="Migrate running instances to a newer version">Migrate instances…</a></p>` : ''}
         <div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">Id</th><th>Title</th><th>Version</th><th>State</th><th>At</th><th>Started</th></tr></thead><tbody>
           ${instances.map((w) => html`<tr${picked?.id === w.id ? raw(' aria-current="true"') : ''}>
             <td class="num" data-label="Id"><a href="?c=workflow_definition-${row.id}&amp;wf=${w.id}">${w.id}</a></td>

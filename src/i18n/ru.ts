@@ -239,6 +239,7 @@ export const ru: Record<MessageKey, string> = {
   'workflows.event.split': "запущены ветви",
   'workflows.event.joined': "ветви объединены",
   'workflows.event.cancelled': "ветвь отменена",
+  'workflows.event.migrated': "перенесено в другую версию",
   'tasks.sign_in': "Войдите, чтобы увидеть свои задачи.",
   'tasks.none': "Задач нет.",
   'tasks.assigned_to': "исполнитель: {user}",

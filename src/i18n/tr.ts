@@ -239,6 +239,7 @@ export const tr: Record<MessageKey, string> = {
   'workflows.event.split': "dallar başlatıldı",
   'workflows.event.joined': "dallar birleşti",
   'workflows.event.cancelled': "dal iptal edildi",
+  'workflows.event.migrated': "başka bir sürüme taşındı",
   'tasks.sign_in': "Görevlerinizi görmek için oturum açın.",
   'tasks.none': "Görev yok.",
   'tasks.assigned_to': "{user} kişisine atandı",

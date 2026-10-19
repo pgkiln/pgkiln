@@ -239,6 +239,7 @@ export const de: Record<MessageKey, string> = {
   'workflows.event.split': 'Zweige gestartet',
   'workflows.event.joined': 'Zweige zusammengeführt',
   'workflows.event.cancelled': 'Zweig abgebrochen',
+  'workflows.event.migrated': "in eine andere Version verschoben",
   'tasks.sign_in': 'Melden Sie sich an, um Ihre Aufgaben zu sehen.',
   'tasks.none': 'Keine Aufgaben.',
   'tasks.assigned_to': 'zugewiesen an {user}',

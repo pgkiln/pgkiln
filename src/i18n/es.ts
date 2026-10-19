@@ -239,6 +239,7 @@ export const es: Record<MessageKey, string> = {
   'workflows.event.split': 'inició ramas',
   'workflows.event.joined': 'ramas unidas',
   'workflows.event.cancelled': 'rama cancelada',
+  'workflows.event.migrated': "movido a otra versión",
   'tasks.sign_in': 'Inicie sesión para ver sus tareas.',
   'tasks.none': 'No hay tareas.',
   'tasks.assigned_to': 'asignada a {user}',

@@ -239,6 +239,7 @@ export const he: Record<MessageKey, string> = {
   'workflows.event.split': "הופעלו ענפים",
   'workflows.event.joined': "הענפים התאחדו",
   'workflows.event.cancelled': "הענף בוטל",
+  'workflows.event.migrated': "הועבר לגרסה אחרת",
   'tasks.sign_in': "היכנסו כדי לראות את המשימות שלכם.",
   'tasks.none': "אין משימות.",
   'tasks.assigned_to': "מוקצית ל-{user}",

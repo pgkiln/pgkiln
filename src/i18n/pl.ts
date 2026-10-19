@@ -239,6 +239,7 @@ export const pl: Record<MessageKey, string> = {
   'workflows.event.split': "uruchomiono gałęzie",
   'workflows.event.joined': "gałęzie połączone",
   'workflows.event.cancelled': "gałąź anulowana",
+  'workflows.event.migrated': "przeniesiono do innej wersji",
   'tasks.sign_in': "Zaloguj się, aby zobaczyć swoje zadania.",
   'tasks.none': "Brak zadań.",
   'tasks.assigned_to': "przypisane do {user}",

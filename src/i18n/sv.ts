@@ -239,6 +239,7 @@ export const sv: Record<MessageKey, string> = {
   'workflows.event.split': "startade grenar",
   'workflows.event.joined': "grenarna förenades",
   'workflows.event.cancelled': "grenen avbröts",
+  'workflows.event.migrated': "flyttad till en annan version",
   'tasks.sign_in': "Logga in för att se dina uppgifter.",
   'tasks.none': "Inga uppgifter.",
   'tasks.assigned_to': "tilldelad {user}",

@@ -239,6 +239,7 @@ export const ko: Record<MessageKey, string> = {
   'workflows.event.split': "분기 시작",
   'workflows.event.joined': "분기 합류",
   'workflows.event.cancelled': "분기 취소",
+  'workflows.event.migrated': "다른 버전으로 이동함",
   'tasks.sign_in': "작업을 보려면 로그인하세요.",
   'tasks.none': "작업이 없습니다.",
   'tasks.assigned_to': "담당자: {user}",

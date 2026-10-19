@@ -239,6 +239,7 @@ export const zh: Record<MessageKey, string> = {
   'workflows.event.split': "启动了分支",
   'workflows.event.joined': "分支已合并",
   'workflows.event.cancelled': "分支已取消",
+  'workflows.event.migrated': "已迁移到另一个版本",
   'tasks.sign_in': "请登录以查看您的任务。",
   'tasks.none': "没有任务。",
   'tasks.assigned_to': "分配给 {user}",

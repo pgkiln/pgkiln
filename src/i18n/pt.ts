@@ -239,6 +239,7 @@ export const pt: Record<MessageKey, string> = {
   'workflows.event.split': "ramos iniciados",
   'workflows.event.joined': "ramos reunidos",
   'workflows.event.cancelled': "ramo cancelado",
+  'workflows.event.migrated': "movido para outra versão",
   'tasks.sign_in': "Inicie sessão para ver as suas tarefas.",
   'tasks.none': "Sem tarefas.",
   'tasks.assigned_to': "atribuída a {user}",

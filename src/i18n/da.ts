@@ -239,6 +239,7 @@ export const da: Record<MessageKey, string> = {
   'workflows.event.split': "startede grene",
   'workflows.event.joined': "grenene blev samlet",
   'workflows.event.cancelled': "grenen blev annulleret",
+  'workflows.event.migrated': "flyttet til en anden version",
   'tasks.sign_in': "Log ind for at se dine opgaver.",
   'tasks.none': "Ingen opgaver.",
   'tasks.assigned_to': "tildelt {user}",

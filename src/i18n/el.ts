@@ -239,6 +239,7 @@ export const el: Record<MessageKey, string> = {
   'workflows.event.split': "ξεκίνησαν κλάδοι",
   'workflows.event.joined': "οι κλάδοι ενώθηκαν",
   'workflows.event.cancelled': "ο κλάδος ακυρώθηκε",
+  'workflows.event.migrated': "μεταφέρθηκε σε άλλη έκδοση",
   'tasks.sign_in': "Συνδεθείτε για να δείτε τις εργασίες σας.",
   'tasks.none': "Δεν υπάρχουν εργασίες.",
   'tasks.assigned_to': "ανατέθηκε σε {user}",

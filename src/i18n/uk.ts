@@ -239,6 +239,7 @@ export const uk: Record<MessageKey, string> = {
   'workflows.event.split': "запущено гілки",
   'workflows.event.joined': "гілки об'єднано",
   'workflows.event.cancelled': "гілку скасовано",
+  'workflows.event.migrated': "перенесено в іншу версію",
   'tasks.sign_in': "Увійдіть, щоб побачити свої завдання.",
   'tasks.none': "Завдань немає.",
   'tasks.assigned_to': "виконавець: {user}",
