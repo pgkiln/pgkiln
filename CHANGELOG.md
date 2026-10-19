@@ -5,6 +5,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Sprint 109: the Workspace home (parity handoff WS-1). Sprint 110: Data Reporter as a workspace tool (WS-2).
+
+### Added
+- **Workspace home** (WS-1; APEX: the workspace home page; migration 119): after signing in the builder opens
+  `/builder/home`: cards for App Builder, SQL Workshop, Data Reporter and the App Gallery; the workspace message,
+  edited in place by the workspace's administrators; a Summary of applications, tables, developers and reporting
+  applications that link to their tool; top applications, users and developers over 1 hour, 1 day or 1 week
+  (remembered per developer); a System message with the server's version; Learn more and Resources. Works without
+  JavaScript.
+- **Release check** (off by default): with `PGKILN_RELEASE_CHECK=on`, or *Instance settings → New versions* in the
+  builder, the server asks GitHub's releases API at most once a day (5-second timeout, 1 MB, nothing sent about the
+  installation) and the Workspace home shows *pgkiln X is available* with the release notes and how to upgrade.
+- **Data Reporter as a workspace tool** (WS-2; APEX 26.1; migration 120): App Builder → **Data Reporter**
+  (`/builder/reporter`) keeps **datasets** (`meta.dataset`): tables and views of one schema with joins proposed from
+  foreign keys, the offered columns with labels, format masks and descriptions, and a row filter, checked against
+  the database when saved, with a query preview. Datasets download and import as `*.dataset.json` files and travel
+  in the workspace export. **Create reporting application** makes an application of type *Reporting* on one or more
+  datasets in two clicks: its role may only SELECT the datasets' tables and views, so every report runs through
+  those grants and RLS; viewers open published reports, editors build and publish them, administrators moderate.
+- Data Reporter region: a dataset as a source; `edit_authz`, `admin_authz` and `publishing` (published reports with
+  a stable URL `/a/<alias>/reports/<id>`, Publish / Unpublish, pins per user). HR example `hr_63_datasets.sql`.
+
+### Changed
+- The App Builder's home moved to `/builder/apps`. `/builder` still shows it unless the workspace's preferences
+  (*Builder links open*) send it to the Workspace home; the logo and the rail's Home lead to the Workspace home.
+
 ## [0.50.0] - 2026-10-18
 
 Sprint 107: a transaction mode in the SQL Worksheet (parity handoff DA-2, the rest).
