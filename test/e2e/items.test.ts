@@ -162,10 +162,12 @@ describe('popup LOV', () => {
     await page.locator('[data-item="P26_EMPNO"] .popup-lov-open').click();
     const dlg = page.locator('dialog.popup-lov-dialog[open]');
     await dlg.locator('.popup-lov-table').waitFor();
-    assert.equal(await dlg.locator('tbody tr').count(), 5);
+    // five a page; (sprint 115) the next pages load while the end of the list is in view
+    await page.waitForFunction(() => document.querySelectorAll('dialog.popup-lov-dialog[open] tbody tr').length === 14);
+    assert.equal(await dlg.locator('.popup-lov-pages, .popup-lov-sentinel').count(), 0);
     await dlg.locator('.popup-lov-search').fill('analyst');
+    await page.waitForFunction(() => document.querySelectorAll('dialog.popup-lov-dialog[open] tbody tr').length === 2);
     await dlg.locator('tbody tr', { hasText: 'Scott' }).waitFor();
-    assert.equal(await dlg.locator('tbody tr').count(), 2);
     await dlg.locator('.popup-lov-pick', { hasText: 'Scott' }).click();
     assert.equal(await page.inputValue('[data-item="P26_EMPNO"] .popup-lov-display'), 'Scott');
     await Promise.all([page.waitForNavigation(), page.locator('button', { hasText: 'Show' }).click()]);

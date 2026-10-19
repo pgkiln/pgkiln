@@ -416,6 +416,8 @@ export const pt: Record<MessageKey, string> = {
   'lov.choose': "Escolher",
   'lov.close': "Fechar",
   'lov.more': "Mais",
+  'lov.loading': "A carregar mais…",
+  'da.wait': "Aguarde, por favor…",
   'lov.no_rows': "Nada encontrado.",
   'error.lov_value': "{label}: escolha um valor da lista.",
   'item.yes': "Sim",

@@ -163,13 +163,17 @@ export async function designerRoutes(app: FastifyInstance) {
           <div class="pd-dialog-buttons"><button type="button" class="btn" data-dialog-close>Cancel</button><button class="btn btn-primary">Copy</button></div>
         </form>
       </dialog>`;
-    const events: [string, string][] = [['change', 'Change'], ['click', 'Click'], ['load', 'Page load']];
+    const events: [string, string][] = [['change', 'Change'], ['click', 'Click'], ['load', 'Page load'], ['menu_entry', 'Menu entry chosen']];
+    const daLeaf = (d: (typeof rows.dynamic_action)[number]) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.trigger_element ?? ''} → ${d.action}`);
+    // (sprint 115) the other events (focus, custom, before_submit, …) in one folder, when there are any
+    const others = rows.dynamic_action.filter((d) => !events.some(([ev]) => ev === d.event));
     const dynamicActions = html`${createBar([['dynamic_action', 'Dynamic action']])}
       <ul class="pd-tree" aria-label="Dynamic actions">
         ${events.map(([ev, label]) => {
           const list = rows.dynamic_action.filter((d) => d.event === ev);
-          return folder(`Events: ${label}`, list.length ? list.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.trigger_element ?? ''} → ${d.action}`)) : none('None'), list.length > 0);
+          return folder(`Events: ${label}`, list.length ? list.map(daLeaf) : none('None'), list.length > 0);
         })}
+        ${others.length ? folder('Events: Other', others.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.event}: ${d.trigger_element ?? ''} → ${d.action}`)), true) : ''}
       </ul>`;
     // after processing: the branches in sequence, then (when none applies) the pressed button's target page
     const afterBranches = rows.branch.filter((x) => x.point !== 'before_header');

@@ -416,6 +416,8 @@ export const fi: Record<MessageKey, string> = {
   'lov.choose': "Valitse",
   'lov.close': "Sulje",
   'lov.more': "Lisää",
+  'lov.loading': "Ladataan lisää…",
+  'da.wait': "Odota hetki…",
   'lov.no_rows': "Mitään ei löytynyt.",
   'error.lov_value': "{label}: valitse arvo luettelosta.",
   'item.yes': "Kyllä",

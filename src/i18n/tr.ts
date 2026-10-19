@@ -416,6 +416,8 @@ export const tr: Record<MessageKey, string> = {
   'lov.choose': "Seç",
   'lov.close': "Kapat",
   'lov.more': "Daha fazla",
+  'lov.loading': "Daha fazlası yükleniyor…",
+  'da.wait': "Lütfen bekleyin…",
   'lov.no_rows': "Hiçbir şey bulunamadı.",
   'error.lov_value': "{label}: listeden bir değer seçin.",
   'item.yes': "Evet",

@@ -208,7 +208,7 @@ export interface Button {
   authz: string | null;
   hot: boolean;
   confirm: string | null;
-  /** action = menu: links ({label, page, items}) and submit requests ({label, request}) */
+  /** action = menu: links ({label, page, items}), submit requests ({label, request}) and dynamic actions ({label, action}, 124) */
   menu?: MenuEntry[] | null;
   /** a badge: static text with &ITEM. substitutions, or a query's first value (badge_query wins) */
   badge?: string | null;
@@ -224,6 +224,8 @@ export interface MenuEntry {
   page?: number;
   items?: Record<string, string>;
   request?: string;
+  /** (124) runs the dynamic actions of event menu_entry for this name (instead of page or request) */
+  action?: string;
   confirm?: string;
   authz?: string;
   icon?: string;
@@ -274,7 +276,9 @@ export interface DynamicAction {
   name: string;
   event: 'change' | 'click' | 'load' | 'dialog_closed'
     /** (085) */
-    | 'after_refresh' | 'selection_change' | 'focus' | 'blur' | 'key_release' | 'before_submit' | 'custom';
+    | 'after_refresh' | 'selection_change' | 'focus' | 'blur' | 'key_release' | 'before_submit' | 'custom'
+    /** (124) a menu button's entry {"action": NAME} was chosen (trigger: entry or menu button names) */
+    | 'menu_entry';
   trigger_element: string | null;
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
   condition_value: string | null;
@@ -287,7 +291,9 @@ export interface DynamicAction {
     /** (069) code: the name of a dynamic action plug-in; config.attributes its attribute values */
     | 'plugin'
     /** (085) */
-    | 'confirm' | 'close_dialog' | 'cancel_dialog' | 'clear' | 'open_region' | 'close_region' | 'download' | 'print' | 'current_position' | 'share';
+    | 'confirm' | 'close_dialog' | 'cancel_dialog' | 'clear' | 'open_region' | 'close_region' | 'download' | 'print' | 'current_position' | 'share'
+    /** (124) a modal "please wait" overlay (message: its text) until remove_wait_popup or the next page */
+    | 'wait_popup' | 'remove_wait_popup';
   affected_items: string | null;
   affected_region_id: number | null;
   code: string | null;

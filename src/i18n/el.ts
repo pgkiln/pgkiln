@@ -416,6 +416,8 @@ export const el: Record<MessageKey, string> = {
   'lov.choose': "Επιλογή",
   'lov.close': "Κλείσιμο",
   'lov.more': "Περισσότερα",
+  'lov.loading': "Φόρτωση περισσότερων…",
+  'da.wait': "Παρακαλώ περιμένετε…",
   'lov.no_rows': "Δεν βρέθηκε τίποτα.",
   'error.lov_value': "{label}: επιλέξτε τιμή από τη λίστα.",
   'item.yes': "Ναι",

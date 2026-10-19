@@ -416,6 +416,8 @@ export const sv: Record<MessageKey, string> = {
   'lov.choose': "Välj",
   'lov.close': "Stäng",
   'lov.more': "Fler",
+  'lov.loading': "Läser in fler…",
+  'da.wait': "Vänta…",
   'lov.no_rows': "Inget hittades.",
   'error.lov_value': "{label}: välj ett värde i listan.",
   'item.yes': "Ja",

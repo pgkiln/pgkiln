@@ -416,6 +416,8 @@ export const cs: Record<MessageKey, string> = {
   'lov.choose': "Vybrat",
   'lov.close': "Zavřít",
   'lov.more': "Více",
+  'lov.loading': "Načítání dalších…",
+  'da.wait': "Čekejte prosím…",
   'lov.no_rows': "Nic nenalezeno.",
   'error.lov_value': "{label}: vyberte hodnotu ze seznamu.",
   'item.yes': "Ano",
