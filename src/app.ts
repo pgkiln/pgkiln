@@ -16,6 +16,7 @@ import { webSourceRoutes } from './builder/websources.ts';
 import { sqlRoutes } from './builder/sql.ts';
 import { automationRoutes } from './builder/automations.ts';
 import { workflowBuilderRoutes } from './builder/workflows.ts';
+import { workflowMigrateRoutes } from './builder/workflow-migrate.ts';
 import { regionSettingsRoutes } from './builder/region-settings.ts';
 import { templateRoutes } from './builder/templates.ts';
 import { searchRoutes } from './builder/search.ts';
@@ -215,6 +216,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(layoutRoutes);
   await app.register(automationRoutes);
   await app.register(workflowBuilderRoutes);
+  await app.register(workflowMigrateRoutes);
   await app.register(reportSettingsRoutes);
   await app.register(regionSettingsRoutes);
   await app.register(templateRoutes);

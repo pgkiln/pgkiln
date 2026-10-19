@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import type { Session } from '../session.ts';
-import { invokeStepReferences, stepProblems, stepWarnings, workflowDiagram, type Step } from '../workflow.ts';
+import { invokeStepReferences, outcomeMap, stepProblems, stepWarnings, workflowDiagram, type Step } from '../workflow.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 
@@ -44,6 +44,16 @@ export function workflowForm(spec: ComponentSpec, row: Definition): [ComponentSp
  * active steps must be unchanged (on a new definition they are version 1).
  */
 export async function workflowBeforeSave(values: Record<string, unknown>, cid: string | undefined) {
+  // (123) a new definition's steps are its active version 1: no drafts there
+  const hasDraft = (v: unknown) => {
+    try {
+      const x = typeof v === 'string' ? JSON.parse(v) : v;
+      return Array.isArray(x) && x.some((st) => st?.type === 'draft');
+    } catch {
+      return false;
+    }
+  };
+  if (!cid && hasDraft(values.steps)) throw new Error('Draft steps belong in a development version: create the workflow without them, then create a new version to model with drafts.');
   if (!cid || values.steps === undefined) return;
   const d = await owner.one('select version, dev_version, steps = $2::jsonb as same from meta.workflow_definition where id = $1', [cid, values.steps]);
   if (!d) return;
@@ -51,11 +61,14 @@ export async function workflowBeforeSave(values: Record<string, unknown>, cid: s
     values.dev_steps = values.steps;
     delete values.steps;
   } else if (d.same) delete values.steps;
+  else if (hasDraft(values.steps)) throw new Error(`Version ${d.version} is active: draft steps belong in a development version.`);
   else throw new Error(`Version ${d.version} is active and can't be changed. Create a new version to edit its steps.`);
 }
 
 export async function workflowExtras(appId: number, row: Definition, s: Session, query: Record<string, string | undefined> = {}) {
-  const tasks = new Set((await owner.query('select name from meta.task_definition where app_id = $1', [appId])).rows.map((r) => r.name as string));
+  const taskDefs = (await owner.query('select name, type, outcomes from meta.task_definition where app_id = $1', [appId])).rows;
+  const tasks = new Set(taskDefs.map((r) => r.name as string));
+  const outcomes = outcomeMap(taskDefs);
   const dev = row.dev_version !== null && row.dev_version !== undefined;
   const shown = dev ? (row.dev_steps ?? []) : row.steps;
   const refs = {
@@ -64,7 +77,8 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
     startVars: [...String((row as { title?: string }).title ?? '').matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1]),
   };
   const invokeRefs = invokeStepReferences(shown, refs);
-  const problems = [...stepProblems(shown, tasks), ...invokeRefs.errors];
+  const problems = [...stepProblems(shown, tasks, { outcomes, drafts: dev }), ...invokeRefs.errors];
+  const drafts = dev ? (row.dev_steps ?? []).filter((x) => x?.type === 'draft').map((x) => x.name) : [];
   const warnings = problems.length ? [] : [...stepWarnings(shown), ...invokeRefs.warnings];
   const perVersion = new Map(
     (await owner.query(`select coalesce(version, '1') as version, count(*)::int as n, (count(*) filter (where state in ('active', 'waiting', 'faulted')))::int as running
@@ -84,7 +98,8 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
   ).rows;
   const picked = query.wf && /^\d{1,18}$/.test(query.wf) ? instances.find((w) => w.id === query.wf) : undefined;
   const pickedSteps = picked ? (await owner.one('select steps from meta.workflow where id = $1 and definition_id = $2', [picked.id, row.id]))?.steps : undefined;
-  const action = `${BASE}/apps/${appId}/shared/workflow_definition/${row.id}/versions`;
+  const base = `${BASE}/apps/${appId}/shared/workflow_definition/${row.id}`;
+  const action = `${base}/versions`;
   const usage = (v: string) => {
     const u = perVersion.get(v);
     return u ? `${u.n}${u.running ? ` (${u.running} running)` : ''}` : '0';
@@ -106,7 +121,7 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
         <td class="num" data-label="Instances">${usage(v.version)}</td>
         <td data-label="">${v.state === 'development'
           ? html`<form method="post" action="${action}" class="wf-version-actions">${csrf(s)}
-              <button class="btn btn-hot" name="action" value="activate"${problems.length ? raw(' disabled') : ''} data-confirm="${`Activate version ${v.version}? New instances start it; running ones keep their version.`}">Activate</button>
+              <button class="btn btn-hot" name="action" value="activate"${problems.length || drafts.length ? raw(' disabled') : ''} data-confirm="${`Activate version ${v.version}? New instances start it; running ones keep their version.`}">Activate</button>
               <button class="btn btn-danger" name="action" value="discard" data-confirm="${`Discard version ${v.version} and its changes?`}">Discard</button></form>`
           : v.steps !== shown ? html`<details class="wf-version-diagram"><summary>Diagram</summary><div class="wf-wrap">${workflowDiagram(v.steps, { id: `v${i}` })}</div></details>` : ''}</td>
       </tr>`)}
@@ -123,11 +138,18 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
   <fieldset class="prop-group u-mt125"><legend>Diagram of version ${dev ? `${row.dev_version} (development)` : row.version}</legend>
     ${problems.length ? html`<div class="alert alert-error" role="alert"><ul class="u-m0">${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` : ''}
     ${warnings.length ? html`<div class="alert wf-warnings" role="status"><ul class="u-m0">${warnings.map((p) => html`<li>${p}</li>`)}</ul></div>` : ''}
+    ${drafts.length ? html`<div class="alert wf-warnings" role="status">Draft steps (${drafts.join(', ')}) are placeholders: replace them before activating version ${row.dev_version}.</div>` : ''}
     <div class="wf-wrap">${workflowDiagram(shown, { id: 'def' })}</div>
+    <p class="wf-export">
+      <a class="btn btn-sm" href="${`${base}/diagram.svg?v=${encodeURIComponent(dev ? row.dev_version! : row.version)}`}" download data-wf-svg>Download SVG</a>
+      <button type="button" class="btn btn-sm" data-wf-png hidden>Download PNG</button>
+    </p>
     <p class="muted small">Instances: ${counts.length ? counts.map((c, i) => html`${i ? ', ' : ''}${c.n} ${c.state}`) : 'none yet'}. Running instances keep the steps of the version they started with.</p>
   </fieldset>
   ${instances.length
     ? html`<fieldset class="prop-group u-mt125"><legend>Instances</legend>
+        ${instances.some((w) => ['active', 'waiting', 'faulted'].includes(w.state) && (w.version ?? '1') !== row.version)
+          ? html`<p class="u-mt0"><a class="btn btn-sm" href="${`${base}/migrate`}">Migrate running instances to a newer version…</a></p>` : ''}
         <div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">Id</th><th>Title</th><th>Version</th><th>State</th><th>At</th><th>Started</th></tr></thead><tbody>
           ${instances.map((w) => html`<tr${picked?.id === w.id ? raw(' aria-current="true"') : ''}>
             <td class="num" data-label="Id"><a href="?c=workflow_definition-${row.id}&amp;wf=${w.id}">${w.id}</a></td>
@@ -165,7 +187,8 @@ export async function workflowBuilderRoutes(app: FastifyInstance) {
       } else if (b.action === 'activate') {
         if (!d.dev_version) throw new Error('There is no version in development.');
         const tasks = new Set((await owner.query('select name from meta.task_definition where app_id = $1', [id])).rows.map((r) => r.name as string));
-        const problems = stepProblems(d.dev_steps, tasks);
+        const outcomes = outcomeMap((await owner.query('select name, type, outcomes from meta.task_definition where app_id = $1', [id])).rows);
+        const problems = stepProblems(d.dev_steps, tasks, { outcomes, drafts: false });
         if (problems.length) throw new Error(`Version ${d.dev_version} can't be activated: ${problems.join(' ')}`);
         const v = (await owner.one('select meta.activate_workflow_version($1) as v', [d.id])).v;
         flash(s, `Version ${v} is active: new instances start it.`);
