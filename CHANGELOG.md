@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **AI interactive reports** (WS-5; APEX 26.1 / 26.2): "Ask in your own words" on an interactive report now sets all
+  of the report's settings: filters, highlights, search, sort, control break, totals, group by, pivot, chart and
+  computed columns ("bonus is 10% of salary", checked like Actions → Compute). Each setting shows as a chip with Edit
+  and Remove, and Undo goes back a step (five steps, kept in the session); it all works without JavaScript. Without
+  an AI service (`"ai_filter": {}`, or when the service isn't available) a built-in parser understands common
+  English, Dutch and German phrases such as "sum of salary by department where job is clerk". Answers are checked
+  against the report's shown columns and fixed lists; values are bound or escaped. HR example: the employee
+  report on page 2 (`hr_65`). The box now shows even when no AI service is set.
 - **AI Agents** (WS-4; APEX 26.1 / 26.2; migration 121): Shared Components → AI Agents. An agent combines an AI
   service, a system prompt, a reasoning effort (low / medium / high, mapped to each provider), approved tools, step
   and token limits and an authorization scheme; an AI assistant region can name one (`{"agent": "NAME"}`). Tools:
