@@ -852,6 +852,9 @@ application ask someone to approve, reject or complete something, and act on the
 | When overdue, Maximum renewals, Escalation role | The expiration policy ([below](#overdue-tasks-expire-renew-escalate)); empty: overdue tasks stay open |
 | Details page, Details item | The subject links to this page, setting the item to the record key |
 | On completion (SQL) | Runs as the application's role when the task is approved, rejected or completed (below) |
+| Outcomes | Custom outcomes instead of Approve / Reject ([below](#custom-outcomes)) |
+| Events, When the completion SQL fails | Actions when a task is completed, expires or its completion SQL fails ([below](#task-events-and-notifications)) |
+| Notifications | E-mail templates pgkiln sends when a task is created, completed or expires |
 
 **2. Application SQL creates tasks**, for example in the process that saves a request or in a
 trigger:
@@ -903,6 +906,62 @@ When a record is decided somewhere else (for example with buttons on its own pag
 open tasks so they don't linger: `select meta.close_tasks('EXPENSE_APPROVAL', :P5_ID::text,
 'approved')` (no completion SQL runs).
 
+<a id="custom-outcomes"></a>**Custom outcomes** (APEX 26.2: task outcomes). A task definition may list its own outcomes
+instead of Approve / Reject (or Complete):
+
+```json
+[{"name": "YES", "label": "Yes", "colour": "success"},
+ {"name": "NO", "label": "No", "colour": "danger"},
+ {"name": "UNDECIDED", "label": "Undecided", "colour": "warning"}]
+```
+
+The task list then shows one button per outcome, with its label and colour (`default`, `primary`, `success`,
+`danger` or `warning`: a fixed list, so a definition can't add other classes). The outcome is stored in lower case
+(`meta.tasks.outcome = 'yes'`), `:OUTCOME` in the completion SQL is the name (`YES`), and the history shows the label.
+A task ends only with an outcome of its definition: `meta.complete_task` refuses any other (also Approve / Reject
+on a definition with its own outcomes), and so does `meta.close_tasks(name, detail_pk, outcome)`. A
+[workflow](#workflows) branches on them in a task step's `next` (`{"yes": "PAY", "no": "END"}`) or a switch case
+`{"outcome": "UNDECIDED", "next": "ASK_AGAIN"}`. Names are letters, digits and underscores (at most 30, at most 10
+outcomes); `cancelled`, `expired` and `default` are reserved.
+
+<a id="task-events-and-notifications"></a>**Task events and notifications** (APEX 26.2: Human Task events). A
+definition's *Events* are actions on what happens to its tasks:
+
+```json
+[{"on": "complete", "type": "sql", "code": "select expenses.log_decision(:DETAIL_PK::int, :OUTCOME, :APPROVER)"},
+ {"on": "expire", "type": "mail", "to": "select email from staff where role = 'manager'", "template": "TASK_EXPIRED"},
+ {"on": "fail", "type": "workflow", "workflow": "FIX_REQUEST", "vars": {"REASON": "&ERROR."}}]
+```
+
+| `on` | When |
+|---|---|
+| `complete` | The task was completed, with any outcome (also by `meta.close_tasks` with an outcome) |
+| `expire` | The task expired ([below](#overdue-tasks-expire-renew-escalate)) |
+| `fail` | The definition's completion SQL raised an error |
+
+| `type` | Does | Fields |
+|---|---|---|
+| `sql` | Runs statements as the application's role | `code` |
+| `mail` | Queues an e-mail through [`meta.send_mail_template`](#e-mail-templates) or [`meta.send_mail`](#sending-e-mail) | `to` (a SELECT returning addresses, or addresses with `&NAME.`), `template`, or `subject` and `body` with `#NAME#` placeholders |
+| `workflow` | Starts a workflow with the task's record key and parameters | `workflow`, `vars` (variable → text, `&NAME.` allowed) |
+
+Binds (and `#NAME#` placeholders): the task's parameters, `:TASK_ID`, `:DETAIL_PK`, `:SUBJECT`, `:OUTCOME`,
+`:APPROVER`, `:INITIATOR`, `:EVENT`, and for `fail` `:ERROR` and `:COMMENT`. *Complete* and *expire* events run
+right after the commit: a trigger queues them (`meta.task_hook`, closed to applications) and the server runs each
+in a transaction of its own, as the application's role with the person who completed the task (or the initiator) as
+`meta.app_user()` and the task's tenant; one that fails is tried three times and keeps its error on the
+`meta.task_hook` row. *Fail* events run in the request that completed the task: the completion SQL's effect is
+undone, the failure is in the task's history, the actions run, and **When the completion SQL fails** says what
+happens to the task: `reopen` (the default) undoes the decision so the task stays open, `complete` keeps it completed
+without the SQL's effect. The user sees the error either way. Without fail events or a recovery, an error undoes the
+decision as before.
+
+**Notifications** are e-mails pgkiln sends itself, from the application's
+[e-mail templates](#e-mail-templates): `{"create": "TASK_CREATED", "complete": "TASK_DONE", "expire": "TASK_EXPIRED"}`.
+*create* goes to the potential owners (the named users, the actual owner and the application's users with one of
+the owner roles), *complete* to the initiator, *expire* to both, at the e-mail address of their account. The
+placeholders are those of the events. They need a mail service, like `meta.send_mail`.
+
 #### Overdue tasks: expire, renew, escalate
 
 A task definition with *Due in* can say what happens to a task that is still open after its due date (APEX:
@@ -930,9 +989,9 @@ workflow whose task is cancelled.
 | `meta.task_events` | View: the history and comments of those tasks |
 
 The task tables themselves are closed to the application's role: rights are checked by these
-functions and views, for every call. To tell owners by e-mail, call
-[`meta.send_mail`](#sending-e-mail) from the task definition's SQL or from an automation that
-reminds owners of overdue tasks; or put a task list on the home page.
+functions and views, for every call. To tell owners by e-mail, use the definition's
+[notifications](#task-events-and-notifications), call [`meta.send_mail`](#sending-e-mail) from the task
+definition's SQL or from an automation that reminds owners of overdue tasks; or put a task list on the home page.
 
 **Example:** in the HR sample application, a leave request creates a `LEAVE_APPROVAL` task for the
 employee's manager; *My tasks* (page 14) approves or rejects it through `hr.decide_leave`, the same
@@ -954,9 +1013,15 @@ steps; the builder checks them and draws the flow.
 | `invoke_api` | Calls a REST data source or a URL on the server; values of the response become variables ([below](#invoke-api-steps)) | `source` + `params`, or `url`, `method`, `credential`, `body`; `variables`, `status_variable`, `response_variable`, `timeout`, `next` |
 | `parallel` | Starts a branch at each of its steps; they run side by side | `branches` (the first step of each, at least two), `join` |
 | `join` | Where the branches of a `parallel` step meet | `wait_for` (`all`, the default, or `any`), `next` |
+| `send_mail` | Queues an e-mail ([below](#send-e-mail-steps)) | `to`, `template` (or `subject` and `body`), `cc`, `next` |
+| `draft` | A placeholder while modelling: only in a development version ([below](#draft-steps)) | `note`, `next` |
 | `end` | Ends the workflow | |
 
 `next` is optional: the following step in the list (after the last one, the workflow is complete).
+A task step's `next` per outcome names the outcomes of its task definition, [custom ones](#custom-outcomes) too,
+plus `cancelled`, `expired` and `default`. A `switch` case is either `{"when": "SQL condition", "next": …}` or
+`{"outcome": "YES", "next": …}`, which compares the outcome of the last task (`:TASK_OUTCOME`); the builder checks
+that a task of the workflow can end with it.
 
 ```json
 [{"name": "CHECK",    "type": "switch", "cases": [{"when": ":AMOUNT::numeric > 1000", "next": "DIRECTOR"}], "otherwise": "MANAGER"},
@@ -976,7 +1041,7 @@ select meta.start_workflow('EXPENSE', :P5_ID, jsonb_build_object('AMOUNT', :P5_A
 
 The variables (upper case) are binds in every step, with `:DETAIL_PK`, `:WORKFLOW_ID` and
 `:INITIATOR`; after a task step also `:TASK_OUTCOME` (`APPROVED`, `REJECTED`, `COMPLETED`,
-`CANCELLED`) and `:TASK_APPROVER`. The title may use `&VAR.`.
+`CANCELLED`, `EXPIRED` or a custom outcome such as `YES`) and `:TASK_APPROVER`. The title may use `&VAR.`.
 
 **How it runs.** The pgkiln server runs workflows: right after they start or a task of theirs
 ends (`NOTIFY`), and it checks for waits that are over every few seconds (`WORKFLOW_INTERVAL_S`,
@@ -1007,6 +1072,29 @@ sees only those without one, so existing applications are unchanged. An executio
 background runs with the tenant of the session that queued it. Filter your own tables the same way
 (`where tenant_id = meta.tenant_id()`, or a row level security policy). Use row level security in
 the tenant's tables as well: the tenant is a value the application sets, not a database boundary.
+
+### Send e-mail steps
+
+A `send_mail` step (APEX 26.1: the *Send E-Mail* activity) queues an e-mail through the application's mail service,
+as the application's role, like [`meta.send_mail`](#sending-e-mail) in a `sql` step:
+
+```json
+{"name": "TELL", "type": "send_mail", "to": "select email from staff where id = :DETAIL_PK::int", "template": "REQUEST_DONE"}
+{"name": "NOTE", "type": "send_mail", "to": "desk@example.com, &MANAGER_EMAIL.", "subject": "Request #TITLE# done", "body": "Decided by #TASK_APPROVER#."}
+```
+
+`to` is a SELECT returning addresses, or addresses with `&VAR.` substitutions; `cc` likewise addresses. With a
+`template` ([e-mail templates](#e-mail-templates)), or a `subject` and a plain-text `body`, the placeholders `#NAME#`
+are the variables, `DETAIL_PK`, `WORKFLOW_ID` and `INITIATOR`. No recipient: the step goes on (the history says
+so). A mail that can't be queued (no mail service, an address that isn't one, the daily limit) faults the step.
+The history records the mail's id; it is sent after the step's transaction commits.
+
+<a id="draft-steps"></a>**Draft steps** (APEX 26.2: Draft activities). A step of type `draft` stands for something
+not modelled yet (`{"name": "BUDGET_CHECK", "type": "draft", "note": "check the budget", "next": "APPROVE"}`).
+It may be in a development version only: the builder shows a warning and doesn't offer **Activate** while a version
+has one, `meta.activate_workflow_version` refuses it, and the database refuses draft steps in a definition's active
+steps (so a new definition can't have them either: create it, then a new version to model with drafts). The diagram
+draws them dashed. An instance can never reach one; if it did (steps changed with SQL), the step faults.
 
 ### Invoke API steps
 
@@ -1086,6 +1174,28 @@ steps with problems), and the active one becomes inactive. **Discard** throws a 
 away. The Versions table shows each version with its instance count and diagram; the Instances
 table shows which version each instance runs and where it is.
 
+<a id="migrating-instances"></a>**Migrating running instances** (APEX 26.2: in-flight workflow migration). Running
+instances (active, waiting or faulted) of an older version can move to a newer one: the active version or an inactive
+version activated after theirs. Under the definition, **Migrate running instances to a newer version…** (shown
+while there are such instances) opens a page where you choose the version and the instances, and map each step an
+instance is at to a step of the new version (a step of the same name is proposed). **Preview** shows per instance
+where it goes or why it can't; **Migrate** then moves them all in one transaction, with their variables, the task
+they wait for and their wait, logged in each instance's history (*migrated*, `version 1 → 2: APPROVE → APPROVE
+(by admin)`) and in `meta.workflow_migration`. Nothing moves when one of them can't:
+
+- a step without a mapping, or mapped to a step the version doesn't have (or a draft);
+- an instance waiting for a task must go to a task step that creates a task of the same definition;
+  one at a `wait` step to a `wait` step (its wait goes on), one at a join to a join;
+- an instance inside parallel branches, or calling a web service at that moment: try again later.
+
+The database function is `meta.migrate_workflows(definition_id, version, ids, mapping, apply, by)` (the owner's,
+for the builder and scripts; not for applications).
+
+<a id="diagram-export"></a>**The diagram as a file.** Under the diagram, **Download SVG** downloads the whole model
+of the version shown (`/builder/apps/<app>/shared/workflow_definition/<id>/diagram.svg?v=<version>`), a standalone
+SVG with its own colours; **Download PNG** draws that SVG in the browser (with JavaScript; without it the SVG link
+remains). Step names and labels are escaped, so a definition can't put markup into the file.
+
 **The console.** A region of type **`workflows`** lists the workflows the user started (or, with
 `"context": "admin"`, those they administer), with their state, the version, the current steps (several with parallel branches), a diagram
 and the history. The initiator and administrators can **terminate** a workflow (its open tasks and
@@ -1102,7 +1212,10 @@ branches are cancelled); administrators can retry a faulted one.
 created. Its version 2 (part 18) prepares the workplace (the manager's task) and, in a parallel
 branch, the access that employees with a salary of 2500 or more need (a switch and an
 administrator's task); when both branches are done, the manager is notified (SQL). Version 1, which
-did this one after the other, is inactive. *My tasks* (page 14) shows the workflows. Part 34 adds
+did this one after the other, is inactive. *My tasks* (page 14) shows the workflows. Part 67 adds `SALARY_CHANGE`: a
+`SALARY_DECISION` task with the outcomes Yes, No and Undecided (the owners get the `SALARY_TASK` e-mail, a complete
+event notifies the initiator), a switch on the outcome (Undecided asks again), SQL that applies the salary and, in
+version 2, a `send_mail` step to the employee; version 3 is in development with a draft step. Part 34 adds
 `DEPARTMENT_CHECK`, started by *Check in a workflow* on page 23: an `invoke_api` step reads the
 department from the example's own REST API (the `DEPARTMENT` source of part 23, so the server must
 allow `127.0.0.1:3100`), a `switch` on `HTTP_STATUS`, and SQL that notifies the initiator.
