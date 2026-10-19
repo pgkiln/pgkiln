@@ -9802,6 +9802,7 @@ describe('sprint 111 WS-4', () => {
   const lastResult = () => calls().at(-1).body.messages.at(-1).content[0];
   before(async () => {
     const { startScriptMock } = await import('./ai-script-mock.ts');
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
     const { encryptSecret } = await import('../src/secrets.ts');
     mock = await startScriptMock();
     saved = (await owner.one('select ai_agents, ai_tools from meta.app where id = $1', [appId]))!;

@@ -23,9 +23,10 @@ services:
       retries: 20
 
   pgkiln:
-    # the published image (Docker Hub); in a checkout, `docker compose up -d --build` builds it from the source
+    # the published image (Docker Hub); in a checkout, `docker compose up -d --build` builds it from the source.
+    # No pull_policy: with `missing` next to `build`, `docker compose pull` skips an image that is already
+    # present, so an upgrade would keep the old :latest
     image: ${PGKILN_IMAGE:-pgkiln/pgkiln:latest}
-    pull_policy: missing
     build: ..
     restart: unless-stopped
     depends_on:

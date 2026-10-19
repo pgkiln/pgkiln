@@ -266,9 +266,11 @@ stops the container at once with a message saying so.
 | `PGKILN_IMAGE` | `pgkiln/pgkiln:latest` | The image to run, e.g. a fixed version (`pgkiln/pgkiln:0.31.0`) or `ghcr.io/pgkiln/pgkiln` |
 
 **Upgrading:** with the published image: `docker compose pull`, then `docker compose up -d` (with a
-fixed version in `PGKILN_IMAGE`, change it first). Built from a checkout: `git pull`, then
-`docker compose up -d --build`. The new container migrates the database
-before it starts serving. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
+fixed version in `PGKILN_IMAGE`, change it first); `up -d` replaces the container when the image changed, so
+`--force-recreate` isn't needed. Built from a checkout: `git pull`, then `docker compose up -d --build`. The new
+container migrates the database before it starts serving. A `compose.yaml` from pgkiln 0.51.0 or older has
+`pull_policy: missing` under `pgkiln`, which makes `docker compose pull` skip an image that is already present:
+delete that line (or take the current `deploy/compose.yaml`) before the first upgrade this way. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
 Keep `PGKILN_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys) can't be decrypted.
 
 ## Upgrading
