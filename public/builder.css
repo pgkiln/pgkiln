@@ -1391,3 +1391,5 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dataset-filter > select, .dataset-filter > input { flex: 1 1 10rem; min-width: 0; }
 .dataset-columns input { min-width: 0; width: 100%; }
 .dataset-page pre.code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dataset-schema { flex-wrap: wrap; }
+.dataset-schema > select { flex: 1 1 10rem; min-width: 0; }

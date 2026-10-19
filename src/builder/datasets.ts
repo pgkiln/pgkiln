@@ -164,7 +164,7 @@ export async function datasetRoutes(app: FastifyInstance) {
     const schema = await usableSchema(db, String(req.query.schema ?? ''));
     const cat = schema ? await readSchemaCatalog(db, schema) : null;
     const main = html`<h1>New dataset</h1>
-      ${region('1. Schema', html`<form method="get" action="${root}/datasets/new" class="search u-mwnone">
+      ${region('1. Schema', html`<form method="get" action="${root}/datasets/new" class="search u-mwnone dataset-schema">
         <label class="label" for="f_schema">Schema</label>
         <select id="f_schema" name="schema">${schemas.map((n) => html`<option${n === schema ? raw(' selected') : ''}>${n}</option>`)}</select>
         <button class="btn">Show its tables and views</button></form>`)}
