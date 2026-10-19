@@ -256,7 +256,7 @@ Features for end users:
     computed columns and views under a name, and switch between saved reports (below);
   - **rows per page**, **download CSV / Excel / PDF**, **print**, **reset**.
 - Active search, filters, break, aggregates, highlights, computed columns and views appear as
-  removable chips. Once a group by, pivot or chart is set, **Report / Group by / Pivot / Chart**
+  removable chips (with *Ask in your own words*, as chips with Edit and Remove under the question box). Once a group by, pivot or chart is set, **Report / Group by / Pivot / Chart**
   links switch between the views; all views use the same search, filters and facets.
 - **Paging** with Previous/Next.
 - On phones every row **reflows** into a card with labelled values.
@@ -267,26 +267,71 @@ and highlight values become literals, columns must exist in the result, operator
 functions, chart types and colors come from fixed lists, sort positions are integers, and computed
 column expressions are parsed (below), never pasted into SQL.
 
-### Natural-language filters (*Ask in your own words*)
+### Ask in your own words (AI interactive reports)
 
-With an [AI service](06-processing.md#generate-text-with-ai), an interactive report can take a
-question in the user's own words (APEX: natural language to interactive report): *"analysts and
-managers hired before 1982, highest salary first"*. Set `"ai_filter": {"service": "NAME"}` in the
-report's attributes (or *Ask in your own words (AI)* under the report's settings in the page
-designer); a question box appears above the report when the application may use the service.
+An interactive report can take a request in the user's own words (APEX 26.1/26.2: AI interactive
+reports): *"sum of salary by department where job is clerk"*, *"managers hired before 1982, highest
+salary first"*, *"bonus is 10% of salary"*. Set `"ai_filter": {}` in the report's attributes (or
+*Ask in your own words* under the report's settings in the page designer); a question box appears
+above the report.
 
-The question goes to the service with the report's shown columns (names, headings and kinds:
-text, number, date) and its filter operators; the answer is a structured output (filters, a search
-text, a sort column) that pgkiln checks again (only those columns and operators, at most five
-filters, short values) and turns into the report's ordinary URL parameters. So the model can only
-set what the user could set by hand in the Actions menu; the report builds the SQL (values as
-escaped literals) and runs it as the application's role, and the user sees which filters were
-applied and can change or remove them. Hidden columns (`hidden`) are not offered. Signed-in users
-only, unless `"public": true`; logged in the AI usage log with the source `nl2ir`.
+The answer is never SQL: it becomes the report's **own settings**, the same ones the Actions menu
+sets: filters, highlights, a search, a sort, a control break, totals (aggregates), a group by, a
+pivot, a chart and computed columns. They are listed under the box as **chips**; each chip has
+**Edit** (a small form with its column, operator, value, function, color or expression) and
+**Remove**, and **Undo** returns to the settings before the last change (the last five steps, kept
+in the session). A new request refines the current settings: a filter on a column replaces that
+column's filters, a sort, break, group by, pivot or chart replaces the old one, highlights, totals
+and computed columns are added; *"start over"* clears them. The chips are buttons of one form, so
+they work without JavaScript.
+
+**Without an AI service** pgkiln reads the request itself with a rule-based parser for common
+phrases (APEX 26.2: works with zero AI). Columns are recognised by name or heading (also without
+spaces, and verbs such as *hired* for `hiredate`); values such as *"only clerks"* or *"in sales"*
+are looked up among the report's own rows (as a query parameter); what isn't understood is said
+in the message, not guessed. Phrases it understands, in English (always), Dutch and German (when
+that is the user's language):
+
+| Request | Becomes |
+|---|---|
+| *salary over 3000*, *salary between 1,000 and 3k*, *hired before june 1981*, *hired in 1981*, *name contains "mi"*, *no commission* | filters (`gt`, `ge` + `le`, `lt`, a date range, `contains`, `null`) |
+| *only clerks*, *not clerks*, *in sales*, *active* | a filter on the column that holds the value |
+| *sort by hire date, newest first*, *highest salary first* | the sort |
+| *sum of salary by department*, *count by department and job* | a group by with its function |
+| *total salary*, *average salary* | a totals row |
+| *break by department* | a control break |
+| *pivot sum of salary by department and job* | a pivot |
+| *pie chart of count by department*, *chart of salary by job* | a chart |
+| *highlight salary over 4000 in red* | a highlight |
+| *bonus is 10% of salary*, *yearly = sal * 12* | a computed column |
+| *search for smith* | the search |
+| *start over*, *clear all* | no settings |
+
+Dutch (*salaris boven 3000*, *sorteer op datum aflopend*, *som van salaris per afdeling*, *alleen
+klerken*, *bonus is 10% van salaris*) and German (*Gehalt über 3000*, *sortiere nach Datum
+absteigend*, *Summe von Gehalt pro Abteilung*, *nur Angestellte*) work the same way; another
+language adds a phrase table to `src/runtime/ir-phrases.ts`.
+
+**With an AI service** (`"ai_filter": {"service": "NAME"}`, an [AI
+service](06-processing.md#generate-text-with-ai) the application may use), the request goes to the
+service with the report's shown columns (names, headings and kinds: text, number, date, boolean),
+its operators and functions and the current settings; the answer is a structured output. When the
+service is disabled or not allowed for the application, the built-in phrases answer instead. The
+request and the column names go to the service's provider; logged in the AI usage log with the
+source `nl2ir`.
+
+Either way the answer is checked again before it is applied: only the report's shown columns
+(`hidden` columns are neither offered nor accepted), operators, functions, chart types and colors
+from the report's fixed lists, at most five filters, highlights and totals, short values (which
+become escaped literals or query parameters), and computed expressions that pass the same
+validator as Actions → Compute (below). A chip edit is checked the same way; a form that names a
+hidden column, an unknown operator or a chip that isn't there is refused. The report builds the
+SQL and runs it as the application's role. Signed-in users only, unless `"public": true`.
 
 | Key | Meaning |
 |---|---|
-| `ai_filter.service` | The AI service's name |
+| `ai_filter` | `{}` for the built-in phrases |
+| `ai_filter.service` | An AI service's name (the built-in phrases when it isn't available) |
 | `ai_filter.placeholder` | The question box's placeholder |
 | `ai_filter.public` | Also for users who are not signed in |
 
@@ -1297,8 +1342,12 @@ forms *Departments* and *Book a meeting*.
 ### `ai_assistant` (AI assistant)
 
 An **AI assistant** region (APEX: AI Assistant, AI agents and tools) is a chat with an
-[AI service](06-processing.md#generate-text-with-ai) (Claude or OpenAI) that an administrator
-configured and allowed for the application. The developer gives it a system prompt and, optionally,
+[AI service](06-processing.md#generate-text-with-ai) (Claude, OpenAI, Gemini or an OpenAI-compatible
+endpoint) that an administrator configured and allowed for the application. Either the region names an
+**[AI agent](03-builder.md#ai-agents)** of the application (`"agent": "SALES_AGENT"`: the agent sets the
+service, system prompt, reasoning effort, tools, steps and output limit, and its authorization scheme
+decides who may use the region; tools may also be PL/pgSQL functions, JavaScript actions and links to
+pages), or the developer gives the region a system prompt and, optionally,
 **context queries** and **tools**; the model then answers questions about the application's data,
 calling the tools when it needs to, like an agent. It works without JavaScript (the message is
 posted and the page comes back with the answer); with JavaScript the Send button shows that the
@@ -1344,6 +1393,7 @@ Attributes (written by the region's **Settings**; they travel with the applicati
 
 | Key | Default | Meaning |
 |---|---|---|
+| `agent` | | (121) An [AI agent](03-builder.md#ai-agents) of the application; then leave out `service`, `system`, `tools` and `max_rounds` |
 | `service` | | The AI service's name |
 | `system` | | The system prompt (`&ITEM.` substitutions as delimited data) |
 | `welcome` | | The first message shown (translatable) |
@@ -1357,7 +1407,7 @@ Attributes (written by the region's **Settings**; they travel with the applicati
 
 The HR example's page 38 (*HR assistant*) has an assistant with a context query over `hr.policy`
 and four tools (the user's own leave, colleagues, departments, and *request_leave*, which files a
-leave request), next to a staff list with [*Ask in your own words*](#natural-language-filters-ask-in-your-own-words).
+leave request), next to a staff list with [*Ask in your own words*](#ask-in-your-own-words-ai-interactive-reports).
 
 ### Template components
 

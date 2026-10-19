@@ -7,8 +7,10 @@ it exports the application as files, edits them with its own file tools, shows t
 and imports them again. Laravel developers know the idea from Laravel Boost.
 
 This is separate from the AI features *inside* applications and the builder (AI assistant regions,
-*Generate with AI*): those call a model from pgkiln; here an agent on the developer's machine calls
-pgkiln.
+[AI agents with tools](03-builder.md#ai-agents) in Shared Components, *Generate with AI*): those call a
+model from pgkiln; here an agent on the developer's machine calls pgkiln. An application's AI agents
+and tools are part of its files (`app.json`: `ai_agents`, `ai_tools`), so a coding agent can read and
+change them like any other component.
 
 ## Setting it up
 

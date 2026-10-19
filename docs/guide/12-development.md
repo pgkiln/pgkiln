@@ -142,7 +142,10 @@ src/
                            limits, the call, meta.ai_usage), requests.ts (meta.ai_generate from SQL: runPendingAi() after an sql
                            process, aiRequestTick() in the scheduler, 24-hour purge), chat.ts (conversations with tools, migration
                            061: chat() runs the tool loop on a provider-format history (Claude: streamed, strict tools, tool_choice
-                           auto, content appended unchanged; OpenAI: strict function tools), limits and usage per provider call)
+                           auto, content appended unchanged; OpenAI: strict function tools), limits and usage per provider call;
+                           (121) an agent's effort (Claude output_config.effort, OpenAI reasoning_effort) and output limit).
+                           Providers (121): anthropic, openai, gemini (OpenAI-compatible endpoint, GEMINI_BASE_URL), openai_compatible
+                           (Ollama, vLLM, Azure OpenAI; base URL required, key optional): service.ts serviceKey(), baseUrlFor(), providerLabel()
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
                            loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -209,8 +212,20 @@ src/
                            schemas from items, answers into items), aiInputs/aiOutputs for its dynamic action (route in routes.ts)
     assistant.ts           AI assistant region (migration 061): config checks, tool schemas and argument checks, context queries
                            and SQL tools as the app role (rolled back unless "writes"), REST tools, meta.ai_conversation per
-                           session, formatAnswer (escaped), send/clear routes
-    ai-filter.ts           natural-language filters on a report ("ai_filter"): columns → structured output → checked → r<id>_f/q/s/d
+                           session, formatAnswer (escaped), send/clear routes; (121) "agent": an AI agent's service, prompt, tools,
+                           steps and authorization; links of navigate tools under the answer, browser actions once (__AIACT<id>)
+    ai-agents.ts           (121) AI agents and AI tools (meta.app.ai_agents / ai_tools): checks (agentProblems, aiToolProblems,
+                           definitionProblems), agentFor(), prepareTools() (authorization schemes, navigate pages the user may
+                           open, strict schemas), runAgentTool() (sql: read-only transaction as the app role with a time limit;
+                           function: named arguments, committed; rest; javascript: queued for the browser; navigate: URL and
+                           checksum built here), logToolCall() (meta.ai_tool_call, debug level 4, 30-day purge)
+    ai-filter.ts           "Ask in your own words" on a report ("ai_filter", sprint 112: AI interactive reports): the box, the chips
+                           form (Edit/Remove/Undo, undo history in the session), ask and chips routes; an AI service's structured
+                           output (planSchema) or the phrase parser, then ir-plan.ts
+    ir-plan.ts             what a question may set: checkPlan (shown columns, whitelists, computeSql), applyPlan (→ the report's
+                           URL parameters), chipsOf/editChip/removeChip (a chip = one URL parameter value, edits checked again)
+    ir-phrases.ts          the rule-based parser without an AI service: phrase tables per language (en, nl, de), clauses →
+                           a RawPlan; values looked up among the report's rows through a Lookup (query parameter)
     pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
     search.ts              search region and search configurations (migration 080): words as ILIKE parameters, table/sql/list
                            sources as the app role in savepoints, marked results, configColumns/searchConfigProblems for the Advisor
@@ -368,9 +383,11 @@ src/
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a
                            question, shown not run; explain), describe tables (meta.ai_table_note, COMMENT ON, AI drafts),
                            create pages with AI (proposals checked by checkProposals, created with meta.generate_page)
-    assistant.ts           page designer: AI assistant settings and a report's "Ask in your own words" (AI service, placeholder)
+    assistant.ts           page designer: AI assistant settings and a report's "Ask in your own words" (off, built-in phrases or an AI service, placeholder)
     ai.ts                  Workspace utilities → AI services (administrators: services, write-only encrypted keys, access and
                            daily limits per app, Test, usage log) and Activity → AI usage per application
+    ai-agents.ts           (121) Shared Components → AI Agents: the agent and tool forms (checked before saving, renames follow
+                           into agents and regions), toolCallTable() (Activity → AI usage → Tool calls), agentOptions()
     supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
   app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)

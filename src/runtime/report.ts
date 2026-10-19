@@ -1142,7 +1142,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
               </div>`
             : ''}
         </div>
-        ${chips.length ? html`<div class="chips">${chips}</div>` : ''}`
+        ${chips.length && !ctx.askChips?.has(r.id) ? html`<div class="chips">${chips}</div>` : ''}`
       : '';
 
   // Keep the toolbar only when a search or filter may be the cause, so it can be removed.

@@ -75,6 +75,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'user_preference',
   // (113) AutoREST: the tables and views the application publishes (SQL Workshop › RESTful Services)
   'rest_object',
+  // (121) the log of AI tool calls (the agents and tools themselves travel in meta.app)
+  'ai_tool_call',
   // (122) Team Development issues of the workspace, linked to the application (workspace data: the workspace export)
   'team_issue'];
 /** Children of pages (replaced with their page). */

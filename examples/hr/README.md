@@ -40,6 +40,7 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_47_plugins.sql` | *Plug-ins* (page 40): the four example plug-ins of `examples/plugins/` (a region, an item, a dynamic action and a process plug-in) |
 | `hr_48_map_tiles.sql` | *Weather stations* (page 41): 20,000 generated stations (`hr.weather_station`) as vector tiles, and the stations above 2,000 m loaded for the visible area |
 | `hr_49_push_notifications.sql` | Push notifications: the app may send them (users turn them on under *My account → Notifications*); a new leave request notifies the manager, a decision notifies the employee, and the notification opens the request (page 7) |
+| `hr_64_ai_agent.sql` | *HR agent* (page 46): the AI agent `HR_AGENT` (Shared Components → AI Agents) with four tools: `top_earners` (SQL, read-only as `hr_app`), `open_employee` (navigate: a link to the employee form with its checksum, only for users who may open page 3), `give_raise` (the PL/pgSQL function `hr.give_raise`, managers only) and `note` (a JavaScript tool: the custom event `hr_agent_note`). Ask *Who in Sales earns most?* Needs an AI service named `HR_ASSISTANT` (see part 41) |
 
 The files run in order, each once (recorded in `public.pgkiln_seed`), so new ones can be added
 later. pgkiln's own tests use this application as their fixture (`npm test` installs it first).

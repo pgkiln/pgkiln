@@ -62,6 +62,8 @@ export interface PageContext {
   locale: Locale;
   /** set when a link with a per-user checksum was rendered (region caching for all users skips such regions) */
   userBound?: boolean;
+  /** (sprint 112) reports whose settings show as chips in their "Ask in your own words" box (not in the report's own chip row) */
+  askChips?: Set<number>;
   /** render cached regions anew (a dynamic action's Refresh region), storing the new result */
   cacheRefresh?: boolean;
   /** the lazy region the request renders (GET …/region/:id), not as a placeholder */

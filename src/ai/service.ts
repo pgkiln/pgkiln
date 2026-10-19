@@ -4,7 +4,7 @@ import { ClaudeProvider } from './anthropic.ts';
 import { OpenAiProvider } from './openai.ts';
 import { AiError, type AiProvider, type GenerateRequest, type GenerateResult, type ProviderName } from './types.ts';
 
-// AI services (migration 060): an administrator configures them in the
+// AI services (migration 060; Gemini and OpenAI-compatible endpoints: 121): an administrator configures them in the
 // builder (Workspace utilities → AI services) and allows each application
 // to use some of them, with optional limits per day. Every call goes
 // through generate() here: the service must exist, be enabled and be
@@ -35,14 +35,45 @@ export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5-5';
 export const MAX_PROMPT_CHARS = 200_000;
 export const MAX_SYSTEM_CHARS = 50_000;
 
-const ENV_KEY: Record<ProviderName, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY' };
+const ENV_KEY: Record<ProviderName, string> = {
+  anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', openai_compatible: 'OPENAI_COMPATIBLE_API_KEY',
+};
 
 export const envKeyName = (p: ProviderName) => ENV_KEY[p];
+
+/** (121) The providers, as the builder names them. */
+export const PROVIDER_LABELS: Record<ProviderName, string> = {
+  anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini', openai_compatible: 'OpenAI-compatible',
+};
+export const providerLabel = (p: string) => PROVIDER_LABELS[p as ProviderName] ?? p;
+
+/** (121) Google's OpenAI-compatible endpoint for Gemini (used when a Gemini service names no base URL). */
+export const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+
+/** The base URL a service's SDK client uses: its own, Gemini's default, or the SDK's default (undefined). */
+export const baseUrlFor = (s: Pick<AiService, 'provider' | 'base_url'>) => s.base_url || (s.provider === 'gemini' ? GEMINI_BASE_URL : undefined);
 
 /** Where the service's key comes from: stored (encrypted), the server's environment, or nowhere. */
 export function keySource(s: Pick<AiService, 'provider' | 'api_key_enc'>): 'stored' | 'env' | 'missing' {
   if (s.api_key_enc) return 'stored';
   return process.env[ENV_KEY[s.provider]] ? 'env' : 'missing';
+}
+
+/**
+ * The service's API key, decrypted only here (never stored elsewhere): the stored one, else the server's
+ * environment variable. An OpenAI-compatible endpoint may need none (a local Ollama): the SDK then sends a
+ * placeholder.
+ */
+export function serviceKey(s: AiService): string {
+  let key: string | undefined;
+  try {
+    key = s.api_key_enc ? decryptSecret(s.api_key_enc) : process.env[ENV_KEY[s.provider]];
+  } catch (e) {
+    throw new AiError('config', `AI service ${s.name}: ${(e as Error).message}`);
+  }
+  if (!key && s.provider === 'openai_compatible') return 'none';
+  if (!key) throw new AiError('config', `AI service ${s.name} has no API key (enter one in the builder, or set ${ENV_KEY[s.provider]} on the server).`);
+  return key;
 }
 
 export async function loadService(name: string): Promise<AiService | undefined> {
@@ -51,17 +82,10 @@ export async function loadService(name: string): Promise<AiService | undefined> 
 
 /** The provider of a service, with its key (decrypted only here, never stored elsewhere). */
 export function providerFor(s: AiService): AiProvider {
-  let apiKey: string | undefined;
-  try {
-    apiKey = s.api_key_enc ? decryptSecret(s.api_key_enc) : process.env[ENV_KEY[s.provider]];
-  } catch (e) {
-    throw new AiError('config', `AI service ${s.name}: ${(e as Error).message}`);
-  }
-  if (!apiKey) throw new AiError('config', `AI service ${s.name} has no API key (enter one in the builder, or set ${ENV_KEY[s.provider]} on the server).`);
   const conf = {
     model: s.model,
-    apiKey,
-    baseUrl: s.base_url,
+    apiKey: serviceKey(s),
+    baseUrl: baseUrlFor(s),
     timeoutMs: s.timeout_s * 1000,
     maxTokens: s.max_tokens,
     effort: s.effort,

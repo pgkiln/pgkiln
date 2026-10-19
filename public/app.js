@@ -679,6 +679,28 @@ const pgkilnUnsaved = (() => {
   }
 
   const das = meta.das || [];
+  // (121) an AI agent's javascript tools: after the answer, the registered function of the action
+  // (pgkiln.actions.register) and the dynamic actions of the custom event of that name, with the arguments
+  scriptsLoaded.then(async () => {
+    for (const el of document.querySelectorAll('.assistant-action[data-ai-action]')) {
+      const name = el.dataset.aiAction;
+      let args = {};
+      try {
+        args = JSON.parse(el.dataset.aiArgs || '{}');
+      } catch {
+        // ignored
+      }
+      const region = el.closest('[id^="R"]');
+      el.remove();
+      const fn = actions.get(name);
+      try {
+        if (fn) await fn({ value: args, items: [], region, elements: [], message: null });
+        await runChain(das.filter((da) => da.event === 'custom' && da.trigger.some((t) => String(t).toLowerCase() === name.toLowerCase())), JSON.stringify(args));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  });
   document.addEventListener('change', (e) => {
     const name = e.target.name;
     if (!name) return;

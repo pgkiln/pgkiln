@@ -150,7 +150,8 @@ describe('AI assistant region (HR page 38, Claude)', () => {
       const body = (await b.get('/a/hr/38')).body;
       assert.match(body, /No AI service is configured/);
       assert.doesNotMatch(body, /assistant-log/);
-      assert.doesNotMatch(body, /class="ai-filter"/);
+      // (sprint 112) the report's question box stays: the built-in phrases answer without the service
+      assert.match(body, /class="ai-filter"/);
     } finally {
       await owner.query('update meta.ai_service set enabled = true where id = $1', [hrService]);
     }

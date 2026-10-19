@@ -24,6 +24,7 @@ import { topSqlRoutes } from './builder/top-sql.ts';
 import { diagnosticsRoutes } from './builder/diagnostics.ts';
 import { ldapRoutes } from './builder/ldap.ts';
 import { aiRoutes } from './builder/ai.ts';
+import { aiAgentRoutes } from './builder/ai-agents.ts';
 import { mailRoutes } from './builder/mail.ts';
 import { backupRoutes } from './builder/backups.ts';
 import { availabilityRoutes } from './builder/availability.ts';
@@ -226,6 +227,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(diagnosticsRoutes);
   await app.register(ldapRoutes);
   await app.register(aiRoutes);
+  await app.register(aiAgentRoutes);
   await app.register(mailRoutes);
   await app.register(backupRoutes);
   await app.register(availabilityRoutes);
