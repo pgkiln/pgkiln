@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-10-19
+
 Sprint 109: the Workspace home (parity handoff WS-1). Sprint 110: Data Reporter as a workspace tool (WS-2).
 
 ### Added
