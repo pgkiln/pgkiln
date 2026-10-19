@@ -33,6 +33,7 @@ All notable changes to this project are documented here. The format follows
   defaults `GEMINI_API_KEY` and `OPENAI_COMPATIBLE_API_KEY`. HR example: page 46 "HR agent" (`hr_64`).
 
 ### Fixed
+- Workspace home: the System message no longer touches the Activity regions above it.
 - **Docker upgrades:** `docker compose pull` in `deploy/` skipped the pgkiln image once one was present, because
   `pull_policy: missing` stood next to `build:`; upgrading with `docker compose pull && docker compose up -d` kept
   the old `:latest`. The line is gone. In a `compose.yaml` copied from 0.51.0 or older, delete it yourself. CI now
