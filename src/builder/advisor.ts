@@ -6,7 +6,7 @@ import { devDbForApp } from '../workspace-db.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
-import { invokeStepReferences, stepProblems, stepWarnings } from '../workflow.ts';
+import { invokeStepReferences, isQuery, outcomeMap, stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 import { plpgsqlBlock } from '../runtime/rest-handlers.ts';
 import { processProblems } from '../runtime/processes.ts';
@@ -272,6 +272,8 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
         if (st?.type === 'sql' && typeof st.code === 'string') checks.push([`${v}step ${st.name}: code`, st.code, 'statements']);
         if (st?.type === 'task' && typeof st.owners === 'string' && st.owners.trim()) checks.push([`${v}step ${st.name}: owners`, st.owners, 'select']);
         if (st?.type === 'switch' && Array.isArray(st.cases)) for (const cs of st.cases) if (typeof cs?.when === 'string') checks.push([`${v}step ${st.name}: when`, cs.when, 'boolean']);
+        // (123) a send_mail step's recipients query
+        if (st?.type === 'send_mail' && typeof st.to === 'string' && isQuery(st.to)) checks.push([`${v}step ${st.name}: to`, st.to, 'select']);
         for (const [field, sql, shape] of checks) {
           checked++;
           const problem = await checkSql(c, sql, shape);
@@ -369,7 +371,8 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
     if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);
     if (kind === 'workflow_definition') {
       const tasks = new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase()));
-      for (const problem of stepProblems(row.steps, tasks)) missing(e, 'Steps (JSON)', problem);
+      const outcomes = outcomeMap(all.filter((x) => x.kind === 'task_definition').map((x) => x.row));
+      for (const problem of stepProblems(row.steps, tasks, { outcomes, drafts: false })) missing(e, 'Steps (JSON)', problem);
       for (const warning of stepWarnings(row.steps)) missing(e, 'Steps (JSON)', warning, 'warning');
       // invoke_api steps: REST data sources, parameters, web credentials, variables (sprint 32)
       const refs = {
@@ -382,7 +385,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       for (const warning of invokeRefs.warnings) missing(e, 'Steps (JSON)', warning, 'warning');
       if (row.dev_version) {
         const field = `Steps of version ${row.dev_version} (development)`;
-        for (const problem of stepProblems(row.dev_steps, tasks)) missing(e, field, problem, 'warning');
+        for (const problem of stepProblems(row.dev_steps, tasks, { outcomes })) missing(e, field, problem, 'warning');
         for (const warning of stepWarnings(row.dev_steps)) missing(e, field, warning, 'warning');
         const devRefs = invokeStepReferences(row.dev_steps, refs);
         for (const problem of [...devRefs.errors, ...devRefs.warnings]) missing(e, field, problem, 'warning');

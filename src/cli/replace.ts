@@ -78,7 +78,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (121) the log of AI tool calls (the agents and tools themselves travel in meta.app)
   'ai_tool_call',
   // (122) Team Development issues of the workspace, linked to the application (workspace data: the workspace export)
-  'team_issue'];
+  'team_issue',
+  // (123) the log of running workflow instances migrated to a newer version (runtime data, like the instances)
+  'workflow_migration'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */

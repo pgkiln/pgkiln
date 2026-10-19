@@ -49,6 +49,7 @@ const NOT_EXPORTED = new Set([
   'feedback', // (084) users' feedback and the developers' answers: data of this installation
   'rest_object', // (113) AutoREST: tables and views published from the SQL Workshop, installation data like OAuth clients (they name this database's objects)
   'team_issue', // (122) Team Development issues: workspace data (the workspace export's "team" part links them to the application by alias)
+  'workflow_migration', // (123) the log of running instances migrated to a newer version: runtime data, like the instances
 ]);
 
 /** Where each exported table appears in the document. */

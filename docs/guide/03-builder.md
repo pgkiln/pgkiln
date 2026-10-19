@@ -1072,8 +1072,8 @@ is the earlier page: every component in one rail, with **Access control** next t
 | **Shortcuts** | Named texts: `"NAME"` in static content, help texts and confirm messages ([chapter 2](02-concepts.md#shortcuts-name)) |
 | **Application computations** | Computations of (application) items for every page: at sign-in, before every page, after every submit ([chapter 6](06-processing.md#application-computations)) |
 | **REST modules** | REST endpoints (method, path, SQL) served by pgkiln, with an OpenAPI description ([chapter 13](13-rest-api.md#rest-modules-in-the-builder)) |
-| **Workflows** | Multi-step processes of tasks, SQL, web service calls (invoke API), decisions, waits and parallel branches, with versions and a diagram ([chapter 6](06-processing.md#workflows)) |
-| **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, the SQL that runs on completion ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
+| **Workflows** | Multi-step processes of tasks, SQL, web service calls (invoke API), e-mail, decisions, waits and parallel branches, with versions, draft steps, migration of running instances and a diagram (SVG / PNG download) ([chapter 6](06-processing.md#workflows)) |
+| **Task definitions** | Approvals and action tasks: subject, owners, administrators, due date, custom outcomes, the SQL that runs on completion, events and e-mail notifications ([chapter 6](06-processing.md#approvals-and-the-task-list)) |
 | **Document templates** | Letters, invoices and other PDFs filled from a query ([chapter 16](16-files.md#document-templates)), with a preview |
 | **Build options** | Include / exclude switches for features; pages and their components name one in their *Build option* property, and *Used in* lists them ([chapter 6](06-processing.md#build-options)) |
 | **Web credentials** | How the application signs in to web services (basic, API key header, bearer token, OAuth2 client credentials); the secret is write-only and encrypted ([chapter 19](19-rest-data-sources.md#web-credentials)) |

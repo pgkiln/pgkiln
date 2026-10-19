@@ -11,6 +11,7 @@ import { scheduleProblem } from '../automations.ts';
 import { ICONS, isIcon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
 import { stepProblems } from '../workflow.ts';
+import { eventProblems, notificationProblems, outcomeProblems } from '../task-events.ts';
 import { workflowBeforeSave } from './workflows.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 import { TEMPLATE_COMPONENT_SPEC } from './template-spec.ts';
@@ -614,7 +615,18 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       if (v.expiration && !v.due_in) return 'When overdue: set "Due in" first (a task without a due date is never overdue).';
       if (v.expiration === 'renew' && v.max_renewals !== null && v.max_renewals !== undefined && v.max_renewals !== '' && (Number(v.max_renewals) < 1 || Number(v.max_renewals) > 100)) return 'Maximum renewals: 1 to 100.';
       if (v.expiration === 'escalate' && !String(v.escalate_role ?? '').trim()) return 'Escalation role: the role that takes the task over.';
-      return null;
+      // (123) custom outcomes, events and notifications (parseFields gives the JSON as text)
+      const json = (x: unknown) => {
+        const parsed = typeof x === 'string' ? (x.trim() ? JSON.parse(x) : null) : x;
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !Object.keys(parsed).length ? null : parsed;
+      };
+      const problems = [...outcomeProblems(json(v.outcomes)), ...eventProblems(json(v.events)), ...notificationProblems(json(v.notifications))];
+      return problems.length ? problems.join(' ') : null;
+    },
+    // (123) an empty JSON field is "none" (null), not {}
+    beforeSave: async (v) => {
+      for (const k of ['outcomes', 'events', 'notifications']) if (v[k] === '{}' || v[k] === '[]' || v[k] === '') v[k] = null;
+      if (v.fail_recovery === '') v.fail_recovery = null;
     },
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: "Application SQL creates tasks with meta.create_task('NAME', :P1_ID, params, owners)." },
@@ -632,7 +644,16 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'details_page', label: 'Details page', kind: 'page', group: 'Details', help: 'The subject links here, setting the item below to the task\'s record key.' },
       { name: 'details_item', label: 'Details item', kind: 'upper', group: 'Details', help: 'e.g. P7_ID' },
       { name: 'action_code', label: 'On completion (SQL)', kind: 'code', wide: true, group: 'Action',
-        help: 'Runs as the application\'s role when the task is approved, rejected or completed, in the same transaction (an error undoes the decision). Binds: :TASK_ID, :DETAIL_PK, :OUTCOME (APPROVED, REJECTED, COMPLETED), :COMMENT, :APPROVER, :INITIATOR and the task parameters, e.g. select expenses.decide(:DETAIL_PK::int, :OUTCOME, :COMMENT)' },
+        help: 'Runs as the application\'s role when the task is approved, rejected or completed, in the same transaction (an error undoes the decision). Binds: :TASK_ID, :DETAIL_PK, :OUTCOME (APPROVED, REJECTED, COMPLETED, or a custom outcome such as YES), :COMMENT, :APPROVER, :INITIATOR and the task parameters, e.g. select expenses.decide(:DETAIL_PK::int, :OUTCOME, :COMMENT)' },
+      // (123) custom outcomes, events and notifications
+      { name: 'outcomes', label: 'Outcomes (JSON)', kind: 'json', wide: true, group: 'Outcomes',
+        help: 'Custom outcomes instead of Approve / Reject (or Complete): [{"name": "YES", "label": "Yes", "colour": "success"}, {"name": "NO", "label": "No", "colour": "danger"}, {"name": "UNDECIDED", "label": "Undecided", "colour": "warning"}] · colours: default, primary, success, danger, warning. The task list shows one button each; :OUTCOME is the name (YES); a workflow\'s task step names them in "next" ({"yes": "PAY", "no": "END"}) and a switch case in "outcome". Empty: the type\'s own outcomes.' },
+      { name: 'events', label: 'Events (JSON)', kind: 'json', wide: true, group: 'Events',
+        help: '[{"on": "complete", "type": "sql", "code": "select expenses.log(:TASK_ID::bigint, :OUTCOME)"}, {"on": "expire", "type": "mail", "to": "select email from staff where role = \'manager\'", "template": "TASK_EXPIRED"}, {"on": "fail", "type": "workflow", "workflow": "FIX_REQUEST", "vars": {"REASON": "&ERROR."}}] · on: complete, expire, fail (the completion SQL failed) · type: sql (as the application\'s role), mail (meta.send_mail_template with a "template", or "subject" and "body"; "to" is a SELECT returning addresses, or addresses), workflow (meta.start_workflow with the task\'s record key and parameters, plus "vars"). Binds and #NAME# placeholders: the task parameters, :TASK_ID, :DETAIL_PK, :SUBJECT, :OUTCOME, :APPROVER, :INITIATOR, :EVENT; for fail also :ERROR and :COMMENT. Complete and expire run right after the commit, in a transaction of their own; fail runs in the request.' },
+      { name: 'fail_recovery', label: 'When the completion SQL fails', kind: 'select', options: ['', 'reopen', 'complete'], group: 'Events',
+        help: 'reopen (the default): the decision is undone and the task stays open; the user sees the error. complete: the task is completed with the outcome, without the SQL\'s effect. The "fail" events run either way.' },
+      { name: 'notifications', label: 'Notifications (JSON)', kind: 'json', wide: true, group: 'Events',
+        help: 'E-mail templates (Shared Components → E-mail templates) sent by pgkiln itself: {"create": "TASK_CREATED", "complete": "TASK_DONE", "expire": "TASK_EXPIRED"} · create: to the potential owners (named users and the application\'s users with an owner role), complete: to the initiator, expire: to both; at the e-mail address of their account. Placeholders: #SUBJECT#, #TASK_ID#, #DETAIL_PK#, #OUTCOME#, #APPROVER#, #INITIATOR#, #EVENT# and the task parameters. The application needs a mail service.' },
     ],
   },
   template_component: TEMPLATE_COMPONENT_SPEC,

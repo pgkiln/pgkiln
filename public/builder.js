@@ -1282,3 +1282,50 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
   });
   for (const b of form.querySelectorAll('[data-cron-nojs]')) b.hidden = true;
 })();
+
+// (123) Workflow diagram as PNG: the server's SVG file drawn on a canvas. Without JavaScript the
+// button stays hidden and the SVG link is the download.
+(() => {
+  for (const button of document.querySelectorAll('[data-wf-png]')) {
+    const link = button.parentElement?.querySelector('[data-wf-svg]');
+    if (!link || typeof HTMLCanvasElement === 'undefined') continue;
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        const res = await fetch(link.href, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const svg = await res.text();
+        const img = new Image();
+        await new Promise((ok, fail) => {
+          img.onload = ok;
+          img.onerror = () => fail(new Error('The diagram could not be drawn.'));
+          img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+        });
+        const scale = 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round((img.naturalWidth || 800) * scale));
+        canvas.height = Math.max(1, Math.round((img.naturalHeight || 600) * scale));
+        const g = canvas.getContext('2d');
+        g.fillStyle = '#ffffff';
+        g.fillRect(0, 0, canvas.width, canvas.height);
+        g.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/png'));
+        if (!blob) throw new Error('The browser could not make a PNG.');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'workflow.png';
+        const name = /([^/?]+)\.svg/.exec(res.headers.get('content-disposition') || '');
+        if (name) a.download = `${name[1]}.png`;
+        document.body.append(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      } catch (e) {
+        window.alert(e.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+})();

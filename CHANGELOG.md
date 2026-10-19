@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Workflow 26.2** (WS-6; APEX 26.1 / 26.2; migration 123): task definitions may list **custom outcomes** (for
+  example Yes / No / Undecided, each with a label and a colour from a fixed list) instead of Approve / Reject; workflows
+  branch on them in a task step's `next` or a switch case `{"outcome": …}`. **Task events** run when a task is
+  completed, expires or its completion SQL fails: SQL as the application's role, an e-mail, or start a workflow; *When
+  the completion SQL fails* reopens the task (default) or keeps it completed. **Notifications** send e-mail templates
+  when a task is created, completed or expires. New steps: **Send E-Mail** (`send_mail`) and **draft** placeholders,
+  which only a development version may hold (Activate is refused). **Migrate running instances** to a newer version of
+  the workflow with a step mapping, a preview, one transaction and a log (instances inside open parallel branches
+  can't be migrated yet). The workflow diagram downloads as **SVG** or **PNG**. HR example `hr_67`.
 - **Team Development** (WS-3; APEX: Team Development; migration 122): Builder → Team Development tracks a workspace's
   issues with labels (in groups, colours from a fixed list), milestones, assignees, links to applications and pages,
   Markdown comments with @mentions shown in the builder, and a history of changes. A filtered list with saved views

@@ -741,6 +741,20 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         workspace_export: '/builder/workspace-export',
         rest_module: `/builder/apps/${appId}/shared?c=rest_module-${(await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'v1'`, [appId])).id}`,
         workflow: `/builder/apps/${appId}/shared?c=workflow_definition-${(await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'ONBOARDING'`, [appId])).id}`,
+        // (sprint 114) a workflow with a draft step in its development version, and migrating an instance of version 1 (a preview)
+        ...(await (async () => {
+          const def = (await owner.one(`select id from meta.workflow_definition where app_id = $1 and name = 'SALARY_CHANGE'`, [appId])).id;
+          await owner.query(`delete from meta.workflow where app_id = $1 and name = 'SALARY_CHANGE' and title like 'Salary of E2E%'`, [appId]);
+          const wf = await owner.tx(async (c) => {
+            await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'blake', true)`, [String(appId)]);
+            return (await c.query(`select meta.start_workflow('SALARY_CHANGE', '7499', '{"ENAME": "E2E with a rather long name for a phone", "NEW_SAL": 1700}') as id`)).rows[0].id;
+          });
+          await owner.query(`update meta.workflow w set version = '1', state = 'faulted', error = 'e2e: kept still', steps = (select x->'steps' from meta.workflow_definition d, jsonb_array_elements(d.inactive_versions) x
+                              where d.id = w.definition_id and x->>'version' = '1') where w.id = $1`, [wf]);
+          const migrate = `/builder/apps/${appId}/shared/workflow_definition/${def}/migrate`;
+          return { workflow_drafts: `/builder/apps/${appId}/shared?c=workflow_definition-${def}`, workflow_migrate: migrate,
+            workflow_migrate_preview: `${migrate}?preview=1&to=2&wf=${wf}&m.APPROVE=APPROVE` };
+        })()),
         task_definition: `/builder/apps/${appId}/shared?c=task_definition-${(await owner.one(`select id from meta.task_definition where app_id = $1 and name = 'LEAVE_APPROVAL'`, [appId])).id}`,
         document: `/builder/apps/${appId}/shared?c=document_template-${(await owner.one(`select id from meta.document_template where app_id = $1 and name = 'EMPLOYEE_SHEET'`, [appId])).id}`,
         used_in: `/builder/apps/${appId}/shared?c=lov-${(await owner.one(`select id from meta.lov where app_id = $1 and name = 'DEPARTMENTS'`, [appId])).id}`,
@@ -976,6 +990,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         }
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.workflow where app_id = $1 and name = 'SALARY_CHANGE' and title like 'Salary of E2E%'`, [appId]);
         await owner.query(`delete from meta.dump_job where username = 'e2e_dump'`);
         await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
