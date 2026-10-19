@@ -4,6 +4,7 @@ import { appTx, savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { logActivity, saveState } from '../session.ts';
+import { runActions, taskBinds, type TaskAction } from '../task-events.ts';
 import { pageAllowed } from './authz.ts';
 import { publicError, stripSemicolon, type PageContext } from './context.ts';
 import { appDateMask, appDateReader, dateField } from './items.ts';
@@ -27,8 +28,24 @@ import { loadContext, safeNext, txContext, type Req } from './routes.ts';
 // /a/:alias/tasks/vacation through meta.set_vacation_rule / clear_vacation_rule.
 // Expired tasks (the definition's expiration policy) show as done.
 
-export const TASK_ACTIONS = ['claim', 'release', 'approve', 'reject', 'complete', 'delegate', 'cancel', 'comment'] as const;
+export const TASK_ACTIONS = ['claim', 'release', 'approve', 'reject', 'complete', 'delegate', 'cancel', 'comment', 'outcome'] as const;
+/** (123) a custom outcome's colour → the button's classes (a whitelist: the definition can't add others) */
+const OUTCOME_CLASS: Record<string, string> = { default: '', primary: ' btn-hot', success: ' to-success', danger: ' to-danger', warning: ' to-warning' };
+interface Outcome { name: string; label?: string; colour?: string }
 type Action = (typeof TASK_ACTIONS)[number];
+
+/** What meta.complete_task returns (123: with the outcome, its label and the fail events). */
+interface CompleteResult {
+  action_code: string | null;
+  detail_pk: string | null;
+  params: Record<string, unknown>;
+  initiator: string;
+  outcome?: string;
+  label?: string;
+  subject?: string;
+  fail_events?: unknown[];
+  fail_recovery?: 'reopen' | 'complete';
+}
 
 interface TaskRow {
   id: string;
@@ -54,6 +71,8 @@ interface TaskRow {
   may_release: boolean;
   may_delegate: boolean;
   may_cancel: boolean;
+  /** (123) the definition's custom outcomes */
+  outcomes: Outcome[] | null;
 }
 
 export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
@@ -96,18 +115,23 @@ export async function renderTasks(ctx: PageContext, r: Region): Promise<Raw> {
     ctx.detached.push(html`<form id="${f}" method="post" action="${action(k.id)}">${csrf}</form>`);
     const button = (a: Action, label: string, cls = '', confirm?: string) =>
       html`<button class="btn${cls}" form="${f}" name="action" value="${a}"${confirm ? raw(` data-confirm="${confirm.replace(/"/g, '&quot;')}"`) : ''}>${label}</button>`;
+    // (123) custom outcomes: one button each, posting action=outcome:<name>
+    const custom = Array.isArray(k.outcomes) && k.outcomes.length ? k.outcomes.filter((o) => o && typeof o.name === 'string') : null;
     const open = k.state === 'unassigned' || k.state === 'assigned';
     const link = k.details_page && k.details_item && k.detail_pk !== null && (await pageAllowed(ctx, k.details_page))
       ? html`<a ${linkAttrs(ctx, k.details_page, { [k.details_item]: k.detail_pk })}>${k.subject}</a>`
       : html`${k.subject}`;
     const status = open
       ? k.state === 'assigned' ? t('tasks.assigned_to', { user: k.actual_owner ?? '' }) : t('tasks.unassigned')
-      : k.state === 'cancelled' ? t('tasks.cancelled') : k.state === 'expired' ? t('tasks.expired') : t(`tasks.outcome.${k.outcome ?? 'completed'}`);
+      : k.state === 'cancelled' ? t('tasks.cancelled') : k.state === 'expired' ? t('tasks.expired')
+      : custom?.find((o) => o.name.toLowerCase() === k.outcome)?.label ?? (['approved', 'rejected', 'completed'].includes(k.outcome ?? 'completed') ? t(`tasks.outcome.${k.outcome ?? 'completed'}`) : String(k.outcome).toUpperCase());
     const actions = open
       ? html`<div class="task-actions">
           ${k.may_act
             ? html`<input name="comment" form="${f}" maxlength="4000" placeholder="${t('tasks.comment_optional')}" aria-label="${t('tasks.comment')}">
-                ${k.type === 'approval'
+                ${custom
+                  ? custom.map((o) => html`<button class="btn${OUTCOME_CLASS[o.colour ?? 'default'] ?? ''}" form="${f}" name="action" value="${`outcome:${o.name.toLowerCase()}`}">${o.label ?? o.name}</button>`)
+                  : k.type === 'approval'
                   ? html`${button('approve', t('tasks.approve'), ' btn-hot')}${button('reject', t('tasks.reject'), ' btn-danger')}`
                   : button('complete', t('tasks.complete'), ' btn-hot')}`
             : ''}
@@ -198,9 +222,14 @@ export async function taskRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     const next = safeNext(ctx.app, b.next);
     const id = String(req.params.id ?? '');
-    const act = b.action as Action;
-    if (b.__csrf !== ctx.session.csrf_token || !/^\d{1,18}$/.test(id) || !TASK_ACTIONS.includes(act)) return reply.redirect(next, 303);
+    // (123) a custom outcome: "outcome:<name>" (the definition's outcomes are checked by meta.complete_task)
+    const custom = typeof b.action === 'string' && /^outcome:[a-z][a-z0-9_]{0,29}$/i.test(b.action) ? b.action.slice(8).toLowerCase() : null;
+    const act = (custom ? 'outcome' : b.action) as Action;
+    if (b.__csrf !== ctx.session.csrf_token || !/^\d{1,18}$/.test(id) || !TASK_ACTIONS.includes(act) || (act === 'outcome' && !custom)) return reply.redirect(next, 303);
     const t = ctx.locale.t;
+    let failed: string | null = null;
+    let failedErr: unknown = null;
+    let label: string | null = null;
     try {
       await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -220,20 +249,42 @@ export async function taskRoutes(app: FastifyInstance) {
             await c.query('select meta.add_task_comment($1, $2)', [id, (b.text ?? '').slice(0, 4000)]);
             break;
           default: {
-            const outcome = act === 'approve' ? 'approved' : act === 'reject' ? 'rejected' : 'completed';
-            const done = (await c.query<{ r: { action_code: string | null; detail_pk: string | null; params: Record<string, unknown>; initiator: string } }>(
-              'select meta.complete_task($1, $2, $3) as r', [id, outcome, comment])).rows[0].r;
+            const outcome = custom ?? (act === 'approve' ? 'approved' : act === 'reject' ? 'rejected' : 'completed');
+            // (123) a failing completion SQL with fail events or a recovery: back to one of these savepoints
+            await c.query('savepoint task_decision');
+            const done = (await c.query<{ r: CompleteResult }>('select meta.complete_task($1, $2, $3) as r', [id, outcome, comment])).rows[0].r;
+            label = done.label ?? null;
             // the definition's action, as the application's role, in this transaction: an error undoes the decision
             if (done.action_code?.trim()) {
               const params = Object.fromEntries(Object.entries(done.params ?? {}).map(([k, v]) => [k.toUpperCase(), v === null || v === undefined ? null : typeof v === 'object' ? JSON.stringify(v) : String(v)]));
-              const binds = { ...params, TASK_ID: id, DETAIL_PK: done.detail_pk, OUTCOME: outcome.toUpperCase(), COMMENT: comment, APPROVER: ctx.user, INITIATOR: done.initiator };
-              await c.query(stripSemicolon(applyBinds(done.action_code, binds)));
+              const binds = { ...params, TASK_ID: id, DETAIL_PK: done.detail_pk, OUTCOME: (done.outcome ?? outcome).toUpperCase(), COMMENT: comment, APPROVER: ctx.user, INITIATOR: done.initiator };
+              const handled = (done.fail_events?.length ?? 0) > 0 || done.fail_recovery === 'complete';
+              if (!handled) await c.query(stripSemicolon(applyBinds(done.action_code, binds)));
+              else {
+                await c.query('savepoint task_action');
+                try {
+                  await c.query(stripSemicolon(applyBinds(done.action_code, binds)));
+                  await c.query('release savepoint task_action');
+                } catch (e) {
+                  // (123) the Fail event: undo the SQL's effect (and, to reopen, the decision), log it, run the fail actions
+                  failed = (e as Error).message;
+                  failedErr = e;
+                  await c.query(done.fail_recovery === 'complete' ? 'rollback to savepoint task_action' : 'rollback to savepoint task_decision');
+                  await c.query('select meta.log_task_failure($1, $2)', [id, failed]);
+                  await runActions(c, (done.fail_events ?? []) as TaskAction[], {
+                    ...taskBinds({ id, detail_pk: done.detail_pk, params: done.params, subject: done.subject ?? '', outcome: done.outcome ?? outcome, completed_by: ctx.user, initiator: done.initiator }),
+                    EVENT: 'FAIL', ERROR: failed, COMMENT: comment,
+                  }, done.detail_pk);
+                  if (done.fail_recovery !== 'complete') return;
+                }
+              }
             }
           }
         }
       });
-      logActivity({ appId: ctx.app.id, username: ctx.user, event: 'task', ip: ctx.ip, detail: `${act} ${id}` });
-      ctx.session.state.__FLASH = t(`tasks.done.${act}`);
+      logActivity({ appId: ctx.app.id, username: ctx.user, event: 'task', ip: ctx.ip, detail: `${custom ? `outcome ${custom}` : act} ${id}${failed ? ' (failed)' : ''}` });
+      if (failed !== null) ctx.session.state.__FLASH_ERROR = t('tasks.done.failed', { error: await publicError(ctx, failedErr, 'task') });
+      else ctx.session.state.__FLASH = act === 'outcome' ? t('tasks.done.outcome', { outcome: label ?? custom ?? '' }) : t(`tasks.done.${act}`);
     } catch (e) {
       ctx.session.state.__FLASH_ERROR = await publicError(ctx, e, 'task');
     }

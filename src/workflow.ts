@@ -880,6 +880,8 @@ export async function startWorkflowRunner() {
       do {
         again = false;
         await runWorkflows();
+        // (123) task events and notifications queued by tasks (src/task-events.ts)
+        await (await import('./task-events.ts')).runTaskHooks();
       } while (again);
     } catch (e) {
       console.error('workflows:', (e as Error).message);

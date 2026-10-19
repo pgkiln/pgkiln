@@ -392,3 +392,16 @@ begin
 end
 $$;
 revoke all on function meta.migrate_workflows(int, text, bigint[], jsonb, boolean, text) from public;
+
+-- Same as 072, plus the definition's custom outcomes (the task list's buttons).
+create or replace view meta.tasks with (security_barrier) as
+  select t.id, t.app_id, d.name as definition, d.type, t.subject, t.detail_pk, t.params, t.state, t.outcome,
+         t.priority, t.initiator, t.actual_owner, t.owner_users, t.owner_roles, t.created_at, t.due_at,
+         t.completed_at, t.completed_by, d.details_page, d.details_item,
+         t.due_at is not null and t.due_at < now() and t.state in ('unassigned', 'assigned') as overdue,
+         (r).is_initiator, (r).is_owner, (r).is_admin, (r).may_act, (r).may_claim, (r).may_release, (r).may_delegate, (r).may_cancel,
+         t.tenant_id, d.outcomes
+    from (select t, meta.task_rights(t) as r from meta.task t where t.app_id = meta.app_id()) x
+    cross join lateral (select (x.t).*) t
+    join meta.task_definition d on d.id = t.definition_id
+   where (x.r).may_see;
