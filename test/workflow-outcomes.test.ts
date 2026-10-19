@@ -204,6 +204,7 @@ describe('custom task outcomes', () => {
 
 describe('task events and notifications', () => {
   test('create: the owners get the template; complete: the event SQL runs as the application, after the commit', async () => {
+    await runTaskHooks(); // notifications earlier tests left queued: the newest mail below is this task's
     const id = await start('blake', 'SALARY_CHANGE', String(EMPNO), { ENAME: 'Allen', NEW_SAL: 1650 });
     await settle(id);
     const task = (await wf(id)).waiting_task;
