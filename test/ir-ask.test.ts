@@ -322,3 +322,22 @@ describe('HR Demo employees: with an AI service (mock)', () => {
     }
   });
 });
+
+describe('builder', () => {
+  test('the report\'s settings offer the built-in phrases without an AI service', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    const pageId = (await owner.one('select page_id from meta.region where id = $1', [region])).page_id;
+    const form = (await b.get(`/builder/pages/${pageId}?c=region-${region}`)).body;
+    assert.match(form, /<option value="-" selected>Built-in phrases \(no AI\)<\/option>/);
+    try {
+      await b.submit(`/builder/pages/${pageId}/region/${region}/ai-filter`, { service: SERVICE.toLowerCase(), placeholder: 'Ask me' });
+      assert.deepEqual((await owner.one('select config from meta.region where id = $1', [region])).config.ai_filter, { service: SERVICE, placeholder: 'Ask me' });
+      await b.submit(`/builder/pages/${pageId}/region/${region}/ai-filter`, { service: '-' });
+      assert.deepEqual((await owner.one('select config from meta.region where id = $1', [region])).config.ai_filter, {});
+    } finally {
+      await owner.query('update meta.region set config = $2 where id = $1', [region, JSON.stringify(oldConfig)]);
+    }
+  });
+});
