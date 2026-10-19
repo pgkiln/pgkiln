@@ -1369,7 +1369,7 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .wh-top-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .wh-top-head h2 { margin: 0; }
 .wh-timeframe { display: inline-flex; }
-.wh-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; margin-top: 10px; }
+.wh-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; margin: 10px 0 20px; }
 .wh-top > .region { margin: 0; min-width: 0; }
 .wh-message { margin-bottom: 16px; }
 .wh-message-text { margin: 0 0 8px; white-space: pre-line; overflow-wrap: anywhere; }

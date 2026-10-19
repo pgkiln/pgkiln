@@ -982,6 +982,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           // (sprint 75) the SQL Workshop's tabs never scroll sideways (main tabs and a More menu)
           if (await page.locator('.sw-tabs').count())
             assert.ok(await page.locator('.sw-tabs').evaluate((el) => el.scrollWidth <= el.clientWidth + 1), `${name}: the SQL Workshop tabs fit`);
+          // the Workspace home keeps room between the Activity regions and the System message
+          if (name === 'workspace_home') {
+            const gap = await page.locator('.wh-top').evaluate((el) => el.nextElementSibling!.getBoundingClientRect().top - el.getBoundingClientRect().bottom);
+            assert.ok(gap >= 12, `workspace_home: ${gap}px between Activity and the System message`);
+          }
         }
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
