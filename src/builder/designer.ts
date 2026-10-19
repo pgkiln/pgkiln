@@ -1,3 +1,4 @@
+import { pageIssuesNote } from './team.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -303,7 +304,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const blocking = runOnly ?? locks.find((l) => l.locked_by !== s.username);
     const mine = locks.find((l) => l.locked_by === s.username);
     const commentCount = (await owner.one('select count(*)::int as n from meta.dev_comment where app_id = $1 and page_no = $2', [p.app_id, p.page_no])).n;
-    const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} Your changes will be refused.</div>` : ''}
+    const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} Your changes will be refused.</div>` : ''}${await pageIssuesNote(p.app_id, p.page_no)}
       <div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="Page">
       ${tab('pd-c-layout', 'Layout', layout, true)}
       ${tab('pd-c-search', 'Page search', pageSearch)}

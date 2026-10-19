@@ -74,7 +74,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (086) users' preferences
   'user_preference',
   // (113) AutoREST: the tables and views the application publishes (SQL Workshop › RESTful Services)
-  'rest_object'];
+  'rest_object',
+  // (122) Team Development issues of the workspace, linked to the application (workspace data: the workspace export)
+  'team_issue'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
