@@ -6,8 +6,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.50.0 (October 2026): a transaction mode in the SQL Worksheet (Commit and Rollback, rolled back when idle), the code editor's syntax colours in the builder's light and dark themes, highlighted read-only SQL across the SQL Workshop, and the Data Modeler in dark mode.
-- **APEX parity:** 146 features compared: 143 available, none partial or missing, 3 deliberately
+- **Current release:** 0.51.0 (October 2026): a Workspace home after signing in, with tool cards, a summary, top applications, users and developers and an optional release check; Data Reporter as a workspace tool, with datasets and reporting applications whose editors publish reports by URL for viewers.
+- **APEX parity:** 147 features compared: 144 available, none partial or missing, 3 deliberately
   not planned (collections, JSON duality views and database links: PostgreSQL covers them).
 
 ## Next
