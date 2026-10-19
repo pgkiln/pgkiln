@@ -9783,6 +9783,603 @@ describe('sprint 110 WS-2', () => {
   });
 });
 
+describe('sprint 111 WS-4', () => {
+  // AI agents and tools (migration 121): SQL tools are read-only and run as the app role through RLS; navigate tools link
+  // only to pages the user may open (pgkiln builds the checksum); an agent's authorization scheme; model output escaped;
+  // AI service keys never reach a page, a log or an export. Against the scripted AI mock (no real API calls).
+  const SVC = 'HR_ASSISTANT';
+  let mock: any;
+  let saved: { ai_agents: unknown; ai_tools: unknown };
+  let regionId: number;
+  let regionConfig: unknown;
+  const calls = () => mock.seen.filter((r: any) => r.path === '/claude/v1/messages');
+  const setAgent = async (agent: Record<string, unknown>, tools: Record<string, unknown>[]) =>
+    owner.query('update meta.app set ai_agents = $2, ai_tools = $3 where id = $1', [appId, JSON.stringify([{ name: 'SEC_AGENT', service: SVC, ...agent }]), JSON.stringify(tools)]);
+  const ask = async (b: Browser, message: string) => {
+    await b.get('/a/hr/46');
+    return b.post(`/a/hr/46/assistant/${regionId}/send`, { __csrf: b.lastCsrf, message, params: '' });
+  };
+  const lastResult = () => calls().at(-1).body.messages.at(-1).content[0];
+  before(async () => {
+    const { startScriptMock } = await import('./ai-script-mock.ts');
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+    const { encryptSecret } = await import('../src/secrets.ts');
+    mock = await startScriptMock();
+    saved = (await owner.one('select ai_agents, ai_tools from meta.app where id = $1', [appId]))!;
+    const r = await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 46 and r.type = 'ai_assistant'`, [appId]);
+    regionId = r!.id;
+    regionConfig = r!.config;
+    await owner.query(`update meta.region set config = '{"agent": "SEC_AGENT"}' where id = $1`, [regionId]);
+    await owner.query('delete from meta.ai_service where name = $1', [SVC]);
+    const s = await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3) returning id`,
+      [SVC, `${mock.base}/claude`, encryptSecret('sk-ant-sec111-SECRET')]);
+    await owner.query('insert into meta.app_ai_service (app_id, service_id) values ($1, $2)', [appId, s!.id]);
+  });
+  after(async () => {
+    await owner.query('update meta.app set ai_agents = $2, ai_tools = $3 where id = $1', [appId, JSON.stringify(saved.ai_agents), JSON.stringify(saved.ai_tools)]);
+    await owner.query('update meta.region set config = $2 where id = $1', [regionId, JSON.stringify(regionConfig)]);
+    await owner.query('delete from meta.ai_conversation where region_id = $1', [regionId]);
+    await owner.query('delete from meta.ai_service where name = $1', [SVC]);
+    await mock.close();
+  });
+
+  test('an SQL tool can\'t write: functions that change data and data-modifying WITH fail, nothing changes', async () => {
+    await setAgent({ tools: ['raise', 'purge'] }, [
+      { name: 'raise', type: 'sql', description: 'd', sql: 'select hr.give_raise(7369, 50) as sal' },
+      { name: 'purge', type: 'sql', description: 'd', sql: 'with d as (delete from hr.leave_request returning 1) select count(*) from d' },
+    ]);
+    const sal = (await owner.one('select sal from hr.emp where empno = 7369'))!.sal;
+    const leave = (await owner.one('select count(*)::int as n from hr.leave_request'))!.n;
+    mock.script = [{ tools: [{ name: 'raise', input: {} }] }, { tools: [{ name: 'purge', input: {} }] }, { text: 'No.' }];
+    const b = await as('king');
+    assert.equal((await ask(b, 'raise SMITH')).statusCode, 303);
+    const [, second, third] = calls().slice(-3);
+    assert.equal(second.body.messages.at(-1).content[0].is_error, true);
+    assert.equal(third.body.messages.at(-1).content[0].is_error, true);
+    assert.equal((await owner.one('select sal from hr.emp where empno = 7369'))!.sal, sal);
+    assert.equal((await owner.one('select count(*)::int as n from hr.leave_request'))!.n, leave);
+    const log = (await owner.query(`select tool, status from meta.ai_tool_call where app_id = $1 and agent = 'SEC_AGENT' order by id desc limit 2`, [appId])).rows;
+    assert.deepEqual(log.map((x) => x.status), ['error', 'error']);
+  });
+
+  test('an SQL tool runs as the application\'s role with row level security; the model can\'t set :APP_USER', async () => {
+    await setAgent({ tools: ['who'] }, [
+      { name: 'who', type: 'sql', description: 'd', parameters: { N: { type: 'integer', optional: true } },
+        sql: 'select current_user as role, :APP_USER as app_user, (select count(*) from hr.leave_request where empno <> hr.current_empno())::int as others' },
+    ]);
+    const { aiToolProblems } = await import('../src/runtime/ai-agents.ts');
+    assert.ok(aiToolProblems({ name: 'x', type: 'sql', description: 'd', sql: 'select 1', parameters: { APP_USER: { type: 'string' } } }).length);
+    await owner.query(`insert into hr.leave_request (empno, start_date, end_date, days, reason) values (7499, '2026-11-02', '2026-11-03', 2, 'SEC111 allen')`);
+    try {
+      mock.script = [{ tools: [{ name: 'who', input: { N: null } }] }, { tools: [{ name: 'who', input: { APP_USER: 'king' } }] }, { text: 'ok' }];
+      await ask(await as('scott'), 'who am I');
+      const [, second, third] = calls().slice(-3);
+      const rows = JSON.parse(second.body.messages.at(-1).content[0].content).rows;
+      assert.deepEqual(rows, [{ role: 'hr_app', app_user: 'scott', others: 0 }]);
+      assert.equal(third.body.messages.at(-1).content[0].is_error, true);
+      assert.match(third.body.messages.at(-1).content[0].content, /Unknown argument "APP_USER"/);
+    } finally {
+      await owner.query(`delete from hr.leave_request where reason = 'SEC111 allen'`);
+    }
+  });
+
+  test('a navigate tool links only to pages the user may open, with item values of that page, checksum built by pgkiln', async () => {
+    await setAgent({ tools: ['go'] }, [{ name: 'go', type: 'navigate', description: 'd', pages: [3, 2] }]);
+    mock.script = [
+      { tools: [{ name: 'go', input: { page: 3, label: 'Open', items: [{ name: 'P3_EMPNO', value: '7839' }] } }] },
+      { tools: [{ name: 'go', input: { page: 2, label: 'List', items: [{ name: 'P3_EMPNO', value: '7839' }] } }] },
+      { tools: [{ name: 'go', input: { page: 99, label: 'x', items: [] } }] },
+      { text: 'Sorry.' },
+    ];
+    const scott = await as('scott');
+    await ask(scott, 'open KING');
+    const four = calls().slice(-4);
+    assert.deepEqual(four[0].body.tools[0].input_schema.properties.page.enum, [2], 'page 3 (MANAGER) is not offered to scott');
+    const results = four.slice(1).map((c: any) => c.body.messages.at(-1).content[0]);
+    assert.ok(results.every((r: any) => r.is_error === true));
+    assert.match(results[0].content, /may not open page 3/);
+    assert.match(results[1].content, /Page 2 has no item P3_EMPNO/);
+    assert.doesNotMatch((await scott.get('/a/hr/46')).body, /assistant-links/);
+    assert.equal((await owner.one(`select status from meta.ai_tool_call where app_id = $1 and tool = 'go' and username = 'scott' order by id limit 1 offset 0`, [appId]))!.status, 'refused');
+    // a manager gets the link; the model's values go in as they are (no &ITEM. substitution), bound to the user
+    mock.script = [{ tools: [{ name: 'go', input: { page: 3, label: 'Open <img src=x onerror=alert(1)>', items: [{ name: 'p3_empno', value: '&APP_USER.' }] } }] }, { text: '<script>alert(1)</script> **done**' }];
+    const king = await as('king');
+    await ask(king, 'open it');
+    const page = (await king.get('/a/hr/46')).body;
+    const cs = urlChecksum(appId, 3, 'king', { P3_EMPNO: '&APP_USER.' });
+    assert.ok(page.includes(`href="/a/hr/3?P3_EMPNO=%26APP_USER.&amp;cs=${cs}"`), 'the URL pgkiln built');
+    assert.match(page, />Open &lt;img src=x onerror=alert\(1\)&gt;<\/a>/);
+    assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt; <strong>done<\/strong>/);
+    assert.doesNotMatch(page, /<img src=x|<script>alert/);
+    // scott can't open king's link (page authorization, and the checksum is bound to king)
+    assert.notEqual((await scott.get(`/a/hr/3?P3_EMPNO=7839&cs=${urlChecksum(appId, 3, 'king', { P3_EMPNO: '7839' })}`)).statusCode, 200);
+  });
+
+  test('an agent\'s authorization scheme: other users see a message, their questions are refused before any AI call', async () => {
+    await setAgent({ authz: 'ADMIN', tools: [] }, []);
+    const b = await as('scott');
+    const body = (await b.get('/a/hr/46')).body;
+    assert.match(body, /You may not use this assistant/);
+    assert.doesNotMatch(body, /name="message"/);
+    const before = calls().length;
+    const res = await b.post(`/a/hr/46/assistant/${regionId}/send`, { __csrf: b.lastCsrf, message: 'hi', params: '' });
+    assert.equal(res.statusCode, 403);
+    assert.equal(calls().length, before, 'no call to the AI service');
+    // an unknown agent: not set up, no call either
+    await owner.query(`update meta.region set config = '{"agent": "NO_SUCH_AGENT"}' where id = $1`, [regionId]);
+    try {
+      const k = await as('king');
+      assert.match((await k.get('/a/hr/46')).body, /not set up yet/);
+      await ask(k, 'hi');
+      assert.equal(calls().length, before);
+    } finally {
+      await owner.query(`update meta.region set config = '{"agent": "SEC_AGENT"}' where id = $1`, [regionId]);
+    }
+  });
+
+  test('a javascript tool\'s arguments reach the page escaped, once', async () => {
+    await setAgent({ tools: ['js'] }, [{ name: 'js', type: 'javascript', description: 'd', action: 'demo', parameters: { T: { type: 'string' } } }]);
+    mock.script = [{ tools: [{ name: 'js', input: { T: '"><script>alert(1)</script>' } }] }, { text: 'ok' }];
+    const b = await as('king');
+    await ask(b, 'x');
+    const page = (await b.get('/a/hr/46')).body;
+    assert.ok(page.includes('data-ai-args="{&quot;T&quot;:&quot;\\&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&quot;}"'));
+    assert.doesNotMatch(page, /<script>alert/);
+  });
+
+  test('keys never leave the server: not in builder pages, the tool call log, an export or the runtime role\'s reach', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const svc = (await owner.one('select id from meta.ai_service where name = $1', [SVC]))!.id;
+    for (const url of ['/builder/ai', `/builder/ai/${svc}`, `/builder/apps/${appId}/ai`, `/builder/apps/${appId}/ai-agents`, `/builder/apps/${appId}/ai-agents/agent?name=SEC_AGENT`]) {
+      const res = await dev.get(url);
+      assert.equal(res.statusCode, 200, url);
+      assert.doesNotMatch(res.body, /sk-ant-sec111-SECRET|v1:[A-Za-z0-9+/]{20}/, url);
+    }
+    assert.doesNotMatch(JSON.stringify((await owner.query('select * from meta.ai_tool_call where app_id = $1', [appId])).rows), /sk-ant-sec111-SECRET/);
+    assert.doesNotMatch(JSON.stringify((await owner.one(`select meta.export_app('hr') as d`))!.d), /sk-ant-sec111-SECRET|api_key_enc/);
+    for (const sql of ['select count(*) from meta.ai_tool_call', 'select api_key_enc from meta.ai_service'])
+      await assert.rejects(runtime.query(sql), /permission denied/, sql);
+    // the key only goes to the provider, in its header
+    assert.equal(calls().at(-1).headers['x-api-key'], 'sk-ant-sec111-SECRET');
+  });
+
+  test('the builder\'s agent and tool forms need a developer and the CSRF token, and check what they save', async () => {
+    const user = await as('scott');
+    assert.equal((await user.get(`/builder/apps/${appId}/ai-agents`)).statusCode, 302);
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const before = JSON.stringify((await owner.one('select ai_agents, ai_tools from meta.app where id = $1', [appId]))!);
+    assert.equal((await dev.post(`/builder/apps/${appId}/ai-agents/tool`, { name: 'x', type: 'sql', description: 'd', sql: 'select 1' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/apps/${appId}/ai-agents/agent/delete`, { name: 'SEC_AGENT' })).statusCode, 403);
+    await dev.get(`/builder/apps/${appId}/ai-agents/tool`);
+    const bads: Record<string, string>[] = [{ type: 'function', function: 'hr.x(); drop table hr.emp; --' }, { type: 'sql', sql: 'update hr.emp set sal = 0' }, { type: 'javascript', action: 'alert(1)' }];
+    for (const bad of bads)
+      assert.equal((await dev.post(`/builder/apps/${appId}/ai-agents/tool`, { __csrf: dev.lastCsrf, original: '', name: 'bad', description: 'd', ...bad })).statusCode, 422, JSON.stringify(bad));
+    assert.equal(JSON.stringify((await owner.one('select ai_agents, ai_tools from meta.app where id = $1', [appId]))!), before);
+  });
+});
+
+describe('sprint 112 WS-5', () => {
+  // "Ask in your own words": the phrase parser and the AI answer only set the report's own settings over its
+  // shown columns; chips are edited and removed through a CSRF-checked form whose fields are checked again
+  let region: number;
+  let oldConfig: unknown;
+  let mock: Awaited<ReturnType<typeof import('./ai-mock.ts').startAiMock>>;
+  const SERVICE = 'T_WS5_SEC';
+  const k = (x: string) => `r${region}_${x}`;
+  const at = (res: { headers: Record<string, unknown> }) => new URL(res.headers.location as string, 'http://x');
+  const ask = async (b: Browser, question: string, params = '') => {
+    await b.get('/a/hr/2');
+    return b.post(`/a/hr/2/report/${region}/ask`, { __csrf: b.lastCsrf, question, params });
+  };
+  const chips = async (b: Browser, form: Record<string, string>) => {
+    await b.get('/a/hr/2');
+    return b.post(`/a/hr/2/report/${region}/chips`, { __csrf: b.lastCsrf, ...form });
+  };
+  const setConfig = (extra: Record<string, unknown>) =>
+    owner.query('update meta.region set config = $2 where id = $1', [region, JSON.stringify({ ...(oldConfig as object), ...extra })]);
+
+  before(async () => {
+    const r = await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
+    region = r.id;
+    oldConfig = r.config;
+    mock = await (await import('./ai-mock.ts')).startAiMock();
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await owner.query(`delete from meta.ai_service where name = $1`, [SERVICE]);
+    const svc = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc, effort) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3, 'medium') returning id`,
+      [SERVICE, `${mock.base}/claude`, encryptSecret('sk-ant-sec')])).id;
+    await owner.query(`insert into meta.app_ai_service (app_id, service_id) values ($1, $2)`, [appId, svc]);
+  });
+  after(async () => {
+    await owner.query('update meta.region set config = $2 where id = $1', [region, JSON.stringify(oldConfig)]);
+    await owner.query(`delete from meta.ai_service where name = $1`, [SERVICE]);
+    await mock.close();
+  });
+
+  test('the parser never sets anything on a hidden column', async () => {
+    await setConfig({ hidden: ['sal'], ai_filter: {} });
+    try {
+      const b = await as('king');
+      for (const q of ['salary over 3000', 'sort by salary', 'sum of salary by department', 'bonus is 10% of salary', 'highlight salary over 1 in red', 'chart of salary by job', 'sal > 1']) {
+        const loc = at(await ask(b, q));
+        assert.ok(![...loc.searchParams.entries()].some(([, v]) => /\bsal\b/.test(v)), `${q}: ${loc.search}`);
+        assert.equal(loc.searchParams.get(k('s')), null, q);
+      }
+      // a value lookup never reads a hidden column either
+      await setConfig({ hidden: ['job'], ai_filter: {} });
+      const loc = at(await ask(b, 'only clerks'));
+      assert.equal(loc.searchParams.getAll(k('f')).length, 0);
+    } finally {
+      await setConfig({});
+    }
+  });
+
+  test('the AI answer: only shown columns, whitelisted operators, functions, colors and chart types; expressions checked', async () => {
+    await setConfig({ hidden: ['sal'], ai_filter: { service: SERVICE } });
+    try {
+      const b = await as('king');
+      mock.answer = JSON.stringify({
+        reset: false,
+        filters: [{ column: 'sal', operator: 'gt', value: '0' }, { column: 'job', operator: 'raw_sql', value: '1' }, { column: 'job', operator: 'eq', value: "x' or 1=1 --" }],
+        highlights: [{ column: 'sal', operator: 'gt', value: '1', color: 'red' }, { column: 'job', operator: 'eq', value: 'CLERK', color: 'red;background:url(x)' }],
+        search: '', sort_column: 'sal', sort_descending: true, control_break: 'sal',
+        aggregates: [{ function: 'sum', column: 'sal' }, { function: 'sum); drop table hr.emp; --', column: 'empno' }],
+        group_by: ['sal', 'job'], group_functions: [{ function: 'max', column: 'sal' }],
+        pivot: { row: 'job', column: 'department', function: 'sum', value: 'sal' },
+        chart: { type: 'pie); --', label: 'job', function: 'count', value: 'empno' },
+        computed_columns: [{ name: 'leak', expression: 'sal * 1' }, { name: 'evil', expression: "empno); delete from hr.emp; --" }, { name: 'slow', expression: 'pg_sleep(5)' }, { name: 'ok', expression: 'empno * 2' }],
+      });
+      const before = mock.seen.length;
+      const loc = at(await ask(b, 'anything'));
+      const schema = mock.seen[before].body.output_config.format.schema;
+      assert.ok(!schema.properties.filters.items.properties.column.enum.includes('sal'), 'hidden columns are not offered');
+      assert.doesNotMatch(mock.seen[before].body.system, /- sal:/);
+      assert.deepEqual(loc.searchParams.getAll(k('f')), ["job|eq|x' or 1=1 --"]);
+      assert.deepEqual(loc.searchParams.getAll(k('h')), ['job|eq|yellow|CLERK'], 'an unknown color falls back to yellow');
+      assert.equal(loc.searchParams.get(k('s')), null);
+      assert.equal(loc.searchParams.get(k('b')), null);
+      assert.deepEqual(loc.searchParams.getAll(k('a')), []);
+      assert.deepEqual(loc.searchParams.getAll(k('g')), ['job']);
+      assert.deepEqual(loc.searchParams.getAll(k('ga')), []);
+      assert.equal(loc.searchParams.get(k('pv')), null);
+      assert.equal(loc.searchParams.get(k('ch')), null);
+      assert.deepEqual(loc.searchParams.getAll(k('c')), ['ok|empno * 2']);
+      // the value is a literal: the report runs, nothing is matched, nothing is deleted
+      const n = (await owner.one('select count(*)::int as n from hr.emp')).n;
+      const page = await b.get(`${loc.pathname}${loc.search}`);
+      assert.equal(page.statusCode, 200);
+      assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n);
+    } finally {
+      await setConfig({});
+    }
+  });
+
+  test('values are query parameters or escaped literals', async () => {
+    const b = await as('king');
+    const n = (await owner.one('select count(*)::int as n from hr.emp')).n;
+    for (const q of ["only o'brien'); delete from hr.emp; --", "name is x'; drop table hr.emp; --", 'job contains %_\\', 'bonus is pg_sleep(5)', "x is 'a' || (select password from meta.account limit 1)"]) {
+      const res = await ask(b, q);
+      assert.equal(res.statusCode, 303, q);
+      const loc = at(res);
+      assert.ok(!loc.searchParams.getAll(k('c')).some((c) => /sleep|select/i.test(c)), q);
+      assert.equal((await b.get(`${loc.pathname}${loc.search}`)).statusCode, 200, q);
+    }
+    assert.equal((await owner.one('select count(*)::int as n from hr.emp')).n, n);
+  });
+
+  test('chip edits: columns, operators, functions, colors, chart types and expressions are checked; tampered forms are refused', async () => {
+    await setConfig({ hidden: ['sal'], ai_filter: {} });
+    try {
+      const b = await as('king');
+      const params = new URLSearchParams([[k('f'), 'job|eq|CLERK'], [k('h'), 'job|eq|red|CLERK'], [k('a'), 'count|empno'], [k('ch'), 'bar|job|count|empno'], [k('c'), 'x|empno*2']]).toString();
+      const keys = { k0: 'f:job|eq|CLERK', k1: 'a:count|empno', k2: 'h:job|eq|red|CLERK', k3: 'c:x|empno*2', k4: 'ch:bar|job|count|empno' };
+      const refused = async (form: Record<string, string>, why: string) => assert.equal((await chips(b, { params, ...keys, ...form })).statusCode, 403, why);
+      await refused({ edit: '0', e0_a: 'sal', e0_b: 'gt', e0_c: '0' }, 'a hidden column');
+      await refused({ edit: '0', e0_a: 'nope', e0_b: 'eq', e0_c: '0' }, 'an unknown column');
+      await refused({ edit: '0', e0_a: 'job', e0_b: 'raw', e0_c: '0' }, 'an unknown operator');
+      await refused({ edit: '1', e1_a: 'sum(empno)); --', e1_b: 'empno' }, 'an unknown function');
+      await refused({ edit: '2', e2_a: 'job', e2_b: 'eq', e2_c: 'x', e2_d: 'red;x' }, 'an unknown color');
+      await refused({ edit: '4', e4_a: 'pie); --', e4_b: 'job', e4_c: 'count', e4_d: 'empno' }, 'an unknown chart type');
+      await refused({ edit: '0', k0: 'f:job|eq|MANAGER', e0_a: 'job', e0_b: 'eq', e0_c: 'x' }, 'a chip key that is not the chip');
+      await refused({ remove: '9' }, 'a chip that is not there');
+      await refused({ remove: '-1' }, 'a negative index');
+      // a computed column that uses a hidden column or an unknown function: a message, no change
+      for (const expr of ['sal * 2', 'pg_sleep(5)', "empno); delete from hr.emp; --"]) {
+        const res = await chips(b, { params, ...keys, edit: '3', e3_a: 'x', e3_b: expr });
+        assert.equal(res.statusCode, 303, expr);
+        assert.deepEqual(at(res).searchParams.getAll(k('c')), ['x|empno*2'], expr);
+      }
+      // no CSRF token, or another user's session: refused
+      assert.equal((await b.post(`/a/hr/2/report/${region}/chips`, { params, ...keys, remove: '0' })).statusCode, 403);
+      assert.equal((await b.post(`/a/hr/2/report/${region}/ask`, { question: 'salary over 1', params: '' })).statusCode, 403);
+      const res = await chips(b, { params, ...keys, remove: '0' });
+      assert.equal(res.statusCode, 303);
+      assert.deepEqual(at(res).searchParams.getAll(k('f')), []);
+    } finally {
+      await setConfig({});
+    }
+  });
+
+  test('a report without "ai_filter", a region of another page and signed-out users are refused', async () => {
+    const b = await as('king');
+    await setConfig({ ai_filter: undefined });
+    try {
+      assert.equal((await ask(b, 'salary over 1')).statusCode, 403);
+    } finally {
+      await setConfig({});
+    }
+    const other = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 38 and r.type = 'report'`, [appId])).id;
+    await b.get('/a/hr/2');
+    assert.equal((await b.post(`/a/hr/2/report/${other}/ask`, { __csrf: b.lastCsrf, question: 'x', params: '' })).statusCode, 403);
+    const anon = new Browser();
+    const res = await anon.post(`/a/hr/2/report/${region}/chips`, { __csrf: 'x', undo: '1', params: '' });
+    assert.notEqual(res.statusCode, 303);
+  });
+
+  test('the box and chips render escaped, without inline styles or scripts', async () => {
+    const b = await as('king');
+    const body = (await b.get(`/a/hr/2?${new URLSearchParams([[k('f'), 'job|eq|<img src=x onerror=alert(1)>'], [k('c'), 'y|"<script>"']])}`)).body;
+    assert.ok(!body.includes('<img src=x onerror=alert(1)>'));
+    assert.ok(!body.includes('<script>"'));
+    assert.doesNotMatch(body.slice(body.indexOf('class="ai-filter"'), body.indexOf('class="ai-filter"') + 20000), /style="|onclick=/);
+  });
+});
+
+describe('sprint 113 WS-3', () => {
+  // Team Development (/builder/team, migration 122): issues, labels, milestones, templates and saved views are of the
+  // developer's current workspace only; assignees and @mentions are the workspace's developers; links only to its
+  // applications; every POST needs the session's CSRF token; Markdown and names are escaped; colours from a palette.
+  const DEV = 'sec113dev';
+  const OTHER = 'sec113other';
+  let wsA: number;
+  let wsB: number;
+  let appB: number;
+  let appA: number;
+  let issueB: number;
+  let labelB: number;
+  let groupB: number;
+  let milestoneB: number;
+  let templateB: number;
+  let viewB: number;
+  let feedbackB: number;
+  let commentB: number;
+  const signIn = async (username: string, ws?: number) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    assert.equal(res.statusCode, 303);
+    await b.get('/builder/home');
+    if (ws) assert.equal((await b.post('/builder/workspace', { __csrf: b.lastCsrf, workspace: String(ws) })).statusCode, 303);
+    await b.get('/builder/team');
+    return b;
+  };
+  const snapshot = async () => (await owner.one(`select row_to_json(i)::text as j,
+      (select count(*) from meta.team_issue_comment c where c.issue_id = i.id)::int as comments,
+      (select count(*) from meta.team_issue_label l where l.issue_id = i.id)::int as labels from meta.team_issue i where i.id = $1`, [issueB]));
+  before(async () => {
+    for (const u of [DEV, OTHER]) await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [u]);
+    await owner.query(`delete from meta.app where alias in ('sec113a', 'sec113b')`);
+    await owner.query(`delete from meta.workspace where name in ('Sec113 A', 'Sec113 B')`);
+    wsA = (await owner.one(`insert into meta.workspace (name) values ('Sec113 A') returning id`)).id;
+    wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec113 B') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = any($1::text[])', [[DEV, OTHER]]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2), ($3, $4)', [wsA, DEV, wsB, OTHER]);
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec113a', 'Sec113 A app', 'none') returning id`)).id;
+    appB = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec113b', 'Sec113 B app', 'none') returning id`)).id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2), ($3, $4)', [appA, wsA, appB, wsB]);
+    await owner.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home'), ($2, 1, 'Home', 'Home')`, [appA, appB]);
+    groupB = (await owner.one(`insert into meta.team_label_group (workspace_id, name) values ($1, 'Secret group') returning id`, [wsB])).id;
+    labelB = (await owner.one(`insert into meta.team_label (workspace_id, group_id, name, color) values ($1, $2, 'Secret label', 'red') returning id`, [wsB, groupB])).id;
+    milestoneB = (await owner.one(`insert into meta.team_milestone (workspace_id, name) values ($1, 'Secret milestone') returning id`, [wsB])).id;
+    templateB = (await owner.one(`insert into meta.team_template (workspace_id, kind, name, body) values ($1, 'issue', 'Secret template', 'secret body') returning id`, [wsB])).id;
+    issueB = (await owner.one(`insert into meta.team_issue (workspace_id, title, body, app_id, page_no, created_by) values ($1, 'Secret issue', 'secret text', $2, 1, $3) returning id`, [wsB, appB, OTHER])).id;
+    await owner.query('insert into meta.team_issue_label (issue_id, label_id) values ($1, $2)', [issueB, labelB]);
+    viewB = (await owner.one(`insert into meta.team_view (workspace_id, username, name, query) values ($1, $2, 'Secret view', '') returning id`, [wsB, OTHER])).id;
+    feedbackB = (await owner.one(`insert into meta.feedback (app_id, page_no, username, kind, body) values ($1, 1, 'someone', 'problem', 'secret feedback') returning id`, [appB])).id;
+    commentB = (await owner.one(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 1, $2, 'secret comment') returning id`, [appB, OTHER])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias in ('sec113a', 'sec113b')`);
+    await owner.query('delete from meta.workspace where id = any($1::int[])', [[wsA, wsB]]);
+    await owner.query('delete from meta.developer where username = any($1::text[])', [[DEV, OTHER]]);
+  });
+
+  test('another workspace\'s issues, labels, milestones, templates and views can be neither read nor changed', async () => {
+    const d = await signIn(DEV);
+    const before = await snapshot();
+    const list = (await d.get('/builder/team?status=all')).body;
+    assert.doesNotMatch(list, /Secret/);
+    assert.doesNotMatch((await d.get(`/builder/team?label=${labelB}&status=all`)).body, /Secret issue/);
+    assert.doesNotMatch((await d.get('/builder/team/board?status=all')).body, /Secret/);
+    assert.doesNotMatch((await d.get('/builder/team/labels')).body, /Secret/);
+    assert.doesNotMatch((await d.get('/builder/team/milestones')).body, /Secret/);
+    assert.doesNotMatch((await d.get('/builder/team/templates')).body, /Secret/);
+    assert.doesNotMatch((await d.get(`/builder/team/issues/new?template=${templateB}&app=${appB}`)).body, /secret body|Sec113 B app/);
+    assert.equal((await d.get(`/builder/team/issues/${issueB}`)).statusCode, 404);
+    const csrf = d.lastCsrf;
+    for (const [url, form] of [
+      [`/builder/team/issues/${issueB}`, { title: 'hacked', body: '' }],
+      [`/builder/team/issues/${issueB}/status`, { status: 'closed' }],
+      [`/builder/team/issues/${issueB}/comments`, { body: 'hacked' }],
+      [`/builder/team/issues/${issueB}/move`, { by: 'label', group: String(groupB), to: '' }],
+      [`/builder/team/issues/${issueB}/delete`, {}],
+      [`/builder/team/labels/${labelB}`, { name: 'hacked', color: 'blue', group: '' }],
+      [`/builder/team/milestones/${milestoneB}`, { name: 'hacked', status: 'closed' }],
+      [`/builder/team/templates/${templateB}`, { name: 'hacked', kind: 'issue', body: '' }],
+      [`/builder/team/templates/${templateB}/delete`, {}],
+      [`/builder/team/views/${viewB}/delete`, {}],
+      ['/builder/team/from-feedback', { feedback: String(feedbackB) }],
+      ['/builder/team/from-comment', { comment: String(commentB) }],
+    ] as [string, Record<string, string>][]) {
+      const res = await d.post(url, { __csrf: csrf, ...form });
+      assert.equal(res.statusCode, 404, url);
+    }
+    assert.deepEqual(await snapshot(), before);
+    assert.equal((await owner.one('select name from meta.team_label where id = $1', [labelB])).name, 'Secret label');
+    assert.equal((await owner.one('select name from meta.team_milestone where id = $1', [milestoneB])).name, 'Secret milestone');
+    assert.ok(await owner.one('select 1 from meta.team_template where id = $1', [templateB]));
+    assert.ok(await owner.one('select 1 from meta.team_view where id = $1', [viewB]));
+    assert.equal((await owner.one('select count(*)::int as n from meta.team_issue where feedback_id = $1 or dev_comment_id = $2', [feedbackB, commentB])).n, 0);
+    // deleting labels, groups and milestones: the workspace's administrators only (and never another workspace's)
+    const own = (await owner.one(`insert into meta.team_label (workspace_id, name) values ($1, 'Own label') returning id`, [wsA])).id;
+    assert.equal((await d.post(`/builder/team/labels/${own}/delete`, { __csrf: csrf })).statusCode, 403);
+    const admin = await signIn('admin', wsA);
+    assert.equal((await admin.post(`/builder/team/labels/${labelB}/delete`, { __csrf: admin.lastCsrf })).statusCode, 404, 'not of the current workspace');
+    assert.equal((await admin.post(`/builder/team/groups/${groupB}/delete`, { __csrf: admin.lastCsrf })).statusCode, 404);
+    assert.equal((await admin.post(`/builder/team/milestones/${milestoneB}/delete`, { __csrf: admin.lastCsrf })).statusCode, 404);
+    // an issue is deleted by its author or a workspace administrator
+    const theirs = (await owner.one(`insert into meta.team_issue (workspace_id, title, created_by) values ($1, 'Not yours', 'admin') returning id`, [wsA])).id;
+    assert.equal((await d.post(`/builder/team/issues/${theirs}/delete`, { __csrf: csrf })).statusCode, 403);
+    assert.ok(await owner.one('select 1 from meta.team_issue where id = $1', [theirs]));
+  });
+
+  test('labels, a milestone, assignees, mentions and the application link come from the current workspace only', async () => {
+    const d = await signIn(DEV);
+    const csrf = d.lastCsrf;
+    const count = async () => (await owner.one('select count(*)::int as n from meta.team_issue where workspace_id = $1', [wsA])).n;
+    const n0 = await count();
+    for (const [form, why] of [
+      [{ labels: String(labelB) }, 'label'],
+      [{ milestone: String(milestoneB) }, 'milestone'],
+      [{ assignees: OTHER }, 'assignee'],
+      [{ assignees: 'admin\'; drop table x;--' }, 'assignee text'],
+      [{ app: String(appB) }, 'application'],
+      [{ app: String(appA), page: '99' }, 'page'],
+      [{ app: '1 or 1=1' }, 'application text'],
+    ] as [Record<string, string>, string][]) {
+      const res = await d.post('/builder/team/issues', { __csrf: csrf, title: `Bad ${why}`, body: '', ...form });
+      assert.equal(res.statusCode, 303, why);
+      assert.equal(await count(), n0, `${why}: refused`);
+    }
+    // the database refuses a mix-up too
+    await assert.rejects(owner.query(`insert into meta.team_issue (workspace_id, title, milestone_id, created_by) values ($1, 'x', $2, 'admin')`, [wsA, milestoneB]), /another workspace/);
+    await assert.rejects(owner.query(`insert into meta.team_label (workspace_id, group_id, name) values ($1, $2, 'x')`, [wsA, groupB]), /another workspace/);
+    // a label in another workspace's group, and a move to another workspace's label
+    assert.equal((await d.post('/builder/team/labels', { __csrf: csrf, name: 'Sneaky', color: 'red', group: String(groupB) })).statusCode, 400);
+    const ok = await d.post('/builder/team/issues', { __csrf: csrf, title: 'Fine', body: `Hi @${OTHER} and @admin`, app: String(appA), page: '1' });
+    const id = Number(/issues\/(\d+)$/.exec(String(ok.headers.location))?.[1]);
+    assert.ok(id);
+    assert.equal((await d.post(`/builder/team/issues/${id}/move`, { __csrf: csrf, by: 'label', group: String(groupB), to: String(labelB) })).statusCode, 400);
+    assert.equal((await d.post(`/builder/team/issues/${id}/move`, { __csrf: csrf, by: 'milestone', to: String(milestoneB) })).statusCode, 400);
+    // a developer of another workspace is never mentioned (nor highlighted); an administrator of the installation is
+    await d.post(`/builder/team/issues/${id}/comments`, { __csrf: csrf, body: `@${OTHER} look` });
+    assert.deepEqual((await owner.query('select username from meta.team_mention where issue_id = $1 order by 1', [id])).rows.map((r) => r.username), ['admin']);
+    assert.doesNotMatch((await d.get(`/builder/team/issues/${id}`)).body, new RegExp(`class="mention">@${OTHER}`));
+    // a saved view keeps known filters only
+    await d.post('/builder/team/views', { __csrf: d.lastCsrf, name: 'Odd', query: 'status=closed&q=x&evil=<script>&assignee=me' });
+    assert.equal((await owner.one(`select query from meta.team_view where workspace_id = $1 and username = $2 and name = 'Odd'`, [wsA, DEV])).query, 'status=closed&assignee=me&q=x');
+  });
+
+  test('CSRF: every Team Development POST needs the session\'s token', async () => {
+    const a = await signIn('admin', wsA);
+    const own = (await owner.one(`insert into meta.team_issue (workspace_id, title, created_by) values ($1, 'CSRF target', 'admin') returning id`, [wsA])).id;
+    const lab = (await owner.one(`insert into meta.team_label (workspace_id, name) values ($1, 'CSRF label') returning id`, [wsA])).id;
+    const ms = (await owner.one(`insert into meta.team_milestone (workspace_id, name) values ($1, 'CSRF ms') returning id`, [wsA])).id;
+    const grp = (await owner.one(`insert into meta.team_label_group (workspace_id, name) values ($1, 'CSRF group') returning id`, [wsA])).id;
+    const tpl = (await owner.one(`insert into meta.team_template (workspace_id, kind, name) values ($1, 'response', 'CSRF tpl') returning id`, [wsA])).id;
+    const view = (await owner.one(`insert into meta.team_view (workspace_id, username, name) values ($1, 'admin', 'CSRF view') returning id`, [wsA])).id;
+    const fb = (await owner.one(`insert into meta.feedback (app_id, username, kind, body) values ($1, 'x', 'idea', 'csrf') returning id`, [appA])).id;
+    const cm = (await owner.one(`insert into meta.dev_comment (app_id, author, body) values ($1, 'admin', 'csrf') returning id`, [appA])).id;
+    const posts: [string, Record<string, string>][] = [
+      ['/builder/team/issues', { title: 'CSRF new' }],
+      [`/builder/team/issues/${own}`, { title: 'CSRF changed' }],
+      [`/builder/team/issues/${own}/status`, { status: 'closed' }],
+      [`/builder/team/issues/${own}/comments`, { body: 'csrf' }],
+      [`/builder/team/issues/${own}/move`, { by: 'milestone', to: String(ms) }],
+      [`/builder/team/issues/${own}/delete`, {}],
+      ['/builder/team/views', { name: 'CSRF view 2' }],
+      [`/builder/team/views/${view}/delete`, {}],
+      ['/builder/team/mentions/seen', {}],
+      ['/builder/team/labels', { name: 'CSRF l2', color: 'red' }],
+      [`/builder/team/labels/${lab}`, { name: 'CSRF l3', color: 'red' }],
+      [`/builder/team/labels/${lab}/delete`, {}],
+      ['/builder/team/groups', { name: 'CSRF g2' }],
+      [`/builder/team/groups/${grp}/delete`, {}],
+      ['/builder/team/milestones', { name: 'CSRF m2' }],
+      [`/builder/team/milestones/${ms}`, { name: 'CSRF m3' }],
+      [`/builder/team/milestones/${ms}/delete`, {}],
+      ['/builder/team/templates', { name: 'CSRF t2', kind: 'issue' }],
+      [`/builder/team/templates/${tpl}`, { name: 'CSRF t3', kind: 'issue' }],
+      [`/builder/team/templates/${tpl}/delete`, {}],
+      ['/builder/team/setup', { lang: 'en', labels: 'true' }],
+      ['/builder/team/from-feedback', { feedback: String(fb) }],
+      ['/builder/team/from-comment', { comment: String(cm) }],
+    ];
+    const state = async () => JSON.stringify((await owner.query(`select
+        (select json_agg(i order by id) from meta.team_issue i where workspace_id = $1) as i,
+        (select json_agg(l order by id) from meta.team_label l where workspace_id = $1) as l,
+        (select json_agg(g order by id) from meta.team_label_group g where workspace_id = $1) as g,
+        (select json_agg(m order by id) from meta.team_milestone m where workspace_id = $1) as m,
+        (select json_agg(t order by id) from meta.team_template t where workspace_id = $1) as t,
+        (select json_agg(v order by id) from meta.team_view v where workspace_id = $1) as v,
+        (select count(*) from meta.team_issue_comment c join meta.team_issue i on i.id = c.issue_id where i.workspace_id = $1) as c`, [wsA])).rows[0]);
+    const s0 = await state();
+    for (const [url, form] of posts) {
+      assert.equal((await a.post(url, { __csrf: 'forged', ...form })).statusCode, 403, `${url} (forged token)`);
+      assert.equal((await a.post(url, form)).statusCode, 403, `${url} (no token)`);
+    }
+    assert.equal(await state(), s0);
+  });
+
+  test('titles, bodies, comments, label names and templates are escaped; Markdown is made safe; label colours from the palette', async () => {
+    const a = await signIn('admin', wsA);
+    const evil = '<script>alert(1)</script><img src=x onerror=alert(2)>';
+    assert.equal((await a.post('/builder/team/labels', { __csrf: a.lastCsrf, name: '<b>L</b>', color: 'red' })).statusCode, 303);
+    const lab = (await owner.one(`select id from meta.team_label where workspace_id = $1 and name = '<b>L</b>'`, [wsA])).id;
+    for (const color of ['red;background:url(//x)', 'chartreuse', '"><script>']) {
+      assert.equal((await a.post(`/builder/team/labels/${lab}`, { __csrf: a.lastCsrf, name: 'x', color })).statusCode, 400, color);
+      assert.equal((await a.post('/builder/team/labels', { __csrf: a.lastCsrf, name: 'y', color })).statusCode, 400, color);
+    }
+    await assert.rejects(owner.query(`update meta.team_label set color = 'pink' where id = $1`, [lab]));
+    await a.post('/builder/team/milestones', { __csrf: a.lastCsrf, name: '<i>M</i>', status: 'open' });
+    await a.post('/builder/team/templates', { __csrf: a.lastCsrf, name: '<u>T</u>', kind: 'issue', title: evil, body: evil });
+    const res = await a.post('/builder/team/issues', { __csrf: a.lastCsrf, title: evil, body: `${evil}\n\n[x](javascript:alert(3)) **ok**`, labels: String(lab) });
+    const id = Number(/issues\/(\d+)$/.exec(String(res.headers.location))?.[1]);
+    assert.ok(id);
+    await a.post(`/builder/team/issues/${id}/comments`, { __csrf: a.lastCsrf, body: `${evil} [y](javascript:alert(4))` });
+    const pages = [
+      (await a.get(`/builder/team/issues/${id}`)).body, (await a.get('/builder/team')).body, (await a.get('/builder/team/board')).body,
+      (await a.get('/builder/team/labels')).body, (await a.get('/builder/team/milestones')).body, (await a.get('/builder/team/templates')).body,
+      (await a.get(`/builder/team/issues/new?template=${(await owner.one(`select id from meta.team_template where workspace_id = $1 and name = '<u>T</u>'`, [wsA])).id}`)).body,
+    ];
+    for (const p of pages) {
+      assert.doesNotMatch(p, /<script>alert|<img src=x|<b>L<\/b>|<i>M<\/i>|<u>T<\/u>|href="javascript:/);
+    }
+    assert.match(pages[0], /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(pages[0], /<strong>ok<\/strong>/, 'Markdown still renders');
+    assert.match(pages[3], /&lt;b&gt;L&lt;\/b&gt;/);
+  });
+
+  test('application users and signed-out visitors cannot reach Team Development', async () => {
+    const u = await as('demo');
+    for (const url of ['/builder/team', `/builder/team/issues/${issueB}`, '/builder/team/board', '/builder/team/labels', '/builder/team/setup']) {
+      const res = await u.get(url);
+      assert.equal(res.statusCode, 302, url);
+      assert.match(String(res.headers.location), /^\/builder\/login/);
+    }
+    const res = await u.post('/builder/team/issues', { __csrf: u.lastCsrf, title: 'from an app user' });
+    assert.notEqual(res.statusCode, 303);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.team_issue where title = 'from an app user'`)).n, 0);
+    assert.equal((await new Browser().get('/builder/team')).statusCode, 302);
+    // a developer without a workspace gets no Team Development
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec113none', meta.hash_password('sec113none'), false) on conflict do nothing`);
+    await owner.query(`delete from meta.workspace_member where username = 'sec113none'`);
+    try {
+      const n = new Browser();
+      await n.get('/builder/login');
+      await n.post('/builder/login', { __csrf: n.lastCsrf, username: 'sec113none', password: 'sec113none' });
+      assert.equal((await n.get('/builder/team')).statusCode, 403);
+      assert.equal((await n.get(`/builder/team/issues/${issueB}`)).statusCode, 403);
+    } finally {
+      await owner.query(`delete from meta.developer where username = 'sec113none'`);
+    }
+  });
+});
+
 describe('sprint 114 WS-6', () => {
   // (123) workflows and approvals: migrating running instances, custom outcomes, task events, drafts, the SVG export.
   // The HR example's SALARY_CHANGE (part 67): version 2 active, version 3 in development with a draft step.

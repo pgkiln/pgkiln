@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { DEFAULT_CLAUDE_MODEL, envKeyName, generate, keySource, usageToday, type AiService } from '../ai/service.ts';
+import { DEFAULT_CLAUDE_MODEL, envKeyName, GEMINI_BASE_URL, generate, keySource, providerLabel, usageToday, type AiService } from '../ai/service.ts';
+import type { ProviderName } from '../ai/types.ts';
+import { toolCallTable } from './ai-agents.ts';
 import { AiError } from '../ai/types.ts';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
@@ -16,7 +18,7 @@ import { back, BASE, csrf, developer, flash, input, region, select, send, shell,
 // AI usage (developers): what an application may use and what it used.
 // API keys are encrypted (src/secrets.ts) and never sent back to the browser.
 
-const PROVIDERS: [string, string][] = [['anthropic', 'Claude (Anthropic)'], ['openai', 'OpenAI']];
+const PROVIDERS: [string, string][] = [['anthropic', 'Claude (Anthropic)'], ['openai', 'OpenAI'], ['gemini', 'Gemini (Google, OpenAI-compatible endpoint)'], ['openai_compatible', 'OpenAI-compatible (Ollama, vLLM, Azure OpenAI, a gateway)']];
 const EFFORTS: [string, string][] = [['', 'Model default'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh'], ['max', 'max']];
 const TEST_RESULT = '__AITEST';
 
@@ -33,18 +35,18 @@ function serviceForm(s: Partial<AiService>, action: string, csrfField: ReturnTyp
     <fieldset class="prop-group"><legend>Service</legend><div class="form-grid">
       ${isNew ? input('name', 'Name', '', { required: true, placeholder: 'e.g. CLAUDE', help: 'Upper case letters, digits and _. Processes refer to the service by this name.' }) : ''}
       ${input('description', 'Description', s.description)}
-      ${select('provider', 'Provider', s.provider ?? 'anthropic', PROVIDERS, 'Prompts, and the item values they contain, are sent to this provider.')}
+      ${select('provider', 'Provider', s.provider ?? 'anthropic', PROVIDERS, 'Prompts, and the item values they contain, are sent to this provider. Gemini and OpenAI-compatible endpoints speak OpenAI\'s Chat Completions.')}
       ${input('model', 'Model', s.model ?? (isNew ? DEFAULT_CLAUDE_MODEL : ''), { required: true, help: `Exactly as the provider names it, e.g. ${DEFAULT_CLAUDE_MODEL} (Claude) or the OpenAI model your account uses. pgkiln never changes it.` })}
       ${select('effort', 'Effort (Claude)', isNew ? 'medium' : s.effort ?? '', EFFORTS, 'How deeply Claude thinks (thinking is always on for current Claude models): lower is faster and cheaper; high or more for hard tasks. Model default: medium for Claude Opus 5.5.')}
       ${input('max_tokens', 'Maximum output tokens', s.max_tokens ?? 4000, { type: 'number', help: 'Per request (1 – 128000); a process may ask for fewer.' })}
       ${input('timeout_s', 'Time limit (seconds)', s.timeout_s ?? 120, { type: 'number', help: '5 – 600. Pages wait for the answer.' })}
-      ${input('base_url', 'Base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: 'A gateway or proxy that speaks the provider\'s API. Administrators only.' })}
+      ${input('base_url', 'Base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: `A gateway or proxy that speaks the provider's API. Administrators only. Gemini: empty is ${GEMINI_BASE_URL}. OpenAI-compatible: required, e.g. http://localhost:11434/v1 (Ollama), https://<resource>.openai.azure.com/openai/v1/ (Azure OpenAI).` })}
     </div>
     ${check('refusal_fallback', 'Refusal fallbacks (Claude)', s.refusal_fallback !== false, 'When Claude declines a request for safety reasons, Anthropic re-runs it on its recommended fallback model. The usage log shows the model that answered.')}
     ${check('enabled', 'Enabled', s.enabled !== false)}
     </fieldset>
     <fieldset class="prop-group"><legend>API key</legend>
-      ${input('api_key', 'API key', '', { type: 'password', auto: 'new-password', help: source === 'stored' ? 'A key is stored (encrypted). It is never shown; type a new one to replace it.' : `Empty: the server's ${envKeyName((s.provider as 'anthropic') ?? 'anthropic')} is used (when set).` })}
+      ${input('api_key', 'API key', '', { type: 'password', auto: 'new-password', help: source === 'stored' ? 'A key is stored (encrypted). It is never shown; type a new one to replace it.' : `Empty: the server's ${envKeyName((s.provider as ProviderName) ?? 'anthropic')} is used (when set)${s.provider === 'openai_compatible' ? '; an endpoint without keys (Ollama) needs none' : ''}.` })}
       ${source === 'stored' ? check('remove_key', 'Remove the stored key (use the server default)', false) : ''}
       ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: API keys can't be stored until it is set (the server's environment variables still work).</div>`}
     </fieldset>
@@ -54,7 +56,7 @@ function serviceForm(s: Partial<AiService>, action: string, csrfField: ReturnTyp
 
 /** The form's values, checked; throws with a message. */
 function formValues(b: Record<string, string | undefined>) {
-  const provider = b.provider === 'openai' ? 'openai' : 'anthropic';
+  const provider: ProviderName = (['openai', 'gemini', 'openai_compatible'] as const).find((p) => p === b.provider) ?? 'anthropic';
   const model = (b.model ?? '').trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(model)) throw new Error('The model is a name like claude-opus-5-5 (letters, digits and . _ : / @ -).');
   const maxTokens = Number(b.max_tokens || 4000);
@@ -63,6 +65,7 @@ function formValues(b: Record<string, string | undefined>) {
   if (!Number.isInteger(timeout) || timeout < 5 || timeout > 600) throw new Error('Time limit: 5 to 600 seconds.');
   const baseUrl = (b.base_url ?? '').trim() || null;
   if (baseUrl && (!/^https?:\/\/[^\s]+$/i.test(baseUrl) || baseUrl.length > 500)) throw new Error('The base URL starts with http:// or https://.');
+  if (!baseUrl && provider === 'openai_compatible') throw new Error('An OpenAI-compatible service needs a base URL (e.g. http://localhost:11434/v1 for Ollama).');
   const effort = ['low', 'medium', 'high', 'xhigh', 'max'].includes(b.effort ?? '') ? b.effort! : null;
   return [(b.description ?? '').trim() || null, provider, model, provider === 'anthropic' ? effort : null, b.refusal_fallback === 'true', maxTokens, timeout, baseUrl, b.enabled === 'true'];
 }
@@ -104,7 +107,7 @@ export async function aiRoutes(app: FastifyInstance) {
           <thead><tr><th>Service</th><th>Provider</th><th>Model</th><th>API key</th><th>Applications</th><th>Status</th></tr></thead>
           <tbody>${services.length ? services.map((x) => html`<tr>
             <td data-label="Service"><a href="${BASE}/ai/${x.id}">${x.name}</a>${x.description ? html` <span class="muted">${x.description}</span>` : ''}</td>
-            <td data-label="Provider">${x.provider === 'anthropic' ? 'Claude' : 'OpenAI'}</td>
+            <td data-label="Provider">${providerLabel(x.provider)}</td>
             <td data-label="Model">${x.model}${x.effort ? html` <span class="muted">(${x.effort})</span>` : ''}</td>
             <td data-label="API key">${KEY_TEXT[keySource(x)]}</td>
             <td data-label="Applications">${x.apps ?? html`<span class="muted">none</span>`}</td>
@@ -271,12 +274,13 @@ export async function aiRoutes(app: FastifyInstance) {
       <div class="title-row"><h1 class="ai-name">AI usage · ${a.name}</h1></div>
       <p class="muted u-mt0">The AI services this application may use (an administrator allows them${admin ? html` under <a href="${BASE}/ai">AI services</a>` : ''}), today's use against their limits, and the recent requests.</p>
       ${region('Services', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Service</th><th>Model</th><th class="num">Requests today</th><th class="num">Tokens today</th><th>Status</th></tr></thead>
-        <tbody>${allowed.length ? allowed.map((x, i) => html`<tr><td data-label="Service">${x.name}</td><td data-label="Model">${x.provider === 'anthropic' ? 'Claude' : 'OpenAI'} ${x.model}</td>
+        <tbody>${allowed.length ? allowed.map((x, i) => html`<tr><td data-label="Service">${x.name}</td><td data-label="Model">${providerLabel(x.provider)} ${x.model}</td>
           <td class="num" data-label="Requests today">${today[i].requests}${x.max_requests !== null ? ` / ${x.max_requests}` : ''}</td>
           <td class="num" data-label="Tokens today">${today[i].tokens}${x.max_tokens !== null ? ` / ${x.max_tokens}` : ''}</td>
           <td data-label="Status">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
           : html`<tr><td colspan="5" class="empty">This application may not use any AI service yet.</td></tr>`}</tbody></table></div>`)}
-      ${region('Recent requests', usageTable(recent, false))}`;
+      ${region('Recent requests', usageTable(recent, false))}
+      ${await toolCallTable(a.id)}`;
     return send(reply, s, shell(s, `AI usage · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Activity', `${BASE}/apps/${a.id}/activity`], ['AI usage']], main));
   });
 }

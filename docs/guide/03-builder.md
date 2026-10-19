@@ -158,6 +158,7 @@ applications' files. Choose what goes in:
 | REST source catalogs | Every [catalog](19-rest-data-sources.md#rest-source-catalogs) with its services |
 | SQL scripts, blueprints, data generators | The SQL Workshop's saved work |
 | Data Reporter datasets | Every [dataset](#data-reporter-datasets-and-reporting-applications) (sprint 110) |
+| Team Development | [Label groups, labels, milestones, templates and issues](#team-development) with their comments and history; an issue's application by alias (sprint 113) |
 
 Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, passwords and
 secrets, script runs and other history. **Applications are exported on their own** (an application's *Export*).
@@ -275,7 +276,8 @@ JavaScript. The [default-password banner](#signing-in-and-developer-accounts) st
 - **System message**: the pgkiln version the server runs and, when the [release check](#the-release-check) is on and
   a newer release is out, **pgkiln X is available** with a link to its release notes and how to upgrade (back up,
   install the new version, `pgkiln migrate`, restart).
-- **A side column**: About, **Learn more** (this guide, the [tutorial](10-tutorial.md),
+- **A side column**: About, **Team Development** ([open issues](#team-development), those assigned to you, unseen
+  mentions of you, or *Set up Team Development* before it is set up), **Learn more** (this guide, the [tutorial](10-tutorial.md),
   [Coming from APEX](11-from-apex.md), the changelog and the discussions on GitHub) and Resources.
 
 ### The release check
@@ -753,6 +755,10 @@ author or an administrator deletes it. The page list counts each page's comments
 another number keeps its lock and comments. Locks and comments belong to this installation and
 are not exported.
 
+**Make an issue** under a comment turns it into a [Team Development](#team-development) issue about the same page;
+the comment then links to its issue. A page with open issues shows them above the designer's tabs (*1 open issue:
+…*, with *New issue* for that page), and the application's page list tags such pages (*2 issues*).
+
 ### Arranging the layout
 
 Regions are placed in sequence order; a region's *column span* (1–12) sets its width, and a
@@ -840,7 +846,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
 | `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
-| `report` (also) | *Ask in your own words (AI)*: the AI service and placeholder of the [natural-language filters](04-pages-and-regions.md#natural-language-filters-ask-in-your-own-words) |
+| `report` (also) | *Ask in your own words (AI)*: off, the built-in phrases or an AI service, and the placeholder of [Ask in your own words](04-pages-and-regions.md#ask-in-your-own-words-ai-interactive-reports) |
 | `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks; or (sprint 110) a dataset of the workspace), who may share, build and moderate reports, publishing, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 | `form_designer` | Who may design forms (an authorization scheme), data sources (a table or view each: static id, label, description, key column, may add / change / delete rows, offered columns with labels and lists of values), rows per page ([Form Designer](04-pages-and-regions.md#form_designer-form-designer)) |
 
@@ -957,6 +963,48 @@ On the builder's **Feedback** page you read it (newest first, filtered by status
 user, page, rating and browser), set its status (*Open*, *In progress*, *Done*, *Declined*) and write
 an answer the user sees. Answering is allowed while the application is locked or Run only. The
 setting travels with the export; the feedback itself belongs to the installation.
+
+**Make an issue** turns an entry into a [Team Development](#team-development) issue of the application's workspace
+(title from its first line, the feedback quoted, linked to its page, labelled *Bug* for a problem and *Feature* for
+an idea when the workspace has those labels); open feedback becomes *In progress*, and the entry links to its issue.
+
+## Team Development
+
+(sprint 113, migration 122; APEX: Team Development) An issue tracker for the developers of a
+[workspace](#workspaces): **Team Development** on the icon rail (`/builder/team`) and a block in the
+[Workspace home](#workspace-home)'s side column with the number of open issues. Everything is of the current
+workspace and works without JavaScript.
+
+- **Set up** installs sample data, like APEX's set-up wizard: the label groups *Type* (Bug, Feature, Task) and
+  *Priority* (High, Medium, Low), issue templates (*Bug report*, *Feature request*, *Task*), canned responses and the
+  milestones *1.0*, *1.1* and *Backlog*. What the workspace has already (by name) is kept, so it can run again.
+  The samples are in English; other languages are added in `src/team-samples.ts`.
+- **Issues** have a title, a description in Markdown (rendered safely: raw HTML is shown as text, links are http,
+  https, mailto or relative), *Open* or *Closed*, labels, a milestone, assignees (the workspace's developers and the
+  installation's administrators), and optionally an application of the workspace and one of its pages. Comments are
+  Markdown too; *Comment and close* does both. **@name** mentions a developer of the workspace: they see it under
+  *Mentions of you* (and on the Workspace home) until they open the issue or mark them seen; no mail is sent. Every
+  change is in the issue's history (who changed the title, labels, milestone, assignees, link or status, and when).
+  An issue is deleted by its author or a workspace administrator.
+- **The list** filters by status, label, milestone, assignee (*Me*, *Nobody*), application and a search of the title
+  and text (or `#12` for issue 12). **Save view** keeps the filters under a name, for you only.
+- **The board** shows the issues as columns of cards, by the labels of one label group (a card moved to *High*
+  loses *Medium*; *None of these* removes the group's labels) or by milestone. Each card has a *Move* form, so it
+  works without dragging.
+- **Labels** belong to label groups and have a colour from a fixed palette (red, orange, yellow, green, teal, blue,
+  purple, gray). **Milestones** have a due date and are open or closed, with the share of their issues closed.
+  **Templates** are issue templates (title, labels, text: *Start from a template* on *New issue*) and canned
+  responses (*Canned response* → *Insert* above an issue's comment field). Any developer of the workspace adds and
+  changes them; only its administrators delete labels, label groups and milestones.
+- Issues come from [feedback](#feedback) and [developer comments](#page-locks-and-comments) with **Make an issue**,
+  linked both ways. The page designer shows a page's open issues and App Home counts them per page (*Open issues* in
+  its Tasks).
+
+Issues and the rest are workspace data: they are not part of an application's export (an in-place import keeps them)
+but travel in the workspace's [Export and import](#export-and-import) (*Team Development*): labels, milestones and
+templates match by name, an issue by its title and creation time; assignees are kept when they are developers of the
+importing workspace and the application link when it has an application with that alias. GitHub synchronisation is
+not part of it.
 
 ## Working copies
 
@@ -1293,7 +1341,12 @@ Workspace utilities → **AI services** (administrators only; APEX: *Generative 
 large language model services of this installation. A service has:
 
 - a **name** (upper case, e.g. `CLAUDE`) by which processes, dynamic actions and SQL refer to it;
-- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs;
+- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs; *Gemini*
+  (Google, through its OpenAI-compatible endpoint `https://generativelanguage.googleapis.com/v1beta/openai/`,
+  with the `openai` SDK); or *OpenAI-compatible*: any endpoint that speaks OpenAI's Chat Completions,
+  such as Ollama (`http://localhost:11434/v1`), vLLM, Azure OpenAI (`https://<resource>.openai.azure.com/openai/v1/`)
+  or a gateway. An OpenAI-compatible service needs a base URL; its key may stay empty for endpoints
+  without keys (a local Ollama);
 - a **model**, exactly as the provider names it (new Claude services start with `claude-opus-5-5`);
   pgkiln never changes or downgrades it;
 - for Claude, the **effort** (how deeply the model thinks; current Claude models always think, lower
@@ -1305,8 +1358,9 @@ large language model services of this installation. A service has:
 - an optional **base URL** for a gateway or proxy that speaks the provider's API (calls to the AI
   service don't go through `PGKILN_REST_ALLOWED_HOSTS`: only administrators set this URL);
 - the **API key**: stored encrypted with `PGKILN_SECRET_KEY`, write-only (never shown again, never
-  exported or logged, not readable by applications). Without one the server's `ANTHROPIC_API_KEY` /
-  `OPENAI_API_KEY` is used.
+  exported or logged, not readable by applications, never sent to the browser). Without one the
+  server's `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `OPENAI_COMPATIBLE_API_KEY`
+  (by provider) is used.
 
 On a service's page, **Applications** sets which applications may use it, each with optional daily
 limits (requests and input + output tokens per UTC day; a request over a limit fails with a message
@@ -1314,10 +1368,70 @@ and is logged as *limited*), and **Test** sends a prompt (logged as a builder te
 on the list page for all services, the usage log: the last requests and the totals per application
 and service of the last 30 days.
 
+An interactive report's *Ask in your own words* doesn't need a service: without one (or when the
+service is disabled or not allowed for the application) pgkiln reads the request with its built-in
+phrases ([chapter 4](04-pages-and-regions.md#ask-in-your-own-words-ai-interactive-reports)).
+
 **Prompts go to the provider.** Whatever a prompt contains, including the item values substituted
 into it, is sent to the chosen provider (or the gateway of the base URL). Choose providers and
 models that your organisation allows for that data. See
 [Generate text with AI](06-processing.md#generate-text-with-ai).
+
+## AI agents
+
+Shared Components → Generative AI → **AI Agents** (APEX 26.1 / 26.2: AI Agents and AI Tools) holds an
+application's agents and the tools they may use. An agent reasons over a user's request in an
+[AI assistant region](04-pages-and-regions.md#ai_assistant-ai-assistant) and acts **only through the
+tools you approve**; pgkiln prepares the context, runs each tool call itself under the checks below,
+and composes the conversation.
+
+An **agent** has:
+
+- a **name** (upper case, e.g. `SALES_AGENT`) that regions refer to, and a description;
+- an **AI service** the application may use, and a **system prompt** (`&ITEM.` is replaced by the item's
+  value as delimited data, as in assistant regions);
+- a **reasoning effort**: *low*, *medium* or *high*, or empty for the service's own. For Claude it is
+  the output effort (thinking depth, `output_config.effort`); for OpenAI, Gemini and OpenAI-compatible
+  services it is sent as `reasoning_effort` (leave it empty for models without reasoning: they refuse it);
+- the **tools** it may use (ticked from the application's tools);
+- **maximum steps** (rounds of tool calls per question, 1–20, default 5) and **maximum output tokens**
+  per call (never above the service's maximum);
+- an **authorization scheme**: other users see *You may not use this assistant* instead of the message
+  box, and their questions are refused before anything is sent to the AI service.
+
+A **tool** has a name the model calls it by, a description that tells the model what it does and when
+to use it, optional **parameters** (JSON: `{"DNAME": {"type": "string", "description": "…", "optional": true}}`;
+types string, integer, number, boolean, date, `enum` for a list of texts), an optional authorization
+scheme (only users who pass it are offered the tool) and one of these types:
+
+| Type | What runs | Checks |
+|---|---|---|
+| **SQL query** | one `SELECT` (or `WITH`, `VALUES`, `TABLE`) with the parameters as `:NAME` bind values, plus `:APP_USER` and items | as the application's database role (grants and row level security apply), in a **read-only transaction** (functions it calls can't write either), with a time limit (1–60 s, default 15) and at most *maximum rows* rows (default 50) back to the model |
+| **PL/pgSQL function** | `schema.function` called with named arguments: each parameter name in lower case is an argument name (`P_EMPNO` → `p_empno => …`) | as the application's role; it **may change data** (committed); same time limit and rows |
+| **REST data source** | a REST data source of the application; the parameters become its parameters | as in [assistant regions](04-pages-and-regions.md#ai_assistant-ai-assistant) |
+| **JavaScript** | nothing on the server: after the answer the browser calls the function registered with `pgkiln.actions.register(action)` (with `{value: arguments}`) and the dynamic actions of the **custom event** of that name (the arguments as JSON) | once, right after the answer; the arguments are escaped data in the page |
+| **Navigate** | the model picks one of the tool's **pages**, a link text and item values of that page; pgkiln builds the URL with the item values' **checksum** (bound to application, page and user) and shows the link under the answer | only pages the user may open are offered (the page's authorization scheme and sign-in); only items of that page; the model's values are never substituted (`&ITEM.`); nothing opens the link by itself |
+
+The model's arguments are checked against the parameters before a tool runs; they are bind values
+(escaped literals), never SQL text, and can't replace the server's own names (`:APP_USER`, `:APP_ID`, …).
+Tool results go back to the model as data, with the instruction never to follow instructions inside them.
+
+**Every tool call is logged** with the arguments the model gave, its status (*ok*, *error*, or *refused*
+for a page the user may not open) and duration: in the page's debug messages (level 4) and under
+Activity → **AI usage** → *Tool calls* (`meta.ai_tool_call`, kept 30 days; arguments may hold user data,
+only developers see them). The token usage of each call to the model is logged as before.
+
+Agents and tools are kept in the application (`meta.app.ai_agents`, `meta.app.ai_tools`) and **exported
+with it**; an export made before they existed imports with none. The forms check each one before
+saving (a SQL tool must be a query, a function `schema.name`, a navigate tool's pages must exist); the
+runtime checks them again and shows *This assistant is not set up yet* for a broken one. Renaming a
+tool keeps it in its agents; a tool an agent uses can't be deleted; renaming an agent renames it in
+the regions that use it.
+
+The HR example (`examples/hr/hr_64_ai_agent.sql`) has an agent `HR_AGENT` on page 46: ask *Who in Sales
+earns most?* and it calls the SQL tool `top_earners` as the signed-in user's role, then offers
+*Open BLAKE's record*, a link to the employee form (page 3) with a valid checksum, only to users who
+may open that page.
 
 ## App Builder AI
 

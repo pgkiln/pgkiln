@@ -46,7 +46,7 @@ export async function send(reply: FastifyReply, s: Session, body: string) {
   return reply.type('text/html').send(body);
 }
 
-export type Section = 'home' | 'apps' | 'users' | 'sql' | 'developers' | 'gallery' | 'reporter';
+export type Section = 'home' | 'apps' | 'users' | 'sql' | 'developers' | 'gallery' | 'reporter' | 'team';
 
 // ------------------------------------------------------------------ builder head
 // Builder-only stylesheets and scripts, loaded on every builder page after
@@ -122,6 +122,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${s.workspace?.sql_workshop === false ? '' : rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
         ${rail('gallery', `${BASE}/gallery`, 'package', 'App Gallery')}
         ${rail('reporter', `${BASE}/reporter`, 'pie-chart', 'Data Reporter')}
+        ${rail('team', `${BASE}/team`, 'kanban', 'Team Development')}
         ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}
       </ul>
       <ul class="rail-list rail-bottom">

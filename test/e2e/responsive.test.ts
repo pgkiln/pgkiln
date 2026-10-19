@@ -133,6 +133,10 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(await page.locator('.alert-error').count(), 0, `${name}: no errors`);
         await check(page, `app-2-${name}`, vp);
       }
+      // (sprint 112) the report's settings as chips under "Ask in your own words", one chip's Edit open
+      await page.goto(`${base}/a/hr/2?${new URLSearchParams([...views.group, ['f', 'job|eq|CLERK'], ['h', 'sal|gt|green|2000'], ['c', 'A rather long computed column name|sal * 12 + coalesce(comm, 0)']].map(([k, v]) => [`r${rid}_${k}`, v]))}`);
+      await page.locator('details.ask-edit > summary').first().click();
+      await check(page, 'app-2-ask-chips', vp);
       // the planner's calendar views (page 24; the week view is its first, already checked above)
       const cal = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 24 and r.type = 'calendar'`)).id;
       for (const v of ['month', 'day', 'list']) {
@@ -939,11 +943,33 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         // (sprint 109) the Workspace home and the App Builder at /builder/apps
         workspace_home: '/builder/home',
         app_builder: '/builder/apps',
+        // (sprint 111) Shared Components → AI Agents (the HR example's agent and tools), a tool call with long arguments on AI usage
+        ...(await (async () => {
+          await owner.query(`insert into meta.ai_tool_call (app_id, page_no, username, agent, tool, type, arguments, status, duration_ms, message)
+            values ($1, 46, 'king', 'HR_AGENT', 'top_earners', 'sql', $2, 'error', 12, $3)`,
+            [appId, JSON.stringify({ DNAME: 'a-long-department-name-without-any-spaces-'.repeat(4) }), 'The query failed: ' + 'q'.repeat(150)]);
+          return {
+            ai_agents: `/builder/apps/${appId}/ai-agents`, ai_agent: `/builder/apps/${appId}/ai-agents/agent?name=HR_AGENT`, ai_agent_new: `/builder/apps/${appId}/ai-agents/agent`,
+            ai_tool: `/builder/apps/${appId}/ai-agents/tool?name=top_earners`, ai_tool_navigate: `/builder/apps/${appId}/ai-agents/tool?name=open_employee`,
+            ai_usage_tool_calls: `/builder/apps/${appId}/ai`,
+          };
+        })()),
         // (sprint 110) App Builder → Data Reporter: datasets, a new one (schema step), the HR dataset with a preview, import, a reporting application
         ...(await (async () => {
           const id = (await owner.one(`select id from meta.dataset where workspace_id = 1 and name = 'hr'`)).id;
           return { reporter: '/builder/reporter', reporter_new: '/builder/reporter/datasets/new?schema=hr', reporter_dataset: `/builder/reporter/datasets/${id}?preview=1`,
             reporter_import: '/builder/reporter/import', reporter_app_new: '/builder/reporter/apps/new?dataset=hr' };
+        })()),
+        // (sprint 113) Team Development: the issues, the board by label and by milestone, the HR example's issue (part 66),
+        // a new issue from a template, labels, milestones, templates and the set-up wizard
+        ...(await (async () => {
+          const id = (await owner.one(`select id from meta.team_issue where workspace_id = 1 and title = 'Salary rounding on page 12'`)).id;
+          await owner.query(`delete from meta.team_issue_comment where issue_id = $1 and author = 'e2e_other_developer'`, [id]);
+          await owner.query(`insert into meta.team_issue_comment (issue_id, author, body) values ($1, 'e2e_other_developer', $2)`, [id, 'A long comment without spaces: ' + 'y'.repeat(120) + '\n\n```\n' + 'select ' + 'z'.repeat(150) + '\n```']);
+          const tpl = (await owner.one(`select id from meta.team_template where workspace_id = 1 and kind = 'issue' order by id limit 1`)).id;
+          return { team: '/builder/team', team_board: '/builder/team/board', team_board_milestone: '/builder/team/board?by=milestone', team_issue: `/builder/team/issues/${id}`,
+            team_new: `/builder/team/issues/new?template=${tpl}`, team_labels: '/builder/team/labels', team_milestones: '/builder/team/milestones',
+            team_templates: '/builder/team/templates', team_setup: '/builder/team/setup', hr_page_12: `/builder/apps/${appId}/pages/12` };
         })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
@@ -963,7 +989,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query(`delete from meta.dump_job where username = 'e2e_dump'`);
         await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.team_issue_comment where author = 'e2e_other_developer'`);
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);
+        await owner.query(`delete from meta.ai_tool_call where app_id = $1 and agent = 'HR_AGENT' and duration_ms = 12`, [appId]);
         await owner.query(`delete from meta.ai_usage where service = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.ai_service where name = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like 'E2E %'`, [appId]);

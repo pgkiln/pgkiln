@@ -25,6 +25,7 @@ import { topSqlRoutes } from './builder/top-sql.ts';
 import { diagnosticsRoutes } from './builder/diagnostics.ts';
 import { ldapRoutes } from './builder/ldap.ts';
 import { aiRoutes } from './builder/ai.ts';
+import { aiAgentRoutes } from './builder/ai-agents.ts';
 import { mailRoutes } from './builder/mail.ts';
 import { backupRoutes } from './builder/backups.ts';
 import { availabilityRoutes } from './builder/availability.ts';
@@ -56,6 +57,7 @@ import { dataReporterRoutes } from './runtime/data-reporter.ts';
 import { datasetRoutes } from './builder/datasets.ts';
 import { reporterBuilderRoutes } from './builder/reporter.ts';
 import { workspaceHomeRoutes } from './builder/workspace-home.ts';
+import { teamRoutes } from './builder/team.ts';
 import { formDesignerRoutes } from './runtime/form-designer.ts';
 import { formDesignerBuilderRoutes } from './builder/form-designer.ts';
 import { builderErrorPages, builderServerError } from './builder/errors.ts';
@@ -227,6 +229,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(diagnosticsRoutes);
   await app.register(ldapRoutes);
   await app.register(aiRoutes);
+  await app.register(aiAgentRoutes);
   await app.register(mailRoutes);
   await app.register(backupRoutes);
   await app.register(availabilityRoutes);
@@ -253,6 +256,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(aiBuilderRoutes);
   await app.register(blueprintRoutes);
   await app.register(workspaceHomeRoutes);
+  await app.register(teamRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder/home'));
   return app;
 }

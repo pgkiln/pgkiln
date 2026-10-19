@@ -5,6 +5,42 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Workflow 26.2** (WS-6; APEX 26.1 / 26.2; migration 123): task definitions may list **custom outcomes** (for
+  example Yes / No / Undecided, each with a label and a colour from a fixed list) instead of Approve / Reject; workflows
+  branch on them in a task step's `next` or a switch case `{"outcome": …}`. **Task events** run when a task is
+  completed, expires or its completion SQL fails: SQL as the application's role, an e-mail, or start a workflow; *When
+  the completion SQL fails* reopens the task (default) or keeps it completed. **Notifications** send e-mail templates
+  when a task is created, completed or expires. New steps: **Send E-Mail** (`send_mail`) and **draft** placeholders,
+  which only a development version may hold (Activate is refused). **Migrate running instances** to a newer version of
+  the workflow with a step mapping, a preview, one transaction and a log (instances inside open parallel branches
+  can't be migrated yet). The workflow diagram downloads as **SVG** or **PNG**. HR example `hr_67`.
+- **Team Development** (WS-3; APEX: Team Development; migration 122): Builder → Team Development tracks a workspace's
+  issues with labels (in groups, colours from a fixed list), milestones, assignees, links to applications and pages,
+  Markdown comments with @mentions shown in the builder, and a history of changes. A filtered list with saved views
+  and a board by label group or milestone work without JavaScript. A set-up wizard installs sample labels (Bug,
+  Feature, Task; High, Medium, Low), issue templates, canned responses and milestones. *Make an issue* turns users'
+  feedback and developer comments into issues. The Page Designer, App Home and the Workspace home show open issues.
+  Issues, labels, milestones and templates travel in the workspace export (part *team*). HR example `hr_66`.
+- **AI interactive reports** (WS-5; APEX 26.1 / 26.2): "Ask in your own words" on an interactive report now sets all
+  of the report's settings: filters, highlights, search, sort, control break, totals, group by, pivot, chart and
+  computed columns ("bonus is 10% of salary", checked like Actions → Compute). Each setting shows as a chip with Edit
+  and Remove, and Undo goes back a step (five steps, kept in the session); it all works without JavaScript. Without
+  an AI service (`"ai_filter": {}`, or when the service isn't available) a built-in parser understands common
+  English, Dutch and German phrases such as "sum of salary by department where job is clerk". Answers are checked
+  against the report's shown columns and fixed lists; values are bound or escaped. HR example: the employee
+  report on page 2 (`hr_65`). The box now shows even when no AI service is set.
+- **AI Agents** (WS-4; APEX 26.1 / 26.2; migration 121): Shared Components → AI Agents. An agent combines an AI
+  service, a system prompt, a reasoning effort (low / medium / high, mapped to each provider), approved tools, step
+  and token limits and an authorization scheme; an AI assistant region can name one (`{"agent": "NAME"}`). Tools:
+  SQL queries (a read-only transaction as the application's role through row level security, with a time limit),
+  PL/pgSQL functions, REST data sources, JavaScript actions in the browser, and **Navigate** links to pages the user
+  may open, whose URL and checksum pgkiln builds. Agents and tools export with the application.
+- Every AI tool call is logged with its arguments, status and duration (debug level 4 and Activity → AI usage →
+  Tool calls; kept 30 days, developers only).
+- AI services: **Gemini** and any **OpenAI-compatible** endpoint (Ollama, vLLM, Azure OpenAI); optional instance
+  defaults `GEMINI_API_KEY` and `OPENAI_COMPATIBLE_API_KEY`. HR example: page 46 "HR agent" (`hr_64`).
+
 ### Fixed
 - **Docker upgrades:** `docker compose pull` in `deploy/` skipped the pgkiln image once one was present, because
   `pull_policy: missing` stood next to `build:`; upgrading with `docker compose pull && docker compose up -d` kept

@@ -8,6 +8,7 @@ import { ago } from './home.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, workspaceAdmin } from './workspaces.ts';
+import { teamHomeBlock } from './team.ts';
 
 // (sprint 109, WS-1) The Workspace home (APEX: the workspace home page), the page the builder opens after
 // signing in: cards for the tools (App Builder, SQL Workshop, App Gallery), the workspace message (edited in place
@@ -210,6 +211,7 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
       </div>
       <aside class="ab-side" aria-label="About and learn more">
         <section><h2>About</h2><p>The workspace home: its tools, how its applications are used and what is new. ${s.workspace ? html`You work in ${s.workspace.name}.` : ''}</p></section>
+        ${await teamHomeBlock(s)}
         <section><h2>Learn more</h2><ul class="ab-links ab-tasks">
           ${ext(`${GUIDE}/docs/README.md`, 'The pgkiln guide')}
           ${ext(`${GUIDE}/docs/guide/10-tutorial.md`, 'Tutorial')}

@@ -124,6 +124,8 @@ export const CONFIGURATION: readonly { env: string; secret?: boolean; default: s
   { env: 'API_JWT_SECRET', secret: true, default: '(none)', help: 'Signs REST API tokens' },
   { env: 'ANTHROPIC_API_KEY', secret: true, default: '(none)', help: 'Default key of Claude AI services' },
   { env: 'OPENAI_API_KEY', secret: true, default: '(none)', help: 'Default key of OpenAI AI services' },
+  { env: 'GEMINI_API_KEY', secret: true, default: '(none)', help: 'Default key of Gemini AI services' },
+  { env: 'OPENAI_COMPATIBLE_API_KEY', secret: true, default: '(none)', help: 'Default key of OpenAI-compatible AI services (Ollama, vLLM, Azure OpenAI)' },
   { env: 'MAP_TILE_URL', default: 'OpenStreetMap', help: 'Tile server of map regions' },
   { env: 'LOG_LEVEL', default: 'info', help: 'Server log level' },
   { env: 'PGKILN_RELEASE_CHECK', default: 'off', help: 'Ask GitHub once a day for a newer pgkiln release (the Workspace home; administrators can also turn it on there)' },

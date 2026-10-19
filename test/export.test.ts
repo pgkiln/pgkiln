@@ -34,6 +34,7 @@ const NOT_EXPORTED = new Set([
   'user_form', // (106) Form Designer forms built in the running application: installation data, like Data Reporter reports
   'app_ai_service', // which AI services an application may use: installation data (services and keys are never exported)
   'ai_usage', // the AI usage log of this installation
+  'ai_tool_call', // (121) the log of AI tool calls with their arguments (agents and tools travel in meta.app)
   'ai_request', // AI requests queued from SQL and their answers (kept 24 hours)
   'blueprint', // saved blueprints: builder data of this installation (app_id: the application created from one)
   'ai_conversation', // AI assistant conversations: per session, user data (the assistant's settings travel in the region's config)
@@ -47,6 +48,7 @@ const NOT_EXPORTED = new Set([
   'app_backup', // (082) backups of the application kept by this installation
   'feedback', // (084) users' feedback and the developers' answers: data of this installation
   'rest_object', // (113) AutoREST: tables and views published from the SQL Workshop, installation data like OAuth clients (they name this database's objects)
+  'team_issue', // (122) Team Development issues: workspace data (the workspace export's "team" part links them to the application by alias)
   'workflow_migration', // (123) the log of running instances migrated to a newer version: runtime data, like the instances
 ]);
 

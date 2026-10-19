@@ -8,6 +8,7 @@ import type { Region } from '../metadata.ts';
 import { logActivity, saveState } from '../session.ts';
 import { fetchSource, loadSource, sourceParamValues, toRows } from '../websources.ts';
 import { aiSubstitute, DATA_NOTE } from './ai.ts';
+import { AGENT_NAME, agentFor, DEFAULT_STEPS, logToolCall, prepareTools, runAgentTool, type AgentOutcome, type TurnExtras } from './ai-agents.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
 import { loadContext, simplePage, txContext, type Req } from './routes.ts';
@@ -28,6 +29,13 @@ import { loadContext, simplePage, txContext, type Req } from './routes.ts';
 //      {"name": "request_leave", "description": "…", "sql": "select hr.request_leave(:START_DATE::date, …)",
 //       "parameters": {…}, "writes": true, "authz": "EMPLOYEE"}],
 //    "max_rounds": 5, "max_turns": 20, "public": false, "error_message": "…"}
+//
+// (121) Or the region names an AI agent of the application (Shared
+// Components → AI Agents, src/runtime/ai-agents.ts): {"agent": "HR_AGENT",
+// "welcome": …, "placeholder": …, "context": […], "max_turns": …, "public": …,
+// "error_message": …}. The agent then sets the service, the system prompt,
+// the reasoning effort, the tools, the steps per question and the output
+// limit; its authorization scheme decides who may use the region.
 //
 // - The conversation is kept per session and region (meta.ai_conversation,
 //   owner connection only), in the provider's format; the page shows its
@@ -73,6 +81,8 @@ export interface ContextQuery {
 }
 
 export interface AssistantConfig {
+  /** (121) an AI agent of the application instead of service, system, tools and max_rounds */
+  agent?: string;
   service?: string;
   system?: string;
   welcome?: string;
@@ -105,7 +115,10 @@ export function assistantProblems(conf: unknown): string[] {
   if (!isObj(conf)) return ['The settings are a JSON object.'];
   const c = conf as AssistantConfig;
   const out: string[] = [];
-  if (typeof c.service !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,59}$/.test(c.service)) out.push('"service": the name of an AI service, e.g. "CLAUDE".');
+  if (c.agent !== undefined) {
+    if (typeof c.agent !== 'string' || !AGENT_NAME.test(c.agent.toUpperCase())) out.push('"agent": the name of an AI agent, e.g. "SALES_AGENT".');
+    for (const k of ['service', 'system', 'tools', 'max_rounds'] as const) if (c[k] !== undefined) out.push(`"${k}": the agent sets it (leave it out).`);
+  } else if (typeof c.service !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,59}$/.test(c.service)) out.push('"service": the name of an AI service, e.g. "CLAUDE".');
   for (const k of ['system', 'welcome', 'placeholder', 'error_message'] as const)
     if (c[k] !== undefined && typeof c[k] !== 'string') out.push(`"${k}" is text.`);
   for (const [k, max] of [['max_rounds', 10], ['max_turns', 100]] as const)
@@ -272,6 +285,8 @@ interface Turn {
   role: 'user' | 'assistant';
   text: string;
   tools?: { name: string; ok: boolean }[];
+  /** (121) links a navigate tool built (URLs with their checksum, made by pgkiln) */
+  links?: TurnExtras['links'];
 }
 
 interface Conversation {
@@ -337,8 +352,12 @@ export async function renderAssistant(ctx: PageContext, r: Region): Promise<Raw>
   const t = ctx.locale.t;
   const c = configOf(r);
   if (assistantProblems(c).length) return html`<p class="empty">${t('assistant.not_configured')}</p>`;
+  const agent = c.agent ? await agentFor(ctx.app.id, c.agent) : null;
+  if (c.agent && !agent) return html`<p class="empty">${t('assistant.not_configured')}</p>`;
+  if (agent && !(await isAuthorized(ctx, agent.agent.authz))) return html`<p class="muted">${t('assistant.unauthorized')}</p>`;
+  const service = agent ? agent.agent.service.toUpperCase() : c.service!.toUpperCase();
   const conv = await loadConversation(ctx, r);
-  const turns = conv && conv.service === c.service!.toUpperCase() ? conv.turns : [];
+  const turns = conv && conv.service === service ? conv.turns : [];
   const form = `as${r.id}`;
   const clear = `asc${r.id}`;
   const action = `${ctx.base}/${ctx.page.page_no}/assistant/${r.id}`;
@@ -348,9 +367,18 @@ export async function renderAssistant(ctx: PageContext, r: Region): Promise<Raw>
     <form id="${clear}" method="post" action="${action}/clear">
       <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="params" value="${keep}"></form>`);
   const draft = ctx.session.state[`__AIDRAFT${r.id}`] ?? '';
-  if (draft) {
+  // (121) the browser actions of the last answer (javascript tools): run once, right after it
+  const pending = ctx.session.state[`__AIACT${r.id}`] ?? '';
+  if (draft || pending) {
     delete ctx.session.state[`__AIDRAFT${r.id}`];
+    delete ctx.session.state[`__AIACT${r.id}`];
     await saveState(ctx.session);
+  }
+  let actions: TurnExtras['actions'] = [];
+  try {
+    actions = pending ? JSON.parse(pending) : [];
+  } catch {
+    // ignored
   }
   const welcome = c.welcome ? substitute(ctx.locale.tr(c.welcome), ctx, (v) => v) : '';
   const usable = mayUse(ctx, r);
@@ -361,8 +389,11 @@ export async function renderAssistant(ctx: PageContext, r: Region): Promise<Raw>
         <span class="assistant-who">${x.role === 'user' ? t('assistant.you') : t('assistant.assistant')}</span>
         <div class="assistant-text">${x.role === 'user' ? html`<p>${raw(esc(x.text).replace(/\n/g, '<br>'))}</p>` : formatAnswer(x.text)}</div>
         ${x.tools?.length ? html`<small class="assistant-tools muted">${t('assistant.used', { tools: [...new Set(x.tools.map((y) => y.name))].join(', ') })}</small>` : ''}
+        ${x.links?.length ? html`<div class="assistant-links" role="group" aria-label="${t('assistant.links')}">${x.links.map((l) =>
+          html`<a class="btn" href="${l.url}"${l.dialog ? raw(' data-dialog') : ''}>${l.label}</a>`)}</div>` : ''}
       </li>`)}
     </ol>
+    ${actions.map((a) => html`<span hidden class="assistant-action" data-ai-action="${a.action}" data-ai-args="${JSON.stringify(a.args)}"></span>`)}
     ${usable
       ? html`<div class="assistant-input">
           <label class="label" for="${form}_message">${t('assistant.message')}</label>
@@ -399,15 +430,23 @@ async function contextData(ctx: PageContext, c: AssistantConfig, question: strin
 async function ask(ctx: PageContext, r: Region, message: string) {
   const t = ctx.locale.t;
   const c = configOf(r);
-  const service = c.service!.toUpperCase();
+  const agent = c.agent ? await agentFor(ctx.app.id, c.agent) : null;
+  if (c.agent && !agent) throw new InputError(t('assistant.not_configured'));
+  const service = agent ? agent.agent.service.toUpperCase() : c.service!.toUpperCase();
   // checks, the system prompt, the context and the tools: one short transaction as the app's role
   const prep = await appTx(txContext(ctx), async (client) => {
     ctx.client = client;
     await checkPageAccess(ctx);
     ctx.vis = await computeVisibility(ctx);
     if (!ctx.vis.regions.has(r.id)) throw new Forbidden(t('error.access_denied'));
-    const system = aiSubstitute(c.system ?? '', ctx);
-    return { tools: await offeredTools(ctx, c), context: await contextData(ctx, c, message), system };
+    if (agent && !(await isAuthorized(ctx, agent.agent.authz))) throw new Forbidden(t('error.access_denied'));
+    const system = aiSubstitute((agent ? agent.agent.system : c.system) ?? '', ctx);
+    return {
+      tools: agent ? [] : await offeredTools(ctx, c),
+      agentTools: agent ? await prepareTools(ctx, agent.tools) : [],
+      context: await contextData(ctx, c, message),
+      system,
+    };
   });
   ctx.client = undefined;
   let conv = await loadConversation(ctx, r);
@@ -418,22 +457,35 @@ async function ask(ctx: PageContext, r: Region, message: string) {
     conv = undefined;
   }
   if (conv && conv.turns.filter((x) => x.role === 'user').length >= (c.max_turns ?? DEFAULT_TURNS)) throw new InputError(t('assistant.max_turns'));
-  const system = [prep.system.text.trim(), DATA_NOTE, prep.tools.length ? TOOLS_NOTE : ''].filter(Boolean).join('\n\n');
+  const system = [prep.system.text.trim(), DATA_NOTE, prep.tools.length || prep.agentTools.length ? TOOLS_NOTE : ''].filter(Boolean).join('\n\n');
   const content = [...prep.context, message].join('\n\n');
   dbg(ctx, 9, 'ai', () => `system prompt: ${system}`);
   dbg(ctx, 9, 'ai', () => `message: ${content}`);
   const byName = new Map(prep.tools.map((x) => [x.name, x]));
+  const agentTools = new Map(prep.agentTools.map((x) => [x.tool.name, x]));
+  const extras: TurnExtras = { links: [], actions: [] };
+  // every tool call is logged with its arguments (meta.ai_tool_call, debug)
+  const runLogged = async (name: string, input: Record<string, unknown>) => {
+    const t0 = performance.now();
+    const p = agentTools.get(name);
+    const out: AgentOutcome = p
+      ? await runAgentTool(ctx, p, input, extras, (def, args) => runTool(ctx, def, args))
+      : agent ? { content: 'There is no such tool.', isError: true } : await runTool(ctx, byName.get(name), input);
+    await logToolCall(ctx, r.id, agent?.agent.name ?? null, name, p?.tool.type ?? byName.get(name)?.type ?? 'sql', input, out, performance.now() - t0);
+    return out;
+  };
   const res = await chat(service, {
     system,
     history: conv?.messages ?? [],
     message: content,
-    tools: prep.tools.map((x): ChatTool => ({ name: x.name, description: x.description, parameters: toolSchema(x) })),
-    maxRounds: c.max_rounds ?? DEFAULT_ROUNDS,
-    runTool: (name, input) => runTool(ctx, byName.get(name), input),
+    tools: agent ? prep.agentTools.map((x) => x.chat) : prep.tools.map((x): ChatTool => ({ name: x.name, description: x.description, parameters: toolSchema(x) })),
+    maxRounds: agent ? (agent.agent.max_steps ?? DEFAULT_STEPS) : (c.max_rounds ?? DEFAULT_ROUNDS),
+    runTool: runLogged,
+    ...(agent ? { effort: agent.agent.effort ?? null, maxTokens: agent.agent.max_tokens ?? null } : {}),
   }, { appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, source: 'assistant', debug: (l, x) => dbg(ctx, l, 'ai', x) });
   dbg(ctx, 9, 'ai', () => `answer: ${res.text}`);
   const turns: Turn[] = [...(conv?.turns ?? []), { role: 'user', text: message },
-    { role: 'assistant', text: res.text || t('assistant.no_answer'), ...(res.tools.length ? { tools: res.tools } : {}) }];
+    { role: 'assistant', text: res.text || t('assistant.no_answer'), ...(res.tools.length ? { tools: res.tools } : {}), ...(extras.links.length ? { links: extras.links } : {}) }];
   const messages = JSON.stringify(res.history);
   if (messages.length > MAX_HISTORY_BYTES) throw new InputError(t('assistant.max_turns'));
   const saved = conv
@@ -444,6 +496,7 @@ async function ask(ctx: PageContext, r: Region, message: string) {
         [ctx.app.id, r.id, ctx.session.id, ctx.user, service, provider, messages, JSON.stringify(turns)],
       );
   if (!saved.rowCount) throw new InputError(t('assistant.busy'));
+  if (extras.actions.length) ctx.session.state[`__AIACT${r.id}`] = JSON.stringify(extras.actions);
 }
 
 export async function assistantRoutes(app: FastifyInstance) {

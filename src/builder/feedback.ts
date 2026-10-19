@@ -3,6 +3,8 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { appOr404 } from './forms.ts';
+import { issuesFrom } from '../team.ts';
+import { toIssueButton } from './team.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, select, send, shell, type Req } from './ui.ts';
 
 // Application → Feedback (APEX: Team Development → Feedback, migration 084):
@@ -28,6 +30,8 @@ export async function feedbackRoutes(app: FastifyInstance) {
       [a.id, status, kind])).rows;
     const counts = (await owner.query(`select status, count(*)::int as n from meta.feedback where app_id = $1 group by 1`, [a.id])).rows;
     const count = (st: string) => counts.find((c) => c.status === st)?.n ?? 0;
+    // (sprint 113) feedback turned into a Team Development issue links to it
+    const issues = await issuesFrom('feedback', rows.map((f) => Number(f.id)));
     const body = html`
       ${region('Feedback', html`
         <form method="post" action="${BASE}/apps/${a.id}/feedback/settings" class="u-mb1">${csrf(s)}
@@ -39,10 +43,11 @@ export async function feedbackRoutes(app: FastifyInstance) {
           ${select('status', 'Status', status, [['', 'All'], ...STATUSES])}
           ${select('kind', 'Kind', kind, [['', 'All'], ...KINDS])}
           <button class="btn btn-sm">${icon('filter')} Show</button></form>
-        ${rows.length ? html`<ul class="feedback-admin">${rows.map((f) => html`<li class="feedback-item">
+        ${rows.length ? html`<ul class="feedback-admin">${rows.map((f) => html`<li class="feedback-item" id="feedback-${f.id}">
           <div class="feedback-meta"><span class="tag">${KINDS.find(([v]) => v === f.kind)?.[1]}</span>
             <b>${f.username}</b> <span class="muted">${when(f.created_at)}${f.page_no ? html` · <a href="/a/${a.alias}/${f.page_no}" target="_blank" rel="noopener">page ${f.page_no}</a>` : ''}${f.rating ? ` · ${'★'.repeat(f.rating)}` : ''}${f.user_agent ? ` · ${f.user_agent}` : ''}</span></div>
           <p class="feedback-body">${f.body}</p>
+          <p class="feedback-issue">${toIssueButton(s, 'feedback', Number(f.id), issues.get(Number(f.id)))}</p>
           <form method="post" action="${BASE}/apps/${a.id}/feedback/${f.id}">${csrf(s)}
             <div class="form-grid">
               ${select('status', 'Status', f.status, STATUSES)}
