@@ -16,6 +16,8 @@ export interface BuilderWorkspace {
   /** (093) workspace preferences */
   sql_workshop?: boolean;
   rest_services?: boolean;
+  /** (119) what /builder opens: the App Builder (null, 'apps') or the Workspace home ('home') */
+  builder_home?: string | null;
   /** (093) extension links, in the builder's Extensions menu */
   links?: { label: string; url: string; description: string | null }[];
 }

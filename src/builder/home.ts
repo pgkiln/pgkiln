@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -90,9 +90,12 @@ async function recentApps(s: Session) {
 
 export async function homeRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- App Builder home
-  app.get(BASE, async (req: Req, reply) => {
+  // (sprint 109) at /builder/apps; /builder (links from before the Workspace home) shows it too, or redirects to the
+  // Workspace home when the workspace's preferences say so (meta.workspace.builder_home, migration 119)
+  const appBuilder = async (req: Req, reply: FastifyReply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    if (s.workspace?.builder_home === 'home' && req.url === BASE) return reply.redirect(`${BASE}/home`);
     const q = String(req.query.q ?? '').trim().slice(0, 100);
     // the view and sort are remembered for the session
     if (req.query.view === 'grid' || req.query.view === 'report') s.state.__BVIEW = req.query.view;
@@ -124,13 +127,13 @@ export async function homeRoutes(app: FastifyInstance) {
       if (q) p.set('q', q);
       if (o.view) p.set('view', o.view);
       if (o.sort) p.set('sort', o.sort);
-      return `${BASE}?${p}`;
+      return `${BASE}/apps?${p}`;
     };
     const th = (key: Sort, label: string, cls = '') =>
       html`<th scope="col"${cls ? raw(` class="${cls}"`) : ''}${sort === key ? raw(' aria-sort="' + (key === 'pages' || key === 'updated' ? 'descending' : 'ascending') + '"') : ''}><a href="${link({ sort: key })}">${label}${sort === key ? html`<span class="ab-sorted" aria-hidden="true">${key === 'pages' || key === 'updated' ? '↓' : '↑'}</span>` : ''}</a></th>`;
     const rows = apps.rows;
     const list = rows.length === 0
-      ? html`<p class="ab-empty">${total.n ? html`No application ${group ? html`in the group ${group.name}${q ? html` matches “${q}”` : ''}` : html`matches “${q}”`}. <a href="${BASE}?q=&amp;group=">Show all</a>` : html`No applications yet. <a href="${BASE}/create">Create one</a> or <a href="${BASE}/import">import one</a>.`}</p>`
+      ? html`<p class="ab-empty">${total.n ? html`No application ${group ? html`in the group ${group.name}${q ? html` matches “${q}”` : ''}` : html`matches “${q}”`}. <a href="${BASE}/apps?q=&amp;group=">Show all</a>` : html`No applications yet. <a href="${BASE}/create">Create one</a> or <a href="${BASE}/import">import one</a>.`}</p>`
       : view === 'grid'
         ? html`<div class="ab-cards">${rows.map((a) => html`<article class="ab-card" data-filter-row>
             <a class="ab-card-main" href="${BASE}/apps/${a.id}">${appIcon(a)}<span><strong>${a.name}</strong><small>${a.id} · /a/${a.alias}</small></span></a>
@@ -162,12 +165,12 @@ export async function homeRoutes(app: FastifyInstance) {
         ${s.workspace?.message ? html`<div class="alert alert-info ab-message" role="status">${icon('bell')}<div><strong>${s.workspace.name}</strong><p>${s.workspace.message}</p></div></div>` : ''}
         ${tiles()}
         <div class="ab-toolbar">
-          <form class="ab-search" method="get" action="${BASE}" role="search">
+          <form class="ab-search" method="get" action="${BASE}/apps" role="search">
             <label class="sr-only" for="ab-q">Search applications</label>${icon('search')}
             <input id="ab-q" name="q" type="search" value="${q}" placeholder="Search" autocomplete="off" data-filter-list=".ab-home [data-filter-row]">
           </form>
           <div class="ab-views" role="group" aria-label="View">${viewButton('grid', 'grid', 'Cards')}${viewButton('report', 'list', 'Report')}</div>
-          ${groups.length ? html`<form method="get" action="${BASE}" class="ab-group"><label class="sr-only" for="ab-group">Application group</label>
+          ${groups.length ? html`<form method="get" action="${BASE}/apps" class="ab-group"><label class="sr-only" for="ab-group">Application group</label>
             <select id="ab-group" name="group" data-autosubmit><option value="">All groups</option>${groups.map((g) => html`<option value="${g.id}"${group?.id === g.id ? raw(' selected') : ''}>${g.name}</option>`)}</select>
             <noscript><button class="btn btn-sm">Show</button></noscript></form>` : ''}
           <details class="menu ab-menu"><summary class="btn">Actions ${icon('chevron')}</summary>
@@ -187,7 +190,9 @@ export async function homeRoutes(app: FastifyInstance) {
       ${aside(recent, 'The App Builder creates, edits and runs the applications of this workspace: pages and regions on your PostgreSQL tables, with sign-in, roles and row level security.', TASKS)}
     </div>`;
     return send(reply, s, shell(s, 'App Builder', [['App Builder']], main));
-  });
+  };
+  app.get(BASE, appBuilder);
+  app.get(`${BASE}/apps`, appBuilder);
 
   // ---------------------------------------------------------------- create and import
   // (sprint 73) GET /create, the Create Application wizard, is in appwizard.ts

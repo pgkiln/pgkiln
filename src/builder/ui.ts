@@ -46,7 +46,7 @@ export async function send(reply: FastifyReply, s: Session, body: string) {
   return reply.type('text/html').send(body);
 }
 
-export type Section = 'apps' | 'users' | 'sql' | 'developers' | 'gallery';
+export type Section = 'home' | 'apps' | 'users' | 'sql' | 'developers' | 'gallery';
 
 // ------------------------------------------------------------------ builder head
 // Builder-only stylesheets and scripts, loaded on every builder page after
@@ -105,19 +105,20 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
   const rail = (key: Section | 'search' | 'help', href: string, ic: string, label: string, extra: Raw | '' = '') =>
     html`<li><a href="${href}" class="rail-link" title="${label}"${section === key ? raw(' aria-current="page"') : ''}${extra}>${bicon(ic)}<span class="rail-label">${label}</span></a></li>`;
   const back = [...crumbs].reverse().find(([, href], i) => i > 0 && href);
-  // (sprint 74) the default-password warning: on the App Builder home and the Developers page only, until
+  // (sprint 74) the default-password warning: on the Workspace home (sprint 109), the App Builder home and the Developers page only, until
   // dismissed (for this sign-in); a dot on the avatar stays until the password is changed
   const weak = !!s.state.__WEAK;
-  const weakBanner = weak && !s.state.__WEAK_HIDDEN && crumbs.length === 1 && (crumbs[0][0] === 'App Builder' || crumbs[0][0] === 'Developers');
+  const weakBanner = weak && !s.state.__WEAK_HIDDEN && crumbs.length === 1 && (crumbs[0][0] === 'Home' || crumbs[0][0] === 'App Builder' || crumbs[0][0] === 'Developers');
   const themeButton = (t: BuilderTheme, ic: string, label: string) =>
     html`<button name="theme" value="${t}" aria-pressed="${theme === t ? 'true' : 'false'}">${bicon(ic)}<span>${label}</span></button>`;
   return documentShell(
     `${title} · Builder`,
     html`<a class="skip-link" href="#main">Skip to content</a>
     <nav class="ide-rail" aria-label="Builder">
-      <a class="rail-logo" href="${BASE}" title="pgkiln Builder">${brandMark()}<span class="sr-only">pgkiln Builder home</span></a>
+      <a class="rail-logo" href="${BASE}/home" title="pgkiln Builder">${brandMark()}<span class="sr-only">pgkiln Builder home</span></a>
       <ul class="rail-list">
-        ${rail('apps', BASE, 'builder', 'App Builder')}
+        ${rail('home', `${BASE}/home`, 'home', 'Home')}
+        ${rail('apps', `${BASE}/apps`, 'builder', 'App Builder')}
         ${s.workspace?.sql_workshop === false ? '' : rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
         ${rail('gallery', `${BASE}/gallery`, 'package', 'App Gallery')}
         ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}

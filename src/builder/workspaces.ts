@@ -29,7 +29,7 @@ export const DEFAULT_WORKSPACE = 1;
 export async function loadWorkspaces(s: Session) {
   const rows = (
     await owner.query<WorkspaceRef & { instance_admin?: boolean }>(
-      `select w.id, w.name, w.message, w.banner_label, w.banner_color, w.isolated, w.sql_workshop, w.rest_services,
+      `select w.id, w.name, w.message, w.banner_label, w.banner_color, w.isolated, w.sql_workshop, w.rest_services, w.builder_home,
               coalesce((select json_agg(json_build_object('label', l.label, 'url', l.url, 'description', l.description) order by l.position, lower(l.label))
                           from meta.workspace_link l where l.workspace_id = w.id), '[]') as links,
               exists (select 1 from meta.developer d where d.username = $1 and d.is_admin)
@@ -211,12 +211,13 @@ function serviceRegion(s: Session, w: { id: number; message: string | null; bann
 }
 
 /** (093) Workspace preferences: the SQL Workshop and the applications' REST modules on or off. */
-function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean }) {
+function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null }) {
   const check = (name: string, on: boolean, label: string, help: string) =>
     html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
   return region('Workspace preferences', html`<form method="post" action="${BASE}/workspaces/${w.id}/preferences">${csrf(s)}
       ${check('sql_workshop', w.sql_workshop, 'Enable the SQL Workshop', 'Off: the SQL Worksheet, the Object Browser, SQL scripts, data loading and unloading, Quick SQL, the query builder, DDL, Compare and AI are refused while this workspace is current, for every developer.')}
       ${check('rest_services', w.rest_services, 'Enable RESTful services', 'Off: the REST modules of this workspace\'s applications answer 404 (Not found) at /a/<alias>/rest/…; they can still be edited.')}
+      ${select('builder_home', 'Builder links open', w.builder_home === 'home' ? 'home' : 'apps', [['apps', 'App Builder'], ['home', 'Workspace home']], 'Where a link to /builder (a bookmark from before the Workspace home) leads in this workspace. Signing in always opens the Workspace home; the App Builder is at /builder/apps.')}
       <div class="buttons"><button class="btn">Save preferences</button></div></form>`, '', 'preferences');
 }
 
@@ -540,9 +541,11 @@ export async function workspaceRoutes(app: FastifyInstance) {
     if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
     const sql = req.body?.sql_workshop === 'true';
     const rest = req.body?.rest_services === 'true';
-    const r = await owner.query('update meta.workspace set sql_workshop = $2, rest_services = $3 where id = $1', [req.params.id, sql, rest]);
+    // (119) what /builder opens: the App Builder (null) or the Workspace home
+    const home = req.body?.builder_home === 'home' ? 'home' : null;
+    const r = await owner.query('update meta.workspace set sql_workshop = $2, rest_services = $3, builder_home = $4 where id = $1', [req.params.id, sql, rest, home]);
     if (!r.rowCount) return reply.code(404).send('Not found');
-    await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: SQL Workshop ${sql ? 'on' : 'off'}, RESTful services ${rest ? 'on' : 'off'}` });
+    await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: SQL Workshop ${sql ? 'on' : 'off'}, RESTful services ${rest ? 'on' : 'off'}, /builder opens ${home ?? 'apps'}` });
     flash(s, 'Preferences saved.');
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
   });

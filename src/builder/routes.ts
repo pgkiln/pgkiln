@@ -43,11 +43,11 @@ export async function builderRoutes(app: FastifyInstance) {
     }
   };
   /** Where to go after signing in: a builder page only. */
-  const safeNext = (v: unknown) => (typeof v === 'string' && /^\/builder(\/[A-Za-z0-9_/-]{0,200})?$/.test(v) ? v : BASE);
+  const safeNext = (v: unknown) => (typeof v === 'string' && /^\/builder(\/[A-Za-z0-9_/-]{0,200})?$/.test(v) ? v : `${BASE}/home`);
 
   app.get(`${BASE}/login`, async (req: Req, reply) => {
     const s = await getSession(req, reply, null, BASE);
-    if (s.username) return reply.redirect(BASE);
+    if (s.username) return reply.redirect(`${BASE}/home`);
     const error = takeFlash(s, '__ERROR');
     await saveState(s);
     const r = remembered(req);
@@ -99,7 +99,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const { username = '', password = '' } = req.body ?? {};
     const workspace = String(req.body?.workspace ?? '').trim().slice(0, 60);
     const next = safeNext(req.body?.next);
-    const again = next === BASE ? `${BASE}/login` : `${BASE}/login?next=${encodeURIComponent(next)}`;
+    const again = next === `${BASE}/home` ? `${BASE}/login` : `${BASE}/login?next=${encodeURIComponent(next)}`;
     const ip = clientIp(req);
     if (req.body?.__csrf !== s.csrf_token) {
       flash(s, 'Your session expired. Please try again.', 'error');
