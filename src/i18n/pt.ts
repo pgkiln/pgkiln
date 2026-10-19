@@ -789,4 +789,13 @@ export const pt: Record<MessageKey, string> = {
   'ai_filter.applied': "Aplicado: {what}",
   'ai_filter.nothing': "A pergunta não deu filtros para este relatório.",
   'ai_filter.sort': "ordenado por {column}",
+  'ai_filter.chips': "Definições do relatório",
+  'ai_filter.edit': "Editar",
+  'ai_filter.undo': "Desfazer",
+  'ai_filter.remove': "Remover {what}",
+  'ai_filter.not_understood': "Não entendido: {what}",
+  'ai_filter.no_match': "A pergunta não deu definições do relatório. Experimente p. ex. \"valor acima de 100\", \"ordenar por data\" ou \"soma do valor por cliente\".",
+  'ai_filter.per_group': "{what} por grupo",
+  'ai_filter.needs_number': "{fn} precisa de uma coluna com números.",
+  'ai_filter.invalid': "Essa alteração não é possível: {why}",
 };

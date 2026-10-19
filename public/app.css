@@ -2053,3 +2053,17 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .assistant-links { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
 .assistant-links .btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .ai-args { overflow-wrap: anywhere; word-break: break-word; }
+
+/* (sprint 112) the report's settings as chips under "Ask in your own words" (src/runtime/ai-filter.ts): Edit unfolds a small form */
+.ask-chips { margin: 0.6rem 0 0; padding: 0; list-style: none; }
+.ask-chip { flex-wrap: wrap; max-width: 100%; min-width: 0; overflow-wrap: anywhere; padding-right: 0.2rem; }
+.ask-chip-text { min-width: 0; }
+.ask-edit > summary { cursor: pointer; font-size: 0.78rem; text-decoration: underline; list-style: none; padding: 0 0.2rem; }
+.ask-edit > summary::-webkit-details-marker { display: none; }
+.ask-edit[open] { flex-basis: 100%; }
+.ask-edit-body { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.4rem; padding: 0.4rem 0.2rem 0.3rem; }
+.ask-field { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1 1 8rem; max-width: 100%; }
+.ask-field label { font-size: 0.75rem; }
+.ask-field select, .ask-field input { min-width: 0; width: 100%; box-sizing: border-box; }
+.ask-chip-x { background: none; border: 0; color: inherit; font-size: 1rem; line-height: 1; padding: 0.15rem 0.4rem; border-radius: 99px; cursor: pointer; }
+.ask-chip-x:hover, .ask-chip-x:focus-visible { background: var(--surface); }

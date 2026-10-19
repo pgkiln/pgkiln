@@ -789,4 +789,13 @@ export const zh: Record<MessageKey, string> = {
   'ai_filter.applied': "已应用：{what}",
   'ai_filter.nothing': "此问题没有为该报表生成任何筛选条件。",
   'ai_filter.sort': "按 {column} 排序",
+  'ai_filter.chips': "报表设置",
+  'ai_filter.edit': "编辑",
+  'ai_filter.undo': "撤销",
+  'ai_filter.remove': "删除 {what}",
+  'ai_filter.not_understood': "未理解：{what}",
+  'ai_filter.no_match': "该问题未得到任何报表设置。请尝试例如“金额大于 100”“按日期排序”或“按客户汇总金额”。",
+  'ai_filter.per_group': "每组 {what}",
+  'ai_filter.needs_number': "{fn} 需要数字列。",
+  'ai_filter.invalid': "无法进行此更改：{why}",
 };

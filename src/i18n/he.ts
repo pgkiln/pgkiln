@@ -789,4 +789,13 @@ export const he: Record<MessageKey, string> = {
   'ai_filter.applied': "הוחל: {what}",
   'ai_filter.nothing': "השאלה לא הניבה מסננים לדוח זה.",
   'ai_filter.sort': "ממוין לפי {column}",
+  'ai_filter.chips': "הגדרות דוח",
+  'ai_filter.edit': "עריכה",
+  'ai_filter.undo': "ביטול פעולה",
+  'ai_filter.remove': "הסרת {what}",
+  'ai_filter.not_understood': "לא הובן: {what}",
+  'ai_filter.no_match': "השאלה לא הניבה הגדרות דוח. נסו למשל \"סכום מעל 100\", \"מיין לפי תאריך\" או \"סכום לפי לקוח\".",
+  'ai_filter.per_group': "{what} לכל קבוצה",
+  'ai_filter.needs_number': "{fn} דורש עמודה של מספרים.",
+  'ai_filter.invalid': "שינוי זה אינו אפשרי: {why}",
 };

@@ -789,4 +789,13 @@ export const it: Record<MessageKey, string> = {
   'ai_filter.applied': "Applicato: {what}",
   'ai_filter.nothing': "La domanda non ha prodotto filtri per questo report.",
   'ai_filter.sort': "ordinato per {column}",
+  'ai_filter.chips': "Impostazioni del report",
+  'ai_filter.edit': "Modifica",
+  'ai_filter.undo': "Annulla",
+  'ai_filter.remove': "Rimuovi {what}",
+  'ai_filter.not_understood': "Non compreso: {what}",
+  'ai_filter.no_match': "La domanda non ha prodotto impostazioni del report. Prova ad es. \"importo oltre 100\", \"ordina per data\" o \"somma di importo per cliente\".",
+  'ai_filter.per_group': "{what} per gruppo",
+  'ai_filter.needs_number': "{fn} richiede una colonna di numeri.",
+  'ai_filter.invalid': "Questa modifica non è possibile: {why}",
 };

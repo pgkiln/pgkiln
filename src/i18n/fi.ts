@@ -789,4 +789,13 @@ export const fi: Record<MessageKey, string> = {
   'ai_filter.applied': "Käytetty: {what}",
   'ai_filter.nothing': "Kysymyksestä ei syntynyt suodattimia tälle raportille.",
   'ai_filter.sort': "lajiteltu sarakkeen {column} mukaan",
+  'ai_filter.chips': "Raportin asetukset",
+  'ai_filter.edit': "Muokkaa",
+  'ai_filter.undo': "Kumoa",
+  'ai_filter.remove': "Poista {what}",
+  'ai_filter.not_understood': "Ei ymmärretty: {what}",
+  'ai_filter.no_match': "Kysymyksestä ei saatu raportin asetuksia. Kokeile esim. ”summa yli 100”, ”järjestä päivämäärän mukaan” tai ”summa asiakkaittain”.",
+  'ai_filter.per_group': "{what} ryhmää kohden",
+  'ai_filter.needs_number': "{fn} vaatii numerosarakkeen.",
+  'ai_filter.invalid': "Muutos ei ole mahdollinen: {why}",
 };

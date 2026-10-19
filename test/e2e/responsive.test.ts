@@ -133,6 +133,10 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         assert.equal(await page.locator('.alert-error').count(), 0, `${name}: no errors`);
         await check(page, `app-2-${name}`, vp);
       }
+      // (sprint 112) the report's settings as chips under "Ask in your own words", one chip's Edit open
+      await page.goto(`${base}/a/hr/2?${new URLSearchParams([...views.group, ['f', 'job|eq|CLERK'], ['h', 'sal|gt|green|2000'], ['c', 'A rather long computed column name|sal * 12 + coalesce(comm, 0)']].map(([k, v]) => [`r${rid}_${k}`, v]))}`);
+      await page.locator('details.ask-edit > summary').first().click();
+      await check(page, 'app-2-ask-chips', vp);
       // the planner's calendar views (page 24; the week view is its first, already checked above)
       const cal = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 24 and r.type = 'calendar'`)).id;
       for (const v of ['month', 'day', 'list']) {

@@ -789,4 +789,13 @@ export const tr: Record<MessageKey, string> = {
   'ai_filter.applied': "Uygulandı: {what}",
   'ai_filter.nothing': "Soru bu rapor için süzgeç üretmedi.",
   'ai_filter.sort': "{column} sütununa göre sıralı",
+  'ai_filter.chips': "Rapor ayarları",
+  'ai_filter.edit': "Düzenle",
+  'ai_filter.undo': "Geri al",
+  'ai_filter.remove': "{what} kaldır",
+  'ai_filter.not_understood': "Anlaşılmadı: {what}",
+  'ai_filter.no_match': "Soru herhangi bir rapor ayarı vermedi. Örneğin \"tutar 100'den fazla\", \"tarihe göre sırala\" veya \"müşteriye göre tutar toplamı\" deneyin.",
+  'ai_filter.per_group': "grup başına {what}",
+  'ai_filter.needs_number': "{fn} sayı içeren bir sütun gerektirir.",
+  'ai_filter.invalid': "Bu değişiklik yapılamaz: {why}",
 };

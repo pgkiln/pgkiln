@@ -789,4 +789,13 @@ export const fr: Record<MessageKey, string> = {
   'ai_filter.applied': "Appliqué : {what}",
   'ai_filter.nothing': "La question n'a donné aucun filtre pour ce rapport.",
   'ai_filter.sort': "trié par {column}",
+  'ai_filter.chips': "Paramètres du rapport",
+  'ai_filter.edit': "Modifier",
+  'ai_filter.undo': "Annuler",
+  'ai_filter.remove': "Supprimer {what}",
+  'ai_filter.not_understood': "Non compris : {what}",
+  'ai_filter.no_match': "La question n'a donné aucun paramètre de rapport. Essayez par ex. « montant supérieur à 100 », « trier par date » ou « somme du montant par client ».",
+  'ai_filter.per_group': "{what} par groupe",
+  'ai_filter.needs_number': "{fn} demande une colonne de nombres.",
+  'ai_filter.invalid': "Cette modification n'est pas possible : {why}",
 };

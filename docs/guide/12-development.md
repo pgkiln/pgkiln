@@ -215,7 +215,13 @@ src/
                            open, strict schemas), runAgentTool() (sql: read-only transaction as the app role with a time limit;
                            function: named arguments, committed; rest; javascript: queued for the browser; navigate: URL and
                            checksum built here), logToolCall() (meta.ai_tool_call, debug level 4, 30-day purge)
-    ai-filter.ts           natural-language filters on a report ("ai_filter"): columns → structured output → checked → r<id>_f/q/s/d
+    ai-filter.ts           "Ask in your own words" on a report ("ai_filter", sprint 112: AI interactive reports): the box, the chips
+                           form (Edit/Remove/Undo, undo history in the session), ask and chips routes; an AI service's structured
+                           output (planSchema) or the phrase parser, then ir-plan.ts
+    ir-plan.ts             what a question may set: checkPlan (shown columns, whitelists, computeSql), applyPlan (→ the report's
+                           URL parameters), chipsOf/editChip/removeChip (a chip = one URL parameter value, edits checked again)
+    ir-phrases.ts          the rule-based parser without an AI service: phrase tables per language (en, nl, de), clauses →
+                           a RawPlan; values looked up among the report's rows through a Lookup (query parameter)
     pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
     search.ts              search region and search configurations (migration 080): words as ILIKE parameters, table/sql/list
                            sources as the app role in savepoints, marked results, configColumns/searchConfigProblems for the Advisor
@@ -368,7 +374,7 @@ src/
     ai-builder.ts          App Builder AI (migration 062): the builder's AI service (meta.builder_ai), SQL Workshop → AI (SQL from a
                            question, shown not run; explain), describe tables (meta.ai_table_note, COMMENT ON, AI drafts),
                            create pages with AI (proposals checked by checkProposals, created with meta.generate_page)
-    assistant.ts           page designer: AI assistant settings and a report's "Ask in your own words" (AI service, placeholder)
+    assistant.ts           page designer: AI assistant settings and a report's "Ask in your own words" (off, built-in phrases or an AI service, placeholder)
     ai.ts                  Workspace utilities → AI services (administrators: services, write-only encrypted keys, access and
                            daily limits per app, Test, usage log) and Activity → AI usage per application
     ai-agents.ts           (121) Shared Components → AI Agents: the agent and tool forms (checked before saving, renames follow

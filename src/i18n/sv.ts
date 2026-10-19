@@ -789,4 +789,13 @@ export const sv: Record<MessageKey, string> = {
   'ai_filter.applied': "Tillämpat: {what}",
   'ai_filter.nothing': "Frågan gav inga filter för den här rapporten.",
   'ai_filter.sort': "sorterat efter {column}",
+  'ai_filter.chips': "Rapportinställningar",
+  'ai_filter.edit': "Redigera",
+  'ai_filter.undo': "Ångra",
+  'ai_filter.remove': "Ta bort {what}",
+  'ai_filter.not_understood': "Förstods inte: {what}",
+  'ai_filter.no_match': "Frågan gav inga rapportinställningar. Försök t.ex. \"belopp över 100\", \"sortera efter datum\" eller \"summa av belopp per kund\".",
+  'ai_filter.per_group': "{what} per grupp",
+  'ai_filter.needs_number': "{fn} kräver en kolumn med tal.",
+  'ai_filter.invalid': "Den ändringen går inte: {why}",
 };

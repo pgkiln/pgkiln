@@ -789,4 +789,13 @@ export const ja: Record<MessageKey, string> = {
   'ai_filter.applied': "適用: {what}",
   'ai_filter.nothing': "この質問からはこのレポートのフィルターが得られませんでした。",
   'ai_filter.sort': "{column} で並べ替え",
+  'ai_filter.chips': "レポート設定",
+  'ai_filter.edit': "編集",
+  'ai_filter.undo': "元に戻す",
+  'ai_filter.remove': "{what} を削除",
+  'ai_filter.not_understood': "理解できませんでした: {what}",
+  'ai_filter.no_match': "質問からレポート設定が得られませんでした。例: 「金額が100より大きい」「日付で並べ替え」「顧客ごとの金額の合計」。",
+  'ai_filter.per_group': "グループごとの {what}",
+  'ai_filter.needs_number': "{fn} には数値の列が必要です。",
+  'ai_filter.invalid': "この変更はできません: {why}",
 };

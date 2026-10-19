@@ -789,4 +789,13 @@ export const de: Record<MessageKey, string> = {
   'ai_filter.applied': "Angewendet: {what}",
   'ai_filter.nothing': "Die Frage ergab keine Filter für diesen Bericht.",
   'ai_filter.sort': "sortiert nach {column}",
+  'ai_filter.chips': "Berichtseinstellungen",
+  'ai_filter.edit': "Bearbeiten",
+  'ai_filter.undo': "Rückgängig",
+  'ai_filter.remove': "{what} entfernen",
+  'ai_filter.not_understood': "Nicht verstanden: {what}",
+  'ai_filter.no_match': "Die Frage ergab keine Berichtseinstellungen. Versuchen Sie z. B. \"Betrag über 100\", \"sortiere nach Datum\", \"nur offene Aufträge\" oder \"Summe von Betrag pro Kunde\".",
+  'ai_filter.per_group': "{what} pro Gruppe",
+  'ai_filter.needs_number': "{fn} braucht eine Spalte mit Zahlen.",
+  'ai_filter.invalid': "Diese Änderung ist nicht möglich: {why}",
 };

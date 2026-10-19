@@ -789,4 +789,13 @@ export const ko: Record<MessageKey, string> = {
   'ai_filter.applied': "적용됨: {what}",
   'ai_filter.nothing': "이 질문으로는 이 보고서의 필터를 만들 수 없습니다.",
   'ai_filter.sort': "{column} 기준 정렬",
+  'ai_filter.chips': "보고서 설정",
+  'ai_filter.edit': "편집",
+  'ai_filter.undo': "실행 취소",
+  'ai_filter.remove': "{what} 제거",
+  'ai_filter.not_understood': "이해하지 못함: {what}",
+  'ai_filter.no_match': "질문에서 보고서 설정을 찾지 못했습니다. 예: \"금액 100 초과\", \"날짜순 정렬\", \"고객별 금액 합계\".",
+  'ai_filter.per_group': "그룹별 {what}",
+  'ai_filter.needs_number': "{fn}에는 숫자 열이 필요합니다.",
+  'ai_filter.invalid': "이 변경은 할 수 없습니다: {why}",
 };

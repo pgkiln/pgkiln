@@ -840,7 +840,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
 | `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
-| `report` (also) | *Ask in your own words (AI)*: the AI service and placeholder of the [natural-language filters](04-pages-and-regions.md#natural-language-filters-ask-in-your-own-words) |
+| `report` (also) | *Ask in your own words (AI)*: off, the built-in phrases or an AI service, and the placeholder of [Ask in your own words](04-pages-and-regions.md#ask-in-your-own-words-ai-interactive-reports) |
 | `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks; or (sprint 110) a dataset of the workspace), who may share, build and moderate reports, publishing, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 | `form_designer` | Who may design forms (an authorization scheme), data sources (a table or view each: static id, label, description, key column, may add / change / delete rows, offered columns with labels and lists of values), rows per page ([Form Designer](04-pages-and-regions.md#form_designer-form-designer)) |
 
@@ -1319,6 +1319,10 @@ limits (requests and input + output tokens per UTC day; a request over a limit f
 and is logged as *limited*), and **Test** sends a prompt (logged as a builder test). Below that, and
 on the list page for all services, the usage log: the last requests and the totals per application
 and service of the last 30 days.
+
+An interactive report's *Ask in your own words* doesn't need a service: without one (or when the
+service is disabled or not allowed for the application) pgkiln reads the request with its built-in
+phrases ([chapter 4](04-pages-and-regions.md#ask-in-your-own-words-ai-interactive-reports)).
 
 **Prompts go to the provider.** Whatever a prompt contains, including the item values substituted
 into it, is sent to the chosen provider (or the gateway of the base URL). Choose providers and
