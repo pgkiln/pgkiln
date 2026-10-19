@@ -56,6 +56,7 @@ import { dataReporterRoutes } from './runtime/data-reporter.ts';
 import { datasetRoutes } from './builder/datasets.ts';
 import { reporterBuilderRoutes } from './builder/reporter.ts';
 import { workspaceHomeRoutes } from './builder/workspace-home.ts';
+import { teamRoutes } from './builder/team.ts';
 import { formDesignerRoutes } from './runtime/form-designer.ts';
 import { formDesignerBuilderRoutes } from './builder/form-designer.ts';
 import { builderErrorPages, builderServerError } from './builder/errors.ts';
@@ -253,6 +254,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(aiBuilderRoutes);
   await app.register(blueprintRoutes);
   await app.register(workspaceHomeRoutes);
+  await app.register(teamRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder/home'));
   return app;
 }

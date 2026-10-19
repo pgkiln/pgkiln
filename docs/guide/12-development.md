@@ -33,6 +33,10 @@ src/
                            rows and columns from the response schema, write-back from collection and item paths, notes), catalog
                            files, load/insert/replace, sourceFromService
   workspace-export.ts      (sprint 67) a workspace's components as a file (pgkiln-workspace/1) and importWorkspace (one transaction)
+  team.ts                  (sprint 113) Team Development's data: workspaceDevelopers (members and administrators: assignees, @mentions),
+                           issueHtml (markdownHtml + mentions), recordMentions, logIssue (history), teamSetup, teamCounts, pageIssues,
+                           exportTeam / importTeam (the workspace export's "team" part)
+  team-samples.ts          (sprint 113) the set-up wizard's samples per builder language (English; add a key for another)
   subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
   workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
                            merge into the main application or refresh the copy, both through cli/replace.ts
@@ -271,6 +275,11 @@ src/
     availability.ts        Application → Availability (migration 083): status, message, users, build status (Run only is
                            enforced by locks.ts blockingLock); availabilityBadge() in the application header
     feedback.ts            Application → Feedback (migration 084): the setting, the list with filters, status and answers
+    team.ts                (sprint 113, migration 122) Builder → Team Development /builder/team: issues (list with filters and saved views,
+                           board by label group or milestone with a Move form per card, issue page with Markdown, comments, canned
+                           responses, @mentions, history), labels and groups, milestones, templates, the set-up wizard; Make an issue
+                           from feedback and developer comments; pageIssuesNote (Page Designer), appIssues (App Home), teamHomeBlock
+                           (Workspace home). Every id from a request is looked up in the current workspace
     region-help.ts         the Attributes (JSON) help per region type, with links to the guide
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
                            applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel)

@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Team Development** (WS-3; APEX: Team Development; migration 122): Builder → Team Development tracks a workspace's
+  issues with labels (in groups, colours from a fixed list), milestones, assignees, links to applications and pages,
+  Markdown comments with @mentions shown in the builder, and a history of changes. A filtered list with saved views
+  and a board by label group or milestone work without JavaScript. A set-up wizard installs sample labels (Bug,
+  Feature, Task; High, Medium, Low), issue templates, canned responses and milestones. *Make an issue* turns users'
+  feedback and developer comments into issues. The Page Designer, App Home and the Workspace home show open issues.
+  Issues, labels, milestones and templates travel in the workspace export (part *team*). HR example `hr_66`.
 - **AI interactive reports** (WS-5; APEX 26.1 / 26.2): "Ask in your own words" on an interactive report now sets all
   of the report's settings: filters, highlights, search, sort, control break, totals, group by, pivot, chart and
   computed columns ("bonus is 10% of salary", checked like Actions → Compute). Each setting shows as a chip with Edit

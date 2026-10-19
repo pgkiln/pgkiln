@@ -50,7 +50,7 @@ const partBoxes = (counts?: Partial<Record<Part, number>>) =>
   html`<fieldset class="field" data-wide><legend class="label">Components</legend>${PARTS.map((p) =>
     counts && counts[p] === undefined
       ? ''
-      : html`<label class="check"><input type="checkbox" name="part" value="${p}" checked> ${PART_LABELS[p]}${counts ? html` <span class="muted">(${p === 'settings' ? 'in the file' : counts[p]})</span>` : ''}</label>`)}</fieldset>`;
+      : html`<label class="check"><input type="checkbox" name="part" value="${p}" checked> ${PART_LABELS[p]}${counts ? html` <span class="muted">(${p === 'settings' ? 'in the file' : p === 'team' ? `${counts[p]} issue(s)` : counts[p]})</span>` : ''}</label>`)}</fieldset>`;
 
 export async function workspaceTransferRoutes(app: FastifyInstance) {
   app.get(page, async (req: Req, reply) => {

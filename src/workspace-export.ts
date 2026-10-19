@@ -1,6 +1,7 @@
 import type { Client } from './db.ts';
 import { owner } from './db.ts';
 import { checkDataset, datasetOf, storeDataset } from './datasets.ts';
+import { describeTeam, exportTeam, importTeam } from './team.ts';
 import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, replaceCatalog, wholeCatalogProblems } from './restcatalog.ts';
 
 // Workspace utilities → Export / import (APEX: Workspace Utilities → Export,
@@ -18,6 +19,8 @@ import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, repla
 //   blueprints       saved blueprints
 //   data_generators  saved data generators (Sample Data)
 //   datasets         (sprint 110) Data Reporter datasets (pgkiln-dataset/1 definitions)
+//   team             (sprint 113) Team Development: label groups, labels, milestones, templates and issues
+//                    (with comments and history; applications by alias), an object (src/team.ts)
 //
 // Not exported: the workspace's name (the importer's workspace keeps its own),
 // isolation and its database roles (installation-specific), script runs and
@@ -26,7 +29,7 @@ import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, repla
 // installation has a developer of that name.
 
 export const WORKSPACE_FORMAT = 'pgkiln-workspace/1';
-export const PARTS = ['settings', 'developers', 'app_groups', 'extension_links', 'rest_catalogs', 'sql_scripts', 'blueprints', 'data_generators', 'datasets'] as const;
+export const PARTS = ['settings', 'developers', 'app_groups', 'extension_links', 'rest_catalogs', 'sql_scripts', 'blueprints', 'data_generators', 'datasets', 'team'] as const;
 export type Part = (typeof PARTS)[number];
 export const PART_LABELS: Record<Part, string> = {
   settings: 'Settings: description, message, banner and preferences',
@@ -38,6 +41,7 @@ export const PART_LABELS: Record<Part, string> = {
   blueprints: 'Blueprints',
   data_generators: 'Data generators',
   datasets: 'Data Reporter datasets',
+  team: 'Team Development: labels, milestones, templates and issues',
 };
 
 const MAX_ITEMS = 5000;
@@ -77,6 +81,7 @@ export async function exportWorkspace(workspaceId: number, parts: readonly Part[
       .map((g) => ({ ...g, seed: g.seed === null ? null : Number(g.seed) }));
   if (want('datasets'))
     doc.datasets = (await owner.query('select * from meta.dataset where workspace_id = $1 order by name', [workspaceId])).rows.map(datasetOf);
+  if (want('team')) doc.team = await exportTeam(workspaceId);
   return doc;
 }
 
@@ -87,6 +92,10 @@ export function describeWorkspaceFile(doc: unknown): { workspace: string | null;
   for (const p of PARTS) {
     const v = doc[p];
     if (v === undefined) continue;
+    if (p === 'team') {
+      counts[p] = describeTeam(v);
+      continue;
+    }
     if (p === 'settings' ? !isObj(v) : !Array.isArray(v)) throw new Error(`The file's "${p}" is not ${p === 'settings' ? 'an object' : 'a list'}.`);
     if (Array.isArray(v) && v.length > MAX_ITEMS) throw new Error(`The file has more than ${MAX_ITEMS} ${p.replace('_', ' ')}.`);
     counts[p] = Array.isArray(v) ? v.length : 1;
@@ -255,6 +264,12 @@ export async function importWorkspace(c: Client, workspaceId: number, doc: unkno
       n[await upsert(existing, () => storeDataset(c, workspaceId, dataset, opts.by), () => storeDataset(c, workspaceId, dataset, opts.by))]++;
     }
     tally('Data Reporter datasets', n.added, n.replaced, n.skipped);
+  }
+
+  if (want('team')) {
+    // (sprint 113) labels, milestones, templates and issues of Team Development (src/team.ts)
+    const t = await importTeam(c, workspaceId, d.team, opts);
+    tally('Team Development', t.added, t.replaced, t.skipped, t.issues ? `; ${t.issues} issue(s) with their comments` : '');
   }
   return r;
 }

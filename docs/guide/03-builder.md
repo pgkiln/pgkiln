@@ -158,6 +158,7 @@ applications' files. Choose what goes in:
 | REST source catalogs | Every [catalog](19-rest-data-sources.md#rest-source-catalogs) with its services |
 | SQL scripts, blueprints, data generators | The SQL Workshop's saved work |
 | Data Reporter datasets | Every [dataset](#data-reporter-datasets-and-reporting-applications) (sprint 110) |
+| Team Development | [Label groups, labels, milestones, templates and issues](#team-development) with their comments and history; an issue's application by alias (sprint 113) |
 
 Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, passwords and
 secrets, script runs and other history. **Applications are exported on their own** (an application's *Export*).
@@ -275,7 +276,8 @@ JavaScript. The [default-password banner](#signing-in-and-developer-accounts) st
 - **System message**: the pgkiln version the server runs and, when the [release check](#the-release-check) is on and
   a newer release is out, **pgkiln X is available** with a link to its release notes and how to upgrade (back up,
   install the new version, `pgkiln migrate`, restart).
-- **A side column**: About, **Learn more** (this guide, the [tutorial](10-tutorial.md),
+- **A side column**: About, **Team Development** ([open issues](#team-development), those assigned to you, unseen
+  mentions of you, or *Set up Team Development* before it is set up), **Learn more** (this guide, the [tutorial](10-tutorial.md),
   [Coming from APEX](11-from-apex.md), the changelog and the discussions on GitHub) and Resources.
 
 ### The release check
@@ -753,6 +755,10 @@ author or an administrator deletes it. The page list counts each page's comments
 another number keeps its lock and comments. Locks and comments belong to this installation and
 are not exported.
 
+**Make an issue** under a comment turns it into a [Team Development](#team-development) issue about the same page;
+the comment then links to its issue. A page with open issues shows them above the designer's tabs (*1 open issue:
+…*, with *New issue* for that page), and the application's page list tags such pages (*2 issues*).
+
 ### Arranging the layout
 
 Regions are placed in sequence order; a region's *column span* (1–12) sets its width, and a
@@ -957,6 +963,48 @@ On the builder's **Feedback** page you read it (newest first, filtered by status
 user, page, rating and browser), set its status (*Open*, *In progress*, *Done*, *Declined*) and write
 an answer the user sees. Answering is allowed while the application is locked or Run only. The
 setting travels with the export; the feedback itself belongs to the installation.
+
+**Make an issue** turns an entry into a [Team Development](#team-development) issue of the application's workspace
+(title from its first line, the feedback quoted, linked to its page, labelled *Bug* for a problem and *Feature* for
+an idea when the workspace has those labels); open feedback becomes *In progress*, and the entry links to its issue.
+
+## Team Development
+
+(sprint 113, migration 122; APEX: Team Development) An issue tracker for the developers of a
+[workspace](#workspaces): **Team Development** on the icon rail (`/builder/team`) and a block in the
+[Workspace home](#workspace-home)'s side column with the number of open issues. Everything is of the current
+workspace and works without JavaScript.
+
+- **Set up** installs sample data, like APEX's set-up wizard: the label groups *Type* (Bug, Feature, Task) and
+  *Priority* (High, Medium, Low), issue templates (*Bug report*, *Feature request*, *Task*), canned responses and the
+  milestones *1.0*, *1.1* and *Backlog*. What the workspace has already (by name) is kept, so it can run again.
+  The samples are in English; other languages are added in `src/team-samples.ts`.
+- **Issues** have a title, a description in Markdown (rendered safely: raw HTML is shown as text, links are http,
+  https, mailto or relative), *Open* or *Closed*, labels, a milestone, assignees (the workspace's developers and the
+  installation's administrators), and optionally an application of the workspace and one of its pages. Comments are
+  Markdown too; *Comment and close* does both. **@name** mentions a developer of the workspace: they see it under
+  *Mentions of you* (and on the Workspace home) until they open the issue or mark them seen; no mail is sent. Every
+  change is in the issue's history (who changed the title, labels, milestone, assignees, link or status, and when).
+  An issue is deleted by its author or a workspace administrator.
+- **The list** filters by status, label, milestone, assignee (*Me*, *Nobody*), application and a search of the title
+  and text (or `#12` for issue 12). **Save view** keeps the filters under a name, for you only.
+- **The board** shows the issues as columns of cards, by the labels of one label group (a card moved to *High*
+  loses *Medium*; *None of these* removes the group's labels) or by milestone. Each card has a *Move* form, so it
+  works without dragging.
+- **Labels** belong to label groups and have a colour from a fixed palette (red, orange, yellow, green, teal, blue,
+  purple, gray). **Milestones** have a due date and are open or closed, with the share of their issues closed.
+  **Templates** are issue templates (title, labels, text: *Start from a template* on *New issue*) and canned
+  responses (*Canned response* → *Insert* above an issue's comment field). Any developer of the workspace adds and
+  changes them; only its administrators delete labels, label groups and milestones.
+- Issues come from [feedback](#feedback) and [developer comments](#page-locks-and-comments) with **Make an issue**,
+  linked both ways. The page designer shows a page's open issues and App Home counts them per page (*Open issues* in
+  its Tasks).
+
+Issues and the rest are workspace data: they are not part of an application's export (an in-place import keeps them)
+but travel in the workspace's [Export and import](#export-and-import) (*Team Development*): labels, milestones and
+templates match by name, an issue by its title and creation time; assignees are kept when they are developers of the
+importing workspace and the application link when it has an application with that alias. GitHub synchronisation is
+not part of it.
 
 ## Working copies
 
