@@ -66,6 +66,10 @@ alter table meta.ai_service add constraint ai_service_provider_check
   check (provider in ('anthropic', 'openai', 'gemini', 'openai_compatible'));
 alter table meta.ai_service add constraint ai_service_compatible_url
   check (provider <> 'openai_compatible' or base_url is not null);
+-- conversations keep the provider's format (Gemini and OpenAI-compatible: OpenAI's)
+alter table meta.ai_conversation drop constraint ai_conversation_provider_check;
+alter table meta.ai_conversation add constraint ai_conversation_provider_check
+  check (provider in ('anthropic', 'openai', 'gemini', 'openai_compatible'));
 
 create table meta.ai_tool_call (
   id          bigserial primary key,
