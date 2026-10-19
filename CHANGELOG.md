@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Docker upgrades:** `docker compose pull` in `deploy/` skipped the pgkiln image once one was present, because
+  `pull_policy: missing` stood next to `build:`; upgrading with `docker compose pull && docker compose up -d` kept
+  the old `:latest`. The line is gone. In a `compose.yaml` copied from 0.51.0 or older, delete it yourself. CI now
+  upgrades a running 0.50.0 container this way.
+
 ## [0.51.0] - 2026-10-19
 
 Sprint 109: the Workspace home (parity handoff WS-1). Sprint 110: Data Reporter as a workspace tool (WS-2).
