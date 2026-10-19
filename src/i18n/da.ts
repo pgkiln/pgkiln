@@ -765,6 +765,8 @@ export const da: Record<MessageKey, string> = {
   'assistant.empty': "Skriv først en besked.",
   'assistant.too_long': "Beskeden er for lang (højst {max} tegn).",
   'assistant.cleared': "En ny samtale er startet.",
+  'assistant.unauthorized': "Du må ikke bruge denne assistent.",
+  'assistant.links': "Foreslåede sider",
   'ai_filter.label': "Spørg med dine egne ord",
   'ai_filter.ask': "Spørg",
   'ai_filter.placeholder': "f.eks. ledere ansat før 1982, højeste løn først",

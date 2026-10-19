@@ -765,6 +765,8 @@ export const sv: Record<MessageKey, string> = {
   'assistant.empty': "Skriv ett meddelande först.",
   'assistant.too_long': "Meddelandet är för långt (högst {max} tecken).",
   'assistant.cleared': "En ny konversation har börjat.",
+  'assistant.unauthorized': "Du får inte använda den här assistenten.",
+  'assistant.links': "Föreslagna sidor",
   'ai_filter.label': "Fråga med egna ord",
   'ai_filter.ask': "Fråga",
   'ai_filter.placeholder': "t.ex. chefer anställda före 1982, högsta lön först",

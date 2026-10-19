@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { providerLabel } from '../ai/service.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { aiFilterProblems } from '../runtime/ai-filter.ts';
 import { assistantProblems, type AssistantConfig } from '../runtime/assistant.ts';
 import type { Session } from '../session.ts';
+import { agentOptions } from './ai-agents.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 
 // Page designer → an AI assistant region → Settings (service, prompts,
@@ -23,7 +25,7 @@ async function serviceOptions(appId: number, current: unknown) {
   const cur = typeof current === 'string' ? current.toUpperCase() : '';
   return {
     allowed,
-    options: html`${allowed.map((x) => opt(x.name, `${x.name} (${x.provider === 'anthropic' ? 'Claude' : 'OpenAI'}, ${x.model})`, cur))}${cur && !allowed.some((x) => x.name === cur) ? opt(cur, `${cur} (not available to this application)`, cur) : ''}`,
+    options: html`${allowed.map((x) => opt(x.name, `${x.name} (${providerLabel(x.provider)}, ${x.model})`, cur))}${cur && !allowed.some((x) => x.name === cur) ? opt(cur, `${cur} (not available to this application)`, cur) : ''}`,
   };
 }
 
@@ -36,14 +38,19 @@ export async function assistantSettingsForm(pageId: number, appId: number, r: { 
   const id = (n: string) => `ra_${r.id}_${n}`;
   const { allowed, options } = await serviceOptions(appId, cfg.service);
   const problems = assistantProblems(cfg);
+  const agents = await agentOptions(appId);
+  const agent = typeof cfg.agent === 'string' ? cfg.agent.toUpperCase() : '';
   return html`<h3 class="u-mt15">AI assistant settings</h3>
     <p class="muted u-mt0">A chat with an AI service. What users type, the context rows and the tools' results go to the service's provider (Claude or OpenAI). Context queries and SQL tools run as the application's database role; SQL tools are rolled back unless they may change data.</p>
     ${allowed.length ? '' : NO_SERVICE}
     ${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/assistant" class="component-form">${csrf(s)}
       <fieldset class="prop-group"><legend>Assistant</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('agent')}">AI agent</label>
+          <select id="${id('agent')}" name="agent">${opt('', '- none: the service, prompt and tools below -', agent)}${agents.map((n) => opt(n, n, agent))}${agent && !agents.includes(agent) ? opt(agent, `${agent} (does not exist)`, agent) : ''}</select>
+          <small class="help">An agent of <a href="${BASE}/apps/${appId}/ai-agents">Shared Components → AI Agents</a> sets the service, system prompt, reasoning effort, tools and steps; saving with an agent removes the region's own service, system prompt, tools and tool rounds.</small></div>
         <div class="field"><label class="label" for="${id('service')}">AI service</label>
-          <select id="${id('service')}" name="service" required>${opt('', '- choose -', cfg.service ?? '')}${options}</select></div>
+          <select id="${id('service')}" name="service">${opt('', '- choose -', cfg.service ?? '')}${options}</select></div>
         <div class="field"><label class="label" for="${id('max_rounds')}">Tool rounds per question</label>
           <input id="${id('max_rounds')}" name="max_rounds" type="number" min="1" max="10" value="${cfg.max_rounds ?? ''}" placeholder="5"></div>
         <div class="field"><label class="label" for="${id('max_turns')}">Questions per conversation</label>
@@ -95,6 +102,10 @@ export async function mergeAssistantSettings(appId: number, config: Config, b: B
   };
   out.service = (b.service ?? '').trim().toUpperCase();
   if (!out.service) delete out.service;
+  // (121) an agent sets the service, system prompt, tools and steps itself
+  const agent = (b.agent ?? '').trim().toUpperCase();
+  if (agent) out.agent = agent;
+  else delete out.agent;
   text('system', 20_000);
   text('welcome', 2000);
   text('placeholder', 200);
@@ -115,6 +126,10 @@ export async function mergeAssistantSettings(appId: number, config: Config, b: B
       } catch {
         errors.push(`${k === 'tools' ? 'Tools' : 'Context queries'}: not valid JSON (kept as it was).`);
       }
+  }
+  if (out.agent) {
+    for (const k of ['service', 'system', 'tools', 'max_rounds']) delete out[k];
+    if (!(await agentOptions(appId)).includes(out.agent)) errors.push(`There is no AI agent ${out.agent}.`);
   }
   errors.push(...assistantProblems(out), ...(await appProblems(appId, out as AssistantConfig)));
   return { config: out, errors };

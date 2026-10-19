@@ -765,6 +765,8 @@ export const ru: Record<MessageKey, string> = {
   'assistant.empty': "Сначала напишите сообщение.",
   'assistant.too_long': "Сообщение слишком длинное (не более {max} символов).",
   'assistant.cleared': "Начата новая беседа.",
+  'assistant.unauthorized': "Вам нельзя использовать этого помощника.",
+  'assistant.links': "Предлагаемые страницы",
   'ai_filter.label': "Спросите своими словами",
   'ai_filter.ask': "Спросить",
   'ai_filter.placeholder': "например, менеджеры, нанятые до 1982 года, сначала с самой высокой зарплатой",

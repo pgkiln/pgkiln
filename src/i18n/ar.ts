@@ -765,6 +765,8 @@ export const ar: Record<MessageKey, string> = {
   'assistant.empty': "اكتب رسالة أولًا.",
   'assistant.too_long': "الرسالة طويلة جدًا ({max} حرف كحد أقصى).",
   'assistant.cleared': "بدأت محادثة جديدة.",
+  'assistant.unauthorized': "لا يمكنك استخدام هذا المساعد.",
+  'assistant.links': "صفحات مقترحة",
   'ai_filter.label': "اسأل بكلماتك",
   'ai_filter.ask': "اسأل",
   'ai_filter.placeholder': "مثل: المديرون المعيّنون قبل 1982، الأعلى راتبًا أولًا",
