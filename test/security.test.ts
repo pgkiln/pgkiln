@@ -9782,3 +9782,254 @@ describe('sprint 110 WS-2', () => {
     assert.equal((await owner.one(`select label from meta.dataset where id = $1`, [ds.id])).label, 'HR');
   });
 });
+
+describe('sprint 113 WS-3', () => {
+  // Team Development (/builder/team, migration 122): issues, labels, milestones, templates and saved views are of the
+  // developer's current workspace only; assignees and @mentions are the workspace's developers; links only to its
+  // applications; every POST needs the session's CSRF token; Markdown and names are escaped; colours from a palette.
+  const DEV = 'sec113dev';
+  const OTHER = 'sec113other';
+  let wsA: number;
+  let wsB: number;
+  let appB: number;
+  let appA: number;
+  let issueB: number;
+  let labelB: number;
+  let groupB: number;
+  let milestoneB: number;
+  let templateB: number;
+  let viewB: number;
+  let feedbackB: number;
+  let commentB: number;
+  const signIn = async (username: string, ws?: number) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    const res = await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    assert.equal(res.statusCode, 303);
+    await b.get('/builder/home');
+    if (ws) assert.equal((await b.post('/builder/workspace', { __csrf: b.lastCsrf, workspace: String(ws) })).statusCode, 303);
+    await b.get('/builder/team');
+    return b;
+  };
+  const snapshot = async () => (await owner.one(`select row_to_json(i)::text as j,
+      (select count(*) from meta.team_issue_comment c where c.issue_id = i.id)::int as comments,
+      (select count(*) from meta.team_issue_label l where l.issue_id = i.id)::int as labels from meta.team_issue i where i.id = $1`, [issueB]));
+  before(async () => {
+    for (const u of [DEV, OTHER]) await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [u]);
+    await owner.query(`delete from meta.app where alias in ('sec113a', 'sec113b')`);
+    await owner.query(`delete from meta.workspace where name in ('Sec113 A', 'Sec113 B')`);
+    wsA = (await owner.one(`insert into meta.workspace (name) values ('Sec113 A') returning id`)).id;
+    wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec113 B') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = any($1::text[])', [[DEV, OTHER]]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2), ($3, $4)', [wsA, DEV, wsB, OTHER]);
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec113a', 'Sec113 A app', 'none') returning id`)).id;
+    appB = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec113b', 'Sec113 B app', 'none') returning id`)).id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2), ($3, $4)', [appA, wsA, appB, wsB]);
+    await owner.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home'), ($2, 1, 'Home', 'Home')`, [appA, appB]);
+    groupB = (await owner.one(`insert into meta.team_label_group (workspace_id, name) values ($1, 'Secret group') returning id`, [wsB])).id;
+    labelB = (await owner.one(`insert into meta.team_label (workspace_id, group_id, name, color) values ($1, $2, 'Secret label', 'red') returning id`, [wsB, groupB])).id;
+    milestoneB = (await owner.one(`insert into meta.team_milestone (workspace_id, name) values ($1, 'Secret milestone') returning id`, [wsB])).id;
+    templateB = (await owner.one(`insert into meta.team_template (workspace_id, kind, name, body) values ($1, 'issue', 'Secret template', 'secret body') returning id`, [wsB])).id;
+    issueB = (await owner.one(`insert into meta.team_issue (workspace_id, title, body, app_id, page_no, created_by) values ($1, 'Secret issue', 'secret text', $2, 1, $3) returning id`, [wsB, appB, OTHER])).id;
+    await owner.query('insert into meta.team_issue_label (issue_id, label_id) values ($1, $2)', [issueB, labelB]);
+    viewB = (await owner.one(`insert into meta.team_view (workspace_id, username, name, query) values ($1, $2, 'Secret view', '') returning id`, [wsB, OTHER])).id;
+    feedbackB = (await owner.one(`insert into meta.feedback (app_id, page_no, username, kind, body) values ($1, 1, 'someone', 'problem', 'secret feedback') returning id`, [appB])).id;
+    commentB = (await owner.one(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 1, $2, 'secret comment') returning id`, [appB, OTHER])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias in ('sec113a', 'sec113b')`);
+    await owner.query('delete from meta.workspace where id = any($1::int[])', [[wsA, wsB]]);
+    await owner.query('delete from meta.developer where username = any($1::text[])', [[DEV, OTHER]]);
+  });
+
+  test('another workspace\'s issues, labels, milestones, templates and views can be neither read nor changed', async () => {
+    const d = await signIn(DEV);
+    const before = await snapshot();
+    const list = (await d.get('/builder/team?status=all')).body;
+    assert.doesNotMatch(list, /Secret/);
+    assert.doesNotMatch((await d.get(`/builder/team?label=${labelB}&status=all`)).body, /Secret issue/);
+    assert.doesNotMatch((await d.get('/builder/team/board?status=all')).body, /Secret/);
+    assert.doesNotMatch((await d.get('/builder/team/labels')).body, /Secret/);
+    assert.doesNotMatch((await d.get('/builder/team/milestones')).body, /Secret/);
+    assert.doesNotMatch((await d.get('/builder/team/templates')).body, /Secret/);
+    assert.doesNotMatch((await d.get(`/builder/team/issues/new?template=${templateB}&app=${appB}`)).body, /secret body|Sec113 B app/);
+    assert.equal((await d.get(`/builder/team/issues/${issueB}`)).statusCode, 404);
+    const csrf = d.lastCsrf;
+    for (const [url, form] of [
+      [`/builder/team/issues/${issueB}`, { title: 'hacked', body: '' }],
+      [`/builder/team/issues/${issueB}/status`, { status: 'closed' }],
+      [`/builder/team/issues/${issueB}/comments`, { body: 'hacked' }],
+      [`/builder/team/issues/${issueB}/move`, { by: 'label', group: String(groupB), to: '' }],
+      [`/builder/team/issues/${issueB}/delete`, {}],
+      [`/builder/team/labels/${labelB}`, { name: 'hacked', color: 'blue', group: '' }],
+      [`/builder/team/milestones/${milestoneB}`, { name: 'hacked', status: 'closed' }],
+      [`/builder/team/templates/${templateB}`, { name: 'hacked', kind: 'issue', body: '' }],
+      [`/builder/team/templates/${templateB}/delete`, {}],
+      [`/builder/team/views/${viewB}/delete`, {}],
+      ['/builder/team/from-feedback', { feedback: String(feedbackB) }],
+      ['/builder/team/from-comment', { comment: String(commentB) }],
+    ] as [string, Record<string, string>][]) {
+      const res = await d.post(url, { __csrf: csrf, ...form });
+      assert.equal(res.statusCode, 404, url);
+    }
+    assert.deepEqual(await snapshot(), before);
+    assert.equal((await owner.one('select name from meta.team_label where id = $1', [labelB])).name, 'Secret label');
+    assert.equal((await owner.one('select name from meta.team_milestone where id = $1', [milestoneB])).name, 'Secret milestone');
+    assert.ok(await owner.one('select 1 from meta.team_template where id = $1', [templateB]));
+    assert.ok(await owner.one('select 1 from meta.team_view where id = $1', [viewB]));
+    assert.equal((await owner.one('select count(*)::int as n from meta.team_issue where feedback_id = $1 or dev_comment_id = $2', [feedbackB, commentB])).n, 0);
+    // deleting labels, groups and milestones: the workspace's administrators only (and never another workspace's)
+    const own = (await owner.one(`insert into meta.team_label (workspace_id, name) values ($1, 'Own label') returning id`, [wsA])).id;
+    assert.equal((await d.post(`/builder/team/labels/${own}/delete`, { __csrf: csrf })).statusCode, 403);
+    const admin = await signIn('admin', wsA);
+    assert.equal((await admin.post(`/builder/team/labels/${labelB}/delete`, { __csrf: admin.lastCsrf })).statusCode, 404, 'not of the current workspace');
+    assert.equal((await admin.post(`/builder/team/groups/${groupB}/delete`, { __csrf: admin.lastCsrf })).statusCode, 404);
+    assert.equal((await admin.post(`/builder/team/milestones/${milestoneB}/delete`, { __csrf: admin.lastCsrf })).statusCode, 404);
+    // an issue is deleted by its author or a workspace administrator
+    const theirs = (await owner.one(`insert into meta.team_issue (workspace_id, title, created_by) values ($1, 'Not yours', 'admin') returning id`, [wsA])).id;
+    assert.equal((await d.post(`/builder/team/issues/${theirs}/delete`, { __csrf: csrf })).statusCode, 403);
+    assert.ok(await owner.one('select 1 from meta.team_issue where id = $1', [theirs]));
+  });
+
+  test('labels, a milestone, assignees, mentions and the application link come from the current workspace only', async () => {
+    const d = await signIn(DEV);
+    const csrf = d.lastCsrf;
+    const count = async () => (await owner.one('select count(*)::int as n from meta.team_issue where workspace_id = $1', [wsA])).n;
+    const n0 = await count();
+    for (const [form, why] of [
+      [{ labels: String(labelB) }, 'label'],
+      [{ milestone: String(milestoneB) }, 'milestone'],
+      [{ assignees: OTHER }, 'assignee'],
+      [{ assignees: 'admin\'; drop table x;--' }, 'assignee text'],
+      [{ app: String(appB) }, 'application'],
+      [{ app: String(appA), page: '99' }, 'page'],
+      [{ app: '1 or 1=1' }, 'application text'],
+    ] as [Record<string, string>, string][]) {
+      const res = await d.post('/builder/team/issues', { __csrf: csrf, title: `Bad ${why}`, body: '', ...form });
+      assert.equal(res.statusCode, 303, why);
+      assert.equal(await count(), n0, `${why}: refused`);
+    }
+    // the database refuses a mix-up too
+    await assert.rejects(owner.query(`insert into meta.team_issue (workspace_id, title, milestone_id, created_by) values ($1, 'x', $2, 'admin')`, [wsA, milestoneB]), /another workspace/);
+    await assert.rejects(owner.query(`insert into meta.team_label (workspace_id, group_id, name) values ($1, $2, 'x')`, [wsA, groupB]), /another workspace/);
+    // a label in another workspace's group, and a move to another workspace's label
+    assert.equal((await d.post('/builder/team/labels', { __csrf: csrf, name: 'Sneaky', color: 'red', group: String(groupB) })).statusCode, 400);
+    const ok = await d.post('/builder/team/issues', { __csrf: csrf, title: 'Fine', body: `Hi @${OTHER} and @admin`, app: String(appA), page: '1' });
+    const id = Number(/issues\/(\d+)$/.exec(String(ok.headers.location))?.[1]);
+    assert.ok(id);
+    assert.equal((await d.post(`/builder/team/issues/${id}/move`, { __csrf: csrf, by: 'label', group: String(groupB), to: String(labelB) })).statusCode, 400);
+    assert.equal((await d.post(`/builder/team/issues/${id}/move`, { __csrf: csrf, by: 'milestone', to: String(milestoneB) })).statusCode, 400);
+    // a developer of another workspace is never mentioned (nor highlighted); an administrator of the installation is
+    await d.post(`/builder/team/issues/${id}/comments`, { __csrf: csrf, body: `@${OTHER} look` });
+    assert.deepEqual((await owner.query('select username from meta.team_mention where issue_id = $1 order by 1', [id])).rows.map((r) => r.username), ['admin']);
+    assert.doesNotMatch((await d.get(`/builder/team/issues/${id}`)).body, new RegExp(`class="mention">@${OTHER}`));
+    // a saved view keeps known filters only
+    await d.post('/builder/team/views', { __csrf: d.lastCsrf, name: 'Odd', query: 'status=closed&q=x&evil=<script>&assignee=me' });
+    assert.equal((await owner.one(`select query from meta.team_view where workspace_id = $1 and username = $2 and name = 'Odd'`, [wsA, DEV])).query, 'status=closed&assignee=me&q=x');
+  });
+
+  test('CSRF: every Team Development POST needs the session\'s token', async () => {
+    const a = await signIn('admin', wsA);
+    const own = (await owner.one(`insert into meta.team_issue (workspace_id, title, created_by) values ($1, 'CSRF target', 'admin') returning id`, [wsA])).id;
+    const lab = (await owner.one(`insert into meta.team_label (workspace_id, name) values ($1, 'CSRF label') returning id`, [wsA])).id;
+    const ms = (await owner.one(`insert into meta.team_milestone (workspace_id, name) values ($1, 'CSRF ms') returning id`, [wsA])).id;
+    const grp = (await owner.one(`insert into meta.team_label_group (workspace_id, name) values ($1, 'CSRF group') returning id`, [wsA])).id;
+    const tpl = (await owner.one(`insert into meta.team_template (workspace_id, kind, name) values ($1, 'response', 'CSRF tpl') returning id`, [wsA])).id;
+    const view = (await owner.one(`insert into meta.team_view (workspace_id, username, name) values ($1, 'admin', 'CSRF view') returning id`, [wsA])).id;
+    const fb = (await owner.one(`insert into meta.feedback (app_id, username, kind, body) values ($1, 'x', 'idea', 'csrf') returning id`, [appA])).id;
+    const cm = (await owner.one(`insert into meta.dev_comment (app_id, author, body) values ($1, 'admin', 'csrf') returning id`, [appA])).id;
+    const posts: [string, Record<string, string>][] = [
+      ['/builder/team/issues', { title: 'CSRF new' }],
+      [`/builder/team/issues/${own}`, { title: 'CSRF changed' }],
+      [`/builder/team/issues/${own}/status`, { status: 'closed' }],
+      [`/builder/team/issues/${own}/comments`, { body: 'csrf' }],
+      [`/builder/team/issues/${own}/move`, { by: 'milestone', to: String(ms) }],
+      [`/builder/team/issues/${own}/delete`, {}],
+      ['/builder/team/views', { name: 'CSRF view 2' }],
+      [`/builder/team/views/${view}/delete`, {}],
+      ['/builder/team/mentions/seen', {}],
+      ['/builder/team/labels', { name: 'CSRF l2', color: 'red' }],
+      [`/builder/team/labels/${lab}`, { name: 'CSRF l3', color: 'red' }],
+      [`/builder/team/labels/${lab}/delete`, {}],
+      ['/builder/team/groups', { name: 'CSRF g2' }],
+      [`/builder/team/groups/${grp}/delete`, {}],
+      ['/builder/team/milestones', { name: 'CSRF m2' }],
+      [`/builder/team/milestones/${ms}`, { name: 'CSRF m3' }],
+      [`/builder/team/milestones/${ms}/delete`, {}],
+      ['/builder/team/templates', { name: 'CSRF t2', kind: 'issue' }],
+      [`/builder/team/templates/${tpl}`, { name: 'CSRF t3', kind: 'issue' }],
+      [`/builder/team/templates/${tpl}/delete`, {}],
+      ['/builder/team/setup', { lang: 'en', labels: 'true' }],
+      ['/builder/team/from-feedback', { feedback: String(fb) }],
+      ['/builder/team/from-comment', { comment: String(cm) }],
+    ];
+    const state = async () => JSON.stringify((await owner.query(`select
+        (select json_agg(i order by id) from meta.team_issue i where workspace_id = $1) as i,
+        (select json_agg(l order by id) from meta.team_label l where workspace_id = $1) as l,
+        (select json_agg(g order by id) from meta.team_label_group g where workspace_id = $1) as g,
+        (select json_agg(m order by id) from meta.team_milestone m where workspace_id = $1) as m,
+        (select json_agg(t order by id) from meta.team_template t where workspace_id = $1) as t,
+        (select json_agg(v order by id) from meta.team_view v where workspace_id = $1) as v,
+        (select count(*) from meta.team_issue_comment c join meta.team_issue i on i.id = c.issue_id where i.workspace_id = $1) as c`, [wsA])).rows[0]);
+    const s0 = await state();
+    for (const [url, form] of posts) {
+      assert.equal((await a.post(url, { __csrf: 'forged', ...form })).statusCode, 403, `${url} (forged token)`);
+      assert.equal((await a.post(url, form)).statusCode, 403, `${url} (no token)`);
+    }
+    assert.equal(await state(), s0);
+  });
+
+  test('titles, bodies, comments, label names and templates are escaped; Markdown is made safe; label colours from the palette', async () => {
+    const a = await signIn('admin', wsA);
+    const evil = '<script>alert(1)</script><img src=x onerror=alert(2)>';
+    assert.equal((await a.post('/builder/team/labels', { __csrf: a.lastCsrf, name: '<b>L</b>', color: 'red' })).statusCode, 303);
+    const lab = (await owner.one(`select id from meta.team_label where workspace_id = $1 and name = '<b>L</b>'`, [wsA])).id;
+    for (const color of ['red;background:url(//x)', 'chartreuse', '"><script>']) {
+      assert.equal((await a.post(`/builder/team/labels/${lab}`, { __csrf: a.lastCsrf, name: 'x', color })).statusCode, 400, color);
+      assert.equal((await a.post('/builder/team/labels', { __csrf: a.lastCsrf, name: 'y', color })).statusCode, 400, color);
+    }
+    await assert.rejects(owner.query(`update meta.team_label set color = 'pink' where id = $1`, [lab]));
+    await a.post('/builder/team/milestones', { __csrf: a.lastCsrf, name: '<i>M</i>', status: 'open' });
+    await a.post('/builder/team/templates', { __csrf: a.lastCsrf, name: '<u>T</u>', kind: 'issue', title: evil, body: evil });
+    const res = await a.post('/builder/team/issues', { __csrf: a.lastCsrf, title: evil, body: `${evil}\n\n[x](javascript:alert(3)) **ok**`, labels: String(lab) });
+    const id = Number(/issues\/(\d+)$/.exec(String(res.headers.location))?.[1]);
+    assert.ok(id);
+    await a.post(`/builder/team/issues/${id}/comments`, { __csrf: a.lastCsrf, body: `${evil} [y](javascript:alert(4))` });
+    const pages = [
+      (await a.get(`/builder/team/issues/${id}`)).body, (await a.get('/builder/team')).body, (await a.get('/builder/team/board')).body,
+      (await a.get('/builder/team/labels')).body, (await a.get('/builder/team/milestones')).body, (await a.get('/builder/team/templates')).body,
+      (await a.get(`/builder/team/issues/new?template=${(await owner.one(`select id from meta.team_template where workspace_id = $1 and name = '<u>T</u>'`, [wsA])).id}`)).body,
+    ];
+    for (const p of pages) {
+      assert.doesNotMatch(p, /<script>alert|<img src=x|<b>L<\/b>|<i>M<\/i>|<u>T<\/u>|href="javascript:/);
+    }
+    assert.match(pages[0], /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(pages[0], /<strong>ok<\/strong>/, 'Markdown still renders');
+    assert.match(pages[3], /&lt;b&gt;L&lt;\/b&gt;/);
+  });
+
+  test('application users and signed-out visitors cannot reach Team Development', async () => {
+    const u = await as('demo');
+    for (const url of ['/builder/team', `/builder/team/issues/${issueB}`, '/builder/team/board', '/builder/team/labels', '/builder/team/setup']) {
+      const res = await u.get(url);
+      assert.equal(res.statusCode, 302, url);
+      assert.match(String(res.headers.location), /^\/builder\/login/);
+    }
+    const res = await u.post('/builder/team/issues', { __csrf: u.lastCsrf, title: 'from an app user' });
+    assert.notEqual(res.statusCode, 303);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.team_issue where title = 'from an app user'`)).n, 0);
+    assert.equal((await new Browser().get('/builder/team')).statusCode, 302);
+    // a developer without a workspace gets no Team Development
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec113none', meta.hash_password('sec113none'), false) on conflict do nothing`);
+    await owner.query(`delete from meta.workspace_member where username = 'sec113none'`);
+    try {
+      const n = new Browser();
+      await n.get('/builder/login');
+      await n.post('/builder/login', { __csrf: n.lastCsrf, username: 'sec113none', password: 'sec113none' });
+      assert.equal((await n.get('/builder/team')).statusCode, 403);
+      assert.equal((await n.get(`/builder/team/issues/${issueB}`)).statusCode, 403);
+    } finally {
+      await owner.query(`delete from meta.developer where username = 'sec113none'`);
+    }
+  });
+});
