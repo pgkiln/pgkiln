@@ -41,7 +41,7 @@ with issue as (
   insert into meta.team_issue (workspace_id, title, body, milestone_id, app_id, page_no, created_by)
   select 1, 'Salary rounding on page 12',
          E'The leave calendar shows daily salary costs rounded to whole euros; finance expects cents.\n\n'
-         E'- Open **page 12** (Leave calendar)\n- Compare a day with the salary in `hr.emp`\n\n@admin can you have a look?',
+         || E'- Open **page 12** (Leave calendar)\n- Compare a day with the salary in `hr.emp`\n\n@admin can you have a look?',
          (select id from meta.team_milestone where workspace_id = 1 and name = '1.1'),
          a.id, 12, 'admin'
     from meta.app a

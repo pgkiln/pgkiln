@@ -150,16 +150,22 @@ create unique index team_view_name on meta.team_view (workspace_id, username, lo
 create function meta.team_same_workspace() returns trigger
 language plpgsql set search_path = pg_catalog as $$
 begin
-  if tg_table_name = 'team_label' and new.group_id is not null
-     and (select g.workspace_id from meta.team_label_group g where g.id = new.group_id) is distinct from new.workspace_id then
-    raise exception 'the label group belongs to another workspace';
-  elsif tg_table_name = 'team_issue' and new.milestone_id is not null
-     and (select m.workspace_id from meta.team_milestone m where m.id = new.milestone_id) is distinct from new.workspace_id then
-    raise exception 'the milestone belongs to another workspace';
-  elsif tg_table_name = 'team_issue_label'
-     and (select l.workspace_id from meta.team_label l where l.id = new.label_id)
-         is distinct from (select i.workspace_id from meta.team_issue i where i.id = new.issue_id) then
-    raise exception 'the label belongs to another workspace';
+  -- (nested: a record field is only read in the branch of its own table)
+  if tg_table_name = 'team_label' then
+    if new.group_id is not null
+       and (select g.workspace_id from meta.team_label_group g where g.id = new.group_id) is distinct from new.workspace_id then
+      raise exception 'the label group belongs to another workspace';
+    end if;
+  elsif tg_table_name = 'team_issue' then
+    if new.milestone_id is not null
+       and (select m.workspace_id from meta.team_milestone m where m.id = new.milestone_id) is distinct from new.workspace_id then
+      raise exception 'the milestone belongs to another workspace';
+    end if;
+  elsif tg_table_name = 'team_issue_label' then
+    if (select l.workspace_id from meta.team_label l where l.id = new.label_id)
+       is distinct from (select i.workspace_id from meta.team_issue i where i.id = new.issue_id) then
+      raise exception 'the label belongs to another workspace';
+    end if;
   end if;
   return new;
 end $$;
