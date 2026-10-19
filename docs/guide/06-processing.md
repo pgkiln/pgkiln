@@ -28,13 +28,14 @@ simply closes the dialog.
 ### Menu buttons and badges
 
 A button with action `menu` opens a dropdown (an HTML `<details>` element, so it works without
-JavaScript). `menu` is a JSON array of at most 20 entries; each is either a **link** to a page of
-the application or a **submit request**:
+JavaScript). `menu` is a JSON array of at most 20 entries; each is a **link** to a page of
+the application, a **submit request** or an **action** that runs dynamic actions:
 
 ```json
 [{"label": "Leave requests", "page": 6, "icon": "list"},
  {"label": "Details", "page": 3, "items": {"P3_EMPNO": "&P22_EMPNO."}},
- {"label": "Start over", "request": "RESET", "confirm": "Clear the form?", "authz": "ADMIN"}]
+ {"label": "Start over", "request": "RESET", "confirm": "Clear the form?", "authz": "ADMIN"},
+ {"label": "Export", "action": "EXPORT", "icon": "download"}]
 ```
 
 | Key | Meaning |
@@ -42,6 +43,7 @@ the application or a **submit request**:
 | `label` | The entry's text (1–100 characters) |
 | `page`, `items` | A link: the page and the items to set (signed with a checksum, like any link) |
 | `request` | A submit: the page is submitted with this request, as if a button of that name was pressed. Validations, processes and branches with `when_button` see it |
+| `action` | Runs the [dynamic actions of event `menu_entry`](07-dynamic-actions.md#menu-entry-chosen) with this name (capitals, digits and `_`) as trigger (APEX: Menu entry chosen) |
 | `confirm` | A confirmation question first |
 | `authz` | The entry only exists for users who pass this authorization scheme |
 | `icon` | An [icon](09-reference.md#icons) name |

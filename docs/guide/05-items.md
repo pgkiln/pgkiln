@@ -217,6 +217,11 @@ item's config. A combobox is free text and isn't checked.
 A `popup_lov` item shows the chosen value's display text and a **Search** button. The button
 opens a dialog with a search field: the server searches the item's own list of values (case
 insensitive, on the display column and any extra columns) and answers one page at a time.
+**The next page loads as the list scrolls** (APEX: infinite scrolling): when the end of the list
+comes into view the dialog fetches the next `page_size` rows and adds them, until the list of
+values has no more, so a list of thousands of rows scrolls to its end without a *More* button. A
+new search starts over at the first page. A browser without `IntersectionObserver` pages with
+‹ and *More* instead.
 
 - **Several columns**: the first column is the display value, the second the return value, and
   any further columns are shown in the dialog (and searched), for example:
@@ -233,7 +238,8 @@ insensitive, on the display column and any extra columns) and answers one page a
   parameter (never SQL text), only for an item the user may see and change on a page they may
   open. A submitted value must be one the list of values returns, or the page shows an error.
 
-The HR example's page 26 (*Pick an employee*) has one with name, job and department columns.
+The HR example's page 26 (*Pick an employee*) has one with name, job and department columns;
+page 47 (*Component details*) one over 6,000 rows, 100 a page.
 
 ## Cascading lists of values
 

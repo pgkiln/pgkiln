@@ -37,6 +37,7 @@ your own from a static application file.
 | `selection_change` | Rows are selected in a report with [row selection](04-pages-and-regions.md#row-selection), or another master row in a grid; the condition sees the selected values, colon separated | Region ids or static ids |
 | `before_submit` | The page is about to be submitted; a declined `confirm` keeps the page | – |
 | `custom` | JavaScript raised the event: `pgkiln.trigger('ORDER_SAVED', value)` (APEX: custom events, `apex.event.trigger`) | Event names (case-insensitive) |
+| `menu_entry` | An entry `{"label": …, "action": "NAME"}` of a [menu button](06-processing.md#menu-buttons-and-badges) was chosen (APEX: Menu entry chosen); the condition sees the entry's name ([below](#menu-entry-chosen)) | Entry names, or menu button names (any of their entries) |
 
 **The actions of one event and trigger run one after the other, in sequence order** (APEX: the true
 actions of a dynamic action), each waiting for the one before (a server action for its answer). A
@@ -79,10 +80,43 @@ actions of a dynamic action), each waiting for the one before (a server action f
 | `print` | browser | The browser's print dialog |
 | `current_position` | browser | The device's position as `latitude,longitude` (5 decimals) into the first affected item |
 | `share` | browser | The device's share sheet with the page's title, `message` and address; where there is none, the address is copied |
+| `wait_popup` | browser | Shows a modal "please wait" popup with `message` (default *Please wait…*) until `remove_wait_popup` or the next page (APEX: Show Wait Popup); [below](#wait-popup) |
+| `remove_wait_popup` | browser | Removes the wait popup (APEX: Remove Wait Popup) |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's
 database role like everything else, and check the page's and the dynamic action's authorization.
 The SQL itself never reaches the browser.
+
+## Wait popup
+
+`wait_popup` covers the page with a small dialog (a spinner and `message`) while something slow
+runs, so the user doesn't click twice; `remove_wait_popup` takes it away. Because the actions of
+one event run in sequence, each waiting for the one before, two patterns cover most cases:
+
+| Sequence | Event | Action | |
+|---|---|---|---|
+| 10 | `click` on `RECALC` (a submit button) | `wait_popup` | *Recalculating…*: the popup stays until the next page arrives |
+| 10 | `click` on `CHECK` | `wait_popup` | *Checking…* |
+| 20 | `click` on `CHECK` | `execute_sql` | the Ajax call (also `set_value`, `refresh_region`, `download`, a plug-in) |
+| 30 | `click` on `CHECK` | `remove_wait_popup` | |
+
+`before_submit` → `wait_popup` shows it for every submit of the page. A submit the browser refuses
+(a required field is empty) removes it again, and so does going back to the page in the browser.
+The popup is a modal `<dialog>`: the page below can't be clicked or focused, Escape doesn't close
+it, its text is a status message that screen readers read out, and the page's `<main>` is
+`aria-busy` while it shows. It follows the theme (light and dark) and needs no inline styles or
+scripts. From JavaScript: `const done = pgkiln.waitPopup('Saving…'); … done();` (or
+`pgkiln.removeWaitPopup()`).
+
+## Menu entry chosen
+
+A [menu button](06-processing.md#menu-buttons-and-badges)'s entry can run dynamic actions instead
+of linking or submitting: `{"label": "Export", "action": "EXPORT"}`. Dynamic actions with event
+`menu_entry` and trigger `EXPORT` run when it is chosen (the menu closes first); a trigger with the
+menu button's name runs for every action entry of that menu, and a client-side condition tests the
+entry's name (`equals` `EXPORT`). Without JavaScript such an entry does nothing, like a button with
+action `da`. The HR example's page 47 has an *Actions* menu whose *Count employees* entry shows a
+wait popup around an Ajax call.
 
 ## Ajax callbacks
 
