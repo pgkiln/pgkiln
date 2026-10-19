@@ -420,6 +420,8 @@ export const ar: Record<MessageKey, string> = {
   'lov.choose': "اختيار",
   'lov.close': "إغلاق",
   'lov.more': "المزيد",
+  'lov.loading': "جارٍ تحميل المزيد…",
+  'da.wait': "يرجى الانتظار…",
   'lov.no_rows': "لم يُعثر على شيء.",
   'error.lov_value': "{label}: اختر قيمة من القائمة.",
   'item.yes': "نعم",

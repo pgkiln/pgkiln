@@ -420,6 +420,8 @@ export const uk: Record<MessageKey, string> = {
   'lov.choose': "Вибрати",
   'lov.close': "Закрити",
   'lov.more': "Ще",
+  'lov.loading': "Завантаження…",
+  'da.wait': "Зачекайте…",
   'lov.no_rows': "Нічого не знайдено.",
   'error.lov_value': "{label}: виберіть значення зі списку.",
   'item.yes': "Так",

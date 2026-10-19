@@ -420,6 +420,8 @@ export const he: Record<MessageKey, string> = {
   'lov.choose': "בחירה",
   'lov.close': "סגירה",
   'lov.more': "עוד",
+  'lov.loading': "טוען עוד…",
+  'da.wait': "נא להמתין…",
   'lov.no_rows': "לא נמצא דבר.",
   'error.lov_value': "{label}: בחרו ערך מהרשימה.",
   'item.yes': "כן",

@@ -60,8 +60,9 @@ async function badgeOf(ctx: PageContext, b: Button): Promise<Raw | ''> {
 
 /**
  * A menu button: a <details> dropdown (works without JavaScript) with links
- * to pages (signed item values, only pages the user may open) and submit
- * requests (only those computeVisibility allowed).
+ * to pages (signed item values, only pages the user may open), submit
+ * requests (only those computeVisibility allowed) and (124) entries that run
+ * dynamic actions of event menu_entry.
  */
 async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw | '') {
   const entries = [];
@@ -74,6 +75,9 @@ async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw |
       entries.push(html`<a ${linkAttrs(ctx, e.page, e.items ?? {})}${confirm}>${ic}${e.label}</a>`);
     } else if (e.request && ctx.vis!.buttons.get(e.request)?.action === 'submit')
       entries.push(html`<button type="submit" name="__request" value="${e.request}" data-button="${e.request}"${confirm}>${ic}${e.label}</button>`);
+    // (124) runs the dynamic actions of event menu_entry (app.js); nothing without JavaScript, like a "da" button
+    else if (e.action && /^[A-Z][A-Z0-9_]{0,59}$/.test(e.action))
+      entries.push(html`<button type="button" data-menu-entry="${e.action}"${confirm}>${ic}${e.label}</button>`);
   }
   if (!entries.length) return '';
   return html`<details class="menu btn-menu" data-button="${b.name}">

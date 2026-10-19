@@ -326,7 +326,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         // a select list (the LOV's first max_rows rows) that works without JavaScript; app.js
         // turns it into a field with a button that searches the whole LOV on the server
         const t = ctx.locale.t;
-        control = html`<select id="${id}" name="${id}" data-popup-lov="${ctx.base}/${ctx.page.page_no}/lov/${id}/search" data-search-label="${t('lov.search')}" data-choose-label="${t('lov.choose')}" data-close-label="${t('lov.close')}" data-more-label="${t('lov.more')}" data-none-label="${t('lov.no_rows')}"${aria}>
+        control = html`<select id="${id}" name="${id}" data-popup-lov="${ctx.base}/${ctx.page.page_no}/lov/${id}/search" data-search-label="${t('lov.search')}" data-choose-label="${t('lov.choose')}" data-close-label="${t('lov.close')}" data-more-label="${t('lov.more')}" data-loading-label="${t('lov.loading')}" data-none-label="${t('lov.no_rows')}"${aria}>
           <option value="">${item.config?.null_label ?? t('lov.none')}</option>
           ${options.map((o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`)}
         </select>`;

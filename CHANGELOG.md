@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Component details** (WS-11; APEX 26.1; migration 124): the **popup LOV** dialog loads the next page as the list
+  scrolls, so long lists scroll to their end without a More button (browsers without IntersectionObserver still page
+  with ‹ / More; without JavaScript it is still a select list). New dynamic actions **Wait Popup** / **Remove Wait
+  Popup** (`wait_popup`, `remove_wait_popup`): a modal, accessible "please wait" dialog around long processes and Ajax
+  calls, also `pgkiln.waitPopup()` in JavaScript. Menu buttons: entries `{"label", "action": "NAME"}` run dynamic
+  actions of the new event **Menu entry chosen** (`menu_entry`); the Page Designer shows the event, plus an "Other"
+  folder for the remaining events. HR example `hr_68` (page 47 "Component details").
 - **Workflow 26.2** (WS-6; APEX 26.1 / 26.2; migration 123): task definitions may list **custom outcomes** (for
   example Yes / No / Undecided, each with a label and a colour from a fixed list) instead of Approve / Reject; workflows
   branch on them in a task step's `next` or a switch case `{"outcome": …}`. **Task events** run when a task is

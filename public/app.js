@@ -483,6 +483,9 @@ const pgkilnUnsaved = (() => {
     // (077) APEX: apex.page.isChanged()
     isChanged: () => pgkilnUnsaved.changed(),
     setValue: (name, value) => setItemValue(name, value),
+    // (124) APEX: apex.widget.waitPopup; the returned function removes it
+    waitPopup: (message) => (showWait(message == null ? '' : String(message)), removeWait),
+    removeWaitPopup: () => removeWait(),
     showSuccess: (message) => showMessage(String(message), 'success'),
     showError: (message, item) => (item ? itemError(item, String(message)) : showMessage(String(message), 'error')),
     clearErrors: (...items) => clearErrors(items),
@@ -520,6 +523,39 @@ const pgkilnUnsaved = (() => {
       showError(e.message);
     }
   }
+
+  // (124) APEX: Show / Remove Wait Popup. A modal dialog (the page below is inert, Escape doesn't
+  // close it) with a spinner and a status text read out by screen readers; <main> is aria-busy.
+  // It goes with the page on a submit; a submit the browser refused (an invalid field) or a page
+  // restored from the back/forward cache removes it.
+  let waitDlg = null;
+  function showWait(message) {
+    if (!waitDlg) {
+      waitDlg = document.createElement('dialog');
+      waitDlg.className = 'wait-popup';
+      waitDlg.tabIndex = -1;
+      const spin = document.createElement('span');
+      spin.className = 'wait-popup-spinner';
+      spin.setAttribute('aria-hidden', 'true');
+      const p = document.createElement('p');
+      p.className = 'wait-popup-text';
+      p.id = 'pgkiln-wait-text';
+      p.setAttribute('role', 'status');
+      waitDlg.setAttribute('aria-labelledby', p.id);
+      waitDlg.append(spin, p);
+      waitDlg.addEventListener('cancel', (e) => e.preventDefault());
+      body.appendChild(waitDlg);
+    }
+    waitDlg.querySelector('.wait-popup-text').textContent = message || text('da.wait');
+    if (!waitDlg.open) waitDlg.showModal();
+    (document.getElementById('main') || body).setAttribute('aria-busy', 'true');
+  }
+  function removeWait() {
+    if (waitDlg && waitDlg.open) waitDlg.close();
+    (document.getElementById('main') || body).removeAttribute('aria-busy');
+  }
+  document.addEventListener('invalid', () => waitDlg && waitDlg.open && removeWait(), true);
+  window.addEventListener('pageshow', (e) => e.persisted && removeWait());
 
   async function runDa(da, initial, value, extra) {
     const holds = conditionHolds(da, value);
@@ -566,6 +602,13 @@ const pgkilnUnsaved = (() => {
         return;
       case 'print':
         window.print();
+        return;
+      // (124) the wait popup: until remove_wait_popup, the next page or a refused submit
+      case 'wait_popup':
+        showWait(da.message);
+        return;
+      case 'remove_wait_popup':
+        removeWait();
         return;
       case 'current_position':
         return new Promise((resolve) => {
@@ -710,7 +753,7 @@ const pgkilnUnsaved = (() => {
   });
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-button]');
-    if (!btn) return;
+    if (!btn || e.target.closest('[data-menu-entry]')) return;
     const run = das.filter((da) => da.event === 'click' && da.trigger.includes(btn.dataset.button));
     // "Generate text with AI" on a submit button: the AJAX call replaces the submit
     // (without JavaScript the button submits and the page process runs instead)
@@ -726,6 +769,21 @@ const pgkilnUnsaved = (() => {
         btn.removeAttribute('aria-busy');
       });
     }
+  });
+  // (124) menu_entry: an entry {"action": NAME} of a menu button was chosen (a declined confirm
+  // stops it in the capture handler below). Trigger: the entry's name or the menu button's name;
+  // the value a client-side condition tests is the entry's name.
+  document.addEventListener('click', (e) => {
+    const entry = e.target.closest?.('[data-menu-entry]');
+    if (!entry) return;
+    const name = entry.dataset.menuEntry;
+    const menu = entry.closest('details.menu');
+    const owner = (menu && menu.dataset.button) || '';
+    if (menu) {
+      menu.open = false;
+      menu.querySelector('summary')?.focus();
+    }
+    runChain(das.filter((da) => da.event === 'menu_entry' && (da.trigger.includes(name) || (owner && da.trigger.includes(owner)))), name);
   });
   for (const da of das) if (da.event !== 'dialog_closed' && ['show', 'hide', 'enable', 'disable'].includes(da.action)) runDa(da, true);
   runChain(das.filter((da) => da.event === 'load'));
@@ -1904,7 +1962,7 @@ document.querySelectorAll('[data-rds]').forEach((nav) => {
 
 // Popup list of values: the select (which works without JavaScript) is hidden
 // behind a read-only field and a button that opens a dialog searching the
-// item's list of values on the server, page by page.
+// item's list of values on the server, page by page (loaded as the list scrolls).
 function enhancePopupLovs(root) {
   const selects = root.matches?.('select[data-popup-lov]') ? [root] : [...(root.querySelectorAll?.('select[data-popup-lov]') ?? [])];
   selects.forEach(popupLov);
@@ -1986,8 +2044,16 @@ function popupLov(sel) {
     sel.dispatchEvent(new Event('change', { bubbles: true }));
     dlg.close();
   };
+  // (124) infinite scrolling: the next page loads when the end of the list scrolls into view
+  // (APEX: lazy loading); without IntersectionObserver the dialog pages with ‹ and More
+  const infinite = 'IntersectionObserver' in window;
+  let observer = null;
+  let seq = 0;
+  let loading = false;
   async function load(p) {
     page = p;
+    const my = ++seq;
+    const append = infinite && p > 0;
     const results = dlg.querySelector('.popup-lov-results');
     const params = new URLSearchParams({ q: dlg.querySelector('.popup-lov-search').value, p: String(p), __csrf: csrf });
     // a cascading LOV sends its parents' current values
@@ -1997,31 +2063,45 @@ function popupLov(sel) {
       if (el) params.set(parent, el.value);
     }
     let json;
+    loading = true;
     try {
       const res = await fetch(d.popupLov, { method: 'POST', body: params, headers: { accept: 'application/json' }, credentials: 'same-origin' });
       json = await res.json();
       if (!res.ok) throw new Error(json.error || res.statusText);
     } catch (e) {
-      results.textContent = e.message;
+      if (my !== seq) return;
+      loading = false;
+      const end = results.querySelector('.popup-lov-sentinel');
+      if (append && end) end.textContent = e.message;
+      else results.textContent = e.message;
       return;
     }
-    results.replaceChildren();
-    if (!json.rows.length) {
-      const none = document.createElement('p');
-      none.textContent = d.noneLabel || 'Nothing found.';
-      results.append(none);
-      return;
+    // a newer search (or page) replaced this one
+    if (my !== seq) return;
+    loading = false;
+    observer?.disconnect();
+    results.querySelector('.popup-lov-pages, .popup-lov-sentinel')?.remove();
+    let tb = append ? results.querySelector('.popup-lov-table tbody') : null;
+    if (!tb) {
+      results.replaceChildren();
+      if (!json.rows.length) {
+        const none = document.createElement('p');
+        none.textContent = d.noneLabel || 'Nothing found.';
+        results.append(none);
+        return;
+      }
+      const table = document.createElement('table');
+      table.className = 'popup-lov-table';
+      const tr = table.createTHead().insertRow();
+      for (const hd of json.headings) {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = hd;
+        tr.append(th);
+      }
+      tb = table.createTBody();
+      results.append(table);
     }
-    const table = document.createElement('table');
-    table.className = 'popup-lov-table';
-    const tr = table.createTHead().insertRow();
-    for (const hd of json.headings) {
-      const th = document.createElement('th');
-      th.scope = 'col';
-      th.textContent = hd;
-      tr.append(th);
-    }
-    const tb = table.createTBody();
     for (const r of json.rows) {
       const row = tb.insertRow();
       r.columns.forEach((v, i) => {
@@ -2037,7 +2117,19 @@ function popupLov(sel) {
       });
       if (r.value === sel.value) row.className = 'is-current';
     }
-    results.append(table);
+    if (infinite) {
+      if (!json.more) return;
+      const end = document.createElement('p');
+      end.className = 'popup-lov-sentinel muted';
+      end.textContent = d.loadingLabel || 'Loading more…';
+      results.append(end);
+      // the implicit root: whichever box scrolls the list (the dialog's body or the results), it clips
+      observer = observer || new IntersectionObserver((entries) => {
+        if (entries.some((x) => x.isIntersecting) && !loading) load(page + 1);
+      });
+      observer.observe(end);
+      return;
+    }
     if (json.more || page > 0) {
       const nav = document.createElement('div');
       nav.className = 'popup-lov-pages';

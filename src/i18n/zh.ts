@@ -420,6 +420,8 @@ export const zh: Record<MessageKey, string> = {
   'lov.choose': "选择",
   'lov.close': "关闭",
   'lov.more': "更多",
+  'lov.loading': "正在加载更多…",
+  'da.wait': "请稍候…",
   'lov.no_rows': "未找到任何内容。",
   'error.lov_value': "{label}：请从列表中选择一个值。",
   'item.yes': "是",

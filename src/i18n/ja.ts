@@ -420,6 +420,8 @@ export const ja: Record<MessageKey, string> = {
   'lov.choose': "選択",
   'lov.close': "閉じる",
   'lov.more': "もっと見る",
+  'lov.loading': "さらに読み込み中…",
+  'da.wait': "お待ちください…",
   'lov.no_rows': "見つかりません。",
   'error.lov_value': "{label}: 一覧から値を選んでください。",
   'item.yes': "はい",

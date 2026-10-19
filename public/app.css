@@ -2078,3 +2078,13 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .wf-migrate-map label { display: flex; flex-direction: column; gap: 0.2rem; overflow-wrap: anywhere; }
 .wf-migrate-map select { max-width: 100%; }
 .wf-problem { color: var(--danger); overflow-wrap: anywhere; }
+
+/* (sprint 115) the popup LOV's end of list while the next page loads, and the wait popup (dynamic action wait_popup) */
+.popup-lov-sentinel { margin: 0.5rem 0 0; text-align: center; font-size: 0.875rem; }
+dialog.wait-popup { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: var(--shadow); padding: 1.25rem 1.5rem; max-width: min(360px, calc(100vw - 2rem)); display: none; }
+dialog.wait-popup[open] { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+dialog.wait-popup:focus { outline: none; }
+dialog.wait-popup::backdrop { background: rgb(15 20 30 / 35%); cursor: wait; }
+.wait-popup-spinner { width: 2rem; height: 2rem; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); }
+.wait-popup-text { margin: 0; text-align: center; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: no-preference) { .wait-popup-spinner { animation: icon-spin 0.9s linear infinite; } }

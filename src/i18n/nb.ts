@@ -420,6 +420,8 @@ export const nb: Record<MessageKey, string> = {
   'lov.choose': "Velg",
   'lov.close': "Lukk",
   'lov.more': "Flere",
+  'lov.loading': "Laster inn flere…",
+  'da.wait': "Vent litt…",
   'lov.no_rows': "Fant ingenting.",
   'error.lov_value': "{label}: velg en verdi fra listen.",
   'item.yes': "Ja",

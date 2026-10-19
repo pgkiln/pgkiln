@@ -420,6 +420,8 @@ export const ru: Record<MessageKey, string> = {
   'lov.choose': "Выбрать",
   'lov.close': "Закрыть",
   'lov.more': "Ещё",
+  'lov.loading': "Загрузка…",
+  'da.wait': "Подождите…",
   'lov.no_rows': "Ничего не найдено.",
   'error.lov_value': "{label}: выберите значение из списка.",
   'item.yes': "Да",
