@@ -7,6 +7,7 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
+process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
 
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner } = await import('../src/db.ts');

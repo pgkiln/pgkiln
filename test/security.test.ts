@@ -9650,6 +9650,7 @@ describe('sprint 112 WS-5', () => {
     region = r.id;
     oldConfig = r.config;
     mock = await (await import('./ai-mock.ts')).startAiMock();
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
     const { encryptSecret } = await import('../src/secrets.ts');
     await owner.query(`delete from meta.ai_service where name = $1`, [SERVICE]);
     const svc = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc, effort) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3, 'medium') returning id`,
