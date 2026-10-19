@@ -925,6 +925,12 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         // (sprint 109) the Workspace home and the App Builder at /builder/apps
         workspace_home: '/builder/home',
         app_builder: '/builder/apps',
+        // (sprint 110) App Builder → Data Reporter: datasets, a new one (schema step), the HR dataset with a preview, import, a reporting application
+        ...(await (async () => {
+          const id = (await owner.one(`select id from meta.dataset where workspace_id = 1 and name = 'hr'`)).id;
+          return { reporter: '/builder/reporter', reporter_new: '/builder/reporter/datasets/new?schema=hr', reporter_dataset: `/builder/reporter/datasets/${id}?preview=1`,
+            reporter_import: '/builder/reporter/import', reporter_app_new: '/builder/reporter/apps/new?dataset=hr' };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -1027,6 +1033,51 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await dropWb();
       }
       await page.context().close();
+    });
+
+    // (sprint 110) a reporting application on the HR dataset: an editor's welcome page and report editor with a chart,
+    // the published report as a viewer (by its stable URL), with and without JavaScript
+    test('reporting application pages fit the screen', async () => {
+      const alias = `e2e-rep-${size.width}`;
+      const role = `app_${alias.replace(/-/g, '_')}`;
+      const drop = async () => {
+        await owner.query('delete from meta.app where alias = $1', [alias]);
+        if ((await owner.query('select 1 from pg_roles where rolname = $1', [role])).rowCount) {
+          await owner.query(`drop owned by ${role}`);
+          await owner.query(`drop role ${role}`);
+        }
+      };
+      await drop();
+      try {
+        const { checkNewApp } = await import('../../src/builder/newapp.ts');
+        const { createReportingApp } = await import('../../src/reporting-app.ts');
+        const sets = (await owner.query(`select * from meta.dataset where workspace_id = 1 and name = 'hr'`)).rows;
+        const checked = await checkNewApp({ name: 'HR reports with a rather long name for a phone', alias, schema: 'hr', authentication: 'app_users', admin_user: 'king' }, 1);
+        const id = (await owner.tx((c) => createReportingApp(c, checked, sets))).id;
+        await owner.query(`insert into meta.app_access (app_id, account_id, roles) select $1, id, '{}' from meta.account where username = 'allen'`, [id]);
+        const rid = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type = 'data_reporter'`, [id])).id;
+        const rep = (await owner.one(`insert into meta.data_report (app_id, region_id, username, name, description, shared, definition) values ($1, $2, 'king', 'Salary by department', 'Head count and salaries per department.', true,
+          '{"source": "hr", "columns": [], "filters": [], "group": ["dname"], "aggregates": [{"fn": "count", "column": ""}, {"fn": "sum", "column": "sal"}], "sort": [], "chart": "bar"}') returning id`, [id, rid])).id;
+        for (const js of [true, false]) {
+          const page = await (await newContext({ viewport: size, javaScriptEnabled: js })).newPage();
+          await login(page, `/a/${alias}/login`, 'king', 'king');
+          for (const [name, url] of [['home', `/a/${alias}/1`], ['editor', `/a/${alias}/1?dr${rid}_src=hr&dr${rid}_g=dname&dr${rid}_af=sum&dr${rid}_ac=sal&dr${rid}_ch=bar`], ['report', `/a/${alias}/reports/${rep}`]]) {
+            const res = await page.goto(`${base}${url}`);
+            assert.equal(res?.status(), 200, name);
+            await check(page, `app-reporting-${name}${js ? '' : '-nojs'}`, vp);
+          }
+          await page.context().close();
+        }
+        const viewer = await (await newContext({ viewport: size })).newPage();
+        await login(viewer, `/a/${alias}/login`, 'allen', 'allen');
+        await viewer.goto(`${base}/a/${alias}/reports/${rep}`);
+        assert.match(await viewer.locator('main').innerText(), /Salary by department/);
+        assert.equal(await viewer.locator('.reporter-editor').count(), 0);
+        await check(viewer, 'app-reporting-viewer', vp);
+        await viewer.context().close();
+      } finally {
+        await drop();
+      }
     });
   });
 }

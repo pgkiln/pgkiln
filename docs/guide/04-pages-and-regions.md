@@ -1186,9 +1186,12 @@ Attributes (written by the region's **Settings**):
 
 | Key | Default | Meaning |
 |---|---|---|
-| `sources` | | `[{"id": "orders", "label": "Orders", "description": "…", "schema": "sales", "table": "order_v", "columns": [{"name": "total", "label": "Total", "format": "FML999G990D00"}]}]` |
+| `sources` | | `[{"id": "orders", "label": "Orders", "description": "…", "schema": "sales", "table": "order_v", "columns": [{"name": "total", "label": "Total", "format": "FML999G990D00"}]}]`; (sprint 110) or a dataset: `{"id": "sales", "dataset": "sales"}` (label and description optional) |
 | `sharing` | `true` | `false`: reports stay private |
 | `share_authz` | | An authorization scheme: only users that pass it may share reports |
+| `edit_authz` | | (sprint 110) An authorization scheme: only users that pass it build, change, save and delete reports; the others only run shared ones |
+| `admin_authz` | | (sprint 110) An authorization scheme: users that pass it unpublish and delete anyone's reports |
+| `publishing` | `false` | (sprint 110) `true`: shared reports are *published*: a stable URL, Publish / Unpublish buttons, pins |
 | `page_size` | `25` | Rows per page of a detail report (5 to 200) |
 | `welcome` | `true` | `false`: the compact start (a list of sources and *Start*) instead of the welcome page |
 | `welcome_title`, `welcome_text` | | The welcome page's greeting instead of pgkiln's (translated like other application texts) |
@@ -1199,6 +1202,27 @@ reports are user data, like [saved reports](#report-interactive-report), and sta
 region when an application is replaced. The HR example's page 36 (*My reports*) offers employees
 (a view without the user name and photo columns) and leave requests (row level security: an
 employee sees only their own), with King's shared report *Salary by department*.
+
+#### Datasets and reporting applications
+
+(sprint 110) A source may be a **dataset** of the workspace ([App Builder → Data
+Reporter](03-builder.md#data-reporter-datasets-and-reporting-applications)): tables and views of one schema with
+their joins, the offered columns with labels, format masks and descriptions (shown under the column in the editor),
+and a row filter. The region's Settings add one under *Add a data source → Or a dataset of the workspace*. The
+runtime reads the dataset when the page is drawn and builds its SELECT from the definition (identifiers quoted,
+values escaped literals, operators from the whitelist), and the report runs on it as a subquery, as the
+application's database role. A dataset that was deleted disappears from the region; a column that no longer exists
+makes the report show an error.
+
+With **`publishing`**, shared reports are *published*: an editor saves a report privately and **Publishes** it
+(or ticks *Publish for all users* when saving), and **Unpublishes** it again. A published report has a **stable
+URL**, `/a/<alias>/reports/<id>`, shown on the report: it opens the report on its page (signing in first), so it
+can be bookmarked or sent. Every signed-in user may **Pin** a published report: pinned reports come first on the
+welcome page (a [preference](06-processing.md) of the user, `reporter.pins.<region>`). Users that don't pass
+`edit_authz` see only the published reports: no *New report* cards, no editor (report parameters in the URL are
+ignored), no saving. Users that pass `admin_authz` unpublish and delete anyone's reports. The HR example's dataset
+`hr` (`examples/hr/hr_63_datasets.sql`: employees with their department, active ones only) is the one a reporting
+application is made from in the guide's chapter 3.
 
 ### `form_designer` (Form Designer)
 

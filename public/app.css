@@ -2042,3 +2042,9 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .t-footer .icon { width: 1rem; height: 1rem; }
 @media print { .t-footer { display: none; } }
 .list-card:hover { border-top-color: var(--card-color); }
+
+/* (sprint 110) Data Reporter: a saved report's link and actions, column descriptions */
+.reporter-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin: 0 0 0.75rem; min-width: 0; }
+.reporter-actions .buttons { margin: 0; }
+.reporter-link { flex: 1 1 14rem; min-width: 0; font-family: var(--mono, monospace); font-size: 0.85rem; }
+.reporter-coldesc { display: block; font-size: 0.78rem; }
