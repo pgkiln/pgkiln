@@ -771,4 +771,13 @@ export const uk: Record<MessageKey, string> = {
   'ai_filter.applied': "Застосовано: {what}",
   'ai_filter.nothing': "Запитання не дало фільтрів для цього звіту.",
   'ai_filter.sort': "сортування за {column}",
+  'ai_filter.chips': "Налаштування звіту",
+  'ai_filter.edit': "Змінити",
+  'ai_filter.undo': "Скасувати",
+  'ai_filter.remove': "Видалити {what}",
+  'ai_filter.not_understood': "Не зрозуміло: {what}",
+  'ai_filter.no_match': "Питання не дало налаштувань звіту. Спробуйте, наприклад, «сума більше 100», «сортувати за датою» або «сума за клієнтами».",
+  'ai_filter.per_group': "{what} за групами",
+  'ai_filter.needs_number': "Для {fn} потрібен стовпець із числами.",
+  'ai_filter.invalid': "Ця зміна неможлива: {why}",
 };

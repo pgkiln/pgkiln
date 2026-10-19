@@ -771,4 +771,13 @@ export const da: Record<MessageKey, string> = {
   'ai_filter.applied': "Anvendt: {what}",
   'ai_filter.nothing': "Spørgsmålet gav ingen filtre til denne rapport.",
   'ai_filter.sort': "sorteret efter {column}",
+  'ai_filter.chips': "Rapportindstillinger",
+  'ai_filter.edit': "Rediger",
+  'ai_filter.undo': "Fortryd",
+  'ai_filter.remove': "Fjern {what}",
+  'ai_filter.not_understood': "Ikke forstået: {what}",
+  'ai_filter.no_match': "Spørgsmålet gav ingen rapportindstillinger. Prøv f.eks. \"beløb over 100\", \"sorter efter dato\" eller \"sum af beløb pr. kunde\".",
+  'ai_filter.per_group': "{what} pr. gruppe",
+  'ai_filter.needs_number': "{fn} kræver en kolonne med tal.",
+  'ai_filter.invalid': "Den ændring er ikke mulig: {why}",
 };

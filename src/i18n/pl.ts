@@ -771,4 +771,13 @@ export const pl: Record<MessageKey, string> = {
   'ai_filter.applied': "Zastosowano: {what}",
   'ai_filter.nothing': "Pytanie nie dało filtrów dla tego raportu.",
   'ai_filter.sort': "posortowane według {column}",
+  'ai_filter.chips': "Ustawienia raportu",
+  'ai_filter.edit': "Edytuj",
+  'ai_filter.undo': "Cofnij",
+  'ai_filter.remove': "Usuń {what}",
+  'ai_filter.not_understood': "Nie zrozumiano: {what}",
+  'ai_filter.no_match': "Pytanie nie dało żadnych ustawień raportu. Spróbuj np. „kwota powyżej 100”, „sortuj według daty” lub „suma kwoty według klienta”.",
+  'ai_filter.per_group': "{what} na grupę",
+  'ai_filter.needs_number': "{fn} wymaga kolumny z liczbami.",
+  'ai_filter.invalid': "Ta zmiana nie jest możliwa: {why}",
 };

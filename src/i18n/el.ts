@@ -771,4 +771,13 @@ export const el: Record<MessageKey, string> = {
   'ai_filter.applied': "Εφαρμόστηκε: {what}",
   'ai_filter.nothing': "Η ερώτηση δεν έδωσε φίλτρα για αυτή την αναφορά.",
   'ai_filter.sort': "ταξινόμηση κατά {column}",
+  'ai_filter.chips': "Ρυθμίσεις αναφοράς",
+  'ai_filter.edit': "Επεξεργασία",
+  'ai_filter.undo': "Αναίρεση",
+  'ai_filter.remove': "Αφαίρεση {what}",
+  'ai_filter.not_understood': "Δεν έγινε κατανοητό: {what}",
+  'ai_filter.no_match': "Η ερώτηση δεν έδωσε ρυθμίσεις αναφοράς. Δοκιμάστε π.χ. «ποσό πάνω από 100», «ταξινόμηση κατά ημερομηνία» ή «άθροισμα ποσού ανά πελάτη».",
+  'ai_filter.per_group': "{what} ανά ομάδα",
+  'ai_filter.needs_number': "Η συνάρτηση {fn} χρειάζεται στήλη με αριθμούς.",
+  'ai_filter.invalid': "Αυτή η αλλαγή δεν είναι δυνατή: {why}",
 };

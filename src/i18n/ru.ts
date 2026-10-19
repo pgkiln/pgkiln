@@ -771,4 +771,13 @@ export const ru: Record<MessageKey, string> = {
   'ai_filter.applied': "Применено: {what}",
   'ai_filter.nothing': "Вопрос не дал фильтров для этого отчёта.",
   'ai_filter.sort': "сортировка по {column}",
+  'ai_filter.chips': "Настройки отчёта",
+  'ai_filter.edit': "Изменить",
+  'ai_filter.undo': "Отменить",
+  'ai_filter.remove': "Удалить {what}",
+  'ai_filter.not_understood': "Не понято: {what}",
+  'ai_filter.no_match': "Вопрос не дал настроек отчёта. Попробуйте, например, «сумма больше 100», «сортировать по дате» или «сумма по клиентам».",
+  'ai_filter.per_group': "{what} по группам",
+  'ai_filter.needs_number': "Для {fn} нужен столбец с числами.",
+  'ai_filter.invalid': "Это изменение невозможно: {why}",
 };

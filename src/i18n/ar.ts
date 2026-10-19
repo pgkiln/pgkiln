@@ -771,4 +771,13 @@ export const ar: Record<MessageKey, string> = {
   'ai_filter.applied': "تم التطبيق: {what}",
   'ai_filter.nothing': "لم ينتج السؤال أي عوامل تصفية لهذا التقرير.",
   'ai_filter.sort': "مرتّب حسب {column}",
+  'ai_filter.chips': "إعدادات التقرير",
+  'ai_filter.edit': "تعديل",
+  'ai_filter.undo': "تراجع",
+  'ai_filter.remove': "إزالة {what}",
+  'ai_filter.not_understood': "لم يُفهم: {what}",
+  'ai_filter.no_match': "لم ينتج عن السؤال أي إعدادات للتقرير. جرّب مثلًا \"المبلغ أكبر من 100\" أو \"رتّب حسب التاريخ\" أو \"مجموع المبلغ حسب العميل\".",
+  'ai_filter.per_group': "{what} لكل مجموعة",
+  'ai_filter.needs_number': "تحتاج {fn} إلى عمود أرقام.",
+  'ai_filter.invalid': "هذا التغيير غير ممكن: {why}",
 };

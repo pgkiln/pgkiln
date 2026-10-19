@@ -798,6 +798,15 @@ const en = {
   'ai_filter.applied': "Applied: {what}",
   'ai_filter.nothing': "The question gave no filters for this report.",
   'ai_filter.sort': "sorted by {column}",
+  'ai_filter.chips': "Report settings",
+  'ai_filter.edit': "Edit",
+  'ai_filter.undo': "Undo",
+  'ai_filter.remove': "Remove {what}",
+  'ai_filter.not_understood': "Not understood: {what}",
+  'ai_filter.no_match': "The question gave no report settings. Try e.g. \"amount over 100\", \"sort by date\", \"only open orders\" or \"sum of amount by customer\".",
+  'ai_filter.per_group': "{what} per group",
+  'ai_filter.needs_number': "{fn} needs a column with numbers.",
+  'ai_filter.invalid': "That change is not possible: {why}",
 };
 
 export type MessageKey = keyof typeof en;
@@ -1565,6 +1574,15 @@ const nl: Record<MessageKey, string> = {
   'ai_filter.applied': "Toegepast: {what}",
   'ai_filter.nothing': "De vraag leverde geen filters op voor dit rapport.",
   'ai_filter.sort': "gesorteerd op {column}",
+  'ai_filter.chips': "Rapportinstellingen",
+  'ai_filter.edit': "Wijzigen",
+  'ai_filter.undo': "Ongedaan maken",
+  'ai_filter.remove': "{what} verwijderen",
+  'ai_filter.not_understood': "Niet begrepen: {what}",
+  'ai_filter.no_match': "De vraag gaf geen rapportinstellingen. Probeer bijv. \"bedrag boven 100\", \"sorteer op datum\", \"alleen open orders\" of \"som van bedrag per klant\".",
+  'ai_filter.per_group': "{what} per groep",
+  'ai_filter.needs_number': "{fn} vraagt een kolom met getallen.",
+  'ai_filter.invalid': "Die wijziging kan niet: {why}",
 };
 
 const BUILTIN: Record<string, Record<string, string>> = { en, nl, de, fr, es, it, pt, pl, sv, da, nb, cs, ja, zh, fi, tr, el, ru, uk, ko, ar, he };

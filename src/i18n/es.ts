@@ -771,4 +771,13 @@ export const es: Record<MessageKey, string> = {
   'ai_filter.applied': "Aplicado: {what}",
   'ai_filter.nothing': "La pregunta no dio filtros para este informe.",
   'ai_filter.sort': "ordenado por {column}",
+  'ai_filter.chips': "Configuración del informe",
+  'ai_filter.edit': "Editar",
+  'ai_filter.undo': "Deshacer",
+  'ai_filter.remove': "Quitar {what}",
+  'ai_filter.not_understood': "No entendido: {what}",
+  'ai_filter.no_match': "La pregunta no dio ninguna configuración del informe. Pruebe p. ej. \"importe mayor que 100\", \"ordenar por fecha\" o \"suma de importe por cliente\".",
+  'ai_filter.per_group': "{what} por grupo",
+  'ai_filter.needs_number': "{fn} necesita una columna con números.",
+  'ai_filter.invalid': "Ese cambio no es posible: {why}",
 };

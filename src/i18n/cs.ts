@@ -771,4 +771,13 @@ export const cs: Record<MessageKey, string> = {
   'ai_filter.applied': "Použito: {what}",
   'ai_filter.nothing': "Z otázky nevyplynuly žádné filtry pro tuto sestavu.",
   'ai_filter.sort': "seřazeno podle {column}",
+  'ai_filter.chips': "Nastavení sestavy",
+  'ai_filter.edit': "Upravit",
+  'ai_filter.undo': "Zpět",
+  'ai_filter.remove': "Odebrat {what}",
+  'ai_filter.not_understood': "Nerozuměno: {what}",
+  'ai_filter.no_match': "Otázka nedala žádné nastavení sestavy. Zkuste např. „částka nad 100“, „seřadit podle data“ nebo „součet částky podle zákazníka“.",
+  'ai_filter.per_group': "{what} na skupinu",
+  'ai_filter.needs_number': "{fn} potřebuje sloupec s čísly.",
+  'ai_filter.invalid': "Tuto změnu nelze provést: {why}",
 };
