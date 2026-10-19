@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-10-19
+
 ### Added
 - **Component details** (WS-11; APEX 26.1; migration 124): the **popup LOV** dialog loads the next page as the list
   scrolls, so long lists scroll to their end without a More button (browsers without IntersectionObserver still page
