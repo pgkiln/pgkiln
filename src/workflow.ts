@@ -2,7 +2,7 @@ import pg from 'pg';
 import { applyBinds, splitStatements, type BindValues } from './binds.ts';
 import { owner } from './db.ts';
 import { appIsolated, runtimeForApp } from './workspace-db.ts';
-import { html, type Raw } from './html.ts';
+import { html, raw, type Raw } from './html.ts';
 import type { WebResponse } from './webclient.ts';
 import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, type InvokeConfig, type RestSource } from './websources.ts';
 
@@ -53,15 +53,27 @@ import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, t
 //
 // The server runs workflows when they start or a task of theirs ends
 // (NOTIFY pgkiln_workflow) and checks for due waits every few seconds.
+//
+// (123) Task definitions may have custom outcomes (YES, NO, UNDECIDED, …): a task
+// step's "next" names them, and a switch case {"outcome": "YES", "next": "…"}
+// branches on the outcome of the last task. A "draft" step is a placeholder
+// while modelling: allowed in a development version only (the database refuses
+// it in the active steps), drawn dashed. A "send_mail" step queues an e-mail
+// through meta.send_mail_template (a template, #VAR# placeholders from the
+// variables) or meta.send_mail (subject and body), as the application's role:
+//   {"name": "TELL", "type": "send_mail", "to": "select email from staff where id = :DETAIL_PK::int", "template": "REQUEST_DONE"}
+// "to" is a SELECT returning addresses, or addresses (&VAR. allowed).
 
 export type Step =
   | { name: string; type: 'task'; task: string; owners?: string; next?: string | Record<string, string> }
   | { name: string; type: 'sql'; code: string; next?: string }
-  | { name: string; type: 'switch'; cases: { when: string; next: string }[]; otherwise?: string }
+  | { name: string; type: 'switch'; cases: { when?: string; outcome?: string; next: string }[]; otherwise?: string }
   | { name: string; type: 'wait'; for: string; next?: string }
   | InvokeStep
   | { name: string; type: 'parallel'; branches: string[]; join: string }
   | { name: string; type: 'join'; wait_for?: 'all' | 'any'; next?: string }
+  | { name: string; type: 'send_mail'; to: string; template?: string; subject?: string; body?: string; cc?: string; next?: string }
+  | { name: string; type: 'draft'; note?: string; next?: string }
   | { name: string; type: 'end' };
 
 export interface InvokeStep extends InvokeConfig {
@@ -76,11 +88,36 @@ export interface InvokeStep extends InvokeConfig {
   next?: string;
 }
 
-const TYPES = ['task', 'sql', 'switch', 'wait', 'invoke_api', 'parallel', 'join', 'end'];
+const TYPES = ['task', 'sql', 'switch', 'wait', 'invoke_api', 'parallel', 'join', 'send_mail', 'draft', 'end'];
 const VAR_NAME = /^[A-Z][A-Z0-9_]*$/;
 /** Binds the workflow sets itself (variables of these names would be hidden). */
 const BUILT_IN = ['DETAIL_PK', 'WORKFLOW_ID', 'INITIATOR'];
 const OUTCOMES = ['approved', 'rejected', 'completed', 'cancelled', 'expired'];
+/** (123) outcomes every task step may name besides its definition's own */
+const ALWAYS = ['cancelled', 'expired', 'default'];
+const OUTCOME_NAME = /^[A-Za-z][A-Za-z0-9_]{0,29}$/;
+/** A "to" that is a query rather than a list of addresses. */
+export const isQuery = (to: string) => /^\s*(select|with)\b/i.test(to);
+/** The value of an outcome-keyed "next" for an outcome (keys in any case). */
+export const forOutcome = (next: Record<string, string>, outcome: string) => {
+  const key = Object.keys(next).find((k) => k.toLowerCase() === outcome.toLowerCase());
+  return key === undefined ? undefined : next[key];
+};
+
+/** (123) The outcomes of task definitions (lower case): custom ones, or the type's own. */
+export function outcomeMap(defs: { name: string; type?: string; outcomes?: unknown }[]): Map<string, string[]> {
+  return new Map(defs.map((d) => {
+    const custom = Array.isArray(d.outcomes) ? d.outcomes.map((o) => String((o as { name?: unknown })?.name ?? '').toLowerCase()).filter(Boolean) : [];
+    return [String(d.name).toUpperCase(), custom.length ? custom : d.type === 'action' ? ['completed'] : ['approved', 'rejected']];
+  }));
+}
+
+export interface StepCheck {
+  /** task definition → its outcomes (lower case): checks the outcomes task steps and switch cases name */
+  outcomes?: Map<string, string[]>;
+  /** (123) false: draft steps are problems (activation, the active steps) */
+  drafts?: boolean;
+}
 const INTERVAL = /^\s*\d+\s*(second|minute|hour|day|week|month)s?\s*$/i;
 const MAX_STEPS_PER_RUN = 100;
 const OPEN = ['active', 'waiting', 'faulted'];
@@ -99,7 +136,7 @@ function invokeStepProblems(st: Record<string, any>): string[] {
 }
 
 /** Problems in a definition's steps (for the builder), or [] when it can run. */
-export function stepProblems(steps: unknown, taskNames?: Set<string>): string[] {
+export function stepProblems(steps: unknown, taskNames?: Set<string>, check: StepCheck = {}): string[] {
   if (!Array.isArray(steps)) return ['The steps must be a JSON array.'];
   if (!steps.length) return ['A workflow needs at least one step.'];
   const problems: string[] = [];
@@ -117,12 +154,36 @@ export function stepProblems(steps: unknown, taskNames?: Set<string>): string[] 
       if (typeof st.task !== 'string' || !st.task) problems.push(`${label}: "task" names a task definition.`);
       else if (taskNames && !taskNames.has(st.task.toUpperCase())) problems.push(`${label}: task definition ${st.task} doesn't exist.`);
       if (st.owners !== undefined && typeof st.owners !== 'string') problems.push(`${label}: "owners" is a SELECT returning usernames.`);
-      if (st.next && typeof st.next === 'object' && Object.keys(st.next).some((k) => !OUTCOMES.includes(k) && k !== 'default'))
-        problems.push(`${label}: "next" outcomes are ${OUTCOMES.join(', ')} (and default).`);
+      if (st.next && typeof st.next === 'object') {
+        // (123) the definition's outcomes (custom ones too), cancelled, expired and default
+        const known = typeof st.task === 'string' ? check.outcomes?.get(st.task.toUpperCase()) : undefined;
+        if (known) {
+          const bad = Object.keys(st.next).filter((k) => ![...known, ...ALWAYS].includes(k.toLowerCase()));
+          if (bad.length) problems.push(`${label}: task definition ${st.task.toUpperCase()} has no outcome ${bad.join(', ')} (its outcomes: ${known.join(', ')}; also cancelled, expired and default).`);
+        } else if (Object.keys(st.next).some((k) => !OUTCOME_NAME.test(k))) problems.push(`${label}: "next" outcomes are names like ${OUTCOMES.join(', ')} (and default).`);
+      }
     }
     if (st.type === 'sql' && (typeof st.code !== 'string' || !st.code.trim())) problems.push(`${label}: "code" is the SQL to run.`);
-    if (st.type === 'switch' && (!Array.isArray(st.cases) || !st.cases.every((c: any) => typeof c?.when === 'string' && typeof c?.next === 'string')))
-      problems.push(`${label}: "cases" is a list of {"when": "SQL condition", "next": "STEP"}.`);
+    if (st.type === 'switch' && (!Array.isArray(st.cases) || !st.cases.every((c: any) => (typeof c?.when === 'string') !== (typeof c?.outcome === 'string') && typeof c?.next === 'string')))
+      problems.push(`${label}: "cases" is a list of {"when": "SQL condition", "next": "STEP"} or {"outcome": "YES", "next": "STEP"} (the outcome of the last task).`);
+    else if (st.type === 'switch' && check.outcomes) {
+      // (123) an outcome case names an outcome of a task definition the workflow uses
+      const used = (steps as Record<string, any>[]).filter((x) => x?.type === 'task' && typeof x.task === 'string').map((x) => x.task.toUpperCase());
+      const possible = new Set([...used.flatMap((t) => check.outcomes!.get(t) ?? []), 'cancelled', 'expired']);
+      for (const c of st.cases as { outcome?: string }[])
+        if (typeof c.outcome === 'string' && !possible.has(c.outcome.toLowerCase())) problems.push(`${label}: no task of this workflow ends as ${c.outcome}.`);
+    }
+    if (st.type === 'send_mail') {
+      if (typeof st.to !== 'string' || !st.to.trim()) problems.push(`${label}: "to" is a SELECT returning e-mail addresses, or addresses.`);
+      if (st.template !== undefined && (typeof st.template !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,59}$/.test(st.template))) problems.push(`${label}: "template" names an e-mail template.`);
+      if (st.template === undefined && (typeof st.subject !== 'string' || !st.subject.trim() || typeof st.body !== 'string'))
+        problems.push(`${label}: give a "template", or a "subject" and a "body".`);
+      if (st.cc !== undefined && typeof st.cc !== 'string') problems.push(`${label}: "cc" is a list of addresses.`);
+    }
+    if (st.type === 'draft') {
+      if (check.drafts === false) problems.push(`${label}: is a draft; replace it with a real step before activating the version.`);
+      if (st.note !== undefined && typeof st.note !== 'string') problems.push(`${label}: "note" is text.`);
+    }
     if (st.type === 'wait' && !(typeof st.for === 'string' && INTERVAL.test(st.for))) problems.push(`${label}: "for" is an interval such as "2 days" or "4 hours".`);
     if (st.type === 'parallel') {
       if (!Array.isArray(st.branches) || st.branches.length < 2 || !st.branches.every((b: unknown) => typeof b === 'string' && b))
@@ -432,7 +493,7 @@ async function fault(id: string, branch: string | null, msg: string) {
  * the owner's transaction (where RESET ROLE would reach the owner). It commits just before the
  * owner's transaction: if that one then fails, the step runs again (at least once).
  */
-class AppSide {
+export class AppSide {
   private client: pg.PoolClient | null = null;
   private release: (() => void) | null = null;
 
@@ -467,7 +528,7 @@ class AppSide {
   }
 }
 
-async function stepTx<T>(fn: (c: pg.PoolClient, side: AppSide) => Promise<T>): Promise<T> {
+export async function stepTx<T>(fn: (c: pg.PoolClient, side: AppSide) => Promise<T>): Promise<T> {
   const side = new AppSide();
   try {
     return await owner.tx(async (c) => {
@@ -649,7 +710,7 @@ async function step(c: pg.PoolClient, side: AppSide, id: string, at: { branch: s
     vars.TASK_OUTCOME = outcome.toUpperCase();
     vars.TASK_APPROVER = t.completed_by;
     const next = (s as { next?: string | Record<string, string> }).next;
-    const target: string | null | undefined = typeof next === 'string' ? next : next?.[outcome] ?? next?.default;
+    const target: string | null | undefined = typeof next === 'string' ? next : next ? forOutcome(next, outcome) ?? forOutcome(next, 'default') : undefined;
     // a cancelled task without a "cancelled" branch ends the workflow
     if (target === undefined && outcome === 'cancelled') return finish('terminated', false, 'its task was cancelled');
     // (094) likewise an expired task without an "expired" branch
@@ -671,7 +732,12 @@ async function step(c: pg.PoolClient, side: AppSide, id: string, at: { branch: s
     }
     case 'switch': {
       for (const cs of s.cases) {
-        const ok = await asApp(async (q) => (await q.query(`select (${applyBinds(cs.when, binds())})::boolean as ok`)).rows[0].ok);
+        // (123) the outcome of the last task
+        if (typeof cs.outcome === 'string') {
+          if (String(vars.TASK_OUTCOME ?? '').toLowerCase() === cs.outcome.toLowerCase()) return goTo(cs.next, `outcome ${cs.outcome}`);
+          continue;
+        }
+        const ok = await asApp(async (q) => (await q.query(`select (${applyBinds(cs.when ?? 'false', binds())})::boolean as ok`)).rows[0].ok);
         if (ok === true) return goTo(cs.next, `when ${cs.when}`);
       }
       return goTo(s.otherwise ?? undefined, 'otherwise');
@@ -753,6 +819,27 @@ async function step(c: pg.PoolClient, side: AppSide, id: string, at: { branch: s
       }
       return goTo(s.next, any ? done.map((b) => b.name).join(', ') : fork.length ? 'all branches' : null, 'joined');
     }
+    case 'send_mail': {
+      // (123) as the application's role: meta.send_mail checks that it is the application's own
+      const b = binds();
+      const to = isQuery(s.to)
+        ? await asApp(async (q) => (await q.query({ text: applyBinds(s.to.trim().replace(/;+\s*$/, ''), b), rowMode: 'array' })).rows.map((r) => r[0]).filter(Boolean).join(', '))
+        : s.to.replace(/&([A-Za-z][A-Za-z0-9_]*)\./g, (m, name: string) => (name.toUpperCase() in b ? (b[name.toUpperCase()] ?? '') : m));
+      if (!to.trim()) {
+        // nobody to tell: not an error (the history says so)
+        return goTo(s.next, 'no recipients');
+      }
+      const values = Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v ?? '']));
+      const id = await asApp(async (q) =>
+        s.template
+          ? (await q.query('select meta.send_mail_template($1, $2, $3, $4) as id', [s.template, values, to, s.cc ?? null])).rows[0].id
+          : (await q.query(`select meta.send_mail($1, regexp_replace(meta.mail_fill($2, $4, false), '[\r\n]+', ' ', 'g'), meta.mail_fill($3, $4, false), null, null, $5) as id`,
+              [to, s.subject ?? '', s.body ?? '', values, s.cc ?? null])).rows[0].id,
+      );
+      return goTo(s.next, `mail ${id} to ${to}`.slice(0, 4000));
+    }
+    case 'draft':
+      throw new StepError(`Step ${s.name} is a draft: it does nothing yet.`);
     case 'end':
       return finish('completed', false);
     default:
@@ -793,6 +880,8 @@ export async function startWorkflowRunner() {
       do {
         again = false;
         await runWorkflows();
+        // (123) task events and notifications queued by tasks (src/task-events.ts)
+        await (await import('./task-events.ts')).runTaskHooks();
       } while (again);
     } catch (e) {
       console.error('workflows:', (e as Error).message);
@@ -821,8 +910,10 @@ export async function startWorkflowRunner() {
  * marks the steps an instance is at (several with parallel branches); `id`
  * keeps the arrow marker unique when a page shows several diagrams.
  */
-export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: string } = {}): Raw {
+export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: string; standalone?: { title: string } } = {}): Raw {
   if (!Array.isArray(steps) || !steps.length || steps.some((s) => !s || typeof s !== 'object' || typeof s.name !== 'string')) return html``;
+  // (123) the export is an XML file: no control characters (the template escapes the rest)
+  const txt = (v: unknown) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, '');
   const marker = `wf-arrow${opts.id ? `-${opts.id}` : ''}`;
   const active = new Set(opts.active ?? []);
   // levels: the longest path from the first step (cycles are cut)
@@ -831,7 +922,7 @@ export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: s
   for (const s of steps) {
     if (s.type === 'switch' && Array.isArray(s.cases)) {
       for (const cs of s.cases) {
-        const when = String(cs?.when ?? '');
+        const when = typeof cs?.outcome === 'string' ? `outcome ${cs.outcome}` : String(cs?.when ?? '');
         edges.push({ from: s.name, to: cs?.next, label: when.length > 24 ? `${when.slice(0, 22)}…` : when });
       }
       edges.push({ from: s.name, to: s.otherwise ?? following(steps, s.name) ?? '', label: 'otherwise' });
@@ -863,21 +954,47 @@ export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: s
     : s.type === 'join' ? `join (${s.wait_for === 'any' ? 'any' : 'all'})`
     : s.type === 'parallel' ? `parallel ×${Array.isArray(s.branches) ? s.branches.length : 0}`
     : s.type === 'invoke_api' ? `invoke API ${typeof s.source === 'string' && s.source ? s.source : `${String(s.method ?? 'GET').toUpperCase()} URL`}`
+    : s.type === 'send_mail' ? `send e-mail${typeof s.template === 'string' && s.template ? ` ${s.template}` : ''}`
+    : s.type === 'draft' ? `draft${typeof s.note === 'string' && s.note ? `: ${s.note.length > 18 ? `${s.note.slice(0, 16)}…` : s.note}` : ''}`
     : s.type;
-  return html`<svg class="wf-diagram" viewBox="0 0 ${width} ${height}" role="img" aria-label="Workflow diagram${active.size ? `; at ${[...active].join(', ')}` : ''}" preserveAspectRatio="xMidYMin meet">
+  const standalone = opts.standalone;
+  return html`${standalone ? raw('<?xml version="1.0" encoding="UTF-8"?>\n') : ''}<svg class="wf-diagram"${standalone ? raw(` xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"`) : ''} viewBox="0 0 ${width} ${height}" role="img" aria-label="${txt(standalone ? standalone.title : 'Workflow diagram')}${active.size ? `; at ${txt([...active].join(', '))}` : ''}" preserveAspectRatio="xMidYMin meet">
+    ${standalone ? html`<title>${txt(standalone.title)}</title><style>${raw(SVG_STYLE)}</style><rect width="100%" height="100%" class="wf-bg"/>` : ''}
     <defs><marker id="${marker}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="wf-arrowhead"/></marker></defs>
     ${real.map((e) => {
       const a = pos.get(e.from)!, b = pos.get(e.to)!;
       const x1 = a.x + W / 2, y1 = a.y + H, x2 = b.x + W / 2, y2 = b.y;
       const back = y2 <= y1;
       const d = back ? `M${x1},${y1} C${x1 + W},${y1 + 40} ${x2 + W},${y2 - 40} ${x2 + W / 2 - 4},${y2 + H / 2}` : `M${x1},${y1} C${x1},${(y1 + y2) / 2} ${x2},${(y1 + y2) / 2} ${x2},${y2 - 2}`;
-      return html`<path d="${d}" class="wf-edge${e.branch ? ' wf-edge-branch' : ''}" marker-end="url(#${marker})"/>${e.label ? html`<text x="${(x1 + x2) / 2 + 4}" y="${(y1 + y2) / 2}" class="wf-label">${e.label}</text>` : ''}`;
+      return html`<path d="${d}" class="wf-edge${e.branch ? ' wf-edge-branch' : ''}" marker-end="url(#${marker})"/>${e.label ? html`<text x="${(x1 + x2) / 2 + 4}" y="${(y1 + y2) / 2}" class="wf-label">${txt(e.label)}</text>` : ''}`;
     })}
     ${steps.map((s) => {
       const p = pos.get(s.name)!;
       return html`<g class="wf-node wf-${TYPES.includes(s.type) ? s.type : 'unknown'}${active.has(s.name) ? ' wf-active' : ''}"><rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="${s.type === 'parallel' || s.type === 'join' ? 20 : 8}"/>
-        <text x="${p.x + W / 2}" y="${p.y + 18}" class="wf-name">${s.name}</text>
-        <text x="${p.x + W / 2}" y="${p.y + 34}" class="wf-type">${typeText(s)}</text></g>`;
+        <text x="${p.x + W / 2}" y="${p.y + 18}" class="wf-name">${txt(s.name)}</text>
+        <text x="${p.x + W / 2}" y="${p.y + 34}" class="wf-type">${txt(typeText(s))}</text></g>`;
     })}
   </svg>`;
 }
+
+/** (123) The colours of the diagram in an exported SVG file (the page's are in app.css). */
+const SVG_STYLE = `
+.wf-bg { fill: #ffffff; }
+.wf-node rect { fill: #ffffff; stroke: #c9ccd3; stroke-width: 1.5; }
+.wf-task rect { stroke: #2f6fde; }
+.wf-switch rect { stroke: #b86e00; stroke-dasharray: 5 3; }
+.wf-end rect { fill: #f1f2f5; }
+.wf-parallel rect, .wf-join rect { stroke: #7b52c7; stroke-width: 2; }
+.wf-invoke_api rect { stroke: #1f7a8c; stroke-width: 2; stroke-dasharray: 2 2; }
+.wf-send_mail rect { stroke: #17794a; stroke-width: 2; }
+.wf-draft rect { fill: #fafafa; stroke: #8a8f98; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.wf-active rect { fill: #e6efff; stroke: #2f6fde; stroke-width: 3; }
+text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wf-name { fill: #1d2129; font-size: 12px; font-weight: 600; text-anchor: middle; }
+.wf-type { fill: #5d6470; font-size: 10px; text-anchor: middle; }
+.wf-draft .wf-name, .wf-draft .wf-type { font-style: italic; }
+.wf-edge { fill: none; stroke: #5d6470; stroke-width: 1.3; }
+.wf-edge-branch { stroke-dasharray: 6 3; }
+.wf-arrowhead { fill: #5d6470; }
+.wf-label { fill: #5d6470; font-size: 10px; }
+`;

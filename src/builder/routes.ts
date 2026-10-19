@@ -2,6 +2,7 @@ import { advise } from './advisor.ts';
 import { appLocks, isAdmin, lockPanel, lockText } from './locks.ts';
 import { parseRoleList, validRoleName } from '../dbauth.ts';
 import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
+import { appIssues } from './team.ts';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
@@ -259,6 +260,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const locks = new Map((await appLocks(a.id)).map((l) => [l.page_no, l]));
     const commentsPerPage = new Map((await owner.query('select page_no, count(*)::int as n from meta.dev_comment where app_id = $1 group by 1', [a.id])).rows.map((r) => [r.page_no, r.n]));
     const appLock = locks.get(0);
+    const issues = await appIssues(a.id);
 
     const main = html`
       ${appHeader(a, 'pages')}
@@ -282,7 +284,7 @@ export async function builderRoutes(app: FastifyInstance) {
           : html`<div class="table-wrap"><table class="report">
           <thead><tr><th class="num">Page</th><th>Name</th>${grouped ? html`<th>Group</th>` : ''}<th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th>Lock</th><th></th></tr></thead>
           <tbody id="pages-rows">${shownPages.map((p) => html`<tr>
-            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
+            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}${issues.tag(p.page_no)}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
             <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
             <td>${p.requires_auth ? (p.authz ?? '—') : 'public'}</td><td>${p.protection}</td>
             <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? 'you' : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
@@ -323,6 +325,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <li><a href="${BASE}/apps/${a.id}/backups">${icon('history')} Backups</a></li>
           <li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('database')} Supporting objects</a></li>
           <li><a href="#app-lock">${icon('lock')} Lock the application</a></li>
+          ${issues.task}
           <li><a href="${BASE}/apps/${a.id}/settings?tab=definition">${icon('trash')} Delete the application</a></li>
         </ul></aside>
       </div>`;

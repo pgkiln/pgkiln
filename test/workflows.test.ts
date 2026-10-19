@@ -130,10 +130,10 @@ describe('workflow definitions', () => {
       { name: 'B', type: 'loop' },
       { name: 'C', type: 'wait', for: 'soon' },
       { name: 'C', type: 'end' },
-      { name: 'D', type: 'task', task: 'X', next: { approved: 'NOWHERE', maybe: 'C' } },
+      { name: 'D', type: 'task', task: 'X', next: { approved: 'NOWHERE', 'may be': 'C' } },
       { name: 'E', type: 'switch', cases: [{ when: 'true' }] },
     ]);
-    for (const re of [/"name" must be an upper-case name/, /"type" must be one of/, /"for" is an interval/, /name C is used twice/, /outcomes are approved/, /there is no step NOWHERE/, /"cases" is a list/])
+    for (const re of [/"name" must be an upper-case name/, /"type" must be one of/, /"for" is an interval/, /name C is used twice/, /outcomes are names like approved/, /there is no step NOWHERE/, /"cases" is a list/])
       assert.ok(bad.some((p) => re.test(p)), String(re));
     assert.deepEqual(stepProblems([]), ['A workflow needs at least one step.']);
     const svg = String(workflowDiagram(hr as Step[]));

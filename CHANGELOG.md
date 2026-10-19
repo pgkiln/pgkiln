@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Component details** (WS-11; APEX 26.1; migration 124): the **popup LOV** dialog loads the next page as the list
+  scrolls, so long lists scroll to their end without a More button (browsers without IntersectionObserver still page
+  with ‹ / More; without JavaScript it is still a select list). New dynamic actions **Wait Popup** / **Remove Wait
+  Popup** (`wait_popup`, `remove_wait_popup`): a modal, accessible "please wait" dialog around long processes and Ajax
+  calls, also `pgkiln.waitPopup()` in JavaScript. Menu buttons: entries `{"label", "action": "NAME"}` run dynamic
+  actions of the new event **Menu entry chosen** (`menu_entry`); the Page Designer shows the event, plus an "Other"
+  folder for the remaining events. HR example `hr_68` (page 47 "Component details").
+- **Workflow 26.2** (WS-6; APEX 26.1 / 26.2; migration 123): task definitions may list **custom outcomes** (for
+  example Yes / No / Undecided, each with a label and a colour from a fixed list) instead of Approve / Reject; workflows
+  branch on them in a task step's `next` or a switch case `{"outcome": …}`. **Task events** run when a task is
+  completed, expires or its completion SQL fails: SQL as the application's role, an e-mail, or start a workflow; *When
+  the completion SQL fails* reopens the task (default) or keeps it completed. **Notifications** send e-mail templates
+  when a task is created, completed or expires. New steps: **Send E-Mail** (`send_mail`) and **draft** placeholders,
+  which only a development version may hold (Activate is refused). **Migrate running instances** to a newer version of
+  the workflow with a step mapping, a preview, one transaction and a log (instances inside open parallel branches
+  can't be migrated yet). The workflow diagram downloads as **SVG** or **PNG**. HR example `hr_67`.
+- **Team Development** (WS-3; APEX: Team Development; migration 122): Builder → Team Development tracks a workspace's
+  issues with labels (in groups, colours from a fixed list), milestones, assignees, links to applications and pages,
+  Markdown comments with @mentions shown in the builder, and a history of changes. A filtered list with saved views
+  and a board by label group or milestone work without JavaScript. A set-up wizard installs sample labels (Bug,
+  Feature, Task; High, Medium, Low), issue templates, canned responses and milestones. *Make an issue* turns users'
+  feedback and developer comments into issues. The Page Designer, App Home and the Workspace home show open issues.
+  Issues, labels, milestones and templates travel in the workspace export (part *team*). HR example `hr_66`.
 - **AI interactive reports** (WS-5; APEX 26.1 / 26.2): "Ask in your own words" on an interactive report now sets all
   of the report's settings: filters, highlights, search, sort, control break, totals, group by, pivot, chart and
   computed columns ("bonus is 10% of salary", checked like Actions → Compute). Each setting shows as a chip with Edit

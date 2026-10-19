@@ -4,6 +4,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { issuesFrom } from '../team.ts';
 
 // Page locks, the application lock and developer comments (APEX: page locks,
 // application lock in 26.1, developer comments). A developer locks a page
@@ -96,6 +97,8 @@ export async function lockPanel(s: Session, appId: number, pageNo: number, opts:
     owner.query('select id, author, body, created_at::text from meta.dev_comment where app_id = $1 and page_no = $2 order by created_at desc, id desc limit 200', [appId, pageNo]),
     isAdmin(s.username),
   ]);
+  // (sprint 113) a comment turned into a Team Development issue links to it
+  const issues = await issuesFrom('comment', comments.rows.map((c) => Number(c.id)));
   const own = locks.find((l) => l.page_no === pageNo);
   const appLock = pageNo ? locks.find((l) => l.page_no === 0) : undefined;
   const what = pageNo ? `page ${pageNo}` : 'the application';
@@ -126,7 +129,10 @@ export async function lockPanel(s: Session, appId: number, pageNo: number, opts:
           <div class="dev-comment-head"><b>${c.author}</b> <span class="muted">${String(c.created_at).slice(0, 16)}</span>
             ${c.author === s.username || admin
               ? html`<form method="post" action="${BASE}/apps/${appId}/comments/${c.id}/delete" class="u-inline">${csrf(s)}<button class="link-button" data-confirm="Delete this comment?">Delete</button></form>`
-              : ''}</div>
+              : ''}
+            ${issues.get(Number(c.id))
+              ? html`<a class="small" href="/builder/team/issues/${issues.get(Number(c.id))}">${icon('kanban')} Issue #${issues.get(Number(c.id))}</a>`
+              : html`<form method="post" action="/builder/team/from-comment" class="u-inline">${csrf(s)}<input type="hidden" name="comment" value="${c.id}"><button class="link-button">Make an issue</button></form>`}</div>
           <p class="dev-comment-body">${c.body}</p></li>`)}</ul>`
       : html`<p class="muted">No comments yet.</p>`}
   </div>`;

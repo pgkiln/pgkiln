@@ -33,6 +33,10 @@ src/
                            rows and columns from the response schema, write-back from collection and item paths, notes), catalog
                            files, load/insert/replace, sourceFromService
   workspace-export.ts      (sprint 67) a workspace's components as a file (pgkiln-workspace/1) and importWorkspace (one transaction)
+  team.ts                  (sprint 113) Team Development's data: workspaceDevelopers (members and administrators: assignees, @mentions),
+                           issueHtml (markdownHtml + mentions), recordMentions, logIssue (history), teamSetup, teamCounts, pageIssues,
+                           exportTeam / importTeam (the workspace export's "team" part)
+  team-samples.ts          (sprint 113) the set-up wizard's samples per builder language (English; add a key for another)
   subscriptions.ts         application types and subscriptions (migration 056): offers, subscribe, refresh, publish, in sync
   workingcopy.ts           working copies (migration 055): create, three-way compare per component (base, main, copy),
                            merge into the main application or refresh the copy, both through cli/replace.ts
@@ -55,7 +59,10 @@ src/
   customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), invoke_api steps
-                           (the call between two transactions, with a lease), Advisor references, the diagram
+                           (the call between two transactions, with a lease), Advisor references, the diagram;
+                           (sprint 114) send_mail and draft steps, switch cases on task outcomes, the diagram as a standalone SVG
+  task-events.ts           (sprint 114) task events (complete, expire, fail: SQL, mail, start a workflow) and built-in task
+                           notifications from e-mail templates: checks, the actions as the app role, the meta.task_hook outbox runner
   process-jobs.ts          background execution chains: the job queue (SKIP LOCKED, NOTIFY + polling), running a job as the app role
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
@@ -196,7 +203,8 @@ src/
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     builtin-components.ts  built-in template components (ut_avatar, ut_badge, ut_comments, ut_media_list, ut_metric_card, ut_timeline)
     template-region.ts     template_component region
-    tasks.ts               task list region and task actions (approvals); (094) the vacation rule panel and route
+    tasks.ts               task list region and task actions (approvals); (094) the vacation rule panel and route;
+                           (sprint 114) custom outcome buttons, the Fail event and recovery of a failing completion SQL
     data-reporter.ts       Data Reporter region (migration 057): sources from the region's config, checkDef (offered columns, whitelists),
                            reportQuery/chartQuery, the list and editor (GET form), save/delete routes (meta.save_data_report);
                            (sprint 110) dataset sources (resolveSources), edit_authz / admin_authz / publishing, pins (a preference),
@@ -271,6 +279,11 @@ src/
     availability.ts        Application → Availability (migration 083): status, message, users, build status (Run only is
                            enforced by locks.ts blockingLock); availabilityBadge() in the application header
     feedback.ts            Application → Feedback (migration 084): the setting, the list with filters, status and answers
+    team.ts                (sprint 113, migration 122) Builder → Team Development /builder/team: issues (list with filters and saved views,
+                           board by label group or milestone with a Move form per card, issue page with Markdown, comments, canned
+                           responses, @mentions, history), labels and groups, milestones, templates, the set-up wizard; Make an issue
+                           from feedback and developer comments; pageIssuesNote (Page Designer), appIssues (App Home), teamHomeBlock
+                           (Workspace home). Every id from a request is looked up in the current workspace
     region-help.ts         the Attributes (JSON) help per region type, with links to the guide
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
                            applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel)
@@ -352,6 +365,8 @@ src/
                            workspace's applications, the module › template › handler tree, handler forms, Try it (inject with a
                            short-lived token), Run only / lock checks
     workflows.ts           workflow versions, diagram and instances (Shared Components)
+    workflow-migrate.ts    (sprint 114) migrating running workflow instances to a newer version (map, preview, apply with
+                           meta.migrate_workflows) and the diagram as an SVG file (PNG in builder.js)
     process-jobs.ts        page designer: the Jobs tab of a background chain process
     template-spec.ts       template component property form (Shared Components)
     websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns,
@@ -445,6 +460,8 @@ test/
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
   rest-modules.test.ts     (sprint 104) modules, templates, PL/pgSQL and media handlers, OpenAPI, the builder's tree and Try it
   workflow-invoke.test.ts  workflow invoke_api steps: the call between transactions, faults, retry, lease, Advisor, export (mock service)
+  workflow-outcomes.test.ts (sprint 114) custom task outcomes, task events and notifications, fail recovery, send_mail and draft
+                           steps, migrating running instances, the SVG export (HR part 67: SALARY_CHANGE)
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
