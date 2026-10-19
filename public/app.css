@@ -2067,3 +2067,14 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .ask-field select, .ask-field input { min-width: 0; width: 100%; box-sizing: border-box; }
 .ask-chip-x { background: none; border: 0; color: inherit; font-size: 1rem; line-height: 1; padding: 0.15rem 0.4rem; border-radius: 99px; cursor: pointer; }
 .ask-chip-x:hover, .ask-chip-x:focus-visible { background: var(--surface); }
+/* (123) workflows: draft and send e-mail steps; custom task outcomes */
+.wf-send_mail rect { stroke: var(--success); stroke-width: 2; }
+.wf-draft rect { fill: var(--surface-2, var(--surface)); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.wf-draft .wf-name, .wf-draft .wf-type { font-style: italic; }
+.btn.to-warning { background: var(--warning-soft); border-color: color-mix(in srgb, #b86e00 45%, var(--border)); color: var(--text); }
+.btn.to-warning:hover { background: color-mix(in srgb, var(--warning-soft) 80%, #b86e00); }
+.wf-export { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0; }
+.wf-migrate-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 0.5rem 1rem; }
+.wf-migrate-map label { display: flex; flex-direction: column; gap: 0.2rem; overflow-wrap: anywhere; }
+.wf-migrate-map select { max-width: 100%; }
+.wf-problem { color: var(--danger); overflow-wrap: anywhere; }
