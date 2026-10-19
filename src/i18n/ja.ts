@@ -781,6 +781,8 @@ export const ja: Record<MessageKey, string> = {
   'assistant.empty': "先にメッセージを入力してください。",
   'assistant.too_long': "メッセージが長すぎます (最大 {max} 文字)。",
   'assistant.cleared': "新しい会話を始めました。",
+  'assistant.unauthorized': "このアシスタントは使用できません。",
+  'assistant.links': "おすすめのページ",
   'ai_filter.label': "自分の言葉で質問",
   'ai_filter.ask': "質問",
   'ai_filter.placeholder': "例: 1982 年より前に入社したマネージャー、給与の高い順",

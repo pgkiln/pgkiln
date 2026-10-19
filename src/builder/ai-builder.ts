@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import pg from 'pg';
-import { generate } from '../ai/service.ts';
+import { generate, providerLabel } from '../ai/service.ts';
 import { AiError } from '../ai/types.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -116,12 +116,12 @@ async function serviceBox(s: Session) {
   const admin = await isAdmin(s.username);
   if (!admin)
     return svc
-      ? html`<p class="muted">AI service: <b>${svc.name}</b> (${svc.provider === 'anthropic' ? 'Claude' : 'OpenAI'}, ${svc.model}). Table and column names, types and descriptions, and what you type, are sent to it.</p>`
+      ? html`<p class="muted">AI service: <b>${svc.name}</b> (${providerLabel(svc.provider)}, ${svc.model}). Table and column names, types and descriptions, and what you type, are sent to it.</p>`
       : html`<div class="alert alert-info">The App Builder has no AI service yet: ask an administrator to choose one here.</div>`;
   const all = (await owner.query<{ name: string; provider: string; model: string }>('select name, provider, model from meta.ai_service where enabled order by name')).rows;
   return html`<form method="post" action="${BASE}/sql/ai/service" class="component-form">${csrf(s)}
     <div class="form-grid"><div class="field"><label class="label" for="f_ai_builder_service">AI service of the App Builder (administrators)</label>
-      <select id="f_ai_builder_service" name="service">${opt('', '- none: no AI in the App Builder -', svc?.name ?? '')}${all.map((x) => opt(x.name, `${x.name} (${x.provider === 'anthropic' ? 'Claude' : 'OpenAI'}, ${x.model})`, svc?.name ?? ''))}</select>
+      <select id="f_ai_builder_service" name="service">${opt('', '- none: no AI in the App Builder -', svc?.name ?? '')}${all.map((x) => opt(x.name, `${x.name} (${providerLabel(x.provider)}, ${x.model})`, svc?.name ?? ''))}</select>
       <small class="help">Table and column names, types and descriptions (never rows), and what developers type, are sent to it. Its calls are logged without an application.</small></div></div>
     <div class="buttons"><button class="btn">Save</button></div></form>`;
 }

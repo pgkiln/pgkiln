@@ -1297,8 +1297,12 @@ forms *Departments* and *Book a meeting*.
 ### `ai_assistant` (AI assistant)
 
 An **AI assistant** region (APEX: AI Assistant, AI agents and tools) is a chat with an
-[AI service](06-processing.md#generate-text-with-ai) (Claude or OpenAI) that an administrator
-configured and allowed for the application. The developer gives it a system prompt and, optionally,
+[AI service](06-processing.md#generate-text-with-ai) (Claude, OpenAI, Gemini or an OpenAI-compatible
+endpoint) that an administrator configured and allowed for the application. Either the region names an
+**[AI agent](03-builder.md#ai-agents)** of the application (`"agent": "SALES_AGENT"`: the agent sets the
+service, system prompt, reasoning effort, tools, steps and output limit, and its authorization scheme
+decides who may use the region; tools may also be PL/pgSQL functions, JavaScript actions and links to
+pages), or the developer gives the region a system prompt and, optionally,
 **context queries** and **tools**; the model then answers questions about the application's data,
 calling the tools when it needs to, like an agent. It works without JavaScript (the message is
 posted and the page comes back with the answer); with JavaScript the Send button shows that the
@@ -1344,6 +1348,7 @@ Attributes (written by the region's **Settings**; they travel with the applicati
 
 | Key | Default | Meaning |
 |---|---|---|
+| `agent` | | (121) An [AI agent](03-builder.md#ai-agents) of the application; then leave out `service`, `system`, `tools` and `max_rounds` |
 | `service` | | The AI service's name |
 | `system` | | The system prompt (`&ITEM.` substitutions as delimited data) |
 | `welcome` | | The first message shown (translatable) |

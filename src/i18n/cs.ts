@@ -781,6 +781,8 @@ export const cs: Record<MessageKey, string> = {
   'assistant.empty': "Nejprve napište zprávu.",
   'assistant.too_long': "Zpráva je příliš dlouhá (nejvýše {max} znaků).",
   'assistant.cleared': "Začala nová konverzace.",
+  'assistant.unauthorized': "Tohoto asistenta nemůžete používat.",
+  'assistant.links': "Navrhované stránky",
   'ai_filter.label': "Zeptejte se vlastními slovy",
   'ai_filter.ask': "Zeptat se",
   'ai_filter.placeholder': "např. manažeři přijatí před rokem 1982, nejvyšší plat první",

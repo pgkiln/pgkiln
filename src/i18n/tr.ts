@@ -781,6 +781,8 @@ export const tr: Record<MessageKey, string> = {
   'assistant.empty': "Önce bir mesaj yazın.",
   'assistant.too_long': "Mesaj çok uzun (en fazla {max} karakter).",
   'assistant.cleared': "Yeni bir sohbet başladı.",
+  'assistant.unauthorized': "Bu asistanı kullanamazsınız.",
+  'assistant.links': "Önerilen sayfalar",
   'ai_filter.label': "Kendi sözlerinizle sorun",
   'ai_filter.ask': "Sor",
   'ai_filter.placeholder': "örn. 1982'den önce işe alınan yöneticiler, en yüksek maaş önce",

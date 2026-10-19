@@ -781,6 +781,8 @@ export const he: Record<MessageKey, string> = {
   'assistant.empty': "כתבו קודם הודעה.",
   'assistant.too_long': "ההודעה ארוכה מדי (לכל היותר {max} תווים).",
   'assistant.cleared': "התחילה שיחה חדשה.",
+  'assistant.unauthorized': "אינך רשאי להשתמש בעוזר הזה.",
+  'assistant.links': "דפים מוצעים",
   'ai_filter.label': "שאלו במילים שלכם",
   'ai_filter.ask': "שאלה",
   'ai_filter.placeholder': "למשל: מנהלים שגויסו לפני 1982, השכר הגבוה ביותר קודם",

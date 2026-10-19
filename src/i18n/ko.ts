@@ -781,6 +781,8 @@ export const ko: Record<MessageKey, string> = {
   'assistant.empty': "먼저 메시지를 입력하세요.",
   'assistant.too_long': "메시지가 너무 깁니다(최대 {max}자).",
   'assistant.cleared': "새 대화를 시작했습니다.",
+  'assistant.unauthorized': "이 도우미를 사용할 수 없습니다.",
+  'assistant.links': "추천 페이지",
   'ai_filter.label': "자연어로 질문",
   'ai_filter.ask': "질문",
   'ai_filter.placeholder': "예: 1982년 이전에 입사한 관리자, 급여 높은 순",

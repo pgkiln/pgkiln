@@ -781,6 +781,8 @@ export const fr: Record<MessageKey, string> = {
   'assistant.empty': "Saisissez d'abord un message.",
   'assistant.too_long': "Le message est trop long (au plus {max} caractères).",
   'assistant.cleared': "Une nouvelle conversation a commencé.",
+  'assistant.unauthorized': "Vous ne pouvez pas utiliser cet assistant.",
+  'assistant.links': "Pages suggérées",
   'ai_filter.label': "Demandez avec vos propres mots",
   'ai_filter.ask': "Demander",
   'ai_filter.placeholder': "p. ex. managers embauchés avant 1982, salaire le plus élevé d'abord",

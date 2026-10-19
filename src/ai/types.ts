@@ -1,10 +1,15 @@
 // The provider interface of pgkiln's AI features (src/ai/): one request in,
 // one answer out, whatever the provider. Providers live in anthropic.ts
 // (Claude, with the official @anthropic-ai/sdk) and openai.ts (the official
-// openai SDK); service.ts picks one for an AI service and adds the checks,
+// openai SDK: OpenAI itself, Google Gemini through its OpenAI-compatible
+// endpoint, and any OpenAI-compatible endpoint such as Ollama, vLLM or Azure
+// OpenAI); service.ts picks one for an AI service and adds the checks,
 // limits and the usage log.
 
-export type ProviderName = 'anthropic' | 'openai';
+export type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'openai_compatible';
+
+/** Providers that speak OpenAI's Chat Completions (the openai SDK). */
+export const isOpenAiFamily = (p: ProviderName) => p !== 'anthropic';
 
 export interface ProviderConfig {
   /** the model, exactly as the developer entered it (never changed or downgraded) */

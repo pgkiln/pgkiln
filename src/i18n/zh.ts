@@ -781,6 +781,8 @@ export const zh: Record<MessageKey, string> = {
   'assistant.empty': "请先输入消息。",
   'assistant.too_long': "消息过长（最多 {max} 个字符）。",
   'assistant.cleared': "已开始新的对话。",
+  'assistant.unauthorized': "你无权使用此助手。",
+  'assistant.links': "推荐的页面",
   'ai_filter.label': "用自己的话提问",
   'ai_filter.ask': "提问",
   'ai_filter.placeholder': "例如：1982 年以前入职的经理，按工资从高到低",

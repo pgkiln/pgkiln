@@ -781,6 +781,8 @@ export const uk: Record<MessageKey, string> = {
   'assistant.empty': "Спочатку напишіть повідомлення.",
   'assistant.too_long': "Повідомлення задовге (не більше {max} символів).",
   'assistant.cleared': "Почалася нова розмова.",
+  'assistant.unauthorized': "Вам не можна використовувати цього помічника.",
+  'assistant.links': "Запропоновані сторінки",
   'ai_filter.label': "Запитайте своїми словами",
   'ai_filter.ask': "Запитати",
   'ai_filter.placeholder': "напр. менеджери, найняті до 1982 року, спершу з найвищою зарплатою",

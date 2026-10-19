@@ -781,6 +781,8 @@ export const fi: Record<MessageKey, string> = {
   'assistant.empty': "Kirjoita ensin viesti.",
   'assistant.too_long': "Viesti on liian pitkä (enintään {max} merkkiä).",
   'assistant.cleared': "Uusi keskustelu on alkanut.",
+  'assistant.unauthorized': "Et voi käyttää tätä avustajaa.",
+  'assistant.links': "Ehdotetut sivut",
   'ai_filter.label': "Kysy omin sanoin",
   'ai_filter.ask': "Kysy",
   'ai_filter.placeholder': "esim. ennen vuotta 1982 palkatut esihenkilöt, suurin palkka ensin",

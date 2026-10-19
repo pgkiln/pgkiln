@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **AI Agents** (WS-4; APEX 26.1 / 26.2; migration 121): Shared Components → AI Agents. An agent combines an AI
+  service, a system prompt, a reasoning effort (low / medium / high, mapped to each provider), approved tools, step
+  and token limits and an authorization scheme; an AI assistant region can name one (`{"agent": "NAME"}`). Tools:
+  SQL queries (a read-only transaction as the application's role through row level security, with a time limit),
+  PL/pgSQL functions, REST data sources, JavaScript actions in the browser, and **Navigate** links to pages the user
+  may open, whose URL and checksum pgkiln builds. Agents and tools export with the application.
+- Every AI tool call is logged with its arguments, status and duration (debug level 4 and Activity → AI usage →
+  Tool calls; kept 30 days, developers only).
+- AI services: **Gemini** and any **OpenAI-compatible** endpoint (Ollama, vLLM, Azure OpenAI); optional instance
+  defaults `GEMINI_API_KEY` and `OPENAI_COMPATIBLE_API_KEY`. HR example: page 46 "HR agent" (`hr_64`).
+
 ### Fixed
 - **Docker upgrades:** `docker compose pull` in `deploy/` skipped the pgkiln image once one was present, because
   `pull_policy: missing` stood next to `build:`; upgrading with `docker compose pull && docker compose up -d` kept

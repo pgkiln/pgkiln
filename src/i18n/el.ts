@@ -781,6 +781,8 @@ export const el: Record<MessageKey, string> = {
   'assistant.empty': "Γράψτε πρώτα ένα μήνυμα.",
   'assistant.too_long': "Το μήνυμα είναι πολύ μεγάλο (το πολύ {max} χαρακτήρες).",
   'assistant.cleared': "Ξεκίνησε νέα συνομιλία.",
+  'assistant.unauthorized': "Δεν μπορείτε να χρησιμοποιήσετε αυτόν τον βοηθό.",
+  'assistant.links': "Προτεινόμενες σελίδες",
   'ai_filter.label': "Ρωτήστε με δικά σας λόγια",
   'ai_filter.ask': "Ερώτηση",
   'ai_filter.placeholder': "π.χ. διευθυντές που προσλήφθηκαν πριν από το 1982, ο υψηλότερος μισθός πρώτα",

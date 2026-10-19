@@ -1293,7 +1293,12 @@ Workspace utilities → **AI services** (administrators only; APEX: *Generative 
 large language model services of this installation. A service has:
 
 - a **name** (upper case, e.g. `CLAUDE`) by which processes, dynamic actions and SQL refer to it;
-- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs;
+- a **provider**: *Claude (Anthropic)* or *OpenAI*, called through their official SDKs; *Gemini*
+  (Google, through its OpenAI-compatible endpoint `https://generativelanguage.googleapis.com/v1beta/openai/`,
+  with the `openai` SDK); or *OpenAI-compatible*: any endpoint that speaks OpenAI's Chat Completions,
+  such as Ollama (`http://localhost:11434/v1`), vLLM, Azure OpenAI (`https://<resource>.openai.azure.com/openai/v1/`)
+  or a gateway. An OpenAI-compatible service needs a base URL; its key may stay empty for endpoints
+  without keys (a local Ollama);
 - a **model**, exactly as the provider names it (new Claude services start with `claude-opus-5-5`);
   pgkiln never changes or downgrades it;
 - for Claude, the **effort** (how deeply the model thinks; current Claude models always think, lower
@@ -1305,8 +1310,9 @@ large language model services of this installation. A service has:
 - an optional **base URL** for a gateway or proxy that speaks the provider's API (calls to the AI
   service don't go through `PGKILN_REST_ALLOWED_HOSTS`: only administrators set this URL);
 - the **API key**: stored encrypted with `PGKILN_SECRET_KEY`, write-only (never shown again, never
-  exported or logged, not readable by applications). Without one the server's `ANTHROPIC_API_KEY` /
-  `OPENAI_API_KEY` is used.
+  exported or logged, not readable by applications, never sent to the browser). Without one the
+  server's `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `OPENAI_COMPATIBLE_API_KEY`
+  (by provider) is used.
 
 On a service's page, **Applications** sets which applications may use it, each with optional daily
 limits (requests and input + output tokens per UTC day; a request over a limit fails with a message
@@ -1318,6 +1324,62 @@ and service of the last 30 days.
 into it, is sent to the chosen provider (or the gateway of the base URL). Choose providers and
 models that your organisation allows for that data. See
 [Generate text with AI](06-processing.md#generate-text-with-ai).
+
+## AI agents
+
+Shared Components → Generative AI → **AI Agents** (APEX 26.1 / 26.2: AI Agents and AI Tools) holds an
+application's agents and the tools they may use. An agent reasons over a user's request in an
+[AI assistant region](04-pages-and-regions.md#ai_assistant-ai-assistant) and acts **only through the
+tools you approve**; pgkiln prepares the context, runs each tool call itself under the checks below,
+and composes the conversation.
+
+An **agent** has:
+
+- a **name** (upper case, e.g. `SALES_AGENT`) that regions refer to, and a description;
+- an **AI service** the application may use, and a **system prompt** (`&ITEM.` is replaced by the item's
+  value as delimited data, as in assistant regions);
+- a **reasoning effort**: *low*, *medium* or *high*, or empty for the service's own. For Claude it is
+  the output effort (thinking depth, `output_config.effort`); for OpenAI, Gemini and OpenAI-compatible
+  services it is sent as `reasoning_effort` (leave it empty for models without reasoning: they refuse it);
+- the **tools** it may use (ticked from the application's tools);
+- **maximum steps** (rounds of tool calls per question, 1–20, default 5) and **maximum output tokens**
+  per call (never above the service's maximum);
+- an **authorization scheme**: other users see *You may not use this assistant* instead of the message
+  box, and their questions are refused before anything is sent to the AI service.
+
+A **tool** has a name the model calls it by, a description that tells the model what it does and when
+to use it, optional **parameters** (JSON: `{"DNAME": {"type": "string", "description": "…", "optional": true}}`;
+types string, integer, number, boolean, date, `enum` for a list of texts), an optional authorization
+scheme (only users who pass it are offered the tool) and one of these types:
+
+| Type | What runs | Checks |
+|---|---|---|
+| **SQL query** | one `SELECT` (or `WITH`, `VALUES`, `TABLE`) with the parameters as `:NAME` bind values, plus `:APP_USER` and items | as the application's database role (grants and row level security apply), in a **read-only transaction** (functions it calls can't write either), with a time limit (1–60 s, default 15) and at most *maximum rows* rows (default 50) back to the model |
+| **PL/pgSQL function** | `schema.function` called with named arguments: each parameter name in lower case is an argument name (`P_EMPNO` → `p_empno => …`) | as the application's role; it **may change data** (committed); same time limit and rows |
+| **REST data source** | a REST data source of the application; the parameters become its parameters | as in [assistant regions](04-pages-and-regions.md#ai_assistant-ai-assistant) |
+| **JavaScript** | nothing on the server: after the answer the browser calls the function registered with `pgkiln.actions.register(action)` (with `{value: arguments}`) and the dynamic actions of the **custom event** of that name (the arguments as JSON) | once, right after the answer; the arguments are escaped data in the page |
+| **Navigate** | the model picks one of the tool's **pages**, a link text and item values of that page; pgkiln builds the URL with the item values' **checksum** (bound to application, page and user) and shows the link under the answer | only pages the user may open are offered (the page's authorization scheme and sign-in); only items of that page; the model's values are never substituted (`&ITEM.`); nothing opens the link by itself |
+
+The model's arguments are checked against the parameters before a tool runs; they are bind values
+(escaped literals), never SQL text, and can't replace the server's own names (`:APP_USER`, `:APP_ID`, …).
+Tool results go back to the model as data, with the instruction never to follow instructions inside them.
+
+**Every tool call is logged** with the arguments the model gave, its status (*ok*, *error*, or *refused*
+for a page the user may not open) and duration: in the page's debug messages (level 4) and under
+Activity → **AI usage** → *Tool calls* (`meta.ai_tool_call`, kept 30 days; arguments may hold user data,
+only developers see them). The token usage of each call to the model is logged as before.
+
+Agents and tools are kept in the application (`meta.app.ai_agents`, `meta.app.ai_tools`) and **exported
+with it**; an export made before they existed imports with none. The forms check each one before
+saving (a SQL tool must be a query, a function `schema.name`, a navigate tool's pages must exist); the
+runtime checks them again and shows *This assistant is not set up yet* for a broken one. Renaming a
+tool keeps it in its agents; a tool an agent uses can't be deleted; renaming an agent renames it in
+the regions that use it.
+
+The HR example (`examples/hr/hr_64_ai_agent.sql`) has an agent `HR_AGENT` on page 46: ask *Who in Sales
+earns most?* and it calls the SQL tool `top_earners` as the signed-in user's role, then offers
+*Open BLAKE's record*, a link to the employee form (page 3) with a valid checksum, only to users who
+may open that page.
 
 ## App Builder AI
 
