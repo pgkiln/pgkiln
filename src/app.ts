@@ -39,6 +39,7 @@ import { reportSettingsRoutes } from './builder/report-settings.ts';
 import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
+import { appUpdateHooks } from './builder/app-updates.ts';
 import { dbUserRoutes } from './builder/db-users.ts';
 import { dataPumpRoutes } from './builder/datapump.ts';
 import { schedulingRoutes } from './builder/scheduling.ts';
@@ -158,6 +159,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     return reply.send(err);
   });
   builderErrorPages(app);
+  appUpdateHooks(app); // (116) who changed an application last
   await app.register(cookie);
   await app.register(formbody, { bodyLimit: 5 * 1024 * 1024 });
   // file upload items; oversized files are cut off and reported, not thrown
