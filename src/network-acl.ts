@@ -53,7 +53,10 @@ function scopeOf(w: WorkspaceRow, appId: number | null, what: string): OutboundS
     appId,
     what,
     hosts: w.network_restricted ? w.network_hosts : null,
-    refused: (url, list, message) => void recordRefusal(w.id, appId, what, url, list, message),
+    // a method: a copy of the scope with another "what" (a token endpoint) reports under its own name
+    refused(url, list, message) {
+      void recordRefusal(this.workspaceId, this.appId, this.what, url, list, message);
+    },
   };
 }
 

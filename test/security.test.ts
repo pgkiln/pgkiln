@@ -10646,3 +10646,283 @@ describe('sprint 115 WS-11', () => {
       await assert.rejects(owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'ACTIONS'`, [pageId, JSON.stringify([{ label: 'x', action }])]), /button_menu_ok|check constraint/, action);
   });
 });
+
+describe('sprint 118 WS-9', () => {
+  // Administration → Mail queue (who sees which mail, Retry / Purge only in scope), a workspace's own mail service
+  // (workspace administrators only, write-only secret, no base or token URL, its SMTP host checked like a web request),
+  // and a workspace's network access list, enforced on the server on every outgoing path: it only narrows the
+  // installation's list, redirects and the response cache don't escape it, and refusals are logged.
+  const http = () => import('node:http');
+  const WSA = 'Sec118 A';
+  const WSB = 'Sec118 B';
+  const ADMIN_A = 'sec118admina';
+  const ADMIN_B = 'sec118adminb';
+  const DEV_A = 'sec118deva';
+  let wsA: number;
+  let wsB: number;
+  let appA: number;
+  let appB: number;
+  let server: import('node:http').Server;
+  let base = '';
+  let port = 0;
+  const hits: string[] = [];
+  const env = { allowed: process.env.PGKILN_REST_ALLOWED_HOSTS, priv: process.env.PGKILN_REST_PRIVATE_HOSTS };
+  const signIn = async (username: string, ws?: number) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username })).statusCode, 303);
+    await b.get('/builder/home');
+    if (ws) assert.equal((await b.post('/builder/workspace', { __csrf: b.lastCsrf, workspace: String(ws) })).statusCode, 303);
+    await b.get('/builder/home');
+    return b;
+  };
+  const restrict = (ws: number, hosts: string[] | null) =>
+    owner.query('update meta.workspace set network_restricted = $2, network_hosts = $3 where id = $1', [ws, hosts !== null, hosts ?? []]);
+  const source = (over: Record<string, unknown> = {}) => ({
+    id: 0, app_id: appA, name: 'SEC118', url: `${base}/data`, method: 'GET', credential: null, headers: {}, body: null, row_selector: null,
+    params: [], columns: [], cache_seconds: 0, timeout_s: 5, max_rows: 10, ...over,
+  }) as any;
+
+  before(async () => {
+    const { createServer } = await http();
+    server = createServer((req, res) => {
+      hits.push(req.url!);
+      if (req.url === '/away') {
+        res.writeHead(302, { location: `http://localhost:${port}/data` });
+        return res.end();
+      }
+      if (req.url === '/token') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end('{"access_token":"t","expires_in":60}');
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"items":[{"v":1}],"openapi":"3.0.0","info":{"title":"x","version":"1"},"paths":{}}');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    port = (server.address() as import('node:net').AddressInfo).port;
+    base = `http://127.0.0.1:${port}`;
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1,localhost';
+    for (const u of [ADMIN_A, ADMIN_B, DEV_A]) await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [u]);
+    await owner.query(`delete from meta.app where alias in ('sec118a', 'sec118b')`);
+    await owner.query('delete from meta.workspace where name = any($1)', [[WSA, WSB]]);
+    wsA = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [WSA])).id;
+    wsB = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [WSB])).id;
+    await owner.query('delete from meta.workspace_member where username = any($1::text[])', [[ADMIN_A, ADMIN_B, DEV_A]]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true), ($1, $3, false), ($4, $5, true)', [wsA, ADMIN_A, DEV_A, wsB, ADMIN_B]);
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec118a', 'Sec118 A app', 'none') returning id`)).id;
+    appB = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec118b', 'Sec118 B app', 'none') returning id`)).id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2), ($3, $4)', [appA, wsA, appB, wsB]);
+    for (const [a, subject] of [[appA, 'Sec118 mail of A'], [appB, 'Sec118 secret mail of B']] as const)
+      await owner.query(`insert into meta.mail_queue (app_id, to_addresses, subject, body_text, status, attempts, message, last_attempt_at)
+                         values ($1, '{x@example.com}', $2, 'body text never shown', 'error', 5, '550 5.1.1 refused for ' || $2, now())`, [a, subject]);
+  });
+  after(async () => {
+    server.close();
+    process.env.PGKILN_REST_ALLOWED_HOSTS = env.allowed;
+    process.env.PGKILN_REST_PRIVATE_HOSTS = env.priv;
+    if (env.allowed === undefined) delete process.env.PGKILN_REST_ALLOWED_HOSTS;
+    if (env.priv === undefined) delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+    await owner.query(`delete from meta.app where alias in ('sec118a', 'sec118b')`);
+    await owner.query('delete from meta.workspace where id = any($1::int[])', [[wsA, wsB]]);
+    await owner.query('delete from meta.developer where username = any($1::text[])', [[ADMIN_A, ADMIN_B, DEV_A]]);
+  });
+
+  test('mail queue: an administrator sees every workspace, a workspace administrator only theirs, a developer nothing; no bodies', async () => {
+    const admin = await signIn('admin');
+    const all = (await admin.get('/builder/mail-queue')).body;
+    assert.match(all, /Sec118 mail of A/);
+    assert.match(all, /Sec118 secret mail of B/);
+    assert.doesNotMatch(all, /body text never shown/);
+    const a = await signIn(ADMIN_A, wsA);
+    for (const url of ['/builder/mail-queue', `/builder/mail-queue?ws=${wsB}`, `/builder/mail-queue?app=${appB}`, '/builder/mail-queue?period=168']) {
+      const body = (await a.get(url)).body;
+      if (!url.includes('app=')) assert.match(body, /Sec118 mail of A/, url);
+      assert.doesNotMatch(body, /secret mail of B|Sec118 B app|sec118b/, url);
+    }
+    const dev = await signIn(DEV_A, wsA);
+    const res = await dev.get('/builder/mail-queue');
+    assert.equal(res.statusCode, 403);
+    assert.doesNotMatch(res.body, /Sec118 mail of A/);
+    const mb = (await owner.one(`select id from meta.mail_queue where app_id = $1`, [appB])).id;
+    assert.equal((await dev.post(`/builder/mail-queue/${mb}/purge`, { __csrf: dev.lastCsrf })).statusCode, 403);
+    assert.equal((await dev.post('/builder/mail-queue/purge', { __csrf: dev.lastCsrf })).statusCode, 403);
+  });
+
+  test('mail queue: Retry and Purge only in scope, with the session\'s CSRF token', async () => {
+    const mb = (await owner.one(`select id from meta.mail_queue where app_id = $1`, [appB])).id;
+    const a = await signIn(ADMIN_A, wsA);
+    await a.get('/builder/mail-queue');
+    assert.equal((await a.post(`/builder/mail-queue/${mb}/retry`, { __csrf: a.lastCsrf })).statusCode, 404);
+    assert.equal((await a.post(`/builder/mail-queue/${mb}/purge`, { __csrf: a.lastCsrf })).statusCode, 404);
+    // bulk: ?ws= and ?app= of another workspace are ignored for a workspace administrator
+    await a.post(`/builder/mail-queue/purge?ws=${wsB}&app=${appB}`, { __csrf: a.lastCsrf });
+    await a.post(`/builder/mail-queue/retry?ws=${wsB}`, { __csrf: a.lastCsrf });
+    const b = await owner.one('select status from meta.mail_queue where id = $1', [mb]);
+    assert.equal(b?.status, 'error', 'B\'s mail is untouched');
+    // (the bulk retry acted on A's own failed mail: set it back)
+    const ma = (await owner.one(`select id from meta.mail_queue where app_id = $1`, [appA])).id;
+    assert.equal((await owner.one('select status from meta.mail_queue where id = $1', [ma])).status, 'queued');
+    await owner.query(`update meta.mail_queue set status = 'error' where id = $1`, [ma]);
+    assert.equal((await a.post(`/builder/mail-queue/${ma}/retry`, { __csrf: 'forged' })).statusCode, 403);
+    assert.equal((await a.post(`/builder/mail-queue/${ma}/purge`, {})).statusCode, 403);
+    assert.equal((await owner.one('select status from meta.mail_queue where id = $1', [ma])).status, 'error');
+    assert.equal((await a.post(`/builder/mail-queue/${ma}/retry`, { __csrf: a.lastCsrf })).statusCode, 303);
+    assert.equal((await owner.one('select status from meta.mail_queue where id = $1', [ma])).status, 'queued');
+    await owner.query(`update meta.mail_queue set status = 'cancelled' where id = $1`, [ma]);
+  });
+
+  test('a workspace\'s mail service: its administrators only; the secret is write-only and never exported; no SSRF through it', async () => {
+    const a = await signIn(ADMIN_A, wsA);
+    const dev = await signIn(DEV_A, wsA);
+    const b = await signIn(ADMIN_B, wsB);
+    assert.equal((await dev.get(`/builder/workspaces/${wsA}/mail`)).statusCode, 403);
+    assert.equal((await b.get(`/builder/workspaces/${wsA}/mail`)).statusCode, 403);
+    const form = { provider: 'smtp', host: 'smtp.example.com', port: '587', security: 'starttls', auth: 'password', username: 'u@example.com', senders: '@example.com', enabled: 'true', secret: 'Sec118-SMTP-password' };
+    assert.equal((await b.post(`/builder/workspaces/${wsA}/mail`, { __csrf: b.lastCsrf, ...form })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/workspaces/${wsA}/mail`, { __csrf: dev.lastCsrf, ...form })).statusCode, 403);
+    await a.get(`/builder/workspaces/${wsA}/mail`);
+    assert.equal((await a.post(`/builder/workspaces/${wsA}/mail`, { __csrf: 'forged', ...form })).statusCode, 403);
+    assert.equal((await a.post(`/builder/workspaces/${wsA}/mail`, { __csrf: a.lastCsrf, ...form, base_url: 'http://169.254.169.254/', token_url: 'http://169.254.169.254/t' })).statusCode, 303);
+    const svc = await owner.one('select * from meta.mail_service where workspace_id = $1', [wsA]);
+    assert.ok(svc, 'saved');
+    assert.ok(!('base_url' in svc.settings) && !('token_url' in svc.settings));
+    const page = (await a.get(`/builder/workspaces/${wsA}/mail`)).body;
+    assert.doesNotMatch(page, /Sec118-SMTP-password/);
+    assert.doesNotMatch(page, new RegExp(svc.secret_enc.slice(0, 20).replace(/[+/]/g, '.')));
+    // another workspace's administrator can't delete it; the workspace export and the admin list never carry the secret
+    assert.equal((await b.post(`/builder/workspaces/${wsA}/mail/delete`, { __csrf: b.lastCsrf })).statusCode, 403);
+    const { exportWorkspace } = await import('../src/workspace-export.ts');
+    const doc = JSON.stringify(await exportWorkspace(wsA));
+    assert.doesNotMatch(doc, /Sec118-SMTP-password|secret_enc|smtp\.example\.com|network_hosts/);
+    const admin = await signIn('admin');
+    assert.doesNotMatch((await admin.get('/builder/mail')).body, /Sec118-SMTP-password/);
+    // the check uses this workspace's stored secret only, never another service's (service_id is ignored)
+    const other = (await owner.one(`insert into meta.mail_service (name, provider, settings, senders, secret_enc) values ('SEC118_INST', 'smtp', '{"host":"127.0.0.1","port":1}', '{@example.com}', $1) returning id`,
+      [(await import('../src/secrets.ts')).encryptSecret('installation-secret')])).id;
+    try {
+      await a.get(`/builder/workspaces/${wsA}/mail`);
+      const r = await a.request('POST', `/builder/workspaces/${wsA}/mail/check`, { __csrf: a.lastCsrf, provider: 'graph', tenant_id: 't', client_id: 'c', senders: '@example.com', service_id: String(other), check: 'connection' });
+      assert.match(r.body, /client secret is required/);
+    } finally {
+      await owner.query('delete from meta.mail_service where id = $1', [other]);
+    }
+    // a base or token URL written in SQL is refused when sending; a private SMTP address too
+    const { serviceSettings } = await import('../src/mail/mail.ts');
+    await assert.rejects(serviceSettings({ ...svc, settings: { ...svc.settings, base_url: 'http://169.254.169.254' } }), /no base URL/);
+    await assert.rejects(serviceSettings({ ...svc, provider: 'graph', settings: { token_url: 'http://169.254.169.254/t' } }), /no token URL/);
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+    try {
+      for (const host of ['10.0.0.1', '169.254.169.254', '::ffff:127.0.0.2', 'metadata.google.internal.invalid'])
+        await assert.rejects(serviceSettings({ ...svc, settings: { ...svc.settings, host } }), /private|no address|not valid/, host);
+    } finally {
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
+    }
+    await assert.rejects(serviceSettings({ ...svc, settings: { ...svc.settings, host: 'smtp.example.com' } }), /allow-list/);
+    await owner.query('delete from meta.mail_service where id = $1', [svc.id]);
+  });
+
+  test('network access: only the workspace\'s administrators (or administrators) read and change its list', async () => {
+    const a = await signIn(ADMIN_A, wsA);
+    const b = await signIn(ADMIN_B, wsB);
+    const dev = await signIn(DEV_A, wsA);
+    assert.equal((await dev.get('/builder/network')).statusCode, 403);
+    assert.equal((await dev.post('/builder/network', { __csrf: dev.lastCsrf, ws: String(wsA), restricted: 'false', hosts: '' })).statusCode, 403);
+    assert.equal((await b.get(`/builder/network?ws=${wsA}`)).statusCode, 403);
+    assert.equal((await b.post('/builder/network', { __csrf: b.lastCsrf, ws: String(wsA), restricted: 'true', hosts: '' })).statusCode, 403);
+    await a.get('/builder/network');
+    assert.equal((await a.post('/builder/network', { __csrf: 'forged', ws: String(wsA), restricted: 'true', hosts: '' })).statusCode, 403);
+    assert.equal((await owner.one('select network_restricted from meta.workspace where id = $1', [wsA])).network_restricted, false);
+    // entries are hosts only: no scheme, path, wildcard-all, injection
+    for (const hosts of ['*', 'http://x', 'x/y', 'a.example.com\'; drop table meta.app; --', '<script>'])
+      await a.post('/builder/network', { __csrf: a.lastCsrf, ws: String(wsA), restricted: 'true', hosts });
+    assert.equal((await owner.one('select network_restricted from meta.workspace where id = $1', [wsA])).network_restricted, false);
+    // the refusals of another workspace are not shown
+    await owner.query(`insert into meta.network_refusal (workspace_id, app_id, what, host, list) values ($1, $2, 'test', 'b-secret.example', 'workspace')`, [wsB, appB]);
+    assert.doesNotMatch((await a.get(`/builder/network?ws=${wsA}`)).body, /b-secret\.example/);
+    // the private hosts of the installation are for administrators
+    assert.doesNotMatch((await a.get('/builder/network')).body, /Private hosts/);
+  });
+
+  test('every outgoing path is narrowed by the workspace\'s list, on the server', async () => {
+    const ws = await import('../src/websources.ts');
+    const wr = await import('../src/webrequests.ts');
+    const { putObject } = await import('../src/objectstore.ts');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    await restrict(wsA, ['api.example.com']);
+    // refusals are written next to the call (never in its way): wait for them
+    const refusedNow = async (what: string) => {
+      for (let i = 0; i < 25; i++) {
+        if (await owner.one(`select 1 from meta.network_refusal where workspace_id = $1 and list = 'workspace' and strpos(what, $2) > 0 and at > now() - interval '1 minute'`, [wsA, what])) return;
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      assert.fail(`no refusal for ${what}`);
+    };
+    const before = hits.length;
+    const NARROW = /network access list of workspace Sec118 A/;
+    // REST data source (regions, the assistant, synchronisation), write-back, invoke API (pages, workflows, automations)
+    await assert.rejects(ws.fetchSource(source(), {}), NARROW);
+    await refusedNow('REST data source SEC118');
+    await assert.rejects(ws.callOperation(source({ operations: { insert: { path: '' } } }), 'insert', { v: 1 }), NARROW);
+    await assert.rejects(ws.invoke(appA, { url: `${base}/data` }, () => undefined, 'invoke_api'), NARROW);
+    await refusedNow('invoke_api');
+    await assert.rejects(ws.call({ appId: appA, url: `${base}/data` }), NARROW);
+    // meta.web_request and meta.web_request_source (the scheduler's pass; the page-process path is the same execute())
+    await owner.query(`insert into meta.rest_source (app_id, name, url, params, columns) values ($1, 'SEC118_SRC', $2, '[]', '[]')`, [appA, `${base}/data`]);
+    let r = await wr.execute(appA, { id: '0', source: null, params: null, url: `${base}/data`, method: 'GET', headers: {}, body: null, credential: null, timeout_s: 5 });
+    assert.match(r.message ?? '', NARROW);
+    r = await wr.execute(appA, { id: '0', source: 'SEC118_SRC', params: {}, url: null, method: 'GET', headers: {}, body: null, credential: null, timeout_s: 5 });
+    assert.match(r.message ?? '', NARROW);
+    // an OAuth2 credential's token endpoint: refused before any token is asked for, also when only the token host is off the list
+    const cred = { id: 0, app_id: appA, name: 'SEC118_OAUTH', type: 'oauth2', username: 'c', header_name: null, token_url: `http://localhost:${port}/token`, scope: null, valid_for: [], secret_enc: encryptSecret('s') } as any;
+    await restrict(wsA, [`127.0.0.1:${port}`]);
+    await assert.rejects(ws.call({ appId: appA, url: `${base}/data`, credential: cred }), /The host localhost:\d+ is not on the network access list/);
+    await refusedNow('token endpoint of web credential SEC118_OAUTH');
+    // object storage (file items)
+    await owner.query(`insert into meta.web_credential (app_id, name, type, username, scope, secret_enc, valid_for) values ($1, 'SEC118_S3', 'aws_sigv4', 'AKID', 'eu-test-1', $2, '{}')`, [appA, encryptSecret('x')]);
+    await assert.rejects(putObject(appA, { url: `http://localhost:${port}/bucket`, credential: 'SEC118_S3' }, 'a.txt', Buffer.from('x'), 'text/plain'), NARROW);
+    await refusedNow('object storage');
+    // redirects to a host off the list: the second hop is refused
+    const n = hits.length;
+    await assert.rejects(ws.call({ appId: appA, url: `${base}/away` }), /The host localhost:\d+ is not on the network access list/);
+    assert.equal(hits.length, n + 1);
+    // the response cache does not outlive a narrowed list
+    await restrict(wsA, null);
+    await ws.fetchSource(source({ id: 991180, cache_seconds: 600 }), {});
+    await restrict(wsA, ['api.example.com']);
+    await assert.rejects(ws.fetchSource(source({ id: 991180, cache_seconds: 600 }), {}), NARROW);
+    // the builder's Test of a REST data source, and a REST source catalog read from a URL
+    await restrict(wsA, ['api.example.com']);
+    const a = await signIn(ADMIN_A, wsA);
+    const sid = (await owner.one(`select id from meta.rest_source where app_id = $1 and name = 'SEC118_SRC'`, [appA])).id;
+    const shared = `/builder/apps/${appA}/shared?c=rest_source-${sid}`;
+    await a.get(shared);
+    assert.equal((await a.post(`/builder/apps/${appA}/rest-sources/${sid}/test`, { __csrf: a.lastCsrf })).statusCode, 303);
+    assert.match((await a.get(shared)).body, /network access list of workspace Sec118 A/);
+    await refusedNow('(builder test)');
+    await a.get('/builder/rest-catalogs');
+    const hitsBefore = hits.length;
+    await a.post('/builder/rest-catalogs/import', { __csrf: a.lastCsrf, url: `${base}/openapi.json` });
+    assert.match((await a.get('/builder/rest-catalogs')).body, /network access list of workspace Sec118 A/);
+    await refusedNow('REST source catalog');
+    // other workspaces keep the installation's list
+    assert.equal((await ws.call({ appId: appB, url: `${base}/data` })).status, 200);
+    // nothing of workspace A reached the server: only B's call and the cached-before fetch and the first redirect hop
+    assert.equal(hits.slice(before).filter((h) => h === '/openapi.json').length, 0);
+    assert.equal(hits.length, hitsBefore + 1);
+    // the workspace's list can't widen the installation's
+    await restrict(wsA, ['evil.example', '169.254.169.254', '10.0.0.1']);
+    for (const u of ['http://evil.example/', 'http://169.254.169.254/latest/meta-data/', 'http://10.0.0.1/'])
+      await assert.rejects(ws.call({ appId: appA, url: u }), /allow-list|private/, u);
+    await restrict(wsA, null);
+  });
+
+  test('a REST source catalog URL is read only after the developer is checked', async () => {
+    const n = hits.length;
+    const anon = new Browser();
+    await anon.get('/builder/login');
+    await anon.post('/builder/rest-catalogs/import', { __csrf: anon.lastCsrf, url: `${base}/openapi.json` });
+    await anon.post('/builder/rest-catalogs/1/import', { __csrf: anon.lastCsrf, url: `${base}/openapi.json` });
+    assert.equal(hits.length, n, 'no request without a signed-in developer');
+  });
+});

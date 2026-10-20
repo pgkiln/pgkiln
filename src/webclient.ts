@@ -63,8 +63,8 @@ export interface OutboundScope {
   what: string;
   /** the workspace's network access list; null = not restricted (the installation's lists only) */
   hosts: string[] | null;
-  /** told about every refused URL (never throws) */
-  refused?: (url: URL, list: 'installation' | 'workspace', message: string) => void;
+  /** told about every refused URL (never throws; called as a method of the scope) */
+  refused?(url: URL, list: 'installation' | 'workspace', message: string): void;
 }
 
 export interface HostLists {
