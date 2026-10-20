@@ -9,6 +9,7 @@ import { documentShell } from '../layout.ts';
 import { getSession, saveState, takeFlash, type Session } from '../session.ts';
 import { SQL_TOOLS, TOOL_GROUPS } from './sql-tools.ts';
 import { ensureDevbar } from '../runtime/devbar.ts';
+import { noteChange } from './app-updates.ts';
 
 // Shared building blocks of the builder UI.
 
@@ -328,6 +329,8 @@ export async function developer(req: Req, reply: FastifyReply) {
       await refuseLocked(req, reply, s, hit);
       return null;
     }
+    // (116) who changed the application last (app-updates.ts)
+    noteChange(req, s as Session & { username: string }, target?.appId ?? null);
   }
   return s;
 }

@@ -1139,5 +1139,40 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await drop();
       }
     });
+
+    // (sprint 116, WS-12) the App Builder list with Updated by, a working copy and the application lock, report and
+    // cards, with and without JavaScript
+    test('App Builder list: updated by, working copies and the lock fit', async () => {
+      const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+      const copyAlias = `hr-e2e116-${size.width}`;
+      await owner.query('delete from meta.app where alias = $1', [copyAlias]);
+      const copy = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'HR Demo e2e116', 'none') returning id`, [copyAlias])).id;
+      await owner.query(`insert into meta.working_copy (app_id, main_app_id, name, base, created_by) values ($1, $2, 'e2e116', '{}', 'admin')`, [copy, hr]);
+      await owner.query(`insert into meta.app_change (app_id, updated_by) values ($1, 'admin') on conflict (app_id) do update set updated_by = 'admin', updated_at = now()`, [hr]);
+      await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'admin') on conflict do nothing`, [hr]);
+      try {
+        for (const js of [true, false]) {
+          const page = await (await newContext({ viewport: size, javaScriptEnabled: js })).newPage();
+          await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
+          await page.goto(`${base}/builder/apps?q=HR+Demo&view=report`);
+          const row = page.locator(`tr[data-filter-row]:has(td.num:text-is("${hr}"))`);
+          assert.equal(await row.locator('.ab-lock[role="img"][aria-label="Locked by admin"]').count(), 1);
+          if (size.width >= 1024) {
+            assert.equal((await row.locator('td.ab-by').innerText()).trim(), 'admin');
+            assert.equal((await row.locator(`a[href="/builder/apps/${hr}/working-copies"]`).innerText()).trim(), '1');
+          }
+          await check(page, `builder-app-list-details${js ? '' : '-nojs'}`, vp);
+          await page.goto(`${base}/builder/apps?q=HR+Demo&view=grid`);
+          const card = page.locator(`.ab-card:has(a[href="/builder/apps/${hr}"])`);
+          assert.match(await card.innerText(), /by admin[\s\S]*1 working copy[\s\S]*Locked by admin/);
+          await check(page, `builder-app-list-details-cards${js ? '' : '-nojs'}`, vp);
+          await page.goto(`${base}/builder/apps?q=&view=report`);
+          await page.context().close();
+        }
+      } finally {
+        await owner.query('delete from meta.app where alias = $1', [copyAlias]);
+        await owner.query(`delete from meta.builder_lock where app_id = $1 and page_no = 0 and locked_by = 'admin'`, [hr]);
+      }
+    });
   });
 }

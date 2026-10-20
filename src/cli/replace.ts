@@ -81,6 +81,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'team_issue',
   // (123) the log of running workflow instances migrated to a newer version (runtime data, like the instances)
   'workflow_migration',
+  // (125) who changed the application last in the builder (App Builder list: Updated by)
+  'app_change',
   // (126) outgoing calls the network access lists refused (Administration → Network access; a log, 7 days)
   'network_refusal'];
 /** Children of pages (replaced with their page). */

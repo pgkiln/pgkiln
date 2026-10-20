@@ -20,7 +20,7 @@ const SORTS: Record<Sort, string> = {
   id: 'a.id',
   alias: 'a.alias',
   pages: 'pages desc, lower(a.name)',
-  updated: 'a.updated_at desc nulls last, lower(a.name)',
+  updated: 'greatest(a.updated_at, c.updated_at) desc nulls last, lower(a.name)',
 };
 const RECENT_MAX = 8;
 
@@ -44,6 +44,10 @@ export function ago(at: Date | string | null | undefined, now = Date.now()) {
   }
   return 'just now';
 }
+
+/** (116) the App Builder list's working copies count and lock state */
+const copiesText = (n: number) => `${n} working cop${n === 1 ? 'y' : 'ies'}`;
+const lockedText = (by: string) => `Locked by ${by}`;
 
 const appIcon = (a: { id: number; name: string }, cls = '') =>
   html`<span class="app-icon app-color-${a.id % APP_COLORS}${cls ? ` ${cls}` : ''}" aria-hidden="true">${a.name.slice(0, 1).toUpperCase()}</span>`;
@@ -108,10 +112,14 @@ export async function homeRoutes(app: FastifyInstance) {
     const group = groups.find((g) => String(g.id) === s.state.__BGROUP) ?? null;
     const [apps, total, recent] = await Promise.all([
       owner.query(
-        `select a.id, a.name, a.alias, a.authentication, a.db_role, a.updated_at, g.name as group_name,
+        `select a.id, a.name, a.alias, a.authentication, a.db_role, greatest(a.updated_at, c.updated_at) as updated_at, g.name as group_name,
+                c.updated_by,
+                (select count(*) from meta.working_copy w where w.main_app_id = a.id)::int as copies,
+                (select locked_by from meta.builder_lock k where k.app_id = a.id and k.page_no = 0) as locked_by,
                 (select count(*) from meta.page p where p.app_id = a.id)::int as pages,
                 (select count(*) from meta.activity_log l where l.app_id = a.id and l.event = 'page_view' and l.at > now() - interval '1 day')::int as views
            from meta.app a
+           left join meta.app_change c on c.app_id = a.id
            left join meta.app_group_member gm on gm.app_id = a.id
            left join meta.app_group g on g.id = gm.group_id
           where ($1 = '' or a.name ilike '%' || $1 || '%' or a.alias ilike '%' || $1 || '%' or a.id::text = $1) and ${inWorkspaceSql('a', 2)}
@@ -137,22 +145,25 @@ export async function homeRoutes(app: FastifyInstance) {
       : view === 'grid'
         ? html`<div class="ab-cards">${rows.map((a) => html`<article class="ab-card" data-filter-row>
             <a class="ab-card-main" href="${BASE}/apps/${a.id}">${appIcon(a)}<span><strong>${a.name}</strong><small>${a.id} · /a/${a.alias}</small></span></a>
-            <div class="ab-card-meta">${a.group_name ? html`<span class="tag">${a.group_name}</span>` : ''}<span>${a.pages} pages</span><span>${a.views} views today</span><span>${ago(a.updated_at)}</span></div>
+            <div class="ab-card-meta">${a.group_name ? html`<span class="tag">${a.group_name}</span>` : ''}<span>${a.pages} pages</span><span>${a.views} views today</span><span>${ago(a.updated_at)}${a.updated_by ? html` by <span class="ab-by">${a.updated_by}</span>` : ''}</span></div>
+            ${a.copies || a.locked_by ? html`<div class="ab-card-badges">${a.copies ? html`<a class="tag" href="${BASE}/apps/${a.id}/working-copies">${icon('layers')} ${copiesText(a.copies)}</a>` : ''}${a.locked_by ? html`<span class="tag ab-locked" title="${lockedText(a.locked_by)}">${icon('lock')} <span class="ab-by">${lockedText(a.locked_by)}</span></span>` : ''}</div>` : ''}
             <div class="ab-card-actions">
               <a class="tb-btn" href="${BASE}/apps/${a.id}" title="Edit ${a.name}">${icon('edit')}<span class="sr-only">Edit ${a.name}</span></a>
               <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="Run ${a.name}">${icon('play')}<span class="sr-only">Run ${a.name}</span></a>
             </div></article>`)}</div>`
         : html`<div class="table-wrap ab-table"><table class="report ab-apps">
             <caption class="sr-only">Applications</caption>
-            <thead><tr>${th('id', 'Application', 'num')}${th('name', 'Name')}${th('alias', 'Alias')}${th('pages', 'Pages', 'num')}<th scope="col" class="num">Views (24h)</th><th scope="col">Sign-in</th>${th('updated', 'Updated')}<th scope="col" class="ab-actions-col">Actions</th></tr></thead>
+            <thead><tr>${th('id', 'Application', 'num')}${th('name', 'Name')}${th('alias', 'Alias')}${th('pages', 'Pages', 'num')}<th scope="col" class="num">Views (24h)</th><th scope="col">Sign-in</th>${th('updated', 'Updated')}<th scope="col">Updated by</th><th scope="col" class="num">Working copies</th><th scope="col" class="ab-actions-col">Actions</th></tr></thead>
             <tbody>${rows.map((a) => html`<tr data-filter-row>
               <td class="num">${a.id}</td>
-              <td class="ab-name"><a href="${BASE}/apps/${a.id}">${appIcon(a)}<span>${a.name}</span></a></td>
+              <td class="ab-name"><a href="${BASE}/apps/${a.id}">${appIcon(a)}<span>${a.name}</span></a>${a.locked_by ? html`<span class="ab-lock" role="img" aria-label="${lockedText(a.locked_by)}" title="${lockedText(a.locked_by)}">${icon('lock')}</span>` : ''}</td>
               <td>${a.alias}${a.group_name ? html` <span class="tag">${a.group_name}</span>` : ''}</td>
               <td class="num">${a.pages}</td>
               <td class="num">${a.views}</td>
               <td>${a.authentication === 'none' ? 'Public' : a.authentication === 'header' ? 'HTTP header' : a.authentication === 'database' ? 'Database accounts' : a.authentication === 'custom' ? 'Custom' : 'App users'}</td>
               <td title="${a.updated_at ? new Date(a.updated_at).toISOString().slice(0, 16).replace('T', ' ') : ''}">${ago(a.updated_at)}</td>
+              <td class="ab-by">${a.updated_by ?? ''}</td>
+              <td class="num">${a.copies ? html`<a href="${BASE}/apps/${a.id}/working-copies" aria-label="${copiesText(a.copies)} of ${a.name}">${a.copies}</a>` : '0'}</td>
               <td class="ab-actions">
                 <a class="tb-btn" href="${BASE}/apps/${a.id}" title="Edit ${a.name}">${icon('edit')}<span class="sr-only">Edit ${a.name}</span></a>
                 <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="Run ${a.name}">${icon('play')}<span class="sr-only">Run ${a.name}</span></a>

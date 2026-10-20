@@ -42,7 +42,8 @@ src/
                            merge into the main application or refresh the copy, both through cli/replace.ts
   cli/                     the command line: main.ts (commands, help, exit codes), apps.ts (connect, export,
                            read, import), files.ts (directories, zip), diff.ts, replace.ts (import --replace in place),
-                           mcp.ts (`pgkiln mcp`: the MCP server for AI coding agents, chapter 20)
+                           mcp.ts (`pgkiln mcp`: the MCP server for AI coding agents, chapter 20), only.ts (sprint 116:
+                           `import --replace --only pages/12`, the named files merged over the application's current export)
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the owner and shared runtime pools, `runtime` (the current scope's: runtimeScope), appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
@@ -261,7 +262,10 @@ src/
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home at /builder/apps and /builder (tiles, applications report/cards, Recent; /builder redirects
-                           to the Workspace home when meta.workspace.builder_home = 'home'), Create, Import, Dashboard, Utilities
+                           to the Workspace home when meta.workspace.builder_home = 'home'), Create, Import, Dashboard, Utilities;
+                           (116) Updated by, working copies and the application lock in the report and the cards
+    app-updates.ts         (sprint 116, migration 125) who changed an application last: developer() notes a builder POST under
+                           /apps/:id or /pages/:pid (or a Create / Import), an onSend hook records a success in meta.app_change
     workspace-home.ts      (sprint 109, migration 119) the Workspace home /builder/home, opened after sign-in: tool cards (Data Reporter
                            when GET /builder/reporter exists), workspace message edited in place (workspaceAdmin), Summary, Top
                            applications / users / developers over meta.developer.home_timeframe, System message (src/release-check.ts),
@@ -471,6 +475,8 @@ test/
   page-logic.test.ts       download, chain (background jobs) and workflow processes, function/app branches, dialog_closed (HR page 28)
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
+  app-list.test.ts         (116) the App Builder list's Updated by, working copies and lock; what counts as a change
+  import-only.test.ts      (116) pgkiln import --replace --only: a page or component file, refusals
   charts.test.ts           chart markup per kind (geometry as classes), gauges, Gantt time axis and dependencies, pyramid, polar, range, box plot, stock, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
   rest-sources.test.ts     REST data sources, web credentials, SSRF checks, invoke_api (mock service + HR page 23)
