@@ -276,7 +276,7 @@ export async function webSourceRoutes(app: FastifyInstance) {
       for (const p of src.params) values[p.name] = String(req.body?.[`p_${p.name}`] ?? '');
       const r = buildRequest(src, values);
       const credential = src.credential ? await loadCredential(src.app_id, src.credential) : null;
-      const res = await call({ ...r, credential, timeoutMs: src.timeout_s * 1000 });
+      const res = await call({ ...r, appId: src.app_id, what: `REST data source ${src.name} (builder test)`, credential, timeoutMs: src.timeout_s * 1000 });
       const text = res.body.toString('utf8');
       result.excerpt = text.length > 3000 ? `${text.slice(0, 3000)}…` : text;
       if (res.status < 200 || res.status > 299) throw new Error(`The web service answered ${res.status}.`);

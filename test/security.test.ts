@@ -1794,7 +1794,7 @@ describe('sprint 26 data: REST data sources, web credentials, invoke_api', () =>
     assert.throws(() => ws.rowsSql([{ name: 'v" text); drop table hr.emp; --' }], []), /not a valid SQL name/);
     // no calls to hosts outside the allow-list, metadata services or other loopback names
     for (const u of ['http://169.254.169.254/latest/meta-data/', 'http://[::ffff:169.254.169.254]/', 'http://10.0.0.1/', 'https://example.com/', 'gopher://127.0.0.1/'])
-      await assert.rejects(ws.call({ url: u }), /allow-list|private|Only http/, u);
+      await assert.rejects(ws.call({ appId: null, url: u }), /allow-list|private|Only http/, u);
   });
 
   test('invoke_api only sets items of its page (or application items), and shows no details of a failure', async () => {

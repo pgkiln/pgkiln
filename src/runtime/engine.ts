@@ -560,8 +560,10 @@ async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, dept
       default:
         await runSql(ctx, p.code ?? '', names);
         // web requests the process queued (meta.web_request): made now, before the next process
+        // (sprint 118) a request an allow-list refused is a warning (level 2), the others trace (level 6)
         await runPending(ctx.client!, ctx.app.id, (r, res, ms) =>
-          dbg(ctx, 6, 'web', () => `web request ${r.id} (${r.source ? `source ${r.source}` : r.method}): ${res.status === 'ok' ? `HTTP ${res.statusCode}` : res.message} in ${ms} ms`));
+          dbg(ctx, res.status === 'error' && /allow-list|network access list/.test(res.message ?? '') ? 2 : 6, 'web',
+            () => `web request ${r.id} (${r.source ? `source ${r.source}` : r.method}): ${res.status === 'ok' ? `HTTP ${res.statusCode}` : res.message} in ${ms} ms`));
         // AI requests it queued (meta.ai_generate): likewise
         await runPendingAi(ctx.client!, { appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, debug: (level, text) => dbg(ctx, level, 'ai', text) });
         return p.success_message;

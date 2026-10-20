@@ -2,6 +2,7 @@ import { owner, type Client } from './db.ts';
 import { purgeUnpacked, unpackForSql } from './unpack.ts';
 import { call, invoke, loadCredential } from './websources.ts';
 import { WebError, type WebResponse } from './webclient.ts';
+import { purgeRefusals } from './network-acl.ts';
 
 // Web requests from SQL (APEX_WEB_SERVICE; migration 052): application SQL
 // queues a request with meta.web_request(url, …) or
@@ -77,6 +78,8 @@ export async function execute(appId: number, r: PendingRequest): Promise<Request
       );
       const credential = r.credential ? await loadCredential(appId, r.credential) : null;
       res = await call({
+        appId,
+        what: 'meta.web_request',
         url: r.url,
         method: r.method,
         headers: { accept: '*/*', ...headers },
@@ -138,6 +141,8 @@ export async function purgeWebRequests(force = false) {
       where status = 'queued' and requested_at < now() - interval '${KEEP_HOURS} hours'`,
   );
   await owner.query(`delete from meta.web_request_log where finished_at < now() - interval '${KEEP_HOURS} hours'`);
+  // (sprint 118) refusals of the network access lists: 7 days
+  await purgeRefusals();
   await owner.query(
     `delete from meta.web_request_log l using (
        select id, row_number() over (partition by app_id order by id desc) as n from meta.web_request_log where status in ('ok', 'error')

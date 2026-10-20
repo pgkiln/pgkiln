@@ -190,8 +190,9 @@ export async function mailRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply, 'Mail services'))) return;
     const services = (await owner.query(`select s.id, s.name, s.description, s.provider, s.senders, s.enabled, s.secret_enc is not null as has_secret,
-        (select string_agg(a.alias, ', ' order by a.alias) from meta.app_mail_service x join meta.app a on a.id = x.app_id where x.service_id = s.id) as apps
-      from meta.mail_service s order by s.name`)).rows;
+        (select string_agg(a.alias, ', ' order by a.alias) from meta.app_mail_service x join meta.app a on a.id = x.app_id where x.service_id = s.id) as apps,
+        (select w.name from meta.workspace w where w.id = s.workspace_id) as workspace
+      from meta.mail_service s order by s.workspace_id is not null, s.name`)).rows;
     const recent = (await owner.query(`select ${MAIL_COLUMNS}, a.alias as app from meta.mail_queue q left join meta.app a on a.id = q.app_id order by q.id desc limit 100`)).rows;
     const main = html`
       <div class="title-row"><h1>Mail services</h1></div>
@@ -203,7 +204,7 @@ export async function mailRoutes(app: FastifyInstance) {
             <td data-label="Provider">${PROVIDER_LABELS[x.provider as Provider]}</td>
             <td data-label="Senders" class="u-break">${x.senders.join(', ')}</td>
             <td data-label="Secret">${x.has_secret ? 'stored (encrypted)' : x.provider === 'log' ? '–' : html`<b>missing</b>`}</td>
-            <td data-label="Applications">${x.apps ?? html`<span class="muted">none</span>`}</td>
+            <td data-label="Applications">${x.workspace ? html`<span class="tag">workspace ${x.workspace}</span> ` : ''}${x.apps ?? (x.workspace ? html`<span class="muted">its applications without a service of their own</span>` : html`<span class="muted">none</span>`)}</td>
             <td data-label="Status">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
             : html`<tr><td colspan="6" class="empty">No mail services yet.</td></tr>`}</tbody></table></div>`,
         html`<a class="btn btn-sm btn-hot" href="${BASE}/mail/new">${icon('plus')} Add service</a>`)}
@@ -275,12 +276,14 @@ export async function mailRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply, 'Mail services'))) return;
     const x = await owner.one<MailService & { has_secret: boolean }>(
-      'select id, name, description, provider, settings, senders, enabled, secret_enc is not null as has_secret from meta.mail_service where id = $1', [req.params.id]);
+      'select id, name, description, provider, settings, senders, enabled, workspace_id, secret_enc is not null as has_secret from meta.mail_service where id = $1', [req.params.id]);
     if (!x) return reply.code(404).send('Not found');
     const provider = (PROVIDERS as readonly string[]).includes(String(req.query.provider)) ? (req.query.provider as Provider) : x.provider;
+    // (sprint 118) a workspace's own service serves that workspace's applications only
     const apps = (await owner.query(`select a.id, a.alias, a.name, x.service_id, x.from_address, x.max_per_day, o.name as other
       from meta.app a left join meta.app_mail_service x on x.app_id = a.id left join meta.mail_service o on o.id = x.service_id and o.id <> $1
-      order by a.alias`, [x.id])).rows;
+      where $2::int is null or meta.app_workspace(a.id) = $2
+      order by a.alias`, [x.id, x.workspace_id ?? null])).rows;
     const recent = (await owner.query(`select ${MAIL_COLUMNS}, a.alias as app from meta.mail_queue q left join meta.app a on a.id = q.app_id
        where q.service = $1 or q.app_id in (select app_id from meta.app_mail_service where service_id = $2) order by q.id desc limit 50`, [x.name, x.id])).rows;
     const main = html`
@@ -334,10 +337,11 @@ export async function mailRoutes(app: FastifyInstance) {
     const b = req.body as Record<string, string | string[] | undefined>;
     const allow = new Set([b.allow ?? []].flat().map(Number).filter(Number.isInteger));
     try {
-      const service = await owner.one<{ senders: string[] }>('select senders from meta.mail_service where id = $1', [req.params.id]);
+      const service = await owner.one<{ senders: string[]; workspace_id: number | null }>('select senders, workspace_id from meta.mail_service where id = $1', [req.params.id]);
       if (!service) throw new Error('Not found.');
       await owner.tx(async (c) => {
-        const apps = (await c.query<{ id: number }>('select id from meta.app')).rows.map((a) => a.id);
+        // (sprint 118) a workspace's own service: that workspace's applications only
+        const apps = (await c.query<{ id: number }>('select id from meta.app where $1::int is null or meta.app_workspace(id) = $1', [service.workspace_id])).rows.map((a) => a.id);
         await c.query('delete from meta.app_mail_service where service_id = $1 and not (app_id = any($2::int[]))', [req.params.id, [...allow]]);
         for (const id of apps.filter((a) => allow.has(a))) {
           const from = String(b[`from_${id}`] ?? '').trim() || null;
@@ -416,8 +420,9 @@ export async function mailRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await owner.one<{ id: number; alias: string; name: string }>('select id, alias, name from meta.app where id = $1', [req.params.id]);
     if (!a) return reply.code(404).send('Not found');
+    // the application's service, else (sprint 118) its workspace's own
     const service = await owner.one(`select s.name, s.provider, s.enabled, x.from_address, x.max_per_day, s.settings->>'default_from' as default_from
-      from meta.app_mail_service x join meta.mail_service s on s.id = x.service_id where x.app_id = $1`, [a.id]);
+      from meta.mail_service s left join meta.app_mail_service x on x.app_id = $1 and x.service_id = s.id where s.id = meta.mail_service_for_app($1)`, [a.id]);
     const today = (await owner.one(`select count(*)::int as n from meta.mail_queue where app_id = $1 and created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC' and status <> 'cancelled'`, [a.id])).n;
     const status = String(req.query.status ?? '');
     const rows = (await owner.query(`select ${MAIL_COLUMNS} from meta.mail_queue q where q.app_id = $1 and ($2 = '' or q.status = $2) order by q.id desc limit 200`, [a.id, status])).rows;

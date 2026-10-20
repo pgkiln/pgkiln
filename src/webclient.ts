@@ -21,7 +21,12 @@ import zlib from 'node:zlib';
 //   checks, and request headers marked secret are dropped when a redirect
 //   leaves the origin;
 // - a time limit for the whole exchange and a size limit for the response
-//   (PGKILN_REST_MAX_BYTES, default 5 MB, also after decompression).
+//   (PGKILN_REST_MAX_BYTES, default 5 MB, also after decompression);
+// - (sprint 118) a workspace's network access list (src/network-acl.ts):
+//   when the caller passes the scope of the application's workspace, every
+//   hop must match that list as well; it only narrows the lists above (the
+//   address checks keep using PGKILN_REST_PRIVATE_HOSTS alone). Refusals are
+//   reported to the scope (Administration → Network access).
 //
 // node:http/https rather than fetch(): fetch can't pin the checked address.
 
@@ -45,6 +50,21 @@ export interface WebRequest {
   allowLarge?: boolean;
   /** an allow-list of its own instead of PGKILN_REST_ALLOWED_HOSTS / PGKILN_REST_PRIVATE_HOSTS (push services) */
   hosts?: HostLists;
+  /** (sprint 118) the workspace the call is made for: its network access list narrows the lists above */
+  scope?: OutboundScope | null;
+}
+
+/** (sprint 118) The workspace an outgoing call is made for (src/network-acl.ts builds it). */
+export interface OutboundScope {
+  workspaceId: number;
+  workspaceName: string;
+  appId: number | null;
+  /** what makes the call: "web request", "REST data source", … */
+  what: string;
+  /** the workspace's network access list; null = not restricted (the installation's lists only) */
+  hosts: string[] | null;
+  /** told about every refused URL (never throws) */
+  refused?: (url: URL, list: 'installation' | 'workspace', message: string) => void;
 }
 
 export interface HostLists {
@@ -68,7 +88,7 @@ export const maxResponseBytes = () => {
 };
 
 /** Whether `url`'s host matches an allow-list entry. */
-function matches(entries: string[], url: URL) {
+export function matches(entries: string[], url: URL) {
   const host = url.hostname.toLowerCase();
   const port = url.port || (url.protocol === 'https:' ? '443' : '80');
   return entries.some((e) => {
@@ -83,7 +103,7 @@ function matches(entries: string[], url: URL) {
   });
 }
 
-const restHosts = (): HostLists => ({ allowed: list(process.env.PGKILN_REST_ALLOWED_HOSTS), private: list(process.env.PGKILN_REST_PRIVATE_HOSTS) });
+export const restHosts = (): HostLists => ({ allowed: list(process.env.PGKILN_REST_ALLOWED_HOSTS), private: list(process.env.PGKILN_REST_PRIVATE_HOSTS) });
 
 /** Why the URL may not be called (null: it may, so far as the host name goes). */
 export function urlProblem(raw: string | URL, hosts: HostLists = restHosts()): string | null {
@@ -101,6 +121,27 @@ export function urlProblem(raw: string | URL, hosts: HostLists = restHosts()): s
   if (net.isIP(host) && isPrivateAddress(host) && !matches(priv, url))
     return `The address ${host} is private, loopback or link-local (allow it with PGKILN_REST_PRIVATE_HOSTS).`;
   return null;
+}
+
+/** (sprint 118) Why the workspace's network access list refuses the URL (null: it doesn't, or there is none). */
+export function scopeProblem(scope: OutboundScope | null | undefined, url: URL): string | null {
+  if (!scope?.hosts) return null;
+  if (matches(scope.hosts.filter((h) => h !== '*'), url)) return null;
+  return `The host ${url.host} is not on the network access list of workspace ${scope.workspaceName}.`;
+}
+
+/** The installation's and the scope's checks of one URL; a refusal is reported to the scope. */
+export function checkUrl(url: URL, req: Pick<WebRequest, 'hosts' | 'scope'>): string | null {
+  const own = urlProblem(url, req.hosts);
+  const problem = own ?? scopeProblem(req.scope, url);
+  if (problem && req.scope?.refused) {
+    try {
+      req.scope.refused(url, own ? 'installation' : 'workspace', problem);
+    } catch {
+      // reporting never fails the caller
+    }
+  }
+  return problem;
 }
 
 // ---------------------------------------------------------------- addresses
@@ -225,7 +266,7 @@ export async function webRequest(raw: string, req: WebRequest = {}): Promise<Web
   let body = req.body;
   const origin = url.origin;
   for (let hop = 0; ; hop++) {
-    const problem = urlProblem(url, req.hosts);
+    const problem = checkUrl(url, req);
     if (problem) throw new WebError(problem);
     const res = await once(url, { ...req, method, headers, body }, deadline, maxBytes);
     const location = res.headers.location;

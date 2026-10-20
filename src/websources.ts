@@ -3,7 +3,8 @@ import pg from 'pg';
 import { owner, runtime } from './db.ts';
 import { runtimeForApp } from './workspace-db.ts';
 import { decryptSecret, encryptSecret } from './secrets.ts';
-import { WebError, webRequest, type WebResponse } from './webclient.ts';
+import { checkUrl, WebError, webRequest, type OutboundScope, type WebResponse } from './webclient.ts';
+import { scopeForApp } from './network-acl.ts';
 
 // Web credentials and REST data sources (meta.web_credential,
 // meta.rest_source): building the request (parameters, credential), OAuth2
@@ -466,9 +467,11 @@ export function tokenRequest(c: WebCredential, refresh: string | null) {
   return { headers, body: form.toString() };
 }
 
-async function requestToken(c: WebCredential, refresh: string | null, timeoutMs: number): Promise<Token> {
+async function requestToken(c: WebCredential, refresh: string | null, timeoutMs: number, scope: OutboundScope | null): Promise<Token> {
   const { headers, body } = tokenRequest(c, refresh);
   const res = await webRequest(c.token_url!, {
+    // (sprint 118) the token endpoint is on the workspace's network access list too
+    scope: scope ? { ...scope, what: `token endpoint of web credential ${c.name}` } : null,
     method: 'POST',
     headers,
     secretHeaders: ['authorization'],
@@ -515,7 +518,7 @@ function storedRefresh(c: WebCredential) {
   }
 }
 
-async function oauthToken(c: WebCredential, timeoutMs: number, fresh = false): Promise<string> {
+async function oauthToken(c: WebCredential, timeoutMs: number, scope: OutboundScope | null, fresh = false): Promise<string> {
   const key = `${c.id}:${credKey(c)}`;
   const cached = tokens.get(key);
   if (cached && !fresh && cached.expires > Date.now()) return cached.access;
@@ -525,14 +528,14 @@ async function oauthToken(c: WebCredential, timeoutMs: number, fresh = false): P
       const refresh = cached?.refresh ?? storedRefresh(c);
       if (refresh) {
         try {
-          return await requestToken(c, refresh, timeoutMs);
+          return await requestToken(c, refresh, timeoutMs, scope);
         } catch (e) {
           // the refresh token may have expired: ask again with the grant (a refresh token grant has nothing else)
           if (grantOf(c) === 'refresh_token')
             throw new WebError(`${(e as Error).message} The refresh token of web credential ${c.name} may have expired: enter a new one in the builder.`, (e as WebError).status);
         }
       }
-      return requestToken(c, null, timeoutMs);
+      return requestToken(c, null, timeoutMs, scope);
     })();
     pendingTokens.set(key, p);
   }
@@ -546,7 +549,7 @@ async function oauthToken(c: WebCredential, timeoutMs: number, fresh = false): P
 }
 
 /** Headers that sign a request with the credential; the names in secret are secrets. */
-async function credentialHeaders(c: WebCredential, url: string, timeoutMs: number, fresh = false) {
+async function credentialHeaders(c: WebCredential, url: string, timeoutMs: number, scope: OutboundScope | null, fresh = false) {
   if (!credentialValidFor(c, url)) throw new WebError(`Web credential ${c.name} is not valid for this URL (see its "Valid for" URLs).`);
   switch (c.type) {
     case 'basic':
@@ -559,7 +562,7 @@ async function credentialHeaders(c: WebCredential, url: string, timeoutMs: numbe
       return { [c.header_name!.toLowerCase()]: value };
     }
     case 'oauth2':
-      return { authorization: `Bearer ${await oauthToken(c, timeoutMs, fresh)}` };
+      return { authorization: `Bearer ${await oauthToken(c, timeoutMs, scope, fresh)}` };
     case 'aws_sigv4':
       throw new WebError(`Web credential ${c.name} (aws_sigv4) signs object storage requests of file items only.`);
     default:
@@ -570,6 +573,12 @@ async function credentialHeaders(c: WebCredential, url: string, timeoutMs: numbe
 // ---------------------------------------------------------------- calling
 
 export interface CallOptions {
+  /** (sprint 118) the application the call is made for: its workspace's network access list applies (null: none) */
+  appId: number | null;
+  /** the scope when the caller has it already (else built from appId) */
+  scope?: OutboundScope | null;
+  /** what makes the call, for refusals (default "web request") */
+  what?: string;
   url: string;
   method?: string;
   headers?: Record<string, string>;
@@ -583,9 +592,14 @@ export interface CallOptions {
 /** One request, signed with the credential; an OAuth2 token refused with 401 is renewed once. */
 export async function call(o: CallOptions): Promise<WebResponse> {
   const timeoutMs = o.timeoutMs ?? 10_000;
+  const scope = o.scope !== undefined ? o.scope : await scopeForApp(o.appId, o.what ?? 'web request');
+  // refused before a credential's token is asked for
+  const problem = checkUrl(new URL(o.url), { scope });
+  if (problem) throw new WebError(problem);
   const send = async (fresh: boolean) => {
-    const auth: Record<string, string> = o.credential ? await credentialHeaders(o.credential, o.url, timeoutMs, fresh) : {};
+    const auth: Record<string, string> = o.credential ? await credentialHeaders(o.credential, o.url, timeoutMs, scope, fresh) : {};
     return webRequest(o.url, {
+      scope,
       method: o.method ?? 'GET',
       headers: { accept: 'application/json', ...o.headers, ...auth },
       secretHeaders: [...Object.keys(auth), ...(o.secretHeaders ?? [])],
@@ -748,7 +762,7 @@ export function buildOperation(s: RestSource, name: OperationName, row: Record<s
 export async function callOperation(s: RestSource, name: OperationName, row: Record<string, unknown>, params: Record<string, string> = {}) {
   const req = buildOperation(s, name, row, params);
   const credential = s.credential ? await loadCredential(s.app_id, s.credential) : null;
-  const res = await call({ ...req, credential, timeoutMs: s.timeout_s * 1000 });
+  const res = await call({ ...req, appId: s.app_id, what: `REST data source ${s.name}`, credential, timeoutMs: s.timeout_s * 1000 });
   if (name === 'fetch' && res.status === 404) return { json: null, row: null, status: 404 };
   if (res.status < 200 || res.status > 299) throw new WebError(`REST data source ${s.name}: the ${name} operation was answered with ${res.status}.`, res.status);
   const json = parseJson(res, `REST data source ${s.name}`);
@@ -778,6 +792,10 @@ export function clearResponseCache(sourceId?: number) {
 /** The parsed JSON response of a source (from the cache when it is fresh enough). */
 export async function fetchSource(s: RestSource, values: Record<string, string | null | undefined>) {
   const req = buildRequest(s, values);
+  // (sprint 118) the workspace's network access list, before the cache: a narrowed list applies at once
+  const scope = await scopeForApp(s.app_id, `REST data source ${s.name}`);
+  const problem = checkUrl(new URL(req.url), { scope });
+  if (problem) throw new WebError(problem);
   const credential = s.credential ? await loadCredential(s.app_id, s.credential) : null;
   const key = s.cache_seconds > 0
     ? `${s.id}:${createHash('sha256').update(JSON.stringify([s, req, credential ? credKey(credential) : null])).digest('base64url')}`
@@ -786,7 +804,7 @@ export async function fetchSource(s: RestSource, values: Record<string, string |
     const hit = responses.get(key);
     if (hit && Date.now() - hit.at < s.cache_seconds * 1000) return { json: hit.json, status: 200, cached: true };
   }
-  const res = await call({ ...req, credential, timeoutMs: s.timeout_s * 1000 });
+  const res = await call({ ...req, appId: s.app_id, scope, credential, timeoutMs: s.timeout_s * 1000 });
   if (res.status < 200 || res.status > 299) throw new WebError(`REST data source ${s.name}: the web service answered ${res.status}.`, res.status);
   const json = parseJson(res, `REST data source ${s.name}`);
   if (key) {
@@ -878,7 +896,7 @@ export async function invoke(appId: number, conf: InvokeConfig, lookup: Lookup, 
     const source = await loadSource(appId, conf.source);
     const req = buildRequest(source, sourceParamValues(source, conf.params, lookup));
     const credential = source.credential ? await loadCredential(appId, source.credential) : null;
-    return { res: await call({ ...req, credential, timeoutMs: (timeoutS ?? source.timeout_s) * 1000 }), source };
+    return { res: await call({ ...req, appId, what: `${what} (REST data source ${source.name})`, credential, timeoutMs: (timeoutS ?? source.timeout_s) * 1000 }), source };
   }
   // values are URL-encoded and only follow the host (invokeCallProblems), so the host is always the developer's
   const url = conf.url!.replace(SUBST, (m, name: string) => {
@@ -893,7 +911,7 @@ export async function invoke(appId: number, conf: InvokeConfig, lookup: Lookup, 
     return JSON.stringify(v ?? m);
   }) : undefined;
   const credential = conf.credential ? await loadCredential(appId, conf.credential) : null;
-  const res = await call({ url, method, headers: body ? { 'content-type': 'application/json' } : {}, body, credential, timeoutMs: (timeoutS ?? 10) * 1000 });
+  const res = await call({ appId, what, url, method, headers: body ? { 'content-type': 'application/json' } : {}, body, credential, timeoutMs: (timeoutS ?? 10) * 1000 });
   return { res, source: null };
 }
 

@@ -77,6 +77,8 @@ export interface ServiceSettings {
   // the API's address instead of the provider's own (administrators only; a proxy, or tests)
   base_url?: string;
   default_from?: string;
+  /** (sprint 118) not stored: the host name for TLS when `host` is the address checked for a workspace's service */
+  servername?: string;
 }
 
 export class MailError extends Error {
@@ -203,6 +205,7 @@ async function smtp(m: OutgoingMail, s: ServiceSettings, secret: string | null) 
     };
   const transport = nodemailer.createTransport({
     host: s.host,
+    ...(s.servername ? { servername: s.servername } : {}),
     port: s.port ?? (security === 'tls' ? 465 : 587),
     secure: security === 'tls',
     requireTLS: security === 'starttls',
@@ -387,7 +390,7 @@ export async function verifyConnection(provider: Provider, s: ServiceSettings, s
       const security = s.security ?? 'starttls';
       const auth = s.auth ?? 'password';
       const transport = nodemailer.createTransport({
-        host: s.host, port: s.port ?? (security === 'tls' ? 465 : 587), secure: security === 'tls', requireTLS: security === 'starttls', ignoreTLS: security === 'none',
+        host: s.host, ...(s.servername ? { servername: s.servername } : {}), port: s.port ?? (security === 'tls' ? 465 : 587), secure: security === 'tls', requireTLS: security === 'starttls', ignoreTLS: security === 'none',
         auth: (auth === 'password' ? { user: s.username, pass: secret ?? '' }
           : auth === 'oauth2' ? { type: 'OAuth2', user: s.username, accessToken: await clientCredentialsToken(entraTokenUrl(s), s.client_id ?? '', secret ?? '', s.scope || 'https://outlook.office365.com/.default') }
           : undefined) as never,
@@ -397,11 +400,11 @@ export async function verifyConnection(provider: Provider, s: ServiceSettings, s
         await transport.verify();
       } catch (e) {
         const err = e as { response?: string; message: string; code?: string };
-        throw new MailError(`The SMTP server ${s.host}: ${(err.response ?? err.message).slice(0, 500)}`, false);
+        throw new MailError(`The SMTP server ${s.servername ?? s.host}: ${(err.response ?? err.message).slice(0, 500)}`, false);
       } finally {
         transport.close();
       }
-      return `Connected to ${s.host}:${s.port ?? (security === 'tls' ? 465 : 587)}${security === 'none' ? '' : ` with ${security === 'tls' ? 'TLS' : 'STARTTLS'}`}${
+      return `Connected to ${s.servername ?? s.host}:${s.port ?? (security === 'tls' ? 465 : 587)}${security === 'none' ? '' : ` with ${security === 'tls' ? 'TLS' : 'STARTTLS'}`}${
         auth === 'none' ? '' : ` and signed in as ${s.username}${auth === 'oauth2' ? ' with OAuth2' : ''}`}.`;
     }
     case 'graph':
