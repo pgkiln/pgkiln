@@ -127,6 +127,8 @@ describe('accessibility (axe-core)', () => {
           '/builder/sql/worksheet', '/builder/sql/objects?schema=hr&k=table&o=hr.emp', '/builder/sql/objects?schema=hr&k=table&o=hr.emp&tab=ddl',
           '/builder/sql/objects/table?schema=hr', '/builder/sql/modeler', '/builder/sql/monitor', '/builder/sql/charts', '/builder/sql/scheduling',
           '/builder/sql/rest', '/builder/sql/changes',
+          // sprint 119: a table's Security (roles × columns, masks)
+          '/builder/sql/objects/security?o=hr.emp',
           // sprint 110: App Builder → Data Reporter
           '/builder/reporter', `/builder/reporter/datasets/${(await owner.one(`select id from meta.dataset where workspace_id = 1 and name = 'hr'`)).id}`, '/builder/reporter/apps/new?dataset=hr',
           // sprint 118: Administration → Mail queue, Network access, the workspace's mail service

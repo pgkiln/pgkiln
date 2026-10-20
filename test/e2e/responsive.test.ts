@@ -693,6 +693,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         sql_worksheet: '/builder/sql/worksheet?schema=hr',
         // (sprint 95) Table Properties
         table_editor: '/builder/sql/objects/table?o=hr.emp',
+        // (sprint 119) a table's Security
+        table_security: '/builder/sql/objects/security?o=hr.emp',
         // (sprint 97) Charts
         sql_charts: '/builder/sql/charts',
         gallery: '/builder/gallery',

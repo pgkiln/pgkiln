@@ -52,7 +52,7 @@ directory the agent started the server in (the project).
 | `describe_schema` | schemas with tables, views and functions; or one table with columns, constraints, indexes, RLS policies and triggers | no |
 | `generate_ddl` | the DDL of a schema's objects, in an order that runs: a start for a migration script | no |
 | `compare_schemas` | the differences between two schemas and a script that makes the target like the source (not run) | no |
-| `run_query` | one SQL statement, read-only, rows as JSON | no |
+| `run_query` | one SQL statement, read-only, rows as JSON; with `alias` (and `user`) as that application's role and user | no |
 | `search_docs` | searches this user guide, the parity matrix and SECURITY.md | no |
 | `recent_errors` | the latest errors and refused requests from the activity log | no |
 | `export_app` | writes an application to a directory (default `apps/<alias>`, format `text`) | files on disk |
@@ -85,7 +85,13 @@ migration scripts, not in the application files (`run_query` can't change them a
   columns whose names contain *password*, *secret*, *token*, *hash* or *api_key* are shown as
   `(hidden)`. That keeps credentials out of the agent's context by accident; it is not an access
   control: the server runs as the owner role, like the command line, and is meant for a
-  developer's own machine. Don't point it at production; deploy with `pgkiln import --replace`
+  developer's own machine.
+- **As an application's user.** (sprint 119) `run_query` with `alias` runs the statement as that application's
+  database role, with `meta.app_id()`, `meta.app_user()` (`user`, default `nobody`) and `meta.has_role()` (the
+  user's roles in the application) set, so grants, column privileges, row level security and masking views apply as
+  on that user's pages ([chapter 8](08-security.md#data-security-per-table-rows-columns-and-values)). Use it to check
+  what a user sees, or let an agent look at data the way the application does. It is no sandbox either: the
+  connection is still the owner's. Don't point it at production; deploy with `pgkiln import --replace`
   from git instead.
 - **Writes** are only `export_app` (files; it refuses a non-empty directory that isn't an export,
   so it can't overwrite your project) and `import_app` (the database, in one transaction). Both are

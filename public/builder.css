@@ -1298,6 +1298,13 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .dbu-members { max-height: 16rem; overflow: auto; }
 .dbu-schemas .te-c { text-align: center; width: 1%; white-space: nowrap; }
 .dbu-sql { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* (sprint 119) a table's Security: roles × columns and masks */
+.ds-section { margin-block: 1.25rem; }
+.ds-section h2 { display: flex; align-items: center; gap: 0.4rem; }
+.ds-table .ds-cell .check { display: flex; white-space: nowrap; margin: 0; }
+.ds-table .ds-c { text-align: center; width: 1%; }
+.ds-table th code { white-space: nowrap; }
+.ds .source { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dbu-list td { white-space: normal; overflow: visible; max-width: 24rem; }
 .dbu-list td .tag { margin: 0.1rem 0; }
 .dbu-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0; }

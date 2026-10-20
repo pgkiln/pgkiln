@@ -422,5 +422,5 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
       body = await ddlOf((x) => (x.kind === 'table' || x.kind === 'view' || x.kind === 'materialized view') ? x.name === relname : x.table === relname);
   }
   return html`<h2 class="ob-title">${icon(OB_TYPES.find(([t]) => t === o.type)![2])} ${o.ref}${o.rls ? html` <span class="tag">RLS</span>` : ''}${o.type === 'table'
-    ? html` <a class="btn btn-sm" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}">${icon('edit')} Edit table</a>` : ''}</h2>${nav}${region(tabs.find(([k]) => k === tab)![1], body)}`;
+    ? html` <a class="btn btn-sm" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}">${icon('edit')} Edit table</a> <a class="btn btn-sm" href="${BASE}/sql/objects/security?${new URLSearchParams({ o: o.ref })}">${icon('shield')} Security</a>` : ''}</h2>${nav}${region(tabs.find(([k]) => k === tab)![1], body)}`;
 }

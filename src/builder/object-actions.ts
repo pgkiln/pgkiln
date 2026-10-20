@@ -30,6 +30,7 @@ export function objectMenu(schema: string, o: MenuObj): Raw {
       ${o.type === 'policy' ? '' : html`<a href="${open}" data-obj-open="${`${BASE}/sql/objects/panel?${new URLSearchParams({ schema, k: o.type, o: o.ref })}`}">${icon('eye')} Open</a>`}
       ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}`, 'edit', 'Edit…') : ''}
       ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, template: o.ref })}`, 'copy', 'Use as template') : ''}
+      ${table ? item(`${BASE}/sql/objects/security?${new URLSearchParams({ o: o.ref })}`, 'shield', 'Security…') : ''}
       ${table ? item(`${BASE}/sql/load`, 'upload', 'Load data') : ''}
       ${table ? html`${item(q('index'), 'list', 'Add index')}${item(q('trigger'), 'bolt', 'Add trigger')}${item(q('policy'), 'shield', 'Add policy')}` : ''}
       ${RELATIONS.has(o.type) ? item(`${BASE}/sql/rest/object?${new URLSearchParams({ schema, name: o.name })}`, 'globe', 'REST › Enable / Disable') : ''}
