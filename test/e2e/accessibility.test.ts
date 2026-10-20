@@ -129,6 +129,8 @@ describe('accessibility (axe-core)', () => {
           '/builder/sql/rest', '/builder/sql/changes',
           // sprint 110: App Builder → Data Reporter
           '/builder/reporter', `/builder/reporter/datasets/${(await owner.one(`select id from meta.dataset where workspace_id = 1 and name = 'hr'`)).id}`, '/builder/reporter/apps/new?dataset=hr',
+          // sprint 118: Administration → Mail queue, Network access, the workspace's mail service
+          '/builder/mail-queue', '/builder/network?url=https%3A%2F%2Fapi.example.com%2Fx', '/builder/workspaces/1/mail',
         ];
         for (const u of urls) {
           await page.goto(`${base}${u}`);
