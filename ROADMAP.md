@@ -6,9 +6,10 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.52.0 (October 2026): AI Agents with tools, AI interactive reports ("ask in your own words" with chips and a parser that needs no AI service), Team Development (issues, labels, milestones, a board), Workflow 26.2 (custom task outcomes, task events and notifications, Send E-Mail and draft steps, migrating running instances, the diagram as SVG / PNG), popup LOVs that load on scroll, a Wait Popup and dynamic actions on menu entries.
-- **APEX parity:** 149 features compared: 146 available, none partial or missing, 3 deliberately
-  not planned (collections, JSON duality views and database links: PostgreSQL covers them).
+- **Current release:** 0.53.0 (October 2026): data security per table (column grants and masked values per application role in a masking view, row level security still applies), MCP `run_query` as an application's user, a mail queue, a workspace's own mail service and network access list, Pillar Light / Dark navigation, Updated by, working copies and locks in the App Builder list, and file-level import (`pgkiln import --only`).
+- **APEX parity (26.2):** 165 features compared: 159 available, none partial, 2 missing (the open 26.2 workspace
+  items WS-7 and WS-8), 4 deliberately not planned (PostgreSQL or the
+  platform covers them).
 
 ## Next
 

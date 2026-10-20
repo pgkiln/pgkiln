@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-10-20
+
 ### Added
 - **Data security per table** (WS-13; APEX 26.2: Deep Data Security): SQL Workshop → Object Browser → a table →
   **Security** (also *Security…* in its ⋯ menu) shows the table's row level security policies, a matrix of
