@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.53.0 (October 2026): data security per table (column grants and masked values per application role in a masking view, row level security still applies), MCP `run_query` as an application's user, a mail queue, a workspace's own mail service and network access list, Pillar Light / Dark navigation, Updated by, working copies and locks in the App Builder list, and file-level import (`pgkiln import --only`).
+- **Current release:** 0.54.0 (October 2026): the App Gallery with six single-topic sample apps (charts, cards, calendar, interactive grids, dynamic actions, reporting), the UX Pattern Catalog and a Utility Apps tab (lookup lists, release notes, announcements), gallery search without JavaScript, and builder layout fixes (spacing between stacked regions, the side column on wide screens).
 - **APEX parity (26.2):** 165 features compared: 160 available, none partial, 1 missing (the open 26.2 workspace
   item WS-7, the builder in more languages), 4 deliberately not planned (PostgreSQL or the
   platform covers them).
