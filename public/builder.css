@@ -706,7 +706,7 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 .ab-home { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .ab-main { min-width: 0; }
 .ab-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
-.ab-tiles-wrap { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.ab-tiles-wrap { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
 .ab-tile {
   position: relative; display: grid; grid-template-columns: auto; align-content: start; gap: 4px; min-height: 132px; padding: 16px 16px 18px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text); text-decoration: none;
@@ -782,6 +782,7 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 
 @media (min-width: 1280px) {
   /* the side column runs along the right edge, as in APEX */
+  .ide .ide-page:has(> .ab-home) { max-width: none; }
   .ab-home { grid-template-columns: minmax(0, 1fr) 288px; margin: calc(-1 * var(--page-py)) calc(-1 * var(--page-px)) -48px 0; min-height: calc(100vh - var(--bar-h) - 28px); }
   .ab-main { padding: var(--page-py) var(--page-px) 48px 0; }
   .ab-side { padding: 18px 20px 24px; background: var(--surface); border-left: 1px solid var(--border); }
@@ -1397,6 +1398,7 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .wh-stats a.stat { color: inherit; text-decoration: none; }
 .wh-stats a.stat:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .wh-stats a.stat span { color: var(--accent); }
+.wh-stats { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .wh-top-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .wh-top-head h2 { margin: 0; }
 .wh-timeframe { display: inline-flex; }
