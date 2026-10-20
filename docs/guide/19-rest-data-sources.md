@@ -53,6 +53,16 @@ The checks on every outgoing request (`src/webclient.ts`), against server-side r
 Keep the allow-list as short as you can. `*` lets developers call any public host from the
 server; it never opens private addresses.
 
+**A workspace's network access list** (sprint 118; APEX 26.2 workspace network ACLs) narrows this
+list for one workspace: under Administration → [Network access](03-builder.md#network-access), its
+administrators can limit its applications to some hosts (same entry syntax, without `*`). A call made
+for an application of that workspace must then match the workspace's list *and* the installation's,
+on every redirect hop; the address checks above stay with `PGKILN_REST_PRIVATE_HOSTS` alone, so a
+workspace can never widen what the installation allows. It applies to every path above: REST data
+sources (including write-back, synchronisation and the response cache), `meta.web_request`, invoke
+API, token endpoints, object storage and REST source catalogs. Refusals are logged in the
+application's debug log and listed under *Refused calls*.
+
 **Changing `PGKILN_SECRET_KEY`** makes the stored secrets unreadable: pgkiln then reports that
 the secret must be entered again. Keep the key with your other server secrets, outside the
 database: a database dump alone does not reveal the secrets.
@@ -323,6 +333,8 @@ values, processes and workflow steps refer to sources and credentials by name, s
 
 - Outgoing calls are off until the administrator sets `PGKILN_REST_ALLOWED_HOSTS`; private and
   internal addresses need `PGKILN_REST_PRIVATE_HOSTS` as well.
+- A workspace's [network access list](03-builder.md#network-access) narrows the allow-list for its
+  applications (it can't widen it).
 - Secrets are encrypted with a key outside the database, write-only in the builder, excluded from
   exports and from the runtime role, and never logged. Use **Valid for URLs** so a credential is
   only ever sent to its own service.

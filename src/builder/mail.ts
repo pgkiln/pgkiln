@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { senderAllowed, sendWith, type MailService } from '../mail/mail.ts';
+import { senderAllowed, serviceSettings, verifyService, type MailService } from '../mail/mail.ts';
 import { deliver, MailError, PROVIDER_LABELS, PROVIDERS, settingsProblems, verifyConnection, type Provider, type ServiceSettings } from '../mail/providers.ts';
 import { decryptSecret, encryptSecret, secretKeyConfigured } from '../secrets.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
@@ -31,7 +31,7 @@ const SECRET_LABEL: Record<Provider, string> = {
 };
 
 /** What each provider is, for the choice of a new service. */
-const PROVIDER_TEXT: Record<Provider, [icon: string, text: string]> = {
+export const PROVIDER_TEXT: Record<Provider, [icon: string, text: string]> = {
   smtp: ['send', 'Any SMTP server or relay. Sign in with a password, or with OAuth2 (Exchange Online, Google Workspace).'],
   graph: ['building', 'Microsoft 365 through the Graph API, as an Entra application with Mail.Send.'],
   ses: ['database', 'Amazon Simple Email Service (API v2), with an IAM access key.'],
@@ -48,16 +48,21 @@ function providerChoice() {
     html`<a class="ab-tile" href="${BASE}/mail/new?provider=${p}"><span class="ab-tile-icon">${icon(PROVIDER_TEXT[p][0])}</span><strong>${PROVIDER_LABELS[p]}</strong><span>${PROVIDER_TEXT[p][1]}</span></a>`)}</div>`;
 }
 
-/** The settings of one provider only, in groups (a new service, or an existing one switching provider). */
-function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provider: Provider, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean,
-  tried: { ok: boolean; text: string; to?: string; from?: string } | null = null) {
+/**
+ * The settings of one provider only, in groups (a new service, or an existing one switching provider).
+ * (sprint 118) `ws`: a workspace's own service: no name (it is the workspace's), no base URL or token URL
+ * (the providers' own APIs only), and the checks go to the workspace's page.
+ */
+export function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provider: Provider, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean,
+  tried: { ok: boolean; text: string; to?: string; from?: string } | null = null, ws: { id: number } | null = null) {
+  const checkAction = ws ? `${BASE}/workspaces/${ws.id}/mail/check` : `${BASE}/mail/check`;
   const s: ServiceSettings = x.provider === provider ? x.settings ?? {} : { default_from: x.settings?.default_from };
   const group = (legend: string, body: unknown, help?: string) =>
     html`<fieldset class="prop-group"><legend>${legend}</legend>${help ? html`<p class="muted u-mt0">${help}</p>` : ''}${body}</fieldset>`;
   const oauth = (scope: string) => html`<div class="form-grid">
       ${input('tenant_id', 'Tenant ID (Microsoft Entra)', s.tenant_id, { placeholder: 'contoso.onmicrosoft.com or its GUID' })}
       ${input('client_id', 'Client (application) ID', s.client_id)}
-      ${input('token_url', 'Token URL', s.token_url, { placeholder: 'empty: Microsoft Entra of the tenant', help: 'Another identity provider\'s token endpoint (client credentials grant), e.g. Google\'s.' })}
+      ${ws ? '' : input('token_url', 'Token URL', s.token_url, { placeholder: 'empty: Microsoft Entra of the tenant', help: 'Another identity provider\'s token endpoint (client credentials grant), e.g. Google\'s.' })}
       ${input('scope', 'Scope', s.scope, { placeholder: `empty: ${scope}` })}
     </div>`;
   const settings =
@@ -92,11 +97,11 @@ function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provide
         help: x.has_secret && x.provider === provider ? 'A secret is stored (encrypted). It is never shown; type a new one to replace it.' : 'Stored encrypted; never shown again.' })}
       ${x.has_secret ? check('remove_secret', 'Remove the stored secret', false) : ''}
       ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: secrets can't be stored until it is set.</div>`}`);
-  const viaHttp = provider !== 'smtp' && provider !== 'log';
+  const viaHttp = provider !== 'smtp' && provider !== 'log' && !ws;
   return html`<form method="post" action="${action}" class="mail-service-form">${csrfField}
     <input type="hidden" name="provider" value="${provider}">
     ${group('Service', html`<div class="form-grid">
-      ${isNew ? input('name', 'Name', '', { required: true, placeholder: 'e.g. OFFICE365', help: 'Upper case letters, digits and _.' }) : ''}
+      ${isNew && !ws ? input('name', 'Name', '', { required: true, placeholder: 'e.g. OFFICE365', help: 'Upper case letters, digits and _.' }) : ''}
       ${input('description', 'Description', x.description)}
     </div>${check('enabled', 'Enabled', x.enabled !== false, 'A disabled service sends nothing: mail stays queued until it is enabled, or fails after its retries.')}`)}
     ${group('Senders', html`<div class="form-grid">
@@ -110,20 +115,20 @@ function serviceForm(x: Partial<MailService> & { has_secret?: boolean }, provide
       ${input('base_url', 'API base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: 'A gateway or proxy that speaks the provider\'s API. Administrators only.' })}</div></details>` : ''}
     ${group('Check before saving', html`
       ${x.id ? html`<input type="hidden" name="service_id" value="${x.id}">` : ''}
-      <div class="buttons mail-check-buttons"><button class="btn" formaction="${BASE}/mail/check" formnovalidate name="check" value="connection">${icon('play')} Test connection</button></div>
+      <div class="buttons mail-check-buttons"><button class="btn" formaction="${checkAction}" formnovalidate name="check" value="connection">${icon('play')} Test connection</button></div>
       <div class="form-grid">
         ${input('test_to', 'Send a test mail to', tried?.to ?? '', { type: 'email', placeholder: 'you@example.com' })}
         ${input('test_from', 'From', tried?.from ?? s.default_from ?? (x.senders ?? []).find((a) => !a.startsWith('@')) ?? '', { type: 'email', help: 'One of the allowed senders.' })}
       </div>
-      <div class="buttons mail-check-buttons"><button class="btn" formaction="${BASE}/mail/check" formnovalidate name="check" value="send">${icon('send')} Send test mail</button></div>
+      <div class="buttons mail-check-buttons"><button class="btn" formaction="${checkAction}" formnovalidate name="check" value="send">${icon('send')} Send test mail</button></div>
       <div class="mail-check-result" role="status" aria-live="polite">${tried ? html`<div class="alert ${tried.ok ? 'alert-success' : 'alert-error'}">${tried.text}</div>` : ''}</div>`,
       `Uses the settings above as they are filled in, without saving them.${x.has_secret ? ' An empty secret field uses the stored secret.' : ''} Test connection signs in (SMTP) or makes a read-only call with the key; a test mail is really sent.`)}
-    <div class="buttons">${isNew ? html`<a class="btn" href="${BASE}/mail/new">Choose another provider</a>` : ''}<button class="btn btn-hot">${isNew ? 'Add service' : 'Save'}</button></div>
+    <div class="buttons">${isNew && !ws ? html`<a class="btn" href="${BASE}/mail/new">Choose another provider</a>` : ''}<button class="btn btn-hot">${isNew ? 'Add service' : 'Save'}</button></div>
   </form>`;
 }
 
 /** The form's values for the chosen provider, as typed (not checked). */
-function parseForm(b: Record<string, string | undefined>) {
+export function parseForm(b: Record<string, string | undefined>) {
   const provider = (PROVIDERS as readonly string[]).includes(b.provider ?? '') ? (b.provider as Provider) : 'smtp';
   const t = (k: string) => (b[k] ?? '').trim() || undefined;
   const senders = [...new Set((b.senders ?? '').split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
@@ -148,8 +153,13 @@ function parseForm(b: Record<string, string | undefined>) {
  * The form's values, checked; throws with a message. A check of the connection
  * (opts.connection) needs the provider's settings only, not yet the senders.
  */
-function formValues(b: Record<string, string | undefined>, hasSecret: boolean, opts: { connection?: boolean } = {}) {
+export function formValues(b: Record<string, string | undefined>, hasSecret: boolean, opts: { connection?: boolean; workspace?: boolean } = {}) {
   const v = parseForm(b);
+  // (sprint 118) a workspace's own service: the providers' own APIs only
+  if (opts.workspace) {
+    delete v.settings.base_url;
+    delete v.settings.token_url;
+  }
   if (!opts.connection || v.senders.length) {
     if (!v.senders.length) throw new Error('Name at least one allowed sender (an address, or @domain).');
     const bad = v.senders.find((x) => !SENDER.test(x));
@@ -185,13 +195,49 @@ async function adminOnly(s: Session, reply: any, title: string) {
 
 const MAIL_COLUMNS = 'q.id, q.app_id, q.to_addresses, q.cc_addresses, q.bcc_addresses, q.subject, q.template, q.from_address, q.attempts, q.status, q.message, q.created_at, q.sent_at';
 
+/**
+ * Test connection / Send test mail with the settings as filled in (the stored secret when none is typed).
+ * (sprint 118) `workspaceId`: a workspace's own service, with the checks of serviceSettings().
+ */
+export async function runCheck(b: Record<string, string | undefined>, stored: MailService | null, username: string | null, workspaceId: number | null = null): Promise<{ ok: boolean; text: string }> {
+  const typed = parseForm(b);
+  const to = String(b.test_to ?? '').trim();
+  const from = String(b.test_from ?? '').trim();
+  try {
+    const sameProvider = stored?.provider === typed.provider;
+    const v = formValues(b, !!(sameProvider && stored?.secret_enc), { connection: b.check !== 'send', workspace: workspaceId !== null });
+    let secret: string | null = b.secret || null;
+    if (!secret && sameProvider && stored?.secret_enc) {
+      try {
+        secret = decryptSecret(stored.secret_enc);
+      } catch (e) {
+        throw new MailError(`The stored secret can't be read: ${(e as Error).message}`, false);
+      }
+    }
+    const svc = { name: stored?.name ?? 'new', provider: v.provider, settings: v.settings, workspace_id: workspaceId };
+    if (b.check === 'send') {
+      if (!ADDRESS.test(to)) throw new MailError('Give the address to send the test mail to.', false);
+      if (!ADDRESS.test(from) || !senderAllowed(v.senders, from)) throw new MailError('The From address must be one of the allowed senders.', false);
+      const pid = await deliver(v.provider, await serviceSettings(svc), secret, {
+        from, to: [to], cc: [], bcc: [], replyTo: null, subject: `pgkiln: test of a mail service (${PROVIDER_LABELS[v.provider]})`,
+        text: `This is a test of a pgkiln mail service${stored ? ` (${stored.name})` : ''}, sent from the App Builder by ${username}.`, html: null, attachments: [],
+      });
+      return { ok: true, text: `The test mail was handed to ${PROVIDER_LABELS[v.provider]}${pid ? ` (its id: ${pid})` : ''}. Check the mailbox of ${to}.` };
+    }
+    return { ok: true, text: await verifyService(svc, secret) };
+  } catch (e) {
+    return { ok: false, text: e instanceof MailError || !(e instanceof TypeError) ? (e as Error).message : 'The check failed.' };
+  }
+}
+
 export async function mailRoutes(app: FastifyInstance) {
   app.get(`${BASE}/mail`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply, 'Mail services'))) return;
     const services = (await owner.query(`select s.id, s.name, s.description, s.provider, s.senders, s.enabled, s.secret_enc is not null as has_secret,
-        (select string_agg(a.alias, ', ' order by a.alias) from meta.app_mail_service x join meta.app a on a.id = x.app_id where x.service_id = s.id) as apps
-      from meta.mail_service s order by s.name`)).rows;
+        (select string_agg(a.alias, ', ' order by a.alias) from meta.app_mail_service x join meta.app a on a.id = x.app_id where x.service_id = s.id) as apps,
+        (select w.name from meta.workspace w where w.id = s.workspace_id) as workspace
+      from meta.mail_service s order by s.workspace_id is not null, s.name`)).rows;
     const recent = (await owner.query(`select ${MAIL_COLUMNS}, a.alias as app from meta.mail_queue q left join meta.app a on a.id = q.app_id order by q.id desc limit 100`)).rows;
     const main = html`
       <div class="title-row"><h1>Mail services</h1></div>
@@ -203,7 +249,7 @@ export async function mailRoutes(app: FastifyInstance) {
             <td data-label="Provider">${PROVIDER_LABELS[x.provider as Provider]}</td>
             <td data-label="Senders" class="u-break">${x.senders.join(', ')}</td>
             <td data-label="Secret">${x.has_secret ? 'stored (encrypted)' : x.provider === 'log' ? '–' : html`<b>missing</b>`}</td>
-            <td data-label="Applications">${x.apps ?? html`<span class="muted">none</span>`}</td>
+            <td data-label="Applications">${x.workspace ? html`<span class="tag">workspace ${x.workspace}</span> ` : ''}${x.apps ?? (x.workspace ? html`<span class="muted">its applications without a service of their own</span>` : html`<span class="muted">none</span>`)}</td>
             <td data-label="Status">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
             : html`<tr><td colspan="6" class="empty">No mail services yet.</td></tr>`}</tbody></table></div>`,
         html`<a class="btn btn-sm btn-hot" href="${BASE}/mail/new">${icon('plus')} Add service</a>`)}
@@ -275,12 +321,14 @@ export async function mailRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply, 'Mail services'))) return;
     const x = await owner.one<MailService & { has_secret: boolean }>(
-      'select id, name, description, provider, settings, senders, enabled, secret_enc is not null as has_secret from meta.mail_service where id = $1', [req.params.id]);
+      'select id, name, description, provider, settings, senders, enabled, workspace_id, secret_enc is not null as has_secret from meta.mail_service where id = $1', [req.params.id]);
     if (!x) return reply.code(404).send('Not found');
     const provider = (PROVIDERS as readonly string[]).includes(String(req.query.provider)) ? (req.query.provider as Provider) : x.provider;
+    // (sprint 118) a workspace's own service serves that workspace's applications only
     const apps = (await owner.query(`select a.id, a.alias, a.name, x.service_id, x.from_address, x.max_per_day, o.name as other
       from meta.app a left join meta.app_mail_service x on x.app_id = a.id left join meta.mail_service o on o.id = x.service_id and o.id <> $1
-      order by a.alias`, [x.id])).rows;
+      where $2::int is null or meta.app_workspace(a.id) = $2
+      order by a.alias`, [x.id, x.workspace_id ?? null])).rows;
     const recent = (await owner.query(`select ${MAIL_COLUMNS}, a.alias as app from meta.mail_queue q left join meta.app a on a.id = q.app_id
        where q.service = $1 or q.app_id in (select app_id from meta.app_mail_service where service_id = $2) order by q.id desc limit 50`, [x.name, x.id])).rows;
     const main = html`
@@ -334,10 +382,11 @@ export async function mailRoutes(app: FastifyInstance) {
     const b = req.body as Record<string, string | string[] | undefined>;
     const allow = new Set([b.allow ?? []].flat().map(Number).filter(Number.isInteger));
     try {
-      const service = await owner.one<{ senders: string[] }>('select senders from meta.mail_service where id = $1', [req.params.id]);
+      const service = await owner.one<{ senders: string[]; workspace_id: number | null }>('select senders, workspace_id from meta.mail_service where id = $1', [req.params.id]);
       if (!service) throw new Error('Not found.');
       await owner.tx(async (c) => {
-        const apps = (await c.query<{ id: number }>('select id from meta.app')).rows.map((a) => a.id);
+        // (sprint 118) a workspace's own service: that workspace's applications only
+        const apps = (await c.query<{ id: number }>('select id from meta.app where $1::int is null or meta.app_workspace(id) = $1', [service.workspace_id])).rows.map((a) => a.id);
         await c.query('delete from meta.app_mail_service where service_id = $1 and not (app_id = any($2::int[]))', [req.params.id, [...allow]]);
         for (const id of apps.filter((a) => allow.has(a))) {
           const from = String(b[`from_${id}`] ?? '').trim() || null;
@@ -369,30 +418,7 @@ export async function mailRoutes(app: FastifyInstance) {
     const typed = parseForm(b);
     const to = String(b.test_to ?? '').trim();
     const from = String(b.test_from ?? '').trim();
-    let result: { ok: boolean; text: string };
-    try {
-      const sameProvider = stored?.provider === typed.provider;
-      const v = formValues(b, !!(sameProvider && stored?.secret_enc), { connection: b.check !== 'send' });
-      let secret: string | null = b.secret || null;
-      if (!secret && sameProvider && stored?.secret_enc) {
-        try {
-          secret = decryptSecret(stored.secret_enc);
-        } catch (e) {
-          throw new MailError(`The stored secret can't be read: ${(e as Error).message}`, false);
-        }
-      }
-      if (b.check === 'send') {
-        if (!ADDRESS.test(to)) throw new MailError('Give the address to send the test mail to.', false);
-        if (!ADDRESS.test(from) || !senderAllowed(v.senders, from)) throw new MailError('The From address must be one of the allowed senders.', false);
-        const pid = await deliver(v.provider, v.settings, secret, {
-          from, to: [to], cc: [], bcc: [], replyTo: null, subject: `pgkiln: test of a mail service (${PROVIDER_LABELS[v.provider]})`,
-          text: `This is a test of a pgkiln mail service${stored ? ` (${stored.name})` : ''}, sent from the App Builder by ${s.username}.`, html: null, attachments: [],
-        });
-        result = { ok: true, text: `The test mail was handed to ${PROVIDER_LABELS[v.provider]}${pid ? ` (its id: ${pid})` : ''}. Check the mailbox of ${to}.` };
-      } else result = { ok: true, text: await verifyConnection(v.provider, v.settings, secret) };
-    } catch (e) {
-      result = { ok: false, text: e instanceof MailError || !(e instanceof TypeError) ? (e as Error).message : 'The check failed.' };
-    }
+    const result = await runCheck(b, stored ?? null, s.username, stored?.workspace_id ?? null);
     await logActivity({ username: s.username, event: 'mail_check', ip: clientIp(req), detail: `${b.check === 'send' ? 'send' : 'connection'} ${typed.provider}${stored ? ` ${stored.name}` : ''}: ${result.ok ? 'ok' : 'failed'}` });
     if (String(req.headers.accept ?? '').includes('application/json')) return reply.header('cache-control', 'no-store').send(result);
     const x = { id: stored?.id, name: stored?.name, description: typed.description, provider: typed.provider, settings: typed.settings, senders: typed.senders, enabled: typed.enabled,
@@ -416,8 +442,9 @@ export async function mailRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await owner.one<{ id: number; alias: string; name: string }>('select id, alias, name from meta.app where id = $1', [req.params.id]);
     if (!a) return reply.code(404).send('Not found');
+    // the application's service, else (sprint 118) its workspace's own
     const service = await owner.one(`select s.name, s.provider, s.enabled, x.from_address, x.max_per_day, s.settings->>'default_from' as default_from
-      from meta.app_mail_service x join meta.mail_service s on s.id = x.service_id where x.app_id = $1`, [a.id]);
+      from meta.mail_service s left join meta.app_mail_service x on x.app_id = $1 and x.service_id = s.id where s.id = meta.mail_service_for_app($1)`, [a.id]);
     const today = (await owner.one(`select count(*)::int as n from meta.mail_queue where app_id = $1 and created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC' and status <> 'cancelled'`, [a.id])).n;
     const status = String(req.query.status ?? '');
     const rows = (await owner.query(`select ${MAIL_COLUMNS} from meta.mail_queue q where q.app_id = $1 and ($2 = '' or q.status = $2) order by q.id desc limit 200`, [a.id, status])).rows;

@@ -22,6 +22,16 @@ All notable changes to this project are documented here. The format follows
   (`appearance`, `strip`, `strip_dark`), so it travels with export and import. No migration.
 - **Subtle colour utilities** `u-color-1-subtle` … `u-color-15-subtle` and `u-color-{success,danger,warning,info,neutral}-subtle`:
   tinted backgrounds with AA-contrast text in light and dark mode.
+- **Mail queue, a workspace's own mail service and network access** (WS-9; APEX 26.1 / 26.2 Administration;
+  migration 126): Administration → **Mail queue** shows queued, sent, failed and retrying mail per hour and per
+  workspace / application, the slowest provider calls and the failures with the provider's answer (e.g. the SMTP
+  reply), with **Retry** and **Purge** (administrators: every workspace; a workspace's administrators: their own).
+  A workspace's administrators can set up the workspace's **own mail service** (any provider, the secret encrypted
+  and write-only; its applications without a service of their own send through it). Administration → **Network
+  access**: a workspace's list of hosts (`api.example.com`, `*.example.com`, `host:port`) narrows
+  `PGKILN_REST_ALLOWED_HOSTS` for every outgoing web call of its applications (`meta.web_request`, REST data
+  sources, invoke API, token endpoints, object storage, REST source catalogs), on every redirect hop; refused calls
+  go to the debug log and a *Refused calls* list. `meta.mail_queue` records each attempt's provider and duration.
 
 ### Changed
 - `docs/apex-feature-parity.md` compares with **APEX 26.2**: a new section for the 26.2 workspace items WS-1 … WS-13
@@ -38,6 +48,12 @@ All notable changes to this project are documented here. The format follows
 - A theme or style with both an accent and a header colour wrote them as one malformed CSS declaration, so the header
   colour (and the soft accent) were ignored.
 - The top navigation's sub-menus used the page surface behind the menu's text colour (unreadable with Iris's dark menu).
+
+### Security
+- *REST source catalogs → read from a URL* fetched the URL before the developer's session and CSRF token were
+  checked; it now reads it only afterwards, within the current workspace's network access list.
+- A workspace's mail service has no API base URL or token URL, and its SMTP host must pass the installation's
+  allow-list and the workspace's list and resolve to a public address (connected to by the checked address).
 
 ## [0.52.0] - 2026-10-19
 

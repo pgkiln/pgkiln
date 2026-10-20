@@ -82,7 +82,9 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (123) the log of running workflow instances migrated to a newer version (runtime data, like the instances)
   'workflow_migration',
   // (125) who changed the application last in the builder (App Builder list: Updated by)
-  'app_change'];
+  'app_change',
+  // (126) outgoing calls the network access lists refused (Administration → Network access; a log, 7 days)
+  'network_refusal'];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */

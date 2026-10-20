@@ -12,6 +12,7 @@ import { webRequest } from '../webclient.ts';
 import { sourceProblems } from '../websources.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Body, type Req } from './ui.ts';
 import { currentWorkspace } from './workspaces.ts';
+import { scopeForWorkspace } from '../network-acl.ts';
 
 // Workspace utilities → REST Source Catalogs (migration 095; APEX: Workspace
 // Utilities → REST Source Catalogs): the current workspace's catalogs, a
@@ -59,7 +60,7 @@ function importForm(s: Session, action: string, replacing: boolean): Raw {
 }
 
 /** The text of an uploaded, pasted or fetched document (and where it came from). */
-async function documentText(req: Req): Promise<{ text: string; from?: string }> {
+async function documentText(req: Req): Promise<{ text: string; from?: string; url?: string }> {
   let text = '';
   if (req.isMultipart()) {
     const parsed = await readMultipart(req, MAX_DOC_BYTES / 1024 / 1024);
@@ -73,7 +74,19 @@ async function documentText(req: Req): Promise<{ text: string; from?: string }> 
   const url = String(req.body?.url ?? '').trim();
   if (!url) throw new Error('Choose a file, paste a document or give its URL.');
   if (!/^https?:\/\//i.test(url)) throw new Error('The URL starts with http:// or https://.');
-  const r = await webRequest(url, { headers: { accept: 'application/json' }, timeoutMs: 15_000, maxBytes: MAX_DOC_BYTES });
+  return { text: '', url };
+}
+
+/**
+ * The document itself: the uploaded or pasted text, or (sprint 118) the URL read now, after the developer
+ * was checked, within the installation's allow-list and the current workspace's network access list.
+ */
+async function documentOf(doc: { text: string; from?: string; url?: string }, s: Session): Promise<{ text: string; from?: string }> {
+  if (!doc.url) return doc;
+  const r = await webRequest(doc.url, {
+    headers: { accept: 'application/json' }, timeoutMs: 15_000, maxBytes: MAX_DOC_BYTES,
+    scope: await scopeForWorkspace(currentWorkspace(s), 'REST source catalog (read from a URL)'),
+  });
   if (r.status !== 200) throw new Error(`The URL answered HTTP ${r.status}.`);
   return { text: r.body.toString('utf8'), from: r.url };
 }
@@ -177,7 +190,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
   });
 
   app.post(`${root}/import`, async (req: Req, reply) => {
-    let doc: { text: string; from?: string } | Error;
+    let doc: { text: string; from?: string; url?: string } | Error;
     try {
       doc = await documentText(req);
     } catch (e) {
@@ -187,6 +200,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     if (!s) return;
     try {
       if (doc instanceof Error) throw doc;
+      doc = await documentOf(doc, s);
       const { catalog, notes } = readCatalogText(doc.text, { baseUrl: req.body?.base_url, from: doc.from, name: req.body?.name });
       const problems = wholeCatalogProblems(catalog);
       if (problems.length) throw new Error(`The catalog can't be used as it is: ${problems.slice(0, 8).join(' ')}${problems.length > 8 ? ` (and ${problems.length - 8} more)` : ''}`);
@@ -264,7 +278,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
   });
 
   app.post(`${root}/:cid(^\\d+$)/import`, async (req: Req, reply) => {
-    let doc: { text: string; from?: string } | Error;
+    let doc: { text: string; from?: string; url?: string } | Error;
     try {
       doc = await documentText(req);
     } catch (e) {
@@ -276,6 +290,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     if (!c) return reply.code(404).send('Not found');
     try {
       if (doc instanceof Error) throw doc;
+      doc = await documentOf(doc, s);
       const { catalog, notes } = readCatalogText(doc.text, { baseUrl: req.body?.base_url, from: doc.from, name: c.name });
       const problems = wholeCatalogProblems(catalog);
       if (problems.length) throw new Error(problems.slice(0, 8).join(' '));

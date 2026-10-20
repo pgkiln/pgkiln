@@ -232,7 +232,7 @@ describe('web credentials', () => {
   const cred = (over: Partial<import('../src/websources.ts').WebCredential>): import('../src/websources.ts').WebCredential => ({
     id: 900001, app_id: 0, name: 'T', type: 'basic', username: 'u', header_name: null, token_url: null, scope: null, valid_for: [], secret_enc: encryptSecret('s3cret'), ...over,
   });
-  const echo = async (c: import('../src/websources.ts').WebCredential, url = `${mockBase}/echo`) => JSON.parse((await ws.call({ url, credential: c })).body.toString()).headers;
+  const echo = async (c: import('../src/websources.ts').WebCredential, url = `${mockBase}/echo`) => JSON.parse((await ws.call({ appId: null, url, credential: c })).body.toString()).headers;
 
   test('basic, bearer and header credentials sign the request', async () => {
     assert.equal((await echo(cred({}))).authorization, `Basic ${Buffer.from('u:s3cret').toString('base64')}`);
@@ -254,15 +254,15 @@ describe('web credentials', () => {
     ws.clearTokens();
     const c = cred({ id: 900002, type: 'oauth2', username: 'client-1', token_url: `${mockBase}/token`, scope: 'read' });
     const before = tokenCalls;
-    for (let i = 0; i < 3; i++) assert.equal((await ws.call({ url: `${mockBase}/protected`, credential: c })).status, 200);
+    for (let i = 0; i < 3; i++) assert.equal((await ws.call({ appId: null, url: `${mockBase}/protected`, credential: c })).status, 200);
     assert.equal(tokenCalls - before, 1, 'one token for three calls');
     const req = [...seen].reverse().find((s) => s.url === '/token')!;
     assert.equal(new URLSearchParams(req.body).get('grant_type'), 'client_credentials');
     assert.equal(new URLSearchParams(req.body).get('scope'), 'read');
     currentToken = 'revoked';
-    assert.equal((await ws.call({ url: `${mockBase}/protected`, credential: c })).status, 200, 'renewed after a 401');
+    assert.equal((await ws.call({ appId: null, url: `${mockBase}/protected`, credential: c })).status, 200, 'renewed after a 401');
     assert.equal(tokenCalls - before, 2);
-    await assert.rejects(ws.call({ url: `${mockBase}/protected`, credential: cred({ id: 900003, type: 'oauth2', username: 'client-1', token_url: `${mockBase}/token`, secret_enc: encryptSecret('wrong') }) }),
+    await assert.rejects(ws.call({ appId: null, url: `${mockBase}/protected`, credential: cred({ id: 900003, type: 'oauth2', username: 'client-1', token_url: `${mockBase}/token`, secret_enc: encryptSecret('wrong') }) }),
       (e: Error) => /answered 401 \(invalid_client\)/.test(e.message) && !e.message.includes('wrong'));
   });
 
@@ -270,7 +270,7 @@ describe('web credentials', () => {
     const client = await owner.one(`select * from meta.oauth_create_client('hr', 'rest-sources-test', '{admin}')`);
     try {
       const c = cred({ id: 900004, type: 'oauth2', username: client.client_id, token_url: `${base}/oauth/token`, secret_enc: encryptSecret(client.client_secret) });
-      const res = await ws.call({ url: `${base}/a/hr/rest/v1/employees?limit=3`, credential: c });
+      const res = await ws.call({ appId: null, url: `${base}/a/hr/rest/v1/employees?limit=3`, credential: c });
       assert.equal(res.status, 200);
       assert.equal(JSON.parse(res.body.toString()).items.length, 3);
     } finally {

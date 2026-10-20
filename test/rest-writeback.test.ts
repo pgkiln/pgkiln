@@ -220,7 +220,7 @@ describe('OAuth2 password and refresh token grants', () => {
     try {
       let cred = await ws.loadCredential(appId, 'T_PW');
       seen.length = 0;
-      assert.equal((await ws.call({ url: `${mockBase}/secure`, credential: cred })).status, 200);
+      assert.equal((await ws.call({ appId: null, url: `${mockBase}/secure`, credential: cred })).status, 200);
       const tokenReq = new URLSearchParams(seen.find((x) => x.url === '/token')!.body);
       assert.equal(tokenReq.get('grant_type'), 'password');
       assert.equal(tokenReq.get('username'), 'robot');
@@ -233,7 +233,7 @@ describe('OAuth2 password and refresh token grants', () => {
       // after a restart (no tokens in memory) the stored refresh token is used, and the rotated one kept
       ws.clearTokens();
       cred = await ws.loadCredential(appId, 'T_PW');
-      assert.equal((await ws.call({ url: `${mockBase}/secure`, credential: cred })).status, 200);
+      assert.equal((await ws.call({ appId: null, url: `${mockBase}/secure`, credential: cred })).status, 200);
       assert.equal(tokenResponses.at(-1)!.grant, 'refresh_token');
       const rotated = await owner.one('select refresh_token_enc from meta.web_credential where id = $1', [c.id]);
       assert.notEqual(rotated.refresh_token_enc, row.refresh_token_enc);
@@ -241,12 +241,12 @@ describe('OAuth2 password and refresh token grants', () => {
       refreshValid.clear();
       ws.clearTokens();
       cred = await ws.loadCredential(appId, 'T_PW');
-      assert.equal((await ws.call({ url: `${mockBase}/secure`, credential: cred })).status, 200);
+      assert.equal((await ws.call({ appId: null, url: `${mockBase}/secure`, credential: cred })).status, 200);
       assert.deepEqual(tokenResponses.slice(-1).map((x) => x.grant), ['password']);
       // a wrong password: an error without the password
       await owner.query('update meta.web_credential set password_enc = $2, refresh_token_enc = null where id = $1', [c.id, encryptSecret('wrong-pass')]);
       ws.clearTokens();
-      await assert.rejects(ws.call({ url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_PW') }),
+      await assert.rejects(ws.call({ appId: null, url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_PW') }),
         (e: Error) => /answered 400 \(invalid_grant\)/.test(e.message) && !e.message.includes('wrong-pass'));
     } finally {
       await owner.query('delete from meta.web_credential where id = $1', [c.id]);
@@ -262,19 +262,19 @@ describe('OAuth2 password and refresh token grants', () => {
       [appId, `${mockBase}/token`, encryptSecret('client-secret')],
     );
     try {
-      await assert.rejects(ws.call({ url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') }), /has no refresh token: enter one/);
+      await assert.rejects(ws.call({ appId: null, url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') }), /has no refresh token: enter one/);
       await owner.query('update meta.web_credential set refresh_token_enc = $2 where id = $1', [c.id, encryptSecret('start-token')]);
       seen.length = 0;
-      assert.equal((await ws.call({ url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') })).status, 200);
+      assert.equal((await ws.call({ appId: null, url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') })).status, 200);
       const t = seen.find((x) => x.url === '/token')!;
       assert.equal(new URLSearchParams(t.body).get('refresh_token'), 'start-token');
       assert.equal(t.headers.authorization, `Basic ${Buffer.from('client-9:client-secret').toString('base64')}`);
       // the old token was used up; the stored one is the new one
       ws.clearTokens();
-      assert.equal((await ws.call({ url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') })).status, 200);
+      assert.equal((await ws.call({ appId: null, url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') })).status, 200);
       refreshValid.clear();
       ws.clearTokens();
-      await assert.rejects(ws.call({ url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') }), /may have expired: enter a new one/);
+      await assert.rejects(ws.call({ appId: null, url: `${mockBase}/secure`, credential: await ws.loadCredential(appId, 'T_RT') }), /may have expired: enter a new one/);
     } finally {
       await owner.query('delete from meta.web_credential where id = $1', [c.id]);
     }

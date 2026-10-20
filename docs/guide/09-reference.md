@@ -81,7 +81,9 @@ select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
   must be on `PGKILN_REST_ALLOWED_HOSTS` (unset: no calls), private and loopback addresses are refused
   when the connection is made unless the host is in `PGKILN_REST_PRIVATE_HOSTS`, redirects (at most 3)
   go through the same checks, the response is cut off at `PGKILN_REST_MAX_BYTES` (default 5 MB) and
-  the time limit is 1–60 seconds.
+  the time limit is 1–60 seconds. A workspace's [network access list](03-builder.md#network-access)
+  (sprint 118) narrows the hosts for its applications: a refused request ends with `status` `error`
+  and the reason in `message`, and is logged (debug log, Refused calls).
 - **Web credentials** are named, never passed: `p_credential => 'NAME'` signs the request with a
   credential of the current application (basic, bearer, header, OAuth2), and only for the URLs it is
   valid for. The secret is decrypted by the server for the request only and is never stored with it

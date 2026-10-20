@@ -51,6 +51,7 @@ const NOT_EXPORTED = new Set([
   'team_issue', // (122) Team Development issues: workspace data (the workspace export's "team" part links them to the application by alias)
   'workflow_migration', // (123) the log of running instances migrated to a newer version: runtime data, like the instances
   'app_change', // (125) the developer who changed the application last: builder state of this installation, like locks
+  'network_refusal', // (126) outgoing calls the network access lists refused: a log of this installation (7 days)
 ]);
 
 /** Where each exported table appears in the document. */
