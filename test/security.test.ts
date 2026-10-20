@@ -10809,3 +10809,55 @@ describe('sprint 117 WS-10', () => {
     assert.doesNotMatch(css, /--strip/, 'no value, no strip');
   });
 });
+
+describe('sprint 119 WS-13', () => {
+  // SQL Workshop › a table › Security: GRANT / REVOKE and a masking view, so only a developer with a valid CSRF token
+  // may post it, only for tables of the workspace's schemas, and names and roles reach SQL quoted (src/datasec.ts).
+  const T = 'ds119sec';
+  const dev = async () => {
+    const d = new Browser();
+    await d.get('/builder/login');
+    await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'admin', password: 'admin' });
+    await d.get(`/builder/sql/objects/security?o=public.${T}`);
+    return d;
+  };
+  before(async () => {
+    await owner.query(`drop table if exists public.${T} cascade; create table public.${T} (id int primary key, secret text); grant select on public.${T} to hr_app`);
+  });
+  after(async () => {
+    await owner.query(`drop table if exists public.${T} cascade`);
+    if ((await owner.query(`select from pg_roles where rolname = 'public_masking'`)).rowCount) await owner.query('drop owned by public_masking; drop role public_masking');
+  });
+
+  test('signed out, without the CSRF token, or on pgkiln\'s own schema: nothing changes', async () => {
+    const form = { ref: `public.${T}`, shown_roles: '', 'g.0.s.0': 'on', mode: 'apply' };
+    const anon = new Browser();
+    const r = await anon.post('/builder/sql/objects/security', form);
+    assert.ok([302, 303, 403].includes(r.statusCode), String(r.statusCode));
+    const d = await dev();
+    assert.equal((await d.post('/builder/sql/objects/security', form)).statusCode, 403, 'no CSRF token');
+    assert.equal((await owner.one(`select has_column_privilege('hr_app', 'public.${T}', 'secret', 'select') as ok`)).ok, true);
+    assert.equal((await d.get('/builder/sql/objects/security?o=meta.app')).statusCode, 404);
+    assert.equal((await d.get('/builder/sql/objects/security?o=pg_catalog.pg_authid')).statusCode, 404);
+  });
+
+  test('view names and application roles that could break out of their quotes are refused or quoted', async () => {
+    const d = await dev();
+    const bad = await d.post('/builder/sql/objects/security', {
+      __csrf: d.lastCsrf, ref: `public.${T}`, shown_roles: '', 'g.0.s.0': 'on', 'g.0.s.1': 'on', mode: 'apply',
+      view: 'on', view_name: 'v"; drop table x; --', roles: "boss'); drop table x; --",
+    });
+    assert.equal(bad.statusCode, 200);
+    assert.match(bad.body, /needs a name of letters/);
+    assert.match(bad.body, /is not a valid application role/);
+    assert.equal((await owner.query(`select from pg_class where relname like 'v%drop%'`)).rowCount, 0);
+    const ok = await d.post('/builder/sql/objects/security', {
+      __csrf: d.lastCsrf, ref: `public.${T}`, shown_roles: 'team lead', 'g.0.s.0': 'on', mode: 'apply',
+      view: 'on', view_name: `${T}_masked`, roles: 'team lead', 'm.1.mask': 'stars', 'm.1.see.0': 'on',
+    });
+    assert.equal(ok.statusCode, 303, ok.body);
+    const def = (await owner.one(`select pg_get_viewdef('public.${T}_masked'::regclass) as d`)).d;
+    assert.match(def, /has_role\('team lead'::text\)/);
+    assert.equal((await owner.one(`select has_column_privilege('hr_app', 'public.${T}', 'secret', 'select') as ok`)).ok, false);
+  });
+});

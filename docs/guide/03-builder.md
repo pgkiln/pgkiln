@@ -1550,6 +1550,10 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     transaction (nothing changes when one fails, and the error shows under *Output*); **Open in the worksheet** puts
     them there instead. *Use as template* starts a new table with the same columns and keys (names with `_copy`).
     Defaults, checks and index expressions are single expressions (no `;` or comments).
+  - (sprint 119) **Security** (the Object Browser's *Security* button on a table, *Security…* in its ⋯ menu): the
+    table's row level security policies, a matrix of database roles × columns with *read* and *update*, and masked
+    columns per application role in a masking view; Preview SQL, Apply (one transaction, recorded in the Change Log)
+    or Open in the worksheet ([chapter 8](08-security.md#data-security-per-table-rows-columns-and-values)).
   - **Run Statement** (**Ctrl/Cmd + Enter**) runs the statement at the cursor: the one the cursor is in, else the
     nearest one before it. A selection runs as it is, even when it holds several statements. The rows of the last
     query show in **Query Result**, up to 500, with row numbers, numbers right-aligned and NULL as *(null)*. The

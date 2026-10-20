@@ -540,6 +540,61 @@ quoted with `escapeIdentifier`, every value is checked (dates, numbers, schema n
 The page is for administrators only (others get 403), every change needs the CSRF token, and pgkiln's own roles can't
 be changed, dropped or granted from it, so the page can't take pgkiln's own connections away.
 
+## Data security per table: rows, columns and values
+
+(sprint 119) PostgreSQL has row level security but no column masking, so pgkiln puts a table's security in three
+layers, all ordinary database objects, and shows them on one page: **SQL Workshop → Object Browser → a table →
+Security** (also *Security…* in the table's ⋯ menu). It is pgkiln's answer to APEX 26.2's Deep Data Security.
+
+- **Rows**: the table's row level security policies (above), listed with a link to Table Properties to switch row
+  level security on and to *Add policy*.
+- **Columns**: a matrix of **database roles × columns** with *read* and *update* per cell. The rows are the roles
+  that have privileges on the table and the database roles of the workspace's applications (with the applications
+  that run as them). Apply writes `GRANT` / `REVOKE SELECT (c, …)` and `UPDATE (c, …)`. A column a role may not read
+  is refused by PostgreSQL ("permission denied") whoever sends the query. The table's owner, superusers and roles that
+  bypass row level security are listed apart: column privileges can't restrict them.
+- **Values**: masked columns per **application role** (`meta.has_role()` of the signed-in user). A column's mask is
+  *empty (null)*, `***` or `***` plus the last four characters; tick the application roles that see the real value,
+  and *Everyone else* for users with none of the listed roles. The masks live in a **masking view** next to the table
+  (default name `<table>_masked`):
+
+  ```sql
+  create view sales.orders_masked with (security_barrier) as
+  select t.id, t.customer,
+         case when (select meta.has_role('manager')) then t.amount end as amount,
+         case when false then t.iban::text else '***' || right(t.iban::text, 4) end as iban
+    from sales.orders t;
+  ```
+
+  The view is owned by a role per schema, `<schema>_masking` (nologin), which pgkiln creates the first time. That
+  role is no owner, superuser or role that bypasses row level security (Apply checks it), so the table's policies
+  still apply inside the view; and it is a member of the database roles that read the table, so policies written
+  `to <role>` apply as well. The configuration is kept in the view's comment, so it travels with `pg_dump`,
+  Generate DDL and the change log; there is no `meta` table for it.
+
+**Preview SQL** shows the statements, **Apply** runs them in one transaction (and records a change set in the
+Change Log), **Open in the worksheet** puts them there. Nothing is changed when one statement fails.
+
+**The mask holds only where the view is read.** As long as a role may still read the raw column on the table, its
+queries on the table see the value; the preview warns about each such column. Point the application's pages,
+REST handlers and AI tools at the view, then untick *read* of the masked columns for the role, and the value is
+masked everywhere that role connects.
+
+Every client meets the same rules because they all run as the application's database role with the same identity:
+
+| Client | Runs as | `meta.app_user()` / `meta.has_role()` from |
+|---|---|---|
+| Pages, processes, dynamic actions, AI assistant and AI agent tools | the application's role (`appTx`) | the session |
+| REST module handlers, AutoREST | the application's role | the bearer token (its user, the user's roles) |
+| The MCP server's `run_query` with `alias` (and `user`) | the application's role | the user's roles in the application ([chapter 20](20-ai-agents.md#safety)) |
+| psql, other tools | whatever role they log in as | — (only grants and policies apply) |
+
+Policies and masks that use `meta.has_role()` can be combined: with a policy that shows a manager the rows of their
+department, and `amount` masked for everyone but `manager`, a clerk reads their own rows with an empty amount.
+Policies written per database role (`to sales_app`) apply to the masking role for every role it is a member of, so
+prefer policies on `meta.app_user()` / `meta.has_role()` on tables with a masking view. The HR example's page 48
+*Salaries (masked)* reads `hr.emp_masked` (`examples/hr/hr_70_data_security.sql`).
+
 ## Session state protection
 
 - **URL items**: on pages with protection *Arguments must have checksum* (the default), item

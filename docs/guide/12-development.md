@@ -96,6 +96,9 @@ src/
                            objects, type reporting, roles viewer/editor/administrator as schemes EDITOR and ADMIN, page 1 a Data
                            Reporter), reportingApps(), reportingAppCount() (meta.reporting_app_count, for the workspace home)
   tabledef.ts              (sprint 95) a table as a definition: readTable(), checkTable(), tableSql() (CREATE, or ALTER from the catalog's version)
+  datasec.ts               (sprint 119, WS-13) data security per table: readSecurity() (policies, column privileges per role, the
+                           masking view and its configuration in the view comment), checkSecurity(), securitySql() (GRANT / REVOKE,
+                           the masking view owned by <schema>_masking); the page is builder/data-security.ts
   sqlformat.ts             (sprint 93) formatSql(): the worksheet's Format (clauses per line, keyword case; strings and comments kept)
   sqlplan.ts               (sprint 92) EXPLAIN (FORMAT JSON) as a tree: parsePlan() (self time, slowest step, misestimates), planText()
   quicksql.ts              Quick SQL: shorthand parser and PostgreSQL DDL generator (unit tested)
@@ -309,6 +312,7 @@ src/
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
     table-editor.ts        (sprint 95) Table Properties: GET/POST /sql/objects/table (create, edit ?o=, ?template=), fromForm(), Preview / Apply
                            (one transaction) / Open in the worksheet
+    data-security.ts       (sprint 119) a table's Security: GET/POST /sql/objects/security?o= (policies, roles × columns, masks), Preview / Apply
     object-actions.ts      (sprint 94) an object's ⋯ menu (objectMenu) in the worksheet and the Object Browser: Quick DDL (objectDdl), Drop with
                            dependents, Add index / trigger / policy as drafts; GET /sql/objects/action, /sql/objects/panel (Open in a panel)
     data-modeler.ts        (sprint 98) SQL Workshop → Data Modeler: /sql/modeler (diagrams, meta.sql_diagram, 111), /:id (SVG), /:id/objects, /layout,

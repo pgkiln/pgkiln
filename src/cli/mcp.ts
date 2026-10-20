@@ -17,6 +17,7 @@ const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 /** Cap on the text one tool call returns, so a large application does not flood the agent's context. */
 const MAX_TEXT = 200_000;
 const QUERY_TIMEOUT = '10s';
+const pgIdent = (n: string) => `"${n.replace(/"/g, '""')}"`;
 
 const version = () => JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version as string;
 
@@ -139,10 +140,35 @@ export function searchDocs(query: string, max: number) {
 /** Column names whose values run_query never shows (password hashes, tokens, secrets). */
 const SENSITIVE = /password|secret|token|hash|private_key|api_key|client_secret/i;
 
-export async function readOnlyQuery(db: Db, sql: string, maxRows: number) {
+/**
+ * (sprint 119, WS-13) Whom a query runs as: an application's database role, with meta.app_id(), meta.app_user() and
+ * meta.has_role() (the user's roles in the application) set, so grants, column privileges, row level security and
+ * masking views apply as they do to that user's pages. It shows the agent what the user sees; it is no sandbox, as
+ * the MCP server itself connects as pgkiln's owner.
+ */
+export interface QueryIdentity { appId: number; dbRole: string; user: string }
+
+/** The identity of `user` in the application `alias`; an application without a database role is refused. */
+export async function queryIdentity(db: Db, alias: string, user: string | undefined): Promise<QueryIdentity> {
+  const a = (await db.query(`select id, db_role from meta.app where alias = $1`, [alias])).rows[0];
+  if (!a) throw new ToolError(`no application ${alias}`);
+  if (!a.db_role) throw new ToolError(`${alias} runs without a database role, so its users see what pgkiln's owner sees: give it one (Settings → Security) to run as its users`);
+  return { appId: a.id, dbRole: a.db_role, user: user?.trim() || 'nobody' };
+}
+
+export async function readOnlyQuery(db: Db, sql: string, maxRows: number, as?: QueryIdentity) {
   // the select takes a snapshot, after which "set transaction read write" is refused
   await db.query(`begin transaction read only; set local statement_timeout = '${QUERY_TIMEOUT}'; select 1`);
   try {
+    if (as) {
+      await db.query(
+        `select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', '', true),
+                -- meta.has_role(): the user's roles in the application (meta.account_roles), as for an API token
+                set_config('request.jwt.claims', json_build_object('sub', $2::text)::text, true)`,
+        [String(as.appId), as.user],
+      );
+      await db.query(`set local role ${pgIdent(as.dbRole)}`);
+    }
     // the extended protocol runs exactly one statement, so a "commit; delete …"
     // cannot end the read-only transaction and go on (pg would use the simple
     // protocol, which runs them all, for a query without parameters)
@@ -521,17 +547,27 @@ export const TOOLS: Tool[] = [
     description:
       `Runs one SQL statement in a read-only transaction (rolled back, ${QUERY_TIMEOUT} timeout) and returns the rows as JSON. ` +
       'Use it to look at data and at the meta schema; it cannot change anything. Values of columns named like password, secret, token or hash are hidden. ' +
-      'Bind variables (:P1_X) are not replaced: use literals.',
+      'Bind variables (:P1_X) are not replaced: use literals. ' +
+      'With alias (and user), the query runs as that application\'s database role for that user, with meta.app_user() and meta.has_role() set: ' +
+      'grants, column privileges, row level security and masking views apply as on the user\'s pages. Without, it runs as pgkiln\'s owner and sees everything.',
     inputSchema: {
       type: 'object',
-      properties: { sql: { type: 'string' }, max_rows: { type: 'integer', description: 'default 50, at most 500' } },
+      properties: {
+        sql: { type: 'string' },
+        max_rows: { type: 'integer', description: 'default 50, at most 500' },
+        alias: { type: 'string', description: 'run as this application\'s database role (list_apps shows the aliases)' },
+        user: { type: 'string', description: 'with alias: the signed-in user (meta.app_user(); their roles in the application for meta.has_role()); default nobody' },
+      },
       required: ['sql'],
     },
     annotations: { readOnlyHint: true },
     async run(a) {
       const sql = str(a, 'sql', true)!;
       const max = int(a, 'max_rows', 50, 500);
-      return withDb(async (db) => cap(stableJson(await readOnlyQuery(db, sql, max))));
+      const alias = str(a, 'alias');
+      const user = str(a, 'user');
+      if (user && !alias) throw new ToolError('user needs alias: the application whose user it is');
+      return withDb(async (db) => cap(stableJson(await readOnlyQuery(db, sql, max, alias ? await queryIdentity(db, alias, user) : undefined))));
     },
   },
   {

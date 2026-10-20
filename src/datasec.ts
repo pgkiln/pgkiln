@@ -107,7 +107,11 @@ export function parseConfig(comment: string | null, table: string): MaskConfig |
 }
 
 /** The comment that marks a masking view (and holds its configuration). */
-export const configComment = (c: MaskConfig) => `${MARK}${c.table}: ${JSON.stringify({ table: c.table, roles: c.roles, cols: c.cols })}`;
+export const configComment = (c: MaskConfig) => {
+  // one spelling per configuration (keys in a fixed order), so an unchanged configuration compares equal
+  const cols = Object.fromEntries(Object.keys(c.cols).sort().map((k) => [k, { mask: c.cols[k].mask, see: [...c.cols[k].see].sort(), others: c.cols[k].others }]));
+  return `${MARK}${c.table}: ${JSON.stringify({ table: c.table, roles: [...c.roles].sort(), cols })}`;
+};
 
 type Q = { query: <T extends pg.QueryResultRow = any>(sql: string, params?: unknown[]) => Promise<pg.QueryResult<T>> };
 
