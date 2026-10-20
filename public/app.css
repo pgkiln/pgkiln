@@ -155,8 +155,8 @@ html[data-style="iris"][data-theme="dark"] {
   --hot: #ece9e6;
   --hot-text: #1a1817;
 }
-html[data-style="iris"] .t-header { box-shadow: inset 0 3px 0 var(--accent); }
-html[data-style="iris"] .t-nav { border-right-color: transparent; }
+html[data-style="iris"] .t-header { box-shadow: inset 0 3px 0 var(--strip, var(--accent)); }
+html[data-style="iris"] .t-nav { border-inline-end-color: transparent; }
 html[data-style="iris"] .t-titlebar { background: transparent; border-bottom: 0; padding: 1.25rem 1.5rem 0.25rem; }
 html[data-style="iris"] .t-titlebar h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
 html[data-style="iris"] .region-header h2 { font-size: 1.05rem; }
@@ -225,7 +225,7 @@ html[data-style="lavender"][data-theme="dark"] {
   --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 8px rgb(0 0 0 / 25%);
 }
 /* Lavender: rounded navigation pills instead of an edge bar, quieter region headers, pill-shaped primary buttons */
-html[data-style="lavender"] .t-nav a[aria-current="page"] { box-shadow: none; border-radius: calc(var(--radius) * 0.75); }
+html[data-style="lavender"] .t-nav a[aria-current="page"] { border-inline-start-color: transparent; border-radius: calc(var(--radius) * 0.75); }
 html[data-style="lavender"] .t-nav a, html[data-style="lavender"] .t-nav summary { border-radius: calc(var(--radius) * 0.75); }
 html[data-style="lavender"] .region-header { border-bottom-color: transparent; }
 html[data-style="lavender"] .region-header h2 { letter-spacing: -0.01em; }
@@ -243,8 +243,8 @@ h2 { font-size: 1rem; margin: 0; font-weight: 600; }
 .lead { font-size: 1.05rem; margin: 0; }
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.skip-link { position: absolute; left: -9999px; top: 0; z-index: 100; background: var(--surface); padding: 0.5rem 1rem; }
-.skip-link:focus { left: 0.5rem; top: 0.5rem; }
+.skip-link { position: absolute; inset-inline-start: -9999px; top: 0; z-index: 100; background: var(--surface); padding: 0.5rem 1rem; }
+.skip-link:focus { inset-inline-start: 0.5rem; top: 0.5rem; }
 .icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 /* (0.31) icon modifiers, like Font APEX's: "users lg", "refresh spin", "truck flip-h success" */
 .icon.icon-xs { width: 0.75em; height: 0.75em; } .icon.icon-sm { width: 0.875em; height: 0.875em; }
@@ -285,15 +285,15 @@ details.menu { position: relative; }
 details.menu > summary { list-style: none; }
 details.menu > summary::-webkit-details-marker { display: none; }
 .menu-panel {
-  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; min-width: 240px;
+  position: absolute; z-index: 30; top: calc(100% + 6px); inset-inline-start: 0; min-width: 240px;
   background: var(--surface); color: var(--text); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: 0 8px 24px rgb(16 24 40 / 16%); padding: 0.4rem 0;
   max-height: min(80vh, 42rem); overflow: auto;
 }
-.menu-panel.align-right, .actions-menu .menu-panel { left: auto; right: 0; }
+.menu-panel.align-right, .actions-menu .menu-panel { inset-inline-start: auto; inset-inline-end: 0; }
 .menu-section { padding: 0.5rem 0.9rem; display: flex; flex-direction: column; gap: 0.4rem; }
 .menu-section + .menu-section { border-top: 1px solid var(--border); }
-.menu-links a, .menu-links button { color: var(--text); text-decoration: none; padding: 0.2rem 0; display: flex; align-items: center; gap: 0.45rem; background: none; border: 0; font: inherit; cursor: pointer; text-align: left; }
+.menu-links a, .menu-links button { color: var(--text); text-decoration: none; padding: 0.2rem 0; display: flex; align-items: center; gap: 0.45rem; background: none; border: 0; font: inherit; cursor: pointer; text-align: start; }
 .menu-links a:hover, .menu-links button:hover { color: var(--accent); }
 .menu-links .icon { width: 1em; height: 1em; }
 .filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; min-width: 320px; }
@@ -308,21 +308,31 @@ details.menu > summary::-webkit-details-marker { display: none; }
   body.nav-collapsed .t-body { grid-template-columns: 0 minmax(0, 1fr); }
   body.nav-collapsed .t-nav { visibility: hidden; }
 }
-.t-nav { background: var(--nav-bg); border-right: 1px solid var(--border); overflow: hidden auto; }
+.t-nav { background: var(--nav-bg); border-inline-end: 1px solid var(--border); overflow: hidden auto; }
 .t-nav ul { list-style: none; margin: 0; padding: 0.5rem; }
-.t-nav ul ul { padding: 0 0 0 1.4rem; }
+/* (sprint 117) a subtree hangs on a guide line; the open trail's line in the accent */
+.t-nav ul ul { padding: 0; padding-inline-start: 0.35rem; margin-inline-start: 1.05rem; border-inline-start: 1px solid var(--nav-guide, color-mix(in srgb, var(--nav-text, var(--text)) 16%, transparent)); }
+.t-nav details:has(> summary.in-trail) > ul { border-inline-start-color: color-mix(in srgb, var(--nav-current, var(--accent)) 55%, transparent); }
 .t-nav a, .t-nav summary {
   display: flex; align-items: center; gap: 0.65rem; padding: 0.5rem 0.65rem; border-radius: 6px;
+  /* (sprint 117) the bar at the inline start (left, or right in RTL) marks the current page */
+  border-inline-start: 3px solid transparent; padding-inline-start: calc(0.65rem - 3px);
   color: var(--nav-text, var(--text)); text-decoration: none; cursor: pointer; white-space: nowrap; font-size: 0.93rem;
 }
 .t-nav summary { list-style: none; }
 .t-nav summary::-webkit-details-marker { display: none; }
-.t-nav summary::after { content: "›"; margin-left: auto; color: var(--nav-muted, var(--muted)); transition: transform 0.15s; }
+.t-nav summary::after { content: "›"; margin-inline-start: auto; color: var(--nav-muted, var(--muted)); transition: transform 0.15s; }
 .t-nav details[open] > summary::after { transform: rotate(90deg); }
+/* RTL: the bidi algorithm mirrors "›" to "‹"; opened, it turns the other way to point down */
+[dir="rtl"] .t-nav details[open] > summary::after { transform: rotate(-90deg); }
 .t-nav a:hover, .t-nav summary:hover { background: var(--nav-hover, var(--surface-3)); }
-/* (sprint 72) --nav-* let a style have a dark menu (Iris); without them the menu takes the page's colours */
-.t-nav a[aria-current="page"] { background: var(--nav-active); color: var(--nav-current, var(--accent)); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
-.t-nav .in-trail { color: var(--nav-current, var(--accent)); }
+/* (sprint 117) the selected entry (keyboard focus) gets a ring inside the menu, which scrolls and would clip one outside */
+.t-nav a:focus-visible, .t-nav summary:focus-visible { outline: 2px solid var(--nav-current, var(--accent)); outline-offset: -2px; }
+/* (sprint 72) --nav-* let a style have a dark menu (Iris); without them the menu takes the page's colours.
+   (sprint 117) Current page: filled, the accent bar and text. Its parent entries (the trail): bold, the menu's text
+   colour with an accent icon, no fill, so the two are told apart at a glance. */
+.t-nav a[aria-current="page"] { background: var(--nav-active); color: var(--nav-current, var(--accent)); font-weight: 600; border-inline-start-color: var(--accent); }
+.t-nav .in-trail { color: var(--nav-text, var(--text)); font-weight: 600; }
 .t-nav .icon { color: var(--nav-muted, var(--muted)); }
 .t-nav a[aria-current="page"] .icon, .t-nav .in-trail .icon { color: var(--nav-current, var(--accent)); }
 
@@ -440,7 +450,8 @@ textarea.code { font-family: var(--mono); font-size: 0.84rem; line-height: 1.45;
 .has-error input, .has-error select, .has-error textarea { border-color: var(--danger); }
 .error { color: var(--danger); font-size: 0.82rem; font-weight: 500; }
 .default-submit { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-[aria-busy="true"] { opacity: 0.55; transition: opacity 0.1s; }
+/* (sprint 117) a lighter processing indicator: a slight dim after 150 ms (no flicker on quick answers), a bar on regions (below) */
+[aria-busy="true"] { opacity: 0.8; cursor: progress; transition: opacity 0.2s ease 0.15s; }
 
 /* ---------- buttons ---------- */
 .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
@@ -902,10 +913,11 @@ pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--sur
   .t-body { grid-template-columns: minmax(0, 1fr); }
   /* Drawer: opened by JS (body.nav-open) or, without JS, by the #t-nav link (:target). */
   .t-nav {
-    position: fixed; z-index: 25; top: 52px; bottom: 0; left: 0; width: min(300px, 85vw);
+    position: fixed; z-index: 25; top: 52px; bottom: 0; inset-inline-start: 0; width: min(300px, 85vw);
     box-shadow: 8px 0 24px rgb(0 0 0 / 20%); transition: transform 0.2s ease, visibility 0.2s;
     transform: translateX(-100%); visibility: hidden;
   }
+  [dir="rtl"] .t-nav { transform: translateX(100%); box-shadow: -8px 0 24px rgb(0 0 0 / 20%); }
   body.nav-open .t-nav, .t-nav:target { transform: none; visibility: visible; }
   body.nav-open .t-nav-backdrop { display: block; position: fixed; inset: 52px 0 0 0; z-index: 24; background: rgb(15 20 30 / 40%); }
   .t-regions > .region { grid-column: span 12 !important; }
@@ -950,7 +962,7 @@ pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--sur
   .report-reflow tbody tr:hover { background: var(--surface); }
   .report-reflow td {
     display: grid; grid-template-columns: minmax(90px, 38%) minmax(0, 1fr); gap: 0.75rem;
-    border: 0; padding: 0.3rem 0.8rem; white-space: normal; max-width: none; text-align: left !important; overflow-wrap: anywhere;
+    border: 0; padding: 0.3rem 0.8rem; white-space: normal; max-width: none; text-align: start !important; overflow-wrap: anywhere;
   }
   .report-reflow td::before { content: attr(data-label); font-size: 0.8rem; font-weight: 650; color: var(--muted); }
   .report-reflow td.row-edit { width: auto; text-align: left; }
@@ -992,14 +1004,14 @@ fieldset.prop-group > legend { font-size: 0.75rem; text-transform: uppercase; le
   body.nav-top .t-body { display: block; }
   body.nav-top .t-nav {
     position: sticky; top: 52px; z-index: 18; visibility: visible; overflow: visible;
-    border-right: 0; border-bottom: 1px solid var(--border);
+    border-inline-end: 0; border-bottom: 1px solid var(--border);
   }
   body.nav-top .t-nav > ul { display: flex; gap: 0.25rem; padding: 0.3rem 0.75rem; }
   body.nav-top .t-nav li { position: relative; }
-  body.nav-top .t-nav > ul > li > a[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--accent); }
+  body.nav-top .t-nav > ul > li > a[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--accent); border-inline-start-color: transparent; }
   body.nav-top .t-nav details > ul {
-    position: absolute; top: calc(100% + 4px); left: 0; min-width: 220px; padding: 0.4rem;
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px rgb(16 24 40 / 16%);
+    position: absolute; top: calc(100% + 4px); inset-inline-start: 0; margin: 0; min-width: 220px; padding: 0.4rem;
+    background: var(--nav-bg, var(--surface)); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px rgb(16 24 40 / 16%);
   }
   body.nav-top .t-nav details > summary::after { transform: rotate(90deg); }
 }
@@ -2085,6 +2097,68 @@ dialog.wait-popup { border: 1px solid var(--border); border-radius: var(--radius
 dialog.wait-popup[open] { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
 dialog.wait-popup:focus { outline: none; }
 dialog.wait-popup::backdrop { background: rgb(15 20 30 / 35%); cursor: wait; }
-.wait-popup-spinner { width: 2rem; height: 2rem; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); }
+.wait-popup-spinner { width: 1.75rem; height: 1.75rem; border-radius: 50%; border: 2.5px solid color-mix(in srgb, var(--accent) 18%, transparent); border-top-color: var(--accent); }
 .wait-popup-text { margin: 0; text-align: center; overflow-wrap: anywhere; }
-@media (prefers-reduced-motion: no-preference) { .wait-popup-spinner { animation: icon-spin 0.9s linear infinite; } }
+@media (prefers-reduced-motion: no-preference) { .wait-popup-spinner { animation: icon-spin 0.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite; } }
+
+/* ---------- (sprint 117, APEX 26.2) Pillar Light / Pillar Dark navigation appearances ----------
+   body.nav-pillar + nav-pillar-light / nav-pillar-dark (theme.appearance or a Theme Roller style's,
+   src/runtime/styles.ts). Header and menu read as one column ("pillar"); a header pillar strip in
+   --strip (Theme Roller), else the accent; the current page is a filled pill in the accent, its
+   parents bold with an accent guide line. Light: the page's own surfaces (dark ones in dark mode).
+   Dark: header and menu in the header colour. Contrast: menu text ≥ 7:1, the pill's text ≥ 4.5:1. */
+body.nav-pillar .t-header { box-shadow: inset 0 4px 0 var(--strip, var(--accent)); }
+body.nav-pillar .t-nav a, body.nav-pillar .t-nav summary { border-radius: 999px; }
+body.nav-pillar .t-nav a[aria-current="page"] { background: var(--accent); color: var(--accent-text); border-inline-start-color: transparent; }
+body.nav-pillar .t-nav a[aria-current="page"] .icon { color: var(--accent-text); }
+body.nav-pillar .t-nav a:focus-visible, body.nav-pillar .t-nav summary:focus-visible { outline-color: var(--nav-text); }
+body.nav-pillar-light {
+  --header: var(--surface-2); --header-text: var(--text);
+  --nav-bg: var(--surface-2); --nav-text: var(--text); --nav-muted: var(--muted);
+  --nav-hover: var(--surface-3); --nav-active: var(--accent-soft); --nav-current: var(--accent);
+}
+body.nav-pillar-light .t-header { border-bottom: 1px solid var(--border); }
+body.nav-pillar-light .t-nav { border-inline-end-color: var(--border); }
+body.nav-pillar-light .icon-button:hover, body.nav-pillar-light .t-user > summary:hover,
+body.nav-pillar-light .t-navbar > ul > li > a:hover, body.nav-pillar-light .t-navbar > ul > li > details > summary:hover { background: var(--surface-3); }
+body.nav-pillar-light .t-navbar a[aria-current="page"] { background: var(--accent-soft); }
+body.nav-pillar-dark {
+  --nav-bg: var(--header); --nav-text: var(--header-text);
+  --nav-muted: color-mix(in srgb, var(--header-text) 72%, var(--header));
+  --nav-hover: color-mix(in srgb, var(--header) 86%, #ffffff); --nav-active: color-mix(in srgb, var(--header) 76%, #ffffff);
+  --nav-current: var(--header-text);
+  --nav-guide: color-mix(in srgb, var(--header-text) 22%, transparent);
+}
+body.nav-pillar-dark .t-nav { border-inline-end-color: transparent; }
+body.nav-pillar-dark .t-nav .in-trail .icon, body.nav-pillar-dark .t-nav a[aria-current="page"] .icon { color: inherit; }
+body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline-start-color: color-mix(in srgb, var(--strip, var(--accent)) 70%, var(--header-text)); }
+@media (min-width: 1024px) {
+  body.nav-pillar.nav-top .t-nav > ul > li > a[aria-current="page"] { box-shadow: none; }
+  body.nav-pillar-dark.nav-top .t-nav { border-bottom-color: transparent; }
+}
+
+/* ---------- (sprint 117, APEX 26.2) subtle colour utilities: a tinted background with readable text,
+   in light and dark mode (text mostly the page's text colour, so contrast holds for every hue).
+   u-color-1-subtle … u-color-15-subtle and u-color-{success,danger,warning,info,neutral}-subtle. */
+[class*="-subtle"][class*="u-color-"] {
+  background: color-mix(in srgb, var(--u-hue) 14%, var(--surface)); color: color-mix(in srgb, var(--u-hue) 38%, var(--text));
+  border-color: color-mix(in srgb, var(--u-hue) 32%, var(--surface));
+}
+.u-color-1-subtle { --u-hue: #309fdb; } .u-color-2-subtle { --u-hue: #13b6cf; } .u-color-3-subtle { --u-hue: #2ebfbc; }
+.u-color-4-subtle { --u-hue: #3caf85; } .u-color-5-subtle { --u-hue: #81bb5f; } .u-color-6-subtle { --u-hue: #c9cf1f; }
+.u-color-7-subtle { --u-hue: #f2bf2c; } .u-color-8-subtle { --u-hue: #f18b48; } .u-color-9-subtle { --u-hue: #e95b54; }
+.u-color-10-subtle { --u-hue: #e85d88; } .u-color-11-subtle { --u-hue: #ca589d; } .u-color-12-subtle { --u-hue: #8f5ea8; }
+.u-color-13-subtle { --u-hue: #5a68ad; } .u-color-14-subtle { --u-hue: #627c94; } .u-color-15-subtle { --u-hue: #8a7a6b; }
+.u-color-success-subtle { --u-hue: var(--success); } .u-color-danger-subtle { --u-hue: var(--danger); }
+.u-color-warning-subtle { --u-hue: #d18b00; } .u-color-info-subtle { --u-hue: var(--accent); } .u-color-neutral-subtle { --u-hue: var(--muted); }
+
+/* ---------- (sprint 117) the processing bar on a busy region (dynamic actions, refreshes) */
+.region[aria-busy="true"] { position: relative; }
+.region[aria-busy="true"]::after {
+  content: ""; position: absolute; z-index: 2; top: 0; inset-inline: 0; height: 3px; border-radius: var(--radius) var(--radius) 0 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent) 0 0 / 40% 100% no-repeat, color-mix(in srgb, var(--accent) 15%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .region[aria-busy="true"]::after { animation: busy-slide 1.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite; }
+}
+@keyframes busy-slide { from { background-position: -60% 0, 0 0; } to { background-position: 160% 0, 0 0; } }

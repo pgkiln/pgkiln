@@ -65,6 +65,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Automatic Time Zone | Settings → Globalization → Time zone and Automatic time zone; My account → Time zone ([chapter 14](14-globalization.md#time-zones)) |
 | Universal Theme's default style (26.1: *Iris*) | Base style *Iris* (the default for new applications), *Lavender* or *Standard* ([chapter 14](14-globalization.md#base-styles-iris-lavender-and-standard)) |
 | Theme styles, *Enable End Users to Choose Theme Style* | Theme style (automatic/light/dark) and *Users may choose light or dark*; Theme Roller style variants with *Users may choose a style* ([chapter 14](14-globalization.md#style-variants-theme-roller)) |
+| Universal Theme 26.2: *Pillar Light* / *Pillar Dark*, Theme Roller's *Header Pillar Strip*, `u-color-*-subtle` | Theme Roller → *Navigation appearance* and *Header strip colour* (per application or style), the same utility classes ([chapter 14](14-globalization.md#navigation-appearances-pillar-light-and-pillar-dark)) |
 | Template Options (regions, buttons) | *Template options* in the Page Designer: CSS classes from a fixed list ([chapter 4](04-pages-and-regions.md#template-options)) |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
 | Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |

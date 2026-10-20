@@ -123,6 +123,8 @@ export interface App {
     base?: string;
     /** (0.29) the accent and header colours in dark mode */
     accent_dark?: string; header_dark?: string;
+    /** (sprint 117) the navigation appearance (Pillar Light / Dark) and the header pillar strip's colours */
+    appearance?: string; strip?: string; strip_dark?: string;
   };
   /** primary language, translated languages, and how the language is chosen */
   language: string;
