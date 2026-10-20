@@ -8695,7 +8695,9 @@ describe('sprint 100 rest', () => {
     assert.equal((await call('PUT', `note/${noteId}`, 'king', { 'body = 1, owner': 'x' })).statusCode, 400);
     assert.equal((await owner.one(`select count(*)::int as n from ${S}.note`)).n, before);
     assert.ok((await owner.one(`select to_regclass('${S}.note') as t`)).t);
-    // an object that isn't published doesn't exist, even if the role could read it
+    // an object that isn't published doesn't exist, even if the role could read it (the e2e responsive test
+    // publishes hr.dept and keeps it, so a database shared with an e2e run has it)
+    await owner.query(`delete from meta.rest_object where app_id = $1 and schema_name = 'hr' and object_name = 'dept'`, [appId]);
     assert.equal((await call('GET', 'dept/', 'king')).statusCode, 404);
   });
 
