@@ -10,6 +10,9 @@ import '../../src/env.ts';
 import { buildApp } from '../../src/app.ts';
 import { closePools, owner } from '../../src/db.ts';
 
+// a workspace's mail service keeps its secret encrypted with the installation's key (CI's e2e job has none in .env)
+process.env.PGKILN_SECRET_KEY ??= 'e2e-only-secret-key-0123456789abcdef';
+
 let base = '';
 let browser: Browser;
 let close: () => Promise<void>;
