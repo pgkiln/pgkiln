@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Data security per table** (WS-13; APEX 26.2: Deep Data Security): SQL Workshop → Object Browser → a table →
+  **Security** (also *Security…* in its ⋯ menu) shows the table's row level security policies, a matrix of
+  **database roles × columns** with *read* and *update* (written as `GRANT` / `REVOKE` on columns), and **masked values
+  per application role** (`meta.has_role()`): empty, `***` or `***` plus the last four characters, in a masking view
+  next to the table owned by a role per schema (`<schema>_masking`), so the table's row level security still applies
+  inside it. Preview SQL, Apply in one transaction (recorded in the Change Log) or Open in the worksheet. The
+  configuration lives in the view's comment: no migration. The mask holds where a role reads the view instead of the
+  raw column; the preview warns while a role can still read it. HR example page 48 *Salaries (masked)* (`hr_70`).
+- **MCP `run_query` as an application's user**: with `alias` (and `user`) the query runs as that application's database
+  role with `meta.app_user()` and `meta.has_role()` set, so grants, column privileges, row level security and masking
+  views apply as on the user's pages ([chapter 20](docs/guide/20-ai-agents.md#safety)).
 - **App Builder list details** (WS-12; APEX: the Applications report; migration 125): the report shows **Updated by**
   (the developer who changed the application last in the builder, or created, imported or copied it), the number of
   **working copies** (a link to them) and a **lock icon** with its owner when the application is locked; the cards show
