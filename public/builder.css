@@ -1525,3 +1525,9 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mail-answer { overflow-wrap: anywhere; font-family: var(--font-mono, monospace); font-size: 0.85em; }
 .host-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .host-list code { overflow-wrap: anywhere; }
+/* Regions (and a table before one) stacked in a block container keep 1rem between them; grids that space their
+   regions with a gap reset it below. */
+:where(.ide :is(.region, .table-wrap)) + :where(.region) { margin-top: 1rem; }
+.sc-grid > .region, .qs-columns > .region { margin-top: 0; }
+:where(.ide td) > .btn + .btn { margin-inline-start: 0.25rem; }
+.role-chip + .role-chip { margin-inline-start: 0.3rem; }

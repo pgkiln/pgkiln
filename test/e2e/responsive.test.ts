@@ -1178,3 +1178,27 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
     });
   });
 }
+
+// Regions stacked in the builder never touch: Team Development milestones (two regions in the page), a DB user's
+// form (regions inside a form) and Shared Components (a grid with its own gap, no extra margin).
+describe('builder region spacing', () => {
+  test('stacked regions keep 1rem between them; a grid keeps only its gap', async () => {
+    const page = await (await newContext({ viewport: VIEWPORTS.desktop })).newPage();
+    await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
+    const gaps = () => page.$$eval('.ide-page .region + .region', (els) => els.map((e) => {
+      const prev = e.previousElementSibling!.getBoundingClientRect(), r = e.getBoundingClientRect();
+      return Math.round(prev.right <= r.left ? 16 : r.top - prev.bottom);
+    }));
+    for (const url of ['/builder/team/milestones', '/builder/db-users/new']) {
+      await page.goto(`${base}${url}`);
+      const g = await gaps();
+      assert.ok(g.length > 0, url);
+      for (const x of g) assert.ok(x >= 16, `${url}: regions ${x}px apart`);
+    }
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await page.goto(`${base}/builder/apps/${hr}/shared`);
+    assert.ok(await page.locator('.sc-grid > .region').count() > 1);
+    for (const m of await page.$$eval('.sc-grid > .region', (els) => els.map((e) => getComputedStyle(e).marginTop))) assert.equal(m, '0px');
+    await page.context().close();
+  });
+});

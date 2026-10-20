@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Spacing between stacked regions in the builder**: regions placed one under another (Team Development milestones,
+  workspace and DB user pages, working copies, blueprints, the Session Monitor, Data Reporter and ~90 more pages)
+  touched each other; they now keep 1rem between them, as in applications. Grids that already space their regions
+  (Shared Components, Quick SQL) are unchanged. Also: buttons side by side in a table cell (SQL Scripts), the role
+  chips on a user's page and the regions of an application's Feedback page.
+
 ## [0.53.0] - 2026-10-20
 
 ### Added

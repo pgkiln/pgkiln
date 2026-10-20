@@ -1924,6 +1924,7 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .feedback-list > li, .feedback-admin > li { border-top: 1px solid var(--border); padding: 0.75rem 0; }
 .feedback-list > li:first-child, .feedback-admin > li:first-child { border-top: 0; }
 .feedback-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; overflow-wrap: anywhere; }
+.feedback-page > .region + .region { margin-top: 1rem; }
 .feedback-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.4rem 0; }
 .feedback-response { background: var(--surface-2); border-radius: var(--radius); padding: 0.5rem 0.75rem; }
 .feedback-response p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.25rem 0 0; }
