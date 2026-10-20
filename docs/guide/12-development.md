@@ -10,6 +10,7 @@ db/
   seed/*.sql               the HR sample (not for production)
 examples/                  example applications as SQL (the tutorial)
 examples/plugins/          plug-in files (template components) to import
+examples/gallery/          the App Gallery: gallery.json, starters/ and utilities/ (blueprints), samples/ (single-file sample apps)
 scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 website/                   the website pgkiln.vargar.eu (VitePress): landing page + this guide, synced from docs/ at build time;
                            cd website && npm install && npm run dev; scripts/deploy.sh publishes it (see website/deploy/)
@@ -400,8 +401,10 @@ src/
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview)
-    gallery.ts             the App Gallery (sprint 61): examples/gallery/gallery.json, sample apps (administrators, migrate --example),
-                           starter apps (blueprints → openBlueprint's review), custom apps (the workspace's boilerplates)
+    gallery.ts             the App Gallery (sprint 61, 120): examples/gallery/gallery.json, sample apps (administrators: migrate --example,
+                           or one SQL file of examples/ or examples/gallery/samples/ in one transaction), starter and utility apps
+                           (blueprints of starters/ and utilities/ → openBlueprint's review), custom apps (the workspace's boilerplates);
+                           four tabs with counts, ?q= search
     app-groups.ts          application groups (092): a workspace's groups, a group per application (the App Builder home filters)
     cross-app.ts           Cross Application Reports (sprint 61): REPORTS (one SQL per topic over the workspace's applications)
     workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid
@@ -507,7 +510,9 @@ test/
   mail-network.test.ts     (sprint 118) network access lists (page process refused and logged in debug, narrowing only, redirects,
                            the page), a workspace's mail service (sending, SMTP host on the list), the Mail queue (yesterday's
                            SMTP failure, Retry, Purge, counts, scope)
-  gallery.test.ts          the App Gallery: every starter created from its review with all its pages rendering; sample apps (admins)
+  gallery.test.ts          the App Gallery: every starter and utility created from its review and every sample app installed, with all
+                           their pages rendering; sample apps (admins), the search, a failing script leaves nothing
+  gallery-samples.ts       the gallery's shipped apps for the tests: SAMPLES (schema and role of each script), BLUEPRINTS, drop/install
   builder-apex-screens.test.ts sprint 61: sign-in with a workspace, message and banner, utilization, SQL Workshop home, groups, reports
   workspace-isolation.test.ts isolated workspaces (090): logins, RLS on meta, app_id, roles, SQL Workshop, scripts, imports
   ai.test.ts               AI services: Generate text with AI (text, structured outputs, errors, limits, keys), its dynamic action,
@@ -526,6 +531,7 @@ test/
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/gallery.test.ts      (sprint 120) the gallery's sample apps: every page at 4 widths, CSP, axe; dynamic actions; the four tabs at 390 px
   e2e/admin-mail-network.test.ts (sprint 118) Mail queue, Network access and a workspace's mail service at 390 px without JavaScript
   e2e/pillar.test.ts       (sprint 117) Pillar appearances: axe in light and dark, subtle colours, current vs parent entry, Arabic RTL, 390 px, preview
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers, syntax colours at AA in both themes (sprint 108)

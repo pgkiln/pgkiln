@@ -3,7 +3,21 @@
     {"key": "hr", "title": "HR Demo", "alias": "hr", "icon": "briefcase", "example": "hr",
      "description": "The showcase of pgkiln on the classic EMP and DEPT tables: reports and forms, an interactive grid, charts, maps, a calendar, faceted search, approvals and workflows, documents, a REST API, translations and a Progressive Web App. Demo accounts king, blake, jones, allen, scott and demo, with the username as password."},
     {"key": "tasks", "title": "Tasks", "alias": "tasks", "icon": "check", "file": "tasks-app.sql",
-     "description": "The tutorial application: a personal task list where every user sees only their own tasks (row level security), with a business rule in PL/pgSQL behind a button. Demo accounts ann and bob (password ann-password, bob-password)."}
+     "description": "The tutorial application: a personal task list where every user sees only their own tasks (row level security), with a business rule in PL/pgSQL behind a button. Demo accounts ann and bob (password ann-password, bob-password)."},
+    {"key": "sample-charts", "title": "Sample Charts", "alias": "sample-charts", "icon": "chart-column", "file": "samples/sample-charts.sql",
+     "description": "All 22 chart types on a page per question (comparing categories, change over time, parts of a whole, relations and spread, plans) and a drill-down from a chart to a report, each page explaining how the query shapes the chart. Demo account demo / demo."},
+    {"key": "sample-cards", "title": "Sample Cards", "alias": "sample-cards", "icon": "layout-grid", "file": "samples/sample-cards.sql",
+     "description": "Cards with a title, subtitle, body, badge and icon that open a form; KPI tiles; lists shown as cards, badges, links and tabs; and the built-in template components (metric cards, media list, badges, avatars). Demo account demo / demo."},
+    {"key": "sample-calendar", "title": "Sample Calendar", "alias": "sample-calendar", "icon": "calendar-days", "file": "samples/sample-calendar.sql",
+     "description": "The calendar region: month, week, day and list views, all-day, timed and multi-day events around today, create on click, drag and drop through a PL/pgSQL function with its own rule, and a calendar filtered by an item. Demo account demo / demo."},
+    {"key": "sample-grids", "title": "Sample Interactive Grids", "alias": "sample-grids", "icon": "table", "file": "samples/sample-grids.sql",
+     "description": "The interactive grid: an editable grid made by the wizard; select lists, required columns, totals, a frozen column, a row menu and a column layout; master-detail grids; and a read-only grid with the single row, group by and chart views. Demo account demo / demo."},
+    {"key": "sample-dynamic-actions", "title": "Sample Dynamic Actions", "alias": "sample-dynamic-actions", "icon": "zap", "file": "samples/sample-dynamic-actions.sql",
+     "description": "Behaviour without JavaScript of your own: show, hide, enable on a condition; values computed on the server; a report refreshed when an item changes; alerts, confirmations, a wait popup, classes, item errors and an inline dialog. Demo account demo / demo."},
+    {"key": "sample-reporting", "title": "Sample Reporting", "alias": "sample-reporting", "icon": "file-text", "file": "samples/sample-reporting.sql",
+     "description": "Reports and the ways to search them: an interactive report with its form, a faceted search, smart filters, and a classic report with column display options, a column template and a link. Demo account demo / demo."},
+    {"key": "ux-patterns", "title": "UX Pattern Catalog", "alias": "ux-patterns", "icon": "palette", "file": "samples/ux-patterns.sql",
+     "description": "The theme's building blocks to copy from: region templates and template options, button styles, item types and form layouts, alerts, badges, colour classes, lists, media lists, timelines, comments, avatars, metric cards, empty states, dialogs, drawers and side columns. Demo account demo / demo."}
   ],
   "starters": [
     {"key": "team-tasks", "title": "Team Tasks", "icon": "layout-grid", "file": "starters/team-tasks.json",
@@ -16,5 +30,13 @@
      "description": "Assets with their tags, locations, owners and purchase data: a faceted search, an editable grid of locations, a chart by category and a dashboard."},
     {"key": "event-registrations", "title": "Event Registrations", "icon": "calendar-days", "file": "starters/event-registrations.json",
      "description": "Events in a calendar and the people who registered for them, with reports, forms and a dashboard."}
+  ],
+  "utilities": [
+    {"key": "lookup-lists", "title": "Lookup Lists", "icon": "list-checks", "file": "utilities/lookup-lists.json",
+     "description": "The lists of values your applications share (priorities, statuses, countries) kept as data: lists and their values in a master-detail page and an editable grid, and how other applications of the workspace use them."},
+    {"key": "release-notes", "title": "Release Notes", "icon": "git-branch", "file": "utilities/release-notes.json",
+     "description": "The releases of your applications and what changed in each (features, fixes, security, breaking changes): reports and forms, releases with their changes, a faceted search of the changes, a release calendar and a dashboard."},
+    {"key": "announcements", "title": "Announcements", "icon": "megaphone", "file": "utilities/announcements.json",
+     "description": "A notice board for the workspace: planned maintenance, outages and new releases with their audience and dates, as cards, a calendar and a dashboard, and the query other applications use to show the current ones."}
   ]
 }

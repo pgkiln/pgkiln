@@ -5,6 +5,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **App Gallery: more sample apps, Utility Apps and a UX Pattern Catalog** (WS-8; APEX 26.2: App Gallery). Six
+  single-topic **sample apps**, each with its own schema, data, a demo account (demo / demo) and a text on every page
+  that says how it is made: *Sample Charts* (all 22 chart types and a drill-down), *Sample Cards*, *Sample Calendar*,
+  *Sample Interactive Grids*, *Sample Dynamic Actions* and *Sample Reporting*; the **UX Pattern Catalog** with the
+  region templates and template options, button styles, item types and form layouts, alerts, badges, colour classes,
+  lists, template components, empty states, a dialog, a drawer and a side column. Administrators install them from
+  the gallery (one SQL file each in `examples/gallery/samples/`, run in one transaction) or with `psql -1 -f`. A fourth
+  tab, **Utility Apps**, has *Lookup Lists*, *Release Notes* and *Announcements* as blueprints any developer installs
+  into the workspace after the review. The tabs show their counts and the search also works without JavaScript
+  (`?q=`); an installed sample offers Edit only in its own workspace ([chapter 3](docs/guide/03-builder.md#app-gallery)).
+
+### Changed
+- A sample app installed from a single SQL file (also *Tasks*) runs in one transaction with its placement in the
+  workspace: a failing script leaves nothing behind and no connection in an aborted transaction.
+
+### Fixed
+- Accessibility: a body with the template option *Scroll the body* (`to-scroll`) can be focused and scrolled from the
+  keyboard; the value on a column of a single-series column chart with drill-down links no longer differs from the
+  link's accessible name (axe `label-content-name-mismatch`).
+
 ## [0.53.0] - 2026-10-20
 
 ### Added

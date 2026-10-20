@@ -230,7 +230,10 @@ function column(labels: string[], series: Series[]) {
         const col = html`<span class="col s${si + 1}${v < 0 ? ' neg' : ''} ${css.cls(`bottom:${pct(bottom)};height:${pct(top - bottom)}`)}"></span>`;
         return multi && link ? mark('span', i, si, 'col-slot', `${l} · ${s.name}: ${fmt.format(v)}`, col, false) : html`<span class="col-slot">${col}</span>`;
       })}${!multi && labels.length <= 12
-        ? html`<span class="col-value ${css.cls(`bottom:${pct(Math.max(y(series[0].values[i]), zero))}`)}">${compact.format(series[0].values[i])}</span>`
+        // (sprint 120) inside a drill link the value is drawn by CSS (attr()), so the link's name is its tip alone
+        ? link
+          ? html`<span class="col-value ${css.cls(`bottom:${pct(Math.max(y(series[0].values[i]), zero))}`)}" aria-hidden="true" data-value="${compact.format(series[0].values[i])}"></span>`
+          : html`<span class="col-value ${css.cls(`bottom:${pct(Math.max(y(series[0].values[i]), zero))}`)}" aria-hidden="true">${compact.format(series[0].values[i])}</span>`
         : ''}`;
       return multi ? html`<div class="col-group" role="img" data-tip="${tip(l, series, i)}" tabindex="0" aria-label="${tip(l, series, i)}">${inner}</div>` : mark('div', i, 0, 'col-group', tip(l, series, i), inner);
     })}</div>

@@ -11143,3 +11143,107 @@ describe('sprint 119 WS-13', () => {
     assert.equal((await owner.one(`select has_column_privilege('hr_app', 'public.${T}', 'secret', 'select') as ok`)).ok, false);
   });
 });
+
+describe('sprint 120 WS-8', () => {
+  // The App Gallery's sample and utility apps (src/builder/gallery.ts): sample apps run shipped SQL as the owner, so only
+  // administrators install them, with the CSRF token, and only entries of gallery.json (by key, never a path); utility
+  // apps are blueprints any developer creates in their own workspace after the review; an installed sample is edited
+  // only from its own workspace.
+  const DEV = 'sec120_dev';
+  const DEV_PW = 'Sec120-dev-password!';
+  let ws: number;
+  let g: typeof import('./gallery-samples.ts');
+  const sample = (key: string) => g.SAMPLES.find((x) => x.key === key)!;
+  const signIn = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username, password });
+    await b.get('/builder/gallery');
+    return b;
+  };
+  const cleanup = async () => {
+    for (const x of g.SAMPLES) await g.dropSample(x);
+    for (const x of g.BLUEPRINTS.filter((b) => b.kind === 'utilities')) await g.dropBlueprintApp(x);
+    await owner.query(`delete from meta.account where username = 'sec120_owner'`);
+    await owner.query(`delete from meta.workspace where name = 'Sec120 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  };
+  before(async () => {
+    g = await import('./gallery-samples.ts');
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
+    ws = (await owner.one(`insert into meta.workspace (name) values ('Sec120 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2), ($1, $3) on conflict do nothing', [ws, DEV, 'admin']);
+  });
+  after(async () => {
+    await cleanup();
+  });
+
+  test('only administrators install sample apps, with the CSRF token; nothing runs otherwise', async () => {
+    const d = await signIn(DEV, DEV_PW);
+    assert.equal((await d.submit('/builder/gallery/samples/sample-dynamic-actions', {})).statusCode, 403, 'a developer');
+    const a = await signIn('admin', 'admin');
+    assert.equal((await a.post('/builder/gallery/samples/sample-dynamic-actions', {})).statusCode, 403, 'no CSRF token');
+    a.lastCsrf = 'wrong';
+    assert.equal((await a.submit('/builder/gallery/samples/sample-dynamic-actions', {})).statusCode, 403, 'a wrong CSRF token');
+    assert.equal(await owner.one(`select 1 as ok from meta.app where alias = 'sample-dynamic-actions'`), undefined);
+    assert.equal((await owner.query(`select from pg_namespace where nspname = $1`, [sample('sample-dynamic-actions').schema])).rowCount, 0, 'no schema');
+    assert.equal((await d.post('/builder/gallery/utilities/lookup-lists', {})).statusCode, 403, 'utility: no CSRF token');
+    const anon = new FileBrowser(app);
+    assert.notEqual((await anon.post('/builder/gallery/samples/sample-charts', {})).statusCode, 303);
+    assert.equal(await owner.one(`select 1 as ok from meta.app where alias = 'sample-charts'`), undefined);
+    // application users never reach the gallery
+    const king = await as('king');
+    assert.notEqual((await king.get('/builder/gallery?tab=utilities')).statusCode, 200);
+    assert.notEqual((await king.post('/builder/gallery/utilities/lookup-lists', { __csrf: king.lastCsrf })).statusCode, 200);
+  });
+
+  test('keys only name entries of gallery.json, of their own kind; never a path', async () => {
+    const a = await signIn('admin', 'admin');
+    for (const url of ['/builder/gallery/utilities/nope', '/builder/gallery/utilities/contacts', '/builder/gallery/starters/lookup-lists',
+      '/builder/gallery/utilities/..%2Fstarters%2Fcontacts', '/builder/gallery/utilities/%2e%2e', '/builder/gallery/samples/samples%2Fsample-charts',
+      '/builder/gallery/samples/sample-charts.sql', '/builder/gallery/samples/lookup-lists', '/builder/gallery/samples/team-tasks'])
+      assert.equal((await a.submit(url, {})).statusCode, 404, url);
+    // the search is text, escaped, and the tab one of four
+    assert.match((await a.get('/builder/gallery?tab=../../etc&q=%22%3E%3Cimg%20src%3Dx%3E')).body, /value="&quot;&gt;&lt;img src=x&gt;"[\s\S]*aria-current="page">Sample Apps/);
+  });
+
+  test('a sample is installed into the administrator\'s current workspace and edited only from there', async () => {
+    const a = await signIn('admin', 'admin');
+    assert.equal((await a.submit('/builder/gallery/samples/sample-dynamic-actions', {})).statusCode, 303);
+    const da = await owner.one<{ id: number; ws: number }>(`select id, meta.app_workspace(id) as ws from meta.app where alias = 'sample-dynamic-actions'`);
+    assert.equal(da?.ws, 1);
+    // the developer of the other workspace: installed, but no Edit, and the App Builder refuses it
+    const d = await signIn(DEV, DEV_PW);
+    const page = (await d.get('/builder/gallery')).body;
+    assert.match(page, /Sample Dynamic Actions<\/h2>[\s\S]*?Installed[\s\S]*?in another workspace/);
+    assert.doesNotMatch(page, new RegExp(`href="/builder/apps/${da!.id}"`));
+    assert.notEqual((await d.get(`/builder/apps/${da!.id}`)).statusCode, 200);
+    // the administrator switches to the other workspace: the next sample goes there
+    await a.get('/builder');
+    assert.equal((await a.submit('/builder/workspace', { workspace: String(ws) })).statusCode, 303);
+    await a.get('/builder/gallery');
+    assert.equal((await a.submit('/builder/gallery/samples/sample-reporting', {})).statusCode, 303);
+    const rep = await owner.one<{ id: number; ws: number }>(`select id, meta.app_workspace(id) as ws from meta.app where alias = 'sample-reporting'`);
+    assert.equal(rep?.ws, ws);
+    assert.match((await d.get('/builder/gallery')).body, new RegExp(`href="/builder/apps/${rep!.id}"`), 'its own workspace edits it');
+  });
+
+  test('a developer creates a utility app in their own workspace, only after the review', async () => {
+    const d = await signIn(DEV, DEV_PW);
+    await d.get('/builder/gallery?tab=utilities');
+    const review = await d.submit('/builder/gallery/utilities/lookup-lists', {});
+    assert.equal(review.statusCode, 200);
+    assert.equal(await owner.one(`select 1 as ok from meta.app where alias = 'lookup-lists'`), undefined, 'nothing before the review is confirmed');
+    const form = (await import('./helpers.ts')).formFields(/<form method="post" action="\/builder\/blueprints\/create">[\s\S]*?<\/form>/.exec(review.body)![0]);
+    // a changed blueprint is not the one the review showed
+    const forged = await d.submit('/builder/blueprints/create', { ...form, spec: form.spec.replace('"lookup_lists"', '"meta"'), admin_user: 'sec120_owner', admin_password: 'Sec120-owner-password-1!' });
+    assert.notEqual(forged.statusCode, 303);
+    assert.equal(await owner.one(`select 1 as ok from meta.app where alias = 'lookup-lists'`), undefined);
+    const made = await d.submit('/builder/blueprints/create', { ...form, admin_user: 'sec120_owner', admin_password: 'Sec120-owner-password-1!' });
+    assert.equal(made.statusCode, 303, made.body.slice(0, 300));
+    assert.equal((await owner.one(`select meta.app_workspace(id) as ws from meta.app where alias = 'lookup-lists'`)).ws, ws);
+  });
+});
+
