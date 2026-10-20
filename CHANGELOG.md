@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-10-20
+
 ### Added
 - **App Gallery: more sample apps, Utility Apps and a UX Pattern Catalog** (WS-8; APEX 26.2: App Gallery). Six
   single-topic **sample apps**, each with its own schema, data, a demo account (demo / demo) and a text on every page
