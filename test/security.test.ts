@@ -10647,6 +10647,94 @@ describe('sprint 115 WS-11', () => {
   });
 });
 
+describe('sprint 116 WS-12', () => {
+  // The App Builder list's Updated by, working copies and lock (meta.app_change, migration 125): recorded only for a
+  // builder POST that passed developer() (sign-in, CSRF, workspace, locks) and succeeded; names are escaped; the
+  // table is closed to the runtime and not exported.
+  const DEV = 'sec116dev';
+  let wsB: number;
+  let appA: number;
+  let appB: number;
+  let pageA: number;
+  let pageB: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username })).statusCode, 303);
+    await b.get('/builder/apps?view=report');
+    return b;
+  };
+  const changedBy = async (id: number) => (await owner.one('select updated_by from meta.app_change where app_id = $1', [id]))?.updated_by;
+  const region = (b: Browser, page: number, csrf = b.lastCsrf) =>
+    b.post(`/builder/pages/${page}/c/region`, { __csrf: csrf, title: 'sec116', type: 'static', columns: '12', template: 'standard', config: '' });
+  before(async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    await owner.query(`delete from meta.app where alias in ('sec116a', 'sec116b')`);
+    await owner.query(`delete from meta.workspace where name = 'Sec116 B'`);
+    wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec116 B') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values (1, $1)', [DEV]);
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec116a', 'Sec116 A', 'none') returning id`)).id;
+    appB = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec116b', 'Sec116 B', 'none') returning id`)).id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [appB, wsB]);
+    pageA = (await owner.one(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appA])).id;
+    pageB = (await owner.one(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appB])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias in ('sec116a', 'sec116b')`);
+    await owner.query(`delete from meta.workspace where name = 'Sec116 B'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+
+  test('no record without sign-in, with a forged CSRF token, for another workspace or past another developer\'s lock', async () => {
+    const anon = new Browser();
+    await anon.get('/builder/login');
+    assert.equal((await region(anon, pageA, anon.lastCsrf)).statusCode, 302);
+    const dev = await signIn(DEV);
+    assert.equal((await region(dev, pageA, 'forged')).statusCode, 403);
+    assert.equal((await region(dev, pageB)).statusCode, 404);
+    assert.equal((await dev.post('/builder/working-copies', { __csrf: dev.lastCsrf, main_app_id: String(appB), name: 'x' })).statusCode, 404);
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'admin')`, [appA]);
+    await region(dev, pageA);
+    assert.equal(await changedBy(appA), undefined);
+    assert.equal(await changedBy(appB), undefined);
+    await owner.query('delete from meta.builder_lock where app_id = $1', [appA]);
+    assert.equal((await region(dev, pageA)).statusCode, 303);
+    assert.equal(await changedBy(appA), DEV);
+  });
+
+  test('builder POSTs that neither change nor create an application record nothing', async () => {
+    const dev = await signIn(DEV);
+    // pinning an application or switching workspaces is not a change, whatever the request names or where it redirects
+    await owner.query('delete from meta.app_change where app_id = $1', [appA]);
+    await dev.post('/builder/pins', { __csrf: dev.lastCsrf, app: String(appA) });
+    await dev.post('/builder/workspace', { __csrf: dev.lastCsrf, workspace: '1' });
+    assert.equal(await changedBy(appA), undefined);
+  });
+
+  test('names are escaped in the report, the cards and the lock label; another workspace\'s application is not listed', async () => {
+    const evil = '<img src=x onerror=alert(1)>';
+    await owner.query(`insert into meta.app_change (app_id, updated_by) values ($1, $2) on conflict (app_id) do update set updated_by = $2`, [appA, evil]);
+    await owner.query(`insert into meta.app_change (app_id, updated_by) values ($1, 'secret-b-dev') on conflict (app_id) do update set updated_by = 'secret-b-dev'`, [appB]);
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, $2)`, [appA, `${evil}"x`]);
+    const dev = await signIn(DEV);
+    for (const view of ['report', 'grid']) {
+      const body = (await dev.get(`/builder/apps?q=sec116&view=${view}`)).body;
+      assert.ok(!body.includes('<img src=x'), view);
+      assert.ok(body.includes('&lt;img src=x onerror=alert(1)&gt;'), view);
+      assert.ok(!body.includes('secret-b-dev') && !body.includes('Sec116 B'), view);
+    }
+    assert.match((await dev.get('/builder/apps?q=sec116&view=report')).body, /aria-label="Locked by &lt;img src=x onerror=alert\(1\)&gt;&quot;x"/);
+    await owner.query('delete from meta.builder_lock where app_id = $1', [appA]);
+    await dev.get('/builder/apps?view=report');
+  });
+
+  test('meta.app_change is closed to the runtime and is not part of an export', async () => {
+    await assert.rejects(runtime.query('select * from meta.app_change'), /permission denied/);
+    assert.ok(!JSON.stringify((await owner.one(`select meta.export_app('sec116a') as d`)).d).includes('updated_by'));
+  });
+});
+
 describe('sprint 117 WS-10', () => {
   // Theme Roller: the navigation appearance (Pillar Light / Dark) and the header strip colours.
   // Only keys of a fixed list and #rrggbb reach the page (a <body> class, the nonce'd <style>).

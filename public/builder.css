@@ -1499,3 +1499,11 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .team-page-issues .icon { flex: none; width: 14px; height: 14px; margin-top: 2px; }
 .wh-team-n { margin-left: auto; padding-left: 8px; }
 .feedback-issue { margin: 4px 0; }
+
+/* (116) App Builder list: updated by, working copies and the application lock (WS-12) */
+.ab-name .ab-lock { display: inline-flex; vertical-align: middle; margin-left: 8px; color: var(--muted); }
+.ab-name .ab-lock .icon { width: 15px; height: 15px; }
+.ab-by { overflow-wrap: anywhere; }
+.ab-card-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.ab-card-badges .tag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; text-decoration: none; }
+.ab-card-badges .tag .icon { width: 13px; height: 13px; flex: none; }

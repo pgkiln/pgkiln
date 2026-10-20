@@ -212,7 +212,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   import: {
-    usage: 'pgkiln import <path> [--alias <alias>] [--replace] [--check [--force] | --dry-run]',
+    usage: 'pgkiln import <path> [--alias <alias>] [--replace [--only <file>]…] [--check [--force] | --dry-run]',
     summary: 'import a JSON export, an application directory or a .zip of one',
     details:
       'Without --replace the alias must be free. With --replace an existing application with that\n' +
@@ -220,21 +220,43 @@ const COMMANDS: Record<string, Command> = {
       'reports, running tasks and workflows, and the on/off switch of its automations; its pages,\n' +
       'shared components and settings become those of the file. Without an existing application\n' +
       '--replace simply imports.\n\n' +
+      'With --replace, --only imports just the named files of a directory export (or .zip): a page\n' +
+      '(--only pages/12) or a shared component file or folder (--only shared/lovs/jobs.yaml); the rest\n' +
+      'of the application stays as it is in the database. Repeat --only for several.\n\n' +
       'With --check the Advisor checks the imported application before anything is committed: every\n' +
       'SQL fragment is planned as the application\'s role (unknown tables, columns, functions, types and\n' +
       'grants), and references to pages, items, lists of values and schemes are checked. Errors refuse\n' +
       'the import (exit code 1, nothing changes); --force imports anyway. --dry-run checks and never commits.',
-    options: { alias: { type: 'string', short: 'a' }, replace: { type: 'boolean' }, check: { type: 'boolean' }, force: { type: 'boolean' }, 'dry-run': { type: 'boolean' } },
+    options: { alias: { type: 'string', short: 'a' }, replace: { type: 'boolean' }, check: { type: 'boolean' }, force: { type: 'boolean' }, 'dry-run': { type: 'boolean' }, only: { type: 'string', multiple: true } },
     optionHelp: [
       ['-a, --alias <alias>', 'alias of the application (default: the one in the export)'],
       ['--replace', 'update the application with that alias in place'],
       ['--check', 'check the application\'s SQL and references first; errors refuse the import'],
       ['--force', 'with --check: import even when the check finds errors'],
       ['--dry-run', 'import, check and roll back: nothing changes'],
+      ['--only <file>', 'with --replace: import only this page (pages/12) or component file or folder'],
     ],
     positionals: [1, 1],
     async run(v, [path]) {
-      const { doc } = await readSource(path);
+      const source = await readSource(path);
+      let { doc } = source;
+      const only = (v.only as string[] | undefined) ?? [];
+      if (only.length) {
+        // (116) a file-level import: the named files over the application's current files
+        if (!v.replace) throw new UsageError('--only needs --replace');
+        if (!source.files) throw new UsageError('--only needs a directory export or a .zip of one');
+        const target = (v.alias as string) ?? doc?.app?.alias;
+        const { mergeOnly } = await import('./only.ts');
+        const style = JSON.parse(source.files.get('pgkiln.json')?.toString('utf8') ?? '{}').style === 'text' ? 'text' : 'json';
+        const current = await withDb(async (db) => {
+          if (!(await db.query('select 1 from meta.app where alias = $1', [target])).rowCount) throw new UsageError(`--only: application ${target} not found`);
+          return docToFiles(await exportDoc(db, target), style);
+        });
+        const m = mergeOnly(current, source.files, only);
+        err(m.changed.length ? `Only ${m.labels.join(', ')}: ${m.changed.length} file(s) differ.\n` : `Only ${m.labels.join(', ')}: no file differs.\n`);
+        const { filesToDoc } = await import('../appfiles.ts');
+        doc = filesToDoc(m.files);
+      }
       const alias = (v.alias as string) ?? doc?.app?.alias;
       if (!alias) throw new Error('the export has no alias: use --alias');
       const check = v['dry-run'] ? 'dry-run' : v.check ? (v.force ? 'force' : 'check') : 'off';

@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **App Builder list details** (WS-12; APEX: the Applications report; migration 125): the report shows **Updated by**
+  (the developer who changed the application last in the builder, or created, imported or copied it), the number of
+  **working copies** (a link to them) and a **lock icon** with its owner when the application is locked; the cards show
+  them as small badges. *Updated* is now the later of that change and the application's settings, so a change to a
+  page moves it too. Recorded in the new table `meta.app_change` (builder state of the installation: not exported,
+  kept by `pgkiln import --replace`, closed to the runtime). Works without JavaScript and on phones.
+- **File-level import** (APEX 26.2: APEXlang file-level import): `pgkiln import <dir> --replace --only pages/12`
+  (or `--only shared/lovs/jobs.yaml`, repeatable) imports one page or shared component from a directory export (or
+  .zip) and leaves the rest of the application as it is ([chapter 18](docs/guide/18-cli.md#importing-one-page-or-component)).
 - **Pillar navigation appearances** (WS-10; APEX 26.2 Universal Theme): Theme Roller → *Navigation appearance*
   **Pillar Light** (header and menu on the page's own surfaces) or **Pillar Dark** (header and menu as one dark column),
   for the application or per style, with a **header pillar strip** colour for light and dark mode (per style also from an
@@ -15,6 +24,9 @@ All notable changes to this project are documented here. The format follows
   tinted backgrounds with AA-contrast text in light and dark mode.
 
 ### Changed
+- `docs/apex-feature-parity.md` compares with **APEX 26.2**: a new section for the 26.2 workspace items WS-1 … WS-13
+  (eight done, five open) and OCI managed identities (not planned); stale rows on facet menus, Comment Out and
+  blueprints fixed. 163 features compared, 94% available.
 - The navigation menu tells the current page (filled, accent bar) from its parent entries (bold, not filled, an accent
   guide line along the open sub-menu) at a glance; keyboard focus is a ring inside the menu.
 - Right to left (Arabic, Hebrew, …): the menu and drawer, guide lines, chevrons, menus and reflowed report cards are
