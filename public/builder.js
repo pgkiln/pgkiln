@@ -823,6 +823,10 @@
       set('--font', from(lists.fonts, form.elements.font?.value));
       set('--font-size', from(lists.sizes, form.elements.font_size?.value));
       set('--radius', from(lists.radii, form.elements.radius?.value));
+      // (sprint 117) the navigation appearance ('' = the application's, 'default' = none) and the header strip
+      const ap = form.elements.appearance?.value ?? '';
+      preview.dataset.appearance = ap === 'default' ? '' : ap || preview.dataset.trAppAppearance || '';
+      set('--strip', own('strip') ? hex(form.elements.strip?.value) : '');
     };
     form.addEventListener('input', update);
     form.addEventListener('change', update);
