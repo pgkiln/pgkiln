@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { appStyles, BASE_STYLES, baseStyleOf, FONT_SIZES, FONTS, HEX, ITEM_REF, MAX_STYLES, parseStyle, RADII, STYLE_NAME, type StyleVariant } from '../runtime/styles.ts';
+import { APPEARANCE_DEFAULT, appStyles, BASE_STYLES, baseStyleOf, FONT_SIZES, FONTS, HEX, ITEM_REF, MAX_STYLES, NAV_APPEARANCES, navAppearance, parseStyle, RADII, STYLE_NAME, type StyleVariant } from '../runtime/styles.ts';
 import { REGION_OPTIONS, BUTTON_OPTIONS } from '../runtime/template-options.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
@@ -28,9 +28,17 @@ async function updateTheme(id: string, change: (theme: Theme) => Theme | string)
 }
 
 const label = (list: Record<string, { label: string }>, k: string | undefined) => (k && list[k] ? list[k].label : '- as the base -');
+/** (sprint 117) a style's navigation appearance as shown in the list */
+const appearanceLabel = (k: string | undefined) => (k === APPEARANCE_DEFAULT ? 'Default' : k && NAV_APPEARANCES[k] ? NAV_APPEARANCES[k].label : '- as the application -');
+const appearanceChoices = (forStyle: boolean): [string, string][] => [
+  forStyle ? ['', '- as the application -'] : ['', 'Default (the base style\'s header and menu)'],
+  ...(forStyle ? [[APPEARANCE_DEFAULT, 'Default (the base style\'s header and menu)'] as [string, string]] : []),
+  ...Object.entries(NAV_APPEARANCES).map(([k, v]): [string, string] => [k, v.label]),
+];
+const APPEARANCE_HELP = 'APEX 26.2: Pillar Light puts the header and menu on the page\'s own light surfaces, Pillar Dark makes them one dark column in the header colour; both have a header pillar strip and show the current page as a filled pill.';
 
 function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVariant | null, base: Theme) {
-  const colour = (name: 'accent' | 'header' | 'accent_dark' | 'header_dark', title: string, fallback: string) => {
+  const colour = (name: 'accent' | 'header' | 'accent_dark' | 'header_dark' | 'strip' | 'strip_dark', title: string, fallback: string) => {
     const ref = st?.[name] && ITEM_REF.test(st[name]!) ? st[name]! : '';
     const own = !!st?.[name] && !ref;
     const value = (own ? st?.[name] : undefined) ?? (typeof base[name] === 'string' && HEX.test(base[name] as string) ? (base[name] as string) : fallback);
@@ -49,14 +57,22 @@ function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVarian
     sizes: Object.fromEntries(Object.entries(FONT_SIZES).map(([k, v]) => [k, v.css])),
     radii: Object.fromEntries(Object.entries(RADII).map(([k, v]) => [k, v.css])),
   });
-  const preview = html`<div class="tr-preview tr-preview-${baseStyleOf(base)}" data-tr-preview="${lists}" aria-label="Preview of the style">
+  // (sprint 117) the preview has a menu: the current page, its parent and the appearance in use
+  const appearance = navAppearance(base as never, st) ?? '';
+  const preview = html`<div class="tr-preview tr-preview-${baseStyleOf(base)}" data-tr-preview="${lists}" data-tr-app-appearance="${navAppearance(base as never, null) ?? ''}" data-appearance="${appearance}" aria-label="Preview of the style">
     <div class="tr-preview-header">${icon('menu')}<span>Preview</span></div>
+    <div class="tr-preview-main">
+    <ul class="tr-preview-nav" aria-label="Sample menu">
+      <li><span class="tr-nav-parent">${icon('users')}<span>Employees</span></span>
+        <ul><li><span class="tr-nav-current">Employee list</span></li><li><span>Directory</span></li></ul></li>
+      <li><span>${icon('chart')}<span>Reports</span></span></li>
+    </ul>
     <div class="tr-preview-body">
       <section class="region region-standard"><header class="region-header"><h2>A region</h2></header>
         <div class="region-body"><p class="u-mt0">Text with a <a href="#tr-preview-link" id="tr-preview-link">link</a> and a <span class="tc-badge tc-badge-info">badge</span>.</p>
           <div class="field"><label class="label" for="tr-preview-input">A field</label><input id="tr-preview-input" value="Value" readonly></div>
           <div class="buttons"><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-hot">Save</button></div></div></section>
-    </div></div>`;
+    </div></div></div>`;
   return html`${preview}<form method="post" action="${BASE}/apps/${appId}/theme/styles" data-tr-form>${csrf(s)}
     ${st ? html`<input type="hidden" name="original" value="${st.name}">` : ''}
     <div class="form-grid">
@@ -65,6 +81,9 @@ function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVarian
       ${colour('header', 'Header colour', baseOf.header)}
       ${colour('accent_dark', 'Accent colour in dark mode', '#a59cff')}
       ${colour('header_dark', 'Header colour in dark mode', '#0d0c1a')}
+      ${select('appearance', 'Navigation appearance', st?.appearance ?? '', appearanceChoices(true), APPEARANCE_HELP)}
+      ${colour('strip', 'Header strip colour', baseOf.accent)}
+      ${colour('strip_dark', 'Header strip colour in dark mode', '#a59cff')}
       ${select('font', 'Font', st?.font ?? '', choices(FONTS))}
       ${select('font_size', 'Font size', st?.font_size ?? '', choices(FONT_SIZES))}
       ${select('radius', 'Corners', st?.radius ?? '', choices(RADII))}
@@ -86,6 +105,13 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     const theme: Theme = a.theme ?? {};
     const styles = appStyles(a.theme);
     const editing = typeof req.query.edit === 'string' ? styles.find((x) => x.name === req.query.edit) ?? null : null;
+    // (sprint 117) the application's header strip colours (else the accent)
+    const appColour = (k: 'strip' | 'strip_dark', title: string, fallback: string) => {
+      const v = typeof theme[k] === 'string' && HEX.test(theme[k] as string) ? (theme[k] as string) : '';
+      return html`<div class="field"><label class="label" for="f_app_${k}">${title}</label>
+        <input id="f_app_${k}" name="${k}" type="color" value="${v || fallback}">
+        <label class="check"><input type="checkbox" name="${k}_own" value="true"${v ? raw(' checked') : ''}> Use this colour (else the accent colour)</label></div>`;
+    };
     const swatch = (hex: string | undefined) =>
       !hex ? html`<span class="muted">base</span>` : ITEM_REF.test(hex) ? html`<code>${hex}</code>` : html`<input type="color" value="${hex}" disabled aria-label="${hex}" class="swatch"> <code>${hex}</code>`;
     const main = html`${appHeader(a, 'settings')}
@@ -96,9 +122,9 @@ export async function themeRollerRoutes(app: FastifyInstance) {
             are what users see without a style; each style below changes the colours and may set a font, font size and corners.
             The colours apply to the light theme, the dark-mode colours to the dark theme (pick light colours there); fonts, sizes and corners to both.</p>
           ${styles.length
-            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Accent</th><th>Header</th><th>Dark accent</th><th>Dark header</th><th>Font</th><th>Font size</th><th>Corners</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Accent</th><th>Header</th><th>Dark accent</th><th>Dark header</th><th>Navigation</th><th>Strip</th><th>Font</th><th>Font size</th><th>Corners</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
                 ${styles.map((x) => html`<tr><td>${x.name}${theme.style === x.name ? html` <span class="badge">default</span>` : ''}${x.condition ? html`<br><small class="muted">when <code>${x.condition.length > 60 ? `${x.condition.slice(0, 60)}…` : x.condition}</code></small>` : ''}</td>
-                  <td>${swatch(x.accent)}</td><td>${swatch(x.header)}</td><td>${swatch(x.accent_dark)}</td><td>${swatch(x.header_dark)}</td><td>${label(FONTS, x.font)}</td><td>${label(FONT_SIZES, x.font_size)}</td><td>${label(RADII, x.radius)}</td>
+                  <td>${swatch(x.accent)}</td><td>${swatch(x.header)}</td><td>${swatch(x.accent_dark)}</td><td>${swatch(x.header_dark)}</td><td>${appearanceLabel(x.appearance)}</td><td>${swatch(x.strip)}</td><td>${label(FONTS, x.font)}</td><td>${label(FONT_SIZES, x.font_size)}</td><td>${label(RADII, x.radius)}</td>
                   <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/theme?edit=${encodeURIComponent(x.name)}">${icon('edit')} Edit</a>
                     <form method="post" action="${BASE}/apps/${a.id}/theme/styles/delete" class="u-inline">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
                       <button class="btn btn-sm btn-danger" data-confirm="Delete style ${x.name}?">Delete</button></form></td></tr>`)}
@@ -107,6 +133,9 @@ export async function themeRollerRoutes(app: FastifyInstance) {
           <form method="post" action="${BASE}/apps/${a.id}/theme/settings" class="u-mt1">${csrf(s)}
             <div class="form-grid">
               ${select('style', 'Default style', typeof theme.style === 'string' ? theme.style : '', [['', 'None (the base style and colours)'], ...styles.map((x): [string, string] => [x.name, x.name])], 'What everyone sees unless they chose another style.')}
+              ${select('appearance', 'Navigation appearance', navAppearance(theme as never, null) ?? '', appearanceChoices(false), `${APPEARANCE_HELP} A style may choose its own.`)}
+              ${appColour('strip', 'Header strip colour', BASE_STYLES[baseStyleOf(a.theme)].accent)}
+              ${appColour('strip_dark', 'Header strip colour in dark mode', '#a59cff')}
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="style_choice" value="true"${theme.style_choice === true ? raw(' checked') : ''}> Users may choose a style</label>
               <small class="help">Adds the styles to the user menu and My account (APEX: "Enable End Users to Choose Theme Style"). A user's choice is kept per application on the account; only this application's styles can be chosen.</small></div>
@@ -138,6 +167,9 @@ export async function themeRollerRoutes(app: FastifyInstance) {
       header: b.header_item?.trim() || (b.header_own === 'true' ? b.header : undefined),
       accent_dark: b.accent_dark_item?.trim() || (b.accent_dark_own === 'true' ? b.accent_dark : undefined),
       header_dark: b.header_dark_item?.trim() || (b.header_dark_own === 'true' ? b.header_dark : undefined),
+      strip: b.strip_item?.trim() || (b.strip_own === 'true' ? b.strip : undefined),
+      strip_dark: b.strip_dark_item?.trim() || (b.strip_dark_own === 'true' ? b.strip_dark : undefined),
+      appearance: b.appearance,
       condition: b.condition,
     });
     if (typeof parsed === 'string') {
@@ -196,6 +228,15 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     const problem = await updateTheme(id, (t) => {
       const styles = appStyles(t as never);
       const next: Theme = { ...t, style_choice: b.style_choice === 'true' };
+      // (sprint 117) the navigation appearance and the header strip colours: fixed keys and #rrggbb only
+      if (!b.appearance) delete next.appearance;
+      else if (Object.hasOwn(NAV_APPEARANCES, b.appearance)) next.appearance = b.appearance;
+      else return 'Navigation appearance: choose Default, Pillar Light or Pillar Dark.';
+      for (const k of ['strip', 'strip_dark'] as const) {
+        if (b[`${k}_own`] !== 'true') delete next[k];
+        else if (HEX.test(b[k] ?? '')) next[k] = b[k]!.toLowerCase();
+        else return 'Header strip colour: #rrggbb.';
+      }
       if (!b.style) delete next.style;
       else if (styles.some((x) => x.name === b.style)) next.style = b.style;
       else return 'Choose one of the styles.';
