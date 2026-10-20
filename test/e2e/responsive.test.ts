@@ -973,6 +973,17 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
             team_new: `/builder/team/issues/new?template=${tpl}`, team_labels: '/builder/team/labels', team_milestones: '/builder/team/milestones',
             team_templates: '/builder/team/templates', team_setup: '/builder/team/setup', hr_page_12: `/builder/apps/${appId}/pages/12` };
         })()),
+        // (sprint 118) Administration → Mail queue (a slow call, a long failure), Network access (a long refusal, a URL check), the workspace's mail service
+        ...(await (async () => {
+          await owner.query(`insert into meta.mail_queue (app_id, to_addresses, subject, body_text, status, attempts, message, service, provider, duration_ms, last_attempt_at, sent_at)
+            values ($1, '{a.rather.long.address.for.the.mail.queue.on.a.phone@example.com}', 'E2E a slow one with a long subject ' || repeat('s', 60), 'x', 'sent', 1, null, 'DEVELOPMENT_LOG', 'log', 4321, now(), now()),
+                   ($1, '{x@example.com}', 'E2E failed yesterday', 'x', 'error', 5, 'The SMTP server refused the message: 550 5.1.1 ' || repeat('n', 120), 'DEVELOPMENT_LOG', 'smtp', 812, now() - interval '1 day', null)`, [appId]);
+          await owner.query(`insert into meta.network_refusal (workspace_id, app_id, what, host, url, list, message) values (1, $1, 'e2e REST data source WITH_A_RATHER_LONG_NAME', $2, $3, 'workspace', 'refused')`,
+            [appId, 'a-rather-long-host-name-without-spaces.api.example.com:8443', 'https://a-rather-long-host-name-without-spaces.api.example.com:8443/v1/' + 'p'.repeat(120)]);
+          return { mail_queue: '/builder/mail-queue', mail_queue_week: `/builder/mail-queue?period=168&app=${appId}`, network: '/builder/network',
+            network_check: `/builder/network?ws=1&url=${encodeURIComponent('https://a-rather-long-host-name-without-spaces.api.example.com/v1/items')}`,
+            workspace_mail: '/builder/workspaces/1/mail', workspace_mail_graph: '/builder/workspaces/1/mail?provider=graph' };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -1002,6 +1013,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         await owner.query(`delete from meta.ai_usage where service = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.ai_service where name = 'E2E_CLAUDE_WITH_A_LONG_SERVICE_NAME'`);
         await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like 'E2E %'`, [appId]);
+        await owner.query(`delete from meta.network_refusal where what like 'e2e %'`);
         await owner.query(`select cron.unschedule(jobid) from cron.job where jobname like 'e2e %'`);
         await (await import('../pgcron-mock.ts')).dropMockPgCron();
       }

@@ -1514,3 +1514,14 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ab-card-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .ab-card-badges .tag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; text-decoration: none; }
 .ab-card-badges .tag .icon { width: 13px; height: 13px; flex: none; }
+/* (sprint 118) Administration → Mail queue, Network access */
+.mail-queue-filters { display: flex; flex-wrap: wrap; gap: 0 12px; align-items: flex-end; margin-bottom: 12px; }
+.mail-queue-filters .field { min-width: 0; flex: 1 1 160px; max-width: 260px; }
+.mail-queue-stats { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.mail-queue-stats .stat b { font-size: 1.3rem; }
+.stat.stat-bad b { color: var(--danger, #b42318); }
+.inline-form { display: inline; margin: 0; }
+.mail-failures .buttons { flex-wrap: wrap; gap: 6px; }
+.mail-answer { overflow-wrap: anywhere; font-family: var(--font-mono, monospace); font-size: 0.85em; }
+.host-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.host-list code { overflow-wrap: anywhere; }

@@ -10,6 +10,7 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { decryptSecret } from './secrets.ts';
 import { WebError, webRequest } from './webclient.ts';
+import { scopeForApp } from './network-acl.ts';
 import { credentialValidFor, loadCredential } from './websources.ts';
 
 export interface ObjectStoreConfig {
@@ -113,6 +114,8 @@ async function send(appId: number, o: ObjectStoreConfig, method: 'PUT' | 'GET' |
   };
   const authorization = signV4({ method, url, headers, payloadHash, accessKey: cred.username!, secretKey: decryptSecret(cred.secret_enc!), region: cred.scope || 'us-east-1', amzDate });
   const res = await webRequest(url.toString(), {
+    // (sprint 118) the workspace's network access list
+    scope: await scopeForApp(appId, `object storage (web credential ${cred.name})`),
     method,
     headers: { ...Object.fromEntries(Object.entries(headers).filter(([k]) => k !== 'host')), authorization, 'accept-encoding': 'identity' },
     secretHeaders: ['authorization'],

@@ -356,6 +356,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             <div class="buttons"><button class="btn">Save developers</button></div></form>`)}
       </div>
       ${serviceRegion(s, w)}
+      ${region('Mail and network access', html`<p class="u-mt0">This workspace's own <a href="${BASE}/workspaces/${w.id}/mail">mail service</a> for its applications without one of their own, its <a href="${BASE}/network?ws=${w.id}">network access</a> list (which hosts its applications may call, within the installation's list), and the <a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">mail queue</a>.</p>`, '', 'mail-network')}
       <div class="columns">${preferencesRegion(s, w)}${linksRegion(s, w, links)}</div>
       ${full ? isolationRegion(s, w, roles.rows) : region('Isolation', html`<p class="u-mt0">${w.isolated ? 'Isolated: its applications and SQL run on database logins of its own.' : 'Shared.'} Administrators change it.</p>`)}
       ${!full ? '' : region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
