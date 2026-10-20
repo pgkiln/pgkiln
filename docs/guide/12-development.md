@@ -110,7 +110,12 @@ src/
   geocode.ts               the installation's geocoder for address items (GEOCODER_URL, Nominatim search API)
   mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
   yamltext.ts              the text style of the directory export: a strict YAML subset, written and read
-  webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits
+  webclient.ts             outgoing HTTP to web services: allow-list, address checks at connect time (SSRF), redirects, limits;
+                           (sprint 118) a request's scope (OutboundScope): the workspace's network access list, checked on every hop
+                           (checkUrl/scopeProblem), refusals reported to the scope
+  network-acl.ts           (sprint 118, WS-9) workspace network access lists (meta.workspace.network_*): scopeForApp/scopeForWorkspace
+                           (no cache), parseHostList, recordRefusal/purgeRefusals (meta.network_refusal, 7 days), mailHostAddress
+                           (a workspace mail service's SMTP host: both lists, resolved once, the checked address connected to)
   datapump.ts              (sprint 103, DA-16) Schema Export / Import jobs (meta.dump_job): findTools (pg_dump/pg_restore ≥ the
                            server's major), startExport (pg_dump, argument array, PGPASSWORD), readToc/parseToc (pg_restore --list),
                            startImport (pg_restore -f - run in one transaction between schema renames; data-only in FK order),
@@ -137,7 +142,10 @@ src/
                            or XOAUTH2, Microsoft Graph sendMail, Amazon SES v2 raw MIME with signV4, Resend, Postmark, SendGrid,
                            Mailgun, log; MailError says whether a retry may help; client-credentials token cache; settingsProblems),
                            mail.ts (sendWith(): service enabled, allowed sender, secret decrypted; mailTick(): claim with SKIP LOCKED,
-                           send, retry after 1/4/16/64 minutes, purge after 30 days; the NOTIFY pgkiln_mail listener)
+                           send, retry after 1/4/16/64 minutes, purge after 30 days; the NOTIFY pgkiln_mail listener);
+                           (sprint 118) the service of meta.mail_service_for_app (the app's, else its workspace's own), each attempt's
+                           provider and duration, serviceSettings()/verifyService(): a workspace service's checks (no base or token URL,
+                           its SMTP host through network-acl.ts mailHostAddress)
   ai/                      AI services (migration 060): types.ts (the provider interface, AiError kinds),
                            anthropic.ts (Claude through @anthropic-ai/sdk: streamed, effort, structured outputs via
                            output_config.format, refusal fallbacks, stop_reason checks, typed SDK errors), openai.ts (the openai
@@ -286,7 +294,15 @@ src/
                            (Workspace home). Every id from a request is looked up in the current workspace
     region-help.ts         the Attributes (JSON) help per region type, with links to the guide
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
-                           applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel)
+                           applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel);
+                           serviceForm/formValues/runCheck shared with workspace-mail.ts (sprint 118)
+    mail-queue.ts          (sprint 118, WS-9) Administration → Mail queue (/builder/mail-queue): queueScope (administrators: all or
+                           ?ws=; workspace administrators: the current workspace), figures, per hour, per workspace / application,
+                           slowest provider calls, failures; Retry / Purge one or all failed, scope checked again per mail
+    network-access.ts      (sprint 118, WS-9) Administration → Network access (/builder/network): the installation's list, a workspace's
+                           list (workspaceAdmin), Check a URL (nothing called), the workspaces (administrators), refused calls
+    workspace-mail.ts      (sprint 118, WS-9) a workspace's own mail service (/builder/workspaces/:id/mail, WORKSPACE_<id>): its
+                           administrators only, write-only secret, checks through mail.ts runCheck with the workspace's guard
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar;
                            (sprint 86) GET /builder/apps/:app/pages/:no, /builder/pages/:id redirects browsers there (designerUrl in ui.ts)
@@ -474,6 +490,9 @@ test/
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page), template options, base style Iris
   workspaces.test.ts       workspaces (064): Default, administrators' pages, current workspace, refused apps, imports and copies
+  mail-network.test.ts     (sprint 118) network access lists (page process refused and logged in debug, narrowing only, redirects,
+                           the page), a workspace's mail service (sending, SMTP host on the list), the Mail queue (yesterday's
+                           SMTP failure, Retry, Purge, counts, scope)
   gallery.test.ts          the App Gallery: every starter created from its review with all its pages rendering; sample apps (admins)
   builder-apex-screens.test.ts sprint 61: sign-in with a workspace, message and banner, utilization, SQL Workshop home, groups, reports
   workspace-isolation.test.ts isolated workspaces (090): logins, RLS on meta, app_id, roles, SQL Workshop, scripts, imports
@@ -493,6 +512,7 @@ test/
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/admin-mail-network.test.ts (sprint 118) Mail queue, Network access and a workspace's mail service at 390 px without JavaScript
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers, syntax colours at AA in both themes (sprint 108)
   e2e/data-modeler.test.ts (sprint 98) the Data Modeler in a browser: drag, save, reload, undo/redo, zoom, mini-map, exports, phone
   e2e/worksheet.test.ts    (sprint 91) the SQL Worksheet in a browser: run keys, tabs, navigator, drag and drop, splitters, phone, no JavaScript;

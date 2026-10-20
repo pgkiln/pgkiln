@@ -781,7 +781,12 @@ Microsoft retires basic authentication (a password) for SMTP in Exchange Online:
 or the Graph provider. Secrets are stored encrypted with `PGKILN_SECRET_KEY`, are write-only in the
 builder, never exported and never readable by applications. Each service lists the **From
 addresses** it may send as (an address, or `@example.com` for a whole domain); an administrator
-chooses each application's service, its From address and an optional **limit per day**.
+chooses each application's service, its From address and an optional **limit per day**. A
+workspace's administrators can also set up the [workspace's own mail
+service](03-builder.md#a-workspaces-own-mail-service) (sprint 118): the workspace's applications that
+an administrator gave no service send through it, with its default From address. Administration →
+[Mail queue](03-builder.md#mail-queue) shows the delivery per hour and per application, the slowest
+provider calls and the failures with the provider's answer, with Retry and Purge.
 
 **How mail is sent.** `meta.send_mail` and the others only *queue* the mail, in the caller's
 transaction: a transaction that rolls back sends nothing. After the commit, the server sends it at

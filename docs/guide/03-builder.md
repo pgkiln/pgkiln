@@ -160,8 +160,9 @@ applications' files. Choose what goes in:
 | Data Reporter datasets | Every [dataset](#data-reporter-datasets-and-reporting-applications) (sprint 110) |
 | Team Development | [Label groups, labels, milestones, templates and issues](#team-development) with their comments and history; an issue's application by alias (sprint 113) |
 
-Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, passwords and
-secrets, script runs and other history. **Applications are exported on their own** (an application's *Export*).
+Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, its
+[mail service](#a-workspaces-own-mail-service) and [network access list](#network-access) (installation-specific, like
+isolation), passwords and secrets, script runs and other history. **Applications are exported on their own** (an application's *Export*).
 
 **Import** reads such a file into the current workspace, for the components you choose. Components with a name the
 workspace already has are kept, or replaced with *Replace components with the same name*; nothing is deleted. A
@@ -1334,6 +1335,67 @@ against its limit and the mail of the last 30 days with its status and the provi
 provider grant it the application permission *Mail.Send*; for SMTP with OAuth2 the permission
 *SMTP.SendAsApp* and register its service principal in Exchange Online. In both cases limit it to the
 sending mailboxes (an application access policy or RBAC for Applications).
+
+
+### Mail queue
+
+Administration menu → **Mail queue** (`/builder/mail-queue`; APEX 26.2: Administration → Mail queue): the delivery
+health of the mail queue, for administrators (every workspace, or one) and a workspace's administrators (the current
+workspace's applications only; other developers get 403). Filter by period (24 hours, 48 hours, 7 days), workspace and
+application:
+
+- **figures**: queued now, retrying now (failed with an error that may pass, waiting for the next of its 5 attempts),
+  being sent, sent and failed in the period, the share delivered and the average provider call;
+- **Per hour**: queued, sent, failed and retrying mail per hour (UTC);
+- **Slowest provider calls**: the 10 longest hand-overs of the period (how long the provider took to accept or refuse
+  the mail), with application, service and outcome;
+- **Per workspace and application**: sent, failed, retrying and queued mail, the average and slowest call;
+- **Failures**: every failed mail (kept 30 days) with the provider's answer, e.g. the SMTP server's
+  `550 5.1.1 no such user`. **Retry** queues one again with fresh attempts, **Purge** deletes it; *Retry all failed*
+  and *Purge all failed* act on the failures of the filter (never outside the developer's scope).
+
+Bodies and attachments are never shown here. Every action checks again on the server that the mail's application is in
+the developer's scope, and is written to the activity log.
+
+### A workspace's own mail service
+
+A workspace's page → *Mail and network access* → **mail service** (`/builder/workspaces/<id>/mail`; APEX 26.1:
+workspace-level SMTP credentials), for the workspace's administrators: a mail service of the workspace's own, with the
+same providers and checks as [above](#mail-services). The applications of the workspace that an administrator gave no
+service send through it (an application an administrator gave one keeps it; a service of another workspace is never
+used). Its secret is stored encrypted with `PGKILN_SECRET_KEY` like a web credential's: write-only, never shown, never
+exported. It differs from an installation service in two ways that keep it from reaching what the installation
+doesn't allow:
+
+- it uses the provider's own API: no API base URL and no token URL (OAuth2 goes to Microsoft Entra of the tenant);
+- an SMTP server must be on the installation's allow-list (`PGKILN_REST_ALLOWED_HOSTS`, e.g. `smtp.example.com:587`)
+  and the workspace's [network access](#network-access) list, and resolve to a public address (unless
+  `PGKILN_REST_PRIVATE_HOSTS` lists it). The server resolves the host once and connects to the address it checked,
+  with the host name kept for TLS, on every send and test.
+
+### Network access
+
+Administration menu → **Network access** (`/builder/network`; APEX 26.2: workspace network ACLs), for administrators
+(any workspace, `?ws=`) and a workspace's administrators (their workspaces): which web services a workspace's
+applications may call. The installation's list (`PGKILN_REST_ALLOWED_HOSTS`, set in the server's environment, shown
+read-only; the private hosts to administrators only) applies to every workspace. A workspace can choose **Only the
+hosts below**: then every outgoing call made for one of its applications must match one of its entries *and* the
+installation's list. A workspace's list only narrows; it can never widen the installation's, and private, loopback and
+link-local addresses stay refused unless the installation allows them. Entries are `api.example.com`, `*.example.com`
+(its subdomains) or `api.example.com:8443` (that port only); restricted with no entries means no outgoing calls.
+
+It is enforced on the server for every outgoing web call of the workspace: `meta.web_request` and
+`meta.web_request_source`, REST data sources (regions, write-back, synchronisation, the assistant), the Invoke API
+process and workflow step, web credential token endpoints, object storage of file items, the builder's *Test* of a
+source, REST source catalogs read from a URL, and the SMTP server of the workspace's own mail service. Every redirect
+hop is checked again, and a REST source's cached response is not served once its host is off the list. A refused call
+fails with *The host … is not on the network access list of workspace …*, is written to the application's debug log
+(level 2, warning, for `meta.web_request` in a page process; level 1 for regions and processes) and appears under
+**Refused calls** (kept 7 days). **Check a URL** says whether a URL may be called, without calling it.
+
+Not covered by a workspace's list: the installation's own services, which only administrators configure (installation
+mail services, AI services, the geocoder, sign-in providers) and push notification services (their own list,
+`PGKILN_PUSH_HOSTS`).
 
 ## AI services
 

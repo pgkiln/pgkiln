@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Mail queue, a workspace's own mail service and network access** (WS-9; APEX 26.1 / 26.2 Administration;
+  migration 126): Administration → **Mail queue** shows queued, sent, failed and retrying mail per hour and per
+  workspace / application, the slowest provider calls and the failures with the provider's answer (e.g. the SMTP
+  reply), with **Retry** and **Purge** (administrators: every workspace; a workspace's administrators: their own).
+  A workspace's administrators can set up the workspace's **own mail service** (any provider, the secret encrypted
+  and write-only; its applications without a service of their own send through it). Administration → **Network
+  access**: a workspace's list of hosts (`api.example.com`, `*.example.com`, `host:port`) narrows
+  `PGKILN_REST_ALLOWED_HOSTS` for every outgoing web call of its applications (`meta.web_request`, REST data
+  sources, invoke API, token endpoints, object storage, REST source catalogs), on every redirect hop; refused calls
+  go to the debug log and a *Refused calls* list. `meta.mail_queue` records each attempt's provider and duration.
+
+### Security
+- *REST source catalogs → read from a URL* fetched the URL before the developer's session and CSRF token were
+  checked; it now reads it only afterwards, within the current workspace's network access list.
+- A workspace's mail service has no API base URL or token URL, and its SMTP host must pass the installation's
+  allow-list and the workspace's list and resolve to a public address (connected to by the checked address).
+
 ## [0.52.0] - 2026-10-19
 
 ### Added
